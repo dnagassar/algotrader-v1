@@ -5,6 +5,10 @@ class AlgoTraderError(Exception):
     """Base class for project errors."""
 
 
+class ValidationError(AlgoTraderError, ValueError):
+    """Raised when a domain model fails deterministic validation."""
+
+
 class ConfigError(AlgoTraderError):
     """Raised when runtime configuration is invalid."""
 
@@ -19,3 +23,7 @@ class DataError(AlgoTraderError):
 
 class TradingCoreError(AlgoTraderError):
     """Raised by deterministic trading-core components."""
+
+
+class MissingQuoteError(TradingCoreError, KeyError):
+    """Raised when valuation requires a quote that was not supplied."""
