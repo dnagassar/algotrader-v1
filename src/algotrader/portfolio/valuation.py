@@ -8,8 +8,11 @@ from datetime import datetime
 from decimal import Decimal
 
 from algotrader.core.types import Quote
+from algotrader.core.validation import symbol_value
 from algotrader.errors import MissingQuoteError, ValidationError
 from algotrader.portfolio.state import PortfolioState, Position
+
+QuoteInput = Mapping[str, Quote] | Quote
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,9 +62,9 @@ def value_position(position: Position, quote: Quote) -> PositionValuation:
 
 def value_portfolio(
     state: PortfolioState,
-    quotes: Mapping[str, Quote],
+    quotes: QuoteInput,
 ) -> PortfolioValuation:
-    quote_by_symbol = {quote.symbol: quote for quote in quotes.values()}
+    quote_by_symbol = normalize_quote_map(quotes)
     position_values = tuple(
         value_position(position, _required_quote(position.symbol, quote_by_symbol))
         for position in state.positions
@@ -83,6 +86,33 @@ def value_portfolio(
         total_market_value=state.account.cash + total_position_market_value,
         total_unrealized_pnl=total_unrealized_pnl,
     )
+
+
+def normalize_quote_map(quotes: QuoteInput) -> dict[str, Quote]:
+    """Return quotes keyed by normalized symbol, rejecting ambiguous input."""
+
+    if isinstance(quotes, Quote):
+        return {quotes.symbol: quotes}
+
+    if not isinstance(quotes, Mapping):
+        raise ValidationError("quotes must be a Quote or mapping of symbol to Quote.")
+
+    quote_by_symbol: dict[str, Quote] = {}
+    for key, quote in quotes.items():
+        if not isinstance(key, str):
+            raise ValidationError("quote map keys must be symbol strings.")
+        if not isinstance(quote, Quote):
+            raise ValidationError("quote map values must be Quote instances.")
+
+        symbol = symbol_value(key)
+        if symbol != quote.symbol:
+            raise ValidationError("quote map key must match quote symbol.")
+        if symbol in quote_by_symbol:
+            raise ValidationError(f"duplicate quote for {symbol}.")
+
+        quote_by_symbol[symbol] = quote
+
+    return quote_by_symbol
 
 
 def _required_quote(symbol: str, quotes: Mapping[str, Quote]) -> Quote:

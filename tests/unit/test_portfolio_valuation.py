@@ -4,7 +4,7 @@ from decimal import Decimal
 import pytest
 
 from algotrader.core.types import Quote
-from algotrader.errors import MissingQuoteError
+from algotrader.errors import MissingQuoteError, ValidationError
 from algotrader.portfolio.state import Account, PortfolioState, Position
 from algotrader.portfolio.valuation import value_portfolio
 
@@ -31,6 +31,19 @@ def test_single_long_position_valuation() -> None:
     assert valuation.positions[0].market_value == Decimal("220")
 
 
+def test_single_quote_input_still_values_single_position() -> None:
+    state = PortfolioState(
+        account=Account("1000"),
+        positions=(Position("MSFT", "2", "100"),),
+    )
+
+    valuation = value_portfolio(state, make_quote("MSFT", "110"))
+
+    assert valuation.total_position_market_value == Decimal("220")
+    assert valuation.total_market_value == Decimal("1220")
+    assert valuation.total_unrealized_pnl == Decimal("20")
+
+
 def test_multiple_positions_plus_cash() -> None:
     state = PortfolioState(
         account=Account("500"),
@@ -47,6 +60,25 @@ def test_multiple_positions_plus_cash() -> None:
     valuation = value_portfolio(state, quotes)
 
     assert valuation.total_position_market_value == Decimal("265")
+    assert valuation.total_market_value == Decimal("765")
+    assert valuation.total_unrealized_pnl == Decimal("15")
+
+
+def test_quote_map_allows_lowercase_keys_by_normalizing_symbols() -> None:
+    state = PortfolioState(
+        account=Account("500"),
+        positions=(
+            Position("MSFT", "2", "100"),
+            Position("AAPL", "1", "50"),
+        ),
+    )
+    quotes = {
+        "msft": make_quote("MSFT", "110"),
+        "aapl": make_quote("AAPL", "45"),
+    }
+
+    valuation = value_portfolio(state, quotes)
+
     assert valuation.total_market_value == Decimal("765")
     assert valuation.total_unrealized_pnl == Decimal("15")
 
@@ -92,3 +124,13 @@ def test_missing_quote_is_explicit_error() -> None:
 
     with pytest.raises(MissingQuoteError):
         value_portfolio(state, {})
+
+
+def test_quote_map_rejects_symbol_key_mismatch() -> None:
+    state = PortfolioState(
+        account=Account("0"),
+        positions=(Position("MSFT", "2", "100"),),
+    )
+
+    with pytest.raises(ValidationError):
+        value_portfolio(state, {"AAPL": make_quote("MSFT", "100")})
