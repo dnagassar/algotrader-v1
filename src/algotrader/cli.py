@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+import sys
 
 from .config import PROFILE_NAMES, load_config
 from .logging_setup import configure_logging, get_logger
@@ -32,9 +33,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     demo_parser.add_argument(
         "--scenario",
-        choices=SCENARIO_NAMES,
         default="approved_and_filled",
         help="Named deterministic scenario to run.",
+    )
+    demo_parser.add_argument(
+        "--list-scenarios",
+        action="store_true",
+        help="List available deterministic demo scenarios.",
     )
     return parser
 
@@ -63,32 +68,60 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if command == "demo-core":
-        _run_demo_core(args.scenario)
+        if args.list_scenarios:
+            _list_demo_core_scenarios()
+            return 0
+        return _run_demo_core(args.scenario)
+
+    if hasattr(args, "list_scenarios") and args.list_scenarios:
+        _list_demo_core_scenarios()
         return 0
 
     parser.error(f"unsupported command: {command}")
     return 2
 
 
-def _run_demo_core(scenario_name: str) -> None:
+def _list_demo_core_scenarios() -> None:
+    print("Available deterministic core scenarios")
+    for scenario_name in SCENARIO_NAMES:
+        print(f"- {scenario_name}")
+
+
+def _run_demo_core(scenario_name: str) -> int:
     from .orchestration.scenarios import run_scenario
+
+    if scenario_name not in SCENARIO_NAMES:
+        expected = ", ".join(SCENARIO_NAMES)
+        print(
+            f"Unknown scenario {scenario_name!r}. Available scenarios: {expected}.",
+            file=sys.stderr,
+        )
+        return 2
 
     scenario = run_scenario(scenario_name)
     result = scenario.result
     print("Deterministic core demo")
     print(f"scenario: {scenario.name}")
-    print(f"signal: {'generated' if result.order else 'none'}")
+    print(f"signal: {_signal_summary(result)}")
     print(f"risk: {_risk_summary(result)}")
     print(f"execution: {_execution_summary(result)}")
+    print(f"fill: {_fill_summary(result)}")
 
     if result.portfolio is not None:
-        print(f"cash: {result.portfolio.account.cash}")
+        print(f"cash_after: {result.portfolio.account.cash}")
 
     if result.valuation is not None:
-        print(f"valuation: {result.valuation.total_market_value}")
+        print("valuation: available")
+        print(f"portfolio_value: {result.valuation.total_market_value}")
         print(f"unrealized_pnl: {result.valuation.total_unrealized_pnl}")
     else:
         print("valuation: unavailable")
+    print(f"final_outcome: {result.status}")
+    return 0
+
+
+def _signal_summary(result) -> str:
+    return "generated" if result.order else "none"
 
 
 def _risk_summary(result) -> str:
@@ -105,3 +138,9 @@ def _execution_summary(result) -> str:
     if result.execution.filled:
         return "filled"
     return result.execution.ack.status.value
+
+
+def _fill_summary(result) -> str:
+    if result.execution is None:
+        return "not_applicable"
+    return "filled" if result.execution.fill is not None else "none"
