@@ -41,3 +41,12 @@ model services, or external state.
 Run `python -m algotrader demo-core` to execute the deterministic flow once with
 fixed sample inputs. This is a demonstration command only; it is not a scheduler,
 broker integration, or live trading loop.
+
+Named scenarios are available for quick local checks:
+
+```powershell
+python -m algotrader demo-core --scenario approved_and_filled
+python -m algotrader demo-core --scenario rejected_insufficient_cash
+python -m algotrader demo-core --scenario no_signal
+python -m algotrader demo-core --scenario unfilled_limit_order
+```

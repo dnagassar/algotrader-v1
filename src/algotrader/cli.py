@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
-from datetime import datetime, timezone
 
 from .config import PROFILE_NAMES, load_config
 from .logging_setup import configure_logging, get_logger
+from .orchestration.scenarios import SCENARIO_NAMES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -26,9 +26,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("config", help="Print the active runtime profile.")
-    subparsers.add_parser(
+    demo_parser = subparsers.add_parser(
         "demo-core",
         help="Run one deterministic local trading-flow demo.",
+    )
+    demo_parser.add_argument(
+        "--scenario",
+        choices=SCENARIO_NAMES,
+        default="approved_and_filled",
+        help="Named deterministic scenario to run.",
     )
     return parser
 
@@ -57,30 +63,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if command == "demo-core":
-        _run_demo_core()
+        _run_demo_core(args.scenario)
         return 0
 
     parser.error(f"unsupported command: {command}")
     return 2
 
 
-def _run_demo_core() -> None:
-    from .core.types import Bar, Quote
-    from .orchestration.signal_trade_flow import generate_evaluate_and_execute
-    from .portfolio.state import Account, PortfolioState
+def _run_demo_core(scenario_name: str) -> None:
+    from .orchestration.scenarios import run_scenario
 
-    timestamp = datetime(2026, 4, 25, tzinfo=timezone.utc)
-    previous_bar = Bar("MSFT", timestamp, "99", "101", "98", "100", "1000")
-    quote = Quote("MSFT", timestamp, bid="101.00", ask="101.01")
-    portfolio = PortfolioState(account=Account("1000"))
-
-    result = generate_evaluate_and_execute(
-        previous_bar=previous_bar,
-        quote=quote,
-        portfolio=portfolio,
-    )
-
+    scenario = run_scenario(scenario_name)
+    result = scenario.result
     print("Deterministic core demo")
+    print(f"scenario: {scenario.name}")
     print(f"signal: {'generated' if result.order else 'none'}")
     print(f"risk: {_risk_summary(result)}")
     print(f"execution: {_execution_summary(result)}")
