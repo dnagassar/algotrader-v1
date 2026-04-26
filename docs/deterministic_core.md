@@ -31,7 +31,13 @@ model services, or external state.
 - Broker API wiring
 - Live trading
 - Runtime scheduling
-- CLI wiring for the toy trading loop
+- CLI wiring for a runtime trading loop
 - LangGraph
 - ML models
 - LLM logic in signals, risk, execution, screener, portfolio, or feature code
+
+## One-Shot CLI Demo
+
+Run `python -m algotrader demo-core` to execute the deterministic flow once with
+fixed sample inputs. This is a demonstration command only; it is not a scheduler,
+broker integration, or live trading loop.
