@@ -7,9 +7,12 @@ state.
 
 ## Current Status
 
-- `52` tests are passing.
+- `74` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run a selected named scenario.
+- A `LocalBroker` abstraction exists as an in-memory fake/local broker.
+- LocalBroker-backed internal scenarios exist for broker-boundary validation.
+- CLI demo scenarios remain separate from internal broker scenarios.
 
 ## Current Deterministic Path
 
@@ -24,11 +27,12 @@ Bar + Quote
   -> structured result
 ```
 
-## Scenario Harness
+## CLI-Facing Scenario Harness
 
 The scenario harness lives in the orchestration layer and uses fixed sample
 inputs. Each scenario calls the existing deterministic core instead of
-duplicating trading logic.
+duplicating trading logic. These are the scenarios exposed through the
+`demo-core` CLI command.
 
 - `approved_and_filled`: proves a valid signal can produce an order, pass risk,
   fill in the paper simulator, update portfolio cash/position state, and produce
@@ -49,6 +53,35 @@ python -m algotrader demo-core --scenario no_signal
 python -m algotrader demo-core --scenario unfilled_limit_order
 ```
 
+## Internal Broker-Backed Scenarios
+
+The broker-backed scenarios are internal harness cases. They are not part of the
+default CLI scenario list. They prove that the broker abstraction can run the
+same deterministic local pieces through `LocalBroker` without introducing real
+broker calls.
+
+- `broker_approved_and_filled`: proves an approved order can be submitted to
+  `LocalBroker`, filled by the existing paper execution simulator, and reflected
+  in local portfolio state.
+- `broker_rejected_insufficient_cash`: proves an order rejected by
+  `RiskEngine.check()` is not submitted to the broker.
+- `broker_unfilled_limit_order`: proves an approved but non-marketable limit
+  order can be submitted to `LocalBroker` without mutating positions or cash.
+
+## Broker Boundary
+
+`LocalBroker` is an in-memory fake/local broker. It exists to prepare the shape
+of a future broker adapter, such as an `AlpacaPaperBroker`, while keeping the
+current project fully local and deterministic.
+
+- `LocalBroker` requires an approved `RiskVerdict` by default.
+- It uses the existing paper execution simulator internally.
+- It mutates local `PortfolioState` only when a fill occurs.
+- It returns structured broker results for accepted, filled, open, or refused
+  submissions.
+- It does not call Alpaca or any external API.
+- It does not require credentials.
+
 ## Boundaries
 
 - Signal generation only creates `ProposedOrder` objects or returns `None`.
@@ -61,9 +94,11 @@ python -m algotrader demo-core --scenario unfilled_limit_order
 
 ## Explicitly Not Included
 
-- Broker API calls
-- Scheduler
-- Runtime loop
+- Real broker API calls
+- Alpaca credentials
+- Websocket fills
+- Reconciliation loop
+- Scheduler or runtime loop
 - LangGraph
 - ML models
 - LLM logic in the trading path
@@ -71,7 +106,8 @@ python -m algotrader demo-core --scenario unfilled_limit_order
 
 ## Next Recommended Phase
 
-The next phase should stay small. Good candidates are lightweight CLI polish
-around scenario output or planning the first broker/data abstraction boundary.
-Full paper broker wiring, live trading, or runtime scheduling should wait until
-the deterministic layer remains stable under the scenario harness.
+The next phase should stay conservative. Good candidates are a tiny
+broker-facing CLI/internal demo, if useful, or designing the
+`AlpacaPaperBroker` interface contract without implementing real API calls.
+
+Do not add real Alpaca API calls until the local broker boundary remains stable.
