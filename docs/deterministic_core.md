@@ -14,6 +14,8 @@ state.
 - LocalBroker-backed internal scenarios exist for broker-boundary validation.
 - Broker contract tests exist, with `LocalBroker` as the current reference
   implementation.
+- A tiny local reconciliation helper can compare expected portfolio state with
+  broker-reported local state.
 - CLI demo scenarios remain separate from internal broker scenarios.
 
 ## Current Deterministic Path
@@ -112,6 +114,19 @@ This matters because broker correctness is defined before external API
 integration. The contract helps keep broker-specific behavior out of strategy,
 signal, risk, portfolio, and valuation logic.
 
+## Local Reconciliation
+
+The local reconciler compares expected `PortfolioState` with state reported by a
+broker-like object such as `LocalBroker`.
+
+It checks expected cash, broker cash, expected positions, broker positions,
+missing positions, unexpected positions, and quantity differences by symbol. If
+quotes are supplied, it also compares quote-based portfolio value and unrealized
+P&L.
+
+This is a deterministic local comparison helper only. It is not an external
+broker reconciliation loop.
+
 ## Boundaries
 
 - Signal generation only creates `ProposedOrder` objects or returns `None`.
@@ -129,7 +144,7 @@ signal, risk, portfolio, and valuation logic.
 - Network calls
 - Real broker API calls
 - Websocket fills
-- Reconciliation
+- External broker reconciliation loop
 - Scheduler or runtime loop
 - LangGraph
 - ML models
