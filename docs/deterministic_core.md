@@ -7,11 +7,13 @@ state.
 
 ## Current Status
 
-- `74` tests are passing.
+- `81` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run a selected named scenario.
 - A `LocalBroker` abstraction exists as an in-memory fake/local broker.
 - LocalBroker-backed internal scenarios exist for broker-boundary validation.
+- Broker contract tests exist, with `LocalBroker` as the current reference
+  implementation.
 - CLI demo scenarios remain separate from internal broker scenarios.
 
 ## Current Deterministic Path
@@ -82,6 +84,34 @@ current project fully local and deterministic.
 - It does not call Alpaca or any external API.
 - It does not require credentials.
 
+## Broker Contract Tests
+
+Broker contract tests live at:
+
+```text
+tests/contracts/test_broker_contract.py
+```
+
+`LocalBroker` is the current reference implementation for the contract. Future
+broker adapters, such as an `AlpacaPaperBroker`, should be compared against the
+same contract before they are allowed into the trading path.
+
+The contract currently verifies that a broker:
+
+- Exposes `get_account()`.
+- Exposes `get_positions()`.
+- Refuses submission without required risk approval.
+- Refuses submission with a rejected `RiskVerdict`.
+- Accepts an approved order.
+- Fills marketable orders through the local paper execution behavior.
+- Does not mutate cash or positions for unfilled limit orders.
+- Returns `BrokerOrderResult`.
+- Preserves deterministic supplied order IDs.
+
+This matters because broker correctness is defined before external API
+integration. The contract helps keep broker-specific behavior out of strategy,
+signal, risk, portfolio, and valuation logic.
+
 ## Boundaries
 
 - Signal generation only creates `ProposedOrder` objects or returns `None`.
@@ -94,10 +124,12 @@ current project fully local and deterministic.
 
 ## Explicitly Not Included
 
+- Alpaca implementation
+- Credentials
+- Network calls
 - Real broker API calls
-- Alpaca credentials
 - Websocket fills
-- Reconciliation loop
+- Reconciliation
 - Scheduler or runtime loop
 - LangGraph
 - ML models
