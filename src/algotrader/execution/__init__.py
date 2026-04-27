@@ -1,5 +1,6 @@
 """Deterministic execution simulators."""
 
+from .alpaca_broker import AlpacaPaperBroker
 from .broker_base import Broker, BrokerOrderResult
 from .fake_broker import LocalBroker
 from .ledger import InMemoryLedger, LedgerEvent, LedgerEventType
@@ -11,6 +12,7 @@ from .reconciler import (
 from .simulator import ExecutionResult, simulate_order
 
 __all__ = [
+    "AlpacaPaperBroker",
     "Broker",
     "BrokerOrderResult",
     "ExecutionResult",

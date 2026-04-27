@@ -27,3 +27,7 @@ class TradingCoreError(AlgoTraderError):
 
 class MissingQuoteError(TradingCoreError, KeyError):
     """Raised when valuation requires a quote that was not supplied."""
+
+
+class BrokerNotImplementedError(AlgoTraderError, NotImplementedError):
+    """Raised by broker adapter skeletons that are not implemented yet."""
