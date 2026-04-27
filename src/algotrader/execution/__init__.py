@@ -2,6 +2,7 @@
 
 from .broker_base import Broker, BrokerOrderResult
 from .fake_broker import LocalBroker
+from .ledger import InMemoryLedger, LedgerEvent, LedgerEventType
 from .reconciler import (
     ReconciliationMismatch,
     ReconciliationReport,
@@ -13,6 +14,9 @@ __all__ = [
     "Broker",
     "BrokerOrderResult",
     "ExecutionResult",
+    "InMemoryLedger",
+    "LedgerEvent",
+    "LedgerEventType",
     "LocalBroker",
     "ReconciliationMismatch",
     "ReconciliationReport",
