@@ -7,13 +7,16 @@ state.
 
 ## Current Status
 
-- `92` tests are passing.
+- `97` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run a selected named scenario.
 - A `LocalBroker` abstraction exists as an in-memory fake/local broker.
 - LocalBroker-backed internal scenarios exist for broker-boundary validation.
 - Broker contract tests exist, with `LocalBroker` as the current reference
   implementation.
+- An inert `AlpacaPaperBroker` skeleton exists only as a future adapter
+  boundary.
+- There is no Alpaca SDK dependency, no credentials, and no network behavior.
 - A local reconciliation layer compares expected portfolio state with
   broker-reported local state.
 - A local order-event ledger records deterministic broker/order events.
@@ -89,6 +92,23 @@ current project fully local and deterministic.
   submissions.
 - It does not call Alpaca or any external API.
 - It does not require credentials.
+
+Current broker layers:
+
+- `LocalBroker` is the working deterministic reference implementation.
+- Broker contract tests define expected broker behavior.
+- `AlpacaPaperBroker` is currently inert and raises
+  `BrokerNotImplementedError`.
+
+The `AlpacaPaperBroker` skeleton currently defines these broker-shaped methods:
+
+- `submit_order(...)`
+- `get_account()`
+- `get_positions()`
+
+`AlpacaPaperBroker` is not operational yet and must not be used for trading.
+Future implementation must satisfy the broker contract tests. Real Alpaca
+integration should only be added intentionally in a separate phase.
 
 ## Broker Contract Tests
 
@@ -196,6 +216,7 @@ risk, signal, portfolio, or valuation logic.
 - Network calls
 - Real broker API calls
 - Websocket fills
+- Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph
 - ML models
@@ -207,8 +228,8 @@ risk, signal, portfolio, or valuation logic.
 
 The next phase should pause and choose between two conservative directions:
 
-- Add local persistence for ledger and reconciliation state.
-- Add an `AlpacaPaperBroker` interface skeleton with no real API calls yet.
+- Plan the broker contract requirements for a future `AlpacaPaperBroker`.
+- Design local persistence for ledger and reconciliation state.
 
-Do not add real Alpaca API calls until the local broker boundary and event
-history remain stable.
+Do not add real Alpaca SDK or network calls until the broker contract,
+reconciliation behavior, and event history remain stable.
