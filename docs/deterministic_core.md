@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `87` tests are passing.
+- `92` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run a selected named scenario.
 - A `LocalBroker` abstraction exists as an in-memory fake/local broker.
@@ -16,6 +16,9 @@ state.
   implementation.
 - A local reconciliation layer compares expected portfolio state with
   broker-reported local state.
+- A local order-event ledger records deterministic broker/order events.
+- `LocalBroker` can optionally record events to `InMemoryLedger`.
+- The ledger is local, deterministic, and in-memory only.
 - There are still no real broker API calls or external network dependencies.
 - CLI demo scenarios remain separate from internal broker scenarios.
 
@@ -131,17 +134,38 @@ It can detect:
 This is a deterministic local comparison helper only. It is not an external
 broker reconciliation loop.
 
+## Local Order-Event Ledger
+
+The local ledger records what happened during deterministic broker/order flows.
+It is append-only for the lifetime of the in-memory object and preserves event
+order.
+
+Current ledger event types:
+
+- `order_submitted`
+- `order_rejected`
+- `order_filled`
+- `order_not_filled`
+- `portfolio_updated`
+- `reconciliation_checked`
+
+`LocalBroker` can use the ledger when one is supplied. It records submission
+attempts, missing-risk or rejected-risk submissions, fills, no-fills, and
+portfolio updates only when fills occur. If no ledger is supplied, existing
+broker behavior is preserved.
+
 ## Current Safety Chain
 
 ```text
-signal rule
-  -> ProposedOrder
-  -> RiskEngine.check()
+ProposedOrder
+  -> RiskVerdict
   -> LocalBroker.submit_order()
-  -> paper execution simulator
-  -> PortfolioState update
+  -> BrokerOrderResult
+  -> paper execution result
+  -> portfolio update
   -> quote-map valuation
   -> reconciliation report
+  -> event ledger
 ```
 
 ## Why Reconciliation Matters
@@ -177,14 +201,14 @@ risk, signal, portfolio, or valuation logic.
 - ML models
 - LLM logic in the trading path
 - Live trading
+- Persistent database ledger
 
 ## Next Recommended Phase
 
-The next phase should stay conservative. Good candidates are a tiny
-broker-facing CLI/internal demo, if useful, or designing the
-`AlpacaPaperBroker` interface contract without implementing real API calls.
+The next phase should pause and choose between two conservative directions:
 
-Do not add real Alpaca API calls until the local broker boundary remains stable.
-The next safest implementation step is a small local order-event ledger or order
-history model, so fills, opens, rejections, and broker submissions have a
-deterministic audit trail before any real adapter is introduced.
+- Add local persistence for ledger and reconciliation state.
+- Add an `AlpacaPaperBroker` interface skeleton with no real API calls yet.
+
+Do not add real Alpaca API calls until the local broker boundary and event
+history remain stable.
