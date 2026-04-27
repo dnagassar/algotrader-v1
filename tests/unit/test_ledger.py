@@ -1,9 +1,13 @@
 from datetime import datetime, timezone
 from decimal import Decimal
+import json
+
+import pytest
 
 from algotrader.core.types import OrderSide, OrderType, ProposedOrder, Quote
+from algotrader.errors import ValidationError
 from algotrader.execution.fake_broker import LocalBroker
-from algotrader.execution.ledger import InMemoryLedger, LedgerEventType
+from algotrader.execution.ledger import InMemoryLedger, JsonlLedger, LedgerEventType
 from algotrader.portfolio.state import Account, PortfolioState
 from algotrader.risk.config import RiskConfig
 from algotrader.risk.engine import RiskEngine
@@ -117,4 +121,77 @@ def test_unfilled_limit_order_records_no_fill_without_mutation() -> None:
     assert event_types(ledger) == [
         LedgerEventType.ORDER_SUBMITTED,
         LedgerEventType.ORDER_NOT_FILLED,
+    ]
+
+
+def test_jsonl_ledger_appends_one_line_per_event(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    ledger = JsonlLedger(path)
+
+    ledger.append(LedgerEventType.ORDER_SUBMITTED, NOW, order_id="order-1")
+    ledger.append(LedgerEventType.ORDER_FILLED, NOW, order_id="order-1")
+
+    assert len(path.read_text(encoding="utf-8").splitlines()) == 2
+
+
+def test_jsonl_ledger_reads_events_back_in_order(tmp_path) -> None:
+    ledger = JsonlLedger(tmp_path / "events.jsonl")
+
+    ledger.append(LedgerEventType.ORDER_SUBMITTED, NOW, order_id="order-1")
+    ledger.append(LedgerEventType.ORDER_NOT_FILLED, NOW, order_id="order-1")
+
+    assert event_types(ledger) == [
+        LedgerEventType.ORDER_SUBMITTED,
+        LedgerEventType.ORDER_NOT_FILLED,
+    ]
+
+
+def test_jsonl_ledger_filters_by_order_id(tmp_path) -> None:
+    ledger = JsonlLedger(tmp_path / "events.jsonl")
+
+    ledger.append(LedgerEventType.ORDER_SUBMITTED, NOW, order_id="order-1")
+    ledger.append(LedgerEventType.ORDER_SUBMITTED, NOW, order_id="order-2")
+    ledger.append(LedgerEventType.ORDER_FILLED, NOW, order_id="order-1")
+
+    events = ledger.by_order_id("order-1")
+
+    assert [event.event_type for event in events] == [
+        LedgerEventType.ORDER_SUBMITTED,
+        LedgerEventType.ORDER_FILLED,
+    ]
+
+
+def test_jsonl_ledger_missing_file_returns_no_events(tmp_path) -> None:
+    ledger = JsonlLedger(tmp_path / "missing.jsonl")
+
+    assert ledger.list_events() == ()
+
+
+def test_jsonl_ledger_malformed_line_fails_clearly(tmp_path) -> None:
+    path = tmp_path / "events.jsonl"
+    path.write_text(json.dumps({"event_type": "order_submitted"}) + "\n", encoding="utf-8")
+    ledger = JsonlLedger(path)
+
+    with pytest.raises(ValidationError, match="Malformed ledger event"):
+        ledger.list_events()
+
+
+def test_local_broker_can_record_to_jsonl_ledger(tmp_path) -> None:
+    state = portfolio()
+    ledger = JsonlLedger(tmp_path / "events.jsonl")
+    broker = LocalBroker(state, ledger=ledger)
+    order = ProposedOrder("MSFT", OrderSide.BUY, OrderType.MARKET, "1")
+
+    result = broker.submit_order(
+        order,
+        quote(),
+        risk_verdict(order, state),
+        order_id="order-1",
+    )
+
+    assert result.filled is True
+    assert event_types(ledger) == [
+        LedgerEventType.ORDER_SUBMITTED,
+        LedgerEventType.ORDER_FILLED,
+        LedgerEventType.PORTFOLIO_UPDATED,
     ]

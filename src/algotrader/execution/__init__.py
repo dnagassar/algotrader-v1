@@ -3,7 +3,7 @@
 from .alpaca_broker import AlpacaPaperBroker
 from .broker_base import Broker, BrokerOrderResult
 from .fake_broker import LocalBroker
-from .ledger import InMemoryLedger, LedgerEvent, LedgerEventType
+from .ledger import InMemoryLedger, JsonlLedger, LedgerEvent, LedgerEventType
 from .reconciler import (
     ReconciliationMismatch,
     ReconciliationReport,
@@ -17,6 +17,7 @@ __all__ = [
     "BrokerOrderResult",
     "ExecutionResult",
     "InMemoryLedger",
+    "JsonlLedger",
     "LedgerEvent",
     "LedgerEventType",
     "LocalBroker",
