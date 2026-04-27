@@ -7,15 +7,16 @@ state.
 
 ## Current Status
 
-- `81` tests are passing.
+- `87` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run a selected named scenario.
 - A `LocalBroker` abstraction exists as an in-memory fake/local broker.
 - LocalBroker-backed internal scenarios exist for broker-boundary validation.
 - Broker contract tests exist, with `LocalBroker` as the current reference
   implementation.
-- A tiny local reconciliation helper can compare expected portfolio state with
+- A local reconciliation layer compares expected portfolio state with
   broker-reported local state.
+- There are still no real broker API calls or external network dependencies.
 - CLI demo scenarios remain separate from internal broker scenarios.
 
 ## Current Deterministic Path
@@ -119,13 +120,40 @@ signal, risk, portfolio, and valuation logic.
 The local reconciler compares expected `PortfolioState` with state reported by a
 broker-like object such as `LocalBroker`.
 
-It checks expected cash, broker cash, expected positions, broker positions,
-missing positions, unexpected positions, and quantity differences by symbol. If
-quotes are supplied, it also compares quote-based portfolio value and unrealized
-P&L.
+It can detect:
+
+- Cash mismatch
+- Missing expected position
+- Unexpected broker position
+- Position quantity mismatch
+- Optional valuation mismatch when quote data is supplied
 
 This is a deterministic local comparison helper only. It is not an external
 broker reconciliation loop.
+
+## Current Safety Chain
+
+```text
+signal rule
+  -> ProposedOrder
+  -> RiskEngine.check()
+  -> LocalBroker.submit_order()
+  -> paper execution simulator
+  -> PortfolioState update
+  -> quote-map valuation
+  -> reconciliation report
+```
+
+## Why Reconciliation Matters
+
+Real broker integration will eventually create two views of state:
+
+- Local expected state maintained by the deterministic core
+- Broker-reported state returned by the external broker adapter
+
+Reconciliation is how the system detects drift between those views before
+continuing. That keeps broker-specific behavior from leaking into strategy,
+risk, signal, portfolio, or valuation logic.
 
 ## Boundaries
 
@@ -144,7 +172,6 @@ broker reconciliation loop.
 - Network calls
 - Real broker API calls
 - Websocket fills
-- External broker reconciliation loop
 - Scheduler or runtime loop
 - LangGraph
 - ML models
@@ -158,3 +185,6 @@ broker-facing CLI/internal demo, if useful, or designing the
 `AlpacaPaperBroker` interface contract without implementing real API calls.
 
 Do not add real Alpaca API calls until the local broker boundary remains stable.
+The next safest implementation step is a small local order-event ledger or order
+history model, so fills, opens, rejections, and broker submissions have a
+deterministic audit trail before any real adapter is introduced.
