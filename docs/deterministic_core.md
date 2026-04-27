@@ -7,23 +7,17 @@ state.
 
 ## Current Status
 
-- `97` tests are passing.
+- `103` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
-- The `demo-core` command can run a selected named scenario.
-- A `LocalBroker` abstraction exists as an in-memory fake/local broker.
-- LocalBroker-backed internal scenarios exist for broker-boundary validation.
-- Broker contract tests exist, with `LocalBroker` as the current reference
-  implementation.
-- An inert `AlpacaPaperBroker` skeleton exists only as a future adapter
-  boundary.
-- There is no Alpaca SDK dependency, no credentials, and no network behavior.
-- A local reconciliation layer compares expected portfolio state with
-  broker-reported local state.
-- A local order-event ledger records deterministic broker/order events.
-- `LocalBroker` can optionally record events to `InMemoryLedger`.
-- The ledger is local, deterministic, and in-memory only.
+- The `demo-core` command can run selected named scenarios.
+- `LocalBroker` is the working deterministic broker reference implementation.
+- Broker contract tests define expected broker behavior.
+- `AlpacaPaperBroker` exists only as an inert future adapter skeleton.
+- `InMemoryLedger` remains available for fast local event history.
+- `JsonlLedger` adds optional append-only JSONL persistence.
+- `LocalBroker` can use either ledger through the existing optional `ledger=`
+  argument.
 - There are still no real broker API calls or external network dependencies.
-- CLI demo scenarios remain separate from internal broker scenarios.
 
 ## Current Deterministic Path
 
@@ -38,24 +32,35 @@ Bar + Quote
   -> structured result
 ```
 
-## CLI-Facing Scenario Harness
+## Current Local Safety Foundation
 
-The scenario harness lives in the orchestration layer and uses fixed sample
-inputs. Each scenario calls the existing deterministic core instead of
-duplicating trading logic. These are the scenarios exposed through the
-`demo-core` CLI command.
+```text
+signal rule
+  -> RiskEngine.check()
+  -> LocalBroker
+  -> paper simulator
+  -> portfolio update
+  -> quote-map valuation
+  -> reconciliation
+  -> InMemoryLedger or JsonlLedger
+  -> broker contract tests
+  -> inert AlpacaPaperBroker skeleton
+```
+
+## CLI-Facing Scenarios
+
+These scenarios are exposed through the `demo-core` CLI command and use fixed
+sample inputs.
 
 - `approved_and_filled`: proves a valid signal can produce an order, pass risk,
-  fill in the paper simulator, update portfolio cash/position state, and produce
-  a valuation.
-- `rejected_insufficient_cash`: proves a generated order can be stopped by the
-  risk engine before execution when cash is not sufficient.
-- `no_signal`: proves the signal layer can return no order and the flow exits
-  cleanly without risk checks or execution.
-- `unfilled_limit_order`: proves a generated limit order can pass risk but remain
-  open when it is not marketable, leaving portfolio state unchanged.
+  fill in the paper simulator, update portfolio state, and produce valuation.
+- `rejected_insufficient_cash`: proves a generated order can be stopped by risk
+  before execution when cash is not sufficient.
+- `no_signal`: proves the signal layer can return no order and exit cleanly.
+- `unfilled_limit_order`: proves a limit order can pass risk but remain open
+  when it is not marketable, leaving portfolio state unchanged.
 
-Run the scenarios with:
+Run them with:
 
 ```powershell
 python -m algotrader demo-core --scenario approved_and_filled
@@ -64,51 +69,36 @@ python -m algotrader demo-core --scenario no_signal
 python -m algotrader demo-core --scenario unfilled_limit_order
 ```
 
-## Internal Broker-Backed Scenarios
+## Internal Broker Scenarios
 
-The broker-backed scenarios are internal harness cases. They are not part of the
-default CLI scenario list. They prove that the broker abstraction can run the
-same deterministic local pieces through `LocalBroker` without introducing real
-broker calls.
+These scenarios are internal harness cases. They are separate from the
+CLI-facing scenario list.
 
 - `broker_approved_and_filled`: proves an approved order can be submitted to
-  `LocalBroker`, filled by the existing paper execution simulator, and reflected
-  in local portfolio state.
+  `LocalBroker`, filled by the paper simulator, and reflected in local portfolio
+  state.
 - `broker_rejected_insufficient_cash`: proves an order rejected by
   `RiskEngine.check()` is not submitted to the broker.
 - `broker_unfilled_limit_order`: proves an approved but non-marketable limit
-  order can be submitted to `LocalBroker` without mutating positions or cash.
+  order can be submitted to `LocalBroker` without mutating cash or positions.
 
 ## Broker Boundary
 
-`LocalBroker` is an in-memory fake/local broker. It exists to prepare the shape
-of a future broker adapter, such as an `AlpacaPaperBroker`, while keeping the
-current project fully local and deterministic.
+`LocalBroker` is an in-memory fake/local broker. It prepares the shape of a
+future broker adapter while keeping the current project fully local and
+deterministic.
 
 - `LocalBroker` requires an approved `RiskVerdict` by default.
 - It uses the existing paper execution simulator internally.
 - It mutates local `PortfolioState` only when a fill occurs.
-- It returns structured broker results for accepted, filled, open, or refused
-  submissions.
+- It returns structured `BrokerOrderResult` values.
 - It does not call Alpaca or any external API.
 - It does not require credentials.
 
-Current broker layers:
-
-- `LocalBroker` is the working deterministic reference implementation.
-- Broker contract tests define expected broker behavior.
-- `AlpacaPaperBroker` is currently inert and raises
-  `BrokerNotImplementedError`.
-
-The `AlpacaPaperBroker` skeleton currently defines these broker-shaped methods:
-
-- `submit_order(...)`
-- `get_account()`
-- `get_positions()`
-
-`AlpacaPaperBroker` is not operational yet and must not be used for trading.
-Future implementation must satisfy the broker contract tests. Real Alpaca
-integration should only be added intentionally in a separate phase.
+`AlpacaPaperBroker` is not operational yet and must not be used for trading. It
+currently defines `submit_order(...)`, `get_account()`, and `get_positions()`,
+but each method raises `BrokerNotImplementedError`. A future implementation must
+satisfy the broker contract tests before it enters the trading path.
 
 ## Broker Contract Tests
 
@@ -118,25 +108,11 @@ Broker contract tests live at:
 tests/contracts/test_broker_contract.py
 ```
 
-`LocalBroker` is the current reference implementation for the contract. Future
-broker adapters, such as an `AlpacaPaperBroker`, should be compared against the
-same contract before they are allowed into the trading path.
-
-The contract currently verifies that a broker:
-
-- Exposes `get_account()`.
-- Exposes `get_positions()`.
-- Refuses submission without required risk approval.
-- Refuses submission with a rejected `RiskVerdict`.
-- Accepts an approved order.
-- Fills marketable orders through the local paper execution behavior.
-- Does not mutate cash or positions for unfilled limit orders.
-- Returns `BrokerOrderResult`.
-- Preserves deterministic supplied order IDs.
-
-This matters because broker correctness is defined before external API
-integration. The contract helps keep broker-specific behavior out of strategy,
-signal, risk, portfolio, and valuation logic.
+The contract currently verifies that a broker exposes account and position
+reads, refuses missing or rejected risk approval, accepts approved orders, fills
+marketable orders through the local paper behavior, leaves cash and positions
+unchanged for unfilled limits, returns `BrokerOrderResult`, and preserves
+deterministic supplied order IDs.
 
 ## Local Reconciliation
 
@@ -157,8 +133,6 @@ broker reconciliation loop.
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
-It is append-only for the lifetime of the in-memory object and preserves event
-order.
 
 Current ledger event types:
 
@@ -174,47 +148,28 @@ attempts, missing-risk or rejected-risk submissions, fills, no-fills, and
 portfolio updates only when fills occur. If no ledger is supplied, existing
 broker behavior is preserved.
 
-## Current Safety Chain
+Ledger modes:
 
-```text
-ProposedOrder
-  -> RiskVerdict
-  -> LocalBroker.submit_order()
-  -> BrokerOrderResult
-  -> paper execution result
-  -> portfolio update
-  -> quote-map valuation
-  -> reconciliation report
-  -> event ledger
-```
+- `InMemoryLedger`: fast local in-memory event history for tests and flows.
+- `JsonlLedger`: append-only JSONL event history that survives process exit.
 
-## Why Reconciliation Matters
+`JsonlLedger` behavior:
 
-Real broker integration will eventually create two views of state:
-
-- Local expected state maintained by the deterministic core
-- Broker-reported state returned by the external broker adapter
-
-Reconciliation is how the system detects drift between those views before
-continuing. That keeps broker-specific behavior from leaking into strategy,
-risk, signal, portfolio, or valuation logic.
-
-## Boundaries
-
-- Signal generation only creates `ProposedOrder` objects or returns `None`.
-- Risk checks do not execute orders.
-- Execution simulation does not mutate portfolio state.
-- Portfolio state transitions are pure functions.
-- Valuation requires explicit current quotes and does not guess missing prices.
-- Orchestration composes the deterministic pieces but is not a scheduler or
-  runtime loop.
+- Appends one JSON object per line.
+- Serializes timestamps using `isoformat()`.
+- Reads events back in order.
+- Filters events by `order_id`.
+- Returns no events for a missing file.
+- Raises `ValidationError` on malformed ledger lines.
 
 ## Explicitly Not Included
 
+- Database
+- SQLite migrations
 - Alpaca implementation
-- Credentials
+- Alpaca credentials
 - Network calls
-- Real broker API calls
+- Broker API calls
 - Websocket fills
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
@@ -222,14 +177,16 @@ risk, signal, portfolio, or valuation logic.
 - ML models
 - LLM logic in the trading path
 - Live trading
-- Persistent database ledger
 
 ## Next Recommended Phase
 
-The next phase should pause and choose between two conservative directions:
+The next phase should be a pre-Alpaca implementation plan or checklist before
+adding any real Alpaca SDK imports or API calls.
 
-- Plan the broker contract requirements for a future `AlpacaPaperBroker`.
-- Design local persistence for ledger and reconciliation state.
+The checklist should cover broker contract expectations, risk-verdict handling,
+order ID handling, ledger behavior, reconciliation expectations, error handling,
+credential boundaries, network boundaries, and dry-run/demo boundaries.
 
-Do not add real Alpaca SDK or network calls until the broker contract,
-reconciliation behavior, and event history remain stable.
+## Alpaca Paper Planning Link
+
+See [Alpaca Paper Integration Plan](alpaca_paper_integration_plan.md) for the safe future path toward Alpaca paper integration. That plan is documentation-only and does not add SDK dependencies, credentials, network calls, or runtime broker behavior.
