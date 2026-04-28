@@ -43,6 +43,43 @@ These values are represented by a small offline configuration boundary for futur
 
 Credentials must never be committed to the repository.
 
+## Current Config Boundary Status
+
+The current app config API remains:
+
+- `TradingConfig`
+- `load_config`
+
+These names are stable app-facing contracts used by existing imports, CLI behavior, and tests.
+
+The Alpaca-specific config boundary is:
+
+- `AlpacaPaperConfig`
+- `AlpacaPaperConfig.from_env()`
+- `validate_alpaca_paper_ready()`
+
+`validate_alpaca_paper_ready()` is explicit and opt-in. Normal development config and normal `python -m pytest` runs remain credential-free and offline.
+
+Future Alpaca work should extend the existing config model instead of replacing stable public config APIs.
+
+## Config Compatibility Rule
+
+Future Alpaca integration must preserve existing public APIs unless the same change intentionally migrates all callers and tests.
+
+Stable app contracts include config imports and fields used by the CLI, tests, and deterministic core. If a future change needs to rename, remove, or reshape one of those contracts, that migration should be deliberate, documented, and covered by updated tests in the same change.
+
+The safe default is:
+
+```text
+extend existing app contracts; do not replace them
+```
+
+## Regression Lesson
+
+The first Alpaca config boundary repair loop caught an import regression caused by breaking the expected `TradingConfig` and `load_config` API. Follow-up CLI failures also showed that stable fields such as profile, log level, data directory, starting cash, and paper exchange are part of the existing config contract.
+
+Future changes should treat those app-facing contracts as compatibility surfaces. Alpaca-specific settings should be added alongside them, not in place of them.
+
 ## Future AlpacaPaperBroker Responsibilities
 
 A future `AlpacaPaperBroker` implementation must eventually provide the same broker-facing behavior as the deterministic broker boundary, while keeping Alpaca-specific details isolated inside the adapter.
@@ -179,6 +216,7 @@ This plan does not implement or enable:
 - real Alpaca API calls
 - Alpaca SDK dependency installation
 - credentials
+- broker implementation
 - websocket fills
 - scheduler or runtime loop
 - live trading
