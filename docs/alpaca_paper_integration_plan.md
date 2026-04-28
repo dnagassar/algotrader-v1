@@ -39,7 +39,9 @@ ALPACA_PAPER_BASE_URL
 APP_PROFILE=paper
 ```
 
-Do not add these to code, tests, sample credentials, or committed files during this planning phase. Credentials must never be committed to the repository.
+These values are represented by a small offline configuration boundary for future Alpaca paper readiness checks. That boundary must not install the Alpaca SDK, instantiate clients, make network calls, or expose secret values in string output.
+
+Credentials must never be committed to the repository.
 
 ## Future AlpacaPaperBroker Responsibilities
 
@@ -190,7 +192,7 @@ This plan does not implement or enable:
 
 Recommended future order:
 
-1. Add a small Alpaca configuration object that reads from environment only.
+1. Keep the small Alpaca configuration object offline and credential-safe.
 2. Add Alpaca SDK dependency in an isolated change.
 3. Create a thin Alpaca client adapter that can be replaced by fakes in tests.
 4. Add mocked client tests for account-response translation.
@@ -206,12 +208,12 @@ Recommended future order:
 
 At each phase, normal tests should remain deterministic, offline, and credential-free.
 
-## Success Criteria For This Planning Phase
+## Success Criteria For The Current Safe Boundary
 
-This planning phase is complete when:
+The current safe boundary is preserved when:
 
 - this document exists
-- no runtime code changed
+- configuration-only code remains offline and credential-safe
 - no dependencies were added
 - no credentials were added
 - no network calls were introduced
