@@ -80,6 +80,18 @@ The first Alpaca config boundary repair loop caught an import regression caused 
 
 Future changes should treat those app-facing contracts as compatibility surfaces. Alpaca-specific settings should be added alongside them, not in place of them.
 
+## Current Mocked Client Boundary Status
+
+A small offline Alpaca client boundary exists for future paper broker work. It defines typed request and response structures plus a minimal protocol for:
+
+- `get_account()`
+- `get_positions()`
+- `submit_order(...)`
+
+The boundary is intentionally internal and inert. It does not import `alpaca-py`, instantiate a real Alpaca client, load credentials, or make network calls.
+
+Current fake-client tests prove that account-like, position-like, and order-submission-like data can be exercised without credentials or network access. This gives future `AlpacaPaperBroker` work a typed adapter target before any real SDK dependency is introduced.
+
 ## Future AlpacaPaperBroker Responsibilities
 
 A future `AlpacaPaperBroker` implementation must eventually provide the same broker-facing behavior as the deterministic broker boundary, while keeping Alpaca-specific details isolated inside the adapter.
