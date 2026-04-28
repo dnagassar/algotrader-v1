@@ -6,6 +6,23 @@
 
 The goal is to preserve the deterministic trading core while preparing a clear adapter boundary for a future paper broker.
 
+## Current Status
+
+Current checkpoint:
+
+```text
+118 tests passing
+```
+
+The safe Alpaca preparation layers currently include:
+
+- mocked Alpaca client boundary added
+- no `alpaca-py` dependency
+- no credentials
+- no network calls
+- no broker implementation
+- `AlpacaPaperBroker` remains inert
+
 ## Current Broker Architecture
 
 The current working broker is `LocalBroker`. It is the deterministic reference implementation for the system and uses the existing local paper execution simulator internally.
@@ -82,7 +99,9 @@ Future changes should treat those app-facing contracts as compatibility surfaces
 
 ## Current Mocked Client Boundary Status
 
-A small offline Alpaca client boundary exists for future paper broker work. It defines typed request and response structures plus a minimal protocol for:
+A small offline Alpaca client boundary exists for future paper broker work. It defines the future shape for account, position, and order-submission behavior without requiring the real Alpaca SDK.
+
+The boundary includes typed request and response structures plus a minimal protocol for:
 
 - `get_account()`
 - `get_positions()`
@@ -91,6 +110,10 @@ A small offline Alpaca client boundary exists for future paper broker work. It d
 The boundary is intentionally internal and inert. It does not import `alpaca-py`, instantiate a real Alpaca client, load credentials, or make network calls.
 
 Current fake-client tests prove that account-like, position-like, and order-submission-like data can be exercised without credentials or network access. This gives future `AlpacaPaperBroker` work a typed adapter target before any real SDK dependency is introduced.
+
+This matters because future adapter work can first translate fake Alpaca-like responses into internal models such as `Account`, `Position`, and `BrokerOrderResult`. That translation can be tested deterministically before touching real Alpaca.
+
+Normal `python -m pytest` runs must remain offline, credential-free, and deterministic. Real SDK or network integration can be added later only behind explicit flags, paper-profile checks, and safety gates.
 
 ## Future AlpacaPaperBroker Responsibilities
 
@@ -226,8 +249,8 @@ Ledger records should avoid secrets and raw credentials. If raw Alpaca responses
 This plan does not implement or enable:
 
 - real Alpaca API calls
-- Alpaca SDK dependency installation
-- credentials
+- real Alpaca SDK dependency installation
+- real credentials
 - broker implementation
 - websocket fills
 - scheduler or runtime loop
