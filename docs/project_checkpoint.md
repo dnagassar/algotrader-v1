@@ -2,15 +2,15 @@
 
 ## Current Milestone
 
-The project is at the 193-test deterministic core milestone. The current system
+The project is at the 198-test deterministic core milestone. The current system
 prioritizes a deterministic trading core before any real broker connectivity.
 
 Recent focused validation included broker/idempotency, LocalBroker rename/import,
-cleanup/import suites, and a shared broker-contract subset. The latest
-full-suite result is:
+cleanup/import suites, a shared broker-contract subset, and pre-SDK Alpaca
+safety gates. The latest full-suite result is:
 
 ```text
-193 passed
+198 passed
 ```
 
 ## Architecture Summary
@@ -92,9 +92,9 @@ Without an injected adapter, Alpaca broker operations raise
 ## Safety Guarantees
 
 Production code has repo-wide AST import safety coverage for forbidden
-broker/network/LLM imports. The deterministic trading path still has no LLM
-logic in risk, execution, signals, screener, portfolio, valuation,
-reconciliation, or feature calculation.
+broker/network/LLM imports and dynamic import/code-execution calls. The
+deterministic trading path still has no LLM logic in risk, execution, signals,
+screener, portfolio, valuation, reconciliation, or feature calculation.
 
 Current safety behaviors:
 
@@ -104,6 +104,7 @@ Current safety behaviors:
   mutation
 - fake Alpaca adapter rejects duplicate `client_order_id` values before a second
   fake client call
+- `require_paper_profile()` defines the future pre-SDK paper-profile gate
 - `RiskConfig.allow_short=True` still fails closed with
   `short_selling_not_supported`
 - portfolio overdraw and oversell branches fail closed without mutating the
@@ -195,6 +196,24 @@ No production code changed, and no SDK, credentials, environment reads, network
 calls, websocket behavior, scheduler/runtime loop, real broker connectivity,
 LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM trading-path logic was
 added.
+
+## Pre-SDK Safety Gate Checkpoint
+
+A small safety-hardening patch added and tested `require_paper_profile()` as the
+future gate SDK code must call before Alpaca-touching behavior. Import-safety
+coverage now also blocks dynamic import and code-execution calls such as
+`importlib.import_module(...)`, `__import__(...)`, `exec(...)`, and `eval(...)`.
+
+The full suite is now:
+
+```text
+python -m pytest
+198 passed
+```
+
+No SDK dependency, credentials, environment reads, network calls, websocket
+behavior, scheduler/runtime loop, real broker connectivity, LangGraph,
+LangChain, OpenAI, Anthropic, ML, or LLM trading-path logic was added.
 
 ## Explicitly Not Included
 

@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the repo-wide safety and idempotency hardening pass:
+Current checkpoint after the pre-SDK safety cleanup pass:
 
 ```text
-183 tests passing
+198 tests passing
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -24,6 +24,8 @@ The safe Alpaca preparation layers currently include:
 - explicit pre-SDK broker safety contract tests added
 - fake-only broker protocol integration coverage added for `AlpacaPaperBroker`
 - repo-wide AST import safety coverage for production code added
+- dynamic import and code-execution calls blocked by import safety coverage
+- explicit `require_paper_profile()` safety gate added and tested
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-py` dependency
@@ -88,6 +90,21 @@ The Alpaca-specific config boundary is:
 
 Future Alpaca work should extend the existing config model instead of replacing stable public config APIs.
 
+`require_paper_profile()` now defines the explicit paper-profile gate future SDK
+code must call before Alpaca-touching behavior. It does not create clients, read
+environment variables, import Alpaca SDKs, or perform network calls.
+
+## SDK Plan Preconditions
+
+Before SDK work starts, `require_paper_profile()` must exist and be covered by
+tests. Import-safety coverage must also block dynamic imports and
+code-execution calls such as `importlib.import_module(...)`, `__import__(...)`,
+`exec(...)`, and `eval(...)`.
+
+The SDK plan remains documentation-only until explicitly approved. There is
+still no SDK dependency, credentials, environment read, network call, or real
+paper-account connectivity.
+
 ## Config Compatibility Rule
 
 Future Alpaca integration must preserve existing public APIs unless the same change intentionally migrates all callers and tests.
@@ -99,6 +116,15 @@ The safe default is:
 ```text
 extend existing app contracts; do not replace them
 ```
+
+## Compatibility Shim Removal Schedule
+
+`src/algotrader/execution/fake_broker.py` remains in place for now as a
+compatibility shim that re-exports `LocalBroker`.
+
+Its removal is pinned to a future explicit milestone: after the first explicitly
+approved, gated, read-only paper SDK path exists and the compatibility path is
+no longer needed. It must not be removed as part of pre-SDK cleanup.
 
 ## Regression Lesson
 

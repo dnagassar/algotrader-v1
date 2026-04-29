@@ -39,6 +39,7 @@ __all__ = [
     "PROFILE_NAMES",
     "TradingConfig",
     "load_config",
+    "require_paper_profile",
 ]
 
 
@@ -204,6 +205,17 @@ class AlpacaPaperConfig:
     @staticmethod
     def _secret_state(value: Optional[str]) -> str:
         return "<set>" if _clean_optional(value) else "<unset>"
+
+
+def require_paper_profile(config: AlpacaPaperConfig) -> None:
+    """Require an explicitly valid Alpaca paper profile before SDK work."""
+
+    if not config.is_paper_profile:
+        raise ConfigValidationError(
+            "Alpaca paper operations require APP_PROFILE=paper."
+        )
+
+    config.validate_alpaca_paper_ready()
 
 
 def load_config(

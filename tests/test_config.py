@@ -13,6 +13,7 @@ from algotrader.config import (
     PROFILE_NAMES,
     TradingConfig,
     load_config,
+    require_paper_profile,
 )
 
 
@@ -81,6 +82,43 @@ def test_alpaca_paper_config_can_be_constructed_with_paper_settings():
     assert config.alpaca_api_key == "test-api-key"
     assert config.alpaca_secret_key == "test-secret-key"
     assert config.alpaca_paper_base_url == "https://paper.example.test"
+
+
+def test_require_paper_profile_rejects_non_paper_profile():
+    config = AlpacaPaperConfig(
+        app_profile="dev",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="test-secret-key",
+        alpaca_paper_base_url="https://paper.example.test",
+    )
+
+    with pytest.raises(ConfigValidationError, match="APP_PROFILE=paper"):
+        require_paper_profile(config)
+
+
+def test_require_paper_profile_passes_with_valid_paper_config():
+    config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="test-secret-key",
+        alpaca_paper_base_url="https://paper.example.test",
+    )
+
+    assert require_paper_profile(config) is None
+
+
+def test_require_paper_profile_delegates_paper_readiness_validation():
+    config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="",
+        alpaca_paper_base_url="https://paper.example.test",
+    )
+
+    with pytest.raises(ConfigValidationError) as exc_info:
+        require_paper_profile(config)
+
+    assert "ALPACA_SECRET_KEY" in str(exc_info.value)
 
 
 def test_missing_alpaca_credentials_fail_only_when_readiness_is_validated():
