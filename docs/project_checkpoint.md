@@ -2,14 +2,15 @@
 
 ## Current Milestone
 
-The project is at the 183-test deterministic core milestone. The current system
+The project is at the 193-test deterministic core milestone. The current system
 prioritizes a deterministic trading core before any real broker connectivity.
 
 Recent focused validation included broker/idempotency, LocalBroker rename/import,
-and cleanup/import suites. The latest full-suite result is:
+cleanup/import suites, and a shared broker-contract subset. The latest
+full-suite result is:
 
 ```text
-183 passed
+193 passed
 ```
 
 ## Architecture Summary
@@ -167,6 +168,33 @@ No runtime trading behavior changed, and no SDK, credentials, environment
 reads, network calls, websocket behavior, scheduler/runtime loop, real broker
 connectivity, LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM
 trading-path logic was added.
+
+## Shared Broker Contract Checkpoint
+
+A test-only patch added `tests/contracts/test_broker_shared_contract.py` with
+10 parametrized checks covering both `LocalBroker` and `AlpacaPaperBroker` with
+an injected fake adapter. The shared subset covers missing and rejected risk
+verdicts, approved submissions returning the exact internal
+`BrokerOrderResult`, deterministic provided `order_id` use, and duplicate
+`order_id` rejection without a second local fill or fake client submission.
+
+Broker contract coverage is now clearer across three layers:
+
+- portfolio-owning broker contract
+- external-state-reflecting Alpaca fake protocol contract
+- shared broker contract subset
+
+The full suite is now:
+
+```text
+python -m pytest
+193 passed
+```
+
+No production code changed, and no SDK, credentials, environment reads, network
+calls, websocket behavior, scheduler/runtime loop, real broker connectivity,
+LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM trading-path logic was
+added.
 
 ## Explicitly Not Included
 
