@@ -1,9 +1,12 @@
+"""Portfolio-owning broker contract for deterministic local broker behavior."""
+
 from datetime import datetime, timezone
 from decimal import Decimal
 
 from algotrader.core.types import OrderSide, OrderType, ProposedOrder, Quote
 from algotrader.execution.broker_base import BrokerOrderResult
-from algotrader.execution.fake_broker import LocalBroker
+from algotrader.execution.ledger import InMemoryLedger, LedgerEventType
+from algotrader.execution.local_broker import LocalBroker
 from algotrader.portfolio.state import Account, PortfolioState
 from algotrader.risk.config import RiskConfig
 from algotrader.risk.engine import RiskEngine
@@ -129,3 +132,41 @@ def test_broker_preserves_deterministic_order_ids_when_supplied() -> None:
 
     assert first.execution.ack.order_id == "contract-order-1"
     assert first.execution.fill.order_id == "contract-order-1"
+
+
+def test_broker_rejects_duplicate_order_id_without_second_fill_or_ledger_mutation() -> None:
+    state = portfolio()
+    ledger = InMemoryLedger()
+    broker = broker_factory()(state, ledger=ledger)
+    order = ProposedOrder("MSFT", OrderSide.BUY, OrderType.MARKET, "1")
+
+    first = broker.submit_order(
+        order,
+        quote(),
+        approved_risk(order, state),
+        order_id="contract-order-1",
+    )
+    events_after_first = ledger.list_events()
+    cash_after_first = broker.get_account().cash
+    positions_after_first = broker.get_positions()
+
+    second = broker.submit_order(
+        order,
+        quote(),
+        approved_risk(order, state),
+        order_id="contract-order-1",
+    )
+
+    assert first.accepted is True
+    assert first.filled is True
+    assert second.accepted is False
+    assert second.reason == "duplicate_order_id"
+    assert second.execution is None
+    assert broker.get_account().cash == cash_after_first
+    assert broker.get_positions() == positions_after_first
+    assert ledger.list_events() == events_after_first
+    assert [event.event_type for event in events_after_first] == [
+        LedgerEventType.ORDER_SUBMITTED,
+        LedgerEventType.ORDER_FILLED,
+        LedgerEventType.PORTFOLIO_UPDATED,
+    ]

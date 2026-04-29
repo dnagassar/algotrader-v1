@@ -6,7 +6,7 @@ import pytest
 from algotrader.core.types import Quote
 from algotrader.errors import MissingQuoteError, ValidationError
 from algotrader.portfolio.state import Account, PortfolioState, Position
-from algotrader.portfolio.valuation import value_portfolio
+from algotrader.portfolio.valuation import value_portfolio, value_position
 
 
 NOW = datetime(2026, 4, 25, tzinfo=timezone.utc)
@@ -134,3 +134,26 @@ def test_quote_map_rejects_symbol_key_mismatch() -> None:
 
     with pytest.raises(ValidationError):
         value_portfolio(state, {"AAPL": make_quote("MSFT", "100")})
+
+
+def test_position_valuation_rejects_negative_quantity() -> None:
+    position = Position("MSFT", "-1", "100")
+
+    with pytest.raises(ValidationError, match="long positions"):
+        value_position(position, make_quote("MSFT", "100"))
+
+
+def test_quote_map_rejects_duplicate_symbol_after_normalization() -> None:
+    state = PortfolioState(
+        account=Account("0"),
+        positions=(Position("MSFT", "2", "100"),),
+    )
+
+    with pytest.raises(ValidationError, match="duplicate quote"):
+        value_portfolio(
+            state,
+            {
+                "msft": make_quote("MSFT", "100"),
+                "MSFT": make_quote("MSFT", "101"),
+            },
+        )

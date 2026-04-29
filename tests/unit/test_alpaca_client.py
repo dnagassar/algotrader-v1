@@ -5,6 +5,7 @@ import socket
 
 import pytest
 
+from algotrader.errors import BrokerNotImplementedError
 from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
     AlpacaOrderRequest,
@@ -150,11 +151,8 @@ def test_existing_alpaca_paper_broker_skeleton_remains_inert():
     broker_class = _load_alpaca_paper_broker_class()
     broker = broker_class()
 
-    with pytest.raises(Exception) as account_error:
+    with pytest.raises(BrokerNotImplementedError):
         broker.get_account()
 
-    with pytest.raises(Exception) as positions_error:
+    with pytest.raises(BrokerNotImplementedError):
         broker.get_positions()
-
-    assert account_error.type.__name__ == "BrokerNotImplementedError"
-    assert positions_error.type.__name__ == "BrokerNotImplementedError"

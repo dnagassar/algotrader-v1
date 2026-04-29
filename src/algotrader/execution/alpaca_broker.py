@@ -1,10 +1,13 @@
-"""Skeleton Alpaca paper broker adapter.
+"""Inert Alpaca paper broker skeleton.
 
-This module defines the future Alpaca paper broker boundary without making any
-network calls, loading credentials, or depending on Alpaca SDK packages.
+This module intentionally does not import alpaca-py, instantiate a real client,
+read credentials, or perform network calls. By default, operational methods
+raise ``BrokerNotImplementedError``.
 """
 
 from __future__ import annotations
+
+from typing import Any, Optional
 
 from algotrader.core.types import ProposedOrder, Quote
 from algotrader.errors import BrokerNotImplementedError
@@ -14,13 +17,36 @@ from algotrader.risk.state import RiskVerdict
 
 
 class AlpacaPaperBroker:
-    """Broker-shaped skeleton for future Alpaca paper integration.
+    """Future Alpaca paper broker boundary.
 
-    The implementation is intentionally absent. Future work must implement this
-    adapter without leaking broker-specific behavior into signal, risk,
-    portfolio, valuation, or feature calculation logic, and it must satisfy the
-    broker contract tests before use.
+    The broker remains inert by default. Tests may inject a fake adapter to
+    exercise broker -> adapter delegation before real SDK connectivity exists.
     """
+
+    def __init__(self, adapter: Optional[Any] = None, config: Optional[Any] = None):
+        self._adapter = adapter
+        self.config = config
+
+    def get_account(self) -> Account:
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; get_account is not "
+                "implemented and performs no network calls."
+            )
+
+        return self._adapter.get_account()
+
+    def get_positions(self) -> tuple[Position, ...]:
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; get_positions is not "
+                "implemented and does not use credentials."
+            )
+
+        return self._adapter.list_positions()
+
+    def list_positions(self) -> tuple[Position, ...]:
+        return self.get_positions()
 
     def submit_order(
         self,
@@ -29,23 +55,21 @@ class AlpacaPaperBroker:
         risk_verdict: RiskVerdict | None = None,
         order_id: str | None = None,
     ) -> BrokerOrderResult:
-        """Submit an order to Alpaca paper trading in a future implementation."""
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; submit_order is not "
+                "implemented and performs no network calls."
+            )
 
-        raise BrokerNotImplementedError(_MESSAGE)
-
-    def get_account(self) -> Account:
-        """Return Alpaca paper account state in a future implementation."""
-
-        raise BrokerNotImplementedError(_MESSAGE)
-
-    def get_positions(self) -> tuple[Position, ...]:
-        """Return Alpaca paper positions in a future implementation."""
-
-        raise BrokerNotImplementedError(_MESSAGE)
+        return self._adapter.submit_order(
+            order,
+            quote,
+            risk_verdict,
+            order_id=order_id,
+        )
 
 
-_MESSAGE = (
-    "AlpacaPaperBroker is a skeleton only. It performs no network calls, "
-    "does not use credentials, and must satisfy broker contract tests before "
-    "it can be implemented."
-)
+__all__ = [
+    "AlpacaPaperBroker",
+    "BrokerNotImplementedError",
+]

@@ -1,93 +1,178 @@
 # Project Checkpoint
 
-## Current milestone
+## Current Milestone
 
-The project has a small, deterministic local trading core with a one-shot CLI
-demo. The core can generate a simple signal, produce a proposed order, check
-pre-trade risk, simulate paper execution, update portfolio state, and value the
-resulting portfolio.
+The project is at the 183-test deterministic core milestone. The current system
+prioritizes a deterministic trading core before any real broker connectivity.
 
-## Test status
-
-Latest confirmed result before adding the scenario harness:
+Recent focused validation included broker/idempotency, LocalBroker rename/import,
+and cleanup/import suites. The latest full-suite result is:
 
 ```text
-42 passed in 0.31s
+183 passed
 ```
 
-Command used:
+## Architecture Summary
 
-```powershell
-python -m pytest
-```
-
-## Current deterministic path
+The core trading path remains deterministic and explicit:
 
 ```text
 Bar + Quote
-  -> signal rule
-  -> ProposedOrder/no signal
+  -> deterministic signal rule
+  -> ProposedOrder or no signal
   -> RiskEngine.check()
-  -> paper execution
-  -> apply_fill()
-  -> portfolio valuation
+  -> LocalBroker.submit_order()
+  -> paper execution simulator
+  -> PortfolioState update
+  -> quote-map valuation
+  -> reconciliation
+  -> event ledger
   -> structured result
 ```
 
-## What exists now
+The project currently includes immutable domain models, deterministic signal and
+risk checks, local paper execution, portfolio state transitions, quote-based
+valuation, local reconciliation, and structured broker results.
 
-- Project scaffold with `src/algotrader` package layout.
-- CLI entry point with `config` and `demo-core` commands.
-- Dev and paper configuration profiles.
-- Structured JSON logging setup.
-- Core domain models for bars, quotes, orders, acknowledgements, fills, and
-  order status.
-- Portfolio models for account, positions, portfolio state, and risk state.
-- Pure portfolio state transition via `apply_fill()`.
-- Deterministic paper execution simulator.
-- Quote-based portfolio valuation.
-- Pre-trade risk engine with conservative v1 checks.
-- Simple deterministic signal rule.
-- Signal-to-trade and order-to-trade orchestration helpers.
-- Unit and smoke tests covering the deterministic core.
-- Documentation for the deterministic core boundary.
+`LocalBroker` is the deterministic reference broker and now lives in:
 
-## What is intentionally not included yet
-
-- Broker API wiring.
-- Live trading.
-- Scheduler or runtime loop.
-- OMS layer.
-- LangGraph.
-- ML models.
-- LLM logic in risk, execution, signals, screener, portfolio, or feature
-  calculation.
-
-## Latest change
-
-The most recent completed task added a deterministic scenario harness and
-scenario selection for the one-shot CLI demo command:
-
-```powershell
-python -m algotrader demo-core --scenario approved_and_filled
+```text
+src/algotrader/execution/local_broker.py
 ```
 
-The scenarios run the existing local core using fixed sample inputs and print a
-readable summary of signal, risk, execution, cash, valuation, and unrealized
-P&L.
+`AlpacaPaperBroker` is an inert-by-default future broker boundary. It follows
+the canonical broker-facing shape but only has operational behavior in tests
+when an explicit fake adapter is injected.
 
-## Next recommended step
+## Alpaca Boundary
 
-Add a small deterministic scenario runner that can execute a fixed list of
-sample bars and quotes against the existing local core, returning structured
-scenario results. Keep it local and test-only/demo-oriented, with no scheduler,
-broker wiring, live trading, LangGraph, ML, or LLM logic.
+The Alpaca preparation layer is still fake-only and offline.
 
-## Architectural rules
+Current guarantees:
 
-- Keep the trading path deterministic.
-- Do not add LLM logic in risk, execution, signals, screener, portfolio, or
-  feature calculation.
-- Do not add broker API wiring until the local core is stable.
-- Do not add a scheduler or runtime loop until the demo/scenario layer is
-  stable.
+- no `alpaca-py`
+- no credentials
+- no environment dependency for normal operation or tests
+- no network calls
+- no real broker connectivity
+- no websocket fills
+- no paper-account order submission
+
+The current fake-only path is:
+
+```text
+fake Alpaca response
+  -> TranslatedAlpaca DTO
+  -> explicit mapper
+  -> internal Account / Position / BrokerOrderResult
+```
+
+Translator return types are pinned:
+
+- `TranslatedAlpacaAccount`
+- `TranslatedAlpacaPosition`
+- `TranslatedAlpacaOrderResult`
+
+Mapper functions convert translated DTOs into internal models/results:
+
+- `map_translated_account_to_account(...)`
+- `map_translated_position_to_position(...)`
+- `map_translated_order_result_to_broker_result(...)`
+
+`AlpacaPaperBroker.submit_order(...)` follows the canonical broker signature:
+
+```text
+submit_order(order, quote, risk_verdict=None, order_id=None) -> BrokerOrderResult
+```
+
+Without an injected adapter, Alpaca broker operations raise
+`BrokerNotImplementedError`.
+
+## Safety Guarantees
+
+Production code has repo-wide AST import safety coverage for forbidden
+broker/network/LLM imports. The deterministic trading path still has no LLM
+logic in risk, execution, signals, screener, portfolio, valuation,
+reconciliation, or feature calculation.
+
+Current safety behaviors:
+
+- duplicate `order_id` handling is part of broker contract expectations
+- `LocalBroker` rejects duplicate order IDs with `duplicate_order_id`
+- duplicate `LocalBroker` submissions do not create a second fill or ledger
+  mutation
+- fake Alpaca adapter rejects duplicate `client_order_id` values before a second
+  fake client call
+- `RiskConfig.allow_short=True` still fails closed with
+  `short_selling_not_supported`
+- portfolio overdraw and oversell branches fail closed without mutating the
+  original `PortfolioState`
+- valuation rejects unsupported negative position quantities
+
+## Compatibility Notes
+
+`fake_broker.py` remains intentionally as a compatibility shim:
+
+```text
+src/algotrader/execution/fake_broker.py
+```
+
+Normal imports should use:
+
+```python
+from algotrader.execution.local_broker import LocalBroker
+```
+
+The compatibility path still re-exports the same `LocalBroker` class for older
+imports.
+
+`LedgerEventType.RECONCILIATION_CHECKED` is intentionally kept as an accepted
+ledger event value.
+
+`SignalGenerator` is intentionally kept as an exported public signal interface.
+
+## Recent Cleanup
+
+Recent completed work:
+
+- pinned Alpaca translator return types
+- added explicit Alpaca mapper layer
+- moved fake Alpaca response handling to DTO -> mapper -> internal model/result
+- aligned `AlpacaPaperBroker` with the canonical broker shape
+- added broker contract idempotency expectations
+- added repo-wide AST import safety tests
+- moved `LocalBroker` to `local_broker.py`
+- kept `fake_broker.py` as a compatibility shim
+- cleaned duplicate execution package imports
+
+The most recent cleanup was naming/import hygiene only and did not change
+runtime behavior.
+
+## Explicitly Not Included
+
+- real Alpaca SDK dependency
+- credentials
+- environment-dependent normal tests
+- network calls
+- real broker connectivity
+- websocket behavior
+- scheduler/runtime loop
+- live trading
+- LangGraph
+- ML
+- LLM trading-path logic
+
+## Next Recommended Steps
+
+Keep avoiding real Alpaca SDK work until explicitly approved.
+
+Safe next tasks include:
+
+- a small config cleanup audit
+- documentation polish
+- deeper broker contract tests around error paths and reconciliation boundaries
+- further fake-only Alpaca contract coverage
+
+Any future real SDK integration must be behind explicit opt-in safety gates,
+paper-profile checks, credential redaction, skipped-by-default integration tests,
+and no-network defaults for normal test runs.

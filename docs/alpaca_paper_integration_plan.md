@@ -8,15 +8,24 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint:
+Current checkpoint after the repo-wide safety and idempotency hardening pass:
 
 ```text
-118 tests passing
+183 tests passing
 ```
 
 The safe Alpaca preparation layers currently include:
 
 - mocked Alpaca client boundary added
+- pure fake-response translation helpers with pinned DTO return types added
+- explicit translated-DTO to internal-model mapper added
+- fake-only injected client adapter wiring added
+- test-only injected adapter delegation added to `AlpacaPaperBroker`
+- explicit pre-SDK broker safety contract tests added
+- fake-only broker protocol integration coverage added for `AlpacaPaperBroker`
+- repo-wide AST import safety coverage for production code added
+- duplicate order-id idempotency is covered by broker contract tests
+- duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-py` dependency
 - no credentials
 - no network calls
@@ -25,7 +34,7 @@ The safe Alpaca preparation layers currently include:
 
 ## Current Broker Architecture
 
-The current working broker is `LocalBroker`. It is the deterministic reference implementation for the system and uses the existing local paper execution simulator internally.
+The current working broker is `LocalBroker` in `src/algotrader/execution/local_broker.py`. It is the deterministic reference implementation for the system and uses the existing local paper execution simulator internally.
 
 Current state:
 
@@ -115,6 +124,132 @@ This matters because future adapter work can first translate fake Alpaca-like re
 
 Normal `python -m pytest` runs must remain offline, credential-free, and deterministic. Real SDK or network integration can be added later only behind explicit flags, paper-profile checks, and safety gates.
 
+## Current Translation Layer Status
+
+Pure Alpaca response translation helpers exist for fake Alpaca-like responses. They translate dict or dataclass-style inputs into internal account, position, and broker-result-like models.
+
+Current translation helpers:
+
+- `translate_alpaca_account(...)`
+- `translate_alpaca_position(...)`
+- `translate_alpaca_order_result(...)`
+
+These helpers are deterministic and offline. They do not import `alpaca-py`, instantiate a client, read credentials, or make network calls.
+
+This layer matters because future `AlpacaPaperBroker` work can first prove response translation against fake Alpaca-like payloads. Account, position, accepted-order, and rejected-order behavior can be mapped into internal models before touching real Alpaca SDK objects or paper-account connectivity.
+
+## Current Fake-Only Adapter Wiring Status
+
+A thin fake-only adapter layer exists between an injected Alpaca-like client and the pure translation helpers.
+
+Current adapter methods:
+
+- `get_account()`
+- `list_positions()`
+- `submit_order(...)`
+
+The adapter uses dependency injection only. It does not create a real Alpaca client, import `alpaca-py`, read environment variables, read credentials, or make network calls.
+
+This layer proves that future broker work can call a client boundary, receive fake Alpaca-like responses, and translate them into internal models. It is not a broker implementation. `AlpacaPaperBroker` remains inert until a later explicit implementation phase.
+
+The fake-only adapter also rejects duplicate `client_order_id` values locally.
+That prevents duplicate fake submissions before any future real SDK integration
+exists.
+
+## Current Translation And Mapping Boundary
+
+The pre-SDK response path is now explicit:
+
+```text
+fake Alpaca response
+  -> TranslatedAlpaca DTO
+  -> explicit mapper
+  -> internal domain/broker model
+```
+
+Translator return types are pinned:
+
+- `translate_alpaca_account(...) -> TranslatedAlpacaAccount`
+- `translate_alpaca_position(...) -> TranslatedAlpacaPosition`
+- `translate_alpaca_order_result(...) -> TranslatedAlpacaOrderResult`
+
+The translator no longer performs dynamic model resolution, module probing, constructor reflection, or fallback construction of internal models.
+
+Internal model conversion is handled by direct mapper functions:
+
+- `map_translated_account_to_account(...)`
+- `map_translated_position_to_position(...)`
+- `map_translated_order_result_to_broker_result(...)`
+
+This keeps fake Alpaca parsing separate from internal domain model construction, making the adapter boundary easier to test before any real SDK integration.
+
+## Current AlpacaPaperBroker Delegation Status
+
+`AlpacaPaperBroker` remains inert by default. When constructed without an injected adapter, operational methods still raise `BrokerNotImplementedError`.
+
+For tests only, `AlpacaPaperBroker` can accept an injected fake adapter and delegate:
+
+- `get_account()`
+- `get_positions()` / `list_positions()`
+- `submit_order(...)`
+
+The injected adapter path allows broker -> adapter -> translator behavior to be tested using fake Alpaca-like responses. This is still not real Alpaca integration. The broker does not create a real client, import `alpaca-py`, read environment variables, read credentials, make network calls, or connect to a paper account.
+
+Real SDK and paper-account connectivity remain future work behind explicit safety gates.
+
+## Current Pre-SDK Safety Contract
+
+The current `AlpacaPaperBroker` safety contract is locked down by explicit tests.
+
+The tests prove:
+
+- `AlpacaPaperBroker` remains inert by default.
+- operational methods without an injected adapter raise `BrokerNotImplementedError`.
+- importing and constructing the broker does not require `alpaca-py`.
+- constructing the broker does not require credentials.
+- constructing the broker does not read environment variables.
+- broker tests do not make network calls.
+- no real client is created internally.
+- adapter or client behavior must be injected explicitly for operational behavior.
+- the injected fake adapter path can return account, position, accepted-order, and rejected-order results.
+
+This is the required baseline before future real SDK work. Any real Alpaca SDK or paper-account connectivity must be added later behind explicit opt-in flags, paper-profile checks, credential safety checks, and no-network defaults for normal tests.
+
+## Current Fake-Only Broker Protocol Coverage
+
+`AlpacaPaperBroker` also has fake-only protocol coverage for the supported pre-SDK broker-facing behavior.
+
+The tests prove that an injected fake adapter can support:
+
+- account retrieval
+- position retrieval
+- accepted deterministic order submission using the canonical broker signature
+- rejected deterministic order submission using the canonical broker signature
+- missing risk approval rejection
+- rejected risk verdict handling
+- duplicate order ID rejection without a second fake client call
+- clear adapter/client failure propagation
+- internal `Account`, `Position`, and `BrokerOrderResult` compatibility
+
+These tests still use fake Alpaca-like responses only. They do not create a real client, read credentials, read environment variables, import `alpaca-py`, make network calls, or connect to a paper account.
+
+The supported fake-only path now follows the existing broker-facing submission shape:
+
+```text
+submit_order(
+  order: ProposedOrder,
+  quote: Quote,
+  risk_verdict: RiskVerdict | None = None,
+  order_id: str | None = None,
+) -> BrokerOrderResult
+```
+
+`AlpacaPaperBroker` remains inert by default. The injected fake adapter remains the only operational path.
+Its fake-only broker-facing path follows the same duplicate order-id expectation
+as the deterministic broker contract: the first fixed `order_id` can be
+accepted, and a second submission with the same `order_id` is rejected with
+`duplicate_order_id` before another fake client call.
+
 ## Future AlpacaPaperBroker Responsibilities
 
 A future `AlpacaPaperBroker` implementation must eventually provide the same broker-facing behavior as the deterministic broker boundary, while keeping Alpaca-specific details isolated inside the adapter.
@@ -155,6 +290,8 @@ Important contract behaviors to preserve:
 - accept approved orders
 - return a `BrokerOrderResult`
 - preserve deterministic supplied order IDs where applicable
+- reject duplicate supplied order IDs before duplicate fills, local mutations,
+  or duplicate fake client calls
 - avoid mutating local expected state for unfilled orders
 
 ## Testing Plan

@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from algotrader.core.types import OrderSide, OrderType, ProposedOrder, Quote
-from algotrader.execution.fake_broker import LocalBroker
+from algotrader.execution.local_broker import LocalBroker
 from algotrader.portfolio.state import Account, PortfolioState
 from algotrader.risk.config import RiskConfig
 from algotrader.risk.engine import RiskEngine
@@ -21,6 +21,12 @@ def risk_verdict(order: ProposedOrder, portfolio: PortfolioState):
         portfolio,
         quote(),
     )
+
+
+def test_fake_broker_import_path_reexports_local_broker() -> None:
+    from algotrader.execution.fake_broker import LocalBroker as CompatLocalBroker
+
+    assert CompatLocalBroker is LocalBroker
 
 
 def test_broker_accepts_risk_approved_order_and_fills_locally() -> None:

@@ -59,6 +59,17 @@ def test_short_order_rejected() -> None:
     assert verdict.reason == "short_not_allowed"
 
 
+def test_allow_short_true_still_rejects_short_selling_until_modeled_end_to_end() -> None:
+    order = ProposedOrder("MSFT", OrderSide.SELL, OrderType.MARKET, "1")
+    portfolio = PortfolioState(account=Account("500"))
+    risk_config = RiskConfig(max_order_notional="1000", allow_short=True)
+
+    verdict = RiskEngine(risk_config).check(order, portfolio, quote())
+
+    assert verdict.allowed is False
+    assert verdict.reason == "short_selling_not_supported"
+
+
 def test_invalid_quantity_rejected() -> None:
     order = ProposedOrder("MSFT", OrderSide.BUY, OrderType.MARKET, "1")
     object.__setattr__(order, "quantity", Decimal("0"))

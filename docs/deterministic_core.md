@@ -7,16 +7,24 @@ state.
 
 ## Current Status
 
-- `103` tests are passing.
+- `183` tests are passing.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
-- `LocalBroker` is the working deterministic broker reference implementation.
+- `LocalBroker` is the working deterministic broker reference implementation in
+  `src/algotrader/execution/local_broker.py`.
 - Broker contract tests define expected broker behavior.
 - `AlpacaPaperBroker` exists only as an inert future adapter skeleton.
 - `InMemoryLedger` remains available for fast local event history.
 - `JsonlLedger` adds optional append-only JSONL persistence.
 - `LocalBroker` can use either ledger through the existing optional `ledger=`
   argument.
+- Repo-wide AST import safety tests guard production code against broker SDK,
+  network, and LLM imports.
+- Duplicate order IDs are rejected before a second fill or ledger mutation can
+  occur.
+- Broker contract coverage now includes duplicate order-id idempotency.
+- Short selling is not modeled end-to-end yet, so risk checks fail closed even
+  if `RiskConfig.allow_short=True`.
 - There are still no real broker API calls or external network dependencies.
 
 ## Current Deterministic Path
@@ -84,13 +92,15 @@ CLI-facing scenario list.
 
 ## Broker Boundary
 
-`LocalBroker` is an in-memory fake/local broker. It prepares the shape of a
-future broker adapter while keeping the current project fully local and
-deterministic.
+`LocalBroker` is an in-memory deterministic reference broker. It prepares the
+shape of a future broker adapter while keeping the current project fully local
+and deterministic.
 
 - `LocalBroker` requires an approved `RiskVerdict` by default.
 - It uses the existing paper execution simulator internally.
 - It mutates local `PortfolioState` only when a fill occurs.
+- It rejects duplicate order IDs without applying another fill or recording
+  another ledger event.
 - It returns structured `BrokerOrderResult` values.
 - It does not call Alpaca or any external API.
 - It does not require credentials.
@@ -112,7 +122,18 @@ The contract currently verifies that a broker exposes account and position
 reads, refuses missing or rejected risk approval, accepts approved orders, fills
 marketable orders through the local paper behavior, leaves cash and positions
 unchanged for unfilled limits, returns `BrokerOrderResult`, and preserves
-deterministic supplied order IDs.
+deterministic supplied order IDs. It also verifies that duplicate order IDs are
+rejected with `duplicate_order_id` before a second fill or ledger mutation can
+occur.
+
+## Short Selling
+
+Short selling is intentionally not supported yet. `RiskConfig.allow_short`
+remains a reserved configuration field for future work, but `RiskEngine`
+currently rejects sell orders that exceed the held position even when
+`allow_short=True`. This keeps risk and portfolio behavior aligned until short
+positions, borrow rules, margin, valuation, and reconciliation are modeled
+end-to-end.
 
 ## Local Reconciliation
 

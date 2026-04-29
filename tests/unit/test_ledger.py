@@ -6,8 +6,8 @@ import pytest
 
 from algotrader.core.types import OrderSide, OrderType, ProposedOrder, Quote
 from algotrader.errors import ValidationError
-from algotrader.execution.fake_broker import LocalBroker
 from algotrader.execution.ledger import InMemoryLedger, JsonlLedger, LedgerEventType
+from algotrader.execution.local_broker import LocalBroker
 from algotrader.portfolio.state import Account, PortfolioState
 from algotrader.risk.config import RiskConfig
 from algotrader.risk.engine import RiskEngine

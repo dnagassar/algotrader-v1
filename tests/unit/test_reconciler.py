@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from algotrader.core.types import Quote
-from algotrader.execution.fake_broker import LocalBroker
+from algotrader.execution.local_broker import LocalBroker
 from algotrader.execution.reconciler import reconcile_portfolio
 from algotrader.portfolio.state import Account, PortfolioState, Position
 
@@ -41,6 +41,18 @@ def test_cash_mismatch_fails_clearly() -> None:
     assert mismatch_kinds(report) == {"cash_mismatch"}
     assert report.mismatches[0].expected == "1000 USD"
     assert report.mismatches[0].actual == "999 USD"
+
+
+def test_account_currency_mismatch_fails_clearly() -> None:
+    expected = PortfolioState(account=Account("1000", currency="USD"))
+    broker = LocalBroker(PortfolioState(account=Account("1000", currency="EUR")))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"cash_mismatch"}
+    assert report.mismatches[0].expected == "1000 USD"
+    assert report.mismatches[0].actual == "1000 EUR"
 
 
 def test_missing_broker_position_fails_clearly() -> None:

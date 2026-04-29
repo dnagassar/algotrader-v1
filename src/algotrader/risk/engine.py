@@ -57,12 +57,17 @@ class RiskEngine:
             return RiskVerdict.reject("fractional_not_allowed")
 
         existing_position = portfolio.position(order.symbol)
-        if side == OrderSide.SELL and not self.config.allow_short:
+        if side == OrderSide.SELL:
             held_quantity = (
                 existing_position.quantity if existing_position else Decimal("0")
             )
             if quantity > held_quantity:
-                return RiskVerdict.reject("short_not_allowed")
+                reason = (
+                    "short_selling_not_supported"
+                    if self.config.allow_short
+                    else "short_not_allowed"
+                )
+                return RiskVerdict.reject(reason)
 
         order_notional = _order_notional(order, quote, side, order_type, quantity)
         if order_notional > self.config.max_order_notional:

@@ -10,7 +10,7 @@ from typing import Literal
 from algotrader.core.types import Bar, OrderSide, OrderType, ProposedOrder, Quote
 from algotrader.errors import ValidationError
 from algotrader.execution.broker_base import BrokerOrderResult
-from algotrader.execution.fake_broker import LocalBroker
+from algotrader.execution.local_broker import LocalBroker
 from algotrader.orchestration.signal_trade_flow import (
     SignalTradeFlowResult,
     generate_evaluate_and_execute,
