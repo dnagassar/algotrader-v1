@@ -156,6 +156,10 @@ The fake-only adapter also rejects duplicate `client_order_id` values locally.
 That prevents duplicate fake submissions before any future real SDK integration
 exists.
 
+Shared deterministic fake Alpaca clients now live in `tests/fakes/alpaca.py` so
+adapter, broker-delegation, safety-contract, and fake-protocol tests exercise
+the same fake response shapes.
+
 ## Current Translation And Mapping Boundary
 
 The pre-SDK response path is now explicit:

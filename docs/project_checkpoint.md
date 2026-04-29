@@ -145,8 +145,28 @@ Recent completed work:
 - kept `fake_broker.py` as a compatibility shim
 - cleaned duplicate execution package imports
 
-The most recent cleanup was naming/import hygiene only and did not change
-runtime behavior.
+## Post-Review Hygiene Checkpoint
+
+After the Claude Opus 183-test review, a low-risk hygiene patch consolidated
+duplicate fake Alpaca test clients into `tests/fakes/alpaca.py`, removed stale
+pre-pin adapter test helpers, labeled the broker contract tests by state model,
+and added a focused reconciliation currency-mismatch test.
+
+`AlpacaPaperBroker.get_positions()` now delegates directly to the injected fake
+adapter's `list_positions()` method after the existing inert/no-adapter guard.
+This matched the existing adapter shape and did not change trading behavior.
+
+The full suite remains:
+
+```text
+python -m pytest
+183 passed
+```
+
+No runtime trading behavior changed, and no SDK, credentials, environment
+reads, network calls, websocket behavior, scheduler/runtime loop, real broker
+connectivity, LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM
+trading-path logic was added.
 
 ## Explicitly Not Included
 
