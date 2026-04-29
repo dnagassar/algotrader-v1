@@ -23,6 +23,8 @@ The safe Alpaca preparation layers currently include:
 - test-only injected adapter delegation added to `AlpacaPaperBroker`
 - explicit pre-SDK broker safety contract tests added
 - fake-only broker protocol integration coverage added for `AlpacaPaperBroker`
+- shared broker contract subset added for `LocalBroker` and fake-adapter
+  `AlpacaPaperBroker`
 - repo-wide AST import safety coverage for production code added
 - dynamic import and code-execution calls blocked by import safety coverage
 - explicit `require_paper_profile()` safety gate added and tested
@@ -104,6 +106,19 @@ code-execution calls such as `importlib.import_module(...)`, `__import__(...)`,
 The SDK plan remains documentation-only until explicitly approved. There is
 still no SDK dependency, credentials, environment read, network call, or real
 paper-account connectivity.
+
+## Non-Negotiable Safety Rules
+
+Every future Alpaca-touching SDK code path must call
+`require_paper_profile(config)` before creating or using a real client.
+
+Normal unit tests must never make real network calls. Real SDK tests must be
+opt-in only, separately marked or skipped, and excluded from normal
+`python -m pytest` runs unless a deliberate integration flag is present.
+
+Credentials must never appear in `repr`, logs, fixtures, committed docs, test
+output, exceptions, CLI output, or ledger records. Fake-only tests remain the
+default safety and development path.
 
 ## Config Compatibility Rule
 
@@ -333,6 +348,10 @@ Recommended test layers:
 - Unit tests with a mocked Alpaca client.
 - Contract-style tests using fake Alpaca account, position, and order responses.
 - No-network tests by default.
+- Existing shared broker contracts continue to run against fakes.
+- Opt-in integration tests are separately marked and skipped by default.
+- No network modules should appear outside an explicitly allowed future SDK
+  boundary.
 - Error-path tests for rejected orders, API failures, authentication failures, malformed responses, and timeouts.
 - Optional integration tests only when credentials are explicitly provided.
 - Optional integration tests skipped unless a deliberate environment flag is enabled.
@@ -370,6 +389,34 @@ Before any real Alpaca paper API call is added or enabled, confirm:
 - ledger behavior is defined before recording external broker events
 
 The first real API call should be read-only if possible, such as `get_account()` against a paper account. Order submission should come later, after mocked coverage and reconciliation expectations are in place.
+
+## Phased SDK Integration Plan
+
+Phase 0: Documentation-only plan. No SDK dependency, no `pyproject.toml`
+change, no runtime code, no credentials, and no network behavior.
+
+Phase 1: Add the SDK dependency and a tiny client wrapper. The wrapper must
+require an `AlpacaPaperConfig`, call `require_paper_profile(config)` in its
+constructor before any real client is created or used, redact configuration in
+all output, and avoid any default network call. Tests in this phase should use
+fake or mocked SDK objects only.
+
+Phase 2: Add an opt-in read-only paper account smoke test. It must be skipped
+unless an explicit integration flag is present, must not run in normal
+`python -m pytest`, and must not print or snapshot credentials.
+
+Phase 3: Add read-only account and positions mapping through the existing
+translator and mapper boundary. This phase may exercise real SDK response
+shapes only behind opt-in controls. There is still no order submission.
+
+Phase 4: Add paper order submission only after read-only paths are stable. The
+implementation must preserve the canonical broker signature, continue requiring
+pre-trade risk approval, preserve deterministic order-id/idempotency behavior,
+return internal `BrokerOrderResult` values, and remain gated and opt-in.
+
+Phase 5: Consider deprecating or removing `fake_broker.py` only after the first
+explicitly approved, gated, read-only paper SDK path exists and the
+compatibility shim is no longer needed.
 
 ## Reconciliation Plan
 
@@ -421,12 +468,36 @@ This plan does not implement or enable:
 - broker implementation
 - websocket fills
 - scheduler or runtime loop
+- automated execution loop
 - live trading
 - LangGraph
+- LangChain
+- OpenAI
+- Anthropic
 - ML
 - LLM logic in the trading path
 - automatic order approval
+- options, margin, or short-selling expansion
 - real broker connectivity during normal tests
+
+## First Future SDK Code Patch Proposal
+
+The first future SDK code patch should be isolated and boring:
+
+- add the SDK dependency in a dedicated change
+- add a tiny wrapper module around the SDK client
+- require `AlpacaPaperConfig` in the wrapper constructor
+- call `require_paper_profile(config)` immediately before creating or using any
+  real client
+- make no default network call during import or construction tests
+- keep normal tests fake-only or mocked
+- avoid changing broker submission behavior
+- avoid touching runtime loops, schedulers, order sizing, risk, portfolio,
+  valuation, reconciliation, or ledger behavior
+
+That patch should prove the wrapper can be imported, constructed with validated
+paper config, and tested with fake or mocked SDK objects before any real account
+connectivity is attempted.
 
 ## Recommended Implementation Sequence
 
@@ -447,6 +518,20 @@ Recommended future order:
 13. Only after read-only connectivity is stable, consider paper order submission.
 
 At each phase, normal tests should remain deterministic, offline, and credential-free.
+
+## Rollback Criteria
+
+Stop and revert or split the patch if any of the following occur:
+
+- credentials could appear in logs, repr output, fixtures, docs, exceptions,
+  test output, CLI output, or ledger records
+- normal `python -m pytest` attempts a network call
+- import-safety fails or forbidden network/LLM imports leak into production code
+- real SDK behavior bypasses the translator and mapper boundary
+- order submission bypasses risk approval, canonical broker result shape, or
+  duplicate order-id/idempotency expectations
+- SDK setup creates clients or touches Alpaca before `require_paper_profile()`
+  has passed
 
 ## Success Criteria For The Current Safe Boundary
 
