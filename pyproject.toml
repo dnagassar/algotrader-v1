@@ -7,7 +7,9 @@ name = "algotrader"
 version = "0.1.0"
 description = "Deterministic paper-trading core."
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "alpaca-py>=0.43,<0.44",
+]
 
 [project.optional-dependencies]
 dev = [

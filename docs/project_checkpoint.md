@@ -2,15 +2,16 @@
 
 ## Current Milestone
 
-The project is at the 198-test deterministic core milestone. The current system
+The project is at the 206-test deterministic core milestone. The current system
 prioritizes a deterministic trading core before any real broker connectivity.
 
 Recent focused validation included broker/idempotency, LocalBroker rename/import,
 cleanup/import suites, a shared broker-contract subset, and pre-SDK Alpaca
-safety gates. The latest full-suite result is:
+safety gates. Phase 1 now adds a file-scoped Alpaca SDK wrapper boundary without
+real broker connectivity. The latest full-suite result is:
 
 ```text
-198 passed
+206 passed
 ```
 
 ## Architecture Summary
@@ -105,6 +106,7 @@ Current safety behaviors:
 - fake Alpaca adapter rejects duplicate `client_order_id` values before a second
   fake client call
 - `require_paper_profile()` defines the future pre-SDK paper-profile gate
+- `AlpacaSdkClient` is the only production file allowed to import `alpaca`
 - `RiskConfig.allow_short=True` still fails closed with
   `short_selling_not_supported`
 - portfolio overdraw and oversell branches fail closed without mutating the
@@ -211,13 +213,33 @@ python -m pytest
 198 passed
 ```
 
-No SDK dependency, credentials, environment reads, network calls, websocket
-behavior, scheduler/runtime loop, real broker connectivity, LangGraph,
-LangChain, OpenAI, Anthropic, ML, or LLM trading-path logic was added.
+At that pre-SDK checkpoint, no SDK dependency, credentials, environment reads,
+network calls, websocket behavior, scheduler/runtime loop, real broker
+connectivity, LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM trading-path
+logic was added.
+
+## Phase 1 SDK Wrapper Checkpoint
+
+A tightly scoped Phase 1 patch declared `alpaca-py>=0.43,<0.44`, added the
+file-scoped `AlpacaSdkClient` wrapper, and updated import safety so `alpaca`
+imports are allowed only in that wrapper. Wrapper tests use fakes and prove
+paper-profile gating, adapter compatibility, credential redaction, and
+construction-time network isolation.
+
+The full suite is now:
+
+```text
+python -m pytest
+206 passed
+```
+
+No real account call, real or paper order submission, websocket behavior,
+scheduler/runtime loop, real broker connectivity, LangGraph, LangChain, OpenAI,
+Anthropic, ML, or LLM trading-path logic was added.
 
 ## Explicitly Not Included
 
-- real Alpaca SDK dependency
+- `alpaca-trade-api` or unrelated SDK dependencies
 - credentials
 - environment-dependent normal tests
 - network calls

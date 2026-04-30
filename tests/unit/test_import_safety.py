@@ -25,6 +25,12 @@ FORBIDDEN_DYNAMIC_CALLS = {
     "importlib.import_module",
 }
 
+ALPACA_SDK_WRAPPER_PATH = Path("src/algotrader/execution/alpaca_sdk_client.py")
+
+FORBIDDEN_IMPORT_ALLOWLIST = {
+    ALPACA_SDK_WRAPPER_PATH: {"alpaca"},
+}
+
 
 def test_production_code_does_not_import_network_broker_or_llm_modules() -> None:
     src_root = Path("src/algotrader")
@@ -35,9 +41,9 @@ def test_production_code_does_not_import_network_broker_or_llm_modules() -> None
         for node in ast.walk(tree):
             imported_modules = _imported_modules(node)
             for module_name in imported_modules:
-                root_module = module_name.split(".", maxsplit=1)[0]
-                if root_module in FORBIDDEN_IMPORT_ROOTS:
-                    violations.append(f"{path}: forbidden import {module_name}")
+                violation = _forbidden_import_violation(path, module_name)
+                if violation:
+                    violations.append(violation)
 
             dynamic_call = _forbidden_dynamic_call(node)
             if dynamic_call:
@@ -46,6 +52,34 @@ def test_production_code_does_not_import_network_broker_or_llm_modules() -> None
                 )
 
     assert violations == []
+
+
+def test_alpaca_import_is_allowed_only_in_sdk_wrapper() -> None:
+    assert (
+        _forbidden_import_violation(
+            ALPACA_SDK_WRAPPER_PATH,
+            "alpaca.trading.client",
+        )
+        == ""
+    )
+    assert (
+        _forbidden_import_violation(
+            Path("src/algotrader/execution/alpaca_broker.py"),
+            "alpaca.trading.client",
+        )
+        == f"{Path('src/algotrader/execution/alpaca_broker.py')}: "
+        "forbidden import alpaca.trading.client"
+    )
+
+
+def test_alpaca_trade_api_remains_forbidden_even_in_sdk_wrapper() -> None:
+    assert (
+        _forbidden_import_violation(
+            ALPACA_SDK_WRAPPER_PATH,
+            "alpaca_trade_api",
+        )
+        == f"{ALPACA_SDK_WRAPPER_PATH}: forbidden import alpaca_trade_api"
+    )
 
 
 def test_forbidden_dynamic_call_detector_flags_known_unsafe_calls() -> None:
@@ -98,6 +132,18 @@ def _imported_modules(node: ast.AST) -> tuple[str, ...]:
         return (node.module,)
 
     return ()
+
+
+def _forbidden_import_violation(path: Path, module_name: str) -> str:
+    root_module = module_name.split(".", maxsplit=1)[0]
+    if root_module not in FORBIDDEN_IMPORT_ROOTS:
+        return ""
+
+    allowed_roots = FORBIDDEN_IMPORT_ALLOWLIST.get(path, set())
+    if root_module in allowed_roots:
+        return ""
+
+    return f"{path}: forbidden import {module_name}"
 
 
 def _forbidden_dynamic_call(node: ast.AST) -> str:

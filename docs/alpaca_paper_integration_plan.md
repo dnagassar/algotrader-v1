@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the pre-SDK safety cleanup pass:
+Current checkpoint after the Phase 1 SDK wrapper boundary patch:
 
 ```text
-198 tests passing
+206 tests passing
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -28,12 +28,18 @@ The safe Alpaca preparation layers currently include:
 - repo-wide AST import safety coverage for production code added
 - dynamic import and code-execution calls blocked by import safety coverage
 - explicit `require_paper_profile()` safety gate added and tested
+- bounded `alpaca-py>=0.43,<0.44` dependency declared
+- file-scoped `AlpacaSdkClient` wrapper added
+- import-safety allow-list permits `alpaca` only in the SDK wrapper
+- `paper_integration` marker and default skip gate added for future opt-in tests
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
-- no `alpaca-py` dependency
+- no `alpaca-trade-api` dependency
 - no credentials
 - no network calls
 - no broker implementation
+- no real account calls
+- no paper order submission
 - `AlpacaPaperBroker` remains inert
 
 ## Current Broker Architecture
@@ -103,8 +109,9 @@ tests. Import-safety coverage must also block dynamic imports and
 code-execution calls such as `importlib.import_module(...)`, `__import__(...)`,
 `exec(...)`, and `eval(...)`.
 
-The SDK plan remains documentation-only until explicitly approved. There is
-still no SDK dependency, credentials, environment read, network call, or real
+The Phase 0 SDK plan remained documentation-only until Phase 1 was explicitly
+approved. Phase 1 now declares the bounded SDK dependency and wrapper boundary,
+but still adds no credentials, environment read, network call, or real
 paper-account connectivity.
 
 ## Import-Safety Allow-List Strategy
@@ -194,7 +201,7 @@ The boundary includes typed request and response structures plus a minimal proto
 
 The boundary is intentionally internal and inert. It does not import `alpaca-py`, instantiate a real Alpaca client, load credentials, or make network calls.
 
-Current fake-client tests prove that account-like, position-like, and order-submission-like data can be exercised without credentials or network access. This gives future `AlpacaPaperBroker` work a typed adapter target before any real SDK dependency is introduced.
+Current fake-client tests prove that account-like, position-like, and order-submission-like data can be exercised without credentials or network access. This gives future `AlpacaPaperBroker` work a typed adapter target before the SDK wrapper is used against real Alpaca.
 
 This matters because future adapter work can first translate fake Alpaca-like responses into internal models such as `Account`, `Position`, and `BrokerOrderResult`. That translation can be tested deterministically before touching real Alpaca.
 
@@ -471,6 +478,10 @@ before any real client is created or used, redact configuration in all output,
 and avoid any default network call. Tests in this phase should use fake or
 mocked SDK objects only.
 
+Phase 1 status: the wrapper boundary now exists, but normal tests still use
+fakes only. No real paper-account call, paper order submission, websocket,
+scheduler, runtime loop, or broker runtime selection has been added.
+
 Phase 1 definition of done:
 
 - the 198 existing tests still pass
@@ -543,7 +554,7 @@ Ledger records should avoid secrets and raw credentials. If raw Alpaca responses
 This plan does not implement or enable:
 
 - real Alpaca API calls
-- real Alpaca SDK dependency installation
+- `alpaca-trade-api` or unrelated SDK dependencies
 - real credentials
 - broker implementation
 - websocket fills
@@ -560,16 +571,14 @@ This plan does not implement or enable:
 - options, margin, or short-selling expansion
 - real broker connectivity during normal tests
 
-## First Future SDK Code Patch Proposal
+## Next Future SDK Code Patch Proposal
 
-The first future SDK code patch should be isolated and boring:
+The next future SDK code patch should stay isolated and boring:
 
-- add the SDK dependency in a dedicated change
-- pin the dependency with both lower and upper bounds
-- add a tiny wrapper module around the SDK client
-- require `AlpacaPaperConfig` in the wrapper constructor
-- call `require_paper_profile(config)` immediately before creating or using any
-  real client
+- keep the SDK dependency and wrapper isolated
+- keep requiring `AlpacaPaperConfig` in the wrapper constructor
+- keep calling `require_paper_profile(config)` immediately before creating or
+  using any real client
 - make no default network call during import or construction tests
 - include a network-isolation test proving wrapper construction does not make a
   network call
@@ -588,8 +597,8 @@ This checklist is subordinate to the canonical Phase 0-5 plan above.
 Recommended future order within those phases:
 
 1. Keep the small Alpaca configuration object offline and credential-safe.
-2. Add Alpaca SDK dependency in an isolated change.
-3. Create a thin Alpaca client adapter that can be replaced by fakes in tests.
+2. Keep the Alpaca SDK dependency isolated to the wrapper boundary.
+3. Keep the thin Alpaca client adapter replaceable by fakes in tests.
 4. Add mocked client tests for account-response translation.
 5. Implement `get_account()` using mocked responses only.
 6. Add mocked client tests for position-response translation.
