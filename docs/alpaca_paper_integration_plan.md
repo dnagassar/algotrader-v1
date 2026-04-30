@@ -107,6 +107,22 @@ The SDK plan remains documentation-only until explicitly approved. There is
 still no SDK dependency, credentials, environment read, network call, or real
 paper-account connectivity.
 
+## Import-Safety Allow-List Strategy
+
+When `alpaca` first becomes a legal production import, do not globally relax
+`FORBIDDEN_IMPORT_ROOTS`. Instead, add a narrow allow-list mechanism to
+`tests/unit/test_import_safety.py`.
+
+The allow-list should permit exactly one future SDK wrapper file, likely:
+
+```text
+src/algotrader/execution/alpaca_sdk_client.py
+```
+
+No other production file may import `alpaca` or `alpaca_trade_api`. Phase 1's
+first SDK PR must include both the new wrapper file and the import-safety
+allow-list update. The safety perimeter must remain file-scoped, not repo-wide.
+
 ## Non-Negotiable Safety Rules
 
 Every future Alpaca-touching SDK code path must call
@@ -119,6 +135,25 @@ opt-in only, separately marked or skipped, and excluded from normal
 Credentials must never appear in `repr`, logs, fixtures, committed docs, test
 output, exceptions, CLI output, or ledger records. Fake-only tests remain the
 default safety and development path.
+
+## Wrapper API Contract
+
+The Phase 1 SDK wrapper must implement the existing
+`algotrader.execution.alpaca_client.AlpacaClient` protocol.
+
+It may expose only:
+
+- `get_account()`
+- `get_positions()`
+- `submit_order(request)`
+
+It must not expose broad SDK objects directly. It must be constructible only
+from `AlpacaPaperConfig`, and its constructor must call
+`require_paper_profile(config)` before creating or using any SDK client.
+
+The wrapper must remain compatible with the existing `AlpacaClientAdapter`.
+Replacing the fake client with the future wrapper must not require broker-side
+changes.
 
 ## Config Compatibility Rule
 
@@ -368,7 +403,41 @@ APP_PROFILE=paper
 RUN_ALPACA_PAPER_INTEGRATION_TESTS=1
 ```
 
-The integration-test flag should be opt-in. Missing credentials should skip integration tests, not fail the full suite.
+Real paper integration tests must use the pytest marker `paper_integration`.
+A future `tests/conftest.py` skip rule must skip all `paper_integration` tests
+unless all of these are true:
+
+- `RUN_ALPACA_PAPER_INTEGRATION_TESTS=1`
+- `APP_PROFILE=paper`
+- required `ALPACA_*` credential/config environment values are non-empty
+
+Normal `python -m pytest` must never run paper integration tests. CI must not
+set `RUN_ALPACA_PAPER_INTEGRATION_TESTS`; the flag is intended only for an
+operator's local machine. Missing credentials must skip integration tests, not
+fail normal test runs.
+
+## Credential Redaction Surface Test
+
+Phase 1's first SDK PR must add a redaction test using a recognizable fake
+secret such as:
+
+```text
+sensitive-test-api-key-NEVER-LOG
+```
+
+The test must assert that the literal secret never appears in:
+
+- `repr(...)`
+- `str(...)`
+- expected exception messages
+- logs
+- CLI output, if Phase 1 touches CLI
+- ledger records, if Phase 1 touches ledger
+- captured test output
+
+The wrapper must never serialize or log any `AlpacaPaperConfig` field marked
+`repr=False`. Credential redaction must be proven by tests, not only promised
+in prose.
 
 ## Safety Gates Before First Real API Call
 
@@ -395,11 +464,22 @@ The first real API call should be read-only if possible, such as `get_account()`
 Phase 0: Documentation-only plan. No SDK dependency, no `pyproject.toml`
 change, no runtime code, no credentials, and no network behavior.
 
-Phase 1: Add the SDK dependency and a tiny client wrapper. The wrapper must
-require an `AlpacaPaperConfig`, call `require_paper_profile(config)` in its
-constructor before any real client is created or used, redact configuration in
-all output, and avoid any default network call. Tests in this phase should use
-fake or mocked SDK objects only.
+Phase 1: Add the SDK dependency and a tiny client wrapper. The dependency must
+be pinned with both lower and upper bounds. The wrapper must require an
+`AlpacaPaperConfig`, call `require_paper_profile(config)` in its constructor
+before any real client is created or used, redact configuration in all output,
+and avoid any default network call. Tests in this phase should use fake or
+mocked SDK objects only.
+
+Phase 1 definition of done:
+
+- the 198 existing tests still pass
+- import-safety allow-list passes and remains file-scoped
+- credential-redaction surface test passes
+- network-isolation test proves wrapper construction does not trigger a network
+  call
+- no broker order-submission behavior is added
+- no `paper_integration` tests run in normal `python -m pytest`
 
 Phase 2: Add an opt-in read-only paper account smoke test. It must be skipped
 unless an explicit integration flag is present, must not run in normal
@@ -485,11 +565,14 @@ This plan does not implement or enable:
 The first future SDK code patch should be isolated and boring:
 
 - add the SDK dependency in a dedicated change
+- pin the dependency with both lower and upper bounds
 - add a tiny wrapper module around the SDK client
 - require `AlpacaPaperConfig` in the wrapper constructor
 - call `require_paper_profile(config)` immediately before creating or using any
   real client
 - make no default network call during import or construction tests
+- include a network-isolation test proving wrapper construction does not make a
+  network call
 - keep normal tests fake-only or mocked
 - avoid changing broker submission behavior
 - avoid touching runtime loops, schedulers, order sizing, risk, portfolio,
@@ -501,7 +584,8 @@ connectivity is attempted.
 
 ## Recommended Implementation Sequence
 
-Recommended future order:
+This checklist is subordinate to the canonical Phase 0-5 plan above.
+Recommended future order within those phases:
 
 1. Keep the small Alpaca configuration object offline and credential-safe.
 2. Add Alpaca SDK dependency in an isolated change.
