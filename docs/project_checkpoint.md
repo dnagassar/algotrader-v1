@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 216-passed / 2-skipped deterministic core checkpoint. The
+The project is at the 216-passed / 3-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -12,10 +12,12 @@ safety gates. Phase 1 now adds a file-scoped Alpaca SDK wrapper boundary without
 real broker connectivity. A pre-Phase-2 hardening pass adds a paper URL
 invariant, `paper_integration` gate tests, broader credential redaction
 coverage, offline SDK factory-construction coverage, and one skipped-by-default
-read-only Phase 2 paper account smoke test. The latest full-suite result is:
+read-only Phase 2 paper account smoke test. Phase 3 adds one skipped-by-default
+read-only account translation smoke test through the SDK wrapper, adapter,
+translator, mapper, and internal `Account` path. The latest full-suite result is:
 
 ```text
-216 passed, 2 skipped
+216 passed, 3 skipped
 ```
 
 ## Architecture Summary
@@ -283,6 +285,35 @@ Normal pytest remains credential-free and offline. No orders, positions call,
 websocket behavior, scheduler/runtime loop, runtime broker selection, real
 broker connectivity in normal runtime, LangGraph, LangChain, OpenAI, Anthropic,
 ML, or LLM trading-path logic was added.
+
+## Phase 3 Account Translation Smoke Checkpoint
+
+Phase 3 added exactly one `paper_integration` test in
+`tests/integration/test_alpaca_paper_account_translation_smoke.py`. It is
+skipped by default and, only when the explicit paper gate is enabled, validates
+the real SDK account response shape through:
+
+```text
+SDK account response
+  -> AlpacaSdkClient
+  -> AlpacaClientAdapter
+  -> alpaca_translator
+  -> alpaca_mapper
+  -> internal Account
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+216 passed, 3 skipped
+```
+
+Normal pytest remains credential-free, offline, and skipped by default for real
+paper integration tests. This phase does not call positions, submit orders, add
+websocket behavior, add a scheduler/runtime loop, add runtime broker selection,
+enable real broker connectivity in normal runtime, or add LangGraph, LangChain,
+OpenAI, Anthropic, ML, or LLM trading-path logic.
 
 ## Explicitly Not Included
 
