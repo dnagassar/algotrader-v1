@@ -27,7 +27,8 @@ class AlpacaSdkClient(AlpacaClient):
 
     This wrapper does not translate SDK response shapes. Real SDK responses pass
     through to the existing adapter/translator/mapper boundary, where shape
-    compatibility is validated by ``alpaca_translator``.
+    normalization belongs to ``alpaca_translator`` and ``alpaca_mapper``. The
+    casts below are local protocol typing hints, not response conversion.
     """
 
     def __init__(

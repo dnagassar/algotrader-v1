@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from decimal import Decimal
 import logging
+import requests
 import socket
 
 import pytest
@@ -15,6 +16,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaPositionResponse,
 )
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
+from algotrader.execution.alpaca_sdk_client import _create_trading_client
 from algotrader.risk.state import RiskVerdict
 
 
@@ -181,6 +183,22 @@ def test_alpaca_sdk_client_construction_makes_no_network_calls(monkeypatch) -> N
 
     assert isinstance(client, AlpacaSdkClient)
     assert factory_calls == [config]
+
+
+def test_default_trading_client_factory_constructs_without_network(
+    monkeypatch,
+) -> None:
+    def fail_on_network(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("network call attempted")
+
+    monkeypatch.setattr(socket, "create_connection", fail_on_network)
+    monkeypatch.setattr(socket, "socket", fail_on_network)
+    monkeypatch.setattr(requests.sessions.Session, "request", fail_on_network)
+
+    client = _create_trading_client(valid_config())
+
+    assert client is not None
+    assert client.__class__.__name__ == "TradingClient"
 
 
 def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(

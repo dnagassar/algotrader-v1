@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the pre-Phase-2 hardening patch:
+Current checkpoint after the offline pre-Phase-2 cleanup patch:
 
 ```text
-214 passed, 1 skipped
+216 passed, 1 skipped
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -36,6 +36,7 @@ The safe Alpaca preparation layers currently include:
 - `paper_integration` gate behavior is covered by normal tests
 - credential redaction coverage includes both Alpaca key fields
 - SDK wrapper import remains lazy and does not load `alpaca` during normal tests
+- default SDK factory construction is covered by an offline unit test
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-trade-api` dependency

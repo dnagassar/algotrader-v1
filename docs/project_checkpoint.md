@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 214-passed / 1-skipped deterministic core checkpoint. The
+The project is at the 216-passed / 1-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -10,11 +10,12 @@ Recent focused validation included broker/idempotency, LocalBroker rename/import
 cleanup/import suites, a shared broker-contract subset, and pre-SDK Alpaca
 safety gates. Phase 1 now adds a file-scoped Alpaca SDK wrapper boundary without
 real broker connectivity. A pre-Phase-2 hardening pass adds a paper URL
-invariant, `paper_integration` gate tests, and broader credential redaction
-coverage. The latest full-suite result is:
+invariant, `paper_integration` gate tests, broader credential redaction
+coverage, and offline SDK factory-construction coverage. The latest full-suite
+result is:
 
 ```text
-214 passed, 1 skipped
+216 passed, 1 skipped
 ```
 
 ## Architecture Summary
@@ -245,16 +246,17 @@ Anthropic, ML, or LLM trading-path logic was added.
 
 ## Pre-Phase-2 Hardening Checkpoint
 
-Before any real paper-account smoke test, a small hardening patch added the
+Before any real paper-account smoke test, small hardening patches added the
 paper URL invariant, direct `paper_integration` gate tests, one skipped
-paper-marker smoke test, broader SDK credential redaction coverage, and a lazy
-SDK import regression test.
+paper-marker smoke test, broader SDK credential redaction coverage, a lazy SDK
+import regression test, and an offline `_create_trading_client()` construction
+test.
 
 The full suite is now:
 
 ```text
 python -m pytest
-214 passed, 1 skipped
+216 passed, 1 skipped
 ```
 
 No production runtime broker behavior changed, and no real account call, real
