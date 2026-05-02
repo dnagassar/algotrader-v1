@@ -23,12 +23,12 @@ SdkClientFactory = Callable[[AlpacaPaperConfig], Any]
 
 
 class AlpacaSdkClient(AlpacaClient):
-    """Minimal adapter over alpaca-py's trading client.
+    """Thin SDK boundary over alpaca-py's trading client.
 
-    This wrapper does not translate SDK response shapes. Real SDK responses pass
-    through to the existing adapter/translator/mapper boundary, where shape
-    normalization belongs to ``alpaca_translator`` and ``alpaca_mapper``. The
-    casts below are local protocol typing hints, not response conversion.
+    This wrapper does not translate SDK response shapes. Real SDK responses are
+    native alpaca-py objects that pass downstream through ``AlpacaClientAdapter``
+    to the existing ``alpaca_translator`` / ``alpaca_mapper`` boundary. The
+    casts below are local protocol typing hints, not runtime conversion.
     """
 
     def __init__(
