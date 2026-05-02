@@ -25,10 +25,12 @@ SdkClientFactory = Callable[[AlpacaPaperConfig], Any]
 class AlpacaSdkClient(AlpacaClient):
     """Thin SDK boundary over alpaca-py's trading client.
 
-    This wrapper does not translate SDK response shapes. Real SDK responses are
-    native alpaca-py objects that pass downstream through ``AlpacaClientAdapter``
-    to the existing ``alpaca_translator`` / ``alpaca_mapper`` boundary. The
-    casts below are local protocol typing hints, not runtime conversion.
+    This wrapper returns native alpaca-py SDK response objects and does not
+    translate SDK response shapes. Translation happens downstream in
+    ``algotrader.execution.alpaca_translator``; mapping to internal domain
+    models happens downstream in ``algotrader.execution.alpaca_mapper``.
+    Any ``cast(...)`` usage here is typing-only and must not be interpreted as
+    runtime conversion.
     """
 
     def __init__(
