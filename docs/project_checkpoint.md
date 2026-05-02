@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 216-passed / 1-skipped deterministic core checkpoint. The
+The project is at the 216-passed / 2-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -11,11 +11,11 @@ cleanup/import suites, a shared broker-contract subset, and pre-SDK Alpaca
 safety gates. Phase 1 now adds a file-scoped Alpaca SDK wrapper boundary without
 real broker connectivity. A pre-Phase-2 hardening pass adds a paper URL
 invariant, `paper_integration` gate tests, broader credential redaction
-coverage, and offline SDK factory-construction coverage. The latest full-suite
-result is:
+coverage, offline SDK factory-construction coverage, and one skipped-by-default
+read-only Phase 2 paper account smoke test. The latest full-suite result is:
 
 ```text
-216 passed, 1 skipped
+216 passed, 2 skipped
 ```
 
 ## Architecture Summary
@@ -52,11 +52,11 @@ when an explicit fake adapter is injected.
 
 ## Alpaca Boundary
 
-The Alpaca preparation layer is still fake-only and offline.
+The normal test/runtime Alpaca preparation path is still fake-only and offline.
 
 Current guarantees:
 
-- no `alpaca-py`
+- bounded `alpaca-py` dependency isolated to the SDK wrapper
 - no credentials
 - no environment dependency for normal operation or tests
 - no network calls
@@ -263,6 +263,26 @@ No production runtime broker behavior changed, and no real account call, real
 or paper order submission, network call, websocket behavior, scheduler/runtime
 loop, real broker connectivity, LangGraph, LangChain, OpenAI, Anthropic, ML, or
 LLM trading-path logic was added.
+
+## Phase 2 Account Smoke Checkpoint
+
+Phase 2 added exactly one `paper_integration` test in
+`tests/integration/test_alpaca_paper_account_smoke.py`. It is skipped by
+default and, only when the explicit paper gate is enabled, constructs
+`AlpacaSdkClient` from environment-backed `AlpacaPaperConfig` and calls
+`get_account()` exactly once.
+
+The full suite is now:
+
+```text
+python -m pytest
+216 passed, 2 skipped
+```
+
+Normal pytest remains credential-free and offline. No orders, positions call,
+websocket behavior, scheduler/runtime loop, runtime broker selection, real
+broker connectivity in normal runtime, LangGraph, LangChain, OpenAI, Anthropic,
+ML, or LLM trading-path logic was added.
 
 ## Explicitly Not Included
 

@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the offline pre-Phase-2 cleanup patch:
+Current checkpoint after the Phase 2 opt-in account-smoke patch:
 
 ```text
-216 passed, 1 skipped
+216 passed, 2 skipped
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -37,13 +37,14 @@ The safe Alpaca preparation layers currently include:
 - credential redaction coverage includes both Alpaca key fields
 - SDK wrapper import remains lazy and does not load `alpaca` during normal tests
 - default SDK factory construction is covered by an offline unit test
+- one skipped-by-default Phase 2 read-only paper account smoke test added
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-trade-api` dependency
 - no credentials
 - no network calls
 - no broker implementation
-- no real account calls
+- no real account calls in normal `python -m pytest`
 - no paper order submission
 - `AlpacaPaperBroker` remains inert
 
@@ -501,6 +502,11 @@ Phase 2: Add an opt-in read-only paper account smoke test. It must be skipped
 unless an explicit integration flag is present, must not run in normal
 `python -m pytest`, and must not print or snapshot credentials.
 
+Phase 2 status: one skipped-by-default `paper_integration` smoke test now
+constructs `AlpacaSdkClient` from `AlpacaPaperConfig.from_env(os.environ)` and
+calls `get_account()` exactly once only when the explicit paper gate is enabled.
+It does not call positions or submit orders.
+
 Phase 3: Add read-only account and positions mapping through the existing
 translator and mapper boundary. This phase may exercise real SDK response
 shapes only behind opt-in controls. There is still no order submission.
@@ -558,7 +564,7 @@ Ledger records should avoid secrets and raw credentials. If raw Alpaca responses
 
 This plan does not implement or enable:
 
-- real Alpaca API calls
+- real Alpaca API calls during normal tests
 - `alpaca-trade-api` or unrelated SDK dependencies
 - real credentials
 - broker implementation
