@@ -107,6 +107,29 @@ def test_require_paper_profile_passes_with_valid_paper_config():
     assert require_paper_profile(config) is None
 
 
+def test_require_paper_profile_rejects_live_alpaca_url():
+    config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="test-secret-key",
+        alpaca_paper_base_url="https://api.alpaca.markets",
+    )
+
+    with pytest.raises(ConfigValidationError, match="paper endpoint"):
+        require_paper_profile(config)
+
+
+def test_require_paper_profile_accepts_valid_paper_url():
+    config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="test-secret-key",
+        alpaca_paper_base_url="https://paper-api.alpaca.markets",
+    )
+
+    assert require_paper_profile(config) is None
+
+
 def test_require_paper_profile_delegates_paper_readiness_validation():
     config = AlpacaPaperConfig(
         app_profile="paper",

@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the Phase 1 SDK wrapper boundary patch:
+Current checkpoint after the pre-Phase-2 hardening patch:
 
 ```text
-206 tests passing
+214 passed, 1 skipped
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -32,6 +32,10 @@ The safe Alpaca preparation layers currently include:
 - file-scoped `AlpacaSdkClient` wrapper added
 - import-safety allow-list permits `alpaca` only in the SDK wrapper
 - `paper_integration` marker and default skip gate added for future opt-in tests
+- paper URL invariant added to `require_paper_profile()`
+- `paper_integration` gate behavior is covered by normal tests
+- credential redaction coverage includes both Alpaca key fields
+- SDK wrapper import remains lazy and does not load `alpaca` during normal tests
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-trade-api` dependency

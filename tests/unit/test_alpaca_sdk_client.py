@@ -19,7 +19,8 @@ from algotrader.risk.state import RiskVerdict
 
 
 NOW = datetime(2026, 4, 30, tzinfo=UTC)
-SENSITIVE_SECRET = "sensitive-test-api-key-NEVER-LOG"
+SENSITIVE_API_KEY = "sensitive-test-api-key-NEVER-LOG"
+SENSITIVE_SECRET_KEY = "sensitive-test-secret-key-NEVER-LOG"
 
 
 class FakeSdkTradingClient:
@@ -64,11 +65,14 @@ class FakeSdkTradingClient:
         )
 
 
-def valid_config(api_key: str = "test-api-key") -> AlpacaPaperConfig:
+def valid_config(
+    api_key: str = "test-api-key",
+    secret_key: str = "test-secret-key",
+) -> AlpacaPaperConfig:
     return AlpacaPaperConfig(
         app_profile="paper",
         alpaca_api_key=api_key,
-        alpaca_secret_key="test-secret-key",
+        alpaca_secret_key=secret_key,
         alpaca_paper_base_url="https://paper.example.test",
     )
 
@@ -184,19 +188,36 @@ def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(
     capsys,
 ) -> None:
     caplog.set_level(logging.DEBUG)
+    caplog.set_level(logging.DEBUG, logger="alpaca")
+    caplog.set_level(logging.DEBUG, logger="httpx")
     fake_sdk_client = FakeSdkTradingClient()
-    config = valid_config(api_key=SENSITIVE_SECRET)
+    config = valid_config(
+        api_key=SENSITIVE_API_KEY,
+        secret_key=SENSITIVE_SECRET_KEY,
+    )
 
     client = AlpacaSdkClient(config, sdk_client=fake_sdk_client)
 
     invalid_config = AlpacaPaperConfig(
         app_profile="dev",
-        alpaca_api_key=SENSITIVE_SECRET,
-        alpaca_secret_key="test-secret-key",
+        alpaca_api_key=SENSITIVE_API_KEY,
+        alpaca_secret_key=SENSITIVE_SECRET_KEY,
         alpaca_paper_base_url="https://paper.example.test",
     )
     with pytest.raises(ConfigValidationError) as exc_info:
         AlpacaSdkClient(invalid_config, sdk_client_factory=lambda _: fake_sdk_client)
+
+    readiness_failure_config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key=SENSITIVE_API_KEY,
+        alpaca_secret_key="",
+        alpaca_paper_base_url="https://paper.example.test",
+    )
+    with pytest.raises(ConfigValidationError) as readiness_exc_info:
+        AlpacaSdkClient(
+            readiness_failure_config,
+            sdk_client_factory=lambda _: fake_sdk_client,
+        )
 
     with pytest.raises(ValueError) as conflict_info:
         AlpacaSdkClient(
@@ -213,6 +234,7 @@ def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(
             repr(client),
             str(client),
             str(exc_info.value),
+            str(readiness_exc_info.value),
             str(conflict_info.value),
             captured.out,
             captured.err,
@@ -220,4 +242,5 @@ def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(
         ]
     )
 
-    assert SENSITIVE_SECRET not in surfaces
+    assert SENSITIVE_API_KEY not in surfaces
+    assert SENSITIVE_SECRET_KEY not in surfaces

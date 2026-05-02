@@ -2,16 +2,19 @@
 
 ## Current Milestone
 
-The project is at the 206-test deterministic core milestone. The current system
-prioritizes a deterministic trading core before any real broker connectivity.
+The project is at the 214-passed / 1-skipped deterministic core checkpoint. The
+current system prioritizes a deterministic trading core before any real broker
+connectivity.
 
 Recent focused validation included broker/idempotency, LocalBroker rename/import,
 cleanup/import suites, a shared broker-contract subset, and pre-SDK Alpaca
 safety gates. Phase 1 now adds a file-scoped Alpaca SDK wrapper boundary without
-real broker connectivity. The latest full-suite result is:
+real broker connectivity. A pre-Phase-2 hardening pass adds a paper URL
+invariant, `paper_integration` gate tests, and broader credential redaction
+coverage. The latest full-suite result is:
 
 ```text
-206 passed
+214 passed, 1 skipped
 ```
 
 ## Architecture Summary
@@ -106,7 +109,10 @@ Current safety behaviors:
 - fake Alpaca adapter rejects duplicate `client_order_id` values before a second
   fake client call
 - `require_paper_profile()` defines the future pre-SDK paper-profile gate
+- `require_paper_profile()` rejects obvious non-paper Alpaca URLs
 - `AlpacaSdkClient` is the only production file allowed to import `alpaca`
+- normal pytest exercises the `paper_integration` skip gate without calling
+  Alpaca
 - `RiskConfig.allow_short=True` still fails closed with
   `short_selling_not_supported`
 - portfolio overdraw and oversell branches fail closed without mutating the
@@ -236,6 +242,25 @@ python -m pytest
 No real account call, real or paper order submission, websocket behavior,
 scheduler/runtime loop, real broker connectivity, LangGraph, LangChain, OpenAI,
 Anthropic, ML, or LLM trading-path logic was added.
+
+## Pre-Phase-2 Hardening Checkpoint
+
+Before any real paper-account smoke test, a small hardening patch added the
+paper URL invariant, direct `paper_integration` gate tests, one skipped
+paper-marker smoke test, broader SDK credential redaction coverage, and a lazy
+SDK import regression test.
+
+The full suite is now:
+
+```text
+python -m pytest
+214 passed, 1 skipped
+```
+
+No production runtime broker behavior changed, and no real account call, real
+or paper order submission, network call, websocket behavior, scheduler/runtime
+loop, real broker connectivity, LangGraph, LangChain, OpenAI, Anthropic, ML, or
+LLM trading-path logic was added.
 
 ## Explicitly Not Included
 

@@ -217,6 +217,13 @@ def require_paper_profile(config: AlpacaPaperConfig) -> None:
 
     config.validate_alpaca_paper_ready()
 
+    paper_url = config.alpaca_paper_base_url.strip().lower()
+    if "paper" not in paper_url:
+        raise ConfigValidationError(
+            "Alpaca paper operations require ALPACA_PAPER_BASE_URL to point "
+            "to a paper endpoint."
+        )
+
 
 def load_config(
     profile: Optional[str] = None,
