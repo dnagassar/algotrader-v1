@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the Phase 3 opt-in account-translation smoke patch:
+Current checkpoint after the Phase 5 reconciliation-readiness documentation pass:
 
 ```text
-216 passed, 3 skipped
+216 passed, 4 skipped
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -39,6 +39,8 @@ The safe Alpaca preparation layers currently include:
 - default SDK factory construction is covered by an offline unit test
 - one skipped-by-default Phase 2 read-only paper account smoke test added
 - one skipped-by-default Phase 3 read-only account translation smoke test added
+- one skipped-by-default Phase 4 read-only positions translation smoke test added
+- Phase 5 reconciliation-readiness policy documented before implementation
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-trade-api` dependency
@@ -520,36 +522,94 @@ validates the real SDK account response shape through the existing SDK wrapper
 positions or submit orders, and normal `python -m pytest` remains offline,
 credential-free, and skipped by default for the real API translation test.
 
-Phase 4: Add paper order submission only after read-only paths are stable. The
-implementation must preserve the canonical broker signature, continue requiring
-pre-trade risk approval, preserve deterministic order-id/idempotency behavior,
-return internal `BrokerOrderResult` values, and remain gated and opt-in.
+Phase 4: Add read-only positions translation through the existing translator
+and mapper boundary. This phase may exercise the real SDK positions response
+shape only behind opt-in controls. There is still no order submission.
 
-Phase 5: Consider deprecating or removing `fake_broker.py` only after the first
-explicitly approved, gated, read-only paper SDK path exists and the
-compatibility shim is no longer needed.
+Phase 4 status: one skipped-by-default `paper_integration` smoke test now
+validates the real SDK positions response shape through the existing SDK
+wrapper -> adapter -> translator -> mapper -> internal `Position` path. Empty
+position tuples are valid. It does not submit orders, and normal
+`python -m pytest` remains offline, credential-free, and skipped by default for
+the real API translation test.
 
-## Reconciliation Plan
+Phase 5: Documentation-only reconciliation readiness planning. Account and
+positions translation have now been validated through skipped-by-default paper
+integration tests, so reconciliation policy must be defined before any real
+broker reconciliation code is written.
 
-Future real broker integration will introduce two separate views of state:
+Phase 5 status: this document defines source-of-truth, mismatch, broker
+failure, timing, trigger, and future integration-test policy for real Alpaca
+paper reconciliation. No reconciliation implementation, runtime broker wiring,
+order submission, scheduler/runtime loop, websocket behavior, or auto-correction
+is added.
+
+Phase 6: Add a narrow offline fake-only reconciliation path or test layer using
+existing fakes and explicit mismatch scenarios. It should reuse
+`ReconciliationReport` and `ReconciliationMismatch` terminology and keep normal
+tests deterministic, offline, and credential-free.
+
+Phase 7: If still appropriate, add a skipped-by-default read-only real Alpaca
+paper reconciliation smoke test behind the existing `paper_integration` gate.
+It must not submit orders or rely on specific account balances, symbols,
+quantities, or positions existing.
+
+Paper order submission remains out of scope until read-only reconciliation
+policy and tests are complete.
+
+## Phase 5: Reconciliation Readiness Plan
+
+Account and positions translation have now been validated through
+skipped-by-default paper integration tests. The next step is to define
+reconciliation policy before writing any real Alpaca reconciliation code.
+
+Future real Alpaca paper reconciliation should compare these inputs:
 
 ```text
-local expected state
-broker-reported state
+local expected PortfolioState
+broker-reported account from AlpacaPaperBroker -> AlpacaClientAdapter -> AlpacaSdkClient
+broker-reported positions from AlpacaPaperBroker -> AlpacaClientAdapter -> AlpacaSdkClient
+optional quote map or valuation input
+existing ReconciliationReport / ReconciliationMismatch output
 ```
 
-The local reconciliation layer should compare these views and report differences clearly.
+The local expected state should eventually come from the local ledger or a
+replay of local fills. Alpaca paper broker state is the external comparison
+target. Broker state must not be treated as automatically authoritative for
+local mutation, and the first real reconciliation phase must not auto-correct
+local state.
 
-Future Alpaca reconciliation should check:
+Initial mismatch policy:
 
-- cash mismatch
-- missing expected position
-- unexpected broker position
-- position quantity mismatch
-- optional quote-based valuation mismatch
-- pending or partially filled orders when those states are introduced
+- `cash_mismatch`: report only at first.
+- `missing_position`: report and require operator review.
+- `unexpected_position`: report and require operator review.
+- `quantity_mismatch`: safety-critical; future policy should halt new trading
+  until reviewed.
+- `valuation_mismatch`: report only, because quote staleness can cause drift.
+- `unrealized_pnl_mismatch`: report only, because valuation inputs can differ.
+- currency mismatch: fail clearly and treat as safety-critical, consistent with
+  existing currency mismatch coverage.
 
-The system should not silently trust broker-reported state or silently overwrite local expected state. Differences should be reported first, then handled by explicit policy.
+Future real-broker reconciliation should not crash unclearly on network, auth,
+or API failure. It should return or record a `reconciliation_unavailable` style
+outcome, avoid state mutation, avoid auto-correction, and require operator
+review if failures repeat.
+
+No scheduler, runtime loop, background reconciliation, or automatic trading
+halt implementation is added in this phase. Future reconciliation should be
+triggered explicitly by an operator command or opt-in workflow.
+
+Any future real Alpaca reconciliation smoke test must be marked
+`@pytest.mark.paper_integration`, use the same paper integration gate, remain
+skipped by default, perform read-only calls only, not submit orders, not rely on
+specific account balances, symbols, quantities, or positions existing, and not
+log or print account or position values.
+
+Phase 5 does not add `submit_order()`, order submission, runtime broker
+selection, live trading, scheduler/runtime loop, websocket behavior, retries,
+polling, sleep, auto-correction, ledger persistence of real Alpaca events,
+LangGraph, LangChain, OpenAI, Anthropic, ML, or LLM trading-path logic.
 
 ## Future Ledger Behavior
 
@@ -577,10 +637,18 @@ This plan does not implement or enable:
 - `alpaca-trade-api` or unrelated SDK dependencies
 - real credentials
 - broker implementation
+- runtime broker selection
+- reconciliation implementation
 - websocket fills
+- websocket behavior
 - scheduler or runtime loop
+- retries, polling, or sleep
 - automated execution loop
 - live trading
+- auto-correction of local portfolio state
+- ledger persistence of real Alpaca events
+- order submission
+- `submit_order()`
 - LangGraph
 - LangChain
 - OpenAI
@@ -613,7 +681,7 @@ connectivity is attempted.
 
 ## Recommended Implementation Sequence
 
-This checklist is subordinate to the canonical Phase 0-5 plan above.
+This checklist is subordinate to the canonical Phase 0-7 plan above.
 Recommended future order within those phases:
 
 1. Keep the small Alpaca configuration object offline and credential-safe.
@@ -628,7 +696,14 @@ Recommended future order within those phases:
 10. Run broker contract tests against fake Alpaca responses.
 11. Add optional paper integration tests behind an explicit environment flag.
 12. Start with read-only paper-account connectivity.
-13. Only after read-only connectivity is stable, consider paper order submission.
+13. Validate read-only account and positions translation behind the explicit
+    integration flag.
+14. Define reconciliation policy before writing real reconciliation code.
+15. Add fake-only reconciliation tests with explicit mismatch scenarios.
+16. Consider a skipped-by-default read-only real Alpaca reconciliation smoke
+    test only after fake-only policy coverage is stable.
+17. Only after read-only reconciliation policy and tests are complete, consider
+    paper order submission.
 
 At each phase, normal tests should remain deterministic, offline, and credential-free.
 

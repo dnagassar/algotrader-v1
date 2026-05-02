@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 216-passed / 3-skipped deterministic core checkpoint. The
+The project is at the 216-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -14,10 +14,14 @@ invariant, `paper_integration` gate tests, broader credential redaction
 coverage, offline SDK factory-construction coverage, and one skipped-by-default
 read-only Phase 2 paper account smoke test. Phase 3 adds one skipped-by-default
 read-only account translation smoke test through the SDK wrapper, adapter,
-translator, mapper, and internal `Account` path. The latest full-suite result is:
+translator, mapper, and internal `Account` path. Phase 4 adds one
+skipped-by-default read-only positions translation smoke test through the same
+adapter, translator, mapper, and internal `Position` path. Phase 5 documents
+reconciliation-readiness policy before implementation. The latest full-suite
+result is:
 
 ```text
-216 passed, 3 skipped
+216 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -314,6 +318,48 @@ paper integration tests. This phase does not call positions, submit orders, add
 websocket behavior, add a scheduler/runtime loop, add runtime broker selection,
 enable real broker connectivity in normal runtime, or add LangGraph, LangChain,
 OpenAI, Anthropic, ML, or LLM trading-path logic.
+
+## Phase 4 Positions Translation Smoke Checkpoint
+
+Phase 4 added exactly one `paper_integration` test in
+`tests/integration/test_alpaca_paper_positions_translation_smoke.py`. It is
+skipped by default and, only when the explicit paper gate is enabled, validates
+the real SDK positions response shape through:
+
+```text
+SDK positions response
+  -> AlpacaSdkClient
+  -> AlpacaClientAdapter
+  -> alpaca_translator
+  -> alpaca_mapper
+  -> internal Position
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+216 passed, 4 skipped
+```
+
+Normal pytest remains credential-free, offline, and skipped by default for real
+paper integration tests. This phase does not submit orders, add runtime broker
+wiring, add reconciliation logic, add websocket behavior, add a
+scheduler/runtime loop, or add LangGraph, LangChain, OpenAI, Anthropic, ML, or
+LLM trading-path logic.
+
+## Phase 5 Reconciliation Readiness Checkpoint
+
+Phase 5 is documentation-only. It updates
+`docs/alpaca_paper_integration_plan.md` with a reconciliation-readiness plan
+covering future inputs, local-ledger source-of-truth policy, mismatch handling,
+broker call failures, explicit operator-triggered timing, and future
+skipped-by-default read-only integration-test policy.
+
+No production code, tests, order submission, runtime broker wiring,
+reconciliation implementation, scheduler/runtime loop, websocket behavior,
+auto-correction, real Alpaca ledger persistence, LangGraph, LangChain, OpenAI,
+Anthropic, ML, or LLM trading-path logic was added.
 
 ## Explicitly Not Included
 
