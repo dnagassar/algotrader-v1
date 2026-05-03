@@ -1,9 +1,12 @@
 from datetime import datetime, timezone
 
 from algotrader.core.types import Quote
+from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
+from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.local_broker import LocalBroker
 from algotrader.execution.reconciler import reconcile_portfolio
 from algotrader.portfolio.state import Account, PortfolioState, Position
+from tests.fakes.alpaca import FakeAlpacaClient
 
 
 NOW = datetime(2026, 4, 26, tzinfo=timezone.utc)
@@ -75,6 +78,19 @@ def test_unexpected_broker_position_fails_clearly() -> None:
     assert report.ok is False
     assert mismatch_kinds(report) == {"unexpected_position"}
     assert report.mismatches[0].symbol == "MSFT"
+
+
+def test_fake_alpaca_broker_reconciles_through_adapter_path() -> None:
+    fake_client = FakeAlpacaClient()
+    broker = AlpacaPaperBroker(adapter=AlpacaClientAdapter(fake_client))
+    expected = portfolio("999")
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert fake_client.calls == ["get_account", "get_positions"]
+    assert "submit_order" not in fake_client.calls
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"cash_mismatch", "unexpected_position"}
 
 
 def test_quantity_mismatch_fails_clearly() -> None:
