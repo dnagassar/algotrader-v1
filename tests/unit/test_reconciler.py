@@ -6,7 +6,7 @@ from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.local_broker import LocalBroker
 from algotrader.execution.reconciler import reconcile_portfolio
 from algotrader.portfolio.state import Account, PortfolioState, Position
-from tests.fakes.alpaca import FakeAlpacaClient
+from tests.fakes.alpaca import FakeAlpacaClient, FailingFakeAlpacaClient
 
 
 NOW = datetime(2026, 4, 26, tzinfo=timezone.utc)
@@ -134,6 +134,25 @@ def test_fake_alpaca_broker_missing_position_through_adapter_path() -> None:
     assert report.ok is False
     assert mismatch_kinds(report) == {"missing_position"}
     assert report.mismatches[0].symbol == "MSFT"
+
+
+def test_fake_alpaca_broker_reconciliation_unavailable_when_account_call_fails() -> None:
+    fake_client = FailingFakeAlpacaClient()
+    broker = AlpacaPaperBroker(adapter=AlpacaClientAdapter(fake_client))
+    expected = portfolio("100000", (Position("MSFT", "3", "100.10"),))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert fake_client.calls == ["get_account"]
+    assert "submit_order" not in fake_client.calls
+    assert report.available is False
+    assert report.ok is False
+    assert report.mismatches == ()
+    assert report.broker_error
+    assert "broker call failed" in report.broker_error
+    assert "fake client failed" not in report.broker_error
+    assert "paper-account-1" not in report.broker_error
+    assert "100000" not in report.broker_error
 
 
 def test_quantity_mismatch_fails_clearly() -> None:

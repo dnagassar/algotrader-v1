@@ -31,6 +31,8 @@ class ReconciliationReport:
     broker_portfolio: PortfolioState
     expected_valuation: PortfolioValuation | None = None
     broker_valuation: PortfolioValuation | None = None
+    available: bool = True
+    broker_error: str = ""
 
 
 def reconcile_portfolio(
@@ -40,9 +42,15 @@ def reconcile_portfolio(
 ) -> ReconciliationReport:
     """Compare expected portfolio state against broker-reported local state."""
 
+    try:
+        broker_account = broker.get_account()
+        broker_positions = broker.get_positions()
+    except Exception as exc:
+        return _unavailable_report(expected_portfolio, exc)
+
     broker_portfolio = PortfolioState(
-        account=broker.get_account(),
-        positions=broker.get_positions(),
+        account=broker_account,
+        positions=broker_positions,
         risk=expected_portfolio.risk,
         timestamp=expected_portfolio.timestamp,
     )
@@ -68,6 +76,26 @@ def reconcile_portfolio(
         broker_portfolio=broker_portfolio,
         expected_valuation=expected_valuation,
         broker_valuation=broker_valuation,
+    )
+
+
+def _unavailable_report(
+    expected_portfolio: PortfolioState,
+    exc: Exception,
+) -> ReconciliationReport:
+    broker_portfolio = PortfolioState(
+        account=Account("0", expected_portfolio.account.currency),
+        positions=(),
+        risk=expected_portfolio.risk,
+        timestamp=expected_portfolio.timestamp,
+    )
+    return ReconciliationReport(
+        ok=False,
+        mismatches=(),
+        expected_portfolio=expected_portfolio,
+        broker_portfolio=broker_portfolio,
+        available=False,
+        broker_error=f"{exc.__class__.__name__}: broker call failed",
     )
 
 
