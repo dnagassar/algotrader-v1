@@ -545,8 +545,11 @@ order submission, scheduler/runtime loop, websocket behavior, or auto-correction
 is added.
 
 Phase 6: Add a narrow offline fake-only reconciliation path or test layer using
-existing fakes and explicit mismatch scenarios. It should reuse
-`ReconciliationReport` and `ReconciliationMismatch` terminology and keep normal
+existing fakes and explicit mismatch scenarios. It may add tests and minimal
+reconciler behavior for fake Alpaca broker reconciliation,
+`reconciliation_unavailable` broker-call-failure outcomes, and tolerance
+handling. It must avoid real Alpaca calls and order submission, reuse
+`ReconciliationReport` and `ReconciliationMismatch` terminology, and keep normal
 tests deterministic, offline, and credential-free.
 
 Phase 7: If still appropriate, add a skipped-by-default read-only real Alpaca
@@ -573,32 +576,50 @@ optional quote map or valuation input
 existing ReconciliationReport / ReconciliationMismatch output
 ```
 
-The local expected state should eventually come from the local ledger or a
-replay of local fills. Alpaca paper broker state is the external comparison
-target. Broker state must not be treated as automatically authoritative for
-local mutation, and the first real reconciliation phase must not auto-correct
-local state.
+The local expected state should eventually be materialized from local fill
+history by replaying the local ledger. `LedgerEventType.ORDER_FILLED`-style
+events are the likely replay source. If the current ledger schema does not
+contain enough fill detail to reconstruct account cash, positions, quantities,
+and average prices, a future schema extension may be required before full replay
+is possible. Phase 5 does not implement that schema change.
+
+The starting-state policy is zero-trust local. Local deterministic state remains
+the expected state, and Alpaca paper broker state is the external comparison
+target. Broker state must not automatically overwrite local state. The first
+reconciliation against an already-used paper account may intentionally report
+large divergences. Any future broker-snapshot bootstrap must be explicitly
+designed later instead of being implied by reconciliation.
 
 Initial mismatch policy:
 
-- `cash_mismatch`: report only at first.
+- `cash_mismatch`: report only above a small cent-level tolerance, initially
+  `Decimal("0.01")`.
 - `missing_position`: report and require operator review.
 - `unexpected_position`: report and require operator review.
 - `quantity_mismatch`: safety-critical; future policy should halt new trading
-  until reviewed.
-- `valuation_mismatch`: report only, because quote staleness can cause drift.
-- `unrealized_pnl_mismatch`: report only, because valuation inputs can differ.
-- currency mismatch: fail clearly and treat as safety-critical, consistent with
-  existing currency mismatch coverage.
+  until reviewed. The target is exact equality or a very tight tolerance such
+  as `Decimal("0.000001")`.
+- `valuation_mismatch`: report only above a wider tolerance, initially
+  `Decimal("1.00")` or a small percentage threshold, because quote staleness can
+  cause drift.
+- `unrealized_pnl_mismatch`: use the same tolerance style as valuation mismatch,
+  because valuation inputs can differ.
+- currency mismatch: exact comparison, fail clearly, and treat as
+  safety-critical, consistent with existing currency mismatch coverage.
+
+These tolerances are policy targets for Phase 6 and are not implemented in this
+documentation-only pass.
 
 Future real-broker reconciliation should not crash unclearly on network, auth,
 or API failure. It should return or record a `reconciliation_unavailable` style
 outcome, avoid state mutation, avoid auto-correction, and require operator
 review if failures repeat.
 
-No scheduler, runtime loop, background reconciliation, or automatic trading
-halt implementation is added in this phase. Future reconciliation should be
-triggered explicitly by an operator command or opt-in workflow.
+No scheduler, runtime loop, background reconciliation, polling, retry loop, or
+automatic trading halt implementation is added in this phase. Future
+reconciliation must be explicit and operator-triggered. Acceptable future
+shapes are a Python API call or an opt-in CLI subcommand. Automatic
+reconciliation must not be added without a later explicit design.
 
 Any future real Alpaca reconciliation smoke test must be marked
 `@pytest.mark.paper_integration`, use the same paper integration gate, remain
