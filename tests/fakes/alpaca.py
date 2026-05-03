@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -17,8 +18,13 @@ NOW = datetime(2026, 4, 28, tzinfo=UTC)
 
 
 class FakeAlpacaClient:
-    def __init__(self, order_status: str = "accepted") -> None:
+    def __init__(
+        self,
+        order_status: str = "accepted",
+        positions: Sequence[AlpacaPositionResponse] | None = None,
+    ) -> None:
         self.order_status = order_status
+        self._positions = positions
         self.calls: list[str] = []
         self.submitted_requests: list[AlpacaOrderRequest] = []
 
@@ -34,6 +40,9 @@ class FakeAlpacaClient:
 
     def get_positions(self) -> list[AlpacaPositionResponse]:
         self.calls.append("get_positions")
+        if self._positions is not None:
+            return list(self._positions)
+
         return [
             AlpacaPositionResponse(
                 symbol="msft",

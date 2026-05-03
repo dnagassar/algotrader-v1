@@ -122,6 +122,20 @@ def test_fake_alpaca_broker_quantity_mismatch_through_adapter_path() -> None:
     assert report.mismatches[0].actual == "3"
 
 
+def test_fake_alpaca_broker_missing_position_through_adapter_path() -> None:
+    fake_client = FakeAlpacaClient(positions=[])
+    broker = AlpacaPaperBroker(adapter=AlpacaClientAdapter(fake_client))
+    expected = portfolio("100000", (Position("MSFT", "3", "100.10"),))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert fake_client.calls == ["get_account", "get_positions"]
+    assert "submit_order" not in fake_client.calls
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"missing_position"}
+    assert report.mismatches[0].symbol == "MSFT"
+
+
 def test_quantity_mismatch_fails_clearly() -> None:
     expected = portfolio("1000", (Position("MSFT", "2", "90"),))
     broker = LocalBroker(portfolio("1000", (Position("MSFT", "1", "90"),)))
