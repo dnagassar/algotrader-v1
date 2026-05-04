@@ -170,6 +170,39 @@ def test_rank_by_ask_momentum_top_n_and_min_score_work_together() -> None:
     assert [result.symbol for result in results] == ["TSLA"]
 
 
+def test_rank_by_ask_momentum_explicit_no_op_filters_match_defaults() -> None:
+    candidates = (
+        AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+        AskMomentumCandidate(bar("AAPL", "50"), quote("AAPL", "52")),
+        AskMomentumCandidate(bar("TSLA", "200"), quote("TSLA", "220")),
+    )
+
+    assert rank_by_ask_momentum(
+        candidates,
+        top_n=None,
+        min_score=None,
+    ) == rank_by_ask_momentum(candidates)
+
+
+def test_rank_by_ask_momentum_rejects_bool_min_score_values() -> None:
+    for min_score in (True, False):
+        with pytest.raises(ValidationError, match="min_score"):
+            rank_by_ask_momentum((), min_score=min_score)
+
+
+def test_rank_by_ask_momentum_min_score_can_filter_all_before_top_n() -> None:
+    results = rank_by_ask_momentum(
+        (
+            AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+            AskMomentumCandidate(bar("AAPL", "50"), quote("AAPL", "52")),
+        ),
+        top_n=1,
+        min_score=Decimal("0.2"),
+    )
+
+    assert results == ()
+
+
 def test_rank_by_ask_momentum_returns_empty_tuple_for_empty_input() -> None:
     assert rank_by_ask_momentum(()) == ()
 

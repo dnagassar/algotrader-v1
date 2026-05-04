@@ -32,7 +32,14 @@ def rank_by_ask_momentum(
     top_n: int | None = None,
     min_score: Decimal | str | None = None,
 ) -> tuple[AskMomentumResult, ...]:
-    """Rank candidates by ask momentum versus the previous close."""
+    """Rank candidates by ask momentum versus the previous close.
+
+    Defaults are no-op filters: ``top_n=None`` returns all ranked results and
+    ``min_score=None`` does not filter by score. When both filters are supplied,
+    ``min_score`` is applied first and is inclusive, keeping results where
+    ``score >= min_score``. Ordering is deterministic by score descending and
+    symbol ascending for ties, and that ordering is preserved through filtering.
+    """
 
     if isinstance(candidates, (str, bytes)) or not isinstance(candidates, Iterable):
         raise ValidationError(

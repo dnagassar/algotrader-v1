@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 253-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 256-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -27,7 +27,7 @@ filters for `min_score` and `top_n` while preserving Phase 8 defaults. The
 latest full-suite result is:
 
 ```text
-253 passed, 4 skipped
+256 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -466,6 +466,10 @@ Filtering remains local and deterministic. `min_score` accepts a `Decimal` or
 decimal string. `top_n` must be an integer greater than or equal to 1. The
 ordering remains score descending, then symbol ascending as a tie-breaker.
 
+The Phase 9 filter contract is now pinned: `min_score` applies before `top_n`,
+`min_score` is inclusive with `score >= min_score`, and default values preserve
+Phase 8 behavior.
+
 This phase still does not add live data, broker wiring, order generation, risk
 integration, scheduler/runtime behavior, ML, or LLM trading-path logic.
 
@@ -473,7 +477,7 @@ The full suite is now:
 
 ```text
 python -m pytest
-253 passed, 4 skipped
+256 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
