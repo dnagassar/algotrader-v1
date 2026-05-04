@@ -50,6 +50,36 @@ def test_cash_mismatch_fails_clearly() -> None:
     assert report.mismatches[0].actual == "999 USD"
 
 
+def test_cash_difference_below_tolerance_reconciles() -> None:
+    expected = portfolio("1000.00")
+    broker = LocalBroker(portfolio("1000.009"))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is True
+    assert report.mismatches == ()
+
+
+def test_cash_difference_at_tolerance_reconciles() -> None:
+    expected = portfolio("1000.00")
+    broker = LocalBroker(portfolio("1000.01"))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is True
+    assert report.mismatches == ()
+
+
+def test_cash_difference_above_tolerance_reports_mismatch() -> None:
+    expected = portfolio("1000.00")
+    broker = LocalBroker(portfolio("1000.011"))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"cash_mismatch"}
+
+
 def test_account_currency_mismatch_fails_clearly() -> None:
     expected = PortfolioState(account=Account("1000", currency="USD"))
     broker = LocalBroker(PortfolioState(account=Account("1000", currency="EUR")))
@@ -60,6 +90,16 @@ def test_account_currency_mismatch_fails_clearly() -> None:
     assert mismatch_kinds(report) == {"cash_mismatch"}
     assert report.mismatches[0].expected == "1000 USD"
     assert report.mismatches[0].actual == "1000 EUR"
+
+
+def test_currency_divergence_with_equal_cash_still_reports_cash_mismatch() -> None:
+    expected = PortfolioState(account=Account("1000", currency="USD"))
+    broker = LocalBroker(PortfolioState(account=Account("1000", currency="EUR")))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"cash_mismatch"}
 
 
 def test_missing_broker_position_fails_clearly() -> None:
@@ -190,6 +230,16 @@ def test_quantity_mismatch_fails_clearly() -> None:
     assert report.mismatches[0].actual == "1"
 
 
+def test_quantity_difference_remains_exact() -> None:
+    expected = portfolio("1000", (Position("MSFT", "3", "100.10"),))
+    broker = LocalBroker(portfolio("1000", (Position("MSFT", "3.000001", "100.10"),)))
+
+    report = reconcile_portfolio(expected, broker)
+
+    assert report.ok is False
+    assert mismatch_kinds(report) == {"quantity_mismatch"}
+
+
 def test_valuation_mismatch_is_reported_when_quotes_are_supplied() -> None:
     expected = portfolio("1000", (Position("MSFT", "2", "90"),))
     broker = LocalBroker(portfolio("999", (Position("MSFT", "2", "95"),)))
@@ -199,5 +249,33 @@ def test_valuation_mismatch_is_reported_when_quotes_are_supplied() -> None:
     assert report.ok is False
     assert "valuation_mismatch" in mismatch_kinds(report)
     assert "unrealized_pnl_mismatch" in mismatch_kinds(report)
+    assert report.expected_valuation is not None
+    assert report.broker_valuation is not None
+
+
+def test_valuation_differences_at_tolerance_do_not_mismatch() -> None:
+    expected = portfolio("1000.00", (Position("MSFT", "1", "90.00"),))
+    broker = LocalBroker(portfolio("1000.01", (Position("MSFT", "1", "90.01"),)))
+
+    report = reconcile_portfolio(expected, broker, {"MSFT": quote()})
+
+    assert report.ok is True
+    assert report.mismatches == ()
+    assert report.expected_valuation is not None
+    assert report.broker_valuation is not None
+
+
+def test_valuation_differences_above_tolerance_report_mismatches() -> None:
+    expected = portfolio("1000.00", (Position("MSFT", "1", "90.00"),))
+    broker = LocalBroker(portfolio("1000.011", (Position("MSFT", "1", "90.011"),)))
+
+    report = reconcile_portfolio(expected, broker, {"MSFT": quote()})
+
+    assert report.ok is False
+    assert mismatch_kinds(report) == {
+        "cash_mismatch",
+        "valuation_mismatch",
+        "unrealized_pnl_mismatch",
+    }
     assert report.expected_valuation is not None
     assert report.broker_valuation is not None

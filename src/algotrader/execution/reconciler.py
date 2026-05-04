@@ -14,6 +14,11 @@ from algotrader.portfolio.valuation import (
 )
 
 
+_CASH_MISMATCH_TOLERANCE = Decimal("0.01")
+_VALUATION_MISMATCH_TOLERANCE = Decimal("0.01")
+_UNREALIZED_PNL_MISMATCH_TOLERANCE = Decimal("0.01")
+
+
 @dataclass(frozen=True, slots=True)
 class ReconciliationMismatch:
     kind: str
@@ -103,7 +108,11 @@ def _cash_mismatches(
     expected: Account,
     actual: Account,
 ) -> tuple[ReconciliationMismatch, ...]:
-    if expected.cash == actual.cash and expected.currency == actual.currency:
+    if expected.currency == actual.currency and _within_tolerance(
+        expected.cash,
+        actual.cash,
+        _CASH_MISMATCH_TOLERANCE,
+    ):
         return ()
 
     return (
@@ -166,7 +175,11 @@ def _valuation_mismatches(
 ) -> tuple[ReconciliationMismatch, ...]:
     mismatches: list[ReconciliationMismatch] = []
 
-    if expected.total_market_value != actual.total_market_value:
+    if not _within_tolerance(
+        expected.total_market_value,
+        actual.total_market_value,
+        _VALUATION_MISMATCH_TOLERANCE,
+    ):
         mismatches.append(
             _decimal_mismatch(
                 "valuation_mismatch",
@@ -176,7 +189,11 @@ def _valuation_mismatches(
             )
         )
 
-    if expected.total_unrealized_pnl != actual.total_unrealized_pnl:
+    if not _within_tolerance(
+        expected.total_unrealized_pnl,
+        actual.total_unrealized_pnl,
+        _UNREALIZED_PNL_MISMATCH_TOLERANCE,
+    ):
         mismatches.append(
             _decimal_mismatch(
                 "unrealized_pnl_mismatch",
@@ -187,6 +204,14 @@ def _valuation_mismatches(
         )
 
     return tuple(mismatches)
+
+
+def _within_tolerance(
+    expected: Decimal,
+    actual: Decimal,
+    tolerance: Decimal,
+) -> bool:
+    return abs(expected - actual) <= tolerance
 
 
 def _decimal_mismatch(
