@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 240-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 253-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -22,10 +22,12 @@ fake-only reconciliation through the Alpaca adapter path, unavailable broker
 call handling, and conservative report-only tolerances. Phase 7 real-paper
 reconciliation remains explicitly deferred. Phase 8 begins with a deterministic
 offline screener foundation that ranks synthetic `Bar + Quote` inputs by ask
-momentum versus previous close. The latest full-suite result is:
+momentum versus previous close. Phase 9 adds optional deterministic screener
+filters for `min_score` and `top_n` while preserving Phase 8 defaults. The
+latest full-suite result is:
 
 ```text
-240 passed, 4 skipped
+253 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -47,9 +49,9 @@ Bar + Quote
 ```
 
 The project currently includes immutable domain models, deterministic signal and
-risk checks, an offline ask-momentum screener, local paper execution, portfolio
-state transitions, quote-based valuation, local reconciliation, and structured
-broker results.
+risk checks, an offline ask-momentum screener with optional deterministic
+filters, local paper execution, portfolio state transitions, quote-based
+valuation, local reconciliation, and structured broker results.
 
 The Phase 8 screener is not wired into the trading path. It does not generate
 orders, call risk, call brokers, or submit anything.
@@ -446,6 +448,32 @@ The full suite is now:
 ```text
 python -m pytest
 240 passed, 4 skipped
+```
+
+## Phase 9 Deterministic Screener Filter Polish
+
+Phase 9 adds optional deterministic filters to:
+
+```text
+rank_by_ask_momentum(...)
+```
+
+The screener can now keep only results with `score >= min_score` and can limit
+the returned tuple with `top_n`. Defaults preserve Phase 8 behavior: no score
+filter and no result limit.
+
+Filtering remains local and deterministic. `min_score` accepts a `Decimal` or
+decimal string. `top_n` must be an integer greater than or equal to 1. The
+ordering remains score descending, then symbol ascending as a tie-breaker.
+
+This phase still does not add live data, broker wiring, order generation, risk
+integration, scheduler/runtime behavior, ML, or LLM trading-path logic.
+
+The full suite is now:
+
+```text
+python -m pytest
+253 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

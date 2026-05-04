@@ -7,9 +7,10 @@ state.
 
 ## Current Status
 
-- `240` tests are passing, with `4` skipped paper-integration tests by default.
+- `253` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
-  inputs by ask momentum versus previous close.
+  inputs by ask momentum versus previous close, with optional deterministic
+  `min_score` and `top_n` filters.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -35,7 +36,7 @@ The offline screener path is separate from trading:
 
 ```text
 Synthetic Bar + Quote candidates
-  -> rank_by_ask_momentum(...)
+  -> rank_by_ask_momentum(..., min_score=None, top_n=None)
   -> immutable AskMomentumResult tuple
 ```
 
@@ -188,6 +189,10 @@ score = (quote.ask - previous_bar.close) / previous_bar.close
 Results are immutable and returned as a tuple. Ordering is deterministic by
 score descending and then symbol ascending. The screener is offline,
 credential-free, API-free, broker-free, and deterministic.
+
+Phase 9 adds optional deterministic polish filters. `min_score` keeps only
+results with `score >= min_score`, and `top_n` limits the returned tuple after
+ranking and score filtering. Defaults preserve Phase 8 behavior.
 
 This foundation does not connect to signals, risk checks, execution, Alpaca,
 order creation, or any scheduler/runtime loop.
