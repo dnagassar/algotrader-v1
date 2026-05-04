@@ -7,7 +7,9 @@ state.
 
 ## Current Status
 
-- `183` tests are passing.
+- `235` tests are passing, with `4` skipped paper-integration tests by default.
+- A deterministic offline screener foundation ranks synthetic `Bar + Quote`
+  inputs by ask momentum versus previous close.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -29,6 +31,18 @@ state.
 
 ## Current Deterministic Path
 
+The offline screener path is separate from trading:
+
+```text
+Synthetic Bar + Quote candidates
+  -> rank_by_ask_momentum(...)
+  -> immutable AskMomentumResult tuple
+```
+
+It does not generate orders, call risk, call a broker, or submit anything.
+
+The current trading path remains:
+
 ```text
 Bar + Quote
   -> signal rule
@@ -43,6 +57,11 @@ Bar + Quote
 ## Current Local Safety Foundation
 
 ```text
+offline screener ranking
+  -> synthetic Bar + Quote inputs only
+  -> no order generation
+  -> no risk/execution wiring
+
 signal rule
   -> RiskEngine.check()
   -> LocalBroker
@@ -151,6 +170,28 @@ It can detect:
 This is a deterministic local comparison helper only. It is not an external
 broker reconciliation loop.
 
+## Deterministic Screener Foundation
+
+The Phase 8 screener lives in:
+
+```text
+src/algotrader/screener/momentum.py
+```
+
+It ranks synthetic `Bar + Quote` candidates using ask momentum versus the
+previous close:
+
+```text
+score = (quote.ask - previous_bar.close) / previous_bar.close
+```
+
+Results are immutable and returned as a tuple. Ordering is deterministic by
+score descending and then symbol ascending. The screener is offline,
+credential-free, API-free, broker-free, and deterministic.
+
+This foundation does not connect to signals, risk checks, execution, Alpaca,
+order creation, or any scheduler/runtime loop.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -192,6 +233,8 @@ Ledger modes:
 - Network calls
 - Broker API calls
 - Websocket fills
+- Screener-driven order generation
+- Screener wiring into risk or execution
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph
@@ -201,12 +244,13 @@ Ledger modes:
 
 ## Next Recommended Phase
 
-The next phase should be a pre-Alpaca implementation plan or checklist before
-adding any real Alpaca SDK imports or API calls.
+The next phase should keep the screener small and synthetic unless explicitly
+approved otherwise. Safe follow-up work could add more deterministic unit tests
+or a tiny deterministic filter, but still without live data, broker wiring,
+orders, risk integration, schedulers, ML, or LLM trading-path logic.
 
-The checklist should cover broker contract expectations, risk-verdict handling,
-order ID handling, ledger behavior, reconciliation expectations, error handling,
-credential boundaries, network boundaries, and dry-run/demo boundaries.
+Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
+explicitly approved.
 
 ## Alpaca Paper Planning Link
 

@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 229-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 235-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -19,11 +19,13 @@ skipped-by-default read-only positions translation smoke test through the same
 adapter, translator, mapper, and internal `Position` path. Phase 5 documents
 reconciliation-readiness policy before implementation. Phase 6 hardens
 fake-only reconciliation through the Alpaca adapter path, unavailable broker
-call handling, and conservative report-only tolerances. The latest full-suite
-result is:
+call handling, and conservative report-only tolerances. Phase 7 real-paper
+reconciliation remains explicitly deferred. Phase 8 begins with a deterministic
+offline screener foundation that ranks synthetic `Bar + Quote` inputs by ask
+momentum versus previous close. The latest full-suite result is:
 
 ```text
-229 passed, 4 skipped
+235 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -45,8 +47,12 @@ Bar + Quote
 ```
 
 The project currently includes immutable domain models, deterministic signal and
-risk checks, local paper execution, portfolio state transitions, quote-based
-valuation, local reconciliation, and structured broker results.
+risk checks, an offline ask-momentum screener, local paper execution, portfolio
+state transitions, quote-based valuation, local reconciliation, and structured
+broker results.
+
+The Phase 8 screener is not wired into the trading path. It does not generate
+orders, call risk, call brokers, or submit anything.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -411,6 +417,37 @@ No real Alpaca calls, order submission, runtime broker wiring, scheduler/runtime
 loop, websocket behavior, ledger replay, ML, or LLM trading-path logic was
 added.
 
+## Phase 8 Deterministic Screener Foundation
+
+Phase 8 begins with one small offline screener package:
+
+```text
+src/algotrader/screener/
+```
+
+The screener ranks synthetic `Bar + Quote` inputs by deterministic ask momentum
+versus previous close:
+
+```text
+score = (quote.ask - previous_bar.close) / previous_bar.close
+```
+
+Results are immutable dataclasses returned as a tuple. Ranking is deterministic:
+score descending, then symbol ascending as a tie-breaker. The screener reuses
+the existing `Bar`, `Quote`, and `ValidationError` conventions instead of
+adding duplicate market-data models.
+
+This foundation is offline, credential-free, API-free, broker-free, and
+deterministic. It does not generate orders and is not connected to signals,
+risk, execution, Alpaca, or any scheduler/runtime loop.
+
+The full suite is now:
+
+```text
+python -m pytest
+235 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -421,6 +458,7 @@ added.
 - websocket behavior
 - scheduler/runtime loop
 - live trading
+- screener-driven order generation
 - LangGraph
 - ML
 - LLM trading-path logic
@@ -431,6 +469,7 @@ Keep avoiding real Alpaca SDK work until explicitly approved.
 
 Safe next tasks include:
 
+- small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
 - deeper broker contract tests around error paths and reconciliation boundaries
