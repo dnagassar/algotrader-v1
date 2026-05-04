@@ -565,12 +565,19 @@ report-only tolerances now apply to `cash_mismatch`, `valuation_mismatch`, and
 Quantity mismatch remains exact, and currency divergence remains exact while
 still reporting as `cash_mismatch`.
 
-Phase 7 readiness note: Phase 7 is optional. If implemented, it should remain a
-skipped-by-default, read-only real Alpaca paper reconciliation smoke test behind
-the existing `paper_integration` gate. It should verify only the reconciliation
-read path and must not submit orders, rely on specific account balances,
-symbols, quantities, or positions existing, or log account/position values.
-Phase 7 is not broker runtime wiring and not order submission.
+Phase 7 decision note: Phase 7 is optional and is not required for Phase 6
+completeness. Phases 2-4 already validate real SDK account and position
+translation under the paper integration gate. Phase 6 already validates
+reconciliation behavior through the fake SDK-style adapter and broker path. If
+explicitly approved later, Phase 7 should be a single skipped-by-default,
+read-only real Alpaca paper reconciliation smoke test behind the existing
+`paper_integration` gate. Its main value would be operator confidence that the
+full real-paper SDK -> adapter -> broker -> reconciler composition runs without
+crashing. It must verify only the reconciliation read path and must not submit
+orders, rely on specific account balances, symbols, quantities, or positions
+existing, or log account/position values. Phase 7 is deferred for now unless it
+is explicitly approved as the next scope; it is not broker runtime wiring and
+not order submission.
 
 Paper order submission remains out of scope until read-only reconciliation
 policy and tests are complete.
