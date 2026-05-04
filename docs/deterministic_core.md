@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `235` tests are passing, with `4` skipped paper-integration tests by default.
+- `240` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close.
 - A deterministic scenario harness exists for named local demo/test cases.

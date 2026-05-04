@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 235-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 240-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -25,7 +25,7 @@ offline screener foundation that ranks synthetic `Bar + Quote` inputs by ask
 momentum versus previous close. The latest full-suite result is:
 
 ```text
-235 passed, 4 skipped
+240 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -445,7 +445,7 @@ The full suite is now:
 
 ```text
 python -m pytest
-235 passed, 4 skipped
+240 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

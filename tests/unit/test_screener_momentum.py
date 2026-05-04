@@ -60,6 +60,38 @@ def test_rank_by_ask_momentum_breaks_score_ties_by_symbol() -> None:
     assert results[0].score == results[1].score == Decimal("0.01")
 
 
+def test_rank_by_ask_momentum_handles_negative_scores() -> None:
+    results = rank_by_ask_momentum(
+        (
+            AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+            AskMomentumCandidate(bar("AAPL", "100"), quote("AAPL", "95")),
+        )
+    )
+
+    assert [result.symbol for result in results] == ["MSFT", "AAPL"]
+    assert results[0].score == Decimal("0.05")
+    assert results[1].score == Decimal("-0.05")
+
+
+def test_rank_by_ask_momentum_handles_zero_score() -> None:
+    results = rank_by_ask_momentum(
+        (AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "100")),)
+    )
+
+    assert len(results) == 1
+    assert results[0].score == Decimal("0")
+
+
+def test_rank_by_ask_momentum_handles_single_candidate() -> None:
+    results = rank_by_ask_momentum(
+        (AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),)
+    )
+
+    assert len(results) == 1
+    assert results[0].symbol == "MSFT"
+    assert results[0].score == Decimal("0.05")
+
+
 def test_rank_by_ask_momentum_returns_empty_tuple_for_empty_input() -> None:
     assert rank_by_ask_momentum(()) == ()
 
@@ -75,6 +107,16 @@ def test_ranker_rejects_invalid_candidate_inputs_clearly() -> None:
 
     with pytest.raises(ValidationError, match="close must be greater than zero"):
         AskMomentumCandidate(_unsafe_bar_with_close("MSFT", "0"), quote("MSFT", "1"))
+
+
+def test_rank_by_ask_momentum_rejects_string_input() -> None:
+    with pytest.raises(ValidationError, match="AskMomentumCandidate"):
+        rank_by_ask_momentum("MSFT")
+
+
+def test_rank_by_ask_momentum_rejects_non_iterable_input() -> None:
+    with pytest.raises(ValidationError):
+        rank_by_ask_momentum(42)
 
 
 def test_screener_package_exports_public_api() -> None:
