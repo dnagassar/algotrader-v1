@@ -8,10 +8,10 @@ The goal is to preserve the deterministic trading core while preparing a clear a
 
 ## Current Status
 
-Current checkpoint after the Phase 5 reconciliation-readiness documentation pass:
+Current checkpoint after the Phase 6 fake-only reconciliation hardening pass:
 
 ```text
-216 passed, 4 skipped
+229 passed, 4 skipped
 ```
 
 The safe Alpaca preparation layers currently include:
@@ -41,6 +41,7 @@ The safe Alpaca preparation layers currently include:
 - one skipped-by-default Phase 3 read-only account translation smoke test added
 - one skipped-by-default Phase 4 read-only positions translation smoke test added
 - Phase 5 reconciliation-readiness policy documented before implementation
+- Phase 6 fake-only reconciliation hardening completed
 - duplicate order-id idempotency is covered by broker contract tests
 - duplicate fake-adapter order IDs are rejected before a second fake client call
 - no `alpaca-trade-api` dependency
@@ -552,10 +553,24 @@ handling. It must avoid real Alpaca calls and order submission, reuse
 `ReconciliationReport` and `ReconciliationMismatch` terminology, and keep normal
 tests deterministic, offline, and credential-free.
 
-Phase 7: If still appropriate, add a skipped-by-default read-only real Alpaca
-paper reconciliation smoke test behind the existing `paper_integration` gate.
-It must not submit orders or rely on specific account balances, symbols,
-quantities, or positions existing.
+Phase 6 status: complete. Fake-only reconciliation now covers matching state,
+cash mismatch plus unexpected position, quantity mismatch, and missing position
+through `FakeAlpacaClient -> AlpacaClientAdapter -> AlpacaPaperBroker ->
+reconcile_portfolio(...)`. `FakeAlpacaClient` can customize returned positions
+for deterministic scenarios. `ReconciliationReport` now includes
+`available: bool = True` and `broker_error: str = ""`; account-call and
+positions-call failures return sanitized unavailable reports. Conservative
+report-only tolerances now apply to `cash_mismatch`, `valuation_mismatch`, and
+`unrealized_pnl_mismatch` using `abs(expected - actual) <= tolerance`.
+Quantity mismatch remains exact, and currency divergence remains exact while
+still reporting as `cash_mismatch`.
+
+Phase 7 readiness note: Phase 7 is optional. If implemented, it should remain a
+skipped-by-default, read-only real Alpaca paper reconciliation smoke test behind
+the existing `paper_integration` gate. It should verify only the reconciliation
+read path and must not submit orders, rely on specific account balances,
+symbols, quantities, or positions existing, or log account/position values.
+Phase 7 is not broker runtime wiring and not order submission.
 
 Paper order submission remains out of scope until read-only reconciliation
 policy and tests are complete.
@@ -597,18 +612,16 @@ Initial mismatch policy:
 - `missing_position`: report and require operator review.
 - `unexpected_position`: report and require operator review.
 - `quantity_mismatch`: safety-critical; future policy should halt new trading
-  until reviewed. The target is exact equality or a very tight tolerance such
-  as `Decimal("0.000001")`.
-- `valuation_mismatch`: report only above a wider tolerance, initially
-  `Decimal("1.00")` or a small percentage threshold, because quote staleness can
-  cause drift.
-- `unrealized_pnl_mismatch`: use the same tolerance style as valuation mismatch,
-  because valuation inputs can differ.
+  until reviewed. Phase 6 keeps quantity comparison exact.
+- `valuation_mismatch`: report only above the initial Phase 6 tolerance of
+  `Decimal("0.01")`; wider or percentage-based tolerances remain future policy.
+- `unrealized_pnl_mismatch`: use the same initial Phase 6 tolerance as
+  valuation mismatch, because valuation inputs can differ.
 - currency mismatch: exact comparison, fail clearly, and treat as
   safety-critical, consistent with existing currency mismatch coverage.
 
-These tolerances are policy targets for Phase 6 and are not implemented in this
-documentation-only pass.
+Phase 6 implements the initial fixed `Decimal("0.01")` tolerances for cash,
+valuation, and unrealized P&L report-only categories.
 
 Future real-broker reconciliation should not crash unclearly on network, auth,
 or API failure. It should return or record a `reconciliation_unavailable` style

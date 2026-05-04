@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 216-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 229-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -17,11 +17,13 @@ read-only account translation smoke test through the SDK wrapper, adapter,
 translator, mapper, and internal `Account` path. Phase 4 adds one
 skipped-by-default read-only positions translation smoke test through the same
 adapter, translator, mapper, and internal `Position` path. Phase 5 documents
-reconciliation-readiness policy before implementation. The latest full-suite
+reconciliation-readiness policy before implementation. Phase 6 hardens
+fake-only reconciliation through the Alpaca adapter path, unavailable broker
+call handling, and conservative report-only tolerances. The latest full-suite
 result is:
 
 ```text
-216 passed, 4 skipped
+229 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -360,6 +362,54 @@ No production code, tests, order submission, runtime broker wiring,
 reconciliation implementation, scheduler/runtime loop, websocket behavior,
 auto-correction, real Alpaca ledger persistence, LangGraph, LangChain, OpenAI,
 Anthropic, ML, or LLM trading-path logic was added.
+
+## Phase 6 Fake-Only Reconciliation Checkpoint
+
+Phase 6 added offline reconciliation hardening around the fake Alpaca broker
+path:
+
+```text
+FakeAlpacaClient
+  -> AlpacaClientAdapter
+  -> AlpacaPaperBroker
+  -> reconcile_portfolio(...)
+```
+
+Fake-only tests now cover matching state, cash mismatch plus unexpected
+position, quantity mismatch, and missing position through that path.
+`FakeAlpacaClient` can customize returned positions for deterministic mismatch
+scenarios.
+
+`ReconciliationReport` now includes:
+
+- `available: bool = True`
+- `broker_error: str = ""`
+
+If `broker.get_account()` or `broker.get_positions()` fails, reconciliation now
+returns an unavailable report with `available=False`, `ok=False`, no mismatches,
+and a sanitized broker error. Both account-call and positions-call failures are
+covered by fake-only tests.
+
+Report-only tolerances now apply to cash, valuation, and unrealized P&L:
+
+- `_CASH_MISMATCH_TOLERANCE = Decimal("0.01")`
+- `_VALUATION_MISMATCH_TOLERANCE = Decimal("0.01")`
+- `_UNREALIZED_PNL_MISMATCH_TOLERANCE = Decimal("0.01")`
+
+`_within_tolerance(...)` uses `abs(expected - actual) <= tolerance`, so the
+exact tolerance boundary is accepted. Quantity mismatches remain exact. Currency
+divergence remains exact and is still reported as `cash_mismatch`.
+
+The full suite is now:
+
+```text
+python -m pytest
+229 passed, 4 skipped
+```
+
+No real Alpaca calls, order submission, runtime broker wiring, scheduler/runtime
+loop, websocket behavior, ledger replay, ML, or LLM trading-path logic was
+added.
 
 ## Explicitly Not Included
 
