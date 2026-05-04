@@ -87,3 +87,9 @@ class FailingFakeAlpacaClient(FakeAlpacaClient):
     def get_account(self) -> AlpacaAccountResponse:
         self.calls.append("get_account")
         raise RuntimeError("fake client failed")
+
+
+class FailingPositionsFakeAlpacaClient(FakeAlpacaClient):
+    def get_positions(self) -> list[AlpacaPositionResponse]:
+        self.calls.append("get_positions")
+        raise RuntimeError("fake positions call failed")
