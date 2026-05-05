@@ -7,10 +7,13 @@ state.
 
 ## Current Status
 
-- `256` tests are passing, with `4` skipped paper-integration tests by default.
+- `260` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
+- A pure orchestration-owned Screener -> Signal input bridge preserves screener
+  ordering and returns signal-ready `Bar + Quote` pairs without invoking signals
+  yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -38,9 +41,12 @@ The offline screener path is separate from trading:
 Synthetic Bar + Quote candidates
   -> rank_by_ask_momentum(..., min_score=None, top_n=None)
   -> immutable AskMomentumResult tuple
+  -> ordered_signal_inputs_from_screener(...)
+  -> immutable signal-ready (Bar, Quote) tuple
 ```
 
-It does not generate orders, call risk, call a broker, or submit anything.
+It does not invoke signals yet if signals would create orders. It does not call
+risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
 
 The current trading path remains:
 
@@ -60,8 +66,10 @@ Bar + Quote
 ```text
 offline screener ranking
   -> synthetic Bar + Quote inputs only
-  -> no order generation
-  -> no risk/execution wiring
+  -> pure orchestration input bridge
+  -> signal-ready Bar + Quote pairs only
+  -> no signal invocation, order generation, risk, broker, Alpaca, execution,
+     CLI, scheduler, ML, or LLM trading-path logic
 
 signal rule
   -> RiskEngine.check()
@@ -197,10 +205,22 @@ ranking and score filtering. Defaults preserve Phase 8 behavior.
 Phase 10 documents the future Screener -> Signals bridge as a design-only
 orchestration boundary in
 [`docs/design/phase10_screener_to_signals.md`](design/phase10_screener_to_signals.md).
-No bridge behavior exists yet.
 
-This foundation does not connect to signals, risk checks, execution, Alpaca,
-order creation, or any scheduler/runtime loop.
+Phase 11 begins that path with a pure orchestration-owned input bridge in:
+
+```text
+src/algotrader/orchestration/screener_signal_flow.py
+```
+
+`ordered_signal_inputs_from_screener(...)` accepts ranked `AskMomentumResult`
+values plus the original `AskMomentumCandidate` values or a candidate lookup,
+matches by symbol, rejects missing or duplicate candidate symbols with
+`ValidationError`, and returns an immutable tuple of signal-ready `(Bar, Quote)`
+pairs in the exact screener-result order.
+
+This bridge does not invoke signals yet if signals would create orders. It does
+not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM
+trading-path logic.
 
 ## Local Order-Event Ledger
 
@@ -245,6 +265,7 @@ Ledger modes:
 - Websocket fills
 - Screener-driven order generation
 - Screener wiring into risk or execution
+- Screener bridge signal invocation that would create orders
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph

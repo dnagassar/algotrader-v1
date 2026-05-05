@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 256-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 260-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -25,10 +25,13 @@ offline screener foundation that ranks synthetic `Bar + Quote` inputs by ask
 momentum versus previous close. Phase 9 adds optional deterministic screener
 filters for `min_score` and `top_n` while preserving Phase 8 defaults. Phase 10
 is a no-code design-only pass documenting the future Screener -> Signals bridge.
+Phase 11 begins that bridge with a pure orchestration-owned adapter that
+preserves screener ordering and returns signal-ready `Bar + Quote` pairs without
+invoking signals yet.
 The latest full-suite result is:
 
 ```text
-256 passed, 4 skipped
+260 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -51,11 +54,13 @@ Bar + Quote
 
 The project currently includes immutable domain models, deterministic signal and
 risk checks, an offline ask-momentum screener with optional deterministic
-filters, local paper execution, portfolio state transitions, quote-based
-valuation, local reconciliation, and structured broker results.
+filters, a pure orchestration-owned Screener -> Signal input bridge, local paper
+execution, portfolio state transitions, quote-based valuation, local
+reconciliation, and structured broker results.
 
-The Phase 8 screener is not wired into the trading path. It does not generate
-orders, call risk, call brokers, or submit anything.
+The screener bridge prepares signal-ready inputs only. It does not invoke
+signals yet if signals would create orders, and it does not call risk, broker,
+Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -509,6 +514,32 @@ idempotency keys, or whether `submit_order` is called.
 No production code, live data, external API, Alpaca integration, broker wiring,
 order creation, risk integration, scheduler/runtime behavior, ML, dependency, or
 LLM trading-path logic was added.
+
+## Phase 11 Screener to Signal Input Bridge
+
+Phase 11 begins the Screener -> Signal path with one pure orchestration-owned
+adapter:
+
+```text
+src/algotrader/orchestration/screener_signal_flow.py
+```
+
+`ordered_signal_inputs_from_screener(...)` accepts ranked
+`AskMomentumResult` values plus the original `AskMomentumCandidate` values or a
+candidate lookup, matches by symbol, rejects missing or duplicate candidate
+symbols with `ValidationError`, and returns an immutable tuple of signal-ready
+`(Bar, Quote)` pairs in the exact screener-result order.
+
+This phase does not invoke signals yet if signals would create orders. It also
+does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM
+trading-path logic. No dependencies were added.
+
+The full suite is now:
+
+```text
+python -m pytest
+260 passed, 4 skipped
+```
 
 ## Explicitly Not Included
 
