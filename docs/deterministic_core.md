@@ -244,6 +244,12 @@ This bridge still does not call risk, call brokers, touch Alpaca, connect to
 execution, CLI, scheduler, or runtime behavior, or add ML or LLM trading-path
 logic.
 
+Phase 12 documents the future Signal -> Risk boundary as a design-only
+orchestration contract in
+[`docs/design/phase12_signal_to_risk.md`](design/phase12_signal_to_risk.md).
+It does not implement risk integration, approve orders, submit orders, or add
+runtime behavior.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.

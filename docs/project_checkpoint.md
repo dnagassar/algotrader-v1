@@ -31,7 +31,9 @@ invoking signals yet. Phase 11 Step 2 hardens the bridge by rejecting duplicate
 screener result symbols and malformed result/candidate inputs while preserving
 the original `Bar` and `Quote` objects in immutable ordered pairs. Phase 11 Step
 3 adds pure screener-ordered signal evaluation only; any signal output is not an
-approved trade and is not submitted.
+approved trade and is not submitted. Phase 12 is a no-code design-only pass
+documenting the future Signal -> Risk boundary before any risk integration is
+implemented.
 The latest full-suite result is:
 
 ```text
@@ -560,6 +562,37 @@ The full suite is now:
 python -m pytest
 269 passed, 4 skipped
 ```
+
+## Phase 12 Signal to Risk Design
+
+Phase 12 is documentation-only. It adds:
+
+```text
+docs/design/phase12_signal_to_risk.md
+```
+
+The design defines the future orchestration boundary between
+`ScreenerSignalEvaluation` outputs and deterministic risk evaluation. It pins
+that any `ProposedOrder` from `evaluate_signals_from_screener(...)` remains
+proposed signal output only until it passes through a separately named,
+deterministic risk-evaluation function in a later phase.
+
+The planned dependency direction is:
+
+```text
+orchestration -> screener
+orchestration -> signals
+orchestration -> risk
+```
+
+The design explicitly prohibits passing `ScreenerSignalEvaluation.order`
+directly into `LocalBroker.submit_order(...)`,
+`AlpacaPaperBroker.submit_order(...)`, `evaluate_and_execute(...)`,
+`generate_evaluate_and_execute(...)`, or any broker or execution layer.
+
+No runtime behavior, production Python code, tests, Alpaca changes, broker
+wiring, order submission, execution integration, scheduler/runtime behavior,
+ML, dependency, or LLM trading-path logic was added.
 
 ## Explicitly Not Included
 
