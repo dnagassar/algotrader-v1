@@ -32,6 +32,17 @@ ORCHESTRATION_BOUNDARY_RULES = (
             "alpaca_trade_api",
         ),
     ),
+    DependencyRule(
+        source="algotrader.orchestration.signal_risk_flow",
+        paths=(Path("src/algotrader/orchestration/signal_risk_flow.py"),),
+        forbidden_prefixes=(
+            "algotrader.execution",
+            "algotrader.orchestration.trade_flow",
+            "algotrader.orchestration.signal_trade_flow",
+            "alpaca",
+            "alpaca_trade_api",
+        ),
+    ),
 )
 
 

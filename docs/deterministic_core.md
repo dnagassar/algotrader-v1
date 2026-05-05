@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `277` tests are passing, with `4` skipped paper-integration tests by default.
+- `288` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -23,6 +23,8 @@ state.
   `ScreenerSignalEvaluation` results, and signal-rule exception propagation.
 - Dependency-direction guardrails now enforce documented layering between
   screener, signals, risk, orchestration, and execution.
+- Pure Signal -> Risk evaluation converts `ScreenerSignalEvaluation` rows into
+  immutable `SignalRiskEvaluation` rows without execution or submission.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -54,11 +56,16 @@ Synthetic Bar + Quote candidates
   -> immutable signal-ready (Bar, Quote) tuple
   -> evaluate_signals_from_screener(...)
   -> immutable ScreenerSignalEvaluation tuple
+  -> evaluate_risk_for_screener_signals(...)
+  -> immutable SignalRiskEvaluation tuple
 ```
 
-This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
-LLM trading-path logic. Any `ProposedOrder` returned by signal evaluation is a
-proposed signal output only, not an approved trade and not a submitted order.
+The screener-to-signal segment does not call risk, broker, Alpaca, execution,
+CLI, scheduler, ML, or LLM trading-path logic. Any `ProposedOrder` returned by
+signal evaluation is a proposed signal output only. The Signal -> Risk layer
+then checks proposed orders with `RiskEngine` only, keeps no-signal rows with
+`risk=None`, and returns risk verdicts without executing or submitting anything.
+Risk-approved means allowed by risk, not executed, submitted, or broker-ready.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -271,6 +278,17 @@ and execution before any Signal -> Risk runtime code exists.
 No Signal -> Risk runtime behavior, broker wiring, Alpaca changes, execution
 integration, order submission, scheduler/runtime behavior, ML, dependency, or
 LLM trading-path logic was added.
+
+Phase 14 Step 2 adds pure Signal -> Risk evaluation in
+`src/algotrader/orchestration/signal_risk_flow.py`.
+`evaluate_risk_for_screener_signals(...)` converts
+`ScreenerSignalEvaluation` rows into immutable `SignalRiskEvaluation` rows,
+retains no-signal rows with `risk=None`, and checks proposed orders with
+`RiskEngine` only.
+
+Risk-approved means only allowed by risk. The function does not call brokers,
+execution, Alpaca, `submit_order`, CLI, scheduler, persistence, ML, or LLM
+trading-path logic.
 
 ## Local Order-Event Ledger
 

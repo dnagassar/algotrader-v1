@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 277-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 288-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -35,11 +35,13 @@ approved trade and is not submitted. Phase 12 is a no-code design-only pass
 documenting the future Signal -> Risk boundary before any risk integration is
 implemented. Phase 13 hardens the screener-ordered signal evaluation contract
 with focused unit tests only. Phase 14 Step 1 adds test-only dependency
-direction guardrails before any Signal -> Risk runtime code exists.
+direction guardrails before any Signal -> Risk runtime code exists. Phase 14
+Step 2 adds pure Signal -> Risk evaluation that stops at deterministic risk
+verdicts.
 The latest full-suite result is:
 
 ```text
-277 passed, 4 skipped
+288 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -76,8 +78,11 @@ signal/no-signal outputs, input non-mutation, immutable evaluation results, and
 signal-rule exception propagation.
 Dependency-direction guardrail tests now enforce the documented layering between
 screener, signals, risk, orchestration, and execution.
-This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
-LLM trading-path logic.
+The Signal -> Risk layer converts `ScreenerSignalEvaluation` rows into
+`SignalRiskEvaluation` rows, retains no-signal rows with `risk=None`, and checks
+proposed orders with `RiskEngine` only. Risk-approved means allowed by risk; it
+does not mean executed, submitted, or broker-ready. This path does not call
+brokers, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -657,6 +662,46 @@ The full suite is now:
 ```text
 python -m pytest
 277 passed, 4 skipped
+```
+
+## Phase 14 Step 2 Signal to Risk Evaluation
+
+Phase 14 Step 2 adds a pure orchestration-owned Signal -> Risk evaluation layer
+in:
+
+```text
+src/algotrader/orchestration/signal_risk_flow.py
+```
+
+`evaluate_risk_for_screener_signals(...)` converts
+`ScreenerSignalEvaluation` rows into immutable `SignalRiskEvaluation` rows. It
+preserves input order, emits one output row per input row, retains no-signal
+rows with `status="no_signal"` and `risk=None`, and checks proposed orders with
+`RiskEngine` only.
+
+`SignalRiskEvaluation.status` distinguishes:
+
+- `no_signal`
+- `risk_rejected`
+- `risk_approved`
+
+Risk-approved means only that the deterministic risk verdict allowed the
+proposed order. It does not mean executed, submitted, broker-ready, filled, or
+persisted.
+
+This phase also updates dependency-direction guardrails so
+`algotrader.orchestration.signal_risk_flow` cannot import execution,
+trade-flow, broker, or Alpaca modules.
+
+No broker wiring, Alpaca changes, execution integration, order submission,
+`submit_order`, CLI changes, scheduler/runtime behavior, persistence, ML,
+dependency, or LLM trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+288 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
