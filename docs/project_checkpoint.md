@@ -23,8 +23,9 @@ call handling, and conservative report-only tolerances. Phase 7 real-paper
 reconciliation remains explicitly deferred. Phase 8 begins with a deterministic
 offline screener foundation that ranks synthetic `Bar + Quote` inputs by ask
 momentum versus previous close. Phase 9 adds optional deterministic screener
-filters for `min_score` and `top_n` while preserving Phase 8 defaults. The
-latest full-suite result is:
+filters for `min_score` and `top_n` while preserving Phase 8 defaults. Phase 10
+is a no-code design-only pass documenting the future Screener -> Signals bridge.
+The latest full-suite result is:
 
 ```text
 256 passed, 4 skipped
@@ -479,6 +480,35 @@ The full suite is now:
 python -m pytest
 256 passed, 4 skipped
 ```
+
+## Phase 10 Screener to Signals Design
+
+Phase 10 is documentation-only. It adds:
+
+```text
+docs/design/phase10_screener_to_signals.md
+```
+
+The design defines a future orchestration boundary between the deterministic
+screener and deterministic signal generation. It does not implement the bridge
+or add runtime behavior.
+
+The planned dependency direction is:
+
+```text
+orchestration -> screener
+orchestration -> signals
+```
+
+The design pins the rule that screener output may influence which symbols are
+evaluated, their evaluation order, and whether a symbol is skipped due to
+`top_n` or `min_score`. Screener output must not directly influence order side,
+order type, quantity, limit price, broker selection, risk caps, position sizing,
+idempotency keys, or whether `submit_order` is called.
+
+No production code, live data, external API, Alpaca integration, broker wiring,
+order creation, risk integration, scheduler/runtime behavior, ML, dependency, or
+LLM trading-path logic was added.
 
 ## Explicitly Not Included
 

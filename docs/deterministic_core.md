@@ -194,6 +194,11 @@ Phase 9 adds optional deterministic polish filters. `min_score` keeps only
 results with `score >= min_score`, and `top_n` limits the returned tuple after
 ranking and score filtering. Defaults preserve Phase 8 behavior.
 
+Phase 10 documents the future Screener -> Signals bridge as a design-only
+orchestration boundary in
+[`docs/design/phase10_screener_to_signals.md`](design/phase10_screener_to_signals.md).
+No bridge behavior exists yet.
+
 This foundation does not connect to signals, risk checks, execution, Alpaca,
 order creation, or any scheduler/runtime loop.
 
