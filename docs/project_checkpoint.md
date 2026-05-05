@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 273-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 277-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -34,11 +34,12 @@ the original `Bar` and `Quote` objects in immutable ordered pairs. Phase 11 Step
 approved trade and is not submitted. Phase 12 is a no-code design-only pass
 documenting the future Signal -> Risk boundary before any risk integration is
 implemented. Phase 13 hardens the screener-ordered signal evaluation contract
-with focused unit tests only.
+with focused unit tests only. Phase 14 Step 1 adds test-only dependency
+direction guardrails before any Signal -> Risk runtime code exists.
 The latest full-suite result is:
 
 ```text
-273 passed, 4 skipped
+277 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -73,6 +74,8 @@ evaluation. Any signal output is not an approved trade and is not submitted.
 The screener-ordered signal evaluation contract is now covered for mixed
 signal/no-signal outputs, input non-mutation, immutable evaluation results, and
 signal-rule exception propagation.
+Dependency-direction guardrail tests now enforce the documented layering between
+screener, signals, risk, orchestration, and execution.
 This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
 LLM trading-path logic.
 
@@ -625,6 +628,35 @@ The full suite is now:
 ```text
 python -m pytest
 273 passed, 4 skipped
+```
+
+## Phase 14 Step 1 Dependency Direction Guardrails
+
+Phase 14 Step 1 is test-only. It adds AST-based dependency-direction guardrails
+in:
+
+```text
+tests/unit/test_dependency_direction.py
+```
+
+The tests enforce the documented layering between screener, signals, risk,
+orchestration, and execution. Screener modules must not import signals, risk,
+execution, portfolio, or orchestration. Signal modules must not import screener,
+risk, execution, portfolio, or orchestration. Risk modules must not import
+screener, signals, orchestration, or execution, while the existing risk ->
+portfolio relationship remains allowed. The screener-signal orchestration bridge
+must not import execution, broker, Alpaca, or trade-flow modules.
+
+No production Python code changed. No Signal -> Risk runtime behavior, broker
+wiring, Alpaca changes, execution integration, order submission,
+scheduler/runtime behavior, ML, dependency, or LLM trading-path logic was
+added.
+
+The full suite is now:
+
+```text
+python -m pytest
+277 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

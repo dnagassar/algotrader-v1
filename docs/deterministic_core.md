@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `273` tests are passing, with `4` skipped paper-integration tests by default.
+- `277` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -21,6 +21,8 @@ state.
 - Screener-ordered signal evaluation contract tests now cover mixed
   signal/no-signal preservation, input non-mutation, immutable
   `ScreenerSignalEvaluation` results, and signal-rule exception propagation.
+- Dependency-direction guardrails now enforce documented layering between
+  screener, signals, risk, orchestration, and execution.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -261,6 +263,14 @@ propagate instead of being hidden as `order=None`.
 
 No risk, broker, execution, Alpaca, order submission, scheduler, ML, dependency,
 or LLM trading-path logic was added.
+
+Phase 14 Step 1 adds test-only AST dependency-direction guardrails. These tests
+enforce the documented layering between screener, signals, risk, orchestration,
+and execution before any Signal -> Risk runtime code exists.
+
+No Signal -> Risk runtime behavior, broker wiring, Alpaca changes, execution
+integration, order submission, scheduler/runtime behavior, ML, dependency, or
+LLM trading-path logic was added.
 
 ## Local Order-Event Ledger
 
