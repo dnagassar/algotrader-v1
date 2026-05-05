@@ -37,7 +37,8 @@ implemented. Phase 13 hardens the screener-ordered signal evaluation contract
 with focused unit tests only. Phase 14 Step 1 adds test-only dependency
 direction guardrails before any Signal -> Risk runtime code exists. Phase 14
 Step 2 adds pure Signal -> Risk evaluation that stops at deterministic risk
-verdicts.
+verdicts. Phase 15 is a no-code design-only pass documenting the future Risk
+-> Execution boundary before any execution integration is implemented.
 The latest full-suite result is:
 
 ```text
@@ -83,6 +84,8 @@ The Signal -> Risk layer converts `ScreenerSignalEvaluation` rows into
 proposed orders with `RiskEngine` only. Risk-approved means allowed by risk; it
 does not mean executed, submitted, or broker-ready. This path does not call
 brokers, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
+Phase 15 documents the future Risk -> Execution boundary and keeps
+risk-approved rows as permission signals only, not execution instructions.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -703,6 +706,31 @@ The full suite is now:
 python -m pytest
 288 passed, 4 skipped
 ```
+
+## Phase 15 Risk to Execution Boundary Design
+
+Phase 15 is documentation-only. It adds:
+
+```text
+docs/design/phase15_risk_to_execution.md
+```
+
+The design defines the future boundary between deterministic risk-approved
+`SignalRiskEvaluation` rows and any later execution bridge. It pins that
+`risk_approved` means allowed by deterministic risk policy only. It is a
+permission signal, not an execution instruction, and does not mean submitted,
+executed, broker-routed, filled, or persisted.
+
+The design states that a future execution bridge must live in orchestration or
+execution-facing orchestration, may consume only `risk_approved` rows, must
+preserve deterministic order, must skip `no_signal` and `risk_rejected` rows for
+execution eligibility without deleting them from traceability, and must not
+mutate portfolio directly or assume broker success.
+
+No runtime behavior, production Python code, tests, exports, dependencies,
+execution integration, broker wiring, Alpaca changes, order submission,
+scheduler/runtime behavior, persistence, ML, or LLM trading-path logic was
+added.
 
 ## Explicitly Not Included
 

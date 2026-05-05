@@ -25,6 +25,8 @@ state.
   screener, signals, risk, orchestration, and execution.
 - Pure Signal -> Risk evaluation converts `ScreenerSignalEvaluation` rows into
   immutable `SignalRiskEvaluation` rows without execution or submission.
+- Phase 15 documents the future Risk -> Execution boundary while keeping
+  `risk_approved` as a permission signal only.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -289,6 +291,15 @@ retains no-signal rows with `risk=None`, and checks proposed orders with
 Risk-approved means only allowed by risk. The function does not call brokers,
 execution, Alpaca, `submit_order`, CLI, scheduler, persistence, ML, or LLM
 trading-path logic.
+
+Phase 15 documents the future Risk -> Execution boundary in
+[`docs/design/phase15_risk_to_execution.md`](design/phase15_risk_to_execution.md).
+It clarifies that `risk_approved` rows are still not executed, submitted,
+broker-routed, filled, or persisted. A future execution bridge must preserve
+order, keep `no_signal` and `risk_rejected` rows traceable even when they are
+not execution-eligible, and remain separated from broker, Alpaca, scheduler,
+persistence, ML, and LLM trading-path behavior until a later explicitly
+approved phase.
 
 ## Local Order-Event Ledger
 
