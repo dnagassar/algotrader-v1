@@ -7,14 +7,17 @@ state.
 
 ## Current Status
 
-- `264` tests are passing, with `4` skipped paper-integration tests by default.
+- `269` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
 - A pure orchestration-owned Screener -> Signal input bridge preserves screener
   ordering, returns signal-ready `Bar + Quote` pairs, rejects duplicate screener
   result symbols and malformed result/candidate inputs, and preserves original
-  `Bar` and `Quote` objects without invoking signals yet.
+  `Bar` and `Quote` objects.
+- Pure screener-ordered signal evaluation now applies the existing deterministic
+  signal rule to ordered inputs only. Any signal output is not an approved trade
+  and is not submitted.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -44,10 +47,13 @@ Synthetic Bar + Quote candidates
   -> immutable AskMomentumResult tuple
   -> ordered_signal_inputs_from_screener(...)
   -> immutable signal-ready (Bar, Quote) tuple
+  -> evaluate_signals_from_screener(...)
+  -> immutable ScreenerSignalEvaluation tuple
 ```
 
-It does not invoke signals yet if signals would create orders. It does not call
-risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
+This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
+LLM trading-path logic. Any `ProposedOrder` returned by signal evaluation is a
+proposed signal output only, not an approved trade and not a submitted order.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -70,9 +76,11 @@ Bar + Quote
 offline screener ranking
   -> synthetic Bar + Quote inputs only
   -> pure orchestration input bridge
-  -> signal-ready Bar + Quote pairs only
-  -> no signal invocation, order generation, risk, broker, Alpaca, execution,
-     CLI, scheduler, ML, or LLM trading-path logic
+  -> signal-ready Bar + Quote pairs
+  -> pure screener-ordered signal evaluation
+  -> proposed signal outputs only, not approved or submitted trades
+  -> no risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM
+     trading-path logic
 
 signal rule
   -> RiskEngine.check()
@@ -225,9 +233,16 @@ Phase 11 Step 2 hardens the bridge by rejecting duplicate screener result
 symbols, rejecting malformed result/candidate inputs, and preserving the
 original `Bar` and `Quote` objects while returning immutable ordered pairs.
 
-This bridge still does not invoke signals, create orders, call risk, call
-brokers, touch Alpaca, or connect to runtime behavior. It does not call
-execution, CLI, scheduler, ML, or LLM trading-path logic.
+Phase 11 Step 3 adds pure screener-ordered signal evaluation through
+`evaluate_signals_from_screener(...)`. It applies the existing deterministic
+signal rule to the ordered `(Bar, Quote)` inputs and returns immutable
+`ScreenerSignalEvaluation` values in exact screener order. Any `ProposedOrder`
+is a proposed signal output only: it is not an approved trade and is not
+submitted.
+
+This bridge still does not call risk, call brokers, touch Alpaca, connect to
+execution, CLI, scheduler, or runtime behavior, or add ML or LLM trading-path
+logic.
 
 ## Local Order-Event Ledger
 
@@ -272,7 +287,7 @@ Ledger modes:
 - Websocket fills
 - Screener-driven order generation
 - Screener wiring into risk or execution
-- Screener bridge signal invocation that would create orders
+- Approved or submitted trades from screener signal evaluation
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph

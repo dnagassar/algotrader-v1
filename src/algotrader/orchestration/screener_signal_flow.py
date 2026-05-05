@@ -2,15 +2,36 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass
+from decimal import Decimal
 
-from algotrader.core.types import Bar, Quote
+from algotrader.core.types import Bar, ProposedOrder, Quote
 from algotrader.errors import ValidationError
 from algotrader.screener import AskMomentumCandidate, AskMomentumResult
+from algotrader.signals.simple_rule import generate_momentum_buy_order
 
 SignalInput = tuple[Bar, Quote]
+SignalRule = Callable[
+    [Bar, Quote, Decimal | str, Decimal | str],
+    ProposedOrder | None,
+]
 
-__all__ = ["SignalInput", "ordered_signal_inputs_from_screener"]
+__all__ = [
+    "ScreenerSignalEvaluation",
+    "SignalInput",
+    "SignalRule",
+    "evaluate_signals_from_screener",
+    "ordered_signal_inputs_from_screener",
+]
+
+
+@dataclass(frozen=True, slots=True)
+class ScreenerSignalEvaluation:
+    symbol: str
+    previous_bar: Bar
+    quote: Quote
+    order: ProposedOrder | None
 
 
 def ordered_signal_inputs_from_screener(
@@ -34,6 +55,37 @@ def ordered_signal_inputs_from_screener(
         signal_inputs.append((candidate.previous_bar, candidate.quote))
 
     return tuple(signal_inputs)
+
+
+def evaluate_signals_from_screener(
+    results: Iterable[AskMomentumResult],
+    candidates: Iterable[AskMomentumCandidate] | Mapping[str, AskMomentumCandidate],
+    threshold: Decimal | str = Decimal("0.01"),
+    quantity: Decimal | str = Decimal("1"),
+    signal_rule: SignalRule = generate_momentum_buy_order,
+) -> tuple[ScreenerSignalEvaluation, ...]:
+    """Evaluate pure signal outputs in screener order without trade execution.
+
+    Returned ``ProposedOrder`` values are proposed signal outputs only. They are
+    not risk-approved, submitted, or executed.
+    """
+
+    evaluations: list[ScreenerSignalEvaluation] = []
+    for previous_bar, quote in ordered_signal_inputs_from_screener(
+        results,
+        candidates,
+    ):
+        order = signal_rule(previous_bar, quote, threshold, quantity)
+        evaluations.append(
+            ScreenerSignalEvaluation(
+                symbol=quote.symbol,
+                previous_bar=previous_bar,
+                quote=quote,
+                order=order,
+            )
+        )
+
+    return tuple(evaluations)
 
 
 def _validated_results(

@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 264-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 269-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -29,11 +29,13 @@ Phase 11 begins that bridge with a pure orchestration-owned adapter that
 preserves screener ordering and returns signal-ready `Bar + Quote` pairs without
 invoking signals yet. Phase 11 Step 2 hardens the bridge by rejecting duplicate
 screener result symbols and malformed result/candidate inputs while preserving
-the original `Bar` and `Quote` objects in immutable ordered pairs.
+the original `Bar` and `Quote` objects in immutable ordered pairs. Phase 11 Step
+3 adds pure screener-ordered signal evaluation only; any signal output is not an
+approved trade and is not submitted.
 The latest full-suite result is:
 
 ```text
-264 passed, 4 skipped
+269 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -63,8 +65,10 @@ reconciliation, and structured broker results.
 The screener bridge prepares signal-ready inputs only. It does not invoke
 signals yet if signals would create orders. It rejects duplicate screener
 result symbols and malformed result/candidate inputs, preserves the original
-`Bar` and `Quote` objects, and does not call risk, broker, Alpaca, execution,
-CLI, scheduler, ML, or LLM trading-path logic.
+`Bar` and `Quote` objects, and now supports pure screener-ordered signal
+evaluation. Any signal output is not an approved trade and is not submitted.
+This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
+LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -539,16 +543,22 @@ result symbols so a future signal path cannot silently evaluate the same symbol
 twice. It also rejects malformed result/candidate inputs and preserves the
 original `Bar` and `Quote` objects while returning immutable ordered pairs.
 
-This phase still does not invoke signals, create orders, call risk, call
-brokers, touch Alpaca, or connect to runtime behavior. It does not call
-execution, CLI, scheduler, ML, or LLM trading-path logic. No dependencies were
-added.
+Phase 11 Step 3 adds pure screener-ordered signal evaluation through
+`evaluate_signals_from_screener(...)`. It applies the existing deterministic
+signal rule to the ordered `(Bar, Quote)` inputs and returns immutable
+`ScreenerSignalEvaluation` values in exact screener order. A returned
+`ProposedOrder` is a proposed signal output only: it is not an approved trade
+and is not submitted.
+
+This phase still does not call risk, call brokers, touch Alpaca, connect to
+execution, CLI, scheduler, or runtime behavior, or add ML or LLM trading-path
+logic. No dependencies were added.
 
 The full suite is now:
 
 ```text
 python -m pytest
-264 passed, 4 skipped
+269 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
