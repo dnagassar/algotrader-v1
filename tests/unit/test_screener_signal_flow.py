@@ -1,3 +1,4 @@
+from dataclasses import FrozenInstanceError
 from datetime import datetime, timezone
 from decimal import Decimal
 
@@ -145,6 +146,30 @@ def test_evaluate_signals_from_screener_preserves_screener_order() -> None:
     assert all(evaluation.order.order_type == OrderType.MARKET for evaluation in evaluations)
 
 
+def test_evaluate_signals_from_screener_preserves_mixed_signal_order() -> None:
+    candidates = (
+        AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+        AskMomentumCandidate(bar("AAPL", "50"), quote("AAPL", "50.50")),
+        AskMomentumCandidate(bar("TSLA", "200"), quote("TSLA", "220")),
+    )
+    results = (
+        AskMomentumResult("TSLA", Decimal("0.10"), Decimal("200"), Decimal("220")),
+        AskMomentumResult("AAPL", Decimal("0.01"), Decimal("50"), Decimal("50.50")),
+        AskMomentumResult("MSFT", Decimal("0.05"), Decimal("100"), Decimal("105")),
+    )
+
+    evaluations = evaluate_signals_from_screener(results, candidates)
+
+    assert [evaluation.symbol for evaluation in evaluations] == [
+        "TSLA",
+        "AAPL",
+        "MSFT",
+    ]
+    assert evaluations[0].order is not None
+    assert evaluations[1].order is None
+    assert evaluations[2].order is not None
+
+
 def test_evaluate_signals_from_screener_returns_empty_tuple_for_empty_results() -> None:
     candidates = (
         AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
@@ -171,6 +196,72 @@ def test_evaluate_signals_from_screener_keeps_no_signal_symbols() -> None:
             order=None,
         ),
     )
+
+
+def test_evaluate_signals_from_screener_does_not_mutate_inputs() -> None:
+    msft_bar = bar("MSFT", "100")
+    msft_quote = quote("MSFT", "105")
+    aapl_bar = bar("AAPL", "50")
+    aapl_quote = quote("AAPL", "50.50")
+    candidates = (
+        AskMomentumCandidate(msft_bar, msft_quote),
+        AskMomentumCandidate(aapl_bar, aapl_quote),
+    )
+    results = (
+        AskMomentumResult("MSFT", Decimal("0.05"), Decimal("100"), Decimal("105")),
+        AskMomentumResult("AAPL", Decimal("0.01"), Decimal("50"), Decimal("50.50")),
+    )
+    candidate_snapshot = tuple(candidates)
+    result_snapshot = tuple(results)
+
+    evaluations = evaluate_signals_from_screener(results, candidates)
+
+    assert candidates == candidate_snapshot
+    assert results == result_snapshot
+    assert candidates[0].previous_bar is msft_bar
+    assert candidates[0].quote is msft_quote
+    assert candidates[1].previous_bar is aapl_bar
+    assert candidates[1].quote is aapl_quote
+    assert evaluations[0].previous_bar is msft_bar
+    assert evaluations[0].quote is msft_quote
+    assert evaluations[1].previous_bar is aapl_bar
+    assert evaluations[1].quote is aapl_quote
+
+
+def test_screener_signal_evaluation_is_frozen() -> None:
+    evaluation = ScreenerSignalEvaluation(
+        symbol="MSFT",
+        previous_bar=bar("MSFT", "100"),
+        quote=quote("MSFT", "105"),
+        order=None,
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        evaluation.symbol = "AAPL"
+
+
+def test_evaluate_signals_from_screener_propagates_signal_rule_exceptions() -> None:
+    def signal_rule(
+        previous_bar: Bar,
+        current_quote: Quote,
+        threshold: Decimal | str,
+        quantity: Decimal | str,
+    ) -> ProposedOrder | None:
+        raise RuntimeError(f"deliberate signal failure for {current_quote.symbol}")
+
+    candidates = (
+        AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+    )
+    results = (
+        AskMomentumResult("MSFT", Decimal("0.05"), Decimal("100"), Decimal("105")),
+    )
+
+    with pytest.raises(RuntimeError, match="deliberate signal failure for MSFT"):
+        evaluate_signals_from_screener(
+            results,
+            candidates,
+            signal_rule=signal_rule,
+        )
 
 
 def test_evaluate_signals_from_screener_applies_bridge_validation() -> None:

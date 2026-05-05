@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 269-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 273-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -33,11 +33,12 @@ the original `Bar` and `Quote` objects in immutable ordered pairs. Phase 11 Step
 3 adds pure screener-ordered signal evaluation only; any signal output is not an
 approved trade and is not submitted. Phase 12 is a no-code design-only pass
 documenting the future Signal -> Risk boundary before any risk integration is
-implemented.
+implemented. Phase 13 hardens the screener-ordered signal evaluation contract
+with focused unit tests only.
 The latest full-suite result is:
 
 ```text
-269 passed, 4 skipped
+273 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -69,6 +70,9 @@ signals yet if signals would create orders. It rejects duplicate screener
 result symbols and malformed result/candidate inputs, preserves the original
 `Bar` and `Quote` objects, and now supports pure screener-ordered signal
 evaluation. Any signal output is not an approved trade and is not submitted.
+The screener-ordered signal evaluation contract is now covered for mixed
+signal/no-signal outputs, input non-mutation, immutable evaluation results, and
+signal-rule exception propagation.
 This path does not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or
 LLM trading-path logic.
 
@@ -593,6 +597,35 @@ directly into `LocalBroker.submit_order(...)`,
 No runtime behavior, production Python code, tests, Alpaca changes, broker
 wiring, order submission, execution integration, scheduler/runtime behavior,
 ML, dependency, or LLM trading-path logic was added.
+
+## Phase 13 Screener-Ordered Signal Evaluation Contract Hardening
+
+Phase 13 is test-focused. It hardens the existing
+`evaluate_signals_from_screener(...)` contract with additional unit coverage in:
+
+```text
+tests/unit/test_screener_signal_flow.py
+```
+
+The new tests pin these behaviors:
+
+- mixed signal/no-signal results preserve exact screener order
+- no-signal candidates remain represented with `order=None`
+- input candidates and screener results are not mutated
+- original `Bar` and `Quote` object identities are preserved
+- `ScreenerSignalEvaluation` is frozen/immutable
+- `signal_rule` exceptions propagate instead of being hidden as `order=None`
+
+No production Python code changed. No risk integration, broker wiring, Alpaca
+changes, order submission, execution integration, scheduler/runtime behavior,
+ML, dependency, or LLM trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+273 passed, 4 skipped
+```
 
 ## Explicitly Not Included
 

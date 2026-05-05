@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `269` tests are passing, with `4` skipped paper-integration tests by default.
+- `273` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -18,6 +18,9 @@ state.
 - Pure screener-ordered signal evaluation now applies the existing deterministic
   signal rule to ordered inputs only. Any signal output is not an approved trade
   and is not submitted.
+- Screener-ordered signal evaluation contract tests now cover mixed
+  signal/no-signal preservation, input non-mutation, immutable
+  `ScreenerSignalEvaluation` results, and signal-rule exception propagation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -249,6 +252,15 @@ orchestration contract in
 [`docs/design/phase12_signal_to_risk.md`](design/phase12_signal_to_risk.md).
 It does not implement risk integration, approve orders, submit orders, or add
 runtime behavior.
+
+Phase 13 hardens the screener-ordered signal evaluation contract with focused
+unit tests only. Mixed signal/no-signal results preserve screener order,
+no-signal candidates remain represented with `order=None`, inputs are not
+mutated, `ScreenerSignalEvaluation` is immutable, and `signal_rule` exceptions
+propagate instead of being hidden as `order=None`.
+
+No risk, broker, execution, Alpaca, order submission, scheduler, ML, dependency,
+or LLM trading-path logic was added.
 
 ## Local Order-Event Ledger
 
