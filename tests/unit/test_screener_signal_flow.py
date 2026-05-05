@@ -76,3 +76,38 @@ def test_ordered_signal_inputs_reject_duplicate_candidate_symbols() -> None:
 
     with pytest.raises(ValidationError, match="duplicate AskMomentumCandidate.*MSFT"):
         ordered_signal_inputs_from_screener(results, candidates)
+
+
+def test_ordered_signal_inputs_reject_duplicate_result_symbols() -> None:
+    candidates = (
+        AskMomentumCandidate(bar("MSFT", "100"), quote("MSFT", "105")),
+    )
+    results = (
+        AskMomentumResult("MSFT", Decimal("0.05"), Decimal("100"), Decimal("105")),
+        AskMomentumResult("MSFT", Decimal("0.04"), Decimal("100"), Decimal("104")),
+    )
+
+    with pytest.raises(ValidationError, match="duplicate AskMomentumResult.*MSFT"):
+        ordered_signal_inputs_from_screener(results, candidates)
+
+
+def test_ordered_signal_inputs_reject_invalid_result_items_clearly() -> None:
+    with pytest.raises(ValidationError, match="results.*AskMomentumResult"):
+        ordered_signal_inputs_from_screener((object(),), ())
+
+
+def test_ordered_signal_inputs_reject_invalid_candidate_items_clearly() -> None:
+    with pytest.raises(ValidationError, match="candidates.*AskMomentumCandidate"):
+        ordered_signal_inputs_from_screener((), (object(),))
+
+
+def test_ordered_signal_inputs_preserve_original_bar_and_quote_objects() -> None:
+    previous_bar = bar("MSFT", "100")
+    current_quote = quote("MSFT", "105")
+    candidates = (AskMomentumCandidate(previous_bar, current_quote),)
+    results = (AskMomentumResult("MSFT", Decimal("0.05"), Decimal("100"), Decimal("105")),)
+
+    signal_inputs = ordered_signal_inputs_from_screener(results, candidates)
+
+    assert signal_inputs[0][0] is previous_bar
+    assert signal_inputs[0][1] is current_quote

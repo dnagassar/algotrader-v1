@@ -7,13 +7,14 @@ state.
 
 ## Current Status
 
-- `260` tests are passing, with `4` skipped paper-integration tests by default.
+- `264` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
 - A pure orchestration-owned Screener -> Signal input bridge preserves screener
-  ordering and returns signal-ready `Bar + Quote` pairs without invoking signals
-  yet.
+  ordering, returns signal-ready `Bar + Quote` pairs, rejects duplicate screener
+  result symbols and malformed result/candidate inputs, and preserves original
+  `Bar` and `Quote` objects without invoking signals yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -47,6 +48,8 @@ Synthetic Bar + Quote candidates
 
 It does not invoke signals yet if signals would create orders. It does not call
 risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
+The bridge also rejects duplicate screener result symbols and malformed
+result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
 The current trading path remains:
 
@@ -218,9 +221,13 @@ matches by symbol, rejects missing or duplicate candidate symbols with
 `ValidationError`, and returns an immutable tuple of signal-ready `(Bar, Quote)`
 pairs in the exact screener-result order.
 
-This bridge does not invoke signals yet if signals would create orders. It does
-not call risk, broker, Alpaca, execution, CLI, scheduler, ML, or LLM
-trading-path logic.
+Phase 11 Step 2 hardens the bridge by rejecting duplicate screener result
+symbols, rejecting malformed result/candidate inputs, and preserving the
+original `Bar` and `Quote` objects while returning immutable ordered pairs.
+
+This bridge still does not invoke signals, create orders, call risk, call
+brokers, touch Alpaca, or connect to runtime behavior. It does not call
+execution, CLI, scheduler, ML, or LLM trading-path logic.
 
 ## Local Order-Event Ledger
 
