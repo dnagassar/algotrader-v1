@@ -351,11 +351,13 @@ def test_execution_intent_builder_does_not_resolve_same_symbol_conflicts() -> No
     assert intents[1].source_evaluation is approved_second
 
 
-def test_execution_intent_has_only_source_evaluation_field() -> None:
-    field_names = {field.name for field in fields(ExecutionIntent)}
+def test_execution_intent_has_exactly_one_source_evaluation_field() -> None:
+    intent_fields = fields(ExecutionIntent)
+    field_names = tuple(field.name for field in intent_fields)
 
-    assert field_names == {"source_evaluation"}
-    assert field_names.isdisjoint(
+    assert field_names == ("source_evaluation",)
+    assert len(intent_fields) == 1
+    assert set(field_names).isdisjoint(
         {
             "account_id",
             "broker",
@@ -364,11 +366,59 @@ def test_execution_intent_has_only_source_evaluation_field() -> None:
             "fill",
             "filled_at",
             "idempotency_key",
+            "order",
             "persisted_at",
+            "quantity",
+            "risk",
+            "side",
+            "status",
             "submitted_at",
+            "symbol",
             "venue",
         }
     )
+
+
+def test_execution_intent_traceability_flows_through_source_evaluation_only() -> None:
+    approved = risk_approved("MSFT")
+
+    (intent,) = build_execution_intents_from_risk_approved((approved,))
+
+    assert intent.source_evaluation is approved
+    assert intent.source_evaluation.order is approved.order
+    assert intent.source_evaluation.risk is approved.risk
+    assert intent.source_evaluation.status == "risk_approved"
+
+
+def test_execution_intent_has_no_convenience_order_risk_or_status_attributes() -> None:
+    intent = ExecutionIntent(source_evaluation=risk_approved("MSFT"))
+
+    assert not hasattr(intent, "order")
+    assert not hasattr(intent, "risk")
+    assert not hasattr(intent, "status")
+    assert not hasattr(intent, "symbol")
+    assert not hasattr(intent, "quantity")
+    assert not hasattr(intent, "side")
+
+
+def test_execution_intent_has_no_broker_submission_fill_or_sdk_attributes() -> None:
+    intent = ExecutionIntent(source_evaluation=risk_approved("MSFT"))
+
+    assert not hasattr(intent, "account_id")
+    assert not hasattr(intent, "alpaca_order")
+    assert not hasattr(intent, "broker")
+    assert not hasattr(intent, "broker_name")
+    assert not hasattr(intent, "broker_order_id")
+    assert not hasattr(intent, "client_order_id")
+    assert not hasattr(intent, "filled_at")
+    assert not hasattr(intent, "fill_price")
+    assert not hasattr(intent, "fill_quantity")
+    assert not hasattr(intent, "idempotency_key")
+    assert not hasattr(intent, "native_order")
+    assert not hasattr(intent, "persisted_at")
+    assert not hasattr(intent, "sdk_order")
+    assert not hasattr(intent, "submitted_at")
+    assert not hasattr(intent, "venue")
 
 
 def test_selector_uses_no_trading_path_or_order_submission_logic() -> None:
@@ -394,10 +444,15 @@ _FORBIDDEN_MODULE_PREFIXES = (
     "algotrader.execution",
     "algotrader.orchestration.trade_flow",
     "algotrader.orchestration.signal_trade_flow",
+    "algotrader.broker",
+    "algotrader.brokers",
     "alpaca",
     "alpaca_trade_api",
+    "algotrader.runtime",
     "algotrader.scheduler",
     "algotrader.persistence",
+    "algotrader.llm",
+    "algotrader.llms",
     "algotrader.ml",
     "openai",
     "anthropic",
@@ -418,7 +473,11 @@ _FORBIDDEN_TRADING_PATH_NAMES = {
     "execute",
     "execution",
     "idempotency_key",
+    "langchain",
+    "langgraph",
+    "llm",
     "ml",
+    "order_id",
     "persist",
     "persistence",
     "scheduler",

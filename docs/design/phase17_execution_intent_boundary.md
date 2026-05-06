@@ -6,7 +6,8 @@ Phase 17 defines the internal execution-intent boundary after risk-approved row
 selection and before any execution layer, broker adapter, scheduler,
 persistence path, or live trading behavior. Step 1 documented the boundary with
 no code changes. Step 2 adds the smallest internal deterministic contract for
-that boundary.
+that boundary. Step 3 hardens source-only traceability with tests and docs
+without changing production code.
 
 The current deterministic pre-execution pipeline is:
 
@@ -28,7 +29,7 @@ broker events, scheduler actions, runtime actions, or live trading decisions.
 Phase 17 Step 2 adds a minimal internal `ExecutionIntent` wrapper for selected
 risk-approved rows. An `ExecutionIntent` remains pre-submission and
 broker-agnostic. It only preserves the source `SignalRiskEvaluation` by
-identity.
+identity. Phase 17 Step 3 keeps that shape unchanged.
 
 A separate execution-intent boundary is needed because risk approval answers
 only one question: did deterministic risk policy allow the proposed order? The
@@ -57,6 +58,8 @@ Phase 17 Step 2 does not add:
 - ML
 - LLM trading-path logic
 - `ExecutionIntent` fields beyond `source_evaluation`
+- convenience `ExecutionIntent` properties for order, risk, symbol, status,
+  side, or quantity
 
 ## Current Step 2 Boundary
 
@@ -141,6 +144,13 @@ audit envelopes are needed, they should be designed explicitly in a later
 phase. Current `SignalRiskEvaluation` does not carry screener rank or original
 index, so future traceability must not assume those values are already present.
 
+Phase 17 Step 3 hardens this rule: proposed order, risk verdict, and status are
+reachable through `intent.source_evaluation.order`,
+`intent.source_evaluation.risk`, and `intent.source_evaluation.status`.
+Convenience fields or properties such as `intent.order`, `intent.risk`,
+`intent.symbol`, or `intent.status` should not be added without a later explicit
+design phase.
+
 ## Batch-Level Concerns
 
 The future execution-intent boundary must account for unresolved batch-level
@@ -154,7 +164,7 @@ concerns before any order submission behavior exists:
 - execution ordering policy has not been finalized
 - persistence/audit logging strategy has not been implemented
 
-These concerns remain future work. Phase 17 Step 2 does not solve them.
+These concerns remain future work. Phase 17 Steps 2 and 3 do not solve them.
 
 ## Dependency Direction
 
@@ -198,9 +208,25 @@ contract covers:
 - no persistence is added
 - deterministic idempotency policy is absent rather than implicit
 
+## Step 3 Traceability Hardening
+
+Phase 17 Step 3 adds tests and documentation only. It hardens that:
+
+- `ExecutionIntent` has exactly one dataclass field: `source_evaluation`
+- traceability flows through the exact source `SignalRiskEvaluation` object
+- proposed order, risk verdict, and status remain reachable through the source
+  evaluation
+- no convenience order/risk/status/symbol/quantity/side attributes exist on the
+  intent
+- no broker IDs, broker names, account IDs, venue fields, Alpaca-specific
+  fields, SDK/native objects, submission fields, fill fields, persistence
+  fields, `client_order_id`, or idempotency keys exist on the intent
+- the builder remains pure, approved-row-only, order-preserving, and free of
+  same-symbol conflict resolution or batch-level affordability checks
+
 ## Explicit Exclusions
 
-Phase 17 Step 2 explicitly excludes:
+Phase 17 Steps 2 and 3 explicitly exclude:
 
 - no paper order submission
 - no live order submission

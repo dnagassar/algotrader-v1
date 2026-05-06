@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 318-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 321-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -48,11 +48,13 @@ selection. No runtime behavior changed, and risk-approved rows remain
 permission signals only. Phase 17 Step 2 adds a minimal internal
 `ExecutionIntent` contract and pure builder that wrap risk-approved source rows
 by identity before any broker, execution adapter, scheduler, persistence, or
-live trading behavior.
+live trading behavior. Phase 17 Step 3 hardens execution-intent traceability
+with tests and documentation only; `ExecutionIntent` remains source-only,
+pre-submission, and not executable by itself.
 The latest full-suite result is:
 
 ```text
-318 passed, 4 skipped
+321 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -107,7 +109,9 @@ minimal internal `ExecutionIntent` wrapper and
 pre-submission and broker-agnostic, preserving the source
 `SignalRiskEvaluation` by identity. No broker path, order submission,
 client-order-id generation, idempotency, runtime behavior, persistence, ML, or
-LLM trading-path logic was added.
+LLM trading-path logic was added. Phase 17 Step 3 keeps the implementation
+unchanged and hardens the contract that proposed orders, risk verdicts, and
+status remain reachable only through `intent.source_evaluation`.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -880,6 +884,43 @@ The full suite is now:
 ```text
 python -m pytest
 318 passed, 4 skipped
+```
+
+## Phase 17 Step 3 ExecutionIntent Traceability Hardening
+
+Phase 17 Step 3 is tests and documentation only. It hardens the
+`ExecutionIntent` contract without changing production Python code.
+
+`ExecutionIntent` remains an immutable, slotted, pre-submission internal object
+with exactly one dataclass field: `source_evaluation`. Traceability flows
+through that source `SignalRiskEvaluation` by identity. The proposed order,
+risk verdict, and status remain reachable through
+`intent.source_evaluation.order`, `intent.source_evaluation.risk`, and
+`intent.source_evaluation.status`; no convenience fields or properties such as
+`intent.order`, `intent.risk`, `intent.symbol`, or `intent.status` were added.
+
+Additional tests pin that no broker IDs, broker names, account IDs,
+client-order IDs, idempotency keys, venue fields, submission timestamps, fill
+fields, Alpaca-specific fields, SDK/native objects, or persistence metadata are
+exposed on `ExecutionIntent`.
+
+The builder remains a pure approved-row intent builder. It still skips
+`no_signal` and `risk_rejected` rows, preserves approved-row order, preserves
+same-symbol approved rows without conflict resolution, performs no batch-level
+cash reservation or collective affordability check, mutates no inputs, and
+requires no portfolio, risk engine, broker, execution object, scheduler, or
+persistence handle.
+
+No broker routing, paper or live order submission, Alpaca changes,
+`submit_order`, scheduler/runtime behavior, persistence writes, idempotency,
+client-order-id generation, batch cash reservation, same-symbol conflict
+resolution, portfolio mutation, fills, ML, or LLM trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+321 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

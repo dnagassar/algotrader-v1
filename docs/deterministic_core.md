@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `318` tests are passing, with `4` skipped paper-integration tests by default.
+- `321` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -36,6 +36,8 @@ state.
   risk-approved row selection.
 - Phase 17 Step 2 adds a minimal internal `ExecutionIntent` contract and pure
   builder that wrap approved source rows by identity without submission.
+- Phase 17 Step 3 hardens `ExecutionIntent` traceability with tests and docs
+  only; the object remains source-only and pre-submission.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -84,10 +86,13 @@ Risk-approved means allowed by risk, not executed, submitted, or broker-ready.
 The risk-approved selector keeps only those permission rows in order. Phase 17
 Step 2 can wrap approved rows in internal `ExecutionIntent` objects, but those
 intents remain pre-submission and broker-agnostic. They preserve the source
-`SignalRiskEvaluation` by identity and do not call brokers, route orders,
-submit orders, reserve batch cash, resolve same-symbol conflicts, use
-schedulers, persist anything, mutate portfolios, or add ML or LLM trading-path
-logic.
+`SignalRiskEvaluation` by identity. Phase 17 Step 3 hardens that traceability:
+the proposed order, risk verdict, and status are reachable through
+`intent.source_evaluation.order`, `intent.source_evaluation.risk`, and
+`intent.source_evaluation.status`, not through convenience fields on the
+intent. Intents do not call brokers, route orders, submit orders, reserve batch
+cash, resolve same-symbol conflicts, use schedulers, persist anything, mutate
+portfolios, or add ML or LLM trading-path logic.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -366,6 +371,13 @@ No broker routing, order submission, Alpaca change, `submit_order`,
 client-order-id generation, idempotency implementation, batch cash reservation,
 same-symbol conflict resolution, scheduler/runtime behavior, persistence,
 portfolio mutation, fills, ML, or LLM trading-path logic has been added.
+
+Phase 17 Step 3 hardens the traceability contract without production-code
+changes. `ExecutionIntent` still has exactly one dataclass field,
+`source_evaluation`; it does not expose direct `order`, `risk`, `status`,
+`symbol`, `quantity`, `side`, broker, account, venue, idempotency, submission,
+fill, SDK, Alpaca, or persistence fields. Convenience properties should not be
+added without a later explicit design phase.
 
 ## Local Order-Event Ledger
 
