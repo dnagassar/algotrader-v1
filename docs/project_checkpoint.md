@@ -50,7 +50,9 @@ permission signals only. Phase 17 Step 2 adds a minimal internal
 by identity before any broker, execution adapter, scheduler, persistence, or
 live trading behavior. Phase 17 Step 3 hardens execution-intent traceability
 with tests and documentation only; `ExecutionIntent` remains source-only,
-pre-submission, and not executable by itself.
+pre-submission, and not executable by itself. Phase 18 Step 1 is a no-code
+execution-planning boundary design phase after `ExecutionIntent` construction.
+Execution planning is conceptual only and no runtime behavior changed.
 The latest full-suite result is:
 
 ```text
@@ -111,7 +113,11 @@ pre-submission and broker-agnostic, preserving the source
 client-order-id generation, idempotency, runtime behavior, persistence, ML, or
 LLM trading-path logic was added. Phase 17 Step 3 keeps the implementation
 unchanged and hardens the contract that proposed orders, risk verdicts, and
-status remain reachable only through `intent.source_evaluation`.
+status remain reachable only through `intent.source_evaluation`. Phase 18 Step
+1 documents a future execution-planning boundary as a deterministic
+batch-level, pre-broker concept. No `ExecutionPlan`, execution-planning
+function, broker routing, idempotency, persistence, order submission, or runtime
+behavior has been implemented.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -923,6 +929,48 @@ python -m pytest
 321 passed, 4 skipped
 ```
 
+## Phase 18 Step 1 Execution-Planning Boundary Design
+
+Phase 18 Step 1 started and completed as a documentation-only design phase. It
+adds:
+
+```text
+docs/design/phase18_execution_planning_boundary.md
+```
+
+The design defines the future execution-planning boundary after
+`build_execution_intents_from_risk_approved(...)` and before any broker adapter,
+broker-facing request construction, order submission, persistence write,
+scheduler/runtime behavior, or live trading behavior.
+
+`ExecutionIntent` remains source-only and pre-submission. It still has exactly
+one dataclass field, `source_evaluation`, and proposed orders, risk verdicts,
+and status remain reachable only through that source evaluation. A future
+`ExecutionPlan` is described only conceptually as a deterministic batch-level
+artifact that may later consume `ExecutionIntent` objects and produce a
+pre-broker decision set.
+
+This phase documents unresolved batch-level concerns for later work, including
+collective affordability, cash or buying-power reservation, same-symbol
+conflicts, duplicate or competing orders, ordering policy, partial acceptance
+versus all-or-nothing policy, stale quote or risk snapshots, changed portfolio
+snapshots, and future idempotency or `client_order_id` design. None of those
+policies were implemented.
+
+No production Python code, imports, tests, broker routing, Alpaca changes,
+`submit_order`, order submission, idempotency implementation,
+client-order-id generation, batch cash reservation, same-symbol conflict
+resolution, persistence writes, audit logging writes, scheduler/runtime
+behavior, portfolio mutation, fills, reconciliation changes, ML, or LLM
+trading-path logic was added.
+
+The full-suite checkpoint remains:
+
+```text
+python -m pytest
+321 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -934,9 +982,17 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
+- `ExecutionPlan` implementation
+- execution-planning function
 - execution-intent broker routing or adapter integration
+- broker-facing request construction
+- order submission
+- client-order-id generation
+- idempotency implementation
 - batch-level cumulative cash enforcement
 - same-symbol execution conflict handling
+- persistence writes
+- audit logging writes
 - LangGraph
 - ML
 - LLM trading-path logic
@@ -950,6 +1006,8 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
+- test-first implementation of a pure execution-planning object/function, if
+  explicitly approved
 - future design for batch-level cash and same-symbol handling before execution
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage

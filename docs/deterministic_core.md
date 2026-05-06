@@ -38,6 +38,8 @@ state.
   builder that wrap approved source rows by identity without submission.
 - Phase 17 Step 3 hardens `ExecutionIntent` traceability with tests and docs
   only; the object remains source-only and pre-submission.
+- Phase 18 Step 1 documents the future execution-planning boundary after
+  `ExecutionIntent` construction; no `ExecutionPlan` has been implemented.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -77,6 +79,14 @@ Synthetic Bar + Quote candidates
   -> immutable ExecutionIntent tuple
 ```
 
+The next conceptual boundary, not implemented yet, is:
+
+```text
+immutable ExecutionIntent tuple
+  -> future execution planning
+  -> future broker adapter / execution layer
+```
+
 The screener-to-signal segment does not call risk, broker, Alpaca, execution,
 CLI, scheduler, ML, or LLM trading-path logic. Any `ProposedOrder` returned by
 signal evaluation is a proposed signal output only. The Signal -> Risk layer
@@ -93,6 +103,11 @@ the proposed order, risk verdict, and status are reachable through
 intent. Intents do not call brokers, route orders, submit orders, reserve batch
 cash, resolve same-symbol conflicts, use schedulers, persist anything, mutate
 portfolios, or add ML or LLM trading-path logic.
+Phase 18 Step 1 documents the future execution-planning boundary after those
+intents. A future `ExecutionPlan` would be a deterministic batch-level,
+pre-broker artifact, but no `ExecutionPlan`, execution-planning function,
+broker routing, idempotency, persistence, or order submission has been
+implemented.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -379,6 +394,18 @@ changes. `ExecutionIntent` still has exactly one dataclass field,
 fill, SDK, Alpaca, or persistence fields. Convenience properties should not be
 added without a later explicit design phase.
 
+Phase 18 Step 1 documents the future execution-planning boundary in
+[`docs/design/phase18_execution_planning_boundary.md`](design/phase18_execution_planning_boundary.md).
+It distinguishes the current `ExecutionIntent` from a future `ExecutionPlan`.
+`ExecutionIntent` is an internal pre-submission source wrapper; a future
+`ExecutionPlan` may be a deterministic batch-level decision artifact that
+consumes intents and produces a pre-broker decision set. No `ExecutionPlan`,
+execution-planning function, broker routing, order submission,
+`client_order_id` generation, idempotency implementation, persistence writes,
+batch cash reservation, same-symbol conflict resolution, scheduler/runtime
+behavior, portfolio mutation, fills, ML, or LLM trading-path logic has been
+added.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -423,9 +450,17 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
+- ExecutionPlan implementation
+- Execution-planning function
 - Execution-intent broker routing or adapter integration
+- Broker-facing request construction
+- Order submission
+- Client order ID generation
+- Idempotency implementation
 - Batch-level cumulative cash enforcement
 - Same-symbol execution conflict handling
+- Persistence writes
+- Audit logging writes
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph
@@ -436,9 +471,10 @@ Ledger modes:
 ## Next Recommended Phase
 
 The next phase should keep any execution-boundary work pure and synthetic unless
-explicitly approved otherwise. Safe follow-up work could design batch-level cash
-and same-symbol handling before any broker wiring, order submission, scheduler,
-persistence, ML, or LLM trading-path logic exists.
+explicitly approved otherwise. Safe follow-up work could implement a pure
+execution-planning object/function test-first, or further design batch-level
+cash and same-symbol handling before any broker wiring, order submission,
+scheduler, persistence, ML, or LLM trading-path logic exists.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
