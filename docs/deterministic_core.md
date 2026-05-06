@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `321` tests are passing, with `4` skipped paper-integration tests by default.
+- `341` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -39,7 +39,9 @@ state.
 - Phase 17 Step 3 hardens `ExecutionIntent` traceability with tests and docs
   only; the object remains source-only and pre-submission.
 - Phase 18 Step 1 documents the future execution-planning boundary after
-  `ExecutionIntent` construction; no `ExecutionPlan` has been implemented.
+  `ExecutionIntent` construction before implementation.
+- Phase 18 Step 2 adds a minimal immutable `ExecutionPlan` batch container and
+  pure builder; no execution-planning policy or broker behavior has been added.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -77,13 +79,8 @@ Synthetic Bar + Quote candidates
   -> immutable risk-approved SignalRiskEvaluation tuple
   -> build_execution_intents_from_risk_approved(...)
   -> immutable ExecutionIntent tuple
-```
-
-The next conceptual boundary, not implemented yet, is:
-
-```text
-immutable ExecutionIntent tuple
-  -> future execution planning
+  -> build_execution_plan(...)
+  -> immutable ExecutionPlan
   -> future broker adapter / execution layer
 ```
 
@@ -104,10 +101,12 @@ intent. Intents do not call brokers, route orders, submit orders, reserve batch
 cash, resolve same-symbol conflicts, use schedulers, persist anything, mutate
 portfolios, or add ML or LLM trading-path logic.
 Phase 18 Step 1 documents the future execution-planning boundary after those
-intents. A future `ExecutionPlan` would be a deterministic batch-level,
-pre-broker artifact, but no `ExecutionPlan`, execution-planning function,
-broker routing, idempotency, persistence, or order submission has been
-implemented.
+intents. Phase 18 Step 2 adds a minimal immutable `ExecutionPlan` batch
+container for intents. The plan preserves intent order and identity only. It
+does not call brokers, route orders, submit orders, reserve batch cash, resolve
+same-symbol conflicts, generate idempotency keys or client order IDs, use
+schedulers, persist anything, mutate portfolios, or add ML or LLM trading-path
+logic.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -396,15 +395,27 @@ added without a later explicit design phase.
 
 Phase 18 Step 1 documents the future execution-planning boundary in
 [`docs/design/phase18_execution_planning_boundary.md`](design/phase18_execution_planning_boundary.md).
-It distinguishes the current `ExecutionIntent` from a future `ExecutionPlan`.
-`ExecutionIntent` is an internal pre-submission source wrapper; a future
-`ExecutionPlan` may be a deterministic batch-level decision artifact that
-consumes intents and produces a pre-broker decision set. No `ExecutionPlan`,
-execution-planning function, broker routing, order submission,
+It distinguishes `ExecutionIntent` from an execution-planning boundary.
+`ExecutionIntent` is an internal pre-submission source wrapper. Step 1 kept
+`ExecutionPlan` conceptual only and added no broker routing, order submission,
 `client_order_id` generation, idempotency implementation, persistence writes,
 batch cash reservation, same-symbol conflict resolution, scheduler/runtime
-behavior, portfolio mutation, fills, ML, or LLM trading-path logic has been
-added.
+behavior, portfolio mutation, fills, ML, or LLM trading-path logic.
+
+Phase 18 Step 2 adds the minimal `ExecutionPlan` contract in
+`src/algotrader/orchestration/execution_planning_flow.py`.
+`ExecutionPlan` has only `intents: tuple[ExecutionIntent, ...]` and is an
+immutable batch container, not an executable instruction. `build_execution_plan(...)`
+accepts any iterable of `ExecutionIntent` objects and returns an immutable plan
+while preserving intent order and identity. Proposed orders and risk verdicts
+remain reachable through `plan.intents[n].source_evaluation.order` and
+`plan.intents[n].source_evaluation.risk`.
+
+No cash reservation, buying-power reservation, same-symbol conflict handling,
+duplicate or competing order policy, priority policy, idempotency,
+`client_order_id`, broker routing, order submission, persistence writes,
+scheduler/runtime behavior, portfolio mutation, fills, reconciliation changes,
+ML, or LLM trading-path logic has been added.
 
 ## Local Order-Event Ledger
 
@@ -450,8 +461,8 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
-- ExecutionPlan implementation
-- Execution-planning function
+- Execution-planning policy beyond immutable batch containment
+- Accepted/rejected/skipped execution-planning decisions
 - Execution-intent broker routing or adapter integration
 - Broker-facing request construction
 - Order submission
@@ -471,10 +482,10 @@ Ledger modes:
 ## Next Recommended Phase
 
 The next phase should keep any execution-boundary work pure and synthetic unless
-explicitly approved otherwise. Safe follow-up work could implement a pure
-execution-planning object/function test-first, or further design batch-level
-cash and same-symbol handling before any broker wiring, order submission,
-scheduler, persistence, ML, or LLM trading-path logic exists.
+explicitly approved otherwise. Safe follow-up work could design batch-level
+execution-planning policy, including cash and same-symbol handling, before any
+broker wiring, order submission, scheduler, persistence, ML, or LLM
+trading-path logic exists.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

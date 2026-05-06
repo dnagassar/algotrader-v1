@@ -59,6 +59,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.screener_signal_flow",
     "algotrader.orchestration.signal_risk_flow",
     "algotrader.orchestration.risk_execution_flow",
+    "algotrader.orchestration.execution_planning_flow",
 )
 
 ORCHESTRATION_BOUNDARY_RULES = tuple(
@@ -130,6 +131,34 @@ def test_pre_execution_orchestration_chain_does_not_bypass_execution_boundary() 
     )
 
     assert _dependency_violations(rule) == []
+
+
+def test_execution_planning_flow_does_not_call_runtime_or_broker_boundaries() -> None:
+    path = _module_path("algotrader.orchestration.execution_planning_flow")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    import_violations = [
+        f"{import_reference.path}:{import_reference.line}: "
+        f"execution planning must not import {import_reference.module}"
+        for import_reference in _import_references(path)
+        if _matches_forbidden_prefix(
+            import_reference.module,
+            EXECUTION_PLANNING_FORBIDDEN_IMPORT_PREFIXES,
+        )
+    ]
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+
+    assert import_violations == []
+    assert call_names.isdisjoint(EXECUTION_PLANNING_FORBIDDEN_CALLS)
+    assert referenced_names.isdisjoint(EXECUTION_PLANNING_FORBIDDEN_NAMES)
 
 
 def _package_files(package: str) -> tuple[Path, ...]:
@@ -206,3 +235,78 @@ def _matches_forbidden_prefix(module: str, forbidden_prefixes: tuple[str, ...]) 
         module == forbidden_prefix or module.startswith(f"{forbidden_prefix}.")
         for forbidden_prefix in forbidden_prefixes
     )
+
+
+EXECUTION_PLANNING_FORBIDDEN_CALLS = {
+    "client_order_id",
+    "idempotency",
+    "persist",
+    "submit_order",
+}
+
+EXECUTION_PLANNING_FORBIDDEN_IMPORT_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.broker",
+    "algotrader.brokers",
+    "algotrader.scheduler",
+    "algotrader.runtime",
+    "algotrader.persistence",
+    "algotrader.database",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "database",
+    "duckdb",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "llm",
+    "openai",
+    "requests",
+    "socket",
+    "sqlmodel",
+    "urllib",
+)
+
+EXECUTION_PLANNING_FORBIDDEN_NAMES = {
+    "alpaca",
+    "alpaca_trade_api",
+    "broker",
+    "client_order_id",
+    "database",
+    "duckdb",
+    "execution",
+    "idempotency",
+    "langgraph",
+    "llm",
+    "ml",
+    "persistence",
+    "runtime",
+    "scheduler",
+    "sqlmodel",
+    "submit_order",
+}
+
+
+def _node_reference_names(node: ast.AST) -> tuple[str, ...]:
+    if isinstance(node, ast.Name):
+        return (node.id,)
+
+    if isinstance(node, ast.Attribute):
+        return (node.attr,)
+
+    return ()
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+
+    return ""

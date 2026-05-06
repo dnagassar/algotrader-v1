@@ -2,16 +2,20 @@
 
 ## Purpose
 
-Phase 18 Step 1 defines the future execution-planning boundary after internal
+Phase 18 Step 1 defined the future execution-planning boundary after internal
 `ExecutionIntent` construction and before any broker adapter, order submission,
-persistence write, scheduler/runtime behavior, or live trading behavior.
+persistence write, scheduler/runtime behavior, or live trading behavior. Phase
+18 Step 2 adds the smallest implemented contract at that boundary: an immutable
+`ExecutionPlan` batch container and a pure builder.
 
 `ExecutionIntent` represents an internal pre-submission candidate. It preserves
 the exact source `SignalRiskEvaluation` object by identity and remains
-broker-agnostic, source-only, and not executable by itself. A future execution
-plan would be a deterministic batch-level decision artifact. It may eventually
-decide which `ExecutionIntent` objects are eligible to become broker-facing
-execution requests, but this phase does not implement that decision.
+broker-agnostic, source-only, and not executable by itself. `ExecutionPlan` now
+represents only an immutable batch container for `ExecutionIntent` objects. A
+future expanded execution plan may eventually become a deterministic
+batch-level decision artifact that decides which intents are eligible to become
+broker-facing execution requests, but Phase 18 Step 2 does not implement that
+decision.
 
 The boundary is needed because individual intent construction answers only a
 row-level question: which risk-approved source evaluations have been wrapped as
@@ -32,20 +36,19 @@ Screener
   -> Risk evaluation
   -> risk-approved row selection
   -> ExecutionIntent construction
-  -> future execution planning
+  -> ExecutionPlan construction
   -> future broker adapter / execution layer
 ```
 
-Phase 18 Step 1 designs only the future execution-planning boundary. The
-implemented deterministic pre-execution path still stops at immutable
-`ExecutionIntent` construction.
+Phase 18 Step 1 designed only the future execution-planning boundary. Phase 18
+Step 2 implements only the immutable batch container at that boundary. The
+implemented deterministic pre-execution path now stops at immutable
+`ExecutionPlan` construction.
 
 ## Non-goals
 
-Phase 18 Step 1 does not add:
+Phase 18 Step 2 does not add:
 
-- `ExecutionPlan` dataclass
-- execution-planning function
 - broker routing
 - order submission
 - Alpaca changes
@@ -66,10 +69,19 @@ Phase 18 Step 1 does not add:
 
 ## Future ExecutionPlan Semantics
 
-A future `ExecutionPlan` may eventually be a deterministic batch-level artifact
-that consumes `ExecutionIntent` objects and produces a pre-broker decision set.
-That set could distinguish accepted, skipped, or rejected intents before any
-broker-facing request is constructed.
+The current Phase 18 Step 2 `ExecutionPlan` is only:
+
+```text
+ExecutionPlan(intents=tuple[ExecutionIntent, ...])
+```
+
+It preserves intent order and identity. It does not select, reject, skip,
+prioritize, reserve cash for, or route any intent.
+
+A future expanded `ExecutionPlan` may eventually be a deterministic batch-level
+artifact that consumes `ExecutionIntent` objects and produces a pre-broker
+decision set. That set could distinguish accepted, skipped, or rejected intents
+before any broker-facing request is constructed.
 
 A future execution plan should remain:
 
@@ -93,8 +105,10 @@ A future execution plan should not contain:
 - network behavior
 - persistence writes
 
-No `ExecutionPlan` object, function, module, or test exists after Phase 18 Step
-1. The term is conceptual only in this phase.
+The Step 2 `ExecutionPlan` exists, but its only field is `intents`. No
+broker-facing request object, decision set, cash reservation record, conflict
+policy, idempotency key, client order ID, persistence metadata, or fill data
+has been added.
 
 ## Batch-Level Concerns To Solve Later
 
@@ -115,7 +129,7 @@ Execution planning may eventually handle these unresolved concerns:
 - handling stale quotes or stale risk snapshots
 - what happens when the portfolio snapshot changes after risk evaluation
 
-Phase 18 Step 1 does not implement any of these policies. Until a later
+Phase 18 Step 2 does not implement any of these policies. Until a later
 test-first implementation phase exists, same-symbol approved intents remain
 unresolved, batch cash is not reserved, and collectively affordable execution
 sets are not computed.
@@ -142,7 +156,7 @@ keys, hashes, request identifiers, or broker-facing IDs are added.
 
 Persistence and audit logging are unresolved.
 
-Phase 18 Step 1 adds no persistence writes. A future audit design may need to
+Phase 18 Step 2 adds no persistence writes. A future audit design may need to
 record skipped intents, accepted intents, rejected intents, policy decisions,
 batch-level reasons, input snapshots, and deterministic traceability back to
 the source evaluations. That design should be separate from implementation.
@@ -195,10 +209,10 @@ of the system to perform pure eligibility decisions.
 
 ## Future Test-First Implementation Acceptance Criteria
 
-A later Phase 18 Step 2 could test a future planning object or function before
-implementation. Possible acceptance criteria:
+Phase 18 Step 2 tests the minimal planning object and builder before adding
+policy. The current acceptance criteria are:
 
-- empty input returns an empty plan or empty tuple depending on design
+- empty input returns `ExecutionPlan(intents=())`
 - approved `ExecutionIntent` objects are preserved by identity
 - output is immutable
 - input is not mutated
@@ -211,14 +225,15 @@ implementation. Possible acceptance criteria:
 - no `client_order_id` / idempotency unless explicitly designed
 - batch cash policy absent until deliberately introduced
 - same-symbol conflict policy absent until deliberately introduced
-- planning reasons are deterministic and traceable if designed
+- proposed orders and risk verdicts remain traceable through
+  `plan.intents[n].source_evaluation`
 
 These tests should keep the boundary offline, credential-free, SDK-free,
 broker-free, and independent of ML or LLM trading-path output.
 
 ## Explicit Exclusions
 
-Phase 18 Step 1 explicitly excludes:
+Phase 18 Step 2 explicitly excludes:
 
 - no paper order submission
 - no live order submission

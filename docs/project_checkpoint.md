@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 321-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 341-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -52,11 +52,13 @@ live trading behavior. Phase 17 Step 3 hardens execution-intent traceability
 with tests and documentation only; `ExecutionIntent` remains source-only,
 pre-submission, and not executable by itself. Phase 18 Step 1 is a no-code
 execution-planning boundary design phase after `ExecutionIntent` construction.
-Execution planning is conceptual only and no runtime behavior changed.
+Execution planning is conceptual only and no runtime behavior changed. Phase 18
+Step 2 adds a minimal immutable `ExecutionPlan` batch container and pure
+builder while leaving all execution-planning policy unresolved.
 The latest full-suite result is:
 
 ```text
-321 passed, 4 skipped
+341 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -115,9 +117,11 @@ LLM trading-path logic was added. Phase 17 Step 3 keeps the implementation
 unchanged and hardens the contract that proposed orders, risk verdicts, and
 status remain reachable only through `intent.source_evaluation`. Phase 18 Step
 1 documents a future execution-planning boundary as a deterministic
-batch-level, pre-broker concept. No `ExecutionPlan`, execution-planning
-function, broker routing, idempotency, persistence, order submission, or runtime
-behavior has been implemented.
+batch-level, pre-broker concept. Phase 18 Step 2 adds the minimal
+`ExecutionPlan` container and `build_execution_plan(...)` builder. The plan
+preserves `ExecutionIntent` order and identity only; no broker routing,
+idempotency, persistence, order submission, or runtime behavior has been
+implemented.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -971,6 +975,52 @@ python -m pytest
 321 passed, 4 skipped
 ```
 
+## Phase 18 Step 2 Minimal ExecutionPlan Contract
+
+Phase 18 Step 2 adds the smallest implemented execution-planning contract in:
+
+```text
+src/algotrader/orchestration/execution_planning_flow.py
+```
+
+The new `ExecutionPlan` is an immutable, slotted dataclass with one field:
+`intents: tuple[ExecutionIntent, ...]`. It is only an immutable batch container
+for internal `ExecutionIntent` objects. It preserves input intent order and
+preserves each exact `ExecutionIntent` object by identity.
+
+`build_execution_plan(...)` accepts any iterable of `ExecutionIntent` objects
+and returns `ExecutionPlan(intents=tuple(...))`. Empty input returns
+`ExecutionPlan(intents=())`. The builder does not mutate inputs, unwrap source
+`SignalRiskEvaluation` objects, copy proposed orders, compute batch cash,
+resolve same-symbol conflicts, generate idempotency keys or client order IDs,
+call brokers, submit orders, use schedulers, persist anything, mutate
+portfolios, create fills, or call ML/LLM trading-path logic.
+
+Traceability remains source-driven. Proposed orders and risk verdicts are still
+reachable through
+`plan.intents[n].source_evaluation.order` and
+`plan.intents[n].source_evaluation.risk`. `ExecutionPlan` has no direct order,
+risk, status, broker, account, venue, submission, fill, idempotency, client
+order ID, cash reservation, priority, SDK, Alpaca, or persistence fields.
+
+Dependency-direction guardrails now include
+`algotrader.orchestration.execution_planning_flow` in the pre-execution
+orchestration boundary checks and add a narrow AST guard against broker/runtime
+call names in that module.
+
+No broker routing, paper or live order submission, Alpaca changes,
+`submit_order`, scheduler/runtime behavior, persistence writes, idempotency,
+client-order-id generation, batch cash reservation, same-symbol conflict
+resolution, portfolio mutation, fills, reconciliation changes, ML, or LLM
+trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+341 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -982,8 +1032,8 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
-- `ExecutionPlan` implementation
-- execution-planning function
+- execution-planning policy beyond immutable batch containment
+- accepted/rejected/skipped execution-planning decisions
 - execution-intent broker routing or adapter integration
 - broker-facing request construction
 - order submission
@@ -1006,9 +1056,8 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
-- test-first implementation of a pure execution-planning object/function, if
-  explicitly approved
-- future design for batch-level cash and same-symbol handling before execution
+- future design for batch-level execution-planning policy, including batch cash
+  and same-symbol handling before broker-facing requests
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
 
