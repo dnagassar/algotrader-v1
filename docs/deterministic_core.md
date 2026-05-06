@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `303` tests are passing, with `4` skipped paper-integration tests by default.
+- `318` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -33,7 +33,9 @@ state.
   `risk_approved` `SignalRiskEvaluation` rows while preserving order and object
   identity.
 - Phase 17 Step 1 documents the future execution-intent boundary after
-  risk-approved row selection. No execution intent has been implemented yet.
+  risk-approved row selection.
+- Phase 17 Step 2 adds a minimal internal `ExecutionIntent` contract and pure
+  builder that wrap approved source rows by identity without submission.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -69,6 +71,8 @@ Synthetic Bar + Quote candidates
   -> immutable SignalRiskEvaluation tuple
   -> select_risk_approved_evaluations(...)
   -> immutable risk-approved SignalRiskEvaluation tuple
+  -> build_execution_intents_from_risk_approved(...)
+  -> immutable ExecutionIntent tuple
 ```
 
 The screener-to-signal segment does not call risk, broker, Alpaca, execution,
@@ -77,12 +81,13 @@ signal evaluation is a proposed signal output only. The Signal -> Risk layer
 then checks proposed orders with `RiskEngine` only, keeps no-signal rows with
 `risk=None`, and returns risk verdicts without executing or submitting anything.
 Risk-approved means allowed by risk, not executed, submitted, or broker-ready.
-The risk-approved selector keeps only those permission rows in order and still
-does not create execution intents or call brokers.
-Phase 17 Step 1 documents a future execution-intent boundary after this
-selector, but no `ExecutionIntent` object, builder function, broker routing,
-submission, scheduler/runtime behavior, persistence, ML, or LLM trading-path
-logic exists in this path.
+The risk-approved selector keeps only those permission rows in order. Phase 17
+Step 2 can wrap approved rows in internal `ExecutionIntent` objects, but those
+intents remain pre-submission and broker-agnostic. They preserve the source
+`SignalRiskEvaluation` by identity and do not call brokers, route orders,
+submit orders, reserve batch cash, resolve same-symbol conflicts, use
+schedulers, persist anything, mutate portfolios, or add ML or LLM trading-path
+logic.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -342,12 +347,25 @@ execution intent or order submission behavior is added.
 
 Phase 17 Step 1 documents the future execution-intent boundary in
 [`docs/design/phase17_execution_intent_boundary.md`](design/phase17_execution_intent_boundary.md).
-It distinguishes selected risk-approved rows from future execution intents:
-risk-approved rows are permission signals only, while a future execution intent
-would be a deterministic, immutable, auditable, broker-agnostic internal
-instruction candidate prepared before any broker adapter. No execution intent,
-execution-intent builder, broker routing, Alpaca change, scheduler/runtime
-behavior, persistence, ML, or LLM trading-path logic has been implemented.
+It distinguishes selected risk-approved rows from execution intents:
+risk-approved rows are permission signals only, while an execution intent is a
+deterministic, immutable, auditable, broker-agnostic internal instruction
+candidate prepared before any broker adapter.
+
+Phase 17 Step 2 adds `ExecutionIntent` and
+`build_execution_intents_from_risk_approved(...)` in
+`src/algotrader/orchestration/risk_execution_flow.py`. `ExecutionIntent` has
+only `source_evaluation: SignalRiskEvaluation`, preserving the source row by
+identity without inventing screener rank, original index, broker IDs,
+client-order IDs, idempotency keys, persistence metadata, fill fields, SDK
+objects, Alpaca-specific fields, or LLM-derived fields. The builder returns an
+immutable tuple for risk-approved rows only and skips `no_signal` and
+`risk_rejected` rows.
+
+No broker routing, order submission, Alpaca change, `submit_order`,
+client-order-id generation, idempotency implementation, batch cash reservation,
+same-symbol conflict resolution, scheduler/runtime behavior, persistence,
+portfolio mutation, fills, ML, or LLM trading-path logic has been added.
 
 ## Local Order-Event Ledger
 
@@ -393,8 +411,7 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
-- Execution-intent objects
-- Execution-intent builder functions
+- Execution-intent broker routing or adapter integration
 - Batch-level cumulative cash enforcement
 - Same-symbol execution conflict handling
 - Reconciliation loop against external broker state
@@ -408,8 +425,8 @@ Ledger modes:
 
 The next phase should keep any execution-boundary work pure and synthetic unless
 explicitly approved otherwise. Safe follow-up work could design batch-level cash
-and same-symbol handling before any execution intent, broker wiring, order
-submission, scheduler, persistence, ML, or LLM trading-path logic exists.
+and same-symbol handling before any broker wiring, order submission, scheduler,
+persistence, ML, or LLM trading-path logic exists.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

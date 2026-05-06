@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 303-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 318-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -45,11 +45,14 @@ that returns only `risk_approved` `SignalRiskEvaluation` rows while preserving
 input order and object identity. Phase 17 Step 1 is a no-code design-only pass
 documenting the future internal execution-intent boundary after risk-approved
 selection. No runtime behavior changed, and risk-approved rows remain
-permission signals only.
+permission signals only. Phase 17 Step 2 adds a minimal internal
+`ExecutionIntent` contract and pure builder that wrap risk-approved source rows
+by identity before any broker, execution adapter, scheduler, persistence, or
+live trading behavior.
 The latest full-suite result is:
 
 ```text
-303 passed, 4 skipped
+318 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -98,9 +101,13 @@ orchestration modules cannot import execution, broker, Alpaca, or trade-flow
 modules. Phase 16 Step 2 adds a pure risk-approved row selector that creates no
 execution intents and calls no broker, execution, Alpaca, `submit_order`,
 scheduler, persistence, ML, or LLM trading-path logic. Phase 17 Step 1
-documents a future internal execution-intent boundary but implements no
-execution-intent object, builder, broker path, runtime behavior, persistence,
-ML, or LLM trading-path logic.
+documents a future internal execution-intent boundary. Phase 17 Step 2 adds the
+minimal internal `ExecutionIntent` wrapper and
+`build_execution_intents_from_risk_approved(...)` builder. The intent remains
+pre-submission and broker-agnostic, preserving the source
+`SignalRiskEvaluation` by identity. No broker path, order submission,
+client-order-id generation, idempotency, runtime behavior, persistence, ML, or
+LLM trading-path logic was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -840,6 +847,41 @@ python -m pytest
 303 passed, 4 skipped
 ```
 
+## Phase 17 Step 2 Internal Execution-Intent Contract
+
+Phase 17 Step 2 adds the smallest internal execution-intent contract in:
+
+```text
+src/algotrader/orchestration/risk_execution_flow.py
+```
+
+`ExecutionIntent` is an immutable, slotted dataclass with one field:
+`source_evaluation: SignalRiskEvaluation`. It preserves traceability by
+identity without adding screener rank, original index, broker IDs,
+client-order IDs, idempotency keys, venue/account fields, fill fields,
+persistence metadata, SDK-native objects, Alpaca-specific fields, or LLM-derived
+fields.
+
+`build_execution_intents_from_risk_approved(...)` accepts existing
+`SignalRiskEvaluation` rows, reuses risk-approved row selection, and returns an
+immutable tuple of `ExecutionIntent` objects for `risk_approved` rows only. It
+skips `no_signal` and `risk_rejected` rows, preserves approved-row order,
+preserves the exact original `SignalRiskEvaluation` object on each intent, and
+does not mutate inputs.
+
+This phase does not add broker routing, paper or live order submission,
+Alpaca changes, `submit_order`, client-order-id generation, idempotency
+implementation, batch cash reservation, same-symbol conflict resolution,
+portfolio mutation, fills, scheduler/runtime behavior, persistence writes, ML,
+or LLM trading-path logic.
+
+The full suite is now:
+
+```text
+python -m pytest
+318 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -851,7 +893,7 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
-- execution-intent objects
+- execution-intent broker routing or adapter integration
 - batch-level cumulative cash enforcement
 - same-symbol execution conflict handling
 - LangGraph

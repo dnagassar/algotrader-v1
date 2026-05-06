@@ -2,10 +2,11 @@
 
 ## Purpose
 
-Phase 17 Step 1 is a no-code design phase. It defines a future internal
-execution-intent boundary after risk-approved row selection and before any
-execution layer, broker adapter, scheduler, persistence path, or live trading
-behavior.
+Phase 17 defines the internal execution-intent boundary after risk-approved row
+selection and before any execution layer, broker adapter, scheduler,
+persistence path, or live trading behavior. Step 1 documented the boundary with
+no code changes. Step 2 adds the smallest internal deterministic contract for
+that boundary.
 
 The current deterministic pre-execution pipeline is:
 
@@ -14,28 +15,33 @@ Screener
   -> Signal evaluation
   -> Risk evaluation
   -> risk-approved row selection
+  -> internal execution-intent construction
 ```
 
-`select_risk_approved_evaluations(...)` returns only
+`select_risk_approved_evaluations(...)` still returns only
 `risk_approved` `SignalRiskEvaluation` rows while preserving order and object
 identity. Those selected rows are permission signals only. They are eligible
 for future execution-boundary consideration, but they are not execution
-intents, submitted orders, broker-routed orders, fills, persisted broker
-events, scheduler actions, runtime actions, or live trading decisions.
+intents by themselves, submitted orders, broker-routed orders, fills, persisted
+broker events, scheduler actions, runtime actions, or live trading decisions.
+
+Phase 17 Step 2 adds a minimal internal `ExecutionIntent` wrapper for selected
+risk-approved rows. An `ExecutionIntent` remains pre-submission and
+broker-agnostic. It only preserves the source `SignalRiskEvaluation` by
+identity.
 
 A separate execution-intent boundary is needed because risk approval answers
-only one question: did deterministic risk policy allow the proposed order? A
-future execution-intent layer would answer a different question: what internal,
-deterministic, broker-agnostic instruction candidates should be prepared for a
-later execution layer? Keeping those responsibilities separate prevents risk
-approval from being accidentally treated as order submission or broker
-acceptance.
+only one question: did deterministic risk policy allow the proposed order? The
+execution-intent layer answers a different question: which internal,
+deterministic, broker-agnostic instruction candidates are prepared for a later
+execution layer? Keeping those responsibilities separate prevents risk approval
+or intent construction from being accidentally treated as order submission or
+broker acceptance.
 
 ## Non-goals
 
-Phase 17 Step 1 does not add:
+Phase 17 Step 2 does not add:
 
-- `ExecutionIntent` dataclass
 - order submission
 - broker routing
 - Alpaca changes
@@ -50,40 +56,51 @@ Phase 17 Step 1 does not add:
 - live trading
 - ML
 - LLM trading-path logic
+- `ExecutionIntent` fields beyond `source_evaluation`
 
-## Proposed Future Boundary
+## Current Step 2 Boundary
 
-A later phase may choose to implement a future function conceptually named:
+Phase 17 Step 2 implements:
 
 ```text
 build_execution_intents_from_risk_approved(...)
 ```
 
-This name is conceptual only. Phase 17 Step 1 does not add the function, its
-signature, its return type, tests, imports, or runtime behavior.
+The builder accepts an iterable of `SignalRiskEvaluation` rows and returns an
+immutable tuple of `ExecutionIntent` objects for `risk_approved` rows only. It
+skips `no_signal` and `risk_rejected` rows, preserves approved-row order, and
+preserves each source `SignalRiskEvaluation` object by identity.
 
-A future function may eventually consume:
+The builder currently consumes only:
 
-- selected risk-approved `SignalRiskEvaluation` rows
-- a deterministic execution-intent policy/config object
-- explicit provenance input if that is designed later
+- `SignalRiskEvaluation` rows
 
-The future function must not directly consume screener rank in a way that
-affects sizing, idempotency, or broker routing. Current `SignalRiskEvaluation`
-does not carry screener rank or original input index, and this design must not
-assume those fields exist.
+It does not consume `PortfolioState`, `RiskEngine`, a broker, an execution
+object, a scheduler/runtime object, persistence handles, or network clients. It
+does not directly consume screener rank in a way that affects sizing,
+idempotency, or broker routing. Current `SignalRiskEvaluation` does not carry
+screener rank or original input index, and this design must not assume those
+fields exist.
 
-## Future ExecutionIntent Semantics
+## ExecutionIntent Semantics
 
-A future `ExecutionIntent` would be an internal deterministic instruction
-candidate produced after risk approval but before any broker adapter.
+`ExecutionIntent` is an internal deterministic instruction candidate produced
+after risk approval but before any broker adapter.
 
-It may contain order-like fields copied from the approved proposed order, but
-it would still not be submitted. It would not be a broker order, broker
-acknowledgement, accepted order, fill, ledger event, scheduler command, or
-runtime trading action.
+The Phase 17 Step 2 shape is intentionally minimal:
 
-A future `ExecutionIntent` should be:
+```text
+ExecutionIntent(source_evaluation=SignalRiskEvaluation)
+```
+
+The intent preserves traceability by identity without inventing screener rank,
+original index, broker IDs, idempotency keys, or persistence metadata. It does
+not copy order-like fields yet. If a later phase adds order-like fields copied
+from the approved proposed order, the intent would still not be submitted. It
+would not become a broker order, broker acknowledgement, accepted order, fill,
+ledger event, scheduler command, or runtime trading action.
+
+`ExecutionIntent` is:
 
 - deterministic
 - immutable
@@ -94,7 +111,7 @@ A future `ExecutionIntent` should be:
 - free of Alpaca-specific types
 - independent of LLM output
 
-A future `ExecutionIntent` should not contain:
+`ExecutionIntent` does not contain:
 
 - live broker response data
 - fill data
@@ -102,23 +119,27 @@ A future `ExecutionIntent` should not contain:
 - broker-specific order IDs
 - SDK-native objects
 - side effects
+- `client_order_id`
+- idempotency keys
+- venue/account fields
 
 ## Traceability Requirements
 
-Future execution-intent creation should preserve enough traceability to explain:
+Execution-intent creation preserves enough traceability to explain:
 
 - which `SignalRiskEvaluation` produced an intent
 - why `no_signal` rows were skipped
 - why `risk_rejected` rows were skipped
 - which proposed order was risk-approved
 - which risk verdict allowed it
-- what deterministic policy produced the intent
+- that the current deterministic policy is the simple risk-approved-only
+  builder
 
-This design does not invent new provenance fields yet. If additional
-traceability fields, provenance records, or audit envelopes are needed, they
-should be designed explicitly in a later phase. Current `SignalRiskEvaluation`
-does not carry screener rank or original index, so future traceability must not
-assume those values are already present.
+This design still does not invent new provenance fields beyond
+`source_evaluation`. If additional traceability fields, provenance records, or
+audit envelopes are needed, they should be designed explicitly in a later
+phase. Current `SignalRiskEvaluation` does not carry screener rank or original
+index, so future traceability must not assume those values are already present.
 
 ## Batch-Level Concerns
 
@@ -133,12 +154,12 @@ concerns before any order submission behavior exists:
 - execution ordering policy has not been finalized
 - persistence/audit logging strategy has not been implemented
 
-These concerns remain future work. Phase 17 Step 1 does not solve them.
+These concerns remain future work. Phase 17 Step 2 does not solve them.
 
 ## Dependency Direction
 
-Future execution-intent construction must live in orchestration. It must not
-live in screener, signals, risk, portfolio, broker, Alpaca, execution,
+Execution-intent construction lives in orchestration. It must not live in
+screener, signals, risk, portfolio, broker, Alpaca, execution,
 scheduler/runtime, persistence, ML, or LLM trading-path modules.
 
 Allowed conceptual direction:
@@ -158,16 +179,15 @@ Forbidden for this boundary:
 - persistence writes
 - LLM calls
 
-## Acceptance Criteria for Future Implementation
+## Step 2 Acceptance Criteria
 
-A later Phase 17 Step 2 could be test-first if the internal object is approved
-for implementation. Possible future tests:
+Phase 17 Step 2 is test-first around the internal object and builder. The
+contract covers:
 
 - empty input returns an empty tuple
 - only risk-approved rows produce intents
 - order is preserved
-- `no_signal` and `risk_rejected` rows are represented or traceable according
-  to the design
+- `no_signal` and `risk_rejected` rows produce no intents
 - output is immutable
 - inputs are not mutated
 - no broker object is required
@@ -176,12 +196,11 @@ for implementation. Possible future tests:
 - no `submit_order` call is made
 - no scheduler/runtime behavior is added
 - no persistence is added
-- deterministic idempotency policy is either absent or explicitly injected, not
-  implicit
+- deterministic idempotency policy is absent rather than implicit
 
 ## Explicit Exclusions
 
-Phase 17 Step 1 explicitly excludes:
+Phase 17 Step 2 explicitly excludes:
 
 - no paper order submission
 - no live order submission
