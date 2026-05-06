@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 341-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 349-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -54,11 +54,12 @@ pre-submission, and not executable by itself. Phase 18 Step 1 is a no-code
 execution-planning boundary design phase after `ExecutionIntent` construction.
 Execution planning is conceptual only and no runtime behavior changed. Phase 18
 Step 2 adds a minimal immutable `ExecutionPlan` batch container and pure
-builder while leaving all execution-planning policy unresolved.
+builder while leaving all execution-planning policy unresolved. Phase 18 Step 3
+hardens `ExecutionPlan` traceability with tests and documentation only.
 The latest full-suite result is:
 
 ```text
-341 passed, 4 skipped
+349 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -121,7 +122,8 @@ batch-level, pre-broker concept. Phase 18 Step 2 adds the minimal
 `ExecutionPlan` container and `build_execution_plan(...)` builder. The plan
 preserves `ExecutionIntent` order and identity only; no broker routing,
 idempotency, persistence, order submission, or runtime behavior has been
-implemented.
+implemented. Phase 18 Step 3 keeps the implementation unchanged and hardens
+that plan traceability flows through `plan.intents[n].source_evaluation`.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1021,6 +1023,56 @@ python -m pytest
 341 passed, 4 skipped
 ```
 
+## Phase 18 Step 3 ExecutionPlan Traceability Hardening
+
+Phase 18 Step 3 is tests and documentation only. It hardens the
+`ExecutionPlan` contract without changing production Python code.
+
+`ExecutionPlan` remains an immutable, slotted, pre-broker batch container with
+exactly one dataclass field: `intents`. Each plan entry preserves the exact
+original `ExecutionIntent` object by identity. Each intent still preserves the
+exact original `SignalRiskEvaluation` object by identity.
+
+Traceability flows through:
+
+```text
+plan.intents[n].source_evaluation
+```
+
+Proposed orders, risk verdicts, and statuses remain reachable through
+`plan.intents[n].source_evaluation.order`,
+`plan.intents[n].source_evaluation.risk`, and
+`plan.intents[n].source_evaluation.status`; no convenience fields such as
+`plan.orders`, `plan.risks`, `plan.statuses`, `plan.selected`,
+`plan.rejected`, or `plan.skipped` were added.
+
+Additional tests pin that no selected/rejected/skipped/accepted intent fields,
+broker IDs, broker names, account IDs, venue fields, client order IDs,
+idempotency keys, submission timestamps, fill fields, cash or buying-power
+reservation fields, priority/rank fields, Alpaca-specific fields, SDK/native
+objects, or persistence metadata are exposed on `ExecutionPlan`.
+
+The builder remains a pure batch-container builder. It still preserves input
+order, preserves duplicate and same-symbol intents without deduplication or
+conflict resolution, performs no batch-level cash reservation or collective
+affordability check, applies no priority/ranking policy, mutates no inputs, and
+requires no portfolio, risk engine, broker, execution object,
+scheduler/runtime object, or persistence handle.
+
+No broker routing, paper or live order submission, Alpaca changes,
+`submit_order`, scheduler/runtime behavior, persistence writes, idempotency,
+client-order-id generation, batch cash reservation, same-symbol conflict
+resolution, duplicate/competing order policy, priority/ranking policy,
+portfolio mutation, fills, reconciliation changes, ML, or LLM trading-path
+logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+349 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1034,6 +1086,7 @@ python -m pytest
 - screener-driven order generation
 - execution-planning policy beyond immutable batch containment
 - accepted/rejected/skipped execution-planning decisions
+- direct `ExecutionPlan` order/risk/status convenience fields
 - execution-intent broker routing or adapter integration
 - broker-facing request construction
 - order submission
@@ -1041,6 +1094,8 @@ python -m pytest
 - idempotency implementation
 - batch-level cumulative cash enforcement
 - same-symbol execution conflict handling
+- duplicate or competing order policy
+- priority or ranking policy
 - persistence writes
 - audit logging writes
 - LangGraph

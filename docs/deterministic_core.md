@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `341` tests are passing, with `4` skipped paper-integration tests by default.
+- `349` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -42,6 +42,8 @@ state.
   `ExecutionIntent` construction before implementation.
 - Phase 18 Step 2 adds a minimal immutable `ExecutionPlan` batch container and
   pure builder; no execution-planning policy or broker behavior has been added.
+- Phase 18 Step 3 hardens `ExecutionPlan` traceability with tests and docs
+  only; the object remains a minimal pre-broker batch container.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -107,6 +109,11 @@ does not call brokers, route orders, submit orders, reserve batch cash, resolve
 same-symbol conflicts, generate idempotency keys or client order IDs, use
 schedulers, persist anything, mutate portfolios, or add ML or LLM trading-path
 logic.
+Phase 18 Step 3 hardens that traceability: proposed orders, risk verdicts, and
+statuses remain reachable through `plan.intents[n].source_evaluation.order`,
+`plan.intents[n].source_evaluation.risk`, and
+`plan.intents[n].source_evaluation.status`, not through convenience fields on
+the plan.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -417,6 +424,19 @@ duplicate or competing order policy, priority policy, idempotency,
 scheduler/runtime behavior, portfolio mutation, fills, reconciliation changes,
 ML, or LLM trading-path logic has been added.
 
+Phase 18 Step 3 hardens the `ExecutionPlan` traceability contract without
+production-code changes. `ExecutionPlan` still has exactly one dataclass field:
+`intents`. Each plan entry is the exact original `ExecutionIntent` object, and
+each intent's `source_evaluation` remains the exact original
+`SignalRiskEvaluation` object. Proposed orders, risk verdicts, and statuses are
+reachable through `plan.intents[n].source_evaluation`, not through direct
+`ExecutionPlan` fields.
+
+No direct order, risk, status, symbol, quantity, side, selected/rejected/skipped
+intent, broker, account, venue, submission, fill, idempotency,
+`client_order_id`, cash reservation, priority/rank, SDK, Alpaca, or persistence
+fields exist on `ExecutionPlan`.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -463,6 +483,7 @@ Ledger modes:
 - Approved or submitted trades from screener signal evaluation
 - Execution-planning policy beyond immutable batch containment
 - Accepted/rejected/skipped execution-planning decisions
+- Direct ExecutionPlan order/risk/status convenience fields
 - Execution-intent broker routing or adapter integration
 - Broker-facing request construction
 - Order submission
@@ -470,6 +491,8 @@ Ledger modes:
 - Idempotency implementation
 - Batch-level cumulative cash enforcement
 - Same-symbol execution conflict handling
+- Duplicate or competing order policy
+- Priority or ranking policy
 - Persistence writes
 - Audit logging writes
 - Reconciliation loop against external broker state

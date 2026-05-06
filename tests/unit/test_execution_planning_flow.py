@@ -20,6 +20,50 @@ from algotrader.risk.state import RiskVerdict
 NOW = datetime(2026, 5, 6, tzinfo=timezone.utc)
 MODULE_PATH = Path("src/algotrader/orchestration/execution_planning_flow.py")
 
+_FORBIDDEN_PLAN_FIELD_NAMES = {
+    "accepted_intents",
+    "account_id",
+    "alpaca_order",
+    "broker",
+    "broker_name",
+    "broker_order_id",
+    "broker_order_ids",
+    "buying_power_reserved",
+    "cash_reserved",
+    "client_order_id",
+    "client_order_ids",
+    "fill",
+    "fill_price",
+    "fill_quantity",
+    "filled_at",
+    "idempotency_key",
+    "idempotency_keys",
+    "native_order",
+    "order",
+    "orders",
+    "persisted_at",
+    "priorities",
+    "priority",
+    "quantities",
+    "quantity",
+    "rank",
+    "ranks",
+    "rejected_intents",
+    "risk",
+    "risks",
+    "sdk_order",
+    "selected_intents",
+    "side",
+    "sides",
+    "skipped_intents",
+    "status",
+    "statuses",
+    "submitted_at",
+    "symbol",
+    "symbols",
+    "venue",
+}
+
 
 def bar(symbol: str, close: str = "100") -> Bar:
     return Bar(symbol, NOW, close, close, close, close, "1000")
@@ -170,6 +214,14 @@ def test_execution_plan_has_exactly_one_intents_field() -> None:
 
     assert field_names == ("intents",)
     assert len(plan_fields) == 1
+    assert set(field_names).isdisjoint(_FORBIDDEN_PLAN_FIELD_NAMES)
+
+
+def test_execution_plan_has_no_direct_policy_or_traceability_fields() -> None:
+    plan = build_execution_plan([intent("MSFT")])
+
+    for field_name in _FORBIDDEN_PLAN_FIELD_NAMES:
+        assert not hasattr(plan, field_name)
 
 
 def test_no_client_order_id_or_idempotency_fields_exist() -> None:
@@ -240,10 +292,111 @@ def test_risk_verdict_remains_reachable_only_through_intent_source() -> None:
     assert not hasattr(plan.intents[0], "risk")
 
 
+def test_status_remains_reachable_only_through_intent_source() -> None:
+    original = intent("MSFT")
+
+    plan = build_execution_plan([original])
+
+    assert plan.intents[0] is original
+    assert plan.intents[0].source_evaluation is original.source_evaluation
+    assert plan.intents[0].source_evaluation.status == "risk_approved"
+    assert not hasattr(plan, "status")
+    assert not hasattr(plan.intents[0], "status")
+
+
+def test_multiple_intent_traceability_flows_through_sources_by_identity() -> None:
+    first_source = risk_approved("MSFT")
+    second_source = risk_approved("AAPL")
+    first = ExecutionIntent(source_evaluation=first_source)
+    second = ExecutionIntent(source_evaluation=second_source)
+
+    plan = build_execution_plan([first, second])
+
+    assert plan.intents[0] is first
+    assert plan.intents[1] is second
+    assert plan.intents[0].source_evaluation is first_source
+    assert plan.intents[1].source_evaluation is second_source
+    assert plan.intents[0].source_evaluation.order is first_source.order
+    assert plan.intents[1].source_evaluation.order is second_source.order
+    assert plan.intents[0].source_evaluation.risk is first_source.risk
+    assert plan.intents[1].source_evaluation.risk is second_source.risk
+    assert plan.intents[0].source_evaluation.status == first_source.status
+    assert plan.intents[1].source_evaluation.status == second_source.status
+
+
+def test_mutating_input_list_after_plan_creation_does_not_mutate_plan() -> None:
+    first = intent("MSFT")
+    second = intent("AAPL")
+    intents = [first]
+
+    plan = build_execution_plan(intents)
+    intents.append(second)
+
+    assert plan.intents == (first,)
+    assert plan.intents[0] is first
+    assert second not in plan.intents
+
+
+def test_builder_does_not_copy_or_mutate_intents_or_source_evaluations() -> None:
+    source = risk_approved("MSFT")
+    original = ExecutionIntent(source_evaluation=source)
+
+    plan = build_execution_plan([original])
+
+    assert plan.intents[0] is original
+    assert plan.intents[0].source_evaluation is source
+    assert plan.intents[0].source_evaluation.order is source.order
+    assert plan.intents[0].source_evaluation.risk is source.risk
+    assert plan.intents[0].source_evaluation.status == source.status
+
+
+def test_duplicate_intents_are_preserved_without_deduplication_policy() -> None:
+    original = intent("MSFT")
+
+    plan = build_execution_plan([original, original])
+
+    assert plan.intents == (original, original)
+    assert plan.intents[0] is original
+    assert plan.intents[1] is original
+
+
+def test_builder_applies_no_priority_or_ranking_policy() -> None:
+    lower_alpha_symbol = intent("ZZZZ")
+    higher_alpha_symbol = intent("AAAA")
+
+    plan = build_execution_plan([lower_alpha_symbol, higher_alpha_symbol])
+
+    assert plan.intents == (lower_alpha_symbol, higher_alpha_symbol)
+    assert not hasattr(plan, "priority")
+    assert not hasattr(plan, "priorities")
+    assert not hasattr(plan, "rank")
+    assert not hasattr(plan, "ranks")
+
+
 def test_builder_signature_requires_only_intents_iterable() -> None:
     parameters = tuple(inspect.signature(build_execution_plan).parameters)
 
     assert parameters == ("intents",)
+
+
+def test_builder_requires_no_runtime_or_policy_objects() -> None:
+    parameter_names = tuple(inspect.signature(build_execution_plan).parameters)
+    referenced_names = _referenced_names()
+
+    assert parameter_names == ("intents",)
+    assert referenced_names.isdisjoint(
+        {
+            "Broker",
+            "BrokerOrderResult",
+            "Execution",
+            "LocalBroker",
+            "PortfolioState",
+            "RiskEngine",
+            "Scheduler",
+            "persistence",
+            "runtime",
+        }
+    )
 
 
 def test_execution_planning_module_references_no_runtime_dependencies() -> None:

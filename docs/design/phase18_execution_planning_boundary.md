@@ -6,7 +6,8 @@ Phase 18 Step 1 defined the future execution-planning boundary after internal
 `ExecutionIntent` construction and before any broker adapter, order submission,
 persistence write, scheduler/runtime behavior, or live trading behavior. Phase
 18 Step 2 adds the smallest implemented contract at that boundary: an immutable
-`ExecutionPlan` batch container and a pure builder.
+`ExecutionPlan` batch container and a pure builder. Phase 18 Step 3 hardens
+the `ExecutionPlan` traceability contract with tests and documentation only.
 
 `ExecutionIntent` represents an internal pre-submission candidate. It preserves
 the exact source `SignalRiskEvaluation` object by identity and remains
@@ -14,8 +15,8 @@ broker-agnostic, source-only, and not executable by itself. `ExecutionPlan` now
 represents only an immutable batch container for `ExecutionIntent` objects. A
 future expanded execution plan may eventually become a deterministic
 batch-level decision artifact that decides which intents are eligible to become
-broker-facing execution requests, but Phase 18 Step 2 does not implement that
-decision.
+broker-facing execution requests, but Phase 18 Steps 2 and 3 do not implement
+that decision.
 
 The boundary is needed because individual intent construction answers only a
 row-level question: which risk-approved source evaluations have been wrapped as
@@ -110,6 +111,37 @@ broker-facing request object, decision set, cash reservation record, conflict
 policy, idempotency key, client order ID, persistence metadata, or fill data
 has been added.
 
+## Step 3 Traceability Hardening
+
+Phase 18 Step 3 hardens the current minimal contract without expanding
+`ExecutionPlan`.
+
+Traceability flows through:
+
+```text
+plan.intents[n].source_evaluation
+```
+
+The `ExecutionPlan` keeps exactly one dataclass field: `intents`. Each
+`plan.intents[n]` remains the exact original `ExecutionIntent` object by
+identity, and each `plan.intents[n].source_evaluation` remains the exact
+original `SignalRiskEvaluation` object by identity. Proposed orders, risk
+verdicts, and statuses remain reachable through:
+
+```text
+plan.intents[n].source_evaluation.order
+plan.intents[n].source_evaluation.risk
+plan.intents[n].source_evaluation.status
+```
+
+Convenience fields or properties such as `plan.orders`, `plan.risks`,
+`plan.symbols`, `plan.statuses`, `plan.selected`, `plan.rejected`, or
+`plan.skipped` should not be added without a later explicit design phase.
+Fields for accepted/rejected/skipped intents, broker IDs, account IDs, venues,
+submission/fill state, cash reservation, priority/rank, idempotency, client
+order IDs, SDK/native objects, Alpaca-specific types, or persistence metadata
+also remain excluded.
+
 ## Batch-Level Concerns To Solve Later
 
 Execution planning may eventually handle these unresolved concerns:
@@ -129,7 +161,7 @@ Execution planning may eventually handle these unresolved concerns:
 - handling stale quotes or stale risk snapshots
 - what happens when the portfolio snapshot changes after risk evaluation
 
-Phase 18 Step 2 does not implement any of these policies. Until a later
+Phase 18 Step 3 does not implement any of these policies. Until a later
 test-first implementation phase exists, same-symbol approved intents remain
 unresolved, batch cash is not reserved, and collectively affordable execution
 sets are not computed.
@@ -156,7 +188,7 @@ keys, hashes, request identifiers, or broker-facing IDs are added.
 
 Persistence and audit logging are unresolved.
 
-Phase 18 Step 2 adds no persistence writes. A future audit design may need to
+Phase 18 Step 3 adds no persistence writes. A future audit design may need to
 record skipped intents, accepted intents, rejected intents, policy decisions,
 batch-level reasons, input snapshots, and deterministic traceability back to
 the source evaluations. That design should be separate from implementation.
@@ -209,13 +241,17 @@ of the system to perform pure eligibility decisions.
 
 ## Future Test-First Implementation Acceptance Criteria
 
-Phase 18 Step 2 tests the minimal planning object and builder before adding
-policy. The current acceptance criteria are:
+Phase 18 Steps 2 and 3 test the minimal planning object and builder before
+adding policy. The current acceptance criteria are:
 
 - empty input returns `ExecutionPlan(intents=())`
 - approved `ExecutionIntent` objects are preserved by identity
+- source `SignalRiskEvaluation` objects are preserved by identity through each
+  intent
+- `ExecutionPlan` has exactly one dataclass field: `intents`
 - output is immutable
 - input is not mutated
+- input list mutation after plan construction does not mutate the plan
 - no broker object required
 - no execution object required
 - no scheduler/runtime object required
@@ -225,6 +261,8 @@ policy. The current acceptance criteria are:
 - no `client_order_id` / idempotency unless explicitly designed
 - batch cash policy absent until deliberately introduced
 - same-symbol conflict policy absent until deliberately introduced
+- duplicate/competing order policy absent until deliberately introduced
+- priority/ranking policy absent until deliberately introduced
 - proposed orders and risk verdicts remain traceable through
   `plan.intents[n].source_evaluation`
 
@@ -233,7 +271,7 @@ broker-free, and independent of ML or LLM trading-path output.
 
 ## Explicit Exclusions
 
-Phase 18 Step 2 explicitly excludes:
+Phase 18 Step 3 explicitly excludes:
 
 - no paper order submission
 - no live order submission
