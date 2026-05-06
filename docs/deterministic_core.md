@@ -32,6 +32,8 @@ state.
 - Phase 16 Step 2 adds a pure risk-approved row selector that returns only
   `risk_approved` `SignalRiskEvaluation` rows while preserving order and object
   identity.
+- Phase 17 Step 1 documents the future execution-intent boundary after
+  risk-approved row selection. No execution intent has been implemented yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -77,6 +79,10 @@ then checks proposed orders with `RiskEngine` only, keeps no-signal rows with
 Risk-approved means allowed by risk, not executed, submitted, or broker-ready.
 The risk-approved selector keeps only those permission rows in order and still
 does not create execution intents or call brokers.
+Phase 17 Step 1 documents a future execution-intent boundary after this
+selector, but no `ExecutionIntent` object, builder function, broker routing,
+submission, scheduler/runtime behavior, persistence, ML, or LLM trading-path
+logic exists in this path.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -334,6 +340,15 @@ not solve batch-level cumulative cash handling or same-symbol conflict
 resolution; those remain future execution-boundary concerns before any
 execution intent or order submission behavior is added.
 
+Phase 17 Step 1 documents the future execution-intent boundary in
+[`docs/design/phase17_execution_intent_boundary.md`](design/phase17_execution_intent_boundary.md).
+It distinguishes selected risk-approved rows from future execution intents:
+risk-approved rows are permission signals only, while a future execution intent
+would be a deterministic, immutable, auditable, broker-agnostic internal
+instruction candidate prepared before any broker adapter. No execution intent,
+execution-intent builder, broker routing, Alpaca change, scheduler/runtime
+behavior, persistence, ML, or LLM trading-path logic has been implemented.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -379,6 +394,7 @@ Ledger modes:
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
 - Execution-intent objects
+- Execution-intent builder functions
 - Batch-level cumulative cash enforcement
 - Same-symbol execution conflict handling
 - Reconciliation loop against external broker state

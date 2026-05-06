@@ -42,7 +42,10 @@ verdicts. Phase 15 is a no-code design-only pass documenting the future Risk
 Step 1 adds test-only Risk -> Execution dependency guardrails before any
 execution bridge exists. Phase 16 Step 2 adds a pure risk-approved row selector
 that returns only `risk_approved` `SignalRiskEvaluation` rows while preserving
-input order and object identity.
+input order and object identity. Phase 17 Step 1 is a no-code design-only pass
+documenting the future internal execution-intent boundary after risk-approved
+selection. No runtime behavior changed, and risk-approved rows remain
+permission signals only.
 The latest full-suite result is:
 
 ```text
@@ -94,7 +97,10 @@ Phase 16 Step 1 strengthens dependency guardrails so pre-execution
 orchestration modules cannot import execution, broker, Alpaca, or trade-flow
 modules. Phase 16 Step 2 adds a pure risk-approved row selector that creates no
 execution intents and calls no broker, execution, Alpaca, `submit_order`,
-scheduler, persistence, ML, or LLM trading-path logic.
+scheduler, persistence, ML, or LLM trading-path logic. Phase 17 Step 1
+documents a future internal execution-intent boundary but implements no
+execution-intent object, builder, broker path, runtime behavior, persistence,
+ML, or LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -796,6 +802,38 @@ resolution; those remain future execution-boundary concerns before any
 execution intent or submission behavior is added.
 
 The full suite is now:
+
+```text
+python -m pytest
+303 passed, 4 skipped
+```
+
+## Phase 17 Step 1 Execution-Intent Boundary Design
+
+Phase 17 Step 1 started and completed as a documentation-only design phase. It
+adds
+`docs/design/phase17_execution_intent_boundary.md` to define the future
+internal execution-intent boundary after
+`select_risk_approved_evaluations(...)` and before any broker adapter,
+execution layer, scheduler/runtime behavior, persistence, or live trading
+path.
+
+The design clarifies that selected risk-approved rows are permission signals
+only. They are eligible for future execution-boundary consideration, but they
+are not execution intents, submitted orders, broker-routed orders, fills,
+persisted broker events, scheduler actions, runtime actions, or live trading
+decisions. A future execution intent would be a deterministic, immutable,
+auditable, broker-agnostic internal instruction candidate produced before any
+broker adapter, if explicitly implemented later.
+
+This step does not add an `ExecutionIntent` dataclass, a
+`build_execution_intents_from_risk_approved(...)` function, order submission,
+broker routing, Alpaca changes, `submit_order`, client-order-id generation,
+idempotency implementation, scheduler/runtime behavior, persistence, portfolio
+mutation, fills, reconciliation changes, live trading, ML, or LLM trading-path
+logic.
+
+The full-suite checkpoint remains:
 
 ```text
 python -m pytest
