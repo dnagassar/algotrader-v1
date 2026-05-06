@@ -58,9 +58,6 @@ EXECUTION_BYPASS_FORBIDDEN_PREFIXES = (
 ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.screener_signal_flow",
     "algotrader.orchestration.signal_risk_flow",
-)
-
-FUTURE_ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.risk_execution_flow",
 )
 

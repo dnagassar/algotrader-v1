@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `289` tests are passing, with `4` skipped paper-integration tests by default.
+- `303` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -29,6 +29,9 @@ state.
   `risk_approved` as a permission signal only.
 - Phase 16 Step 1 adds test-only Risk -> Execution dependency guardrails for
   pre-execution orchestration modules.
+- Phase 16 Step 2 adds a pure risk-approved row selector that returns only
+  `risk_approved` `SignalRiskEvaluation` rows while preserving order and object
+  identity.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -62,6 +65,8 @@ Synthetic Bar + Quote candidates
   -> immutable ScreenerSignalEvaluation tuple
   -> evaluate_risk_for_screener_signals(...)
   -> immutable SignalRiskEvaluation tuple
+  -> select_risk_approved_evaluations(...)
+  -> immutable risk-approved SignalRiskEvaluation tuple
 ```
 
 The screener-to-signal segment does not call risk, broker, Alpaca, execution,
@@ -70,6 +75,8 @@ signal evaluation is a proposed signal output only. The Signal -> Risk layer
 then checks proposed orders with `RiskEngine` only, keeps no-signal rows with
 `risk=None`, and returns risk verdicts without executing or submitting anything.
 Risk-approved means allowed by risk, not executed, submitted, or broker-ready.
+The risk-approved selector keeps only those permission rows in order and still
+does not create execution intents or call brokers.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -309,6 +316,24 @@ modules. It adds no Risk -> Execution runtime behavior, execution bridge,
 broker wiring, order submission, scheduler, persistence, ML, dependency, or LLM
 trading-path logic.
 
+Phase 16 Step 2 adds pure risk-approved row selection in
+`src/algotrader/orchestration/risk_execution_flow.py`.
+`select_risk_approved_evaluations(...)` returns only
+`SignalRiskEvaluation` rows with `status="risk_approved"`, preserves input
+order, preserves object identity, and returns an immutable tuple. `no_signal`
+and `risk_rejected` rows are skipped.
+
+The selector does not create execution intents, call brokers, import execution,
+touch Alpaca, call `submit_order`, use schedulers, persist anything, mutate
+portfolios, add dependencies, or add ML or LLM trading-path logic.
+`risk_approved` remains a permission signal only, not an execution instruction.
+
+Known limitation: rows can be individually risk-approved against the same fixed
+portfolio snapshot while not being collectively affordable. This selector does
+not solve batch-level cumulative cash handling or same-symbol conflict
+resolution; those remain future execution-boundary concerns before any
+execution intent or order submission behavior is added.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -353,6 +378,9 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
+- Execution-intent objects
+- Batch-level cumulative cash enforcement
+- Same-symbol execution conflict handling
 - Reconciliation loop against external broker state
 - Scheduler or runtime loop
 - LangGraph
@@ -362,10 +390,10 @@ Ledger modes:
 
 ## Next Recommended Phase
 
-The next phase should keep the screener small and synthetic unless explicitly
-approved otherwise. Safe follow-up work could add more deterministic unit tests
-or a tiny deterministic filter, but still without live data, broker wiring,
-orders, risk integration, schedulers, ML, or LLM trading-path logic.
+The next phase should keep any execution-boundary work pure and synthetic unless
+explicitly approved otherwise. Safe follow-up work could design batch-level cash
+and same-symbol handling before any execution intent, broker wiring, order
+submission, scheduler, persistence, ML, or LLM trading-path logic exists.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

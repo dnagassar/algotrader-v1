@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 288-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 303-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -40,11 +40,13 @@ Step 2 adds pure Signal -> Risk evaluation that stops at deterministic risk
 verdicts. Phase 15 is a no-code design-only pass documenting the future Risk
 -> Execution boundary before any execution integration is implemented. Phase 16
 Step 1 adds test-only Risk -> Execution dependency guardrails before any
-execution bridge exists.
+execution bridge exists. Phase 16 Step 2 adds a pure risk-approved row selector
+that returns only `risk_approved` `SignalRiskEvaluation` rows while preserving
+input order and object identity.
 The latest full-suite result is:
 
 ```text
-289 passed, 4 skipped
+303 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -90,7 +92,9 @@ Phase 15 documents the future Risk -> Execution boundary and keeps
 risk-approved rows as permission signals only, not execution instructions.
 Phase 16 Step 1 strengthens dependency guardrails so pre-execution
 orchestration modules cannot import execution, broker, Alpaca, or trade-flow
-modules.
+modules. Phase 16 Step 2 adds a pure risk-approved row selector that creates no
+execution intents and calls no broker, execution, Alpaca, `submit_order`,
+scheduler, persistence, ML, or LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -749,9 +753,9 @@ tests/unit/test_dependency_direction.py
 The tests enforce that pre-execution orchestration modules, including
 `algotrader.orchestration.screener_signal_flow` and
 `algotrader.orchestration.signal_risk_flow`, do not import execution, broker,
-Alpaca, or trade-flow modules. The guardrail table also includes a
-future-facing pattern for `algotrader.orchestration.risk_execution_flow` without
-requiring that module to exist yet.
+Alpaca, or trade-flow modules. The guardrail table also now includes
+`algotrader.orchestration.risk_execution_flow` as an active pre-execution
+module.
 
 No production Python code changed. No Risk -> Execution runtime behavior,
 execution bridge module, broker wiring, Alpaca changes, execution integration,
@@ -765,6 +769,39 @@ python -m pytest
 289 passed, 4 skipped
 ```
 
+## Phase 16 Step 2 Risk-Approved Row Selection
+
+Phase 16 Step 2 adds the first pure Risk -> Execution boundary helper in:
+
+```text
+src/algotrader/orchestration/risk_execution_flow.py
+```
+
+`select_risk_approved_evaluations(...)` accepts existing
+`SignalRiskEvaluation` rows and returns only rows with
+`status="risk_approved"`. It preserves deterministic input order, returns the
+same row objects rather than copies, and returns an immutable tuple. `no_signal`
+and `risk_rejected` rows are skipped.
+
+This selector does not create execution intents, derive client order IDs or
+idempotency keys, call brokers, import execution, touch Alpaca, call
+`submit_order`, use schedulers, persist anything, mutate portfolios, or add ML
+or LLM trading-path logic. `risk_approved` remains a permission signal only,
+not an execution instruction.
+
+Known limitation: multiple rows may be individually risk-approved against the
+same fixed portfolio snapshot but not collectively affordable. This step does
+not solve batch-level cumulative cash handling or same-symbol conflict
+resolution; those remain future execution-boundary concerns before any
+execution intent or submission behavior is added.
+
+The full suite is now:
+
+```text
+python -m pytest
+303 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -776,6 +813,9 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
+- execution-intent objects
+- batch-level cumulative cash enforcement
+- same-symbol execution conflict handling
 - LangGraph
 - ML
 - LLM trading-path logic
@@ -789,6 +829,7 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
+- future design for batch-level cash and same-symbol handling before execution
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
 
