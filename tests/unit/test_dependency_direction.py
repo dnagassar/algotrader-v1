@@ -20,29 +20,53 @@ class DependencyRule:
     forbidden_prefixes: tuple[str, ...]
 
 
-ORCHESTRATION_BOUNDARY_RULES = (
-    DependencyRule(
-        source="algotrader.orchestration.screener_signal_flow",
-        paths=(Path("src/algotrader/orchestration/screener_signal_flow.py"),),
-        forbidden_prefixes=(
-            "algotrader.execution",
-            "algotrader.orchestration.trade_flow",
-            "algotrader.orchestration.signal_trade_flow",
-            "alpaca",
-            "alpaca_trade_api",
-        ),
-    ),
-    DependencyRule(
-        source="algotrader.orchestration.signal_risk_flow",
-        paths=(Path("src/algotrader/orchestration/signal_risk_flow.py"),),
-        forbidden_prefixes=(
-            "algotrader.execution",
-            "algotrader.orchestration.trade_flow",
-            "algotrader.orchestration.signal_trade_flow",
-            "alpaca",
-            "alpaca_trade_api",
-        ),
-    ),
+def _module_path(module_name: str) -> Path:
+    return Path("src").joinpath(*module_name.split(".")).with_suffix(".py")
+
+
+def _orchestration_boundary_rule(module_name: str) -> DependencyRule:
+    return DependencyRule(
+        source=module_name,
+        paths=(_module_path(module_name),),
+        forbidden_prefixes=EXECUTION_BOUNDARY_FORBIDDEN_PREFIXES,
+    )
+
+
+EXECUTION_BOUNDARY_FORBIDDEN_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.execution.broker_base",
+    "algotrader.execution.fake_broker",
+    "algotrader.execution.local_broker",
+    "algotrader.execution.alpaca_broker",
+    "algotrader.execution.alpaca_adapter",
+    "algotrader.execution.alpaca_client",
+    "algotrader.execution.alpaca_sdk_client",
+    "algotrader.execution.alpaca_mapper",
+    "algotrader.execution.alpaca_translator",
+    "algotrader.orchestration.trade_flow",
+    "algotrader.orchestration.signal_trade_flow",
+    "alpaca",
+    "alpaca_trade_api",
+)
+
+EXECUTION_BYPASS_FORBIDDEN_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.orchestration.trade_flow",
+    "algotrader.orchestration.signal_trade_flow",
+)
+
+ORCHESTRATION_BOUNDARY_MODULES = (
+    "algotrader.orchestration.screener_signal_flow",
+    "algotrader.orchestration.signal_risk_flow",
+)
+
+FUTURE_ORCHESTRATION_BOUNDARY_MODULES = (
+    "algotrader.orchestration.risk_execution_flow",
+)
+
+ORCHESTRATION_BOUNDARY_RULES = tuple(
+    _orchestration_boundary_rule(module_name)
+    for module_name in ORCHESTRATION_BOUNDARY_MODULES
 )
 
 
@@ -99,6 +123,16 @@ def test_screener_signal_flow_does_not_import_execution_or_broker_layers() -> No
         violations.extend(_dependency_violations(rule))
 
     assert violations == []
+
+
+def test_pre_execution_orchestration_chain_does_not_bypass_execution_boundary() -> None:
+    rule = DependencyRule(
+        source="pre-execution orchestration chain",
+        paths=tuple(_module_path(module_name) for module_name in ORCHESTRATION_BOUNDARY_MODULES),
+        forbidden_prefixes=EXECUTION_BYPASS_FORBIDDEN_PREFIXES,
+    )
+
+    assert _dependency_violations(rule) == []
 
 
 def _package_files(package: str) -> tuple[Path, ...]:

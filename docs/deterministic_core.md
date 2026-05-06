@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `288` tests are passing, with `4` skipped paper-integration tests by default.
+- `289` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -27,6 +27,8 @@ state.
   immutable `SignalRiskEvaluation` rows without execution or submission.
 - Phase 15 documents the future Risk -> Execution boundary while keeping
   `risk_approved` as a permission signal only.
+- Phase 16 Step 1 adds test-only Risk -> Execution dependency guardrails for
+  pre-execution orchestration modules.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -300,6 +302,12 @@ order, keep `no_signal` and `risk_rejected` rows traceable even when they are
 not execution-eligible, and remain separated from broker, Alpaca, scheduler,
 persistence, ML, and LLM trading-path behavior until a later explicitly
 approved phase.
+
+Phase 16 Step 1 strengthens AST dependency-direction tests so pre-execution
+orchestration modules do not import execution, broker, Alpaca, or trade-flow
+modules. It adds no Risk -> Execution runtime behavior, execution bridge,
+broker wiring, order submission, scheduler, persistence, ML, dependency, or LLM
+trading-path logic.
 
 ## Local Order-Event Ledger
 

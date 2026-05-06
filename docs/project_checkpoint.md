@@ -38,11 +38,13 @@ with focused unit tests only. Phase 14 Step 1 adds test-only dependency
 direction guardrails before any Signal -> Risk runtime code exists. Phase 14
 Step 2 adds pure Signal -> Risk evaluation that stops at deterministic risk
 verdicts. Phase 15 is a no-code design-only pass documenting the future Risk
--> Execution boundary before any execution integration is implemented.
+-> Execution boundary before any execution integration is implemented. Phase 16
+Step 1 adds test-only Risk -> Execution dependency guardrails before any
+execution bridge exists.
 The latest full-suite result is:
 
 ```text
-288 passed, 4 skipped
+289 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -86,6 +88,9 @@ does not mean executed, submitted, or broker-ready. This path does not call
 brokers, Alpaca, execution, CLI, scheduler, ML, or LLM trading-path logic.
 Phase 15 documents the future Risk -> Execution boundary and keeps
 risk-approved rows as permission signals only, not execution instructions.
+Phase 16 Step 1 strengthens dependency guardrails so pre-execution
+orchestration modules cannot import execution, broker, Alpaca, or trade-flow
+modules.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -731,6 +736,34 @@ No runtime behavior, production Python code, tests, exports, dependencies,
 execution integration, broker wiring, Alpaca changes, order submission,
 scheduler/runtime behavior, persistence, ML, or LLM trading-path logic was
 added.
+
+## Phase 16 Step 1 Risk to Execution Dependency Guardrails
+
+Phase 16 Step 1 is test-only. It strengthens AST-based dependency-direction
+guardrails in:
+
+```text
+tests/unit/test_dependency_direction.py
+```
+
+The tests enforce that pre-execution orchestration modules, including
+`algotrader.orchestration.screener_signal_flow` and
+`algotrader.orchestration.signal_risk_flow`, do not import execution, broker,
+Alpaca, or trade-flow modules. The guardrail table also includes a
+future-facing pattern for `algotrader.orchestration.risk_execution_flow` without
+requiring that module to exist yet.
+
+No production Python code changed. No Risk -> Execution runtime behavior,
+execution bridge module, broker wiring, Alpaca changes, execution integration,
+order submission, scheduler/runtime behavior, persistence, ML, dependency, or
+LLM trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+289 passed, 4 skipped
+```
 
 ## Explicitly Not Included
 
