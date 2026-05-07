@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `349` tests are passing, with `4` skipped paper-integration tests by default.
+- `379` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -50,6 +50,9 @@ state.
 - Phase 19 Step 2 adds a minimal immutable planning policy result contract and
   no-op pass-through policy; all intents are currently accepted and no real
   planning policy decisions have been added.
+- Phase 19 Step 3 hardens `PlanningPolicyResult` traceability with tests and
+  docs only; accepted and skipped traceability still flows through
+  `ExecutionIntent.source_evaluation`.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -134,6 +137,14 @@ Phase 19 Step 2 adds only the first policy-result boundary:
 intent currently in the plan, preserves intent order and identity, preserves
 source evaluation identity through accepted intents, and produces no skipped
 intents. `skipped_intents` exists only as a future traceability shape.
+Phase 19 Step 3 hardens that traceability. Accepted-intent traceability flows
+through `result.accepted_intents[n].source_evaluation`. Skipped-intent
+traceability flows through
+`result.skipped_intents[n].intent.source_evaluation`. Proposed orders, risk
+verdicts, and statuses remain reachable only through the source
+`SignalRiskEvaluation` object. `PlanningPolicyResult` and
+`SkippedExecutionIntent` do not expose direct broker, order, risk, status, fill,
+idempotency, cash-reservation, priority, SDK, Alpaca, or persistence fields.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -479,6 +490,14 @@ duplicate or competing order policy, priority policy, idempotency,
 `client_order_id`, broker routing, order submission, persistence writes,
 scheduler/runtime behavior, portfolio mutation, fills, reconciliation changes,
 ML, or LLM trading-path logic has been added.
+
+Phase 19 Step 3 keeps the policy implementation unchanged and hardens the
+contract with tests and documentation only. `PlanningPolicyResult` still has
+only `accepted_intents` and `skipped_intents`; `SkippedExecutionIntent` still
+has only `intent` and `reason`. Convenience fields or properties such as
+`orders`, `risks`, `statuses`, `symbols`, `accepted_orders`, `skipped_orders`,
+`client_order_ids`, `idempotency_keys`, `broker_order_ids`, `cash_reserved`,
+`buying_power_reserved`, `priority`, or `rank` remain excluded.
 
 ## Local Order-Event Ledger
 

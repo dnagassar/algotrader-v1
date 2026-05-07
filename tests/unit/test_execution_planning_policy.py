@@ -23,7 +23,9 @@ from algotrader.risk.state import RiskVerdict
 NOW = datetime(2026, 5, 7, tzinfo=timezone.utc)
 
 _FORBIDDEN_POLICY_RESULT_FIELD_NAMES = {
+    "accepted_orders",
     "account_id",
+    "alpaca_order",
     "broker",
     "broker_name",
     "broker_order_id",
@@ -38,18 +40,25 @@ _FORBIDDEN_POLICY_RESULT_FIELD_NAMES = {
     "filled_at",
     "idempotency_key",
     "idempotency_keys",
+    "intents",
     "native_order",
     "order",
     "orders",
     "persisted_at",
     "priorities",
     "priority",
+    "quantities",
+    "quantity",
     "rank",
     "ranks",
     "rejected_intents",
     "risk",
     "risks",
+    "sdk_order",
     "selected_intents",
+    "side",
+    "sides",
+    "skipped_orders",
     "status",
     "statuses",
     "submitted_at",
@@ -60,15 +69,43 @@ _FORBIDDEN_POLICY_RESULT_FIELD_NAMES = {
 
 _FORBIDDEN_SKIPPED_INTENT_FIELD_NAMES = {
     "account_id",
+    "alpaca_order",
     "broker",
+    "broker_name",
     "broker_order_id",
     "client_order_id",
+    "cash_reserved",
     "fill",
+    "fill_price",
+    "fill_quantity",
     "filled_at",
     "idempotency_key",
+    "native_order",
+    "order",
     "persisted_at",
+    "priority",
+    "quantity",
+    "rank",
+    "risk",
+    "sdk_order",
+    "side",
+    "status",
     "submitted_at",
+    "symbol",
     "venue",
+}
+
+_FORBIDDEN_NOOP_POLICY_PARAMETER_NAMES = {
+    "account",
+    "broker",
+    "database",
+    "execution",
+    "persistence",
+    "policy_config",
+    "portfolio",
+    "risk_engine",
+    "runtime",
+    "scheduler",
 }
 
 
@@ -222,6 +259,15 @@ def test_planning_policy_result_is_frozen() -> None:
         result.accepted_intents = ()
 
 
+def test_planning_policy_result_skipped_intents_field_is_frozen() -> None:
+    result = apply_noop_execution_planning_policy(
+        build_execution_plan([intent("MSFT")])
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        result.skipped_intents = ()
+
+
 def test_skipped_execution_intent_is_frozen() -> None:
     skipped = SkippedExecutionIntent(
         intent=intent("MSFT"),
@@ -230,6 +276,16 @@ def test_skipped_execution_intent_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         skipped.reason = "changed"
+
+
+def test_skipped_execution_intent_intent_field_is_frozen() -> None:
+    skipped = SkippedExecutionIntent(
+        intent=intent("MSFT"),
+        reason="future_policy_reason",
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        skipped.intent = intent("AAPL")
 
 
 def test_input_execution_plan_is_not_mutated() -> None:
@@ -316,6 +372,16 @@ def test_planning_policy_result_has_only_accepted_and_skipped_fields() -> None:
     assert set(field_names).isdisjoint(_FORBIDDEN_POLICY_RESULT_FIELD_NAMES)
 
 
+def test_planning_policy_result_exposes_no_forbidden_traceability_fields() -> None:
+    result = PlanningPolicyResult(
+        accepted_intents=(intent("MSFT"),),
+        skipped_intents=(),
+    )
+
+    for field_name in _FORBIDDEN_POLICY_RESULT_FIELD_NAMES:
+        assert not hasattr(result, field_name)
+
+
 def test_no_client_order_id_or_idempotency_fields_exist() -> None:
     result = apply_noop_execution_planning_policy(
         build_execution_plan([intent("MSFT")])
@@ -373,6 +439,9 @@ def test_function_signature_requires_only_execution_plan() -> None:
         ExecutionPlan,
         "ExecutionPlan",
     }
+    assert set(signature.parameters).isdisjoint(
+        _FORBIDDEN_NOOP_POLICY_PARAMETER_NAMES
+    )
 
 
 def test_skipped_execution_intent_stores_intent_identity_and_reason() -> None:
@@ -385,6 +454,57 @@ def test_skipped_execution_intent_stores_intent_identity_and_reason() -> None:
 
     assert skipped.intent is original
     assert skipped.reason == "future_policy_reason"
+
+
+def test_skipped_intent_traceability_flows_through_source_evaluation() -> None:
+    source = risk_approved("MSFT")
+    original = ExecutionIntent(source_evaluation=source)
+    skipped = SkippedExecutionIntent(
+        intent=original,
+        reason="future_policy_reason",
+    )
+    result = PlanningPolicyResult(
+        accepted_intents=(),
+        skipped_intents=(skipped,),
+    )
+
+    assert result.skipped_intents[0] is skipped
+    assert result.skipped_intents[0].intent is original
+    assert result.skipped_intents[0].intent.source_evaluation is source
+    assert result.skipped_intents[0].reason == "future_policy_reason"
+    assert result.skipped_intents[0].intent.source_evaluation.order is source.order
+    assert result.skipped_intents[0].intent.source_evaluation.risk is source.risk
+    assert result.skipped_intents[0].intent.source_evaluation.status == source.status
+    assert not hasattr(skipped, "order")
+    assert not hasattr(skipped, "risk")
+    assert not hasattr(skipped, "status")
+    assert not hasattr(result, "skipped_orders")
+
+
+def test_accepted_intent_traceability_preserves_sources_order_risk_and_status() -> None:
+    first_source = risk_approved("MSFT")
+    second_source = risk_approved("AAPL")
+    first = ExecutionIntent(source_evaluation=first_source)
+    second = ExecutionIntent(source_evaluation=second_source)
+    result = apply_noop_execution_planning_policy(
+        build_execution_plan([first, second])
+    )
+
+    assert result.accepted_intents[0] is first
+    assert result.accepted_intents[1] is second
+    assert result.accepted_intents[0].source_evaluation is first_source
+    assert result.accepted_intents[1].source_evaluation is second_source
+    assert result.accepted_intents[0].source_evaluation.order is first_source.order
+    assert result.accepted_intents[1].source_evaluation.order is second_source.order
+    assert result.accepted_intents[0].source_evaluation.risk is first_source.risk
+    assert result.accepted_intents[1].source_evaluation.risk is second_source.risk
+    assert result.accepted_intents[0].source_evaluation.status == first_source.status
+    assert result.accepted_intents[1].source_evaluation.status == second_source.status
+    assert not hasattr(result, "accepted_orders")
+    assert not hasattr(result, "orders")
+    assert not hasattr(result, "risks")
+    assert not hasattr(result, "symbols")
+    assert not hasattr(result, "statuses")
 
 
 def test_skipped_execution_intent_has_only_intent_and_reason_fields() -> None:

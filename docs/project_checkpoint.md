@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 349-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 379-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -59,11 +59,14 @@ hardens `ExecutionPlan` traceability with tests and documentation only. Phase 19
 Step 1 is a no-code execution-planning policy design phase. It designs the
 future policy layer conceptually while leaving `ExecutionIntent` source-only,
 `ExecutionPlan` as a minimal immutable batch container, and runtime behavior
-unchanged.
+unchanged. Phase 19 Step 2 adds the minimal immutable
+`PlanningPolicyResult` / `SkippedExecutionIntent` boundary and a no-op
+pass-through policy. Phase 19 Step 3 hardens planning-policy-result
+traceability with tests and documentation only.
 The latest full-suite result is:
 
 ```text
-349 passed, 4 skipped
+379 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -136,7 +139,10 @@ broker routing, order submission, runtime behavior, ML, or LLM trading-path
 logic has been implemented. Phase 19 Step 2 adds the minimal deterministic
 policy-result boundary and a no-op pass-through policy. All intents are
 currently accepted, skipped intents are only a future traceability shape, and
-no real planning policy decisions have been added.
+no real planning policy decisions have been added. Phase 19 Step 3 keeps the
+implementation unchanged and hardens the contract that accepted and skipped
+traceability flows through `ExecutionIntent.source_evaluation`, not through
+direct convenience fields on the policy result.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1163,6 +1169,52 @@ The full suite is now:
 ```text
 python -m pytest
 374 passed, 4 skipped
+```
+
+## Phase 19 Step 3 PlanningPolicyResult Traceability Hardening
+
+Phase 19 Step 3 is tests and documentation only. It hardens the minimal
+planning policy result contract without changing production Python code.
+
+`PlanningPolicyResult` remains an immutable, pre-broker result container with
+exactly two dataclass fields: `accepted_intents` and `skipped_intents`.
+`SkippedExecutionIntent` remains an immutable traceability wrapper with exactly
+two dataclass fields: `intent` and `reason`.
+
+Accepted-intent traceability flows through:
+
+```text
+result.accepted_intents[n].source_evaluation
+```
+
+Skipped-intent traceability flows through:
+
+```text
+result.skipped_intents[n].intent.source_evaluation
+```
+
+Proposed orders, risk verdicts, and statuses remain reachable through the
+source `SignalRiskEvaluation` object, not through direct fields or convenience
+properties on `PlanningPolicyResult` or `SkippedExecutionIntent`.
+
+The no-op policy still accepts every input intent in order, preserves
+`ExecutionIntent` object identity, preserves source `SignalRiskEvaluation`
+object identity, and returns `skipped_intents=()`. Manually constructed skipped
+results are covered only to pin the future traceability shape; no skip policy
+logic was added.
+
+No broker routing, paper or live order submission, Alpaca changes,
+`submit_order`, scheduler/runtime behavior, persistence writes, audit logging
+writes, idempotency, client-order-id generation, batch cash reservation,
+buying-power reservation, same-symbol conflict resolution, duplicate/competing
+order policy, priority/ranking policy, portfolio mutation, fills,
+reconciliation changes, ML, or LLM trading-path logic was added.
+
+The full suite is now:
+
+```text
+python -m pytest
+379 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

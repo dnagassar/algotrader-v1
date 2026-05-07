@@ -7,7 +7,8 @@ minimal `ExecutionPlan` container and before any broker-facing execution request
 is created. Step 1 was documentation-only and did not implement the policy
 layer. Phase 19 Step 2 adds only the minimal policy result contract and a no-op
 pass-through function; it still does not implement real planning policy
-decisions.
+decisions. Phase 19 Step 3 hardens result traceability with tests and
+documentation only.
 
 `ExecutionIntent` is a single internal pre-submission candidate. It is
 broker-agnostic, source-only, and not executable by itself. Its current contract
@@ -64,6 +65,35 @@ duplicate or competing order policy, priority/ranking policy, idempotency,
 audit writes, scheduler/runtime behavior, portfolio mutation, fills,
 reconciliation changes, ML, or LLM trading-path logic.
 
+## Phase 19 Step 3 Traceability Hardening
+
+Phase 19 Step 3 hardens the minimal result boundary with tests and
+documentation only. It does not change production code.
+
+Accepted-intent traceability flows through:
+
+```text
+result.accepted_intents[n].source_evaluation
+```
+
+Skipped-intent traceability flows through:
+
+```text
+result.skipped_intents[n].intent.source_evaluation
+```
+
+Proposed orders, risk verdicts, and statuses remain reachable through the
+source `SignalRiskEvaluation` object. Convenience fields or properties such as
+`result.orders`, `result.risks`, `result.symbols`, `result.statuses`,
+`result.accepted_orders`, `result.skipped_orders`, direct
+`SkippedExecutionIntent.order`, direct `SkippedExecutionIntent.risk`, or direct
+`SkippedExecutionIntent.status` should not be added without a later explicit
+design phase.
+
+The no-op policy still produces no skipped intents. Manually constructed
+`SkippedExecutionIntent` values are tested only to pin the future traceability
+shape; they do not imply any skip policy implementation.
+
 ## 2. Boundary Position
 
 The conceptual path is:
@@ -92,7 +122,7 @@ writers, or network clients.
 
 ## 3. Non-goals
 
-Phase 19 Steps 1 and 2 do not add:
+Phase 19 Steps 1 through 3 do not add:
 
 - real policy decision implementation
 - `ExecutionPlan` field changes
@@ -177,7 +207,8 @@ Unresolved design questions:
 - How should stale quotes be handled?
 - How should options buying power be handled later if options are introduced?
 
-No batch cash or buying-power policy is implemented in Phase 19 Step 1.
+No batch cash or buying-power policy is implemented in Phase 19 Steps 1 through
+3.
 
 ## 7. Same-Symbol And Duplicate Policy Design Questions
 
@@ -193,7 +224,7 @@ Unresolved design questions:
 - Should all such policy be explicit and injected rather than implicit?
 
 No same-symbol, duplicate, or competing-order policy is implemented in Phase 19
-Step 1.
+Steps 1 through 3.
 
 ## 8. Priority / Ranking Policy Design Questions
 
@@ -321,7 +352,7 @@ trading-path output.
 
 ## 14. Explicit Exclusions
 
-Phase 19 Steps 1 and 2 explicitly exclude:
+Phase 19 Steps 1 through 3 explicitly exclude:
 
 - no paper order submission
 - no live order submission
