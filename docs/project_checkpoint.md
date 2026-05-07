@@ -67,10 +67,17 @@ design phase for a future maximum accepted intents per plan policy. Runtime
 behavior is unchanged: `PlanningPolicyResult` remains a pre-broker result
 container, `apply_noop_execution_planning_policy(...)` remains pass-through
 only, and the max-intents policy is designed conceptually but not implemented.
+Phase 20 Step 2 adds the first real planning policy:
+`MaxAcceptedIntentsPolicyConfig`,
+`MAX_INTENTS_PER_PLAN_EXCEEDED_REASON`, and
+`apply_max_intents_execution_planning_policy(...)`. The policy requires an
+explicit positive integer cap, rejects `bool` and `None`, accepts the first `N`
+intents, skips the rest with deterministic reason text, and preserves intent
+and source-evaluation identity.
 The latest full-suite result is:
 
 ```text
-379 passed, 4 skipped
+413 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -152,7 +159,13 @@ execution-planning policy concept. It is documentation-only: `ExecutionPlan`
 remains a container, the no-op policy still accepts every intent, and no
 runtime behavior, broker-facing request construction, cash reservation,
 idempotency, same-symbol handling, priority/ranking, persistence, order
-submission, ML, or LLM trading-path logic has been added.
+submission, ML, or LLM trading-path logic has been added. Phase 20 Step 2 adds
+the pure max-intents policy implementation while keeping no-op pass-through
+separate for no-cap behavior. The max-intents policy performs only deterministic
+plan-order capping; it adds no broker routing, order submission, cash or
+buying-power reservation, same-symbol conflict handling, deduplication,
+priority/ranking, idempotency, persistence, scheduler/runtime behavior, ML, or
+LLM trading-path logic.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -281,7 +294,7 @@ and added a focused reconciliation currency-mismatch test.
 adapter's `list_positions()` method after the existing inert/no-adapter guard.
 This matched the existing adapter shape and did not change trading behavior.
 
-The full suite remains:
+At the Phase 20 Step 1 checkpoint, the full suite remained:
 
 ```text
 python -m pytest
@@ -1263,6 +1276,65 @@ python -m pytest
 379 passed, 4 skipped
 ```
 
+## Phase 20 Step 2 Max Intents Planning Policy Contract
+
+Phase 20 Step 2 adds the first real execution-planning policy contract in:
+
+```text
+src/algotrader/orchestration/execution_planning_policy.py
+```
+
+The new immutable config is:
+
+```text
+MaxAcceptedIntentsPolicyConfig(max_accepted_intents: int)
+```
+
+`max_accepted_intents` must be exactly an `int` greater than or equal to `1`.
+`bool` is rejected even though it is an `int` subclass, and `None`, `0`,
+negative values, `float`, `str`, and `Decimal` values are rejected. `None` does
+not mean no cap; `apply_noop_execution_planning_policy(...)` remains the
+separate no-cap pass-through policy.
+
+The new deterministic reason constant is:
+
+```text
+MAX_INTENTS_PER_PLAN_EXCEEDED_REASON = "max_intents_per_plan_exceeded"
+```
+
+`apply_max_intents_execution_planning_policy(plan, config)` accepts the first
+`config.max_accepted_intents` intents in existing `ExecutionPlan` order and
+wraps remaining intents in `SkippedExecutionIntent` with the deterministic
+reason above. Accepted and skipped `ExecutionIntent` object identity is
+preserved, and each source `SignalRiskEvaluation` remains traceable through
+`source_evaluation`.
+
+The policy is pure, deterministic, offline, broker-agnostic, and pre-broker. It
+does not mutate the input plan, intents, or source evaluations. It does not
+perform cash reservation, buying-power reservation, same-symbol conflict
+handling, duplicate/competing order policy, deduplication, priority/ranking,
+idempotency, `client_order_id` generation, broker routing, order submission,
+persistence writes, audit logging writes, scheduler/runtime behavior,
+portfolio mutation, fills, reconciliation changes, ML, or LLM trading-path
+logic.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_execution_planning_policy.py
+64 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+6 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+413 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1274,11 +1346,12 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
-- real execution-planning policy decisions beyond no-op pass-through
-- max-intents policy implementation
-- max-intents policy config object
-- accepted/rejected/skipped execution-planning policy logic
-- accepted/rejected/skipped execution-planning decisions
+- real execution-planning policy decisions beyond no-op pass-through and the
+  max-intents cap
+- accepted/rejected/skipped execution-planning policy logic beyond the
+  max-intents cap
+- accepted/rejected/skipped execution-planning decisions beyond the max-intents
+  cap
 - direct `ExecutionPlan` order/risk/status convenience fields
 - execution-intent broker routing or adapter integration
 - broker-facing request construction

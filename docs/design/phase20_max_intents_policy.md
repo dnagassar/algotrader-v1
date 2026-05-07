@@ -2,9 +2,9 @@
 
 ## 1. Purpose
 
-Phase 20 Step 1 designs the first real execution-planning policy concept:
-maximum accepted intents per plan. This step is documentation-only. It does not
-implement the policy, add configuration, change runtime behavior, or alter the
+Phase 20 Step 1 designed the first real execution-planning policy concept:
+maximum accepted intents per plan. Step 1 was documentation-only. Phase 20 Step
+2 adds the narrow test-first implementation of that policy while preserving the
 existing planning result shapes.
 
 A maximum-intents policy is a safe first real planning policy because it is
@@ -14,14 +14,15 @@ conflict resolution, or priority scoring when existing plan order is preserved.
 
 `ExecutionPlan` is currently only an immutable container for ordered
 `ExecutionIntent` objects. It is not executable by itself. The current
-`apply_noop_execution_planning_policy(...)` function accepts every intent in
-the plan, preserves order and object identity, and returns no skipped intents.
+`apply_noop_execution_planning_policy(...)` function still accepts every intent
+in the plan, preserves order and object identity, and returns no skipped
+intents. It remains the explicit no-cap pass-through policy.
 
-A future max-intents policy would cap accepted intents deterministically and
-wrap the remaining intents with deterministic skip reasons. That decision would
-remain a pre-broker, batch-level planning decision. It would not route orders,
-construct broker-native requests, submit orders, reserve cash, mutate
-portfolios, or create fills.
+`apply_max_intents_execution_planning_policy(...)` caps accepted intents
+deterministically and wraps the remaining intents with deterministic skip
+reasons. That decision remains a pre-broker, batch-level planning decision. It
+does not route orders, construct broker-native requests, submit orders, reserve
+cash, mutate portfolios, or create fills.
 
 ## 2. Boundary Position
 
@@ -34,27 +35,25 @@ Screener
   -> risk-approved row selection
   -> ExecutionIntent construction
   -> ExecutionPlan construction
-  -> future max-intents planning policy
+  -> no-op planning policy or max-intents planning policy
   -> future broker-facing execution request construction
   -> future broker adapter / execution layer
 ```
 
-Phase 20 Step 1 designs only the future max-intents planning policy. The
-implemented deterministic pre-execution path still uses the no-op planning
-policy, and no broker-facing execution request construction exists yet.
+Phase 20 Step 1 designed the future max-intents planning policy. Phase 20 Step
+2 implements that pure policy function. The existing no-op policy remains
+available and separate for no-cap pass-through behavior, and no broker-facing
+execution request construction exists yet.
 
-The future max-intents policy boundary would sit after source-only internal
-intent grouping and before any broker-facing request shape exists. It must
-remain deterministic, offline, broker-agnostic, and independent of runtime
-schedulers, persistence writers, network clients, ML, or LLM trading-path
-output.
+The max-intents policy boundary sits after source-only internal intent grouping
+and before any broker-facing request shape exists. It remains deterministic,
+offline, broker-agnostic, and independent of runtime schedulers, persistence
+writers, network clients, ML, or LLM trading-path output.
 
 ## 3. Non-goals
 
-Phase 20 Step 1 does not add:
+Phase 20 Step 2 does not add:
 
-- max-intents policy implementation
-- policy config object
 - changes to `PlanningPolicyResult`
 - changes to `SkippedExecutionIntent`
 - changes to `ExecutionPlan`
@@ -80,11 +79,11 @@ Phase 20 Step 1 does not add:
 - ML
 - LLM trading-path logic
 
-## 4. Future Max-Intents Policy Semantics
+## 4. Max-Intents Policy Semantics
 
-A future max-intents policy may accept the first `N` intents from an
-`ExecutionPlan` and skip the remaining intents with deterministic reason text.
-It should return the existing `PlanningPolicyResult` shape:
+The max-intents policy accepts the first `N` intents from an `ExecutionPlan`
+and skips the remaining intents with deterministic reason text. It returns the
+existing `PlanningPolicyResult` shape:
 
 ```text
 PlanningPolicyResult(
@@ -93,7 +92,7 @@ PlanningPolicyResult(
 )
 ```
 
-Conceptual future behavior:
+Current behavior:
 
 - preserve the accepted `ExecutionIntent` objects by identity
 - preserve skipped `ExecutionIntent` objects by identity through
@@ -115,13 +114,11 @@ skipped: final 2 intents
 reason: "max_intents_per_plan_exceeded"
 ```
 
-This behavior is conceptual only. Phase 20 Step 1 does not implement it.
-
 ## 5. Why Input Order Is Enough For The First Policy
 
-The first max-intents policy may use existing `ExecutionPlan` order as the
-deterministic selection order. This avoids introducing priority and ranking
-before those policies have their own design.
+The max-intents policy uses existing `ExecutionPlan` order as the deterministic
+selection order. This avoids introducing priority and ranking before those
+policies have their own design.
 
 Current constraints:
 
@@ -138,37 +135,41 @@ one narrow question: how many intents may remain accepted in this batch?
 Future priority or ranking policy remains separate and should be designed
 explicitly before any reordering or scoring is introduced.
 
-## 6. Future Policy Configuration Questions
+## 6. Policy Configuration
 
-Unresolved design questions:
+Phase 20 Step 2 adds this immutable config:
 
-- Should the config be a frozen dataclass?
-- Should the future config be named `MaxAcceptedIntentsPolicyConfig`?
-- Should the field be named `max_accepted_intents`?
-- Should the value require `int >= 1`?
-- Should `bool` be rejected even though `bool` is an `int` subclass in Python?
-- Should `max_accepted_intents=None` mean no cap?
-- Should the no-op policy remain separate instead of using `None` for no cap?
-- Should reason text be a fixed constant?
-- Should skipped reason text be human-readable, machine-readable, or both?
+```text
+MaxAcceptedIntentsPolicyConfig(max_accepted_intents: int)
+```
 
-No config object is implemented in Phase 20 Step 1.
+The config is a frozen, slotted dataclass with exactly one field:
+`max_accepted_intents`. The value must be exactly an `int` and must be greater
+than or equal to `1`. `bool` is rejected even though `bool` is an `int` subclass
+in Python. `None`, `0`, negative values, `float`, `str`, and `Decimal` values
+are rejected.
 
-## 7. Future Skipped Reason Semantics
+`None` does not mean no cap. The explicit no-cap policy remains
+`apply_noop_execution_planning_policy(...)`.
 
-Unresolved skip-reason questions:
+Remaining future questions:
 
-- Should reason be a string constant?
-- Should the future reason be `"max_intents_per_plan_exceeded"`?
-- Should reason include the configured limit?
-- Should reason include the original plan index?
-- Should index/provenance be added later?
-- Should index/provenance be avoided for now?
-- Should reason be an enum later?
-- Should reason remain a plain deterministic string for now?
+- Should skipped reason text remain a plain string forever?
+- Should skipped reason text later become an enum?
+- Should later policy configs share a common protocol or remain independent?
 
-Phase 20 Step 1 does not add indexes, provenance fields, enum reasons, or new
-fields on `SkippedExecutionIntent`. The current result shape remains:
+## 7. Skipped Reason Semantics
+
+Phase 20 Step 2 adds this deterministic string constant:
+
+```text
+MAX_INTENTS_PER_PLAN_EXCEEDED_REASON = "max_intents_per_plan_exceeded"
+```
+
+Skipped intents produced by `apply_max_intents_execution_planning_policy(...)`
+use exactly that reason. Phase 20 Step 2 does not add indexes, provenance
+fields, enum reasons, configured-limit fields, original-plan-index fields, or
+new fields on `SkippedExecutionIntent`. The result shape remains:
 
 ```text
 SkippedExecutionIntent(intent: ExecutionIntent, reason: str)
@@ -176,7 +177,7 @@ SkippedExecutionIntent(intent: ExecutionIntent, reason: str)
 
 ## 8. Traceability Requirements
 
-Future accepted-intent traceability must preserve object identity:
+Accepted-intent traceability preserves object identity:
 
 ```text
 result.accepted_intents[n] is original_intent
@@ -189,7 +190,7 @@ Accepted source evaluation remains reachable through:
 result.accepted_intents[n].source_evaluation
 ```
 
-Future skipped-intent traceability must also preserve object identity:
+Skipped-intent traceability also preserves object identity:
 
 ```text
 result.skipped_intents[n].intent is original_intent
@@ -202,11 +203,11 @@ Skipped source evaluation remains reachable through:
 result.skipped_intents[n].intent.source_evaluation
 ```
 
-The skip reason must be deterministic. Proposed order, risk verdict, and status
-remain reachable only through the source evaluation. The future max-intents
-policy should not add direct proposed-order, risk, status, symbol, quantity,
-side, broker, account, venue, idempotency, cash-reservation, priority, fill,
-SDK, Alpaca, audit, or persistence fields to the policy result.
+The skip reason is deterministic. Proposed order, risk verdict, and status
+remain reachable only through the source evaluation. The max-intents policy
+does not add direct proposed-order, risk, status, symbol, quantity, side,
+broker, account, venue, idempotency, cash-reservation, priority, fill, SDK,
+Alpaca, audit, or persistence fields to the policy result.
 
 ## 9. Separation From Cash And Buying-Power Policy
 
@@ -252,7 +253,7 @@ constructed.
 
 ## 13. Persistence And Audit Separation
 
-Phase 20 Step 1 adds no persistence writes and no audit logging writes.
+Phase 20 Step 2 adds no persistence writes and no audit logging writes.
 
 A future audit design may record accepted intents, skipped intents, skip
 reasons, source evaluations, plan identifiers, and deterministic policy
@@ -280,7 +281,7 @@ Allowed conceptual dependency direction:
 - orchestration -> `execution_planning_policy`
 - orchestration -> deterministic config/model modules
 
-Forbidden dependencies for a future max-intents policy:
+Forbidden dependencies for the max-intents policy:
 
 - execution modules
 - broker modules
@@ -290,14 +291,13 @@ Forbidden dependencies for a future max-intents policy:
 - LLM/LangGraph calls
 - network clients
 
-The future policy should stay in the deterministic pre-broker orchestration
-boundary. It should depend on source models and explicit deterministic
-configuration, not on broker or execution behavior.
+The policy stays in the deterministic pre-broker orchestration boundary. It
+depends on source models and explicit deterministic configuration, not on
+broker or execution behavior.
 
-## 16. Future Test-First Acceptance Criteria
+## 16. Test-First Acceptance Criteria
 
-A later Phase 20 Step 2 could test a real max-intents policy before
-implementation. Possible tests:
+Phase 20 Step 2 adds focused tests for:
 
 - `max_accepted_intents` must be `int >= 1`
 - `bool` is rejected
@@ -322,15 +322,13 @@ implementation. Possible tests:
 - no persistence writes occur
 - no scheduler/runtime behavior occurs
 
-Those future tests should keep the implementation deterministic, offline,
-credential-free, broker-free, SDK-free, and independent of ML or LLM
-trading-path output.
+Those tests keep the implementation deterministic, offline, credential-free,
+broker-free, SDK-free, and independent of ML or LLM trading-path output.
 
 ## 17. Explicit Exclusions
 
-Phase 20 Step 1 explicitly excludes:
+Phase 20 Step 2 explicitly excludes:
 
-- no policy implementation in Phase 20 Step 1
 - no paper order submission
 - no live order submission
 - no broker routing
