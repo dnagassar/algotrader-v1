@@ -62,7 +62,11 @@ future policy layer conceptually while leaving `ExecutionIntent` source-only,
 unchanged. Phase 19 Step 2 adds the minimal immutable
 `PlanningPolicyResult` / `SkippedExecutionIntent` boundary and a no-op
 pass-through policy. Phase 19 Step 3 hardens planning-policy-result
-traceability with tests and documentation only.
+traceability with tests and documentation only. Phase 20 Step 1 is a no-code
+design phase for a future maximum accepted intents per plan policy. Runtime
+behavior is unchanged: `PlanningPolicyResult` remains a pre-broker result
+container, `apply_noop_execution_planning_policy(...)` remains pass-through
+only, and the max-intents policy is designed conceptually but not implemented.
 The latest full-suite result is:
 
 ```text
@@ -142,7 +146,13 @@ currently accepted, skipped intents are only a future traceability shape, and
 no real planning policy decisions have been added. Phase 19 Step 3 keeps the
 implementation unchanged and hardens the contract that accepted and skipped
 traceability flows through `ExecutionIntent.source_evaluation`, not through
-direct convenience fields on the policy result.
+direct convenience fields on the policy result. Phase 20 Step 1 documents the
+future maximum accepted intents per plan policy as the first real
+execution-planning policy concept. It is documentation-only: `ExecutionPlan`
+remains a container, the no-op policy still accepts every intent, and no
+runtime behavior, broker-facing request construction, cash reservation,
+idempotency, same-symbol handling, priority/ranking, persistence, order
+submission, ML, or LLM trading-path logic has been added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1217,6 +1227,42 @@ python -m pytest
 379 passed, 4 skipped
 ```
 
+## Phase 20 Step 1 Maximum Intents Planning Policy Design
+
+Phase 20 Step 1 is documentation-only. It adds
+[`docs/design/phase20_max_intents_policy.md`](design/phase20_max_intents_policy.md)
+as the no-code design record for a future maximum accepted intents per plan
+policy after minimal `ExecutionPlan` construction.
+
+The design clarifies that a future max-intents policy may accept the first `N`
+intents from an `ExecutionPlan`, preserve original plan order and object
+identity, and wrap later intents in `SkippedExecutionIntent` with deterministic
+reason text such as `"max_intents_per_plan_exceeded"`. This is a pre-broker,
+batch-level planning decision only.
+
+`PlanningPolicyResult` remains a pre-broker result container with
+`accepted_intents` and `skipped_intents`. `SkippedExecutionIntent` remains a
+traceability wrapper with `intent` and `reason`. `ExecutionIntent` and
+`ExecutionPlan` remain unchanged. The current
+`apply_noop_execution_planning_policy(...)` function remains pass-through only:
+it accepts every input intent and returns `skipped_intents=()`.
+
+No production Python code, tests, imports, runtime behavior, policy config
+object, max-intents policy function, broker routing, Alpaca changes,
+`submit_order`, order submission, idempotency, `client_order_id` generation,
+batch cash reservation, buying-power reservation, same-symbol conflict
+resolution, duplicate/competing order policy, priority/ranking policy,
+persistence writes, audit logging writes, scheduler/runtime behavior,
+portfolio mutation, fills, reconciliation changes, ML, or LLM trading-path
+logic was added.
+
+The full suite remains:
+
+```text
+python -m pytest
+379 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1229,6 +1275,8 @@ python -m pytest
 - live trading
 - screener-driven order generation
 - real execution-planning policy decisions beyond no-op pass-through
+- max-intents policy implementation
+- max-intents policy config object
 - accepted/rejected/skipped execution-planning policy logic
 - accepted/rejected/skipped execution-planning decisions
 - direct `ExecutionPlan` order/risk/status convenience fields

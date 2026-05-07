@@ -53,6 +53,9 @@ state.
 - Phase 19 Step 3 hardens `PlanningPolicyResult` traceability with tests and
   docs only; accepted and skipped traceability still flows through
   `ExecutionIntent.source_evaluation`.
+- Phase 20 Step 1 documents the future max-intents planning policy boundary as
+  a no-code design phase; no max-intents policy implementation or runtime
+  behavior has been added.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -93,6 +96,17 @@ Synthetic Bar + Quote candidates
   -> build_execution_plan(...)
   -> immutable ExecutionPlan
   -> apply_noop_execution_planning_policy(...)
+  -> immutable PlanningPolicyResult
+  -> future broker-facing execution request construction
+  -> future broker adapter / execution layer
+```
+
+Phase 20 Step 1 adds this design-only future policy concept at the same
+pre-broker policy boundary:
+
+```text
+immutable ExecutionPlan
+  -> future max-intents planning policy [design only, not implemented]
   -> immutable PlanningPolicyResult
   -> future broker-facing execution request construction
   -> future broker adapter / execution layer
@@ -145,6 +159,13 @@ verdicts, and statuses remain reachable only through the source
 `SignalRiskEvaluation` object. `PlanningPolicyResult` and
 `SkippedExecutionIntent` do not expose direct broker, order, risk, status, fill,
 idempotency, cash-reservation, priority, SDK, Alpaca, or persistence fields.
+Phase 20 Step 1 documents a future max-intents planning policy as the first
+real policy concept after minimal plan construction. That future policy may
+accept the first `N` intents from an `ExecutionPlan`, skip later intents with a
+deterministic reason such as `"max_intents_per_plan_exceeded"`, and preserve
+accepted and skipped intent object identity. It has not been implemented.
+`apply_noop_execution_planning_policy(...)` remains the only current policy
+function, and it remains pass-through only.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -499,6 +520,17 @@ has only `intent` and `reason`. Convenience fields or properties such as
 `client_order_ids`, `idempotency_keys`, `broker_order_ids`, `cash_reserved`,
 `buying_power_reserved`, `priority`, or `rank` remain excluded.
 
+Phase 20 Step 1 documents the future maximum accepted intents per plan policy in
+[`docs/design/phase20_max_intents_policy.md`](design/phase20_max_intents_policy.md).
+This is a design-only boundary concept. A future policy may cap accepted
+intents deterministically using explicit configuration and existing plan order,
+then place later intents in `skipped_intents` with deterministic reason text.
+No max-intents policy, policy config object, reason constant, index/provenance
+field, priority/ranking behavior, cash reservation, buying-power reservation,
+same-symbol conflict handling, duplicate/competing order policy, idempotency,
+broker routing, persistence, audit logging writes, order submission, scheduler
+or runtime behavior, ML, or LLM trading-path logic has been implemented.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -544,6 +576,8 @@ Ledger modes:
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
 - Real execution-planning policy decisions beyond no-op pass-through
+- Max-intents policy implementation
+- Max-intents policy config object
 - Accepted/rejected/skipped execution-planning policy logic
 - Accepted/rejected/skipped execution-planning decisions
 - Direct ExecutionPlan order/risk/status convenience fields
