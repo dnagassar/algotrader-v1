@@ -55,7 +55,11 @@ execution-planning boundary design phase after `ExecutionIntent` construction.
 Execution planning is conceptual only and no runtime behavior changed. Phase 18
 Step 2 adds a minimal immutable `ExecutionPlan` batch container and pure
 builder while leaving all execution-planning policy unresolved. Phase 18 Step 3
-hardens `ExecutionPlan` traceability with tests and documentation only.
+hardens `ExecutionPlan` traceability with tests and documentation only. Phase 19
+Step 1 is a no-code execution-planning policy design phase. It designs the
+future policy layer conceptually while leaving `ExecutionIntent` source-only,
+`ExecutionPlan` as a minimal immutable batch container, and runtime behavior
+unchanged.
 The latest full-suite result is:
 
 ```text
@@ -124,6 +128,12 @@ preserves `ExecutionIntent` order and identity only; no broker routing,
 idempotency, persistence, order submission, or runtime behavior has been
 implemented. Phase 18 Step 3 keeps the implementation unchanged and hardens
 that plan traceability flows through `plan.intents[n].source_evaluation`.
+Phase 19 Step 1 documents the future execution-planning policy boundary after
+minimal plan construction and before broker-facing request construction. That
+policy is conceptual only: no policy object, accepted/skipped buckets, cash
+reservation, same-symbol handling, priority/ranking, idempotency, persistence,
+broker routing, order submission, runtime behavior, ML, or LLM trading-path
+logic has been implemented.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1073,6 +1083,42 @@ python -m pytest
 349 passed, 4 skipped
 ```
 
+## Phase 19 Step 1 Execution-Planning Policy Design
+
+Phase 19 Step 1 is documentation-only. It adds
+[`docs/design/phase19_execution_planning_policy.md`](design/phase19_execution_planning_policy.md)
+as the no-code design record for a future execution-planning policy layer after
+minimal `ExecutionPlan` construction.
+
+The design clarifies that `ExecutionIntent` remains a single source-only,
+pre-submission candidate and that `ExecutionPlan` remains an immutable batch
+container with exactly one dataclass field: `intents`. A future planning policy
+may later decide which intents remain eligible after deterministic batch-level
+checks, but no policy has been implemented in this step.
+
+The design records unresolved policy questions around batch cash affordability,
+buying-power reservation, same-symbol conflicts, duplicate or competing
+intents, partial acceptance versus all-or-nothing behavior, stale quote or risk
+snapshots, priority/ranking, idempotency separation, persistence/audit
+separation, and broker/execution separation.
+
+No production Python code, tests, imports, runtime behavior, broker routing,
+paper or live order submission, Alpaca changes, `submit_order`,
+scheduler/runtime behavior, persistence writes, audit logging writes,
+idempotency, client-order-id generation, batch cash reservation, buying-power
+reservation, same-symbol conflict resolution, duplicate/competing order policy,
+priority/ranking policy, portfolio mutation, fills, reconciliation changes, ML,
+or LLM trading-path logic was added.
+
+The full suite remains:
+
+```text
+python -m pytest
+349 passed, 4 skipped
+```
+
+Normal pytest remains offline and credential-free.
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1084,7 +1130,8 @@ python -m pytest
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
-- execution-planning policy beyond immutable batch containment
+- execution-planning policy implementation
+- execution-planning policy runtime decisions
 - accepted/rejected/skipped execution-planning decisions
 - direct `ExecutionPlan` order/risk/status convenience fields
 - execution-intent broker routing or adapter integration
@@ -1092,10 +1139,11 @@ python -m pytest
 - order submission
 - client-order-id generation
 - idempotency implementation
-- batch-level cumulative cash enforcement
+- batch cash reservation
+- buying-power reservation
 - same-symbol execution conflict handling
-- duplicate or competing order policy
-- priority or ranking policy
+- duplicate or competing order policy implementation
+- priority or ranking policy implementation
 - persistence writes
 - audit logging writes
 - LangGraph
@@ -1111,8 +1159,8 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
-- future design for batch-level execution-planning policy, including batch cash
-  and same-symbol handling before broker-facing requests
+- test-first implementation of a small pure execution-planning policy only
+  after its result shape and explicit config are chosen
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
 

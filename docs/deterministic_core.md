@@ -44,6 +44,9 @@ state.
   pure builder; no execution-planning policy or broker behavior has been added.
 - Phase 18 Step 3 hardens `ExecutionPlan` traceability with tests and docs
   only; the object remains a minimal pre-broker batch container.
+- Phase 19 Step 1 documents the future execution-planning policy boundary after
+  minimal `ExecutionPlan` construction; no policy implementation or runtime
+  behavior has been added.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -83,6 +86,8 @@ Synthetic Bar + Quote candidates
   -> immutable ExecutionIntent tuple
   -> build_execution_plan(...)
   -> immutable ExecutionPlan
+  -> future execution planning policy
+  -> future broker-facing execution request construction
   -> future broker adapter / execution layer
 ```
 
@@ -114,6 +119,11 @@ statuses remain reachable through `plan.intents[n].source_evaluation.order`,
 `plan.intents[n].source_evaluation.risk`, and
 `plan.intents[n].source_evaluation.status`, not through convenience fields on
 the plan.
+Phase 19 Step 1 documents a future execution-planning policy boundary after
+minimal plan construction and before broker-facing request construction. The
+future policy may later make deterministic batch-level eligibility decisions,
+but no policy has been implemented. `ExecutionPlan` remains a container, while
+future planning policy remains the separate conceptual decision layer.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -437,6 +447,15 @@ intent, broker, account, venue, submission, fill, idempotency,
 `client_order_id`, cash reservation, priority/rank, SDK, Alpaca, or persistence
 fields exist on `ExecutionPlan`.
 
+Phase 19 Step 1 documents the future execution-planning policy boundary in
+[`docs/design/phase19_execution_planning_policy.md`](design/phase19_execution_planning_policy.md).
+That policy remains conceptual only. No policy result object, accepted/skipped
+buckets, cash reservation, buying-power reservation, same-symbol conflict
+handling, duplicate/competing order handling, priority/ranking behavior,
+broker-facing request construction, broker routing, idempotency, persistence,
+audit logging writes, order submission, runtime behavior, ML, or LLM
+trading-path logic has been implemented.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -481,7 +500,8 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
-- Execution-planning policy beyond immutable batch containment
+- Execution-planning policy implementation
+- Execution-planning policy runtime decisions
 - Accepted/rejected/skipped execution-planning decisions
 - Direct ExecutionPlan order/risk/status convenience fields
 - Execution-intent broker routing or adapter integration
@@ -489,10 +509,11 @@ Ledger modes:
 - Order submission
 - Client order ID generation
 - Idempotency implementation
-- Batch-level cumulative cash enforcement
+- Batch cash reservation
+- Buying-power reservation
 - Same-symbol execution conflict handling
-- Duplicate or competing order policy
-- Priority or ranking policy
+- Duplicate or competing order policy implementation
+- Priority or ranking policy implementation
 - Persistence writes
 - Audit logging writes
 - Reconciliation loop against external broker state
@@ -505,10 +526,11 @@ Ledger modes:
 ## Next Recommended Phase
 
 The next phase should keep any execution-boundary work pure and synthetic unless
-explicitly approved otherwise. Safe follow-up work could design batch-level
-execution-planning policy, including cash and same-symbol handling, before any
-broker wiring, order submission, scheduler, persistence, ML, or LLM
-trading-path logic exists.
+explicitly approved otherwise. A safe follow-up could implement a small
+test-first execution-planning policy object or function only after the policy
+shape is chosen, while still excluding broker wiring, order submission,
+scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
+LLM trading-path logic.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
