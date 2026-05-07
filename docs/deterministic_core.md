@@ -47,6 +47,9 @@ state.
 - Phase 19 Step 1 documents the future execution-planning policy boundary after
   minimal `ExecutionPlan` construction; no policy implementation or runtime
   behavior has been added.
+- Phase 19 Step 2 adds a minimal immutable planning policy result contract and
+  no-op pass-through policy; all intents are currently accepted and no real
+  planning policy decisions have been added.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -86,7 +89,8 @@ Synthetic Bar + Quote candidates
   -> immutable ExecutionIntent tuple
   -> build_execution_plan(...)
   -> immutable ExecutionPlan
-  -> future execution planning policy
+  -> apply_noop_execution_planning_policy(...)
+  -> immutable PlanningPolicyResult
   -> future broker-facing execution request construction
   -> future broker adapter / execution layer
 ```
@@ -124,6 +128,12 @@ minimal plan construction and before broker-facing request construction. The
 future policy may later make deterministic batch-level eligibility decisions,
 but no policy has been implemented. `ExecutionPlan` remains a container, while
 future planning policy remains the separate conceptual decision layer.
+Phase 19 Step 2 adds only the first policy-result boundary:
+`PlanningPolicyResult` and `SkippedExecutionIntent`, plus
+`apply_noop_execution_planning_policy(...)`. The no-op policy accepts every
+intent currently in the plan, preserves intent order and identity, preserves
+source evaluation identity through accepted intents, and produces no skipped
+intents. `skipped_intents` exists only as a future traceability shape.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -456,6 +466,20 @@ broker-facing request construction, broker routing, idempotency, persistence,
 audit logging writes, order submission, runtime behavior, ML, or LLM
 trading-path logic has been implemented.
 
+Phase 19 Step 2 adds the minimal policy result contract in
+`src/algotrader/orchestration/execution_planning_policy.py`. `PlanningPolicyResult`
+is a deterministic pre-broker result container with `accepted_intents` and
+`skipped_intents`. `SkippedExecutionIntent` stores an `ExecutionIntent` plus a
+plain deterministic reason string for future traceability. The current
+`apply_noop_execution_planning_policy(...)` function is pass-through only: all
+input plan intents are accepted unchanged and no skipped intents are produced.
+
+No cash reservation, buying-power reservation, same-symbol conflict handling,
+duplicate or competing order policy, priority policy, idempotency,
+`client_order_id`, broker routing, order submission, persistence writes,
+scheduler/runtime behavior, portfolio mutation, fills, reconciliation changes,
+ML, or LLM trading-path logic has been added.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -500,8 +524,8 @@ Ledger modes:
 - Screener-driven order generation
 - Screener wiring into risk or execution
 - Approved or submitted trades from screener signal evaluation
-- Execution-planning policy implementation
-- Execution-planning policy runtime decisions
+- Real execution-planning policy decisions beyond no-op pass-through
+- Accepted/rejected/skipped execution-planning policy logic
 - Accepted/rejected/skipped execution-planning decisions
 - Direct ExecutionPlan order/risk/status convenience fields
 - Execution-intent broker routing or adapter integration
@@ -526,11 +550,10 @@ Ledger modes:
 ## Next Recommended Phase
 
 The next phase should keep any execution-boundary work pure and synthetic unless
-explicitly approved otherwise. A safe follow-up could implement a small
-test-first execution-planning policy object or function only after the policy
-shape is chosen, while still excluding broker wiring, order submission,
-scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
-LLM trading-path logic.
+explicitly approved otherwise. A safe follow-up could design one explicit
+planning policy decision at a time, while still excluding broker wiring, order
+submission, scheduler/runtime behavior, persistence, cash reservation side
+effects, ML, and LLM trading-path logic.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

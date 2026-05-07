@@ -133,7 +133,10 @@ minimal plan construction and before broker-facing request construction. That
 policy is conceptual only: no policy object, accepted/skipped buckets, cash
 reservation, same-symbol handling, priority/ranking, idempotency, persistence,
 broker routing, order submission, runtime behavior, ML, or LLM trading-path
-logic has been implemented.
+logic has been implemented. Phase 19 Step 2 adds the minimal deterministic
+policy-result boundary and a no-op pass-through policy. All intents are
+currently accepted, skipped intents are only a future traceability shape, and
+no real planning policy decisions have been added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1119,6 +1122,49 @@ python -m pytest
 
 Normal pytest remains offline and credential-free.
 
+## Phase 19 Step 2 Minimal Planning Policy Contract
+
+Phase 19 Step 2 adds a narrow pre-broker planning policy result boundary in
+`src/algotrader/orchestration/execution_planning_policy.py`.
+
+The new immutable result shapes are:
+
+```text
+SkippedExecutionIntent(intent: ExecutionIntent, reason: str)
+PlanningPolicyResult(
+    accepted_intents: tuple[ExecutionIntent, ...],
+    skipped_intents: tuple[SkippedExecutionIntent, ...],
+)
+```
+
+`apply_noop_execution_planning_policy(...)` accepts an `ExecutionPlan` and
+returns a `PlanningPolicyResult`. It accepts every intent from the input plan in
+the original order, preserves each `ExecutionIntent` object by identity, keeps
+each source `SignalRiskEvaluation` reachable by identity through
+`accepted_intents[n].source_evaluation`, and returns
+`skipped_intents=()`.
+
+`skipped_intents` exists only as a future traceability shape for deterministic
+skip reasons. Phase 19 Step 2 does not add real skip logic, partial acceptance
+policy, rejection policy, cash reservation, buying-power reservation,
+same-symbol conflict handling, duplicate/competing order policy,
+priority/ranking policy, idempotency, client-order-id generation,
+broker-facing request construction, broker routing, order submission,
+persistence writes, audit logging writes, scheduler/runtime behavior, portfolio
+mutation, fills, reconciliation changes, ML, or LLM trading-path logic.
+
+Dependency-direction tests now include
+`algotrader.orchestration.execution_planning_policy` in the pre-execution
+orchestration boundary and in the narrow AST guard against broker/runtime
+imports, names, and calls.
+
+The full suite is now:
+
+```text
+python -m pytest
+374 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1130,8 +1176,8 @@ Normal pytest remains offline and credential-free.
 - scheduler/runtime loop
 - live trading
 - screener-driven order generation
-- execution-planning policy implementation
-- execution-planning policy runtime decisions
+- real execution-planning policy decisions beyond no-op pass-through
+- accepted/rejected/skipped execution-planning policy logic
 - accepted/rejected/skipped execution-planning decisions
 - direct `ExecutionPlan` order/risk/status convenience fields
 - execution-intent broker routing or adapter integration
@@ -1159,8 +1205,8 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
-- test-first implementation of a small pure execution-planning policy only
-  after its result shape and explicit config are chosen
+- explicit future execution-planning policy decisions only after their config
+  and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
 

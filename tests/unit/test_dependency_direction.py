@@ -60,6 +60,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.signal_risk_flow",
     "algotrader.orchestration.risk_execution_flow",
     "algotrader.orchestration.execution_planning_flow",
+    "algotrader.orchestration.execution_planning_policy",
 )
 
 ORCHESTRATION_BOUNDARY_RULES = tuple(
@@ -133,8 +134,22 @@ def test_pre_execution_orchestration_chain_does_not_bypass_execution_boundary() 
     assert _dependency_violations(rule) == []
 
 
-def test_execution_planning_flow_does_not_call_runtime_or_broker_boundaries() -> None:
-    path = _module_path("algotrader.orchestration.execution_planning_flow")
+def test_execution_planning_modules_do_not_call_runtime_or_broker_boundaries() -> None:
+    modules = (
+        "algotrader.orchestration.execution_planning_flow",
+        "algotrader.orchestration.execution_planning_policy",
+    )
+
+    for module_name in modules:
+        _assert_execution_planning_module_has_no_runtime_or_broker_boundaries(
+            module_name
+        )
+
+
+def _assert_execution_planning_module_has_no_runtime_or_broker_boundaries(
+    module_name: str,
+) -> None:
+    path = _module_path(module_name)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     import_violations = [
         f"{import_reference.path}:{import_reference.line}: "

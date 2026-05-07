@@ -4,8 +4,10 @@
 
 Phase 19 Step 1 designs a future execution-planning policy layer after the
 minimal `ExecutionPlan` container and before any broker-facing execution request
-is created. This phase is documentation-only. It does not implement the policy
-layer.
+is created. Step 1 was documentation-only and did not implement the policy
+layer. Phase 19 Step 2 adds only the minimal policy result contract and a no-op
+pass-through function; it still does not implement real planning policy
+decisions.
 
 `ExecutionIntent` is a single internal pre-submission candidate. It is
 broker-agnostic, source-only, and not executable by itself. Its current contract
@@ -32,6 +34,35 @@ and decide which intents remain eligible after batch-level checks. Those policy
 decisions must remain deterministic, offline, broker-agnostic, and auditable.
 They must not depend on live broker state, network calls, credentials, runtime
 schedulers, ML, or LLM trading-path output.
+
+## Phase 19 Step 2 Minimal Contract
+
+Phase 19 Step 2 adds the smallest implemented policy-result boundary:
+
+```text
+SkippedExecutionIntent(intent: ExecutionIntent, reason: str)
+PlanningPolicyResult(
+    accepted_intents: tuple[ExecutionIntent, ...],
+    skipped_intents: tuple[SkippedExecutionIntent, ...],
+)
+```
+
+`PlanningPolicyResult` is a deterministic pre-broker result container. It is not
+a broker request and is not executable by itself. `SkippedExecutionIntent`
+exists only as a future traceability shape for deterministic skip reasons.
+
+`apply_noop_execution_planning_policy(...)` accepts an `ExecutionPlan` and
+returns a `PlanningPolicyResult`. It currently accepts every
+`ExecutionIntent` in the input plan, preserves order, preserves intent object
+identity, preserves source `SignalRiskEvaluation` identity through
+`accepted_intents[n].source_evaluation`, and returns `skipped_intents=()`.
+
+The no-op function is deliberately not a real planning policy. It performs no
+cash reservation, buying-power reservation, same-symbol conflict handling,
+duplicate or competing order policy, priority/ranking policy, idempotency,
+`client_order_id` generation, broker routing, order submission, persistence or
+audit writes, scheduler/runtime behavior, portfolio mutation, fills,
+reconciliation changes, ML, or LLM trading-path logic.
 
 ## 2. Boundary Position
 
@@ -61,12 +92,12 @@ writers, or network clients.
 
 ## 3. Non-goals
 
-Phase 19 Step 1 does not add:
+Phase 19 Steps 1 and 2 do not add:
 
-- policy implementation
+- real policy decision implementation
 - `ExecutionPlan` field changes
 - `ExecutionIntent` field changes
-- accepted/rejected/skipped intent buckets
+- accepted/rejected/skipped intent policy logic
 - batch cash reservation implementation
 - buying-power reservation implementation
 - same-symbol conflict resolution implementation
@@ -114,16 +145,18 @@ implement any of them.
 ## 5. Policy Output Concept
 
 A future policy may need to return a deterministic decision artifact rather than
-mutating `ExecutionPlan`. Possible future output shapes include:
+mutating `ExecutionPlan`. Phase 19 Step 2 has selected the initial
+`PlanningPolicyResult` container as the minimal result boundary. Possible future
+expansions include:
 
 - a planned decision artifact that references the source `ExecutionPlan`
-- a policy result object that separates policy decisions from the input plan
 - accepted intents plus skipped intents with deterministic reasons
 - an all-or-nothing plan approval result
 - a partial acceptance plan result
 
-No output shape is selected in Phase 19 Step 1. These examples are tentative
-design options, not implementation commitments.
+The current Step 2 no-op policy uses the result boundary but does not yet
+produce skipped intents or real policy decisions. Future expansions remain
+tentative until designed and tested explicitly.
 
 The current `ExecutionPlan` must remain unchanged in this phase. It remains a
 minimal immutable container with only `intents`, and it does not gain decision
@@ -264,16 +297,11 @@ The future policy module should stay in orchestration or another deterministic
 pre-broker layer. It should depend on source models and explicit deterministic
 configuration, not on execution-side behavior.
 
-## 13. Future Test-First Acceptance Criteria
+## 13. Future Policy-Decision Acceptance Criteria
 
-A later Phase 19 Step 2 could test a policy object or function if implementation
-is explicitly approved. Possible future tests include:
+Phase 19 Step 2 added tests for the minimal policy result boundary and no-op
+function. Future policy-decision tests may add coverage for:
 
-- empty plan behavior is deterministic
-- accepted/skipped result shape is immutable
-- input `ExecutionPlan` is not mutated
-- `ExecutionIntent` objects are preserved by identity
-- source `SignalRiskEvaluation` objects are preserved by identity
 - policy requires explicit config
 - policy does not implicitly use screener rank
 - policy does not generate `client_order_id`
@@ -293,7 +321,7 @@ trading-path output.
 
 ## 14. Explicit Exclusions
 
-Phase 19 Step 1 explicitly excludes:
+Phase 19 Steps 1 and 2 explicitly exclude:
 
 - no paper order submission
 - no live order submission
