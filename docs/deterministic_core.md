@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `413` tests are passing, with `4` skipped paper-integration tests by default.
+- `415` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -60,6 +60,8 @@ state.
   `MaxAcceptedIntentsPolicyConfig`,
   `MAX_INTENTS_PER_PLAN_EXCEEDED_REASON`, and
   `apply_max_intents_execution_planning_policy(...)`.
+- Phase 20 Step 3 hardens max-intents traceability with tests and docs only;
+  no production source or runtime behavior changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -171,6 +173,11 @@ deterministic reason `"max_intents_per_plan_exceeded"`, and preserves accepted
 and skipped intent object identity. `MaxAcceptedIntentsPolicyConfig` requires an
 explicit `int >= 1`; `bool` and `None` are rejected. The no-op policy remains
 separate for no-cap pass-through behavior.
+Phase 20 Step 3 keeps production source unchanged and hardens the traceability
+contract with focused tests for accepted/skipped intent identity, accepted and
+skipped ordering, deterministic skip reasons, source-evaluation reachability,
+input plan non-mutation, and absence of forbidden broker/execution/planning
+leakage fields.
 The bridge also rejects duplicate screener result symbols and malformed
 result/candidate inputs while preserving the original `Bar` and `Quote` objects.
 
@@ -545,6 +552,10 @@ buying-power reservation, same-symbol conflict handling, duplicate/competing
 order policy, idempotency, `client_order_id` generation, broker routing,
 persistence, audit logging writes, order submission, scheduler or runtime
 behavior, ML, or LLM trading-path logic has been implemented.
+
+Phase 20 Step 3 is tests/docs-only hardening. It adds no production source
+changes and keeps the max-intents policy narrow, pure, deterministic,
+pre-broker, and source-evaluation driven.
 
 ## Local Order-Event Ledger
 

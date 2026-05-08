@@ -5,7 +5,8 @@
 Phase 20 Step 1 designed the first real execution-planning policy concept:
 maximum accepted intents per plan. Step 1 was documentation-only. Phase 20 Step
 2 adds the narrow test-first implementation of that policy while preserving the
-existing planning result shapes.
+existing planning result shapes. Phase 20 Step 3 hardens the traceability
+contract with focused tests and documentation only.
 
 A maximum-intents policy is a safe first real planning policy because it is
 deterministic, simple, and batch-level. It does not require portfolio math,
@@ -23,6 +24,12 @@ deterministically and wraps the remaining intents with deterministic skip
 reasons. That decision remains a pre-broker, batch-level planning decision. It
 does not route orders, construct broker-native requests, submit orders, reserve
 cash, mutate portfolios, or create fills.
+
+Phase 20 Step 3 does not change production source. It pins that the max-intents
+policy preserves accepted and skipped `ExecutionIntent` identity, preserves
+deterministic accepted and skipped ordering, uses deterministic skip reasons,
+does not mutate the original `ExecutionPlan`, and keeps traceability flowing
+through `source_evaluation`.
 
 ## 2. Boundary Position
 
@@ -43,7 +50,8 @@ Screener
 Phase 20 Step 1 designed the future max-intents planning policy. Phase 20 Step
 2 implements that pure policy function. The existing no-op policy remains
 available and separate for no-cap pass-through behavior, and no broker-facing
-execution request construction exists yet.
+execution request construction exists yet. Phase 20 Step 3 adds tests and docs
+only; the boundary position does not move.
 
 The max-intents policy boundary sits after source-only internal intent grouping
 and before any broker-facing request shape exists. It remains deterministic,
@@ -52,8 +60,9 @@ writers, network clients, ML, or LLM trading-path output.
 
 ## 3. Non-goals
 
-Phase 20 Step 2 does not add:
+Phase 20 Step 3 does not add:
 
+- production source changes
 - changes to `PlanningPolicyResult`
 - changes to `SkippedExecutionIntent`
 - changes to `ExecutionPlan`
@@ -209,6 +218,19 @@ does not add direct proposed-order, risk, status, symbol, quantity, side,
 broker, account, venue, idempotency, cash-reservation, priority, fill, SDK,
 Alpaca, audit, or persistence fields to the policy result.
 
+Phase 20 Step 3 hardens this contract with focused tests that prove:
+
+- accepted intent identity is preserved
+- skipped intent identity is preserved through `SkippedExecutionIntent.intent`
+- accepted ordering is deterministic
+- skipped ordering is deterministic
+- skipped reasons are deterministic
+- the original `ExecutionPlan` is not mutated
+- accepted and skipped source evaluations remain reachable by identity
+- forbidden broker, execution, runtime, persistence, idempotency, cash,
+  buying-power, priority/ranking, and direct order/risk/status fields are not
+  exposed
+
 ## 9. Separation From Cash And Buying-Power Policy
 
 The max-intents policy does not check affordability. It does not reserve cash,
@@ -325,10 +347,15 @@ Phase 20 Step 2 adds focused tests for:
 Those tests keep the implementation deterministic, offline, credential-free,
 broker-free, SDK-free, and independent of ML or LLM trading-path output.
 
+Phase 20 Step 3 adds traceability-hardening tests only. It does not alter the
+policy implementation, config, reason constant, result shapes, no-op policy, or
+dependency guardrails.
+
 ## 17. Explicit Exclusions
 
-Phase 20 Step 2 explicitly excludes:
+Phase 20 Step 3 explicitly excludes:
 
+- no production source changes
 - no paper order submission
 - no live order submission
 - no broker routing

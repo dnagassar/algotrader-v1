@@ -139,6 +139,69 @@ _FORBIDDEN_NOOP_POLICY_PARAMETER_NAMES = {
     "scheduler",
 }
 
+_FORBIDDEN_MAX_INTENTS_TRACEABILITY_FIELD_NAMES = {
+    "accepted_orders",
+    "account_id",
+    "alpaca_order",
+    "broker",
+    "broker_name",
+    "broker_order_id",
+    "broker_order_ids",
+    "buying_power_reserved",
+    "cash_reserved",
+    "client_order_id",
+    "client_order_ids",
+    "config",
+    "execution",
+    "fill",
+    "fill_price",
+    "fill_quantity",
+    "filled_at",
+    "idempotency_key",
+    "idempotency_keys",
+    "limit",
+    "native_order",
+    "order",
+    "orders",
+    "persisted_at",
+    "persistence",
+    "plan",
+    "policy_config",
+    "portfolio",
+    "priorities",
+    "priority",
+    "quantities",
+    "quantity",
+    "rank",
+    "ranks",
+    "rejected_intents",
+    "risk",
+    "risks",
+    "runtime",
+    "scheduler",
+    "sdk_order",
+    "selected_intents",
+    "side",
+    "sides",
+    "skipped_orders",
+    "source_plan",
+    "status",
+    "statuses",
+    "submitted_at",
+    "symbol",
+    "symbols",
+    "venue",
+}
+
+_FORBIDDEN_SKIP_PROVENANCE_FIELD_NAMES = {
+    "index",
+    "original_index",
+    "plan_index",
+    "position",
+    "provenance",
+    "source_index",
+}
+
 
 def bar(symbol: str, close: str = "100") -> Bar:
     return Bar(symbol, NOW, close, close, close, close, "1000")
@@ -179,6 +242,11 @@ def intent(
 
 def max_config(limit: int) -> MaxAcceptedIntentsPolicyConfig:
     return MaxAcceptedIntentsPolicyConfig(max_accepted_intents=limit)
+
+
+def assert_no_max_intents_policy_leakage(value: object) -> None:
+    for field_name in _FORBIDDEN_MAX_INTENTS_TRACEABILITY_FIELD_NAMES:
+        assert not hasattr(value, field_name)
 
 
 def test_max_intents_config_accepts_positive_int() -> None:
@@ -525,6 +593,73 @@ def test_max_intents_policy_signature_requires_plan_and_config_only() -> None:
     }
     assert set(signature.parameters).isdisjoint(
         _FORBIDDEN_MAX_POLICY_PARAMETER_NAMES
+    )
+
+
+def test_max_intents_traceability_hardening_preserves_identity_order_and_reasons() -> None:
+    sources = (
+        risk_approved("MSFT", quantity="1"),
+        risk_approved("AAPL", quantity="2"),
+        risk_approved("NVDA", quantity="3"),
+        risk_approved("TSLA", quantity="4"),
+    )
+    intents = tuple(
+        ExecutionIntent(source_evaluation=source)
+        for source in sources
+    )
+    plan = build_execution_plan(intents)
+    original_plan_intents = plan.intents
+
+    result = apply_max_intents_execution_planning_policy(plan, max_config(2))
+
+    assert plan.intents is original_plan_intents
+    assert plan.intents == intents
+    assert result.accepted_intents == intents[:2]
+    assert tuple(skipped.intent for skipped in result.skipped_intents) == intents[2:]
+    assert result.accepted_intents[0] is intents[0]
+    assert result.accepted_intents[1] is intents[1]
+    assert result.skipped_intents[0].intent is intents[2]
+    assert result.skipped_intents[1].intent is intents[3]
+    assert tuple(skipped.reason for skipped in result.skipped_intents) == (
+        MAX_INTENTS_PER_PLAN_EXCEEDED_REASON,
+        MAX_INTENTS_PER_PLAN_EXCEEDED_REASON,
+    )
+    assert result.accepted_intents[0].source_evaluation is sources[0]
+    assert result.accepted_intents[1].source_evaluation is sources[1]
+    assert result.skipped_intents[0].intent.source_evaluation is sources[2]
+    assert result.skipped_intents[1].intent.source_evaluation is sources[3]
+    assert result.accepted_intents[0].source_evaluation.order is sources[0].order
+    assert result.accepted_intents[1].source_evaluation.risk is sources[1].risk
+    assert result.skipped_intents[0].intent.source_evaluation.order is sources[2].order
+    assert result.skipped_intents[1].intent.source_evaluation.risk is sources[3].risk
+    assert result.accepted_intents[0].source_evaluation.status == sources[0].status
+    assert result.skipped_intents[1].intent.source_evaluation.status == sources[3].status
+
+
+def test_max_intents_traceability_hardening_exposes_no_forbidden_policy_fields() -> None:
+    config = max_config(1)
+    first = intent("MSFT")
+    second = intent("AAPL")
+    plan = build_execution_plan((first, second))
+
+    result = apply_max_intents_execution_planning_policy(plan, config)
+
+    assert_no_max_intents_policy_leakage(result)
+    assert_no_max_intents_policy_leakage(result.accepted_intents[0])
+    assert_no_max_intents_policy_leakage(result.skipped_intents[0])
+    assert_no_max_intents_policy_leakage(result.skipped_intents[0].intent)
+    for field_name in _FORBIDDEN_SKIP_PROVENANCE_FIELD_NAMES:
+        assert not hasattr(result.skipped_intents[0], field_name)
+    assert tuple(field.name for field in fields(MaxAcceptedIntentsPolicyConfig)) == (
+        "max_accepted_intents",
+    )
+    assert tuple(field.name for field in fields(PlanningPolicyResult)) == (
+        "accepted_intents",
+        "skipped_intents",
+    )
+    assert tuple(field.name for field in fields(SkippedExecutionIntent)) == (
+        "intent",
+        "reason",
     )
 
 

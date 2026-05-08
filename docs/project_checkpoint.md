@@ -74,10 +74,14 @@ Phase 20 Step 2 adds the first real planning policy:
 explicit positive integer cap, rejects `bool` and `None`, accepts the first `N`
 intents, skips the rest with deterministic reason text, and preserves intent
 and source-evaluation identity.
+Phase 20 Step 3 hardens max-intents traceability with tests and documentation
+only. It adds no production source changes and confirms accepted/skipped
+identity, ordering, deterministic skip reasons, source-evaluation reachability,
+input plan non-mutation, and absence of forbidden policy leakage fields.
 The latest full-suite result is:
 
 ```text
-413 passed, 4 skipped
+415 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -165,7 +169,9 @@ separate for no-cap behavior. The max-intents policy performs only deterministic
 plan-order capping; it adds no broker routing, order submission, cash or
 buying-power reservation, same-symbol conflict handling, deduplication,
 priority/ranking, idempotency, persistence, scheduler/runtime behavior, ML, or
-LLM trading-path logic.
+LLM trading-path logic. Phase 20 Step 3 keeps production source unchanged and
+hardens the max-intents traceability contract with tests and documentation
+only.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1333,6 +1339,48 @@ The full suite is now:
 ```text
 python -m pytest
 413 passed, 4 skipped
+```
+
+## Phase 20 Step 3 Max Intents Policy Traceability Hardening
+
+Phase 20 Step 3 is tests and documentation only. It adds focused max-intents
+traceability hardening coverage in:
+
+```text
+tests/unit/test_execution_planning_policy.py
+```
+
+The added tests prove that `apply_max_intents_execution_planning_policy(...)`
+preserves accepted `ExecutionIntent` identity, preserves skipped
+`ExecutionIntent` identity through `SkippedExecutionIntent.intent`, preserves
+deterministic accepted and skipped ordering, uses the deterministic
+`"max_intents_per_plan_exceeded"` skip reason, and does not mutate the original
+`ExecutionPlan`.
+
+Traceability remains source-driven. Accepted source evaluations remain
+reachable through `result.accepted_intents[n].source_evaluation`, and skipped
+source evaluations remain reachable through
+`result.skipped_intents[n].intent.source_evaluation`. Proposed orders, risk
+verdicts, and statuses remain reachable only through those source evaluations.
+
+The hardening tests also pin that forbidden broker, execution, runtime,
+persistence, idempotency, `client_order_id`, cash, buying-power,
+priority/ranking, direct order/risk/status, and skip provenance fields are not
+exposed by the max-intents policy result surface.
+
+No production Python code, imports, runtime behavior, broker routing, Alpaca
+changes, `submit_order`, order submission, idempotency, `client_order_id`
+generation, batch cash reservation, buying-power reservation, same-symbol
+conflict resolution, duplicate/competing order policy, priority/ranking policy,
+persistence writes, audit logging writes, scheduler/runtime behavior, portfolio
+mutation, fills, reconciliation changes, ML, or LLM trading-path logic was
+added.
+
+The full suite is now:
+
+```text
+python -m pytest
+415 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
