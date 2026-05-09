@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 441-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 450-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -86,10 +86,12 @@ production behavior changed. Phase 21 Step 2 adds the minimal immutable,
 slotted validated research artifact metadata contract. The contract is evidence
 only; it does not create signals, approve trades, mutate execution plans, or
 touch brokers, runtime, persistence, live data, ML, or LLM trading-path logic.
+Phase 21 Step 3 hardens validated research artifact traceability with tests
+and documentation only; no production source changed.
 The latest full-suite result is:
 
 ```text
-441 passed, 4 skipped
+450 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -186,6 +188,8 @@ deterministic contracts, and test-first implementation. Phase 21 Step 2 adds
 the first tiny validated research artifact contract as metadata/evidence only;
 it remains upstream and advisory and has no execution, broker, risk approval,
 signal generation, persistence, live-data, ML, or LLM trading-path behavior.
+Phase 21 Step 3 keeps that implementation unchanged and hardens traceability
+and ordering guarantees with tests and documentation only.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1507,6 +1511,53 @@ The full suite is now:
 ```text
 python -m pytest
 441 passed, 4 skipped
+```
+
+## Phase 21 Step 3 Validated Research Artifact Traceability Hardening
+
+Phase 21 Step 3 is tests and documentation only. It changes no production
+source and keeps `ResearchMetric` and `ValidatedResearchArtifact` as
+metadata/evidence contracts only.
+
+The hardened tests live in:
+
+```text
+tests/unit/test_validated_research_artifact.py
+```
+
+They prove that metric object identity is preserved inside
+`ValidatedResearchArtifact.metrics`, metrics preserve deterministic order,
+assumptions preserve deterministic order, limitations preserve deterministic
+order, approved advisory uses preserve deterministic order, and tuple fields
+cannot be mutated after construction.
+
+The tests also pin that validated research artifacts remain advisory metadata
+only. They do not expose trading-path fields such as symbols, sides,
+quantities, orders, order IDs, client order IDs, broker or Alpaca fields,
+submission fields, fills, cash, buying power, reservations, portfolio,
+positions, risk approval, execution plans, priority, rank, or score. They
+remain independent from `ExecutionPlan`, `ExecutionIntent`,
+`PlanningPolicyResult`, and risk-evaluation types.
+
+Validated research artifacts do not create signals, approve trades, mutate
+execution plans, interact with broker, Alpaca, scheduler/runtime, persistence,
+or live data, add ML training, or put LLMs in the trading hot path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_validated_research_artifact.py
+34 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+7 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+450 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

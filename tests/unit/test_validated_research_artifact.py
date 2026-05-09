@@ -33,10 +33,12 @@ _FORBIDDEN_ARTIFACT_FIELD_NAMES = {
     "fill",
     "fill_price",
     "fill_quantity",
+    "filled",
     "filled_at",
     "idempotency_key",
     "native_order",
     "order",
+    "order_id",
     "orders",
     "portfolio",
     "portfolio_state",
@@ -45,11 +47,15 @@ _FORBIDDEN_ARTIFACT_FIELD_NAMES = {
     "quantity",
     "rank",
     "ranking",
+    "reservation",
     "risk",
     "risk_approval",
+    "risk_approved",
+    "score",
     "side",
     "signal",
     "status",
+    "submit_order",
     "submitted_at",
     "symbol",
     "venue",
@@ -63,15 +69,21 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "algotrader.scheduler",
     "algotrader.screener",
     "algotrader.signals",
+    "algotrader.ml",
+    "algotrader.llm",
+    "algotrader.llms",
     "algotrader.runtime",
     "algotrader.persistence",
+    "algotrader.database",
     "alpaca",
     "alpaca_trade_api",
     "anthropic",
+    "database",
     "duckdb",
     "httpx",
     "langchain",
     "langgraph",
+    "llm",
     "openai",
     "requests",
     "socket",
@@ -85,10 +97,13 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "ExecutionIntent",
     "ExecutionPlan",
     "LocalBroker",
+    "PlanningPolicyResult",
     "PortfolioState",
     "ProposedOrder",
     "RiskEngine",
     "RiskVerdict",
+    "ScreenerSignalEvaluation",
+    "SignalRiskEvaluation",
     "client_order_id",
     "create_client_order_id",
     "execution_plan",
@@ -215,6 +230,74 @@ def test_input_order_is_preserved() -> None:
     assert item.approved_for == ("feature-contract", "signal-contract")
 
 
+def test_metric_identity_is_preserved_inside_artifact_metrics() -> None:
+    first_metric = metric("validation_return", "8.1%")
+    second_metric = metric("max_drawdown", "3.4%")
+
+    item = artifact(metrics=[first_metric, second_metric])
+
+    assert item.metrics[0] is first_metric
+    assert item.metrics[1] is second_metric
+
+
+def test_metrics_preserve_deterministic_order() -> None:
+    first_metric = metric("walk_forward_sharpe", "1.23")
+    second_metric = metric("max_drawdown", "3.4%")
+    third_metric = metric("holdout_return", "8.1%")
+
+    item = artifact(metrics=[first_metric, second_metric, third_metric])
+
+    assert item.metrics == (first_metric, second_metric, third_metric)
+
+
+def test_assumptions_preserve_deterministic_order() -> None:
+    item = artifact(
+        assumptions=[
+            "uses adjusted historical bars only",
+            "records spread assumptions separately",
+            "keeps final holdout untouched",
+        ]
+    )
+
+    assert item.assumptions == (
+        "uses adjusted historical bars only",
+        "records spread assumptions separately",
+        "keeps final holdout untouched",
+    )
+
+
+def test_limitations_preserve_deterministic_order() -> None:
+    item = artifact(
+        limitations=[
+            "not approved for live execution",
+            "not connected to broker routing",
+            "not a risk approval",
+        ]
+    )
+
+    assert item.limitations == (
+        "not approved for live execution",
+        "not connected to broker routing",
+        "not a risk approval",
+    )
+
+
+def test_approved_advisory_uses_preserve_deterministic_order() -> None:
+    item = artifact(
+        approved_for=[
+            "feature-contract-design",
+            "signal-contract-design",
+            "documentation-traceability",
+        ]
+    )
+
+    assert item.approved_for == (
+        "feature-contract-design",
+        "signal-contract-design",
+        "documentation-traceability",
+    )
+
+
 def test_input_collections_are_copied_to_immutable_tuples() -> None:
     metrics = [metric("validation_return", "8.1%")]
     assumptions = ["first assumption"]
@@ -236,6 +319,37 @@ def test_input_collections_are_copied_to_immutable_tuples() -> None:
     assert item.assumptions == ("first assumption",)
     assert item.limitations == ("first limitation",)
     assert item.approved_for == ("feature-contract",)
+
+
+def test_all_tuple_fields_cannot_be_reassigned_after_construction() -> None:
+    item = artifact()
+
+    with pytest.raises(FrozenInstanceError):
+        item.metrics = ()
+    with pytest.raises(FrozenInstanceError):
+        item.assumptions = ()
+    with pytest.raises(FrozenInstanceError):
+        item.limitations = ()
+    with pytest.raises(FrozenInstanceError):
+        item.approved_for = ()
+
+
+def test_tuple_entries_cannot_be_mutated_after_construction() -> None:
+    item = artifact(
+        metrics=[metric("validation_return", "8.1%")],
+        assumptions=["first assumption"],
+        limitations=["first limitation"],
+        approved_for=["feature-contract"],
+    )
+
+    with pytest.raises(TypeError):
+        item.metrics[0] = metric("changed", "0")
+    with pytest.raises(TypeError):
+        item.assumptions[0] = "changed"
+    with pytest.raises(TypeError):
+        item.limitations[0] = "changed"
+    with pytest.raises(TypeError):
+        item.approved_for[0] = "changed"
 
 
 @pytest.mark.parametrize(
@@ -297,6 +411,33 @@ def test_artifact_does_not_infer_trading_decisions() -> None:
     assert not hasattr(item, "risk")
     assert not hasattr(item, "execution_plan")
     assert not hasattr(item, "approved_trade")
+
+
+def test_artifact_remains_advisory_metadata_only() -> None:
+    item = artifact()
+
+    assert item.approved_for == ("deterministic-contract-design",)
+    assert not hasattr(item, "create_signal")
+    assert not hasattr(item, "approve_trade")
+    assert not hasattr(item, "approve_order")
+    assert not hasattr(item, "mutate_execution_plan")
+    assert not hasattr(item, "submit_order")
+    assert not hasattr(item, "persist")
+
+
+def test_artifact_is_independent_from_execution_plan_intent_policy_and_risk_types() -> None:
+    item = artifact()
+    forbidden_names = {
+        "execution_intent",
+        "execution_plan",
+        "planning_policy_result",
+        "risk_evaluation",
+        "risk_verdict",
+        "signal_risk_evaluation",
+    }
+
+    for field_name in forbidden_names:
+        assert not hasattr(item, field_name)
 
 
 def test_contract_module_imports_no_trading_path_modules() -> None:

@@ -98,6 +98,15 @@ preserve input order. Required strings reject empty values. The artifact does
 not create signals, approve trades, mutate execution plans, interact with
 brokers, ingest live data, persist records, or put LLMs in the trading hot path.
 
+Phase 21 Step 3 hardens this traceability contract with focused tests and
+documentation only. The hardened tests prove that `ResearchMetric` object
+identity is preserved inside `ValidatedResearchArtifact.metrics`, metrics,
+assumptions, limitations, and approved advisory uses preserve deterministic
+order, tuple fields cannot be mutated after construction, and the artifact
+does not expose trading-path fields or depend on broker, execution,
+orchestration, runtime, scheduler, persistence, Alpaca, ML, LLM, execution
+planning, or risk-evaluation types.
+
 ### Deterministic Core
 
 The deterministic core consumes only approved, explicit, validated inputs. It
@@ -282,7 +291,8 @@ similar model-service dependencies.
 
 ## 9. Explicitly Out Of Scope
 
-Phase 21 Step 1 does not add or design runtime behavior for:
+Phase 21 Step 3 does not add production source changes or design runtime
+behavior for:
 
 - broker behavior
 - Alpaca changes
