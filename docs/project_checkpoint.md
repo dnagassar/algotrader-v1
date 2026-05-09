@@ -131,6 +131,10 @@ Phase 24 Step 3 hardens `SignalEvaluationResult` traceability with tests and
 documentation only. It changes no production source and pins datetime identity,
 tuple ordering and immutability, exact trace string preservation, advisory-only
 surface area, forbidden trading-path field absence, and dependency isolation.
+Phase 25 Step 1 is documentation-only. It records the future deterministic
+signal evaluator boundary and states that no evaluator exists yet, signal
+evaluation remains advisory and pre-risk, no production source or runtime
+behavior changed, and LLMs remain outside the trading hot path.
 The latest full-suite result is:
 
 ```text
@@ -277,6 +281,9 @@ only and does not evaluate signals, compute features, implement strategies,
 create execution intents, approve risk, mutate execution plans, route to
 brokers, interact with Alpaca, submit orders, touch scheduler/runtime or
 persistence, train or run ML, or put LLMs in the trading path.
+Phase 25 Step 1 documents the future signal evaluator boundary only. No
+evaluator implementation, signal computation, production behavior, runtime
+behavior, broker behavior, ML behavior, or LLM trading-path behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2134,6 +2141,54 @@ python -m pytest tests/unit/test_dependency_direction.py
 ```
 
 The full suite is now:
+
+```text
+python -m pytest
+555 passed, 4 skipped
+```
+
+## Phase 25 Step 1 Signal Evaluator Boundary Design
+
+Phase 25 Step 1 is documentation-only. It creates the future deterministic
+signal evaluator boundary in:
+
+```text
+docs/design/phase25_signal_evaluator_boundary.md
+```
+
+The design defines a future evaluator as an offline-safe deterministic boundary
+that may later transform `ValidatedSignalDefinition` metadata plus explicit
+deterministic input snapshots, an explicit UTC-aware `as_of` timestamp, and an
+explicit UTC-aware `evaluated_at` timestamp or deterministic clock into
+advisory `SignalEvaluationResult` objects.
+
+The future output remains traceable to signal definition id/version, source
+validated research artifact id/version, input snapshot identity or fingerprint,
+`as_of`, and `evaluated_at`. It remains advisory metadata only: not an
+execution signal, not a trade approval, not an order request, not risk
+approval, not an execution intent, not an execution plan, and not a broker
+payload.
+
+The boundary requires deterministic guarantees: same inputs produce the same
+result, no hidden wall-clock access, no environment-variable driven behavior,
+no random behavior, no network calls, no file or database writes, no broker,
+account, position, order, or fill access, no input mutation, no LLM calls, and
+no ML training or inference unless later promoted through explicit
+deterministic contracts.
+
+The design records the as-of and lookahead rule that all observations used by
+evaluation must satisfy `observed_at <= as_of`. Future observations must be
+rejected, and the future evaluator should use the existing deterministic time
+contract with explicit UTC-aware timestamps.
+
+This phase does not add production code, tests, runtime behavior, signal
+evaluator implementation, signal computation, feature computation, strategy
+logic, ranking or priority behavior, signal-to-risk conversion, risk approval,
+execution intent creation, execution-plan mutation, portfolio mutation, broker
+or Alpaca behavior, order submission, scheduler/runtime behavior, persistence,
+live data ingestion, ML training or inference, or LLM trading-path logic.
+
+The latest full-suite checkpoint remains:
 
 ```text
 python -m pytest

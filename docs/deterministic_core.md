@@ -90,6 +90,9 @@ state.
   create execution intents, or approve trades.
 - Phase 24 Step 3 hardens `SignalEvaluationResult` traceability with tests and
   docs only; no production source or runtime behavior changed.
+- Phase 25 Step 1 documents the future deterministic signal evaluator boundary
+  only; no evaluator exists yet, signal evaluation remains advisory and
+  pre-risk, and LLMs remain outside the trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -770,6 +773,15 @@ implementation phase. Signal evaluation does not create orders, approve trades,
 mutate execution plans, interact with brokers, or put LLMs in the hot path.
 Phase 24 Step 3 hardens this result contract with tests and documentation only;
 no production behavior was added.
+
+Phase 25 Step 1 documents the future deterministic signal evaluator boundary in
+[`docs/design/phase25_signal_evaluator_boundary.md`](design/phase25_signal_evaluator_boundary.md).
+The future evaluator is conceptual only: it may later transform
+`ValidatedSignalDefinition` metadata plus explicit deterministic input
+snapshots and explicit UTC-aware `as_of`/`evaluated_at` timestamps into
+advisory `SignalEvaluationResult` objects. No evaluator exists yet, no signal
+computation or runtime behavior has been added, signal evaluation remains
+pre-risk and advisory, and LLMs remain outside the trading hot path.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
