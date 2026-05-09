@@ -222,6 +222,82 @@ def test_input_ordering_is_preserved() -> None:
     assert definition.limitations == ("first limitation", "second limitation")
 
 
+def test_source_artifact_id_and_version_are_preserved_exactly() -> None:
+    definition = signal_definition(
+        source_artifact_id="artifact.ask_momentum.walk_forward.001",
+        source_artifact_version="2026.05.09+holdout-reviewed",
+    )
+
+    assert definition.source_artifact_id == "artifact.ask_momentum.walk_forward.001"
+    assert definition.source_artifact_version == "2026.05.09+holdout-reviewed"
+
+
+def test_required_inputs_preserve_deterministic_order() -> None:
+    definition = signal_definition(
+        required_inputs=[
+            "previous_bar.close",
+            "quote.bid",
+            "quote.ask",
+            "market_session.is_regular",
+        ]
+    )
+
+    assert definition.required_inputs == (
+        "previous_bar.close",
+        "quote.bid",
+        "quote.ask",
+        "market_session.is_regular",
+    )
+
+
+def test_approved_for_preserves_deterministic_order() -> None:
+    definition = signal_definition(
+        approved_for=[
+            "definition-review",
+            "deterministic-evaluator-design",
+            "fixture-documentation",
+        ]
+    )
+
+    assert definition.approved_for == (
+        "definition-review",
+        "deterministic-evaluator-design",
+        "fixture-documentation",
+    )
+
+
+def test_assumptions_preserve_deterministic_order() -> None:
+    definition = signal_definition(
+        assumptions=[
+            "inputs are aligned by timestamp before evaluation",
+            "feature windows are closed before signal time",
+            "threshold changes require a new version",
+        ]
+    )
+
+    assert definition.assumptions == (
+        "inputs are aligned by timestamp before evaluation",
+        "feature windows are closed before signal time",
+        "threshold changes require a new version",
+    )
+
+
+def test_limitations_preserve_deterministic_order() -> None:
+    definition = signal_definition(
+        limitations=[
+            "not approved for live execution",
+            "not a risk approval",
+            "not a broker order",
+        ]
+    )
+
+    assert definition.limitations == (
+        "not approved for live execution",
+        "not a risk approval",
+        "not a broker order",
+    )
+
+
 def test_input_collections_are_copied_to_immutable_tuples() -> None:
     required_inputs = ["previous_bar.close"]
     approved_for = ["contract-design"]
@@ -243,6 +319,24 @@ def test_input_collections_are_copied_to_immutable_tuples() -> None:
     assert definition.approved_for == ("contract-design",)
     assert definition.assumptions == ("first assumption",)
     assert definition.limitations == ("first limitation",)
+
+
+def test_tuple_entries_cannot_be_mutated_after_construction() -> None:
+    definition = signal_definition(
+        required_inputs=["previous_bar.close"],
+        approved_for=["contract-design"],
+        assumptions=["first assumption"],
+        limitations=["first limitation"],
+    )
+
+    with pytest.raises(TypeError):
+        definition.required_inputs[0] = "changed"
+    with pytest.raises(TypeError):
+        definition.approved_for[0] = "changed"
+    with pytest.raises(TypeError):
+        definition.assumptions[0] = "changed"
+    with pytest.raises(TypeError):
+        definition.limitations[0] = "changed"
 
 
 @pytest.mark.parametrize(
@@ -292,6 +386,36 @@ def test_object_exposes_only_definition_metadata() -> None:
         assert not hasattr(definition, field_name)
 
 
+def test_object_exposes_no_explicit_trading_path_fields() -> None:
+    definition = signal_definition()
+
+    for field_name in (
+        "symbol",
+        "side",
+        "quantity",
+        "order",
+        "order_id",
+        "client_order_id",
+        "broker",
+        "alpaca",
+        "submit_order",
+        "fill",
+        "filled",
+        "cash",
+        "buying_power",
+        "reservation",
+        "portfolio",
+        "position",
+        "risk_approved",
+        "execution_intent",
+        "execution_plan",
+        "priority",
+        "rank",
+        "score",
+    ):
+        assert not hasattr(definition, field_name)
+
+
 def test_signal_definition_does_not_compute_or_recommend_trades() -> None:
     definition = signal_definition()
 
@@ -302,6 +426,17 @@ def test_signal_definition_does_not_compute_or_recommend_trades() -> None:
     assert not hasattr(definition, "buy")
     assert not hasattr(definition, "sell")
     assert not hasattr(definition, "hold")
+
+
+def test_signal_definition_remains_definition_only_without_signal_outputs() -> None:
+    definition = signal_definition()
+
+    assert not hasattr(definition, "signal")
+    assert not hasattr(definition, "signal_output")
+    assert not hasattr(definition, "buy_signal")
+    assert not hasattr(definition, "sell_signal")
+    assert not hasattr(definition, "hold_signal")
+    assert not hasattr(definition, "proposed_order")
 
 
 def test_signal_definition_is_independent_from_execution_risk_and_runtime_types() -> None:
@@ -318,6 +453,23 @@ def test_signal_definition_is_independent_from_execution_risk_and_runtime_types(
     }
 
     for field_name in forbidden_names:
+        assert not hasattr(definition, field_name)
+
+
+def test_signal_definition_remains_independent_from_specific_runtime_contracts() -> None:
+    definition = signal_definition()
+
+    for field_name in (
+        "validated_research_artifact",
+        "execution_plan",
+        "execution_intent",
+        "planning_policy_result",
+        "risk_evaluation",
+        "broker",
+        "scheduler",
+        "runtime",
+        "persistence",
+    ):
         assert not hasattr(definition, field_name)
 
 

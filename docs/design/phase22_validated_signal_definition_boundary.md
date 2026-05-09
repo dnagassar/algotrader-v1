@@ -21,6 +21,10 @@ execution-plan mutation, risk approval behavior, broker behavior, Alpaca
 behavior, order submission, scheduler/runtime behavior, persistence
 implementation, live data ingestion, ML training, or LLM trading-path logic.
 
+Phase 22 Step 3 hardens `ValidatedSignalDefinition` traceability with focused
+tests and documentation only. It changes no production source and adds no new
+signal behavior.
+
 The core rule is:
 
 ```text
@@ -129,6 +133,13 @@ tuples and preserve input order. Required strings reject empty values. The
 contract references validated research artifacts only by stable id/version
 strings; it does not import research behavior or hold a research artifact
 object.
+
+Phase 22 Step 3 hardens that source-artifact traceability and ordering
+contract. The tests prove that `source_artifact_id` and
+`source_artifact_version` are preserved exactly, `required_inputs`,
+`approved_for`, `assumptions`, and `limitations` preserve deterministic order,
+tuple fields cannot be mutated after construction, and the object remains
+metadata-only.
 
 ## 5. Fields And Behavior That Must Not Appear
 
@@ -275,7 +286,7 @@ Forbidden direct dependencies for a signal definition:
 
 ## 10. Explicitly Out Of Scope
 
-Phase 22 Step 2 does not add:
+Phase 22 Step 3 does not add production source changes or:
 
 - feature computation
 - signal evaluation
@@ -298,19 +309,19 @@ Phase 22 Step 2 does not add:
 It also does not add buy/sell/hold recommendations, symbols, sides,
 quantities, order fields, broker fields, portfolio fields, risk approval
 fields, execution intent fields, execution plan fields, ranking fields, score
-fields, cash reservation fields, or runtime research behavior imports.
+fields, cash reservation fields, ValidatedResearchArtifact runtime object
+dependencies, or runtime research behavior imports.
 
 ## 11. Future Implementation Phases
 
 Future implementation should stay test-first and contract-first. After Phase
-22 Step 2, a safe future sequence would be:
+22 Step 3, a safe future sequence would be:
 
-1. Harden validated signal-definition traceability with focused tests and docs.
-2. Add fixture-only examples linked to validated research artifact ids and
+1. Add fixture-only examples linked to validated research artifact ids and
    versions.
-3. Add deterministic evaluator contracts before any evaluator implementation.
-4. Add focused evaluator tests with synthetic explicit inputs.
-5. Only later consider connecting evaluator outputs to Signal -> Risk flow.
+2. Add deterministic evaluator contracts before any evaluator implementation.
+3. Add focused evaluator tests with synthetic explicit inputs.
+4. Only later consider connecting evaluator outputs to Signal -> Risk flow.
 
 No future implementation should combine signal-definition work with broker
 wiring, runtime scheduling, persistence, live data ingestion, ML training, or

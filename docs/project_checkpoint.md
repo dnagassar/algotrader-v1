@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 479-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 488-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -97,10 +97,12 @@ Phase 22 Step 2 adds the minimal immutable, slotted validated signal definition
 metadata contract. It does not evaluate signals, create execution intents,
 approve trades, mutate execution plans, or touch broker, Alpaca,
 scheduler/runtime, persistence, live data, ML, or LLM trading-path logic.
+Phase 22 Step 3 hardens validated signal definition traceability with tests and
+documentation only; no production source changed.
 The latest full-suite result is:
 
 ```text
-479 passed, 4 skipped
+488 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -204,6 +206,10 @@ definitions are future promoted contracts, not execution decisions. Phase 22
 Step 2 adds the minimal `ValidatedSignalDefinition` metadata contract while
 keeping signal evaluation, risk approval, execution intent creation, broker
 behavior, persistence, runtime behavior, ML, and LLM trading-path logic out.
+Phase 22 Step 3 keeps production source unchanged and hardens source-artifact
+traceability, deterministic tuple ordering, metadata-only boundaries, and
+independence from execution, risk, broker, runtime, scheduler, persistence,
+ML, and LLM trading-path modules.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1700,6 +1706,54 @@ python -m pytest
 479 passed, 4 skipped
 ```
 
+## Phase 22 Step 3 Validated Signal Definition Traceability Hardening
+
+Phase 22 Step 3 is tests and documentation only. It changes no production
+source and keeps `ValidatedSignalDefinition` as definition metadata only.
+
+The hardened tests live in:
+
+```text
+tests/unit/test_validated_signal_definition.py
+```
+
+They prove that `source_artifact_id` and `source_artifact_version` are
+preserved exactly, `required_inputs` preserve deterministic order,
+`approved_for` preserves deterministic order, `assumptions` preserve
+deterministic order, `limitations` preserve deterministic order, and tuple
+fields cannot be mutated after construction.
+
+The tests also pin that validated signal definitions remain metadata-only. They
+do not expose trading-path fields such as symbols, sides, quantities, orders,
+order IDs, client order IDs, broker or Alpaca fields, submission fields, fills,
+cash, buying power, reservations, portfolio, positions, risk approval,
+execution intents, execution plans, priority, rank, or score. They remain
+independent from `ValidatedResearchArtifact` runtime objects, `ExecutionPlan`,
+`ExecutionIntent`, `PlanningPolicyResult`, risk-evaluation types, broker
+modules, runtime/scheduler modules, and persistence modules.
+
+Validated signal definitions do not evaluate signals, produce buy/sell/hold
+outputs, create execution intents, approve trades, mutate execution plans,
+interact with broker, Alpaca, scheduler/runtime, persistence, or live data, add
+ML training, or put LLMs in the trading hot path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_validated_signal_definition.py
+38 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+7 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+488 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1756,8 +1810,7 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit validated signal definition traceability hardening before any
-  evaluator wiring
+- explicit signal-evaluator contracts/types before any evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

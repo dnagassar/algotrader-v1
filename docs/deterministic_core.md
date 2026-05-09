@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `479` tests are passing, with `4` skipped paper-integration tests by default.
+- `488` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -74,6 +74,8 @@ state.
 - Phase 22 Step 2 adds the minimal immutable, slotted
   `ValidatedSignalDefinition` metadata contract; it does not evaluate signals
   or create execution intents.
+- Phase 22 Step 3 hardens validated signal definition traceability and tuple
+  ordering with tests and docs only; no production source changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -613,6 +615,7 @@ Phase 22 Step 1 documents the future validated signal definition boundary in
 [`docs/design/phase22_validated_signal_definition_boundary.md`](design/phase22_validated_signal_definition_boundary.md).
 Phase 22 Step 2 adds the minimal validated signal definition metadata contract
 in `src/algotrader/signals/validated_signal_definition.py`.
+Phase 22 Step 3 hardens that contract with tests and documentation only.
 A future validated signal definition may be supported by a validated research
 artifact, but it is not raw research output, not a backtest result, not a
 feature, not a strategy, not an execution intent, not an execution plan, and
@@ -631,6 +634,14 @@ description, source validated research artifact id/version, required inputs,
 output type, deterministic evaluation rule reference, approved advisory uses,
 assumptions, and limitations. It references validated research artifacts by
 stable strings only and does not import runtime research behavior.
+
+The hardened traceability tests prove that source artifact id/version strings
+are preserved exactly, `required_inputs`, `approved_for`, `assumptions`, and
+`limitations` preserve deterministic order, tuple fields cannot be mutated
+after construction, and signal definitions remain independent from
+`ValidatedResearchArtifact` runtime objects, `ExecutionPlan`,
+`ExecutionIntent`, `PlanningPolicyResult`, risk-evaluation types, broker,
+runtime/scheduler, and persistence modules.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
@@ -729,8 +740,8 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future validated signal definition work should harden
-traceability before evaluator or Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should begin with explicit
+contracts and tests before evaluator or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
