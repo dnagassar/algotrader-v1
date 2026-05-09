@@ -112,10 +112,15 @@ provides an injectable fixed clock for deterministic tests, and adds a tiny
 lookahead-prevention helper without evaluating signals, reading system time,
 fetching live data, approving trades, mutating execution plans, touching
 brokers, or adding scheduler/runtime behavior.
+Phase 23 Step 3 hardens clock/timestamp traceability with tests and
+documentation only. It changes no production source and pins UTC-aware
+timestamp identity, repeated fixed-clock identity, immutability, naive and
+non-UTC rejection, lookahead prevention, dependency independence, absence of
+trading-path fields, and absence of hidden nondeterministic API calls.
 The latest full-suite result is:
 
 ```text
-510 passed, 4 skipped
+515 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -233,6 +238,10 @@ Phase 23 Step 2 adds only deterministic time primitives in the core layer.
 `FixedClock` is injectable and deterministic; no system clock, live data, risk,
 execution, broker, scheduler/runtime, persistence, ML, or LLM behavior was
 introduced.
+Phase 23 Step 3 keeps those primitives unchanged and hardens their
+traceability with tests/docs only. UTC-aware timestamp enforcement and
+`observed_at <= as_of` lookahead-prevention behavior are now pinned more
+explicitly.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1879,6 +1888,56 @@ The full suite is now:
 ```text
 python -m pytest
 510 passed, 4 skipped
+```
+
+## Phase 23 Step 3 Clock / Timestamp Traceability Hardening
+
+Phase 23 Step 3 is tests and documentation only. It changes no production
+source and keeps `src/algotrader/core/time.py` unchanged.
+
+The hardened tests live in:
+
+```text
+tests/unit/test_time_contracts.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove that `require_utc_datetime(...)` preserves the exact valid UTC
+datetime object, `FixedClock.now()` repeatedly returns the exact stored
+datetime object, `FixedClock` remains frozen and slotted, naive datetimes are
+rejected, non-UTC aware datetimes are rejected, `assert_not_after_as_of(...)`
+allows equality and earlier observations, and `observed_at > as_of` is
+rejected.
+
+The tests also pin that the time module remains independent from signals,
+research, risk, orchestration, execution, broker, Alpaca, scheduler/runtime,
+persistence, ML, and LLM modules. It exposes no trading-path fields or behavior
+such as symbol, side, quantity, order, order id, client order id, broker,
+Alpaca, `submit_order`, fill, cash, buying power, portfolio, risk approval,
+execution plan, priority, rank, or score. It does not call hidden
+nondeterministic APIs such as `datetime.now`, `datetime.utcnow`, `time.time`,
+`time.monotonic`, random generators, UUID randomness, or `os.environ`.
+
+Time contracts remain deterministic primitives only. They do not evaluate
+signals, fetch live data, read system time in deterministic paths, approve
+trades, mutate execution plans, interact with broker, Alpaca,
+scheduler/runtime, persistence, ML, or LLM trading-path logic.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_time_contracts.py
+26 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+8 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+515 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

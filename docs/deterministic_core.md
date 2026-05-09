@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `510` tests are passing, with `4` skipped paper-integration tests by default.
+- `515` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -80,6 +80,8 @@ state.
   boundary; no production source or runtime behavior changed.
 - Phase 23 Step 2 adds a minimal deterministic time contract with UTC-aware
   validation, an injectable `Clock` protocol, `FixedClock`, and an as-of helper.
+- Phase 23 Step 3 hardens clock/timestamp traceability with tests and docs
+  only; no production source changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -603,6 +605,14 @@ compute features, approve trades, mutate execution plans, interact with broker
 or Alpaca, schedule runtime behavior, persist records, train ML models, or put
 LLMs in the trading path.
 
+Phase 23 Step 3 hardens the time contract with focused tests only. The tests
+pin exact UTC datetime identity preservation, repeated `FixedClock.now()`
+identity, fixed-clock immutability, naive and non-UTC rejection, equality and
+before-`as_of` allowance, after-`as_of` rejection, dependency independence,
+absence of trading-path fields, and absence of hidden nondeterministic API
+calls such as wall-clock reads, random generators, UUID randomness, and
+environment access.
+
 ## Research And Validation Boundary
 
 Phase 21 Step 1 documents the future research/validation boundary in
@@ -701,6 +711,13 @@ and adds a lookahead-prevention helper for `observed_at <= as_of`. It does not
 provide a system clock, scheduler, runtime loop, live-data fetch, signal
 evaluation, risk approval, execution-plan mutation, broker behavior, Alpaca
 behavior, persistence, ML, or LLM trading-path logic.
+
+Phase 23 Step 3 keeps production source unchanged and hardens the traceability
+contract. Time contracts remain deterministic primitives only. They do not
+evaluate signals, fetch live data, read system time in deterministic paths,
+approve trades, mutate execution plans, interact with broker, Alpaca,
+scheduler/runtime, persistence, ML, or LLM trading-path logic. UTC-aware
+timestamp enforcement and lookahead-prevention behavior are pinned by tests.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

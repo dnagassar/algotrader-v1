@@ -23,6 +23,13 @@ tiny as-of lookahead helper. It does not evaluate signals, compute features,
 read system time, fetch live data, approve trades, mutate execution plans,
 touch brokers, or add scheduler/runtime behavior.
 
+Phase 23 Step 3 hardens those clock and timestamp contracts with focused tests
+and documentation only. It changes no production source. The hardening pins
+valid UTC datetime object identity, repeated `FixedClock.now()` identity,
+immutability, naive and non-UTC rejection, explicit `observed_at <= as_of`
+lookahead behavior, dependency independence, absence of trading-path fields,
+and absence of hidden nondeterministic APIs.
+
 The core rule is:
 
 ```text
@@ -230,6 +237,24 @@ tests and future explicit boundary wiring, not for runtime scheduling.
 after `as_of`. It is a lookahead-prevention primitive only, not a signal
 evaluator.
 
+Phase 23 Step 3 hardens this behavior with tests proving:
+
+- valid UTC datetimes are returned without copying
+- `FixedClock.now()` repeatedly returns the exact stored datetime object
+- `FixedClock` is frozen and cannot be changed after construction
+- naive and non-UTC datetimes are rejected at clock construction
+- equality between `observed_at` and `as_of` is allowed
+- observations before `as_of` are allowed
+- observations after `as_of` are rejected
+- naive `observed_at` and naive `as_of` values are rejected
+- the time module remains independent from signal, research, risk,
+  orchestration, execution, broker, Alpaca, scheduler/runtime, persistence, ML,
+  and LLM modules
+- the time module exposes no trading-path fields or behavior
+- the time module does not call hidden nondeterministic APIs such as
+  `datetime.now`, `datetime.utcnow`, `time.time`, `time.monotonic`, random
+  generators, UUID randomness, or `os.environ`
+
 The `as_of` timestamp is the information boundary for an evaluation. Inputs
 must be known, available, or traceable as of that timestamp. The observation
 timestamp records when the input was observed or when the input window ended.
@@ -367,7 +392,7 @@ defines how any output may cross into Signal -> Risk.
 
 ## 12. Explicitly Out Of Scope
 
-Phase 23 Step 2 does not add:
+Phase 23 Step 3 does not add:
 
 - system clock implementation
 - `SignalEvaluationResult` implementation
@@ -390,9 +415,9 @@ Phase 23 Step 2 does not add:
 - ML training
 - LLM trading-path logic
 
-It also does not add runtime configuration, system-time reads, data ingestion,
-broker behavior, credentials, network calls, or normal-pytest dependency on
-external services.
+It also does not add production source changes, runtime configuration,
+system-time reads in deterministic paths, data ingestion, broker behavior,
+credentials, network calls, or normal-pytest dependency on external services.
 
 ## 13. Future Implementation Phases
 

@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+import algotrader.core.time as time_contracts
 from algotrader.core.time import (
     Clock,
     FixedClock,
@@ -117,6 +118,7 @@ _FORBIDDEN_CALL_NAMES = {
     "environ.get",
     "getenv",
     "open",
+    "os.environ.get",
     "os.getenv",
     "random",
     "random.random",
@@ -129,9 +131,17 @@ _FORBIDDEN_CALL_NAMES = {
     "write",
 }
 
+_FORBIDDEN_NONDETERMINISTIC_IMPORTS = {
+    "os",
+    "random",
+    "time",
+    "uuid",
+}
+
 _FORBIDDEN_REFERENCE_ONLY_NAMES = {
     "environ",
     "monotonic",
+    "os",
     "random",
     "time",
     "uuid",
@@ -175,6 +185,13 @@ def test_fixed_clock_is_frozen_and_slotted() -> None:
         clock.timestamp = UTC_EARLIER
 
 
+def test_fixed_clock_timestamp_cannot_be_deleted_after_construction() -> None:
+    clock = FixedClock(UTC_NOW)
+
+    with pytest.raises(FrozenInstanceError):
+        del clock.timestamp
+
+
 def test_fixed_clock_has_exact_timestamp_field_only() -> None:
     field_names = tuple(field.name for field in fields(FixedClock))
 
@@ -200,15 +217,18 @@ def test_fixed_clock_now_returns_exact_stored_datetime() -> None:
 
 def test_repeated_fixed_clock_now_calls_return_same_value() -> None:
     clock = FixedClock(UTC_NOW)
+    results = tuple(clock.now() for _ in range(5))
 
-    assert clock.now() is UTC_NOW
-    assert clock.now() is UTC_NOW
-    assert clock.now() == UTC_NOW
+    assert results == (UTC_NOW, UTC_NOW, UTC_NOW, UTC_NOW, UTC_NOW)
+    assert all(result is UTC_NOW for result in results)
 
 
-def test_assert_not_after_as_of_allows_observed_before_or_equal_to_as_of() -> None:
-    assert assert_not_after_as_of(UTC_EARLIER, UTC_NOW) is None
+def test_assert_not_after_as_of_allows_equality() -> None:
     assert assert_not_after_as_of(UTC_NOW, UTC_NOW) is None
+
+
+def test_assert_not_after_as_of_allows_observed_before_as_of() -> None:
+    assert assert_not_after_as_of(UTC_EARLIER, UTC_NOW) is None
 
 
 def test_assert_not_after_as_of_rejects_observed_after_as_of() -> None:
@@ -218,9 +238,12 @@ def test_assert_not_after_as_of_rejects_observed_after_as_of() -> None:
         assert_not_after_as_of(observed_at, UTC_NOW)
 
 
-def test_assert_not_after_as_of_rejects_naive_inputs() -> None:
+def test_assert_not_after_as_of_rejects_naive_observed_at() -> None:
     with pytest.raises(ValidationError, match="observed_at"):
         assert_not_after_as_of(datetime(2026, 5, 9, 14, 30), UTC_NOW)
+
+
+def test_assert_not_after_as_of_rejects_naive_as_of() -> None:
     with pytest.raises(ValidationError, match="as_of"):
         assert_not_after_as_of(UTC_NOW, datetime(2026, 5, 9, 14, 30))
 
@@ -238,6 +261,11 @@ def test_time_contract_module_exposes_no_trading_path_fields_or_behavior() -> No
     assert not hasattr(clock, "mutate_execution_plan")
 
 
+def test_time_contract_module_exposes_no_forbidden_trading_path_attributes() -> None:
+    for field_name in _FORBIDDEN_TIME_CONTRACT_FIELD_NAMES:
+        assert not hasattr(time_contracts, field_name)
+
+
 def test_time_contract_module_imports_no_trading_path_runtime_or_external_modules() -> None:
     violations = [
         module
@@ -246,6 +274,10 @@ def test_time_contract_module_imports_no_trading_path_runtime_or_external_module
     ]
 
     assert violations == []
+
+
+def test_time_contract_module_imports_no_nondeterministic_runtime_modules() -> None:
+    assert _import_references().isdisjoint(_FORBIDDEN_NONDETERMINISTIC_IMPORTS)
 
 
 def test_time_contract_module_references_no_trading_path_runtime_or_random_types() -> None:
