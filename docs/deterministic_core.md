@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `603` tests are passing, with `4` skipped paper-integration tests by default.
+- `605` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -105,6 +105,11 @@ state.
   and pre-risk, evaluator modules must not import broker, execution, risk,
   runtime, persistence, ML, or LLM modules, and LLMs remain outside the trading
   hot path.
+- Phase 26 Step 2 reviews `SignalEvaluationResult` no-op readiness and
+  concludes the existing metadata-only result contract is sufficient for a
+  future minimal no-op evaluator; no no-op marker, result kind, evaluator kind,
+  evaluator implementation, production behavior, or trading-path behavior was
+  added.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -839,6 +844,40 @@ Future evaluator modules must not import broker, Alpaca, execution, risk,
 runtime/scheduler, persistence, ML, or LLM modules. Any need for one of those
 imports is a phase-scope violation requiring a new design review. LLMs remain
 outside the trading hot path.
+
+Phase 26 Step 2 reviews whether the existing `SignalEvaluationResult` contract
+can safely represent a future no-op evaluator result. The review conclusion is
+that the current contract is sufficient for a minimal no-op evaluator. It
+already preserves signal definition identity/version, source artifact
+identity/version, input snapshot identity through `input_fingerprint`, explicit
+UTC-aware `as_of`, explicit UTC-aware `evaluated_at`, `output_value`,
+`reason_code`, `diagnostics`, `assumptions`, and `limitations`.
+
+No no-op marker, `result_kind`, or `evaluator_kind` is needed before a minimal
+no-op evaluator implementation. A future no-op result need not be structurally
+distinguishable from a later real evaluator result by field shape because both
+remain advisory metadata. The safer path is to keep any future no-op result
+empty/advisory in meaning and traceable through existing metadata fields rather
+than adding score, direction, confidence, actionability, or kind fields. Phase
+26 Step 2 adds no evaluator implementation, no production behavior, no runtime
+behavior, and no trading-path behavior.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_result.py
+42 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+605 passed, 4 skipped
+```
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

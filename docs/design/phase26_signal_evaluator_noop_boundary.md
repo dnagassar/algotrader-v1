@@ -3,10 +3,16 @@
 ## 1. Purpose And Definition
 
 Phase 26 Step 1 defines a documentation-only boundary for a future no-op signal
-evaluator. No evaluator implementation exists in this phase, and no production
-code, tests, runtime behavior, signal computation, feature computation,
-strategy logic, risk approval, execution behavior, broker behavior,
-persistence, live data, ML, or LLM trading-path logic is added.
+evaluator. That step added no evaluator implementation, production code, tests,
+runtime behavior, signal computation, feature computation, strategy logic, risk
+approval, execution behavior, broker behavior, persistence, live data, ML, or
+LLM trading-path logic.
+
+Phase 26 Step 2 reviews whether the existing `SignalEvaluationResult` contract
+can safely represent a future no-op evaluator result. It adds no evaluator
+implementation, no production behavior, no result contract changes, no no-op
+marker, and no runtime or trading-path behavior. The review strengthens only
+contract-surface tests to pin existing metadata-only facts.
 
 For this project, a signal evaluator is a narrow deterministic boundary that
 may later receive already-validated signal metadata, explicit input snapshot
@@ -103,10 +109,37 @@ A future no-op evaluator does not:
 It exists only to prove that explicit deterministic inputs can produce explicit
 advisory metadata output without hidden state or trading behavior.
 
-Open design point: if `SignalEvaluationResult` cannot safely represent a no-op
-result without ambiguity, then the next implementation phase should harden
-`SignalEvaluationResult` first instead of adding an evaluator. This phase does
-not add a no-op marker and does not modify `SignalEvaluationResult`.
+Phase 26 Step 1 recorded an open design point: if `SignalEvaluationResult`
+could not safely represent a no-op result without ambiguity, then the next
+implementation phase should harden `SignalEvaluationResult` first instead of
+adding an evaluator.
+
+Phase 26 Step 2 resolves that point for the minimal future no-op evaluator:
+the existing `SignalEvaluationResult` contract is sufficient. It already has
+the metadata-only fields needed to preserve signal definition identity/version,
+source artifact identity/version, input snapshot identity through
+`input_fingerprint`, explicit `as_of`, explicit `evaluated_at`, advisory
+`output_value`, `reason_code`, `diagnostics`, `assumptions`, and
+`limitations`.
+
+The future no-op result does not need `score`, `direction`, `confidence`,
+`actionable`, `should_trade`, a no-op marker, `result_kind`, or
+`evaluator_kind`. Adding those fields before a concrete need would create more
+semantic surface area than the no-op boundary requires.
+
+A future no-op result is not structurally distinguishable from a later real
+evaluator result by field shape. That is acceptable for the first no-op
+boundary because both remain advisory metadata. If distinction is needed, it
+should come from explicit metadata values such as `evaluation_id`,
+`input_fingerprint`, `output_value`, `reason_code`, `diagnostics`,
+`assumptions`, and `limitations`, not from a field that invites branching or
+actionability semantics.
+
+No no-op marker is needed before a minimal no-op evaluator implementation. A
+marker or kind field is not inherently trading behavior, but it risks becoming
+a decision switch or actionability proxy if introduced too early. The safer
+path is to keep the first no-op evaluator result empty/advisory in meaning
+while using only the existing metadata fields.
 
 ## 6. Timestamp And Lookahead Invariants
 
@@ -230,11 +263,13 @@ has occurred when a result is returned.
 
 This sequence is non-binding:
 
-1. Phase 26 Step 2 option A: harden `SignalEvaluationResult` if a no-op marker
-   is required.
-2. Phase 26 Step 2 option B: add a minimal no-op evaluator contract if the
-   existing result contract is sufficient.
-3. Phase 26 Step 3: harden no-op evaluator traceability.
+1. Phase 26 Step 3 option A: add a minimal no-op evaluator contract using the
+   existing `SignalEvaluationResult` fields.
+2. Phase 26 Step 3 option B: if later review finds ambiguity not visible in
+   this readiness review, harden `SignalEvaluationResult` before adding an
+   evaluator.
+3. A later phase: harden no-op evaluator traceability after any minimal
+   evaluator contract exists.
 
 Any future implementation phase must remain contract-first, test-first,
 offline-safe, credential-free, broker-isolated, advisory, pre-risk, and outside
@@ -245,7 +280,6 @@ the LLM trading hot path.
 This phase does not add:
 
 - production code
-- tests
 - signal evaluator implementation
 - no-op evaluator class
 - evaluator protocol

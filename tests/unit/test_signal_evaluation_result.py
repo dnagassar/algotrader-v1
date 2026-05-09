@@ -18,9 +18,13 @@ EASTERN_TIME = datetime(2026, 5, 9, 10, 30, tzinfo=timezone(timedelta(hours=-4))
 _FORBIDDEN_SIGNAL_EVALUATION_RESULT_FIELD_NAMES = {
     "account",
     "account_id",
+    "actionable",
     "alpaca",
     "alpaca_order",
+    "approved",
     "broker",
+    "broker_credentials",
+    "broker_endpoint",
     "broker_name",
     "broker_order_id",
     "buying_power",
@@ -29,33 +33,65 @@ _FORBIDDEN_SIGNAL_EVALUATION_RESULT_FIELD_NAMES = {
     "cash",
     "cash_reserved",
     "client_order_id",
+    "computed_inputs",
+    "confidence",
+    "direction",
+    "evaluator_kind",
     "execution",
     "execution_intent",
     "execution_plan",
+    "feature_values",
     "fill",
     "fill_price",
     "fill_quantity",
     "filled",
     "filled_at",
+    "fire",
+    "fired",
     "idempotency_key",
+    "live_trading",
+    "llm_output",
+    "llm_prompt",
+    "llm_trace",
+    "ml_model_id",
+    "ml_model_version",
     "native_order",
+    "no_op",
+    "no_op_marker",
+    "noop",
+    "notional",
     "order",
     "order_id",
     "order_type",
     "orders",
+    "paper_trading",
+    "performance",
+    "persistence_bucket",
+    "persistence_path",
+    "persistence_table",
     "portfolio",
     "portfolio_state",
     "position",
+    "prediction",
     "priority",
+    "probability",
+    "pnl",
     "quantity",
     "rank",
     "ranking",
+    "rejected",
     "reservation",
+    "result_kind",
+    "return",
     "risk",
     "risk_approval",
     "risk_approved",
+    "risk_score",
+    "scheduler_settings",
     "score",
     "side",
+    "should_trade",
+    "signal_direction",
     "status",
     "submit_order",
     "submitted_at",
@@ -72,6 +108,8 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "algotrader.research",
     "algotrader.risk",
     "algotrader.scheduler",
+    "algotrader.signals.evaluator",
+    "algotrader.signals.signal_evaluator",
     "algotrader.runtime",
     "algotrader.persistence",
     "algotrader.database",
@@ -112,8 +150,12 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "buying_power",
     "cash",
     "client_order_id",
+    "confidence",
+    "direction",
+    "evaluator_kind",
     "llm_decision",
     "ml_model",
+    "no_op_marker",
     "execution_intent",
     "execution_plan",
     "fill",
@@ -121,11 +163,15 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "order",
     "portfolio",
     "priority",
+    "probability",
     "quantity",
     "rank",
     "reservation",
+    "result_kind",
     "risk_approved",
     "scheduler",
+    "should_trade",
+    "signal_direction",
     "side",
     "strategy",
     "submit_order",
@@ -431,6 +477,80 @@ def test_traceability_string_fields_are_preserved_exactly() -> None:
     assert result.input_fingerprint == "sha256:7f83b1657ff1fc53b92dc18148a1d65d"
     assert result.output_value == "advisory_candidate"
     assert result.reason_code == "ASK_ABOVE_PREVIOUS_CLOSE"
+
+
+def test_existing_fields_can_preserve_metadata_only_noop_trace() -> None:
+    result = signal_evaluation_result(
+        evaluation_id="eval.noop.boundary.20260509T143000Z.v1",
+        signal_id="signal.metadata-only-boundary.v1",
+        signal_version="2026.05.09+noop-review",
+        source_artifact_id="artifact.noop-readiness-review.001",
+        source_artifact_version="2026.05.09+docs",
+        input_fingerprint="snapshot:signal-evaluation-input-001",
+        output_value="not_evaluated",
+        reason_code="metadata_only_boundary_probe",
+        diagnostics=(
+            "no real signal value computed",
+            "no feature values inspected",
+            "no actionability implied",
+        ),
+        assumptions=(
+            "future evaluator remains advisory",
+            "future evaluator remains pre-risk",
+        ),
+        limitations=(
+            "not a signal firing",
+            "not a recommendation",
+            "not a trade approval",
+            "not an execution intent",
+        ),
+    )
+
+    assert result.evaluation_id == "eval.noop.boundary.20260509T143000Z.v1"
+    assert result.signal_id == "signal.metadata-only-boundary.v1"
+    assert result.signal_version == "2026.05.09+noop-review"
+    assert result.source_artifact_id == "artifact.noop-readiness-review.001"
+    assert result.source_artifact_version == "2026.05.09+docs"
+    assert result.input_fingerprint == "snapshot:signal-evaluation-input-001"
+    assert result.output_value == "not_evaluated"
+    assert result.reason_code == "metadata_only_boundary_probe"
+    assert result.diagnostics == (
+        "no real signal value computed",
+        "no feature values inspected",
+        "no actionability implied",
+    )
+    assert result.assumptions == (
+        "future evaluator remains advisory",
+        "future evaluator remains pre-risk",
+    )
+    assert result.limitations == (
+        "not a signal firing",
+        "not a recommendation",
+        "not a trade approval",
+        "not an execution intent",
+    )
+
+
+def test_signal_evaluation_result_has_no_noop_kind_or_actionability_fields() -> None:
+    result = signal_evaluation_result()
+
+    for field_name in (
+        "actionable",
+        "should_trade",
+        "fire",
+        "fired",
+        "recommendation",
+        "confidence",
+        "probability",
+        "direction",
+        "signal_direction",
+        "result_kind",
+        "evaluator_kind",
+        "no_op",
+        "noop",
+        "no_op_marker",
+    ):
+        assert not hasattr(result, field_name)
 
 
 def test_object_exposes_no_explicit_trading_path_fields() -> None:

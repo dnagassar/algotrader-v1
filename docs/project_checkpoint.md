@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 603-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 605-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -149,10 +149,17 @@ evaluator boundary and states that no evaluator implementation exists yet,
 evaluator output remains advisory and pre-risk, no production source or runtime
 behavior changed, no runtime or trading-path behavior was added, and LLMs
 remain outside the trading hot path.
+Phase 26 Step 2 reviews `SignalEvaluationResult` no-op readiness and concludes
+the existing metadata-only result contract is sufficient for a future minimal
+no-op evaluator. It adds no production source changes, no result contract
+changes, no no-op marker, no evaluator implementation, no runtime behavior, and
+no trading-path behavior. Focused tests now pin that no score, direction,
+confidence, actionability, result-kind, evaluator-kind, risk, execution,
+broker, runtime, persistence, ML, or LLM fields are present.
 The latest full-suite result is:
 
 ```text
-603 passed, 4 skipped
+605 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -315,6 +322,14 @@ no-op marker, signal computation, production behavior, runtime behavior,
 trading-path behavior, broker behavior, ML behavior, or LLM trading-path
 behavior was added. Future evaluator modules must not import broker, Alpaca,
 execution, risk, runtime/scheduler, persistence, ML, or LLM modules.
+Phase 26 Step 2 concludes that the existing `SignalEvaluationResult` fields are
+sufficient for a future minimal no-op evaluator. A future no-op result can
+preserve traceability through signal definition identity/version, source
+artifact identity/version, input fingerprint, explicit UTC-aware `as_of`,
+explicit UTC-aware `evaluated_at`, `output_value`, `reason_code`,
+`diagnostics`, `assumptions`, and `limitations` without adding score,
+direction, confidence, actionability, `should_trade`, no-op marker,
+`result_kind`, or `evaluator_kind` fields.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2411,6 +2426,72 @@ The latest full-suite checkpoint remains:
 ```text
 python -m pytest
 603 passed, 4 skipped
+```
+
+## Phase 26 Step 2 SignalEvaluationResult No-Op Readiness Review
+
+Phase 26 Step 2 reviews whether the existing `SignalEvaluationResult` contract
+can safely represent a future no-op evaluator result without adding ambiguous
+signal, strategy, risk, execution, or actionability semantics.
+
+The review conclusion is that the current metadata-only contract is sufficient
+for a future minimal no-op evaluator. It already preserves signal definition
+identity/version, source artifact identity/version, input snapshot identity
+through `input_fingerprint`, explicit UTC-aware `as_of`, explicit UTC-aware
+`evaluated_at`, advisory `output_value`, `reason_code`, `diagnostics`,
+`assumptions`, and `limitations`.
+
+No no-op marker, `result_kind`, or `evaluator_kind` is needed before evaluator
+implementation. A future no-op result does not need `score`, `direction`,
+`confidence`, `actionable`, or `should_trade` fields. A no-op marker is not
+inherently trading behavior, but adding one too early risks creating a decision
+switch or actionability proxy. The safer path is to keep the first no-op
+evaluator result empty/advisory in meaning while using only existing metadata
+fields.
+
+A future no-op evaluator result is not structurally distinguishable from a
+later real evaluator result by field shape. That is acceptable for the first
+no-op boundary because both are advisory metadata. If distinction is needed, it
+should come from explicit trace metadata values such as `evaluation_id`,
+`input_fingerprint`, `output_value`, `reason_code`, `diagnostics`,
+`assumptions`, and `limitations`, not from trading-path or actionability
+fields.
+
+This phase strengthens contract-surface tests in:
+
+```text
+tests/unit/test_signal_evaluation_result.py
+```
+
+The focused additions pin that `SignalEvaluationResult` has no score,
+direction, confidence, probability, actionability, `should_trade`, no-op marker,
+`result_kind`, `evaluator_kind`, risk, execution, broker, order, runtime,
+persistence, ML, or LLM fields, and that existing metadata fields can preserve a
+metadata-only no-op trace without implying actionability.
+
+This phase does not change production source and does not add runtime behavior,
+signal evaluator implementation, no-op evaluator class, evaluator protocol,
+result contract changes, signal computation, feature computation, strategy
+logic, ranking or priority behavior, signal-to-risk conversion, risk approval,
+execution intent creation, execution-plan mutation, portfolio mutation, broker
+or Alpaca behavior, order submission, scheduler/runtime behavior, persistence,
+live data ingestion, ML training or inference, or LLM trading-path logic.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_result.py
+42 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+605 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
