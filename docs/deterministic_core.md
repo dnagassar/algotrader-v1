@@ -62,6 +62,9 @@ state.
   `apply_max_intents_execution_planning_policy(...)`.
 - Phase 20 Step 3 hardens max-intents traceability with tests and docs only;
   no production source or runtime behavior changed.
+- Phase 21 Step 1 documents the research/validation boundary; research,
+  backtesting, and LLM-assisted research workflows remain advisory until
+  promoted through explicit deterministic contracts.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -557,6 +560,35 @@ Phase 20 Step 3 is tests/docs-only hardening. It adds no production source
 changes and keeps the max-intents policy narrow, pure, deterministic,
 pre-broker, and source-evaluation driven.
 
+## Research And Validation Boundary
+
+Phase 21 Step 1 documents the future research/validation boundary in
+[`docs/design/phase21_research_validation_boundary.md`](design/phase21_research_validation_boundary.md).
+
+Historical research, feature exploration, backtesting, walk-forward
+validation, regime analysis, strategy notebooks/scripts, and LLM-assisted
+research summaries are outside the deterministic trading core. They may propose
+ideas, record evidence, and support human review, but their outputs are
+advisory until promoted through explicit validated artifacts.
+
+Validated artifacts may include approved feature definitions, approved signal
+definitions, validated strategy configs, documented assumptions, evaluation
+metrics, acceptance criteria, and versioned research outputs. These artifacts
+are evidence packages, not runtime behavior by themselves.
+
+The deterministic core may consume only approved, explicit, validated inputs.
+Future research-derived behavior must enter through deterministic contracts,
+types, configs, fixtures, and pure functions that are test-first, offline, and
+credential-free. Normal `python -m pytest` must remain offline and
+credential-free.
+
+The deterministic core must not directly depend on notebooks, research scripts,
+backtesting engines, exploratory data-mining tools, live data ingestion, ML
+training workflows, or LLM clients. LLMs may assist with research narration,
+experiment summaries, hypothesis generation, and journaling, but must not
+generate live trade decisions, mutate execution plans, approve orders, bypass
+risk checks, interact with brokers, or enter the trading hot path.
+
 ## Local Order-Event Ledger
 
 The local ledger records what happened during deterministic broker/order flows.
@@ -618,6 +650,10 @@ Ledger modes:
 - Same-symbol execution conflict handling
 - Duplicate or competing order policy implementation
 - Priority or ranking policy implementation
+- Research/backtesting outputs as direct trading logic
+- Notebooks or exploratory scripts in the deterministic core
+- Live data ingestion
+- ML training implementation
 - Persistence writes
 - Audit logging writes
 - Reconciliation loop against external broker state
@@ -633,7 +669,9 @@ The next phase should keep any execution-boundary work pure and synthetic unless
 explicitly approved otherwise. A safe follow-up could design one explicit
 planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
-effects, ML, and LLM trading-path logic.
+effects, ML, and LLM trading-path logic. Research-derived behavior should begin
+with explicit artifact contracts/types and deterministic tests before any
+runtime wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 379-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 415-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -78,6 +78,11 @@ Phase 20 Step 3 hardens max-intents traceability with tests and documentation
 only. It adds no production source changes and confirms accepted/skipped
 identity, ordering, deterministic skip reasons, source-evaluation reachability,
 input plan non-mutation, and absence of forbidden policy leakage fields.
+Phase 21 Step 1 is a documentation-only research/validation boundary design.
+It records how future historical research, validation, backtesting, features,
+approved research signals, and LLM-assisted research narration may eventually
+feed the deterministic core only through explicit validated contracts. No
+production behavior changed.
 The latest full-suite result is:
 
 ```text
@@ -171,7 +176,10 @@ buying-power reservation, same-symbol conflict handling, deduplication,
 priority/ranking, idempotency, persistence, scheduler/runtime behavior, ML, or
 LLM trading-path logic. Phase 20 Step 3 keeps production source unchanged and
 hardens the max-intents traceability contract with tests and documentation
-only.
+only. Phase 21 Step 1 documents the future Research -> Validation ->
+Deterministic Core boundary. Research, backtesting, and LLM-assisted summaries
+remain advisory until promoted through reviewed artifacts, explicit
+deterministic contracts, and test-first implementation.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1383,6 +1391,51 @@ python -m pytest
 415 passed, 4 skipped
 ```
 
+## Phase 21 Step 1 Research/Validation Boundary Design
+
+Phase 21 Step 1 started and completed as documentation-only. It adds the new
+design boundary in:
+
+```text
+docs/design/phase21_research_validation_boundary.md
+```
+
+The design separates historical research, feature exploration, backtesting,
+walk-forward validation, regime analysis, strategy notebooks/scripts, and
+LLM-assisted research summaries from validated artifacts and the deterministic
+trading core.
+
+Research outputs remain advisory. A signal, feature, or strategy can affect
+execution flow only after a reviewed artifact records the hypothesis, dataset
+scope, assumptions, exact definitions, metrics, acceptance criteria, bias and
+leakage controls, and approval status. Future implementation should begin with
+contracts and types, then test-first pure deterministic logic, before any
+runtime wiring.
+
+The deterministic core remains separate from research/backtesting/LLM
+workflows. It consumes only approved, explicit, validated inputs; normal pytest
+remains offline and credential-free; and research outputs must be promoted
+through explicit deterministic contracts before they can influence execution.
+
+LLMs may assist with research narration, experiment summaries, hypothesis
+generation, and journaling. LLMs must not generate live trade decisions, mutate
+execution plans, approve orders, bypass risk checks, interact with brokers, or
+enter the trading hot path.
+
+No production code, tests, runtime behavior, broker behavior, Alpaca changes,
+`submit_order`, scheduler/runtime behavior, persistence implementation,
+idempotency, `client_order_id`, cash reservation, same-symbol conflict policy,
+duplicate/competing order policy, priority/ranking implementation, portfolio
+mutation, fills, ML training implementation, live data ingestion, or LLM
+trading-path logic was added.
+
+The current full-suite checkpoint remains:
+
+```text
+python -m pytest
+415 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1411,6 +1464,10 @@ python -m pytest
 - same-symbol execution conflict handling
 - duplicate or competing order policy implementation
 - priority or ranking policy implementation
+- research/backtesting outputs as direct trading logic
+- notebooks or exploratory scripts in the deterministic core
+- live data ingestion
+- ML training implementation
 - persistence writes
 - audit logging writes
 - LangGraph
@@ -1426,6 +1483,7 @@ Safe next tasks include:
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
+- explicit research artifact contracts/types before any runtime wiring
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
