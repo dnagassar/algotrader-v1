@@ -8,11 +8,18 @@ eventually support an approved deterministic signal definition while keeping
 research, backtests, ML, LLMs, and exploratory workflows out of the trading hot
 path.
 
-This phase adds no production code, tests, runtime behavior, signal
+Phase 22 Step 1 adds no production code, tests, runtime behavior, signal
 computation, strategy implementation, feature computation, ranking or priority
 policy, broker behavior, execution-plan mutation, order submission,
 scheduler/runtime behavior, persistence implementation, live data ingestion, ML
 training, or LLM trading-path logic.
+
+Phase 22 Step 2 adds the smallest production contract for representing a
+validated signal definition as metadata only. It adds no signal computation,
+strategy implementation, feature computation, ranking or priority behavior,
+execution-plan mutation, risk approval behavior, broker behavior, Alpaca
+behavior, order submission, scheduler/runtime behavior, persistence
+implementation, live data ingestion, ML training, or LLM trading-path logic.
 
 The core rule is:
 
@@ -96,6 +103,32 @@ A future validated signal definition may contain metadata such as:
 
 This metadata should stay descriptive and deterministic. It should identify the
 rule and its evidence, not execute the rule.
+
+Phase 22 Step 2 introduces this minimal metadata-only contract in
+`src/algotrader/signals/validated_signal_definition.py`:
+
+```text
+ValidatedSignalDefinition(
+    signal_id,
+    name,
+    version,
+    description,
+    source_artifact_id,
+    source_artifact_version,
+    required_inputs,
+    output_type,
+    evaluation_rule_ref,
+    approved_for,
+    assumptions,
+    limitations,
+)
+```
+
+The contract is immutable and slotted. Iterable fields are stored as immutable
+tuples and preserve input order. Required strings reject empty values. The
+contract references validated research artifacts only by stable id/version
+strings; it does not import research behavior or hold a research artifact
+object.
 
 ## 5. Fields And Behavior That Must Not Appear
 
@@ -242,9 +275,8 @@ Forbidden direct dependencies for a signal definition:
 
 ## 10. Explicitly Out Of Scope
 
-Phase 22 Step 1 does not add:
+Phase 22 Step 2 does not add:
 
-- implementation of signal definition types
 - feature computation
 - signal evaluation
 - strategy engine
@@ -262,21 +294,23 @@ Phase 22 Step 1 does not add:
 - order submission
 - fills
 - portfolio mutation
-- changes to `src/`
+
+It also does not add buy/sell/hold recommendations, symbols, sides,
+quantities, order fields, broker fields, portfolio fields, risk approval
+fields, execution intent fields, execution plan fields, ranking fields, score
+fields, cash reservation fields, or runtime research behavior imports.
 
 ## 11. Future Implementation Phases
 
-Future implementation should stay test-first and contract-first. A safe future
-sequence would be:
+Future implementation should stay test-first and contract-first. After Phase
+22 Step 2, a safe future sequence would be:
 
-1. Add a minimal immutable signal-definition metadata contract.
-2. Add dependency-direction tests that keep signal definitions upstream and
-   advisory.
-3. Add fixture-only examples linked to validated research artifact ids and
+1. Harden validated signal-definition traceability with focused tests and docs.
+2. Add fixture-only examples linked to validated research artifact ids and
    versions.
-4. Add deterministic evaluator contracts before any evaluator implementation.
-5. Add focused evaluator tests with synthetic explicit inputs.
-6. Only later consider connecting evaluator outputs to Signal -> Risk flow.
+3. Add deterministic evaluator contracts before any evaluator implementation.
+4. Add focused evaluator tests with synthetic explicit inputs.
+5. Only later consider connecting evaluator outputs to Signal -> Risk flow.
 
 No future implementation should combine signal-definition work with broker
 wiring, runtime scheduling, persistence, live data ingestion, ML training, or

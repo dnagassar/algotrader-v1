@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 450-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 479-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -93,10 +93,14 @@ design. It defines how validated research artifact metadata may eventually
 support an approved deterministic signal definition without adding signal
 computation, strategy behavior, broker behavior, execution-plan mutation,
 runtime wiring, persistence, ML, or LLM trading-path logic.
+Phase 22 Step 2 adds the minimal immutable, slotted validated signal definition
+metadata contract. It does not evaluate signals, create execution intents,
+approve trades, mutate execution plans, or touch broker, Alpaca,
+scheduler/runtime, persistence, live data, ML, or LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
-450 passed, 4 skipped
+479 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -196,7 +200,10 @@ signal generation, persistence, live-data, ML, or LLM trading-path behavior.
 Phase 21 Step 3 keeps that implementation unchanged and hardens traceability
 and ordering guarantees with tests and documentation only. Phase 22 Step 1
 documents the future validated signal definition boundary; validated signal
-definitions are future promoted contracts, not execution decisions.
+definitions are future promoted contracts, not execution decisions. Phase 22
+Step 2 adds the minimal `ValidatedSignalDefinition` metadata contract while
+keeping signal evaluation, risk approval, execution intent creation, broker
+behavior, persistence, runtime behavior, ML, and LLM trading-path logic out.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1622,6 +1629,77 @@ python -m pytest
 450 passed, 4 skipped
 ```
 
+## Phase 22 Step 2 Validated Signal Definition Contract
+
+Phase 22 Step 2 adds the minimal validated signal definition contract in:
+
+```text
+src/algotrader/signals/validated_signal_definition.py
+src/algotrader/signals/__init__.py
+```
+
+The new contract is an immutable, slotted dataclass:
+
+```text
+ValidatedSignalDefinition(
+    signal_id,
+    name,
+    version,
+    description,
+    source_artifact_id,
+    source_artifact_version,
+    required_inputs,
+    output_type,
+    evaluation_rule_ref,
+    approved_for,
+    assumptions,
+    limitations,
+)
+```
+
+`ValidatedSignalDefinition` is definition metadata only. It records stable
+signal identity, source validated research artifact id/version strings,
+required input names, expected output type, deterministic evaluation rule
+reference, approved advisory uses, assumptions, and limitations. Tuple fields
+are stored immutably and preserve required-input, approved-use, assumption, and
+limitation order. Empty required strings are rejected.
+
+The focused tests live in:
+
+```text
+tests/unit/test_validated_signal_definition.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove immutability, slots, tuple storage, input order preservation, empty
+string validation, metadata-only fields, absence of forbidden trading-path
+fields, no buy/sell/hold recommendation behavior, no I/O, network, broker,
+ingestion, or scheduling calls, independence from execution planning, risk,
+broker, and runtime modules, and stable id/version-only references to validated
+research artifacts.
+
+This phase does not evaluate signals, create execution intents, approve trades,
+mutate execution plans, interact with broker, Alpaca, scheduler/runtime,
+persistence, or live data, add ML training, or put LLMs in the trading hot
+path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_validated_signal_definition.py
+29 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+7 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+479 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1658,6 +1736,8 @@ python -m pytest
 - validated signal definitions as live signal outputs
 - validated signal definitions as execution decisions
 - validated signal definitions as broker orders
+- validated signal definitions as execution intents
+- validated signal definitions as risk approvals
 - live data ingestion
 - ML training implementation
 - persistence writes
@@ -1676,8 +1756,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit validated signal definition contracts/types before any evaluator
-  wiring
+- explicit validated signal definition traceability hardening before any
+  evaluator wiring
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
