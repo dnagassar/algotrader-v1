@@ -55,6 +55,31 @@ EXECUTION_BYPASS_FORBIDDEN_PREFIXES = (
     "algotrader.orchestration.signal_trade_flow",
 )
 
+RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.orchestration",
+    "algotrader.portfolio",
+    "algotrader.risk",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.signals",
+    "algotrader.runtime",
+    "algotrader.persistence",
+    "algotrader.database",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "duckdb",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "openai",
+    "requests",
+    "socket",
+    "sqlmodel",
+    "urllib",
+)
+
 ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.screener_signal_flow",
     "algotrader.orchestration.signal_risk_flow",
@@ -80,6 +105,16 @@ def test_screener_modules_do_not_import_downstream_layers() -> None:
             "algotrader.portfolio",
             "algotrader.orchestration",
         ),
+    )
+
+    assert _dependency_violations(rule) == []
+
+
+def test_research_contracts_do_not_import_trading_path_or_runtime_layers() -> None:
+    rule = DependencyRule(
+        source="algotrader.research.*",
+        paths=_package_files("algotrader.research"),
+        forbidden_prefixes=RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES,
     )
 
     assert _dependency_violations(rule) == []

@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `415` tests are passing, with `4` skipped paper-integration tests by default.
+- `441` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -65,6 +65,8 @@ state.
 - Phase 21 Step 1 documents the research/validation boundary; research,
   backtesting, and LLM-assisted research workflows remain advisory until
   promoted through explicit deterministic contracts.
+- Phase 21 Step 2 adds a minimal immutable, slotted validated research artifact
+  metadata contract; it is evidence only and has no trading behavior.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -564,6 +566,8 @@ pre-broker, and source-evaluation driven.
 
 Phase 21 Step 1 documents the future research/validation boundary in
 [`docs/design/phase21_research_validation_boundary.md`](design/phase21_research_validation_boundary.md).
+Phase 21 Step 2 adds the minimal validated artifact metadata contract in
+`src/algotrader/research/validated_artifact.py`.
 
 Historical research, feature exploration, backtesting, walk-forward
 validation, regime analysis, strategy notebooks/scripts, and LLM-assisted
@@ -575,6 +579,14 @@ Validated artifacts may include approved feature definitions, approved signal
 definitions, validated strategy configs, documented assumptions, evaluation
 metrics, acceptance criteria, and versioned research outputs. These artifacts
 are evidence packages, not runtime behavior by themselves.
+
+The current production contract is intentionally tiny:
+`ResearchMetric(name, value)` and `ValidatedResearchArtifact(...)`. The artifact
+stores an identifier, name, version, description, validation timestamp, metrics,
+assumptions, limitations, and approved advisory uses. It does not create
+signals, approve trades, mutate execution plans, call risk, submit orders,
+interact with broker or Alpaca, schedule runtime behavior, persist records,
+ingest live data, train ML models, or put LLMs in the hot path.
 
 The deterministic core may consume only approved, explicit, validated inputs.
 Future research-derived behavior must enter through deterministic contracts,
@@ -652,6 +664,9 @@ Ledger modes:
 - Priority or ranking policy implementation
 - Research/backtesting outputs as direct trading logic
 - Notebooks or exploratory scripts in the deterministic core
+- Validated artifact metadata as signal generation
+- Validated artifact metadata as risk approval
+- Validated artifact persistence implementation
 - Live data ingestion
 - ML training implementation
 - Persistence writes

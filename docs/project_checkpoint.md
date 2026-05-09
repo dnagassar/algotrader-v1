@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 415-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 441-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -82,11 +82,14 @@ Phase 21 Step 1 is a documentation-only research/validation boundary design.
 It records how future historical research, validation, backtesting, features,
 approved research signals, and LLM-assisted research narration may eventually
 feed the deterministic core only through explicit validated contracts. No
-production behavior changed.
+production behavior changed. Phase 21 Step 2 adds the minimal immutable,
+slotted validated research artifact metadata contract. The contract is evidence
+only; it does not create signals, approve trades, mutate execution plans, or
+touch brokers, runtime, persistence, live data, ML, or LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
-415 passed, 4 skipped
+441 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -179,7 +182,10 @@ hardens the max-intents traceability contract with tests and documentation
 only. Phase 21 Step 1 documents the future Research -> Validation ->
 Deterministic Core boundary. Research, backtesting, and LLM-assisted summaries
 remain advisory until promoted through reviewed artifacts, explicit
-deterministic contracts, and test-first implementation.
+deterministic contracts, and test-first implementation. Phase 21 Step 2 adds
+the first tiny validated research artifact contract as metadata/evidence only;
+it remains upstream and advisory and has no execution, broker, risk approval,
+signal generation, persistence, live-data, ML, or LLM trading-path behavior.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1429,11 +1435,78 @@ duplicate/competing order policy, priority/ranking implementation, portfolio
 mutation, fills, ML training implementation, live data ingestion, or LLM
 trading-path logic was added.
 
-The current full-suite checkpoint remains:
+The Phase 21 Step 1 full-suite checkpoint was:
 
 ```text
 python -m pytest
 415 passed, 4 skipped
+```
+
+## Phase 21 Step 2 Validated Research Artifact Contract
+
+Phase 21 Step 2 adds the minimal validated research artifact contract in:
+
+```text
+src/algotrader/research/validated_artifact.py
+src/algotrader/research/__init__.py
+```
+
+The new contracts are immutable, slotted dataclasses:
+
+```text
+ResearchMetric(name, value)
+ValidatedResearchArtifact(
+    artifact_id,
+    name,
+    version,
+    description,
+    validated_at,
+    metrics,
+    assumptions,
+    limitations,
+    approved_for,
+)
+```
+
+`ValidatedResearchArtifact` is a metadata/evidence contract only. It records a
+reviewed artifact identifier, version, validation timestamp, metrics,
+assumptions, limitations, and approved advisory uses. Tuple fields are stored
+immutably and preserve metric, assumption, limitation, and approval order.
+Empty required strings are rejected.
+
+The focused tests live in:
+
+```text
+tests/unit/test_validated_research_artifact.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove immutability, slots, tuple storage, input order preservation, empty
+string validation, absence of forbidden trading-path fields, no broker or
+Alpaca behavior, no order, submit, fill, client-order-id, cash, portfolio, or
+ranking behavior, no I/O, network, broker, or ingestion calls, and dependency
+independence from execution planning, risk, broker, runtime, and persistence
+modules.
+
+This phase does not create signals, approve trades, mutate execution plans,
+interact with broker, Alpaca, scheduler/runtime, persistence, or live data, or
+put LLMs in the trading hot path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_validated_research_artifact.py
+25 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+7 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+441 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
@@ -1466,6 +1539,9 @@ python -m pytest
 - priority or ranking policy implementation
 - research/backtesting outputs as direct trading logic
 - notebooks or exploratory scripts in the deterministic core
+- validated artifact metadata as signal generation
+- validated artifact metadata as risk approval
+- validated artifact persistence implementation
 - live data ingestion
 - ML training implementation
 - persistence writes

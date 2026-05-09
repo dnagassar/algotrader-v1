@@ -6,10 +6,12 @@ Phase 21 Step 1 defines a documentation-only boundary for how historical
 research, validation, feature work, backtesting, and approved research signals
 may eventually feed the deterministic trading core.
 
-This phase adds no production code, tests, broker behavior, runtime wiring,
-persistence, live data ingestion, ML training, or LLM trading-path logic. It
-only records the intended separation between exploratory research, validated
-artifacts, and deterministic trading code.
+Phase 21 Step 2 adds the smallest production contract for representing a
+validated research artifact as metadata and evidence only. It adds no runtime
+wiring, strategy implementation, feature computation, backtest engine, live
+data ingestion, ML training, broker behavior, execution-plan mutation, order
+submission, scheduler/runtime behavior, persistence implementation, or LLM
+trading-path logic.
 
 The core rule is:
 
@@ -71,6 +73,30 @@ metrics, acceptance criteria, versioned research outputs, and review notes.
 
 Validated artifacts are still not runtime behavior by themselves. They are the
 evidence package used to justify a later deterministic implementation.
+
+Phase 21 Step 2 introduces this minimal metadata-only contract in
+`src/algotrader/research/validated_artifact.py`:
+
+```text
+ResearchMetric(name, value)
+
+ValidatedResearchArtifact(
+    artifact_id,
+    name,
+    version,
+    description,
+    validated_at,
+    metrics,
+    assumptions,
+    limitations,
+    approved_for,
+)
+```
+
+The contract is immutable and slotted. Tuple fields are stored immutably and
+preserve input order. Required strings reject empty values. The artifact does
+not create signals, approve trades, mutate execution plans, interact with
+brokers, ingest live data, persist records, or put LLMs in the trading hot path.
 
 ### Deterministic Core
 
@@ -157,6 +183,7 @@ What may cross into the deterministic core:
 - validated strategy config values
 - bounded deterministic parameters
 - documented assumptions that are encoded as explicit config or tests
+- validated research artifact metadata used for traceability
 - small fixture data needed for deterministic tests
 - version identifiers for traceability
 
@@ -168,6 +195,8 @@ What must never cross directly into the deterministic core:
 - mutable research objects
 - raw backtest result blobs as decision inputs
 - unreviewed feature or signal definitions
+- validated artifact metadata as direct signal-generation behavior
+- validated artifact metadata as risk approval
 - live data clients
 - broker clients or broker credentials
 - LLM prompts, completions, agents, tool calls, or approvals
