@@ -117,6 +117,11 @@ documentation only. It changes no production source and pins UTC-aware
 timestamp identity, repeated fixed-clock identity, immutability, naive and
 non-UTC rejection, lookahead prevention, dependency independence, absence of
 trading-path fields, and absence of hidden nondeterministic API calls.
+Phase 24 Step 1 is a documentation-only `SignalEvaluationResult` boundary
+design. It defines future advisory deterministic signal-evaluation output while
+keeping signal evaluation separate from risk approval, execution intent
+creation, execution planning, broker requests, portfolio mutation, ranking or
+priority decisions, and LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
@@ -242,6 +247,15 @@ Phase 23 Step 3 keeps those primitives unchanged and hardens their
 traceability with tests/docs only. UTC-aware timestamp enforcement and
 `observed_at <= as_of` lookahead-prevention behavior are now pinned more
 explicitly.
+Phase 24 Step 1 documents the future `SignalEvaluationResult` boundary after
+validated signal definitions and explicit clock/as-of rules. The future result
+is advisory deterministic output only: it may carry signal ids, source
+artifact references, input snapshot fingerprints, explicit UTC-aware `as_of`
+and `evaluated_at` timestamps, deterministic output values, reason codes,
+diagnostics, assumptions, and limitations. It must not carry orders, broker
+requests, risk approvals, execution intents, execution plans, portfolio
+mutation, ranking or priority decisions, Alpaca behavior, or LLM-generated
+trade decisions.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1940,6 +1954,51 @@ python -m pytest
 515 passed, 4 skipped
 ```
 
+## Phase 24 Step 1 Signal Evaluation Result Boundary Design
+
+Phase 24 Step 1 is documentation only. It creates the future
+`SignalEvaluationResult` boundary in:
+
+```text
+docs/design/phase24_signal_evaluation_result_boundary.md
+```
+
+The design defines `SignalEvaluationResult` as the future advisory deterministic
+output of applying a validated signal definition to explicit input snapshots at
+an explicit `as_of` boundary. It is traceable to signal definition id/version,
+source artifact id/version, input snapshot id or fingerprint, UTC-aware
+`as_of`, UTC-aware `evaluated_at`, deterministic output values, reason codes,
+diagnostics, assumptions, and limitations.
+
+The design also defines what the result is not: it is not an order, broker
+request, risk approval, execution intent, execution plan, portfolio mutation,
+ranking or priority decision, or LLM decision. Future result fields must not
+include `ProposedOrder`, order ids, client order ids, broker or Alpaca fields,
+`submit_order`, symbol-specific order instructions, side as an execution
+command, quantity, cash, buying power, reservations, portfolio or position
+mutation, `risk_approved`, execution intent, execution plan, fills, priority,
+rank as execution priority, or LLM-generated decisions.
+
+The future result boundary reaffirms the Phase 23 clock contract: `as_of` must
+be explicit, `evaluated_at` must be explicit or provided by an injected
+deterministic clock in a future implementation, all timestamps must be
+UTC-aware, naive datetimes must be rejected, hidden system time reads are not
+allowed, and no input observation timestamp may be after `as_of`.
+
+Reproducibility remains required. The same signal definition, same inputs, and
+same `as_of` timestamp must produce the same future advisory result.
+Evaluation ids should eventually be deterministic, input snapshot fingerprints
+should eventually be content-addressable, and future evaluation must not depend
+on network calls, broker calls, LLM calls, or mutable global state.
+
+This phase adds no production code, tests, runtime behavior,
+`SignalEvaluationResult` implementation, signal evaluator implementation,
+signal computation, strategy implementation, feature computation, ranking or
+priority behavior, execution-plan mutation, risk approval behavior, broker
+behavior, Alpaca behavior, order submission, scheduler/runtime behavior,
+persistence implementation, live data ingestion, ML training, or LLM
+trading-path logic.
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1978,6 +2037,9 @@ python -m pytest
 - validated signal definitions as broker orders
 - validated signal definitions as execution intents
 - validated signal definitions as risk approvals
+- signal evaluation outputs as orders
+- signal evaluation outputs as risk approvals
+- signal evaluation outputs as execution intents or execution plans
 - signal evaluator implementation
 - `SignalEvaluationResult` implementation
 - signal evaluator registry

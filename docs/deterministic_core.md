@@ -82,6 +82,9 @@ state.
   validation, an injectable `Clock` protocol, `FixedClock`, and an as-of helper.
 - Phase 23 Step 3 hardens clock/timestamp traceability with tests and docs
   only; no production source changed.
+- Phase 24 Step 1 documents the future `SignalEvaluationResult` boundary as
+  advisory deterministic output only; no production source or runtime behavior
+  changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -613,6 +616,27 @@ absence of trading-path fields, and absence of hidden nondeterministic API
 calls such as wall-clock reads, random generators, UUID randomness, and
 environment access.
 
+Phase 24 Step 1 documents the future `SignalEvaluationResult` boundary in
+[`docs/design/phase24_signal_evaluation_result_boundary.md`](design/phase24_signal_evaluation_result_boundary.md).
+The result remains conceptual only. It represents future advisory deterministic
+signal-evaluation output produced by applying a validated signal definition to
+explicit input snapshots at an explicit `as_of` boundary. It may later carry
+signal definition id/version, source artifact id/version, input snapshot id or
+fingerprint, UTC-aware `as_of`, UTC-aware `evaluated_at`, deterministic output
+values, scores or buckets, reason codes, diagnostics, assumptions, and
+limitations.
+
+Signal evaluation outputs are advisory. They do not create orders, broker
+requests, execution intents, or execution plans. They do not approve trades,
+mutate portfolios, mutate execution plans, reserve cash or buying power, submit
+orders, rank execution candidates, or produce LLM-generated trading decisions.
+Risk approval remains in the risk layer, execution intent and execution plan
+creation remain in the execution layer, and broker behavior remains isolated.
+Explicit UTC-aware time remains required: `as_of` must be explicit,
+`evaluated_at` must be explicit or injected by a deterministic clock in a
+future implementation, naive datetimes must be rejected, hidden system time
+reads are not allowed, and no input observation may be after `as_of`.
+
 ## Research And Validation Boundary
 
 Phase 21 Step 1 documents the future research/validation boundary in
@@ -719,6 +743,15 @@ approve trades, mutate execution plans, interact with broker, Alpaca,
 scheduler/runtime, persistence, ML, or LLM trading-path logic. UTC-aware
 timestamp enforcement and lookahead-prevention behavior are pinned by tests.
 
+Phase 24 Step 1 documents the next future boundary: advisory
+`SignalEvaluationResult` output. `ValidatedResearchArtifact` remains evidence,
+`ValidatedSignalDefinition` remains approved metadata, and
+`SignalEvaluationResult` remains future advisory deterministic output only. A
+future signal-to-risk bridge may consume that output only after a separate
+design and implementation phase. Signal evaluation does not create orders,
+approve trades, mutate execution plans, interact with brokers, or put LLMs in
+the hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -800,6 +833,9 @@ Ledger modes:
 - Validated signal definitions as broker orders
 - Validated signal definitions as execution intents
 - Validated signal definitions as risk approvals
+- Signal evaluation outputs as orders
+- Signal evaluation outputs as risk approvals
+- Signal evaluation outputs as execution intents or execution plans
 - SignalEvaluationResult implementation
 - Signal evaluator implementation
 - Signal evaluator registry
