@@ -94,6 +94,34 @@ ORCHESTRATION_BOUNDARY_RULES = tuple(
 )
 
 
+def test_core_time_contract_does_not_import_trading_runtime_or_nondeterminism() -> None:
+    path = _module_path("algotrader.core.time")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    import_violations = [
+        f"{import_reference.path}:{import_reference.line}: "
+        f"core time contract must not import {import_reference.module}"
+        for import_reference in _import_references(path)
+        if _matches_forbidden_prefix(
+            import_reference.module,
+            CORE_TIME_FORBIDDEN_IMPORT_PREFIXES,
+        )
+    ]
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+
+    assert import_violations == []
+    assert call_names.isdisjoint(CORE_TIME_FORBIDDEN_CALLS)
+    assert referenced_names.isdisjoint(CORE_TIME_FORBIDDEN_NAMES)
+
+
 def test_screener_modules_do_not_import_downstream_layers() -> None:
     rule = DependencyRule(
         source="algotrader.screener.*",
@@ -338,6 +366,85 @@ EXECUTION_PLANNING_FORBIDDEN_NAMES = {
     "scheduler",
     "sqlmodel",
     "submit_order",
+}
+
+CORE_TIME_FORBIDDEN_IMPORT_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.orchestration",
+    "algotrader.portfolio",
+    "algotrader.research",
+    "algotrader.risk",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.signals",
+    "algotrader.runtime",
+    "algotrader.persistence",
+    "algotrader.database",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "database",
+    "duckdb",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "llm",
+    "openai",
+    "requests",
+    "socket",
+    "sqlmodel",
+    "urllib",
+)
+
+CORE_TIME_FORBIDDEN_CALLS = {
+    "datetime.now",
+    "datetime.utcnow",
+    "environ.get",
+    "getenv",
+    "open",
+    "os.getenv",
+    "random",
+    "random.random",
+    "read",
+    "request",
+    "time.monotonic",
+    "time.time",
+    "uuid.uuid4",
+    "uuid4",
+    "write",
+}
+
+CORE_TIME_FORBIDDEN_NAMES = {
+    "alpaca",
+    "broker",
+    "client_order_id",
+    "database",
+    "duckdb",
+    "environ",
+    "execution",
+    "execution_intent",
+    "execution_plan",
+    "fill",
+    "idempotency",
+    "langgraph",
+    "llm",
+    "ml",
+    "monotonic",
+    "order",
+    "persistence",
+    "portfolio",
+    "random",
+    "risk",
+    "runtime",
+    "scheduler",
+    "sqlmodel",
+    "submit_order",
+    "time",
+    "uuid",
+    "uuid4",
 }
 
 

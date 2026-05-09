@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `488` tests are passing, with `4` skipped paper-integration tests by default.
+- `510` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -78,6 +78,8 @@ state.
   ordering with tests and docs only; no production source changed.
 - Phase 23 Step 1 documents the future signal evaluation, clock, and as-of
   boundary; no production source or runtime behavior changed.
+- Phase 23 Step 2 adds a minimal deterministic time contract with UTC-aware
+  validation, an injectable `Clock` protocol, `FixedClock`, and an as-of helper.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -590,6 +592,17 @@ data, prefer UTC internally, reject naive datetimes, and avoid direct
 wall-clock, randomness, UUID-randomness, or environment-variable reads except
 inside explicit boundary modules.
 
+Phase 23 Step 2 adds the minimal deterministic time primitives in
+`src/algotrader/core/time.py`: `require_utc_datetime(...)`, `Clock`,
+`FixedClock`, and `assert_not_after_as_of(...)`. These primitives validate
+explicit UTC-aware datetimes, provide an injectable fixed clock for
+deterministic tests, and reject observations after `as_of`.
+
+This contract does not read system time, fetch live data, evaluate signals,
+compute features, approve trades, mutate execution plans, interact with broker
+or Alpaca, schedule runtime behavior, persist records, train ML models, or put
+LLMs in the trading path.
+
 ## Research And Validation Boundary
 
 Phase 21 Step 1 documents the future research/validation boundary in
@@ -681,6 +694,14 @@ rejected, hidden live data fetches and implicit data revisions should be
 forbidden, and parameter changes should require a new definition or context
 version.
 
+Phase 23 Step 2 implements only the tiny shared time contract that future
+deterministic components can receive explicitly. It rejects naive and non-UTC
+datetimes, exposes an injectable clock protocol, provides a frozen fixed clock,
+and adds a lookahead-prevention helper for `observed_at <= as_of`. It does not
+provide a system clock, scheduler, runtime loop, live-data fetch, signal
+evaluation, risk approval, execution-plan mutation, broker behavior, Alpaca
+behavior, persistence, ML, or LLM trading-path logic.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -766,7 +787,7 @@ Ledger modes:
 - Signal evaluator implementation
 - Signal evaluator registry
 - Signal computation from validated signal definitions
-- Clock implementation
+- System clock implementation
 - Feature computation
 - Strategy engine
 - Signal-evaluation-to-risk bridge
@@ -792,8 +813,8 @@ submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
 runtime wiring. Future signal-evaluator work should begin with explicit
-advisory result, input snapshot, fingerprinting, and clock/as-of contracts plus
-tests before evaluator or Signal -> Risk wiring.
+advisory result, input snapshot, and fingerprinting contracts plus tests before
+evaluator or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

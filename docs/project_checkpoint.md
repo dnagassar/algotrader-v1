@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 488-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 510-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -105,10 +105,17 @@ validated signal definition metadata plus explicit input snapshots while
 preventing lookahead bias and keeping evaluations advisory, reproducible,
 clock-explicit, broker-free, risk-approval-free, execution-free, and LLM-free
 in the trading hot path.
+Phase 23 Step 2 adds a minimal deterministic time contract:
+`require_utc_datetime(...)`, `Clock`, `FixedClock`, and
+`assert_not_after_as_of(...)`. It validates explicit UTC-aware datetimes,
+provides an injectable fixed clock for deterministic tests, and adds a tiny
+lookahead-prevention helper without evaluating signals, reading system time,
+fetching live data, approving trades, mutating execution plans, touching
+brokers, or adding scheduler/runtime behavior.
 The latest full-suite result is:
 
 ```text
-488 passed, 4 skipped
+510 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -222,6 +229,10 @@ evaluations remain advisory reports rather than execution decisions. The
 deterministic core may consume only explicit promoted contracts, explicit input
 snapshots, and explicit timezone-aware timestamps. Broker behavior remains
 isolated, and LLMs remain out of the hot path.
+Phase 23 Step 2 adds only deterministic time primitives in the core layer.
+`FixedClock` is injectable and deterministic; no system clock, live data, risk,
+execution, broker, scheduler/runtime, persistence, ML, or LLM behavior was
+introduced.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1816,6 +1827,60 @@ python -m pytest
 488 passed, 4 skipped
 ```
 
+## Phase 23 Step 2 Minimal Clock / Timestamp Contract
+
+Phase 23 Step 2 adds the minimal deterministic time contract in:
+
+```text
+src/algotrader/core/time.py
+```
+
+The new contract includes:
+
+```text
+require_utc_datetime(value: datetime) -> datetime
+Clock.now() -> datetime
+FixedClock(timestamp).now() -> datetime
+assert_not_after_as_of(observed_at, as_of) -> None
+```
+
+`require_utc_datetime(...)` accepts only timezone-aware UTC datetimes and
+returns the original datetime object when valid. It rejects naive datetimes,
+non-datetime values, and non-UTC aware datetimes instead of normalizing them.
+
+`Clock` is an injectable protocol only. `FixedClock` is a frozen, slotted
+dataclass that stores one validated UTC timestamp and returns exactly that
+stored object from `now()`. It does not call `datetime.now`,
+`datetime.utcnow`, `time.time`, `time.monotonic`, random generators, UUID
+randomness, environment variables, I/O, network, brokers, scheduler/runtime, or
+persistence.
+
+`assert_not_after_as_of(...)` validates both timestamps and rejects
+`observed_at > as_of`. It is a lookahead-prevention helper only, not a signal
+evaluator.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_time_contracts.py
+21 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+8 passed
+```
+
+This phase does not evaluate signals, compute features, implement a strategy,
+rank or prioritize candidates, approve trades, create execution intents, mutate
+execution plans, interact with broker, Alpaca, scheduler/runtime, persistence,
+or live data, add ML training, or put LLMs in the trading hot path.
+
+The full suite is now:
+
+```text
+python -m pytest
+510 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1858,7 +1923,7 @@ python -m pytest
 - `SignalEvaluationResult` implementation
 - signal evaluator registry
 - signal computation from validated signal definitions
-- clock implementation
+- system clock implementation
 - feature computation
 - strategy engine
 - signal-evaluation-to-risk bridge
@@ -1881,8 +1946,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit signal-evaluation result, input snapshot, and clock/as-of contracts
-  before any evaluator implementation
+- explicit signal-evaluation result, input snapshot, and fingerprinting
+  contracts before any evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

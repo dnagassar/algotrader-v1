@@ -16,6 +16,13 @@ behavior, Alpaca behavior, order submission, scheduler/runtime behavior,
 persistence implementation, live data ingestion, ML training, or LLM
 trading-path logic.
 
+Phase 23 Step 2 adds the smallest deterministic time contract needed before
+future signal evaluation. It introduces UTC-aware timestamp validation, an
+injectable `Clock` protocol, a frozen fixed clock for deterministic tests, and a
+tiny as-of lookahead helper. It does not evaluate signals, compute features,
+read system time, fetch live data, approve trades, mutate execution plans,
+touch brokers, or add scheduler/runtime behavior.
+
 The core rule is:
 
 ```text
@@ -200,6 +207,29 @@ All trading-relevant timestamps should be timezone-aware. Internal contracts
 should prefer UTC. Naive datetimes should be rejected by future contracts
 instead of being interpreted implicitly.
 
+Phase 23 Step 2 implements the first minimal form of this rule in
+`src/algotrader/core/time.py`:
+
+```text
+require_utc_datetime(value) -> datetime
+Clock.now() -> datetime
+FixedClock(timestamp).now() -> datetime
+assert_not_after_as_of(observed_at, as_of) -> None
+```
+
+`require_utc_datetime(...)` accepts only timezone-aware UTC datetimes and
+returns the original datetime object when valid. Naive datetimes, non-datetime
+values, and non-UTC aware datetimes are rejected.
+
+`Clock` is an injectable protocol only. It does not call system time.
+`FixedClock` is frozen and slotted, stores one validated UTC timestamp, and
+returns exactly that timestamp from `now()`. It is intended for deterministic
+tests and future explicit boundary wiring, not for runtime scheduling.
+
+`assert_not_after_as_of(...)` validates both timestamps and rejects observations
+after `as_of`. It is a lookahead-prevention primitive only, not a signal
+evaluator.
+
 The `as_of` timestamp is the information boundary for an evaluation. Inputs
 must be known, available, or traceable as of that timestamp. The observation
 timestamp records when the input was observed or when the input window ended.
@@ -337,9 +367,9 @@ defines how any output may cross into Signal -> Risk.
 
 ## 12. Explicitly Out Of Scope
 
-Phase 23 Step 1 does not add:
+Phase 23 Step 2 does not add:
 
-- clock implementation
+- system clock implementation
 - `SignalEvaluationResult` implementation
 - signal evaluator registry
 - signal evaluator implementation
@@ -360,9 +390,9 @@ Phase 23 Step 1 does not add:
 - ML training
 - LLM trading-path logic
 
-It also does not add any production Python code, tests, imports, runtime
-configuration, data ingestion, broker behavior, credentials, network calls, or
-normal-pytest dependency on external services.
+It also does not add runtime configuration, system-time reads, data ingestion,
+broker behavior, credentials, network calls, or normal-pytest dependency on
+external services.
 
 ## 13. Future Implementation Phases
 
@@ -371,13 +401,12 @@ sequence would be:
 
 1. Add an immutable advisory `SignalEvaluationResult` contract with explicit
    timestamps and fingerprints.
-2. Add clock/as-of validation tests with timezone-aware UTC timestamps.
-3. Add synthetic input snapshot fixtures and deterministic fingerprinting
+2. Add synthetic input snapshot fixtures and deterministic fingerprinting
    rules.
-4. Add a small evaluator registry only after result and snapshot contracts are
+3. Add a small evaluator registry only after result and snapshot contracts are
    stable.
-5. Add one deterministic evaluator implementation with explicit inputs only.
-6. Only later design a Signal -> Risk bridge for advisory evaluation outputs.
+4. Add one deterministic evaluator implementation with explicit inputs only.
+5. Only later design a Signal -> Risk bridge for advisory evaluation outputs.
 
 No future implementation should combine signal evaluation with broker wiring,
 runtime scheduling, persistence, live data ingestion, feature computation, ML
