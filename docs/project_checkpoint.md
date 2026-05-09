@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 585-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 603-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -140,10 +140,14 @@ snapshot/reference contract. It provides deterministic input traceability for a
 future evaluator and still adds no evaluator, signal computation, live data
 access, risk approval, execution behavior, broker behavior, runtime behavior,
 persistence, ML, or LLM trading-path logic.
+Phase 25 Step 3 hardens `SignalEvaluationInputSnapshot` traceability with
+tests and documentation only. It changes no production source and adds no
+production behavior. The snapshot remains metadata/reference-only and exists
+only to provide deterministic input traceability for a future evaluator.
 The latest full-suite result is:
 
 ```text
-585 passed, 4 skipped
+603 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -295,6 +299,11 @@ signals or features, access live data, approve risk, create execution intents,
 mutate execution plans, route to brokers, interact with Alpaca, use
 scheduler/runtime or persistence behavior, train or run ML, or put LLMs in the
 trading path.
+Phase 25 Step 3 keeps that contract unchanged and hardens traceability with
+tests/docs only. The snapshot remains metadata/reference-only, not a signal
+evaluator, not signal computation, not feature computation, not risk approval,
+not execution behavior, not broker or Alpaca behavior, not runtime/persistence
+behavior, and not ML or LLM trading-path behavior.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2275,6 +2284,60 @@ The full suite is now:
 ```text
 python -m pytest
 585 passed, 4 skipped
+```
+
+## Phase 25 Step 3 Signal Evaluation Input Snapshot Traceability Hardening
+
+Phase 25 Step 3 is tests and documentation only. It changes no production
+source and keeps `SignalEvaluationInputSnapshot` as a minimal
+metadata/reference-only input traceability contract for a future evaluator.
+
+The hardened tests live in:
+
+```text
+tests/unit/test_signal_evaluation_input.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove exact `as_of` identity preservation, exact `snapshot_id` string
+preservation, exact `required_input_names` string preservation, exact
+`source_ids` string preservation, deterministic ordering of both tuple fields,
+tuple immutability after construction, and isolation from later mutation of
+the original input lists.
+
+The tests also pin that the snapshot has no signal output behavior, no
+score/direction/confidence fields, no order/risk/execution fields, no
+broker/account/position/fill fields, no portfolio/cash/buying-power fields, no
+scheduler/runtime/persistence fields, no ML/LLM fields, and no dependency on
+`SignalEvaluationResult`, risk, execution, broker, runtime, persistence, ML,
+or LLM modules.
+
+Hidden access remains forbidden: no wall-clock calls, random calls,
+network/socket access, filesystem writes, environment-variable reads, broker
+SDK imports, or Alpaca imports are allowed in the contract.
+
+This phase does not add a signal evaluator, signal computation, feature
+computation, strategy logic, ranking or priority behavior, signal-to-risk
+conversion, risk approval, execution intent creation, execution-plan mutation,
+portfolio mutation, broker or Alpaca behavior, order submission,
+scheduler/runtime behavior, persistence, live data ingestion, ML training or
+inference, or LLM trading-path logic.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_input.py
+47 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+603 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

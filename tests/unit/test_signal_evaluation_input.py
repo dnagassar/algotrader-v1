@@ -28,8 +28,11 @@ _FORBIDDEN_SIGNAL_EVALUATION_INPUT_FIELD_NAMES = {
     "fill_id",
     "limit_price",
     "llm",
+    "ml",
+    "ml_model",
     "notional",
     "order_type",
+    "persistence",
     "portfolio",
     "position_id",
     "priority",
@@ -37,6 +40,8 @@ _FORBIDDEN_SIGNAL_EVALUATION_INPUT_FIELD_NAMES = {
     "rank",
     "rejected",
     "risk_approved",
+    "runtime",
+    "scheduler",
     "score",
     "side",
     "signal_direction",
@@ -69,6 +74,7 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "llm",
     "openai",
     "requests",
+    "signal_evaluation_result",
     "socket",
     "sqlmodel",
     "urllib",
@@ -86,6 +92,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "RiskEngine",
     "RiskVerdict",
     "ScreenerSignalEvaluation",
+    "SignalEvaluationResult",
     "SignalRiskEvaluation",
     "account_id",
     "alpaca",
@@ -116,6 +123,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "score",
     "scheduler",
     "side",
+    "signal_evaluation_result",
     "signal_direction",
     "stop_price",
     "strategy",
@@ -150,6 +158,45 @@ _FORBIDDEN_CALL_NAMES = {
     "uuid4",
     "write",
 }
+
+_FORBIDDEN_WALL_CLOCK_CALL_NAMES = {
+    "datetime.now",
+    "datetime.utcnow",
+    "time.monotonic",
+    "time.time",
+}
+
+_FORBIDDEN_RANDOM_CALL_NAMES = {
+    "random",
+    "random.random",
+    "uuid.uuid4",
+    "uuid4",
+}
+
+_FORBIDDEN_NETWORK_CALL_NAMES = {
+    "connect",
+    "get",
+    "post",
+    "request",
+}
+
+_FORBIDDEN_FILESYSTEM_WRITE_CALL_NAMES = {
+    "open",
+    "to_sql",
+    "write",
+}
+
+_FORBIDDEN_ENVIRONMENT_CALL_NAMES = {
+    "environ.get",
+    "getenv",
+    "os.environ.get",
+    "os.getenv",
+}
+
+_FORBIDDEN_BROKER_SDK_IMPORT_PREFIXES = (
+    "alpaca",
+    "alpaca_trade_api",
+)
 
 
 def signal_evaluation_input_snapshot(
@@ -219,6 +266,15 @@ def test_as_of_identity_is_preserved_exactly() -> None:
     assert snapshot.as_of is as_of
 
 
+def test_snapshot_id_string_is_preserved_exactly() -> None:
+    snapshot_id = " snapshot.raw:AskMomentum:2026-05-09T14:30:00Z "
+
+    snapshot = signal_evaluation_input_snapshot(snapshot_id=snapshot_id)
+
+    assert snapshot.snapshot_id is snapshot_id
+    assert snapshot.snapshot_id == snapshot_id
+
+
 def test_required_input_names_are_coerced_to_tuple() -> None:
     snapshot = signal_evaluation_input_snapshot(
         required_input_names=["bar.close", "quote.ask"],
@@ -235,6 +291,32 @@ def test_source_ids_are_coerced_to_tuple() -> None:
 
     assert isinstance(snapshot.source_ids, tuple)
     assert snapshot.source_ids == ("bars.synthetic.v1", "quotes.synthetic.v1")
+
+
+def test_required_input_name_strings_are_preserved_exactly() -> None:
+    first = " Input:BAR.close "
+    second = "Input:QUOTE.ask"
+
+    snapshot = signal_evaluation_input_snapshot(
+        required_input_names=[first, second],
+    )
+
+    assert snapshot.required_input_names == (first, second)
+    assert snapshot.required_input_names[0] is first
+    assert snapshot.required_input_names[1] is second
+
+
+def test_source_id_strings_are_preserved_exactly() -> None:
+    first = " Source:bars.synthetic.v1 "
+    second = "Source:quotes.synthetic.v1"
+
+    snapshot = signal_evaluation_input_snapshot(
+        source_ids=[first, second],
+    )
+
+    assert snapshot.source_ids == (first, second)
+    assert snapshot.source_ids[0] is first
+    assert snapshot.source_ids[1] is second
 
 
 def test_tuple_input_ordering_is_preserved() -> None:
@@ -261,6 +343,32 @@ def test_tuple_input_ordering_is_preserved() -> None:
         "source.second",
         "source.third",
     )
+
+
+def test_required_input_name_ordering_is_preserved_exactly() -> None:
+    required_input_names = [
+        "input.03.prior_session_close",
+        "input.01.minute_bar_close",
+        "input.02.quote_ask",
+    ]
+
+    snapshot = signal_evaluation_input_snapshot(
+        required_input_names=required_input_names,
+    )
+
+    assert snapshot.required_input_names == tuple(required_input_names)
+
+
+def test_source_id_ordering_is_preserved_exactly() -> None:
+    source_ids = [
+        "source.03.adjustment_manifest",
+        "source.01.synthetic_bars",
+        "source.02.synthetic_quotes",
+    ]
+
+    snapshot = signal_evaluation_input_snapshot(source_ids=source_ids)
+
+    assert snapshot.source_ids == tuple(source_ids)
 
 
 def test_tuple_fields_are_immutable_after_construction() -> None:
@@ -331,6 +439,23 @@ def test_input_collections_are_copied_to_immutable_tuples() -> None:
     assert snapshot.source_ids == ("bars.synthetic.v1",)
 
 
+def test_original_input_list_mutation_does_not_affect_constructed_snapshot() -> None:
+    required_input_names = ["bar.close", "quote.ask"]
+    source_ids = ["bars.synthetic.v1", "quotes.synthetic.v1"]
+
+    snapshot = signal_evaluation_input_snapshot(
+        required_input_names=required_input_names,
+        source_ids=source_ids,
+    )
+    required_input_names[0] = "mutated.input"
+    source_ids[0] = "mutated.source"
+    required_input_names.append("late.input")
+    source_ids.append("late.source")
+
+    assert snapshot.required_input_names == ("bar.close", "quote.ask")
+    assert snapshot.source_ids == ("bars.synthetic.v1", "quotes.synthetic.v1")
+
+
 def test_traceability_string_values_are_preserved_exactly() -> None:
     snapshot = signal_evaluation_input_snapshot(
         snapshot_id=" snapshot.raw:AskMomentum:2026-05-09T14:30:00Z ",
@@ -363,6 +488,21 @@ def test_contract_exposes_only_metadata_reference_surface_area() -> None:
     assert snapshot.required_input_names == ("bar.close", "quote.ask")
     assert snapshot.source_ids == ("bars.synthetic.v1", "quotes.synthetic.v1")
     for field_name in _FORBIDDEN_SIGNAL_EVALUATION_INPUT_FIELD_NAMES:
+        assert not hasattr(snapshot, field_name)
+
+
+def test_contract_exposes_no_score_direction_or_confidence_fields() -> None:
+    snapshot = signal_evaluation_input_snapshot()
+
+    for field_name in (
+        "score",
+        "confidence",
+        "direction",
+        "signal_direction",
+        "buy_signal",
+        "sell_signal",
+        "hold_signal",
+    ):
         assert not hasattr(snapshot, field_name)
 
 
@@ -421,6 +561,38 @@ def test_contract_exposes_no_order_risk_execution_or_broker_fields() -> None:
         assert not hasattr(snapshot, field_name)
 
 
+def test_contract_exposes_no_broker_account_position_or_fill_fields() -> None:
+    snapshot = signal_evaluation_input_snapshot()
+
+    for field_name in (
+        "broker",
+        "broker_order_id",
+        "alpaca",
+        "account",
+        "account_id",
+        "position",
+        "position_id",
+        "fill",
+        "fill_id",
+    ):
+        assert not hasattr(snapshot, field_name)
+
+
+def test_contract_exposes_no_portfolio_cash_or_buying_power_fields() -> None:
+    snapshot = signal_evaluation_input_snapshot()
+
+    for field_name in (
+        "portfolio",
+        "portfolio_state",
+        "cash",
+        "buying_power",
+        "cash_reserved",
+        "buying_power_reserved",
+        "reservation",
+    ):
+        assert not hasattr(snapshot, field_name)
+
+
 def test_contract_has_no_signal_feature_or_strategy_behavior() -> None:
     snapshot = signal_evaluation_input_snapshot()
 
@@ -437,6 +609,39 @@ def test_contract_has_no_signal_feature_or_strategy_behavior() -> None:
         "prioritize",
     ):
         assert not hasattr(snapshot, method_name)
+
+
+def test_contract_exposes_no_scheduler_runtime_or_persistence_fields() -> None:
+    snapshot = signal_evaluation_input_snapshot()
+
+    for field_name in (
+        "scheduler",
+        "runtime",
+        "persist",
+        "persistence",
+        "database",
+        "ledger",
+        "save",
+        "write",
+    ):
+        assert not hasattr(snapshot, field_name)
+
+
+def test_contract_exposes_no_ml_or_llm_fields() -> None:
+    snapshot = signal_evaluation_input_snapshot()
+
+    for field_name in (
+        "ml",
+        "ml_model",
+        "model",
+        "predict",
+        "train",
+        "llm",
+        "llm_decision",
+        "prompt",
+        "completion",
+    ):
+        assert not hasattr(snapshot, field_name)
 
 
 def test_contract_has_no_runtime_persistence_ml_or_llm_behavior() -> None:
@@ -468,6 +673,12 @@ def test_contract_module_imports_no_downstream_runtime_or_external_modules() -> 
     assert violations == []
 
 
+def test_contract_module_does_not_depend_on_signal_evaluation_result() -> None:
+    assert "algotrader.signals.signal_evaluation_result" not in _import_references()
+    assert "signal_evaluation_result" not in _import_references()
+    assert "SignalEvaluationResult" not in _referenced_names()
+
+
 def test_contract_module_references_no_trading_path_runtime_or_external_types() -> None:
     assert _referenced_names().isdisjoint(_FORBIDDEN_REFERENCE_NAMES)
 
@@ -478,6 +689,37 @@ def test_creating_snapshot_performs_no_hidden_io_network_runtime_or_broker_calls
     snapshot = signal_evaluation_input_snapshot()
 
     assert snapshot.snapshot_id == "snapshot:ask-momentum:20260509T143000Z"
+
+
+def test_contract_module_has_no_hidden_wall_clock_calls() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_WALL_CLOCK_CALL_NAMES)
+
+
+def test_contract_module_has_no_hidden_random_calls() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_RANDOM_CALL_NAMES)
+
+
+def test_contract_module_has_no_hidden_network_or_socket_access() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_NETWORK_CALL_NAMES)
+    assert not any(
+        _matches_forbidden_prefix(module, ("socket", "requests", "urllib", "httpx"))
+        for module in _import_references()
+    )
+
+
+def test_contract_module_has_no_hidden_filesystem_writes() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_FILESYSTEM_WRITE_CALL_NAMES)
+
+
+def test_contract_module_has_no_hidden_environment_variable_reads() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_ENVIRONMENT_CALL_NAMES)
+
+
+def test_contract_module_imports_no_broker_sdk_or_alpaca_modules() -> None:
+    assert not any(
+        _matches_forbidden_prefix(module, _FORBIDDEN_BROKER_SDK_IMPORT_PREFIXES)
+        for module in _import_references()
+    )
 
 
 def _tree() -> ast.AST:

@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `585` tests are passing, with `4` skipped paper-integration tests by default.
+- `603` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -98,6 +98,8 @@ state.
   deterministic input traceability only and still adds no evaluator, signal
   computation, live data access, risk approval, execution behavior, broker
   behavior, runtime behavior, persistence, ML, or LLM trading-path logic.
+- Phase 25 Step 3 hardens `SignalEvaluationInputSnapshot` traceability with
+  tests and docs only; no production source or runtime behavior changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -797,6 +799,20 @@ evaluator. It does not add a signal evaluator, compute signals or features,
 access live data, approve risk, create execution intents, mutate execution
 plans, route to brokers, interact with Alpaca, use scheduler/runtime or
 persistence behavior, train or run ML, or use LLMs in the trading path.
+
+Phase 25 Step 3 keeps production source unchanged and hardens the traceability
+contract with focused tests and documentation only. The tests pin exact `as_of`
+identity preservation, exact trace string preservation, deterministic tuple
+ordering, tuple immutability, input-list mutation isolation, metadata-only
+surface area, absence of signal output fields, absence of score, direction,
+confidence, order, risk, execution, broker, account, position, fill, portfolio,
+cash, buying-power, scheduler, runtime, persistence, ML, and LLM fields, no
+dependency on `SignalEvaluationResult`, no downstream risk, execution, broker,
+runtime, persistence, ML, or LLM dependencies, and no hidden wall-clock,
+random, network, filesystem-write, environment-variable, broker SDK, or Alpaca
+access.
+`SignalEvaluationInputSnapshot` remains input traceability metadata only; it is
+not a signal evaluator and does not compute signals or features.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

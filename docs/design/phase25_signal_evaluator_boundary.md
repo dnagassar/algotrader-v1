@@ -17,6 +17,14 @@ or Alpaca behavior, order submission, scheduler/runtime behavior, persistence
 writes, live data ingestion, network calls, ML training or inference, or LLM
 trading-path logic.
 
+Phase 25 Step 3 hardens `SignalEvaluationInputSnapshot` traceability with tests
+and documentation only. It changes no production source and adds no production
+behavior. The snapshot remains metadata/reference-only, not a signal evaluator,
+not signal computation, not feature computation, not live-data access, not risk
+approval, not execution intent creation, not execution-plan mutation, not
+broker or Alpaca behavior, not scheduler/runtime/persistence behavior, and not
+ML or LLM trading-path logic.
+
 The future evaluator will eventually transform a validated signal definition
 plus explicit deterministic input snapshots into advisory
 `SignalEvaluationResult` objects.
@@ -227,6 +235,18 @@ performs no I/O, network, broker, scheduler/runtime, persistence, environment,
 wall-clock, random, ML, LLM, signal-computation, feature-computation, or
 strategy behavior.
 
+Phase 25 Step 3 pins that traceability more explicitly. Tests prove exact
+`as_of` identity preservation, exact `snapshot_id` preservation, exact
+`required_input_names` and `source_ids` string preservation, deterministic
+ordering for both tuple fields, tuple immutability after construction, and
+input-list mutation isolation. They also pin that the snapshot has no signal
+output behavior, no score/direction/confidence fields, no order/risk/execution
+fields, no broker/account/position/fill fields, no portfolio/cash/buying-power
+fields, no scheduler/runtime/persistence fields, no ML/LLM fields, no
+dependency on `SignalEvaluationResult`, no downstream risk/execution/broker or
+runtime dependencies, and no hidden wall-clock, random, network/socket,
+filesystem-write, environment-variable, broker SDK, or Alpaca access.
+
 The intended conceptual flow is:
 
 ```text
@@ -244,7 +264,7 @@ ValidatedResearchArtifact
 
 ## 7. Explicitly Out Of Scope
 
-Phase 25 Step 2 does not add:
+Phase 25 Step 3 does not add:
 
 - signal evaluator implementation
 - signal computation
@@ -274,11 +294,9 @@ place LLMs in the trading hot path.
 Future work should stay non-binding, contract-first, and test-first. A safe
 possible sequence is:
 
-1. Phase 25 Step 3: harden traceability around the minimal input snapshot
-   contract with focused tests and documentation.
-2. A later phase: add a minimal no-op evaluator contract only after the input
+1. A later phase: add a minimal no-op evaluator contract only after the input
    and result boundaries are stable.
-3. A later phase: add one narrow deterministic evaluator implementation with
+2. A later phase: add one narrow deterministic evaluator implementation with
    focused tests and documentation.
 
 Later phases may design deterministic rule dispatch, one narrow evaluator, or a
