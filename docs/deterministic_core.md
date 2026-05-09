@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `555` tests are passing, with `4` skipped paper-integration tests by default.
+- `585` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -93,6 +93,11 @@ state.
 - Phase 25 Step 1 documents the future deterministic signal evaluator boundary
   only; no evaluator exists yet, signal evaluation remains advisory and
   pre-risk, and LLMs remain outside the trading hot path.
+- Phase 25 Step 2 adds the minimal immutable
+  `SignalEvaluationInputSnapshot` metadata/reference contract; it provides
+  deterministic input traceability only and still adds no evaluator, signal
+  computation, live data access, risk approval, execution behavior, broker
+  behavior, runtime behavior, persistence, ML, or LLM trading-path logic.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -783,6 +788,16 @@ advisory `SignalEvaluationResult` objects. No evaluator exists yet, no signal
 computation or runtime behavior has been added, signal evaluation remains
 pre-risk and advisory, and LLMs remain outside the trading hot path.
 
+Phase 25 Step 2 adds only the minimal input snapshot/reference contract in
+`src/algotrader/signals/signal_evaluation_input.py`.
+`SignalEvaluationInputSnapshot` stores `snapshot_id`, explicit UTC-aware
+`as_of`, ordered `required_input_names`, and ordered `source_ids`. It exists
+only to provide deterministic, explicit input traceability for a future
+evaluator. It does not add a signal evaluator, compute signals or features,
+access live data, approve risk, create execution intents, mutate execution
+plans, route to brokers, interact with Alpaca, use scheduler/runtime or
+persistence behavior, train or run ML, or use LLMs in the trading path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -864,6 +879,10 @@ Ledger modes:
 - Validated signal definitions as broker orders
 - Validated signal definitions as execution intents
 - Validated signal definitions as risk approvals
+- Signal evaluation input snapshots as signal computation
+- Signal evaluation input snapshots as live data access
+- Signal evaluation input snapshots as risk approvals
+- Signal evaluation input snapshots as execution intents or execution plans
 - Signal evaluation outputs as orders
 - Signal evaluation outputs as risk approvals
 - Signal evaluation outputs as execution intents or execution plans

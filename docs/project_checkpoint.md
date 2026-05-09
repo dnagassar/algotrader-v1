@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 555-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 585-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -135,10 +135,15 @@ Phase 25 Step 1 is documentation-only. It records the future deterministic
 signal evaluator boundary and states that no evaluator exists yet, signal
 evaluation remains advisory and pre-risk, no production source or runtime
 behavior changed, and LLMs remain outside the trading hot path.
+Phase 25 Step 2 adds only a minimal immutable signal-evaluation input
+snapshot/reference contract. It provides deterministic input traceability for a
+future evaluator and still adds no evaluator, signal computation, live data
+access, risk approval, execution behavior, broker behavior, runtime behavior,
+persistence, ML, or LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
-555 passed, 4 skipped
+585 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -284,6 +289,12 @@ persistence, train or run ML, or put LLMs in the trading path.
 Phase 25 Step 1 documents the future signal evaluator boundary only. No
 evaluator implementation, signal computation, production behavior, runtime
 behavior, broker behavior, ML behavior, or LLM trading-path behavior was added.
+Phase 25 Step 2 adds only `SignalEvaluationInputSnapshot` as deterministic
+input snapshot/reference metadata for a future evaluator. It does not compute
+signals or features, access live data, approve risk, create execution intents,
+mutate execution plans, route to brokers, interact with Alpaca, use
+scheduler/runtime or persistence behavior, train or run ML, or put LLMs in the
+trading path.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2195,6 +2206,77 @@ python -m pytest
 555 passed, 4 skipped
 ```
 
+## Phase 25 Step 2 Minimal Signal Evaluation Input Snapshot Contract
+
+Phase 25 Step 2 adds the minimal signal-evaluation input snapshot/reference
+contract in:
+
+```text
+src/algotrader/signals/signal_evaluation_input.py
+src/algotrader/signals/__init__.py
+```
+
+The new contract is an immutable, slotted dataclass:
+
+```text
+SignalEvaluationInputSnapshot(
+    snapshot_id,
+    as_of,
+    required_input_names,
+    source_ids,
+)
+```
+
+`SignalEvaluationInputSnapshot` is metadata/reference-only. It records stable
+snapshot identity, an explicit UTC-aware `as_of` timestamp, ordered required
+input names, and ordered source identifiers. It exists only to provide
+deterministic, explicit input traceability for a future evaluator.
+
+The contract validates `as_of` with the existing deterministic time contract,
+rejects naive and non-UTC datetimes, rejects empty or blank trace strings,
+converts iterable metadata fields into tuples, preserves tuple ordering,
+preserves accepted string values exactly, and is frozen and slotted.
+
+The focused tests live in:
+
+```text
+tests/unit/test_signal_evaluation_input.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove contract existence, exact field set, immutability, slots, valid
+construction, UTC-aware `as_of` validation, naive and non-UTC datetime
+rejection, `as_of` identity preservation, tuple coercion, deterministic tuple
+ordering, tuple immutability, string validation, exact string preservation,
+metadata/reference-only surface area, absence of signal output fields, absence
+of score/direction/confidence/order/risk/execution fields, dependency
+independence, and absence of hidden wall-clock, random, network, filesystem
+write, environment, broker, runtime, persistence, ML, and LLM calls.
+
+This phase does not add a signal evaluator, signal computation, feature
+computation, strategy logic, ranking or priority behavior, signal-to-risk
+conversion, risk approval, execution intent creation, execution-plan mutation,
+portfolio mutation, broker or Alpaca behavior, order submission,
+scheduler/runtime behavior, persistence writes, live data ingestion, network
+calls, ML training or inference, or LLM trading-path logic.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_input.py
+29 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+585 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2233,6 +2315,10 @@ python -m pytest
 - validated signal definitions as broker orders
 - validated signal definitions as execution intents
 - validated signal definitions as risk approvals
+- signal evaluation input snapshots as signal computation
+- signal evaluation input snapshots as live data access
+- signal evaluation input snapshots as risk approvals
+- signal evaluation input snapshots as execution intents or execution plans
 - signal evaluation outputs as orders
 - signal evaluation outputs as risk approvals
 - signal evaluation outputs as execution intents or execution plans

@@ -185,6 +185,34 @@ def test_signal_modules_do_not_import_downstream_or_screener_layers() -> None:
     assert _dependency_violations(rule) == []
 
 
+def test_signal_evaluation_input_contract_has_no_downstream_or_nondeterministic_calls() -> None:
+    path = _module_path("algotrader.signals.signal_evaluation_input")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    import_violations = [
+        f"{import_reference.path}:{import_reference.line}: "
+        f"signal evaluation input contract must not import {import_reference.module}"
+        for import_reference in _import_references(path)
+        if _matches_forbidden_prefix(
+            import_reference.module,
+            SIGNAL_EVALUATION_INPUT_FORBIDDEN_IMPORT_PREFIXES,
+        )
+    ]
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+
+    assert import_violations == []
+    assert call_names.isdisjoint(SIGNAL_EVALUATION_INPUT_FORBIDDEN_CALLS)
+    assert referenced_names.isdisjoint(SIGNAL_EVALUATION_INPUT_FORBIDDEN_NAMES)
+
+
 def test_risk_modules_do_not_import_signal_screener_or_execution_layers() -> None:
     rule = DependencyRule(
         source="algotrader.risk.*",
@@ -468,6 +496,108 @@ CORE_TIME_FORBIDDEN_NAMES = {
     "time",
     "uuid",
     "uuid4",
+}
+
+SIGNAL_EVALUATION_INPUT_FORBIDDEN_IMPORT_PREFIXES = (
+    "algotrader.execution",
+    "algotrader.orchestration",
+    "algotrader.portfolio",
+    "algotrader.research",
+    "algotrader.risk",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.runtime",
+    "algotrader.persistence",
+    "algotrader.database",
+    "algotrader.ml",
+    "algotrader.llm",
+    "algotrader.llms",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "database",
+    "duckdb",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "llm",
+    "openai",
+    "requests",
+    "socket",
+    "sqlmodel",
+    "urllib",
+)
+
+SIGNAL_EVALUATION_INPUT_FORBIDDEN_CALLS = {
+    "connect",
+    "create_order",
+    "datetime.now",
+    "datetime.utcnow",
+    "environ.get",
+    "get",
+    "getenv",
+    "open",
+    "os.environ.get",
+    "os.getenv",
+    "post",
+    "random",
+    "random.random",
+    "read",
+    "request",
+    "schedule",
+    "submit_order",
+    "time.monotonic",
+    "time.time",
+    "to_sql",
+    "uuid.uuid4",
+    "uuid4",
+    "write",
+}
+
+SIGNAL_EVALUATION_INPUT_FORBIDDEN_NAMES = {
+    "account_id",
+    "alpaca",
+    "approved",
+    "broker",
+    "broker_order_id",
+    "buying_power",
+    "cash",
+    "client_order_id",
+    "confidence",
+    "database",
+    "duckdb",
+    "execution",
+    "execution_intent",
+    "execution_plan",
+    "fill",
+    "fill_id",
+    "langgraph",
+    "limit_price",
+    "llm",
+    "ml",
+    "notional",
+    "order",
+    "order_type",
+    "persistence",
+    "portfolio",
+    "position_id",
+    "priority",
+    "quantity",
+    "rank",
+    "rejected",
+    "risk",
+    "risk_approved",
+    "runtime",
+    "scheduler",
+    "score",
+    "side",
+    "signal_direction",
+    "sqlmodel",
+    "stop_price",
+    "strategy",
+    "submit_order",
+    "symbol",
+    "time_in_force",
 }
 
 

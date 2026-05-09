@@ -8,6 +8,15 @@ production code, tests, runtime behavior, signal computation, strategy logic,
 risk approval, execution behavior, broker behavior, persistence, live data, ML,
 or LLM trading-path logic is added.
 
+Phase 25 Step 2 adds only the smallest immutable input snapshot/reference
+contract for that future evaluator boundary. It still adds no signal evaluator
+implementation, signal computation, feature computation, strategy logic,
+ranking or priority behavior, signal-to-risk conversion, risk approval,
+execution intent creation, execution-plan mutation, portfolio mutation, broker
+or Alpaca behavior, order submission, scheduler/runtime behavior, persistence
+writes, live data ingestion, network calls, ML training or inference, or LLM
+trading-path logic.
+
 The future evaluator will eventually transform a validated signal definition
 plus explicit deterministic input snapshots into advisory
 `SignalEvaluationResult` objects.
@@ -56,8 +65,25 @@ approved advisory uses.
 Input snapshot references should identify the exact deterministic data used for
 evaluation. A future snapshot contract may include normalized observation
 values, observation timestamps, data-quality flags, source identifiers,
-adjustment or revision metadata, and content fingerprints. That contract does
-not exist yet.
+adjustment or revision metadata, and content fingerprints.
+
+Phase 25 Step 2 introduces the minimal implemented input snapshot contract:
+
+```text
+SignalEvaluationInputSnapshot(
+    snapshot_id,
+    as_of,
+    required_input_names,
+    source_ids,
+)
+```
+
+`SignalEvaluationInputSnapshot` is metadata/reference-only. It records stable
+snapshot identity, an explicit UTC-aware `as_of` timestamp, the deterministic
+ordered input names required for evaluation, and deterministic ordered source
+identifiers. It does not store live observations, compute features, compute
+signals, open files, fetch live data, read broker state, persist anything, or
+call LLMs.
 
 `as_of` is the information boundary. It must be explicit and UTC-aware.
 `evaluated_at` is the report-production timestamp. It must also be explicit and
@@ -192,12 +218,21 @@ times, snapshot identity, and fingerprints. They should be small, immutable,
 explicit, offline-safe, and tested before any evaluator implementation depends
 on them.
 
+Phase 25 Step 2 starts that input side with
+`SignalEvaluationInputSnapshot`. It is frozen and slotted, validates `as_of`
+with the shared UTC-aware time contract, rejects naive and non-UTC datetimes,
+rejects empty or blank trace strings, converts iterable metadata fields to
+tuples, preserves tuple ordering, preserves accepted string values exactly, and
+performs no I/O, network, broker, scheduler/runtime, persistence, environment,
+wall-clock, random, ML, LLM, signal-computation, feature-computation, or
+strategy behavior.
+
 The intended conceptual flow is:
 
 ```text
 ValidatedResearchArtifact
   -> ValidatedSignalDefinition
-  -> future explicit input snapshot contract
+  -> SignalEvaluationInputSnapshot
   -> explicit UTC-aware as_of and evaluated_at
   -> future deterministic signal evaluator
   -> SignalEvaluationResult
@@ -209,7 +244,7 @@ ValidatedResearchArtifact
 
 ## 7. Explicitly Out Of Scope
 
-Phase 25 Step 1 does not add:
+Phase 25 Step 2 does not add:
 
 - signal evaluator implementation
 - signal computation
@@ -239,19 +274,12 @@ place LLMs in the trading hot path.
 Future work should stay non-binding, contract-first, and test-first. A safe
 possible sequence is:
 
-1. Phase 25 Step 2: add either a minimal evaluator input contract or a minimal
-   no-op evaluator contract.
-2. Phase 25 Step 3: harden traceability around that minimal contract with
+1. Phase 25 Step 3: harden traceability around the minimal input snapshot
+   contract with focused tests and documentation.
+2. A later phase: add a minimal no-op evaluator contract only after the input
+   and result boundaries are stable.
+3. A later phase: add one narrow deterministic evaluator implementation with
    focused tests and documentation.
-
-If Step 2 chooses an input contract, it should likely define immutable snapshot
-identity, explicit observation timestamps, and fingerprinting requirements
-before any evaluator computes output values.
-
-If Step 2 chooses a no-op evaluator contract, it should be tiny, synthetic,
-offline-only, and advisory-only. It should prove dependency direction, clock
-injection, as-of validation, input non-mutation, and forbidden trading-path
-absence before any real signal computation is added.
 
 Later phases may design deterministic rule dispatch, one narrow evaluator, or a
 signal-evaluation-to-risk bridge only after the input, output, time, and
