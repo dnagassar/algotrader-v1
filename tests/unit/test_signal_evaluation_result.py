@@ -25,6 +25,7 @@ _FORBIDDEN_SIGNAL_EVALUATION_RESULT_FIELD_NAMES = {
     "broker_order_id",
     "buying_power",
     "buying_power_reserved",
+    "bucket",
     "cash",
     "cash_reserved",
     "client_order_id",
@@ -53,11 +54,14 @@ _FORBIDDEN_SIGNAL_EVALUATION_RESULT_FIELD_NAMES = {
     "risk",
     "risk_approval",
     "risk_approved",
+    "score",
     "side",
     "status",
     "submit_order",
     "submitted_at",
     "symbol",
+    "strategy",
+    "strategy_id",
     "venue",
 }
 
@@ -108,6 +112,8 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "buying_power",
     "cash",
     "client_order_id",
+    "llm_decision",
+    "ml_model",
     "execution_intent",
     "execution_plan",
     "fill",
@@ -119,7 +125,9 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "rank",
     "reservation",
     "risk_approved",
+    "scheduler",
     "side",
+    "strategy",
     "submit_order",
 }
 
@@ -220,6 +228,10 @@ def test_tuple_fields_are_immutable() -> None:
         result.limitations = ()
     with pytest.raises(TypeError):
         result.diagnostics[0] = "changed"
+    with pytest.raises(TypeError):
+        result.assumptions[0] = "changed"
+    with pytest.raises(TypeError):
+        result.limitations[0] = "changed"
 
 
 def test_tuple_input_ordering_is_preserved() -> None:
@@ -236,6 +248,42 @@ def test_tuple_input_ordering_is_preserved() -> None:
     )
     assert result.assumptions == ("first assumption", "second assumption")
     assert result.limitations == ("first limitation", "second limitation")
+
+
+def test_tuple_fields_preserve_deterministic_order_after_construction() -> None:
+    result = signal_evaluation_result(
+        diagnostics=[
+            "input_snapshot=sha256:abc",
+            "rule_ref=ask_momentum_threshold_v1",
+            "output_value=candidate",
+        ],
+        assumptions=[
+            "snapshot is closed at as_of",
+            "definition version is immutable",
+            "evaluation context is explicit",
+        ],
+        limitations=[
+            "not a risk approval",
+            "not an execution instruction",
+            "not a broker request",
+        ],
+    )
+
+    assert result.diagnostics == (
+        "input_snapshot=sha256:abc",
+        "rule_ref=ask_momentum_threshold_v1",
+        "output_value=candidate",
+    )
+    assert result.assumptions == (
+        "snapshot is closed at as_of",
+        "definition version is immutable",
+        "evaluation context is explicit",
+    )
+    assert result.limitations == (
+        "not a risk approval",
+        "not an execution instruction",
+        "not a broker request",
+    )
 
 
 def test_input_collections_are_copied_to_immutable_tuples() -> None:
@@ -319,6 +367,22 @@ def test_utc_aware_datetimes_are_accepted_and_identity_is_preserved() -> None:
     assert result.evaluated_at is evaluated_at
 
 
+def test_as_of_identity_is_preserved_exactly() -> None:
+    as_of = datetime(2026, 5, 9, 15, 45, tzinfo=timezone.utc)
+
+    result = signal_evaluation_result(as_of=as_of)
+
+    assert result.as_of is as_of
+
+
+def test_evaluated_at_identity_is_preserved_exactly() -> None:
+    evaluated_at = datetime(2026, 5, 9, 15, 46, tzinfo=timezone.utc)
+
+    result = signal_evaluation_result(evaluated_at=evaluated_at)
+
+    assert result.evaluated_at is evaluated_at
+
+
 def test_as_of_and_evaluated_at_are_independently_utc_valid_for_now() -> None:
     later_as_of = datetime(2026, 5, 9, 14, 31, tzinfo=timezone.utc)
     earlier_evaluated_at = datetime(2026, 5, 9, 14, 30, tzinfo=timezone.utc)
@@ -347,6 +411,28 @@ def test_object_exposes_only_advisory_signal_evaluation_metadata() -> None:
         assert not hasattr(result, field_name)
 
 
+def test_traceability_string_fields_are_preserved_exactly() -> None:
+    result = signal_evaluation_result(
+        evaluation_id="eval.ask-momentum.20260509T143000Z.v1",
+        signal_id="signal.ask-momentum.close-ask.v1",
+        signal_version="2026.05.09+reviewed",
+        source_artifact_id="artifact.walk-forward.ask-momentum.001",
+        source_artifact_version="2026.05.09+holdout",
+        input_fingerprint="sha256:7f83b1657ff1fc53b92dc18148a1d65d",
+        output_value="advisory_candidate",
+        reason_code="ASK_ABOVE_PREVIOUS_CLOSE",
+    )
+
+    assert result.evaluation_id == "eval.ask-momentum.20260509T143000Z.v1"
+    assert result.signal_id == "signal.ask-momentum.close-ask.v1"
+    assert result.signal_version == "2026.05.09+reviewed"
+    assert result.source_artifact_id == "artifact.walk-forward.ask-momentum.001"
+    assert result.source_artifact_version == "2026.05.09+holdout"
+    assert result.input_fingerprint == "sha256:7f83b1657ff1fc53b92dc18148a1d65d"
+    assert result.output_value == "advisory_candidate"
+    assert result.reason_code == "ASK_ABOVE_PREVIOUS_CLOSE"
+
+
 def test_object_exposes_no_explicit_trading_path_fields() -> None:
     result = signal_evaluation_result()
 
@@ -370,22 +456,80 @@ def test_object_exposes_no_explicit_trading_path_fields() -> None:
         "execution_intent",
         "execution_plan",
         "fill",
+        "score",
+        "bucket",
+        "strategy",
+        "scheduler",
+        "runtime",
+        "persistence",
+        "ml_model",
+        "llm_decision",
         "priority",
         "rank",
     ):
         assert not hasattr(result, field_name)
 
 
-def test_signal_evaluation_result_does_not_compute_or_recommend_trades() -> None:
+def test_signal_evaluation_result_has_no_signal_output_behavior() -> None:
     result = signal_evaluation_result()
 
     assert not hasattr(result, "evaluate")
     assert not hasattr(result, "compute_signal")
     assert not hasattr(result, "generate_signal")
+    assert not hasattr(result, "signal")
+    assert not hasattr(result, "signal_output")
+    assert not hasattr(result, "buy_signal")
+    assert not hasattr(result, "sell_signal")
+    assert not hasattr(result, "hold_signal")
     assert not hasattr(result, "recommendation")
+    assert not hasattr(result, "score")
+    assert not hasattr(result, "bucket")
+
+
+def test_signal_evaluation_result_has_no_strategy_behavior() -> None:
+    result = signal_evaluation_result()
+
+    assert not hasattr(result, "strategy")
+    assert not hasattr(result, "strategy_id")
+    assert not hasattr(result, "apply_strategy")
+    assert not hasattr(result, "allocate")
+    assert not hasattr(result, "size_position")
+    assert not hasattr(result, "rebalance")
+
+
+def test_signal_evaluation_result_has_no_risk_execution_or_broker_behavior() -> None:
+    result = signal_evaluation_result()
+
     assert not hasattr(result, "approve_trade")
+    assert not hasattr(result, "risk_approved")
+    assert not hasattr(result, "risk_verdict")
+    assert not hasattr(result, "create_execution_intent")
+    assert not hasattr(result, "execution_intent")
+    assert not hasattr(result, "build_execution_plan")
+    assert not hasattr(result, "execution_plan")
     assert not hasattr(result, "mutate_execution_plan")
     assert not hasattr(result, "submit")
+    assert not hasattr(result, "submit_order")
+    assert not hasattr(result, "route_order")
+    assert not hasattr(result, "broker")
+    assert not hasattr(result, "account")
+    assert not hasattr(result, "order")
+    assert not hasattr(result, "fill")
+
+
+def test_signal_evaluation_result_has_no_runtime_persistence_ml_or_llm_behavior() -> None:
+    result = signal_evaluation_result()
+
+    assert not hasattr(result, "scheduler")
+    assert not hasattr(result, "runtime")
+    assert not hasattr(result, "persist")
+    assert not hasattr(result, "persistence")
+    assert not hasattr(result, "save")
+    assert not hasattr(result, "ml_model")
+    assert not hasattr(result, "predict")
+    assert not hasattr(result, "llm")
+    assert not hasattr(result, "llm_decision")
+    assert not hasattr(result, "prompt")
 
 
 def test_signal_evaluation_result_remains_independent_from_runtime_contracts() -> None:

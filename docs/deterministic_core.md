@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `548` tests are passing, with `4` skipped paper-integration tests by default.
+- `555` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -88,6 +88,8 @@ state.
 - Phase 24 Step 2 adds the minimal immutable, slotted
   `SignalEvaluationResult` metadata contract; it does not evaluate signals,
   create execution intents, or approve trades.
+- Phase 24 Step 3 hardens `SignalEvaluationResult` traceability with tests and
+  docs only; no production source or runtime behavior changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -641,6 +643,17 @@ Explicit UTC-aware time remains required: `as_of` must be explicit,
 future implementation, naive datetimes must be rejected, hidden system time
 reads are not allowed, and no input observation may be after `as_of`.
 
+Phase 24 Step 3 keeps production source unchanged and hardens the traceability
+contract. Tests pin exact `as_of` and `evaluated_at` object identity,
+deterministic ordering and immutability of all tuple fields, exact preservation
+of trace string fields, advisory-only surface area, absence of trading-path
+fields, and independence from execution, risk, broker, runtime, persistence,
+ML, and LLM modules. `SignalEvaluationResult` is not a signal evaluator, does
+not compute signals, does not approve risk, does not create execution intents,
+does not mutate execution plans, does not route to brokers or Alpaca, does not
+submit orders, does not touch scheduler/runtime/persistence, and does not use
+ML or LLMs in the trading path.
+
 ## Research And Validation Boundary
 
 Phase 21 Step 1 documents the future research/validation boundary in
@@ -755,6 +768,8 @@ contract for that output. `ValidatedResearchArtifact` remains evidence,
 signal-to-risk bridge may consume that output only after a separate design and
 implementation phase. Signal evaluation does not create orders, approve trades,
 mutate execution plans, interact with brokers, or put LLMs in the hot path.
+Phase 24 Step 3 hardens this result contract with tests and documentation only;
+no production behavior was added.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

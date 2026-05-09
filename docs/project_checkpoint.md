@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 548-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 555-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -127,10 +127,14 @@ metadata contract. It validates explicit UTC-aware `as_of` and `evaluated_at`
 timestamps, preserves deterministic trace fields and ordered tuple metadata,
 and still does not evaluate signals, create execution intents, approve trades,
 mutate execution plans, touch brokers, or add runtime behavior.
+Phase 24 Step 3 hardens `SignalEvaluationResult` traceability with tests and
+documentation only. It changes no production source and pins datetime identity,
+tuple ordering and immutability, exact trace string preservation, advisory-only
+surface area, forbidden trading-path field absence, and dependency isolation.
 The latest full-suite result is:
 
 ```text
-548 passed, 4 skipped
+555 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -267,6 +271,12 @@ evaluation id, signal id/version, source artifact id/version, explicit
 UTC-aware `as_of` and `evaluated_at`, input fingerprint, output value, reason
 code, diagnostics, assumptions, and limitations. It is frozen, slotted, and
 metadata-only.
+Phase 24 Step 3 keeps that implementation unchanged and hardens the tests and
+docs around traceability. `SignalEvaluationResult` remains advisory metadata
+only and does not evaluate signals, compute features, implement strategies,
+create execution intents, approve risk, mutate execution plans, route to
+brokers, interact with Alpaca, submit orders, touch scheduler/runtime or
+persistence, train or run ML, or put LLMs in the trading path.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2081,6 +2091,53 @@ The full suite is now:
 ```text
 python -m pytest
 548 passed, 4 skipped
+```
+
+## Phase 24 Step 3 SignalEvaluationResult Traceability Hardening
+
+Phase 24 Step 3 is tests and documentation only. It changes no production
+source and keeps `SignalEvaluationResult` as a minimal advisory metadata
+contract.
+
+The hardened tests live in:
+
+```text
+tests/unit/test_signal_evaluation_result.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove exact identity preservation of `as_of`, exact identity preservation
+of `evaluated_at`, deterministic ordering for `diagnostics`, `assumptions`, and
+`limitations`, tuple immutability after construction, exact preservation of
+trace string fields, advisory-only surface area, absence of forbidden
+trading-path fields, no signal output behavior, no strategy behavior, no
+execution intent creation, no risk approval behavior, no execution-plan
+mutation behavior, no broker/account/order/fill fields, no
+scheduler/runtime/persistence fields, no ML or LLM trading-path fields, and no
+dependency on execution, risk, broker, runtime, persistence, ML, or LLM
+modules.
+
+This phase does not evaluate signals, compute features, implement strategies,
+rank or prioritize candidates, create execution intents, approve trades, mutate
+execution plans, interact with broker, Alpaca, scheduler/runtime, persistence,
+or live data, add ML training or inference, or put LLMs in the trading hot
+path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_result.py
+40 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+8 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+555 passed, 4 skipped
 ```
 
 ## Explicitly Not Included

@@ -17,6 +17,13 @@ execution-plan mutation, risk approval behavior, broker behavior, Alpaca
 behavior, order submission, scheduler/runtime behavior, persistence
 implementation, live data ingestion, ML training, or LLM trading-path logic.
 
+Phase 24 Step 3 hardens `SignalEvaluationResult` traceability with focused
+tests and documentation only. It changes no production source and adds no
+runtime behavior. The result remains advisory metadata only, not a signal
+evaluator, strategy, risk approval, execution intent, execution plan mutation,
+broker route, Alpaca integration, order submission, scheduler/runtime action,
+persistence write, ML inference, or LLM trading-path decision.
+
 The core rule is:
 
 ```text
@@ -117,6 +124,14 @@ SignalEvaluationResult(
 The contract is frozen and slotted. Required strings reject empty values.
 `diagnostics`, `assumptions`, and `limitations` are stored as immutable tuples
 and preserve caller-provided order.
+
+Phase 24 Step 3 pins the traceability contract more explicitly. Tests prove
+that `as_of` and `evaluated_at` preserve exact datetime object identity, all
+tuple fields preserve deterministic order and cannot be mutated after
+construction, and trace fields such as `evaluation_id`, `signal_id`,
+`signal_version`, `source_artifact_id`, `source_artifact_version`,
+`input_fingerprint`, `output_value`, and `reason_code` preserve exact
+caller-provided values after validation.
 
 The field set should stay narrow. Fields should identify the evaluated
 definition, the explicit inputs, the time boundary, and the advisory output.
@@ -351,7 +366,7 @@ define how advisory evaluations may cross into risk.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 24 Step 2 does not add:
+Phase 24 Step 3 does not add:
 
 - signal evaluator registry
 - signal evaluator implementation
@@ -372,9 +387,9 @@ Phase 24 Step 2 does not add:
 - ML training
 - LLM trading-path logic
 
-It also does not add runtime configuration, system-time reads, data ingestion,
-broker behavior, credentials, network calls, or normal-pytest dependency on
-external services.
+It also does not add production behavior, runtime configuration, system-time
+reads, data ingestion, broker behavior, credentials, network calls, or
+normal-pytest dependency on external services.
 
 ## 12. Future Implementation Phases
 
