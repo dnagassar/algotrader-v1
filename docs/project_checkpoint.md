@@ -144,6 +144,11 @@ Phase 25 Step 3 hardens `SignalEvaluationInputSnapshot` traceability with
 tests and documentation only. It changes no production source and adds no
 production behavior. The snapshot remains metadata/reference-only and exists
 only to provide deterministic input traceability for a future evaluator.
+Phase 26 Step 1 is documentation-only. It records the future no-op signal
+evaluator boundary and states that no evaluator implementation exists yet,
+evaluator output remains advisory and pre-risk, no production source or runtime
+behavior changed, no runtime or trading-path behavior was added, and LLMs
+remain outside the trading hot path.
 The latest full-suite result is:
 
 ```text
@@ -304,6 +309,12 @@ tests/docs only. The snapshot remains metadata/reference-only, not a signal
 evaluator, not signal computation, not feature computation, not risk approval,
 not execution behavior, not broker or Alpaca behavior, not runtime/persistence
 behavior, and not ML or LLM trading-path behavior.
+Phase 26 Step 1 documents the future no-op signal evaluator boundary only. No
+no-op evaluator implementation, evaluator protocol, result contract change,
+no-op marker, signal computation, production behavior, runtime behavior,
+trading-path behavior, broker behavior, ML behavior, or LLM trading-path
+behavior was added. Future evaluator modules must not import broker, Alpaca,
+execution, risk, runtime/scheduler, persistence, ML, or LLM modules.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2340,6 +2351,68 @@ python -m pytest
 603 passed, 4 skipped
 ```
 
+## Phase 26 Step 1 Signal Evaluator No-Op Boundary Design
+
+Phase 26 Step 1 is documentation-only. It creates the future no-op signal
+evaluator boundary in:
+
+```text
+docs/design/phase26_signal_evaluator_noop_boundary.md
+```
+
+The design defines a signal evaluator narrowly for this project: a future
+deterministic boundary that may later receive `ValidatedSignalDefinition`,
+`SignalEvaluationInputSnapshot`, explicit UTC-aware `as_of`, explicit
+UTC-aware `evaluated_at`, and deterministic metadata already available through
+existing contracts, then construct advisory `SignalEvaluationResult` metadata.
+
+The future no-op specialization exists only to prove that deterministic
+input/output boundary. It must not compute real signal values, inspect live
+market data, compute features, rank, score, infer direction, approve or reject
+trades, create execution intents, mutate execution plans, prepare orders,
+interact with brokers, call ML, or call LLMs.
+
+Evaluator output remains strictly advisory and pre-risk. A
+`SignalEvaluationResult` produced by any evaluator, including a future no-op
+evaluator, does not constitute a signal firing, recommendation, risk approval,
+execution instruction, execution intent, order request, or broker payload. No
+sizing decision, exposure calculation, cash reservation, buying-power check, or
+portfolio-level reasoning has occurred when a result is returned.
+
+The design records timestamp invariants for future implementation: `as_of` is
+the logical time the result describes, `evaluated_at` is the UTC-aware time the
+evaluation occurred, future evaluator behavior must enforce
+`evaluated_at >= as_of`, no input `as_of` or observation timestamp may be after
+the result `as_of`, and no lookahead bias is permitted.
+
+Future evaluator behavior must remain deterministic for identical inputs,
+offline-safe, credential-free, free of hidden wall-clock access, free of random
+or environment-variable driven behavior, network-free, write-free, broker-free,
+input-immutable, ML-free, and LLM-free. Future evaluator modules must not import
+broker, Alpaca, execution, risk, runtime/scheduler, persistence, ML, or LLM
+modules.
+
+The design also records an open design point: if `SignalEvaluationResult`
+cannot safely represent a no-op result without ambiguity, the next
+implementation phase should harden `SignalEvaluationResult` first instead of
+adding an evaluator. This phase does not add that marker and does not modify
+`SignalEvaluationResult`.
+
+This phase does not add production code, tests, runtime behavior, signal
+evaluator implementation, no-op evaluator class, evaluator protocol, result
+contract changes, signal computation, feature computation, strategy logic,
+ranking or priority behavior, signal-to-risk conversion, risk approval,
+execution intent creation, execution-plan mutation, portfolio mutation, broker
+or Alpaca behavior, order submission, scheduler/runtime behavior, persistence,
+live data ingestion, ML training or inference, or LLM trading-path logic.
+
+The latest full-suite checkpoint remains:
+
+```text
+python -m pytest
+603 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2386,7 +2459,10 @@ python -m pytest
 - signal evaluation outputs as risk approvals
 - signal evaluation outputs as execution intents or execution plans
 - signal evaluator implementation
+- no-op signal evaluator implementation
+- evaluator protocol
 - `SignalEvaluationResult` behavior beyond minimal advisory metadata
+- no-op marker on `SignalEvaluationResult`
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation

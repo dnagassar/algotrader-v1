@@ -100,6 +100,11 @@ state.
   behavior, runtime behavior, persistence, ML, or LLM trading-path logic.
 - Phase 25 Step 3 hardens `SignalEvaluationInputSnapshot` traceability with
   tests and docs only; no production source or runtime behavior changed.
+- Phase 26 Step 1 documents the future no-op signal evaluator boundary only;
+  no evaluator implementation exists yet, evaluator outputs remain advisory
+  and pre-risk, evaluator modules must not import broker, execution, risk,
+  runtime, persistence, ML, or LLM modules, and LLMs remain outside the trading
+  hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -814,6 +819,27 @@ access.
 `SignalEvaluationInputSnapshot` remains input traceability metadata only; it is
 not a signal evaluator and does not compute signals or features.
 
+Phase 26 Step 1 documents the future no-op signal evaluator boundary in
+[`docs/design/phase26_signal_evaluator_noop_boundary.md`](design/phase26_signal_evaluator_noop_boundary.md).
+No evaluator implementation exists yet. The future no-op evaluator is
+conceptual only: it may later construct advisory `SignalEvaluationResult`
+metadata from `ValidatedSignalDefinition`, `SignalEvaluationInputSnapshot`,
+explicit UTC-aware `as_of`, explicit UTC-aware `evaluated_at`, and deterministic
+metadata already available through existing contracts. It must not compute real
+signal values, inspect live market data, compute features, rank, score, infer
+direction, approve or reject trades, create execution intents, mutate execution
+plans, or imply actionability.
+
+Evaluator output remains strictly advisory and pre-risk. A result from any
+future evaluator is not a signal firing, recommendation, risk approval,
+execution instruction, execution intent, order request, or broker payload. No
+sizing decision, exposure calculation, cash reservation, buying-power check, or
+portfolio-level reasoning has occurred when evaluator output is returned.
+Future evaluator modules must not import broker, Alpaca, execution, risk,
+runtime/scheduler, persistence, ML, or LLM modules. Any need for one of those
+imports is a phase-scope violation requiring a new design review. LLMs remain
+outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -904,6 +930,9 @@ Ledger modes:
 - Signal evaluation outputs as execution intents or execution plans
 - SignalEvaluationResult behavior beyond minimal advisory metadata
 - Signal evaluator implementation
+- No-op signal evaluator implementation
+- Evaluator protocol
+- No-op marker on SignalEvaluationResult
 - Signal evaluator registry
 - Signal computation from validated signal definitions
 - System clock implementation
