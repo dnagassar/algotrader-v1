@@ -69,6 +69,8 @@ state.
   metadata contract; it is evidence only and has no trading behavior.
 - Phase 21 Step 3 hardens validated research artifact traceability and ordering
   guarantees with tests and docs only; no production source changed.
+- Phase 22 Step 1 documents the future validated signal definition boundary;
+  signal definitions remain promoted contracts, not execution decisions.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -604,6 +606,20 @@ types, configs, fixtures, and pure functions that are test-first, offline, and
 credential-free. Normal `python -m pytest` must remain offline and
 credential-free.
 
+Phase 22 Step 1 documents the future validated signal definition boundary in
+[`docs/design/phase22_validated_signal_definition_boundary.md`](design/phase22_validated_signal_definition_boundary.md).
+A future validated signal definition may be supported by a validated research
+artifact, but it is not raw research output, not a backtest result, not a
+feature, not a strategy, not an execution intent, not an execution plan, and
+not a broker order. It is a promoted deterministic contract candidate for a
+future signal evaluator.
+
+Validated signal definitions are not execution decisions. They do not create
+signals by themselves, approve trades, mutate execution plans, reserve cash or
+buying power, rank or prioritize orders, submit orders, interact with broker or
+Alpaca, schedule runtime behavior, persist records, ingest live data, train ML
+models, or put LLMs in the hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -677,6 +693,9 @@ Ledger modes:
 - Validated artifact metadata as signal generation
 - Validated artifact metadata as risk approval
 - Validated artifact persistence implementation
+- Validated signal definitions as live signal outputs
+- Validated signal definitions as execution decisions
+- Validated signal definitions as broker orders
 - Live data ingestion
 - ML training implementation
 - Persistence writes
@@ -696,7 +715,8 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring.
+runtime wiring. Future validated signal definition work should likewise begin
+with explicit contracts/types before evaluator or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

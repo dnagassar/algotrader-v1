@@ -88,6 +88,11 @@ only; it does not create signals, approve trades, mutate execution plans, or
 touch brokers, runtime, persistence, live data, ML, or LLM trading-path logic.
 Phase 21 Step 3 hardens validated research artifact traceability with tests
 and documentation only; no production source changed.
+Phase 22 Step 1 is a documentation-only validated signal definition boundary
+design. It defines how validated research artifact metadata may eventually
+support an approved deterministic signal definition without adding signal
+computation, strategy behavior, broker behavior, execution-plan mutation,
+runtime wiring, persistence, ML, or LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
@@ -189,7 +194,9 @@ the first tiny validated research artifact contract as metadata/evidence only;
 it remains upstream and advisory and has no execution, broker, risk approval,
 signal generation, persistence, live-data, ML, or LLM trading-path behavior.
 Phase 21 Step 3 keeps that implementation unchanged and hardens traceability
-and ordering guarantees with tests and documentation only.
+and ordering guarantees with tests and documentation only. Phase 22 Step 1
+documents the future validated signal definition boundary; validated signal
+definitions are future promoted contracts, not execution decisions.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1560,6 +1567,61 @@ python -m pytest
 450 passed, 4 skipped
 ```
 
+## Phase 22 Step 1 Validated Signal Definition Boundary Design
+
+Phase 22 Step 1 is documentation-only. It adds the new design boundary in:
+
+```text
+docs/design/phase22_validated_signal_definition_boundary.md
+```
+
+The design defines a future validated signal definition as a reviewed,
+versioned, deterministic signal-rule contract supported by a validated research
+artifact. A validated signal definition is not raw research output, not a
+backtest result, not a feature, not a strategy, not an execution intent, not an
+execution plan, and not a broker order.
+
+The future metadata may include a signal id, name, version, description, source
+validated research artifact id/version, required inputs, output type,
+deterministic evaluation rule reference, allowed advisory use, assumptions,
+limitations, and validation evidence references.
+
+The design explicitly excludes symbol-specific live recommendations, side,
+quantity, order type, broker fields, Alpaca fields, `submit_order`, cash or
+buying-power reservation, portfolio mutation, risk approval, ranking/priority
+behavior, execution-plan mutation, fills, and LLM-generated trade decisions.
+
+The intended promotion path is:
+
+```text
+research hypothesis
+  -> validated research artifact
+  -> approved signal definition
+  -> future deterministic signal evaluator
+  -> future signal-to-risk flow
+```
+
+Validated research artifacts remain advisory. Validated signal definitions are
+not execution decisions, do not create signals by themselves, do not approve
+trades, do not mutate execution plans, and do not interact with broker, Alpaca,
+scheduler/runtime, persistence, or live data. LLMs may summarize research and
+document hypotheses, but they may not generate live signal outputs, approve
+trades, mutate execution plans, bypass deterministic risk checks, or enter the
+trading hot path.
+
+No production code, tests, runtime behavior, signal computation, strategy
+implementation, feature computation, ranking/priority policy, broker behavior,
+execution-plan mutation, order submission, scheduler/runtime behavior,
+persistence implementation, live data ingestion, ML training, or LLM
+trading-path logic was added.
+
+The latest full-suite checkpoint remains:
+
+```text
+python -m pytest
+450 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1593,6 +1655,9 @@ python -m pytest
 - validated artifact metadata as signal generation
 - validated artifact metadata as risk approval
 - validated artifact persistence implementation
+- validated signal definitions as live signal outputs
+- validated signal definitions as execution decisions
+- validated signal definitions as broker orders
 - live data ingestion
 - ML training implementation
 - persistence writes
@@ -1611,6 +1676,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
+- explicit validated signal definition contracts/types before any evaluator
+  wiring
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
