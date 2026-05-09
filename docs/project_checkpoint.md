@@ -99,6 +99,12 @@ approve trades, mutate execution plans, or touch broker, Alpaca,
 scheduler/runtime, persistence, live data, ML, or LLM trading-path logic.
 Phase 22 Step 3 hardens validated signal definition traceability with tests and
 documentation only; no production source changed.
+Phase 23 Step 1 is a documentation-only signal evaluation, clock, and as-of
+boundary design. It defines how a future deterministic evaluator may consume
+validated signal definition metadata plus explicit input snapshots while
+preventing lookahead bias and keeping evaluations advisory, reproducible,
+clock-explicit, broker-free, risk-approval-free, execution-free, and LLM-free
+in the trading hot path.
 The latest full-suite result is:
 
 ```text
@@ -210,6 +216,12 @@ Phase 22 Step 3 keeps production source unchanged and hardens source-artifact
 traceability, deterministic tuple ordering, metadata-only boundaries, and
 independence from execution, risk, broker, runtime, scheduler, persistence,
 ML, and LLM trading-path modules.
+Phase 23 Step 1 documents the future signal evaluation, clock, and as-of
+boundary. Validated signal definitions remain metadata-only, and future signal
+evaluations remain advisory reports rather than execution decisions. The
+deterministic core may consume only explicit promoted contracts, explicit input
+snapshots, and explicit timezone-aware timestamps. Broker behavior remains
+isolated, and LLMs remain out of the hot path.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1754,6 +1766,56 @@ python -m pytest
 488 passed, 4 skipped
 ```
 
+## Phase 23 Step 1 Signal Evaluation Clock Boundary Design
+
+Phase 23 Step 1 is documentation-only. It adds the new design boundary in:
+
+```text
+docs/design/phase23_signal_evaluation_clock_boundary.md
+```
+
+The design defines future deterministic signal evaluation as a pure advisory
+boundary that may consume approved `ValidatedSignalDefinition` metadata plus
+explicit feature/input snapshots, explicit observation timestamps, an explicit
+`as_of` timestamp, deterministic context, and snapshot fingerprints.
+
+Future evaluator outputs may include only advisory metadata such as signal
+id/version, evaluation timestamp, as-of timestamp, deterministic signal value,
+score or bucket, reason or explanation code, input snapshot fingerprint,
+evaluation fingerprint/id, and assumptions or limitations references.
+
+The design explicitly excludes `ProposedOrder`, orders, order IDs, client order
+IDs, broker requests, symbol-specific order instructions, execution-command
+side, quantity, cash or buying-power reservation, portfolio mutation, risk
+approval, execution intents, execution plans, fills, ranking/priority
+decisions, and LLM-generated trade decisions.
+
+Clock and as-of rules are explicit. Future deterministic signal, risk, and
+orchestration layers should receive time as data, reject naive datetimes, prefer
+UTC internally, and avoid direct calls to wall-clock APIs, random generators,
+UUID randomness, or environment-variable reads except in explicit boundary
+modules.
+
+Lookahead-bias prevention is part of the future contract: input observations
+after `as_of` must be rejected, snapshots must be explicit, feature values must
+be timestamped or traceable to timestamped windows, hidden live data fetches and
+implicit data revisions are forbidden, and retrospective parameter changes
+require a new version.
+
+No production code, tests, runtime behavior, signal evaluator implementation,
+clock implementation, signal computation, feature computation, strategy engine,
+Signal -> Risk bridge, ranking/priority policy, broker behavior, Alpaca
+changes, order submission, scheduler/runtime behavior, persistence
+implementation, live data ingestion, ML training, or LLM trading-path logic was
+added.
+
+The full suite remains:
+
+```text
+python -m pytest
+488 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -1792,6 +1854,15 @@ python -m pytest
 - validated signal definitions as broker orders
 - validated signal definitions as execution intents
 - validated signal definitions as risk approvals
+- signal evaluator implementation
+- `SignalEvaluationResult` implementation
+- signal evaluator registry
+- signal computation from validated signal definitions
+- clock implementation
+- feature computation
+- strategy engine
+- signal-evaluation-to-risk bridge
+- input snapshot persistence implementation
 - live data ingestion
 - ML training implementation
 - persistence writes
@@ -1810,7 +1881,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit signal-evaluator contracts/types before any evaluator implementation
+- explicit signal-evaluation result, input snapshot, and clock/as-of contracts
+  before any evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

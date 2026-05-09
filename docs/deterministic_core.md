@@ -76,6 +76,8 @@ state.
   or create execution intents.
 - Phase 22 Step 3 hardens validated signal definition traceability and tuple
   ordering with tests and docs only; no production source changed.
+- Phase 23 Step 1 documents the future signal evaluation, clock, and as-of
+  boundary; no production source or runtime behavior changed.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -571,6 +573,23 @@ Phase 20 Step 3 is tests/docs-only hardening. It adds no production source
 changes and keeps the max-intents policy narrow, pure, deterministic,
 pre-broker, and source-evaluation driven.
 
+Phase 23 Step 1 documents a future signal evaluation, clock, and as-of boundary
+in
+[`docs/design/phase23_signal_evaluation_clock_boundary.md`](design/phase23_signal_evaluation_clock_boundary.md).
+That future evaluator remains conceptual only here. It may later consume
+validated signal definition metadata, explicit input snapshots, explicit
+observation timestamps, an explicit `as_of` timestamp, deterministic context,
+and snapshot fingerprints. It must produce advisory signal-evaluation metadata
+only, not orders, risk approvals, execution intents, execution plans, ranking
+or priority decisions, broker requests, portfolio mutations, or LLM-generated
+trade decisions.
+
+Time must be explicit in deterministic evaluation. Future deterministic signal,
+risk, and orchestration layers should receive timezone-aware timestamps as
+data, prefer UTC internally, reject naive datetimes, and avoid direct
+wall-clock, randomness, UUID-randomness, or environment-variable reads except
+inside explicit boundary modules.
+
 ## Research And Validation Boundary
 
 Phase 21 Step 1 documents the future research/validation boundary in
@@ -643,12 +662,34 @@ after construction, and signal definitions remain independent from
 `ExecutionIntent`, `PlanningPolicyResult`, risk-evaluation types, broker,
 runtime/scheduler, and persistence modules.
 
+Phase 23 Step 1 documents the next future boundary after validated signal
+definitions: deterministic signal evaluation with explicit clock and as-of
+rules. Validated signal definitions remain metadata-only. Future signal
+evaluations are advisory reports, not execution decisions. They may later carry
+deterministic signal values, scores or buckets, reason codes, input snapshot
+fingerprints, evaluation fingerprints, and assumptions or limitations
+references, but they must not carry `ProposedOrder`, orders, order IDs,
+client-order IDs, broker requests, symbol-specific order instructions,
+execution-command sides, quantities, cash or buying-power reservations,
+portfolio mutation, risk approval, execution intents, execution plans, fills,
+ranking/priority decisions, or LLM-generated trade decisions.
+
+The deterministic core consumes only explicit promoted contracts. A future
+evaluator must receive explicit input snapshots and explicit timezone-aware
+timestamps. Inputs observed after the supplied `as_of` timestamp should be
+rejected, hidden live data fetches and implicit data revisions should be
+forbidden, and parameter changes should require a new definition or context
+version.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
-experiment summaries, hypothesis generation, and journaling, but must not
+experiment summaries, hypothesis generation, journaling, and explaining
+completed evaluation reports, but must not compute live signal outputs,
 generate live trade decisions, mutate execution plans, approve orders, bypass
-risk checks, interact with brokers, or enter the trading hot path.
+risk checks, access live broker or quote state in the trading process,
+interact with brokers, or enter the trading hot path. Broker behavior remains
+isolated behind broker boundaries.
 
 ## Local Order-Event Ledger
 
@@ -721,6 +762,16 @@ Ledger modes:
 - Validated signal definitions as broker orders
 - Validated signal definitions as execution intents
 - Validated signal definitions as risk approvals
+- SignalEvaluationResult implementation
+- Signal evaluator implementation
+- Signal evaluator registry
+- Signal computation from validated signal definitions
+- Clock implementation
+- Feature computation
+- Strategy engine
+- Signal-evaluation-to-risk bridge
+- Ranking or priority policy for signal evaluations
+- Input snapshot persistence implementation
 - Live data ingestion
 - ML training implementation
 - Persistence writes
@@ -741,7 +792,8 @@ submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
 runtime wiring. Future signal-evaluator work should begin with explicit
-contracts and tests before evaluator or Signal -> Risk wiring.
+advisory result, input snapshot, fingerprinting, and clock/as-of contracts plus
+tests before evaluator or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
