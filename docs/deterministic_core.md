@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `515` tests are passing, with `4` skipped paper-integration tests by default.
+- `548` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -85,6 +85,9 @@ state.
 - Phase 24 Step 1 documents the future `SignalEvaluationResult` boundary as
   advisory deterministic output only; no production source or runtime behavior
   changed.
+- Phase 24 Step 2 adds the minimal immutable, slotted
+  `SignalEvaluationResult` metadata contract; it does not evaluate signals,
+  create execution intents, or approve trades.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -618,12 +621,13 @@ environment access.
 
 Phase 24 Step 1 documents the future `SignalEvaluationResult` boundary in
 [`docs/design/phase24_signal_evaluation_result_boundary.md`](design/phase24_signal_evaluation_result_boundary.md).
-The result remains conceptual only. It represents future advisory deterministic
-signal-evaluation output produced by applying a validated signal definition to
-explicit input snapshots at an explicit `as_of` boundary. It may later carry
-signal definition id/version, source artifact id/version, input snapshot id or
-fingerprint, UTC-aware `as_of`, UTC-aware `evaluated_at`, deterministic output
-values, scores or buckets, reason codes, diagnostics, assumptions, and
+Phase 24 Step 2 adds the minimal `SignalEvaluationResult` contract in
+`src/algotrader/signals/signal_evaluation_result.py`. The result is advisory
+deterministic signal-evaluation metadata produced by applying a validated
+signal definition to explicit input snapshots at an explicit `as_of` boundary.
+It carries evaluation id, signal definition id/version, source artifact
+id/version, input fingerprint, UTC-aware `as_of`, UTC-aware `evaluated_at`,
+deterministic output value, reason code, diagnostics, assumptions, and
 limitations.
 
 Signal evaluation outputs are advisory. They do not create orders, broker
@@ -744,13 +748,13 @@ scheduler/runtime, persistence, ML, or LLM trading-path logic. UTC-aware
 timestamp enforcement and lookahead-prevention behavior are pinned by tests.
 
 Phase 24 Step 1 documents the next future boundary: advisory
-`SignalEvaluationResult` output. `ValidatedResearchArtifact` remains evidence,
+`SignalEvaluationResult` output. Phase 24 Step 2 adds the minimal immutable
+contract for that output. `ValidatedResearchArtifact` remains evidence,
 `ValidatedSignalDefinition` remains approved metadata, and
-`SignalEvaluationResult` remains future advisory deterministic output only. A
-future signal-to-risk bridge may consume that output only after a separate
-design and implementation phase. Signal evaluation does not create orders,
-approve trades, mutate execution plans, interact with brokers, or put LLMs in
-the hot path.
+`SignalEvaluationResult` remains advisory deterministic metadata only. A future
+signal-to-risk bridge may consume that output only after a separate design and
+implementation phase. Signal evaluation does not create orders, approve trades,
+mutate execution plans, interact with brokers, or put LLMs in the hot path.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
@@ -836,7 +840,7 @@ Ledger modes:
 - Signal evaluation outputs as orders
 - Signal evaluation outputs as risk approvals
 - Signal evaluation outputs as execution intents or execution plans
-- SignalEvaluationResult implementation
+- SignalEvaluationResult behavior beyond minimal advisory metadata
 - Signal evaluator implementation
 - Signal evaluator registry
 - Signal computation from validated signal definitions
@@ -865,9 +869,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should begin with explicit
-advisory result, input snapshot, and fingerprinting contracts plus tests before
-evaluator or Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with explicit
+input snapshot and fingerprinting contracts plus tests before evaluator or
+Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

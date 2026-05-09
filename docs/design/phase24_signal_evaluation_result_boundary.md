@@ -4,33 +4,34 @@
 
 Phase 24 Step 1 defines a documentation-only boundary for a future
 `SignalEvaluationResult` contract. The goal is to describe the advisory output
-of deterministic signal evaluation before any result type, evaluator,
-registry, feature computation, strategy engine, signal-to-risk bridge,
-execution behavior, broker behavior, persistence, runtime scheduling, ML, or
-LLM trading-path logic is implemented.
+of deterministic signal evaluation before any evaluator, registry, feature
+computation, strategy engine, signal-to-risk bridge, execution behavior, broker
+behavior, persistence, runtime scheduling, ML, or LLM trading-path logic is
+implemented.
 
-This phase adds no production code, tests, runtime behavior,
-`SignalEvaluationResult` implementation, signal evaluator implementation,
-signal computation, strategy implementation, feature computation, ranking or
-priority behavior, execution-plan mutation, risk approval behavior, broker
-behavior, Alpaca behavior, order submission, scheduler/runtime behavior,
-persistence implementation, live data ingestion, ML training, or LLM
-trading-path logic.
+Phase 24 Step 2 adds only the smallest immutable
+`SignalEvaluationResult` contract for future advisory signal evaluation output.
+It still adds no signal evaluator implementation, signal computation, strategy
+implementation, feature computation, ranking or priority behavior,
+execution-plan mutation, risk approval behavior, broker behavior, Alpaca
+behavior, order submission, scheduler/runtime behavior, persistence
+implementation, live data ingestion, ML training, or LLM trading-path logic.
 
 The core rule is:
 
 ```text
 ValidatedResearchArtifact is evidence.
 ValidatedSignalDefinition is approved metadata.
-SignalEvaluationResult is future advisory deterministic output.
+SignalEvaluationResult is advisory deterministic output metadata.
 Risk, execution, and broker layers remain separate.
 ```
 
-## 2. What A Future SignalEvaluationResult Represents
+## 2. What SignalEvaluationResult Represents
 
-A future `SignalEvaluationResult` represents the advisory deterministic output
-of applying a validated signal definition to explicit input snapshots at an
-explicit as-of boundary.
+`SignalEvaluationResult` represents advisory deterministic output metadata from
+applying a validated signal definition to explicit input snapshots at an
+explicit as-of boundary. Phase 24 Step 2 adds the minimal metadata contract;
+the evaluator that would produce it remains future work.
 
 It may eventually record:
 
@@ -92,6 +93,30 @@ A future result contract may include fields such as:
 - diagnostics or trace references
 - assumptions
 - limitations
+
+Phase 24 Step 2 introduces the minimal implemented field set:
+
+```text
+SignalEvaluationResult(
+    evaluation_id,
+    signal_id,
+    signal_version,
+    source_artifact_id,
+    source_artifact_version,
+    as_of,
+    evaluated_at,
+    input_fingerprint,
+    output_value,
+    reason_code,
+    diagnostics,
+    assumptions,
+    limitations,
+)
+```
+
+The contract is frozen and slotted. Required strings reject empty values.
+`diagnostics`, `assumptions`, and `limitations` are stored as immutable tuples
+and preserve caller-provided order.
 
 The field set should stay narrow. Fields should identify the evaluated
 definition, the explicit inputs, the time boundary, and the advisory output.
@@ -164,6 +189,11 @@ Clock.now() -> datetime
 FixedClock(timestamp).now() -> datetime
 assert_not_after_as_of(observed_at, as_of) -> None
 ```
+
+Phase 24 Step 2 validates `as_of` and `evaluated_at` with
+`require_utc_datetime(...)` and preserves the accepted datetime objects. It
+does not define an ordering relation between `as_of` and `evaluated_at`; for
+now they are independently required to be explicit UTC-aware timestamps.
 
 The result boundary must not introduce hidden calls to:
 
@@ -321,9 +351,8 @@ define how advisory evaluations may cross into risk.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 24 Step 1 does not add:
+Phase 24 Step 2 does not add:
 
-- `SignalEvaluationResult` implementation
 - signal evaluator registry
 - signal evaluator implementation
 - signal computation
@@ -343,26 +372,24 @@ Phase 24 Step 1 does not add:
 - ML training
 - LLM trading-path logic
 
-It also does not add production source changes, tests, runtime configuration,
-system-time reads, data ingestion, broker behavior, credentials, network calls,
-or normal-pytest dependency on external services.
+It also does not add runtime configuration, system-time reads, data ingestion,
+broker behavior, credentials, network calls, or normal-pytest dependency on
+external services.
 
 ## 12. Future Implementation Phases
 
 Future implementation should stay contract-first and test-first. A safe future
 sequence would be:
 
-1. Add an immutable advisory `SignalEvaluationResult` contract with explicit
-   UTC-aware timestamps and deterministic trace fields.
-2. Add synthetic input snapshot contracts and deterministic fingerprinting
+1. Add synthetic input snapshot contracts and deterministic fingerprinting
    rules.
-3. Add focused tests proving reproducibility, clock injection, forbidden-field
+2. Add focused tests proving reproducibility, clock injection, forbidden-field
    absence, and dependency independence.
-4. Add a small evaluator registry only after result and snapshot contracts are
+3. Add a small evaluator registry only after result and snapshot contracts are
    stable.
-5. Add one deterministic evaluator implementation with explicit synthetic
+4. Add one deterministic evaluator implementation with explicit synthetic
    inputs only.
-6. Only later design a signal-to-risk bridge for advisory evaluation outputs.
+5. Only later design a signal-to-risk bridge for advisory evaluation outputs.
 
 No future implementation should combine signal evaluation with broker wiring,
 runtime scheduling, persistence, live data ingestion, feature computation, ML

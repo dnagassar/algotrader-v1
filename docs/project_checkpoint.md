@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 510-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 548-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -122,10 +122,15 @@ design. It defines future advisory deterministic signal-evaluation output while
 keeping signal evaluation separate from risk approval, execution intent
 creation, execution planning, broker requests, portfolio mutation, ranking or
 priority decisions, and LLM trading-path logic.
+Phase 24 Step 2 adds the minimal immutable `SignalEvaluationResult` advisory
+metadata contract. It validates explicit UTC-aware `as_of` and `evaluated_at`
+timestamps, preserves deterministic trace fields and ordered tuple metadata,
+and still does not evaluate signals, create execution intents, approve trades,
+mutate execution plans, touch brokers, or add runtime behavior.
 The latest full-suite result is:
 
 ```text
-515 passed, 4 skipped
+548 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -256,6 +261,12 @@ diagnostics, assumptions, and limitations. It must not carry orders, broker
 requests, risk approvals, execution intents, execution plans, portfolio
 mutation, ranking or priority decisions, Alpaca behavior, or LLM-generated
 trade decisions.
+Phase 24 Step 2 implements that minimal advisory result contract in
+`src/algotrader/signals/signal_evaluation_result.py`. The object stores only
+evaluation id, signal id/version, source artifact id/version, explicit
+UTC-aware `as_of` and `evaluated_at`, input fingerprint, output value, reason
+code, diagnostics, assumptions, and limitations. It is frozen, slotted, and
+metadata-only.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -1999,6 +2010,79 @@ behavior, Alpaca behavior, order submission, scheduler/runtime behavior,
 persistence implementation, live data ingestion, ML training, or LLM
 trading-path logic.
 
+## Phase 24 Step 2 Minimal SignalEvaluationResult Contract
+
+Phase 24 Step 2 adds the minimal advisory signal-evaluation result contract in:
+
+```text
+src/algotrader/signals/signal_evaluation_result.py
+src/algotrader/signals/__init__.py
+```
+
+The new contract is an immutable, slotted dataclass:
+
+```text
+SignalEvaluationResult(
+    evaluation_id,
+    signal_id,
+    signal_version,
+    source_artifact_id,
+    source_artifact_version,
+    as_of,
+    evaluated_at,
+    input_fingerprint,
+    output_value,
+    reason_code,
+    diagnostics,
+    assumptions,
+    limitations,
+)
+```
+
+`SignalEvaluationResult` is advisory evaluation metadata only. It records stable
+evaluation identity, signal definition id/version, source artifact id/version,
+explicit UTC-aware `as_of`, explicit UTC-aware `evaluated_at`, input
+fingerprint, deterministic advisory output value, reason code, diagnostics,
+assumptions, and limitations. Tuple fields are stored immutably and preserve
+diagnostic, assumption, and limitation order. Empty required strings are
+rejected.
+
+The focused tests live in:
+
+```text
+tests/unit/test_signal_evaluation_result.py
+tests/unit/test_dependency_direction.py
+```
+
+They prove immutability, slots, tuple storage, tuple order preservation, empty
+string validation, naive and non-UTC datetime rejection, UTC-aware datetime
+identity preservation, advisory metadata-only fields, absence of forbidden
+trading-path fields, no I/O, network, broker, ingestion, or scheduling calls,
+and independence from execution planning, risk, broker, runtime, persistence,
+ML, and LLM modules.
+
+This phase does not evaluate signals, compute features, implement strategies,
+rank or prioritize candidates, create execution intents, approve trades, mutate
+execution plans, interact with broker, Alpaca, scheduler/runtime, persistence,
+or live data, add ML training, or put LLMs in the trading hot path.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_evaluation_result.py
+33 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+8 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+548 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2041,7 +2125,7 @@ trading-path logic.
 - signal evaluation outputs as risk approvals
 - signal evaluation outputs as execution intents or execution plans
 - signal evaluator implementation
-- `SignalEvaluationResult` implementation
+- `SignalEvaluationResult` behavior beyond minimal advisory metadata
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation
@@ -2067,8 +2151,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit signal-evaluation result, input snapshot, and fingerprinting
-  contracts before any evaluator implementation
+- explicit signal-evaluation input snapshot and fingerprinting contracts before
+  any evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
