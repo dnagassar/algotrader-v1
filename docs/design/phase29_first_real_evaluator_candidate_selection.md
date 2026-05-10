@@ -153,6 +153,11 @@ Candidate selection still does not authorize implementation. The candidate
 remains selected but unimplemented until a later implementation phase is
 explicitly cleared.
 
+Phase 29 Step 6 documents constants and output semantics in
+[`docs/design/phase29_threshold_evaluator_constants_output_semantics.md`](phase29_threshold_evaluator_constants_output_semantics.md).
+The candidate remains selected but unimplemented. Implementation still requires
+exact validated signal and research artifact support.
+
 ## 6. Why This Candidate Is Safe
 
 The threshold-over-one-explicit-scalar candidate is safer than the alternatives
@@ -310,11 +315,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
-   design, docs-only.
-2. Phase 29 Step 6B: minimal threshold evaluator implementation only if
-   readiness is confirmed.
-3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
+1. Phase 29 Step 7: final implementation prompt/test scaffold design,
+   docs-only.
+2. Phase 29 Step 8: minimal threshold evaluator implementation only if
+   validated signal/research artifacts and semantics are ready.
+3. Phase 29 Step 9: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

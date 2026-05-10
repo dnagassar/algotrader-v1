@@ -260,6 +260,12 @@ Implementation remains blocked unless the readiness review explicitly clears
 the candidate or a later follow-up design resolves the remaining blockers and
 clears implementation scope.
 
+Phase 29 Step 6 documents constants and output semantics in
+[`docs/design/phase29_threshold_evaluator_constants_output_semantics.md`](phase29_threshold_evaluator_constants_output_semantics.md).
+Implementation remains gated by finalized semantics and exact validated signal
+and research support. The Step 6 design does not authorize production code,
+real evaluator behavior, or signal computation.
+
 ## 12. Relationship To Existing Contracts
 
 `ValidatedResearchArtifact` is supporting evidence. It records reviewed
@@ -333,11 +339,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
-   design, docs-only.
-2. Phase 29 Step 6B: first real evaluator minimal implementation, if and only
-   if readiness is confirmed.
-3. Phase 29 Step 7: first real evaluator traceability/lookahead hardening.
+1. Phase 29 Step 7: final implementation prompt/test scaffold design,
+   docs-only.
+2. Phase 29 Step 8: first real evaluator minimal implementation, if and only
+   if validated signal/research artifacts and semantics are ready.
+3. Phase 29 Step 9: first real evaluator traceability/lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

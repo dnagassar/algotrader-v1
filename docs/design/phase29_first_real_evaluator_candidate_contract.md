@@ -25,8 +25,15 @@ gate and matrix criteria are satisfied.
 
 Phase 29 Step 5 reviews implementation readiness in
 [`docs/design/phase29_first_real_evaluator_implementation_readiness.md`](phase29_first_real_evaluator_implementation_readiness.md).
-That review links the unresolved constants and output semantics in this
+That review linked the then-unresolved constants and output semantics in this
 contract to a recommended docs-only follow-up before implementation.
+
+Phase 29 Step 6 documents constants and output semantics in
+[`docs/design/phase29_threshold_evaluator_constants_output_semantics.md`](phase29_threshold_evaluator_constants_output_semantics.md).
+It selects `indicator_value`, `Decimal`, `>=`, textual advisory output values,
+and deterministic threshold reason codes for a future implementation, while
+keeping production evaluator code blocked until exact validated signal and
+research artifacts are available.
 
 ## 2. Candidate Summary
 
@@ -55,13 +62,12 @@ A future evaluator-specific design may require:
 - explicit UTC-aware `as_of`
 - explicit UTC-aware `evaluated_at`
 
-The placeholder required input name for this candidate is:
+The required input name selected for the future candidate is:
 
 - `indicator_value`
 
-This name is still subject to final evaluator-specific design. It is a
-placeholder for the first contract design, not a production commitment. A later
-phase must decide the exact required input name before implementation.
+Step 6 selects this name for the future threshold evaluator design. This does
+not authorize implementation and does not make any output actionable.
 
 ## 4. Accepted Value Type
 
@@ -87,11 +93,14 @@ This phase does not implement type handling.
 
 ## 5. Threshold And Comparator Semantics
 
-Possible future semantics:
+Step 6 later selected these recommended future semantics:
 
-- comparator candidate: `>=`
-- threshold candidate: explicit deterministic `Decimal`
-- output candidate: advisory threshold condition result
+- comparator: `>=`
+- threshold source: explicit evaluator configuration or evaluator-local
+  constant only
+- harmless future unit-test threshold placeholder: `Decimal("1")`
+- output values: `threshold_condition_met` and
+  `threshold_condition_not_met`
 
 The comparator would describe only whether the supplied scalar met a documented
 advisory condition. It must not mean buy, sell, bullish, bearish, long, short,
@@ -116,13 +125,13 @@ Candidate output semantics:
 - diagnostics, assumptions, and limitations should explain the advisory-only
   nature.
 
-Open question:
+Step 6 selects textual advisory `output_value` values:
 
-- Should `output_value` be textual, boolean-like, or Decimal-like?
+- `threshold_condition_met`
+- `threshold_condition_not_met`
 
-This phase does not decide the final production representation. A later design
-must choose the representation that is clearest, least likely to imply trading
-action, and easiest to test deterministically.
+These values are not recommendations, scores, confidence, direction, ranking,
+actionability, risk approval, or execution readiness.
 
 ## 7. Missing Input Behavior
 
@@ -157,24 +166,18 @@ Recommendation:
   input by name.
 
 This keeps the evaluator's input surface small while preserving visibility into
-extra names. A later design must decide whether extras remain non-blocking or
-become a validation failure.
+extra names. Step 6 recommends keeping extras non-blocking, ignored by the
+evaluator, and incapable of affecting output.
 
 This phase does not implement extra-input behavior.
 
 ## 9. Snapshot Id And As-Of Compatibility
 
-Open design questions:
+Step 6 recommends strict equality:
 
-- Should `snapshot.snapshot_id == bundle.snapshot_id` be required?
-- Should `snapshot.as_of == bundle.as_of` be required?
-- Should evaluator `as_of == bundle.as_of` be required?
-- Should evaluator `as_of == snapshot.as_of` be required?
-
-Recommendation:
-
-- Prefer strict equality in the first real evaluator-specific design unless a
-  later design gives a clear reason to allow compatibility ranges.
+- require `snapshot.snapshot_id == bundle.snapshot_id`
+- require evaluator `as_of == bundle.as_of`
+- require evaluator `as_of == snapshot.as_of`
 
 Strict equality is the easiest initial rule to explain, audit, and test. Any
 non-equality rule must prove it does not weaken lookahead safety or make input
@@ -289,8 +292,8 @@ before implementation. The definition does not itself evaluate the threshold or
 approve trades.
 
 `SignalEvaluationInputSnapshot` names the required input and preserves
-reference metadata. For this candidate, the placeholder required input name is
-`indicator_value`, subject to final design.
+reference metadata. For this candidate, Step 6 selects the required input name
+`indicator_value` for the future evaluator design.
 
 `SignalInputValue` carries the explicit observed scalar value. The preferred
 future value type is `Decimal`. The evaluator must not fetch or compute this
@@ -353,11 +356,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
-   design, docs-only.
-2. Phase 29 Step 6B: minimal threshold evaluator implementation only if
-   readiness is confirmed.
-3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
+1. Phase 29 Step 7: final implementation prompt/test scaffold design,
+   docs-only.
+2. Phase 29 Step 8: minimal threshold evaluator implementation only if
+   validated signal/research artifacts and semantics are ready.
+3. Phase 29 Step 9: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

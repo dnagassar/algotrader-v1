@@ -13,6 +13,12 @@ another design step before production evaluator code is allowed.
 The review is intentionally conservative. If exact constants, trace identities,
 input policy, or output semantics are unresolved, implementation must wait.
 
+Phase 29 Step 6 resolves or explicitly defers constants and output semantics in
+[`docs/design/phase29_threshold_evaluator_constants_output_semantics.md`](phase29_threshold_evaluator_constants_output_semantics.md).
+That design narrows evaluator-local constants and advisory output semantics,
+but implementation is still not ready unless validated signal and research
+support are also available.
+
 ## 2. Current Candidate Recap
 
 The selected future candidate remains:
@@ -41,61 +47,63 @@ portfolio decisions.
 | --- | --- | --- |
 | exact `ValidatedSignalDefinition` | Blocked | The definition identity and version are not selected. |
 | exact supporting `ValidatedResearchArtifact` | Blocked | The supporting artifact identity and version are not selected. |
-| final required input name | Unresolved | `indicator_value` is still a placeholder. |
-| final accepted value type | Unresolved | `Decimal` is preferred, but not final. |
-| final threshold source | Blocked | The exact threshold value and source are not documented. |
-| final comparator | Unresolved | `>=` is possible, but not final. |
-| final `output_value` representation | Blocked | Textual, boolean-like, or other representation is undecided. |
-| final `reason_code` values | Blocked | Deterministic reason-code names are not defined. |
-| final diagnostics/assumptions/limitations | Unresolved | Required content is not finalized. |
-| missing-input behavior | Unresolved | Raise, advisory failure, or precondition-only behavior is not fixed. |
-| extra-input behavior | Unresolved | Ignore, reject, or report-only behavior is not fixed. |
-| snapshot id compatibility | Unresolved | Exact equality or another rule is not fixed. |
-| snapshot `as_of` compatibility | Unresolved | Exact timestamp compatibility is not fixed. |
-| bundle `as_of` compatibility | Unresolved | Exact timestamp compatibility is not fixed. |
-| completeness result flow | Unresolved | Prevalidated input versus internal validation is not fixed. |
-| no-lookahead policy | Ready | Core policy is defined, but exact compatibility rules above remain unresolved. |
+| final required input name | Ready as design | Step 6 selects `indicator_value`. |
+| final accepted value type | Ready as design | Step 6 selects `Decimal` only. |
+| final threshold source | Ready as design | Step 6 requires explicit evaluator configuration or evaluator-local constant only. |
+| final comparator | Ready as design | Step 6 selects `>=`. |
+| final `output_value` representation | Ready as design | Step 6 selects textual advisory values. |
+| final `reason_code` values | Ready as design | Step 6 names deterministic threshold reason codes. |
+| final diagnostics/assumptions/limitations | Ready as design | Step 6 defines deterministic metadata expectations. |
+| missing-input behavior | Ready as design | Step 6 requires pre-call completeness and deterministic rejection if missing input reaches the evaluator. |
+| extra-input behavior | Ready as design | Step 6 allows non-blocking extras but requires output invariance and exact-name reads only. |
+| snapshot id compatibility | Ready as design | Step 6 recommends strict snapshot id equality. |
+| snapshot `as_of` compatibility | Ready as design | Step 6 recommends evaluator `as_of == snapshot.as_of`. |
+| bundle `as_of` compatibility | Ready as design | Step 6 recommends evaluator `as_of == bundle.as_of`. |
+| completeness result flow | Ready as design | Step 6 requires explicit pre-use completeness validation and deterministic rejection of incomplete input. |
+| no-lookahead policy | Ready as design | Step 6 defines strict timestamp compatibility and keeps wall-clock access forbidden. |
 | forbidden output fields | Ready | Step 4 matrix explicitly forbids trading-path fields. |
 | side-effect/dependency tests | Ready | Step 4 matrix defines the required dependency-isolation tests. |
 | mutation tests | Ready | Step 4 matrix defines non-mutation coverage for all inputs and output. |
 | deterministic repeated-output tests | Ready | Step 4 matrix defines repeated-call determinism coverage. |
 
-The ready items are ready as requirements. They do not mean implementation is
-ready, because several implementation-blocking constants and semantics are
-still unresolved.
+The ready items are ready as design requirements. They do not mean
+implementation is ready, because exact validated signal and research artifacts
+remain unresolved.
 
 ## 4. Recommended Readiness Decision
 
-Recommendation: Option C.
+Original Step 5 recommendation: Option C.
 
-A small additional design phase is needed to lock constants and output
-semantics before implementation. Implementation is not ready for a narrowly
-scoped Phase 29 Step 6 yet because the exact `ValidatedSignalDefinition`, exact
-`ValidatedResearchArtifact`, threshold value source, and output semantics remain
-unresolved.
+At Step 5 time, a small additional design phase was needed to lock constants
+and output semantics before implementation. Implementation was not ready for a
+narrowly scoped implementation phase because the exact
+`ValidatedSignalDefinition`, exact `ValidatedResearchArtifact`, threshold value
+source, and output semantics were unresolved.
 
-Option A is rejected for now because production evaluator code would need to
-invent unresolved constants or semantics during implementation. Option B is too
-strong because the candidate itself remains viable; it needs one more
-design-only narrowing step rather than abandonment.
+Option A was rejected because production evaluator code would have needed to
+invent unresolved constants or semantics during implementation. Option B was
+too strong at Step 5 time because the candidate itself remained viable and
+needed one more design-only narrowing step rather than abandonment.
+
+Step 6 update: Option B.
+
+Phase 29 Step 6 resolves safe evaluator-local constants and output semantics,
+but implementation remains blocked because exact validated signal and research
+artifacts are still missing. The candidate remains viable and selected, but
+production evaluator code must not begin until validated support is available.
 
 ## 5. Items That Must Be Fixed Before Implementation
 
-Before production evaluator code begins, a later design phase must resolve:
+Before production evaluator code begins, a later design phase must still
+resolve:
 
 - exact validated signal definition identity and version
 - exact validated research artifact identity and version
-- exact input name
-- exact threshold value and source
-- exact comparator
-- exact output representation
-- exact reason codes
-- exact missing and extra input policy
-- exact snapshot and `as_of` compatibility rules
-- exact completeness flow
+- validated production threshold value and source, if `Decimal("1")` remains
+  only a harmless unit-test placeholder
+- explicit tie between the validated artifacts and threshold semantics
 
-These decisions must be documented before implementation tests or production
-evaluator code are added.
+These decisions must be documented before production evaluator code is added.
 
 ## 6. Safe Minimal Implementation Shape, If Later Allowed
 
@@ -117,7 +125,7 @@ as:
 The future implementation should consume already-built deterministic contracts
 and return advisory metadata only. This phase does not implement that shape.
 
-## 7. Conditions For Phase 29 Step 6
+## 7. Conditions For A Future Implementation Phase
 
 If a later implementation phase is allowed, it must explicitly define:
 
@@ -159,11 +167,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases based on this readiness review include:
 
-1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
-   design, docs-only.
-2. Phase 29 Step 6B: minimal threshold evaluator implementation, only if
-   readiness is confirmed.
-3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
+1. Phase 29 Step 7: final implementation prompt/test scaffold design,
+   docs-only.
+2. Phase 29 Step 8: minimal threshold evaluator implementation, only if
+   validated signal/research artifacts and semantics are ready.
+3. Phase 29 Step 9: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

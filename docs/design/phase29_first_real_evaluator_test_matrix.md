@@ -17,8 +17,13 @@ Phase 29 Step 5 performs implementation-readiness review only in
 [`docs/design/phase29_first_real_evaluator_implementation_readiness.md`](phase29_first_real_evaluator_implementation_readiness.md).
 This test matrix does not authorize implementation by itself. A later
 implementation phase may begin only if the readiness review and any required
-follow-up design explicitly clear the unresolved constants and output
-semantics.
+follow-up design explicitly clear the remaining validated signal/research
+blockers.
+
+Phase 29 Step 6 selects safe evaluator-local constants and output semantics in
+[`docs/design/phase29_threshold_evaluator_constants_output_semantics.md`](phase29_threshold_evaluator_constants_output_semantics.md).
+Those decisions update the future test targets, but the matrix still does not
+authorize implementation by itself.
 
 ## 2. Candidate Under Test
 
@@ -26,10 +31,10 @@ The future candidate remains:
 
 - threshold-style advisory evaluator
 - one explicit scalar input
-- placeholder input name: `indicator_value`
-- preferred input type: `Decimal`
-- possible comparator: `>=`
-- possible threshold: deterministic `Decimal`
+- input name: `indicator_value`
+- accepted input type: `Decimal`
+- comparator: `>=`
+- placeholder unit-test threshold: `Decimal("1")`, not a trading strategy
 - output: advisory `SignalEvaluationResult`
 - no scoring
 - no ranking
@@ -85,6 +90,11 @@ A future implementation must test:
 - value above threshold
 - threshold comparison is deterministic
 - `Decimal` comparison is exact
+- textual `output_value` is `threshold_condition_met` when the condition is met
+- textual `output_value` is `threshold_condition_not_met` when the condition
+  is not met
+- reason code is `THRESHOLD_CONDITION_MET` when the condition is met
+- reason code is `THRESHOLD_CONDITION_NOT_MET` when the condition is not met
 - no float coercion
 - no string parsing unless explicitly designed
 - no numeric normalization unless explicitly designed
@@ -225,23 +235,30 @@ design gate.
 
 ## 13. Open Questions Before Implementation
 
-These items must be answered before production code begins:
+These items were resolved or narrowed by Step 6:
+
+- input name: `indicator_value`
+- accepted value type: `Decimal`
+- comparator: `>=`
+- future unit-test placeholder threshold: `Decimal("1")`
+- advisory output values: `threshold_condition_met` and
+  `threshold_condition_not_met`
+- reason codes: `THRESHOLD_CONDITION_MET`,
+  `THRESHOLD_CONDITION_NOT_MET`, `THRESHOLD_INPUT_MISSING`, and
+  `THRESHOLD_INPUT_INVALID_TYPE`
+- missing input requires deterministic rejection
+- extras are ignored and must not affect output
+- snapshot id equality is required
+- evaluator `as_of` must equal snapshot and bundle `as_of`
+- completeness validation is required before evaluator use
+
+These items remain blocked before production evaluator code:
 
 - exact `ValidatedSignalDefinition`
 - exact `ValidatedResearchArtifact`
-- final input name
-- final threshold value source
-- final comparator
-- final `output_value` representation
-- final `reason_code` values
-- final diagnostics, assumptions, and limitations
-- missing-input behavior
-- extra-input behavior
-- snapshot id compatibility
-- `as_of` compatibility
-- completeness result flow
-- whether evaluator validates completeness internally or requires prevalidated
-  input
+- validated production threshold value and source if `Decimal("1")` remains
+  only a harmless unit-test placeholder
+- explicit tie between the validated artifacts and threshold semantics
 
 Until these questions are resolved, the candidate remains selected but
 unimplemented.
@@ -252,6 +269,7 @@ Implementation may begin only when:
 
 - candidate contract is finalized
 - test matrix is accepted
+- exact validated signal and research artifacts are available
 - exact input name and type are fixed
 - threshold semantics are fixed
 - output semantics are fixed
@@ -289,11 +307,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
-   design, docs-only.
-2. Phase 29 Step 6B: minimal threshold evaluator implementation, only if
-   readiness is confirmed.
-3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
+1. Phase 29 Step 7: final implementation prompt/test scaffold design,
+   docs-only.
+2. Phase 29 Step 8: minimal threshold evaluator implementation, only if
+   validated signal/research artifacts and semantics are ready.
+3. Phase 29 Step 9: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,
