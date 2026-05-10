@@ -235,6 +235,10 @@ Phase 29 Step 4 is documentation-only. It defines the first real evaluator
 test matrix for the future threshold-style advisory evaluator. No production
 code or runtime behavior changed, and no real evaluator or signal computation
 was added.
+Phase 29 Step 5 is documentation-only. It reviews implementation readiness and
+recommends Option C: one more docs-only constants/output semantics design step
+before any production evaluator implementation. No production code or runtime
+behavior changed, and no real evaluator or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -501,6 +505,16 @@ behavior, open implementation questions, and go/no-go criteria. It remains
 documentation-only and does not authorize implementation. No production code,
 runtime behavior, real evaluator, signal computation, or trading-path behavior
 was added.
+
+Phase 29 Step 5 reviews implementation readiness for the selected candidate.
+The recommendation is Option C: a small additional docs-only design phase is
+needed to lock constants and output semantics before implementation. Exact
+validated signal definition identity/version, supporting research artifact
+identity/version, input name, threshold source, comparator, output
+representation, reason codes, missing/extra input policy, snapshot/as-of
+compatibility rules, and completeness flow remain unresolved. No production
+code, runtime behavior, real evaluator, signal computation, or trading-path
+behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3571,6 +3585,63 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 29 Step 5 First Real Evaluator Implementation Readiness Review
+
+Phase 29 Step 5 is documentation-only. It adds:
+
+```text
+docs/design/phase29_first_real_evaluator_implementation_readiness.md
+```
+
+It also updates:
+
+```text
+docs/design/phase29_first_real_evaluator_test_matrix.md
+docs/design/phase29_first_real_evaluator_candidate_contract.md
+docs/design/phase29_first_real_evaluator_candidate_selection.md
+docs/design/phase29_first_real_evaluator_design_gate.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step reviews whether the future threshold-style advisory evaluator is
+ready for implementation. The readiness recommendation is Option C: a small
+additional design phase is needed to lock constants and output semantics before
+production evaluator code is allowed.
+
+The candidate remains selected but unimplemented. It is still a future
+threshold-style advisory evaluator over one explicit scalar input, with
+placeholder input name `indicator_value`, preferred value type `Decimal`,
+possible `>=` comparator, explicit deterministic threshold, and advisory
+`SignalEvaluationResult` output only.
+
+Implementation remains blocked because exact `ValidatedSignalDefinition`
+identity/version, exact supporting `ValidatedResearchArtifact`
+identity/version, exact input name, exact threshold value and source, exact
+comparator, exact output representation, exact reason codes, exact
+missing/extra input policy, exact snapshot/as-of compatibility rules, and exact
+completeness flow are not finalized.
+
+The review records a safe future implementation shape only conceptually: one
+small module, one frozen/slotted evaluator class or one pure function, explicit
+inputs only, no runtime wiring, no registry, no scheduler, no broker, no
+persistence, no live data, no ML or LLM calls, and focused unit tests first.
+No production implementation is drafted here.
+
+This phase adds no production code, tests, evaluator implementation, evaluator
+protocol, signal computation, feature computation, strategy logic, score,
+direction, confidence, actionability, risk approval, execution intent
+creation, broker or Alpaca behavior, order submission, runtime/scheduler
+behavior, persistence, live data ingestion, ML, or LLM trading-path behavior.
+Normal pytest remains offline, credential-free, and safe.
+
+Verification after Phase 29 Step 5:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3633,7 +3704,7 @@ python -m pytest
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`
 - first real evaluator implementation
-- evaluator behavior beyond the Phase 29 Step 4 test matrix
+- evaluator behavior beyond the Phase 29 Step 5 readiness review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3657,8 +3728,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- evaluator-specific constants and contract decisions before any real evaluator
-  implementation
+- final threshold evaluator constants/output semantics design before any real
+  evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

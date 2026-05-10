@@ -147,6 +147,12 @@ Step 4 test matrix in
 defines required future tests only and does not authorize production evaluator
 code.
 
+Phase 29 Step 5 reviews implementation readiness in
+[`docs/design/phase29_first_real_evaluator_implementation_readiness.md`](phase29_first_real_evaluator_implementation_readiness.md).
+Candidate selection still does not authorize implementation. The candidate
+remains selected but unimplemented until a later implementation phase is
+explicitly cleared.
+
 ## 6. Why This Candidate Is Safe
 
 The threshold-over-one-explicit-scalar candidate is safer than the alternatives
@@ -304,10 +310,10 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 5: finalize evaluator-specific constants and contract
-   decisions, docs-only.
-2. Phase 29 Step 6: minimal threshold evaluator implementation only if the
-   gate, design, and test matrix are satisfied.
+1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
+   design, docs-only.
+2. Phase 29 Step 6B: minimal threshold evaluator implementation only if
+   readiness is confirmed.
 3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,

@@ -13,6 +13,13 @@ The matrix is binding on future implementation scope. It does not authorize
 production evaluator code, evaluator protocol changes, runtime wiring, or any
 trading-path behavior.
 
+Phase 29 Step 5 performs implementation-readiness review only in
+[`docs/design/phase29_first_real_evaluator_implementation_readiness.md`](phase29_first_real_evaluator_implementation_readiness.md).
+This test matrix does not authorize implementation by itself. A later
+implementation phase may begin only if the readiness review and any required
+follow-up design explicitly clear the unresolved constants and output
+semantics.
+
 ## 2. Candidate Under Test
 
 The future candidate remains:
@@ -282,10 +289,10 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 5: finalize evaluator-specific constants and contract
-   decisions, docs-only.
-2. Phase 29 Step 6: minimal threshold evaluator implementation, only if all
-   gate and test matrix conditions are satisfied.
+1. Phase 29 Step 6A: final threshold evaluator constants/output semantics
+   design, docs-only.
+2. Phase 29 Step 6B: minimal threshold evaluator implementation, only if
+   readiness is confirmed.
 3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
