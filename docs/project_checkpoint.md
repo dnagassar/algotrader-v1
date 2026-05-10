@@ -3847,6 +3847,55 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 30 Step 3 Research Artifact Candidate Review Template / Intake Boundary
+
+Phase 30 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase30_research_artifact_candidate_review_template.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_research_validation_evidence_standard.md
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step defines the candidate research artifact review template and intake
+boundary that future reviewers must use to apply the Phase 30 Step 2 evidence
+standard. The template records the required intake fields, checklist mapping,
+claim classification, non-claims, signal-definition binding checks,
+threshold/config provenance checks, pass/fail outcomes, and implementation
+blockers for a future `ValidatedResearchArtifact` candidate.
+
+The template does not review a real artifact, approve an artifact, create a
+validated signal definition, or authorize evaluator implementation. A future
+candidate artifact must still pass review using the evidence standard and this
+template, and a future validated signal definition must bind exactly to that
+artifact before implementation can be considered.
+
+No production code or runtime behavior changed. No research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation, broker or
+Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
+live data ingestion, ML, or LLM trading-path behavior was added.
+
+Implementation remains blocked pending candidate artifact review, exact
+validated research support, exact validated signal-definition support,
+threshold/config provenance, explicit implementation scope approval, and
+implementation tests written or ready.
+
+Verification after Phase 30 Step 3:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3915,6 +3964,8 @@ python -m pytest
   boundary
 - threshold evaluator behavior beyond the Phase 30 Step 2 research validation
   evidence standard
+- threshold evaluator behavior beyond the Phase 30 Step 3 research artifact
+  review template
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3939,7 +3990,8 @@ Safe next tasks include:
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
 - threshold evaluator research artifact candidate review against the Phase 30
-  Step 2 evidence standard, docs-only
+  Step 2 evidence standard and Phase 30 Step 3 template, docs-only, only when
+  a candidate artifact exists
 - validated signal definition candidate review before any real evaluator
   implementation
 - explicit future execution-planning policy decisions only after their config

@@ -11,6 +11,12 @@ standard exists so future `ValidatedResearchArtifact` candidates are reviewed
 against a fixed yardstick before they can support a
 `ValidatedSignalDefinition` review or any evaluator implementation.
 
+Phase 30 Step 3 defines the candidate research artifact review template and
+intake boundary in
+[`phase30_research_artifact_candidate_review_template.md`](phase30_research_artifact_candidate_review_template.md).
+That template applies this evidence standard to future artifacts, but the
+template itself approves no artifact and creates no validated research.
+
 The standard is documentation-only. It does not make any advisory evaluator
 actionable, production-ready, risk-approved, execution-ready, broker-aware, or
 portfolio-aware.
@@ -364,12 +370,15 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 30 Step 3: candidate `ValidatedResearchArtifact` review against this
-   standard, docs-only.
-2. Phase 30 Step 4: candidate `ValidatedSignalDefinition` review and artifact
+1. Phase 30 Step 3: candidate research artifact review template and intake
+   boundary, docs-only.
+2. Phase 30 Step 4: candidate `ValidatedResearchArtifact` review using the
+   template and this standard, docs-only, only when a candidate artifact
+   exists.
+3. Phase 30 Step 5: candidate `ValidatedSignalDefinition` review and artifact
    binding, docs-only.
-3. Phase 30 Step 5: implementation scope approval review.
-4. Later: minimal threshold evaluator implementation only if all blockers are
+4. Phase 30 Step 6: implementation scope approval review.
+5. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

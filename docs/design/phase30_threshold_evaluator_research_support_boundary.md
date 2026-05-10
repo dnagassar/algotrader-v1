@@ -21,6 +21,13 @@ before any candidate artifact is reviewed. Candidate artifacts must be measured
 against that fixed standard instead of shaping the standard after the fact.
 Implementation remains blocked.
 
+Phase 30 Step 3 defines the candidate artifact review template and intake
+boundary in
+[`phase30_research_artifact_candidate_review_template.md`](phase30_research_artifact_candidate_review_template.md).
+Evaluator implementation remains blocked until a candidate artifact passes a
+future review using the evidence standard and template, and until exact
+validated signal-definition support exists.
+
 ## 2. Why Research Support Is Required
 
 A threshold evaluator should not enter production code simply because:
@@ -207,6 +214,8 @@ compatibility rules, and avoid hidden wall-clock access.
 Implementation remains blocked until:
 
 - exact validated research artifact exists
+- candidate artifact passes future review using the evidence standard and
+  template
 - exact validated signal definition exists
 - threshold value and source are justified by that artifact
 - implementation scope is explicitly approved
@@ -243,12 +252,14 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases based on this boundary include:
 
 1. Phase 30 Step 2: research validation evidence standard, docs-only.
-2. Phase 30 Step 3: threshold evaluator research artifact candidate review,
-   docs-only.
-3. Phase 30 Step 4: validated signal definition candidate review, docs-only or
+2. Phase 30 Step 3: candidate research artifact review template and intake
+   boundary, docs-only.
+3. Phase 30 Step 4: threshold evaluator research artifact candidate review
+   using the template, docs-only, only when a candidate artifact exists.
+4. Phase 30 Step 5: validated signal definition candidate review, docs-only or
    tests/docs only.
-4. Phase 30 Step 5: implementation readiness re-check.
-5. Later: minimal threshold evaluator implementation only if all blockers are
+5. Phase 30 Step 6: implementation readiness re-check.
+6. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,
