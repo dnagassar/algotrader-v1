@@ -14,6 +14,15 @@ implementation, no production behavior, no result contract changes, no no-op
 marker, and no runtime or trading-path behavior. The review strengthens only
 contract-surface tests to pin existing metadata-only facts.
 
+Phase 26 Step 3 adds the first evaluator-shaped code: a minimal frozen, slotted
+`NoOpSignalEvaluator` contract. It exists only to prove the deterministic
+input/output boundary by constructing advisory `SignalEvaluationResult`
+metadata from explicit inputs. It does not compute signals, inspect payload
+values, score, rank, infer direction, recommend trades, approve risk, create
+execution intents, mutate execution plans, access live data, route to brokers,
+submit orders, use scheduler/runtime/persistence behavior, run ML, or call
+LLMs.
+
 For this project, a signal evaluator is a narrow deterministic boundary that
 may later receive already-validated signal metadata, explicit input snapshot
 metadata, and explicit UTC-aware timestamps, then construct advisory
@@ -141,6 +150,10 @@ a decision switch or actionability proxy if introduced too early. The safer
 path is to keep the first no-op evaluator result empty/advisory in meaning
 while using only the existing metadata fields.
 
+Phase 26 Step 3 follows that safer path. `NoOpSignalEvaluator.evaluate(...)`
+uses only existing `SignalEvaluationResult` fields and does not add
+`result_kind`, `evaluator_kind`, `is_noop`, or any no-op marker field.
+
 ## 6. Timestamp And Lookahead Invariants
 
 `as_of` is the logical time the result describes. `evaluated_at` is the
@@ -159,6 +172,12 @@ The no-op evaluator trivially satisfies input-observation rules because it does
 not inspect payload values, but it must still preserve explicit timestamps and
 validate the timestamp relationship. It must not fill in missing timestamps
 from wall-clock time.
+
+Phase 26 Step 3 implements those timestamp rules for the minimal no-op
+boundary. It validates explicit UTC-aware `as_of` and `evaluated_at`, rejects
+naive or non-UTC timestamps, rejects `evaluated_at < as_of`, rejects an input
+snapshot `as_of` after the result `as_of`, and preserves accepted timestamp
+object identity in the returned result.
 
 ## 7. Deterministic Guarantees
 
@@ -263,13 +282,12 @@ has occurred when a result is returned.
 
 This sequence is non-binding:
 
-1. Phase 26 Step 3 option A: add a minimal no-op evaluator contract using the
-   existing `SignalEvaluationResult` fields.
-2. Phase 26 Step 3 option B: if later review finds ambiguity not visible in
-   this readiness review, harden `SignalEvaluationResult` before adding an
-   evaluator.
-3. A later phase: harden no-op evaluator traceability after any minimal
-   evaluator contract exists.
+1. A later phase: harden no-op evaluator traceability if additional edge cases
+   are identified.
+2. A later phase: design any real deterministic evaluator separately before it
+   computes signal values.
+3. A later phase: design any signal-evaluation-to-risk bridge separately after
+   evaluator output semantics remain stable.
 
 Any future implementation phase must remain contract-first, test-first,
 offline-safe, credential-free, broker-isolated, advisory, pre-risk, and outside
@@ -277,11 +295,9 @@ the LLM trading hot path.
 
 ## 13. Explicitly Out Of Scope
 
-This phase does not add:
+Beyond the minimal no-op metadata-construction contract, this phase does not
+add:
 
-- production code
-- signal evaluator implementation
-- no-op evaluator class
 - evaluator protocol
 - result contract changes
 - no-op marker

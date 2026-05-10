@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `605` tests are passing, with `4` skipped paper-integration tests by default.
+- `627` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -110,6 +110,12 @@ state.
   future minimal no-op evaluator; no no-op marker, result kind, evaluator kind,
   evaluator implementation, production behavior, or trading-path behavior was
   added.
+- Phase 26 Step 3 adds the minimal frozen, slotted `NoOpSignalEvaluator`
+  contract as the first evaluator-shaped code. It only constructs advisory
+  `SignalEvaluationResult` metadata from explicit deterministic inputs and
+  adds no real signal computation, scoring, ranking, direction, actionability,
+  risk approval, execution behavior, broker behavior, runtime behavior,
+  persistence, ML, or LLM trading-path logic.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -879,6 +885,49 @@ python -m pytest
 605 passed, 4 skipped
 ```
 
+Phase 26 Step 3 adds only the minimal no-op evaluator contract in
+`src/algotrader/signals/noop_signal_evaluator.py`.
+`NoOpSignalEvaluator` is a frozen, slotted evaluator-shaped object with one
+method:
+
+```text
+evaluate(definition, input_snapshot, *, as_of, evaluated_at)
+    -> SignalEvaluationResult
+```
+
+The evaluator accepts a `ValidatedSignalDefinition`, a
+`SignalEvaluationInputSnapshot`, and explicit UTC-aware `as_of` and
+`evaluated_at` timestamps. It validates timestamps with the deterministic time
+contract, rejects naive or non-UTC timestamps, rejects `evaluated_at < as_of`,
+rejects input snapshots whose `as_of` is after the result `as_of`, and returns
+advisory `SignalEvaluationResult` metadata using existing fields only.
+
+The no-op evaluator preserves signal definition id/version, source artifact
+id/version, input snapshot id through `input_fingerprint`, and timestamp object
+identity in the returned result. It uses no `result_kind`, `evaluator_kind`,
+`is_noop`, or no-op marker field. It does not score, rank, infer direction,
+set confidence or probability, expose actionability, recommend trades, approve
+risk, create execution intents, mutate execution plans, access live data, route
+to brokers, submit orders, use scheduler/runtime/persistence behavior, run ML,
+or call LLMs.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_noop_signal_evaluator.py
+22 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+627 passed, 4 skipped
+```
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -968,8 +1017,7 @@ Ledger modes:
 - Signal evaluation outputs as risk approvals
 - Signal evaluation outputs as execution intents or execution plans
 - SignalEvaluationResult behavior beyond minimal advisory metadata
-- Signal evaluator implementation
-- No-op signal evaluator implementation
+- Signal evaluator implementation beyond the minimal no-op metadata boundary
 - Evaluator protocol
 - No-op marker on SignalEvaluationResult
 - Signal evaluator registry
@@ -999,9 +1047,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with explicit
-input snapshot and fingerprinting contracts plus tests before evaluator or
-Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with no-op
+traceability hardening and explicit input snapshot/fingerprinting contracts
+before real evaluator behavior or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

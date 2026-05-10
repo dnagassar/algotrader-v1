@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 605-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 627-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -156,10 +156,16 @@ changes, no no-op marker, no evaluator implementation, no runtime behavior, and
 no trading-path behavior. Focused tests now pin that no score, direction,
 confidence, actionability, result-kind, evaluator-kind, risk, execution,
 broker, runtime, persistence, ML, or LLM fields are present.
+Phase 26 Step 3 adds the minimal frozen, slotted `NoOpSignalEvaluator`
+contract as the first evaluator-shaped code. It only constructs advisory
+`SignalEvaluationResult` metadata from explicit deterministic inputs and adds
+no real signal computation, feature computation, scoring, ranking, direction,
+actionability, risk approval, execution behavior, broker behavior, runtime
+behavior, persistence, live data access, ML, or LLM trading-path logic.
 The latest full-suite result is:
 
 ```text
-605 passed, 4 skipped
+627 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -330,6 +336,15 @@ explicit UTC-aware `evaluated_at`, `output_value`, `reason_code`,
 `diagnostics`, `assumptions`, and `limitations` without adding score,
 direction, confidence, actionability, `should_trade`, no-op marker,
 `result_kind`, or `evaluator_kind` fields.
+Phase 26 Step 3 adds `NoOpSignalEvaluator` in the signal layer. It proves the
+explicit deterministic input/output boundary only. It accepts a
+`ValidatedSignalDefinition`, a `SignalEvaluationInputSnapshot`, explicit
+UTC-aware `as_of`, and explicit UTC-aware `evaluated_at`, then returns advisory
+`SignalEvaluationResult` metadata. It does not compute signals, inspect source
+payloads, access live data, score, rank, infer direction, recommend trades,
+approve risk, create execution intents, mutate execution plans, route to
+brokers, submit orders, use scheduler/runtime/persistence behavior, run ML, or
+call LLMs.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2494,6 +2509,86 @@ python -m pytest
 605 passed, 4 skipped
 ```
 
+## Phase 26 Step 3 Minimal No-Op Signal Evaluator Contract
+
+Phase 26 Step 3 adds the first evaluator-shaped production code in:
+
+```text
+src/algotrader/signals/noop_signal_evaluator.py
+```
+
+The new contract is a frozen, slotted class:
+
+```text
+NoOpSignalEvaluator.evaluate(
+    definition,
+    input_snapshot,
+    *,
+    as_of,
+    evaluated_at,
+) -> SignalEvaluationResult
+```
+
+`NoOpSignalEvaluator` accepts a `ValidatedSignalDefinition`, a
+`SignalEvaluationInputSnapshot`, and explicit UTC-aware `as_of` and
+`evaluated_at` timestamps. It validates timestamps through the deterministic
+time contract, rejects naive and non-UTC datetimes, rejects
+`evaluated_at < as_of`, rejects an input snapshot whose `as_of` is after the
+result `as_of`, and returns an advisory `SignalEvaluationResult`.
+
+The returned result preserves signal definition id/version, source artifact
+id/version, input snapshot id through `input_fingerprint`, and accepted
+timestamp object identity. Repeated calls with identical inputs produce equal
+results. The evaluator does not mutate the signal definition or input snapshot.
+
+The no-op output uses existing `SignalEvaluationResult` fields only. It uses
+`NOOP_SIGNAL_EVALUATOR` as a non-actionable reason code and
+`NO_SIGNAL_COMPUTED` as a non-numeric advisory output value. Diagnostics,
+assumptions, and limitations state that no signal computation occurred and the
+result is not a signal firing, recommendation, risk approval, or
+execution-ready output.
+
+This phase does not add `result_kind`, `evaluator_kind`, `is_noop`, or any
+no-op marker field. It does not add real signal computation, feature
+computation, strategy logic, scoring, ranking, confidence/probability, signal
+direction, actionability flags, `should_trade`, signal-to-risk conversion,
+risk approval, execution intent creation, execution-plan mutation, portfolio
+mutation, broker or Alpaca behavior, order submission, scheduler/runtime
+behavior, persistence writes, live data ingestion, network calls, ML training
+or inference, or LLM trading-path logic.
+
+Focused tests live in:
+
+```text
+tests/unit/test_noop_signal_evaluator.py
+```
+
+They prove existence, frozen/slotted shape, valid result construction, advisory
+metadata wording, identity/version/input/timestamp preservation, UTC-aware
+timestamp validation, `evaluated_at >= as_of`, input snapshot as-of guard,
+deterministic repeated calls, input non-mutation, absence of score/confidence/
+probability/direction/rank/priority/actionability/risk/execution/order/broker/
+runtime/persistence/ML/LLM fields, and absence of forbidden imports or hidden
+I/O, network, wall-clock, random, environment, broker, Alpaca, database,
+persistence, ML, or LLM calls.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_noop_signal_evaluator.py
+22 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+627 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2539,8 +2634,7 @@ python -m pytest
 - signal evaluation outputs as orders
 - signal evaluation outputs as risk approvals
 - signal evaluation outputs as execution intents or execution plans
-- signal evaluator implementation
-- no-op signal evaluator implementation
+- signal evaluator implementation beyond the minimal no-op metadata boundary
 - evaluator protocol
 - `SignalEvaluationResult` behavior beyond minimal advisory metadata
 - no-op marker on `SignalEvaluationResult`
@@ -2569,8 +2663,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit signal-evaluation input snapshot and fingerprinting contracts before
-  any evaluator implementation
+- explicit no-op evaluator traceability hardening plus input snapshot and
+  fingerprinting contracts before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
