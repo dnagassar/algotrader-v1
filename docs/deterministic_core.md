@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `733` tests are passing, with `4` skipped paper-integration tests by default.
+- `778` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -167,6 +167,12 @@ state.
   docs only. No production behavior was added; completeness remains name-only,
   metadata-only, deterministic, non-mutating, separate from bundle
   construction, and isolated from trading-path behavior.
+- Phase 29 Step 1 defines the first real evaluator design gate as a
+  documentation-only boundary. No real evaluator exists yet, real signal
+  computation remains forbidden until an evaluator-specific design satisfies
+  the gate, the current explicit-input stack does not make outputs actionable,
+  evaluator output remains advisory and pre-risk, and LLMs remain outside the
+  trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1124,6 +1130,15 @@ and no value, source id, observed timestamp, lookahead, signal, feature, score,
 rank, direction, actionability, risk, execution, broker, runtime, persistence,
 ML, or LLM behavior.
 
+Phase 29 Step 1 defines the first real evaluator design gate in
+[`docs/design/phase29_first_real_evaluator_design_gate.md`](design/phase29_first_real_evaluator_design_gate.md).
+No real evaluator exists yet. The current input stack supports explicit
+snapshots, observed values, bundles, and name-only completeness validation, but
+it does not make any output actionable. Real signal computation remains
+forbidden until a future evaluator-specific design satisfies the gate. Any
+future evaluator output remains advisory and pre-risk, and LLMs remain outside
+the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1227,6 +1242,8 @@ Ledger modes:
 - Signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - Real evaluator consumption of SignalInputBundle
+- First real evaluator candidate selection or implementation
+- Evaluator-specific design beyond the Phase 29 Step 1 gate
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1252,9 +1269,10 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with signal input
-bundle completeness validation before real evaluator behavior or Signal -> Risk
-wiring.
+runtime wiring. Future signal-evaluator work should continue with
+documentation-only first real evaluator candidate selection and
+evaluator-specific contract design before any real evaluator behavior or Signal
+-> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

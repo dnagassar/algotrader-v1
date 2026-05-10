@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 733-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 778-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -218,6 +218,11 @@ documentation only. No production source or runtime behavior changed.
 Completeness validation remains name-only, metadata-only, deterministic,
 non-mutating, separate from `SignalInputBundle` construction, and isolated from
 trading-path behavior.
+Phase 29 Step 1 is documentation-only. It defines the first real evaluator
+design gate and states that no real evaluator or signal computation may be
+implemented until a future evaluator-specific design explicitly satisfies the
+gate. No production code, runtime behavior, real evaluator, signal
+computation, or trading-path behavior was added.
 The latest full-suite result is:
 
 ```text
@@ -450,6 +455,14 @@ required-name presence, not observed values, source ids, or timestamps; extra
 inputs remain reported but non-blocking; snapshot id equality and `as_of`
 equality are still not required; and lookahead validation remains outside the
 completeness validator.
+
+Phase 29 Step 1 defines the first real evaluator design gate. The gate requires
+a future evaluator-specific design to identify the validated signal definition,
+supporting research artifact, explicit inputs, completeness policy, timestamp
+compatibility, advisory output semantics, assumptions, limitations, and
+deterministic/no-lookahead/side-effect tests before implementation. No real
+evaluator, signal computation, runtime behavior, or trading-path behavior was
+added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3307,6 +3320,53 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 29 Step 1 First Real Evaluator Design Gate
+
+Phase 29 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase29_first_real_evaluator_design_gate.md
+```
+
+The new design gate defines what must be true before the first real
+deterministic signal evaluator may be implemented. The pre-evaluator input
+stack is now available, but real signal computation remains forbidden until a
+future evaluator-specific design satisfies the gate.
+
+The gate requires a future design to identify the
+`ValidatedSignalDefinition`, supporting `ValidatedResearchArtifact`, required
+snapshot input names, expected `SignalInputValue` names and value types,
+completeness policy, expected `as_of` behavior, expected `evaluated_at`
+behavior, advisory output semantics, assumptions, limitations, and required
+deterministic, no-lookahead, side-effect, and dependency tests.
+
+The gate preserves open completeness questions for the evaluator-specific
+design: whether callers pass a precomputed completeness result, whether the
+evaluator validates completeness internally, whether missing inputs raise or
+produce an advisory failure result, whether extras are ignored or rejected, and
+whether snapshot id or `as_of` equality is required.
+
+A future real evaluator must use explicit inputs only. It must not fetch live
+data, query a feature store, call a broker, read runtime state, infer missing
+inputs, call wall-clock APIs internally, mutate input contracts, write files or
+persistence, access network/socket APIs, import broker/Alpaca, runtime,
+scheduler, risk, execution, ML, or LLM modules, or produce forbidden output
+fields.
+
+This phase does not select or implement a first real evaluator. It adds no
+production code, tests, evaluator implementation, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation, broker or
+Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
+live data ingestion, ML, or LLM trading-path behavior.
+
+The latest full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3368,6 +3428,8 @@ python -m pytest
 - signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`
+- first real evaluator candidate selection or implementation
+- evaluator-specific design beyond the Phase 29 Step 1 gate
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3391,7 +3453,9 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- signal input bundle completeness validation before any real evaluator behavior
+- first real evaluator candidate selection as a documentation-only phase before
+  any real evaluator behavior
+- evaluator-specific contract design before any real evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
