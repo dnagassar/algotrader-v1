@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `627` tests are passing, with `4` skipped paper-integration tests by default.
+- `634` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -120,6 +120,10 @@ state.
   only. No production behavior was added; the evaluator remains deterministic,
   advisory-only, offline-safe, broker-isolated, and traceable without implying
   actionability.
+- Phase 27 Step 1 documents the real signal evaluator admission boundary only.
+  No real evaluator exists yet, and actual signal computation remains forbidden
+  until explicit deterministic input-value contracts and admission criteria are
+  implemented.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -955,6 +959,20 @@ live data, route to brokers or Alpaca, submit orders, use scheduler/runtime or
 persistence behavior, run ML, or use LLMs in the trading path. Normal pytest
 remains offline, credential-free, and safe.
 
+Phase 27 Step 1 documents the admission criteria for any future real
+deterministic signal evaluator in
+[`docs/design/phase27_real_signal_evaluator_admission_boundary.md`](design/phase27_real_signal_evaluator_admission_boundary.md).
+No real evaluator exists yet. Actual signal computation remains forbidden until
+the project first designs and implements an explicit deterministic input-value
+contract, proves observation timestamps are available at or before `as_of`, and
+meets the documented admission criteria for deterministic behavior, lookahead
+prevention, no side effects, and no trading-path dependencies.
+
+Even after admission, evaluator output remains advisory and pre-risk. It is not
+a recommendation, not risk approval, not an execution intent, not an order
+request, not portfolio-aware, not broker-aware, and not actionability by itself.
+LLMs remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1045,10 +1063,12 @@ Ledger modes:
 - Signal evaluation outputs as execution intents or execution plans
 - SignalEvaluationResult behavior beyond minimal advisory metadata
 - Signal evaluator implementation beyond the minimal no-op metadata boundary
+- Real signal evaluator implementation
 - Evaluator protocol
 - No-op marker on SignalEvaluationResult
 - Signal evaluator registry
 - Signal computation from validated signal definitions
+- Deterministic signal input value contract
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1074,9 +1094,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with no-op
-traceability hardening and explicit input snapshot/fingerprinting contracts
-before real evaluator behavior or Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with explicit
+deterministic input-value boundary design and input timestamp/lookahead
+contracts before real evaluator behavior or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

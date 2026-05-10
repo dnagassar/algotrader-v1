@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 627-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 634-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -167,6 +167,11 @@ documentation only. It adds no production behavior. The evaluator remains
 deterministic and advisory-only, proves the evaluator input/output boundary
 without real signal computation, and preserves traceability without
 actionability.
+Phase 27 Step 1 is documentation-only. It records admission criteria for any
+future real deterministic signal evaluator and states that no real evaluator or
+signal computation may be added until an explicit deterministic input-value
+contract, timestamp/lookahead rules, advisory output semantics, and
+side-effect/dependency guardrails are documented and implemented.
 The latest full-suite result is:
 
 ```text
@@ -355,6 +360,11 @@ production source or behavior. The no-op evaluator remains deterministic,
 offline-safe, credential-free, advisory-only, broker-isolated, and traceable
 without implying a signal fired, a recommendation exists, risk was approved, or
 execution readiness exists.
+Phase 27 Step 1 adds the real evaluator admission boundary as documentation
+only. No production code, tests, runtime behavior, real evaluator, or signal
+computation was added. Real evaluator work remains blocked until deterministic
+input values, observation timestamps, no-lookahead proofs, advisory output
+meaning, side-effect tests, and trading-path dependency tests are explicit.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2645,6 +2655,56 @@ python -m pytest
 634 passed, 4 skipped
 ```
 
+## Phase 27 Step 1 Real Signal Evaluator Admission Boundary Design
+
+Phase 27 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase27_real_signal_evaluator_admission_boundary.md
+```
+
+The new design defines the admission boundary for any future real deterministic
+signal evaluator. The system has a no-op evaluator seam, but real signal
+computation remains forbidden until explicit admission criteria are met.
+
+The boundary records why real evaluator work is risky: it is the first place
+the system could accidentally introduce strategy logic, feature computation,
+predictive behavior, ranking, direction, actionability, risk-like semantics,
+lookahead bias, or hidden data access. The document requires future real
+evaluator work to name the validated signal definition, supporting validated
+research artifact, exact deterministic inputs, observation timestamps,
+availability proof at or before `as_of`, advisory output meaning, assumptions,
+limitations, and tests for determinism, lookahead prevention, no side effects,
+and no trading-path dependencies.
+
+The design also records the important current limitation:
+`SignalEvaluationInputSnapshot` provides metadata/reference traceability only
+through `snapshot_id`, `as_of`, `required_input_names`, and `source_ids`. It
+does not carry actual feature values or market observations. A future real
+evaluator likely needs a separate deterministic input-value contract before it
+can compute anything, but that contract is not designed or implemented here.
+
+Even a future real evaluator output remains advisory and pre-risk. It is not a
+recommendation, not trade approval, not an execution intent, not an order
+request, not portfolio-aware, not broker-aware, and not actionability by
+itself. Score, direction, or confidence would require a separate design phase
+and must remain advisory only if ever admitted.
+
+This phase adds no production code, tests, runtime behavior, real evaluator,
+signal computation, feature computation, strategy logic, ranking, priority,
+signal-to-risk conversion, risk approval, execution intent creation,
+execution-plan mutation, portfolio mutation, broker or Alpaca behavior, order
+submission, scheduler/runtime behavior, persistence, live data ingestion, ML
+training or inference, or LLM trading-path logic. Normal pytest remains
+offline, credential-free, and safe.
+
+Verification after Phase 27 Step 1:
+
+```text
+python -m pytest
+634 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2691,12 +2751,14 @@ python -m pytest
 - signal evaluation outputs as risk approvals
 - signal evaluation outputs as execution intents or execution plans
 - signal evaluator implementation beyond the minimal no-op metadata boundary
+- real signal evaluator implementation
 - evaluator protocol
 - `SignalEvaluationResult` behavior beyond minimal advisory metadata
 - no-op marker on `SignalEvaluationResult`
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation
+- deterministic signal input value contract
 - feature computation
 - strategy engine
 - signal-evaluation-to-risk bridge
@@ -2719,8 +2781,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit no-op evaluator traceability hardening plus input snapshot and
-  fingerprinting contracts before any real evaluator behavior
+- explicit deterministic signal input value boundary design plus observation
+  timestamp/lookahead contracts before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
