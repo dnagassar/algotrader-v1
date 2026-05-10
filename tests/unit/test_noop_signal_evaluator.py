@@ -1,5 +1,6 @@
 import ast
-from dataclasses import FrozenInstanceError
+import random
+from dataclasses import FrozenInstanceError, fields, is_dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -19,38 +20,66 @@ EVALUATED_AT = datetime(2026, 5, 9, 14, 31, tzinfo=timezone.utc)
 EASTERN_TIME = datetime(2026, 5, 9, 10, 30, tzinfo=timezone(timedelta(hours=-4)))
 
 _FORBIDDEN_RESULT_FIELDS = (
-    "score",
-    "confidence",
-    "probability",
-    "direction",
-    "signal_direction",
-    "rank",
-    "priority",
+    "account",
     "actionable",
-    "should_trade",
-    "result_kind",
+    "agent",
+    "alpaca",
+    "approved",
+    "broker",
+    "buy",
+    "buying_power",
+    "cache",
+    "cash",
+    "confidence",
+    "database",
+    "direction",
     "evaluator_kind",
-    "is_noop",
-    "no_op",
-    "noop",
-    "no_op_marker",
-    "risk",
-    "risk_approved",
+    "execution",
     "execution_intent",
     "execution_plan",
-    "order",
-    "broker",
-    "alpaca",
-    "portfolio",
-    "runtime",
-    "scheduler",
-    "persistence",
-    "ml_model",
+    "fill",
+    "fire",
+    "fired",
+    "is_noop",
     "llm",
     "llm_decision",
+    "llm_output",
+    "long",
+    "ml",
+    "ml_model",
+    "model",
+    "no_op",
+    "no_op_marker",
+    "noop",
+    "order",
+    "persistence",
+    "portfolio",
+    "position",
+    "prediction",
+    "priority",
+    "probability",
+    "prompt",
+    "rank",
+    "rejected",
+    "result_kind",
+    "risk",
+    "risk_approved",
+    "runtime",
+    "scheduler",
+    "score",
+    "sell",
+    "short",
+    "should_trade",
+    "signal_direction",
+    "side",
 )
 
 _FORBIDDEN_IMPORT_PREFIXES = (
+    "aiohttp",
+    "algotrader.agent",
+    "algotrader.agents",
+    "algotrader.broker",
+    "algotrader.brokers",
     "algotrader.execution",
     "algotrader.orchestration",
     "algotrader.portfolio",
@@ -66,56 +95,107 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "alpaca_trade_api",
     "anthropic",
     "database",
+    "diskcache",
     "duckdb",
     "httpx",
+    "joblib",
     "langchain",
     "langgraph",
+    "lightgbm",
     "llm",
+    "mlflow",
+    "numpy",
+    "os",
     "openai",
+    "pandas",
+    "random",
+    "redis",
     "requests",
+    "scipy",
+    "shutil",
     "socket",
+    "sklearn",
+    "sqlite3",
+    "sqlalchemy",
     "sqlmodel",
+    "statsmodels",
+    "tensorflow",
+    "time",
+    "torch",
+    "transformers",
     "urllib",
+    "uuid",
+    "websocket",
+    "websockets",
+    "xgboost",
 )
 
 _FORBIDDEN_REFERENCE_NAMES = {
     "Account",
     "AlpacaPaperBroker",
+    "Agent",
+    "Broker",
     "BrokerOrderResult",
+    "Execution",
     "ExecutionIntent",
     "ExecutionPlan",
     "LocalBroker",
+    "Model",
+    "Prediction",
     "PlanningPolicyResult",
     "PortfolioState",
     "ProposedOrder",
+    "Prompt",
+    "Risk",
     "RiskEngine",
     "RiskVerdict",
     "SignalRiskEvaluation",
     "account",
+    "account_id",
     "actionable",
+    "agent",
     "alpaca",
+    "alpaca_trade_api",
+    "approved",
     "broker",
     "buying_power",
+    "buy",
+    "cache",
     "cash",
     "client_order_id",
     "confidence",
+    "database",
     "direction",
     "evaluator_kind",
+    "execution",
     "execution_intent",
     "execution_plan",
     "fill",
+    "fire",
+    "fired",
+    "long",
     "llm",
+    "ml",
     "ml_model",
+    "model",
     "order",
+    "output",
     "portfolio",
+    "position",
+    "prediction",
     "priority",
     "probability",
+    "prompt",
     "rank",
+    "rejected",
     "result_kind",
+    "risk",
     "risk_approved",
     "runtime",
     "scheduler",
     "score",
+    "sell",
+    "short",
     "should_trade",
     "signal_direction",
     "side",
@@ -125,28 +205,67 @@ _FORBIDDEN_REFERENCE_NAMES = {
 _FORBIDDEN_CALL_NAMES = {
     "connect",
     "create_order",
+    "date.today",
+    "datetime.date.today",
+    "datetime.datetime.now",
+    "datetime.datetime.utcnow",
     "datetime.now",
     "datetime.utcnow",
     "environ.get",
+    "execute",
+    "executemany",
+    "fit",
     "get",
     "getenv",
+    "httpx.get",
+    "httpx.post",
+    "mkdir",
     "open",
     "os.environ.get",
     "os.getenv",
+    "Path.write_bytes",
+    "Path.write_text",
+    "persist",
     "post",
+    "predict",
+    "predict_proba",
     "random",
+    "random.choice",
+    "random.choices",
+    "random.randint",
     "random.random",
+    "read_bytes",
     "read",
     "read_csv",
+    "read_text",
+    "remove",
+    "rename",
+    "replace",
     "request",
+    "requests.get",
+    "requests.post",
+    "rmdir",
     "schedule",
+    "secrets.randbelow",
+    "secrets.token_hex",
+    "shutil.copy",
+    "shutil.copyfile",
+    "socket.socket",
     "submit_order",
     "time.monotonic",
+    "time.perf_counter",
+    "time.sleep",
     "time.time",
     "to_sql",
+    "unlink",
+    "urlopen",
+    "urllib.request.urlopen",
+    "uuid.uuid1",
     "uuid.uuid4",
     "uuid4",
     "write",
+    "write_bytes",
+    "write_text",
 }
 
 
@@ -277,6 +396,53 @@ def test_returned_result_preserves_evaluated_at_identity() -> None:
     assert result.evaluated_at is evaluated_at
 
 
+def test_returned_result_preserves_complete_traceability_without_actionability() -> None:
+    definition = signal_definition(
+        signal_id="signal.noop.traceability.001",
+        version="2026.05.09+trace",
+        source_artifact_id="validated-artifact.traceability.001",
+        source_artifact_version="2026.05.09+artifact",
+    )
+    as_of = datetime(2026, 5, 9, 16, 0, tzinfo=timezone.utc)
+    evaluated_at = datetime(2026, 5, 9, 16, 2, tzinfo=timezone.utc)
+    snapshot = input_snapshot(
+        snapshot_id="snapshot:traceability:001",
+        as_of=as_of,
+    )
+
+    result = evaluate_noop(
+        definition=definition,
+        snapshot=snapshot,
+        as_of=as_of,
+        evaluated_at=evaluated_at,
+    )
+
+    assert result.signal_id == definition.signal_id
+    assert result.signal_version == definition.version
+    assert result.source_artifact_id == definition.source_artifact_id
+    assert result.source_artifact_version == definition.source_artifact_version
+    assert result.input_fingerprint == snapshot.snapshot_id
+    assert result.as_of is as_of
+    assert result.evaluated_at is evaluated_at
+    assert result.output_value == "NO_SIGNAL_COMPUTED"
+    assert result.reason_code == "NOOP_SIGNAL_EVALUATOR"
+    assert result.diagnostics == (
+        "no signal computation performed",
+        "no feature values inspected",
+        "no actionability implied",
+    )
+    assert result.assumptions == (
+        "definition and input snapshot were supplied explicitly",
+        "result is advisory metadata only",
+    )
+    assert result.limitations == (
+        "not a signal firing",
+        "not a recommendation",
+        "not risk approval",
+        "not execution-ready",
+    )
+
+
 def test_naive_as_of_is_rejected() -> None:
     with pytest.raises(ValidationError, match="as_of"):
         evaluate_noop(as_of=datetime(2026, 5, 9, 14, 30))
@@ -314,6 +480,37 @@ def test_input_snapshot_after_as_of_is_rejected() -> None:
         evaluate_noop(snapshot=snapshot, as_of=as_of, evaluated_at=evaluated_at)
 
 
+def test_input_snapshot_at_result_as_of_is_accepted() -> None:
+    as_of = datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc)
+    evaluated_at = datetime(2026, 5, 9, 15, 2, tzinfo=timezone.utc)
+    snapshot = input_snapshot(
+        snapshot_id="snapshot:exact-as-of",
+        as_of=as_of,
+    )
+
+    result = evaluate_noop(snapshot=snapshot, as_of=as_of, evaluated_at=evaluated_at)
+
+    assert result.input_fingerprint == "snapshot:exact-as-of"
+    assert result.as_of is as_of
+    assert result.evaluated_at is evaluated_at
+
+
+def test_input_snapshot_before_result_as_of_is_accepted() -> None:
+    snapshot_as_of = datetime(2026, 5, 9, 14, 55, tzinfo=timezone.utc)
+    as_of = datetime(2026, 5, 9, 15, 0, tzinfo=timezone.utc)
+    evaluated_at = datetime(2026, 5, 9, 15, 2, tzinfo=timezone.utc)
+    snapshot = input_snapshot(
+        snapshot_id="snapshot:before-as-of",
+        as_of=snapshot_as_of,
+    )
+
+    result = evaluate_noop(snapshot=snapshot, as_of=as_of, evaluated_at=evaluated_at)
+
+    assert result.input_fingerprint == "snapshot:before-as-of"
+    assert result.as_of is as_of
+    assert result.evaluated_at is evaluated_at
+
+
 def test_repeated_calls_with_identical_inputs_produce_equal_results() -> None:
     evaluator = NoOpSignalEvaluator()
     definition = signal_definition()
@@ -325,6 +522,100 @@ def test_repeated_calls_with_identical_inputs_produce_equal_results() -> None:
         as_of=AS_OF,
         evaluated_at=EVALUATED_AT,
     )
+    second = evaluator.evaluate(
+        definition,
+        snapshot,
+        as_of=AS_OF,
+        evaluated_at=EVALUATED_AT,
+    )
+
+    assert first == second
+
+
+def test_repeated_calls_preserve_deterministic_advisory_tuple_ordering() -> None:
+    evaluator = NoOpSignalEvaluator()
+    definition = signal_definition()
+    snapshot = input_snapshot()
+
+    results = tuple(
+        evaluator.evaluate(
+            definition,
+            snapshot,
+            as_of=AS_OF,
+            evaluated_at=EVALUATED_AT,
+        )
+        for _ in range(3)
+    )
+
+    expected_tuple_fields = (
+        (
+            "no signal computation performed",
+            "no feature values inspected",
+            "no actionability implied",
+        ),
+        (
+            "definition and input snapshot were supplied explicitly",
+            "result is advisory metadata only",
+        ),
+        (
+            "not a signal firing",
+            "not a recommendation",
+            "not risk approval",
+            "not execution-ready",
+        ),
+    )
+    observed_tuple_fields = tuple(
+        (result.diagnostics, result.assumptions, result.limitations)
+        for result in results
+    )
+
+    assert observed_tuple_fields == (expected_tuple_fields,) * 3
+
+
+def test_result_does_not_depend_on_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    evaluator = NoOpSignalEvaluator()
+    definition = signal_definition()
+    snapshot = input_snapshot()
+
+    monkeypatch.setenv("ALGO_TRADER_NOOP_EVALUATOR_MODE", "first")
+    monkeypatch.setenv("ALPACA_API_KEY", "ignored-fake-key")
+    first = evaluator.evaluate(
+        definition,
+        snapshot,
+        as_of=AS_OF,
+        evaluated_at=EVALUATED_AT,
+    )
+    monkeypatch.setenv("ALGO_TRADER_NOOP_EVALUATOR_MODE", "second")
+    monkeypatch.setenv("ALPACA_API_KEY", "different-ignored-fake-key")
+    second = evaluator.evaluate(
+        definition,
+        snapshot,
+        as_of=AS_OF,
+        evaluated_at=EVALUATED_AT,
+    )
+
+    assert first == second
+
+
+def test_result_does_not_depend_on_random_state() -> None:
+    evaluator = NoOpSignalEvaluator()
+    definition = signal_definition()
+    snapshot = input_snapshot()
+
+    random.seed(1)
+    for _ in range(5):
+        random.random()
+    first = evaluator.evaluate(
+        definition,
+        snapshot,
+        as_of=AS_OF,
+        evaluated_at=EVALUATED_AT,
+    )
+    random.seed(999)
+    for _ in range(5):
+        random.randint(0, 1_000_000)
     second = evaluator.evaluate(
         definition,
         snapshot,
@@ -357,6 +648,37 @@ def test_evaluator_does_not_mutate_input_snapshot() -> None:
     assert snapshot.source_ids == ("synthetic-bars-fixture", "synthetic-quotes-fixture")
 
 
+def test_evaluator_preserves_input_objects_and_tuple_field_identities() -> None:
+    definition = signal_definition()
+    snapshot = input_snapshot()
+    definition_id = id(definition)
+    snapshot_id = id(snapshot)
+    definition_values = _field_values(definition)
+    snapshot_values = _field_values(snapshot)
+    definition_tuple_fields = {
+        "required_inputs": definition.required_inputs,
+        "approved_for": definition.approved_for,
+        "assumptions": definition.assumptions,
+        "limitations": definition.limitations,
+    }
+    snapshot_tuple_fields = {
+        "required_input_names": snapshot.required_input_names,
+        "source_ids": snapshot.source_ids,
+    }
+
+    result = evaluate_noop(definition=definition, snapshot=snapshot)
+
+    assert id(definition) == definition_id
+    assert id(snapshot) == snapshot_id
+    assert _field_values(definition) == definition_values
+    assert _field_values(snapshot) == snapshot_values
+    for name, value in definition_tuple_fields.items():
+        assert getattr(definition, name) is value
+    for name, value in snapshot_tuple_fields.items():
+        assert getattr(snapshot, name) is value
+    assert result.input_fingerprint == snapshot.snapshot_id
+
+
 def test_evaluator_does_not_copy_input_payload_metadata_into_result() -> None:
     snapshot = input_snapshot(
         required_input_names=("payload.value.that.must.not.be.computed",),
@@ -380,9 +702,15 @@ def test_evaluator_does_not_copy_input_payload_metadata_into_result() -> None:
 
 def test_returned_result_has_no_score_confidence_direction_or_actionability_fields() -> None:
     result = evaluate_noop()
+    evaluator = NoOpSignalEvaluator()
 
-    for field_name in _FORBIDDEN_RESULT_FIELDS:
-        assert not hasattr(result, field_name)
+    result_violations = sorted(_contract_field_names(result) & set(_FORBIDDEN_RESULT_FIELDS))
+    evaluator_violations = sorted(
+        _contract_field_names(evaluator) & set(_FORBIDDEN_RESULT_FIELDS)
+    )
+
+    assert result_violations == []
+    assert evaluator_violations == []
 
 
 def test_evaluator_module_imports_no_forbidden_downstream_or_external_modules() -> None:
@@ -401,6 +729,28 @@ def test_evaluator_module_references_no_trading_path_runtime_or_external_types()
 
 def test_evaluator_module_makes_no_hidden_io_network_time_random_or_broker_calls() -> None:
     assert _call_names().isdisjoint(_FORBIDDEN_CALL_NAMES)
+
+
+def _field_values(instance: object) -> tuple[tuple[str, object], ...]:
+    return tuple((field.name, getattr(instance, field.name)) for field in fields(instance))
+
+
+def _contract_field_names(instance: object) -> set[str]:
+    cls = type(instance)
+    names: set[str] = set()
+
+    if is_dataclass(cls):
+        names.update(field.name for field in fields(cls))
+
+    names.update(getattr(cls, "__annotations__", ()))
+
+    slots = getattr(cls, "__slots__", ())
+    if isinstance(slots, str):
+        names.add(slots)
+    else:
+        names.update(slots)
+
+    return names
 
 
 def _tree() -> ast.AST:

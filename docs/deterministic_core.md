@@ -116,6 +116,10 @@ state.
   adds no real signal computation, scoring, ranking, direction, actionability,
   risk approval, execution behavior, broker behavior, runtime behavior,
   persistence, ML, or LLM trading-path logic.
+- Phase 26 Step 4 hardens `NoOpSignalEvaluator` traceability tests and docs
+  only. No production behavior was added; the evaluator remains deterministic,
+  advisory-only, offline-safe, broker-isolated, and traceable without implying
+  actionability.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -911,11 +915,11 @@ risk, create execution intents, mutate execution plans, access live data, route
 to brokers, submit orders, use scheduler/runtime/persistence behavior, run ML,
 or call LLMs.
 
-Focused validation:
+Current focused validation for the no-op evaluator boundary:
 
 ```text
 python -m pytest tests/unit/test_noop_signal_evaluator.py
-22 passed
+29 passed
 
 python -m pytest tests/unit/test_dependency_direction.py
 9 passed
@@ -925,8 +929,31 @@ The full suite is now:
 
 ```text
 python -m pytest
-627 passed, 4 skipped
+634 passed, 4 skipped
 ```
+
+Phase 26 Step 4 hardens the existing no-op evaluator contract with tests and
+documentation only. No production source changed, and no production behavior was
+added. `NoOpSignalEvaluator` remains deterministic and advisory-only: it proves
+the evaluator input/output boundary without real signal computation and
+preserves traceability without actionability.
+
+The hardened tests pin exact signal definition id/version preservation, exact
+source research artifact id/version preservation, exact input snapshot id
+preservation through `input_fingerprint`, exact `as_of` and `evaluated_at`
+object identity, exact no-op reason code, deterministic ordering for
+diagnostics/assumptions/limitations, environment-variable independence,
+random-state independence, non-mutation of input contracts and tuple fields,
+accepted and rejected timestamp/lookahead edges, advisory-only surface fields,
+trading-path isolation, and AST guardrails against hidden wall-clock, random,
+environment, network, filesystem-write, database/cache/persistence, broker,
+Alpaca, ML, LLM, agent, prompt, and output dependencies.
+
+The no-op evaluator still does not score, rank, infer direction, recommend
+trades, approve risk, create execution intents, mutate execution plans, access
+live data, route to brokers or Alpaca, submit orders, use scheduler/runtime or
+persistence behavior, run ML, or use LLMs in the trading path. Normal pytest
+remains offline, credential-free, and safe.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

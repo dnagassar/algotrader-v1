@@ -23,6 +23,16 @@ execution intents, mutate execution plans, access live data, route to brokers,
 submit orders, use scheduler/runtime/persistence behavior, run ML, or call
 LLMs.
 
+Phase 26 Step 4 hardens traceability tests and documentation only. It adds no
+production behavior and does not change the `NoOpSignalEvaluator` contract. The
+evaluator remains deterministic and advisory-only; it proves the evaluator
+input/output boundary without real signal computation, preserves traceability
+without actionability, and still does not score, rank, infer direction,
+recommend trades, approve risk, create execution intents, mutate execution
+plans, access live data, route to brokers or Alpaca, submit orders, use
+scheduler/runtime/persistence behavior, run ML, or use LLMs in the trading
+path.
+
 For this project, a signal evaluator is a narrow deterministic boundary that
 may later receive already-validated signal metadata, explicit input snapshot
 metadata, and explicit UTC-aware timestamps, then construct advisory
@@ -154,6 +164,16 @@ Phase 26 Step 3 follows that safer path. `NoOpSignalEvaluator.evaluate(...)`
 uses only existing `SignalEvaluationResult` fields and does not add
 `result_kind`, `evaluator_kind`, `is_noop`, or any no-op marker field.
 
+Phase 26 Step 4 strengthens tests around that path. The tests now pin exact
+signal definition id/version, exact source artifact id/version, exact input
+snapshot id through `input_fingerprint`, exact `as_of` and `evaluated_at`
+object identity, exact no-op reason code, deterministic advisory tuple ordering,
+environment-variable independence, random-state independence, non-mutation of
+input contracts, timestamp/lookahead acceptance and rejection edges, forbidden
+actionability surface, trading-path isolation, and hidden side-effect
+guardrails. These are traceability guarantees only; they do not make the result
+actionable.
+
 ## 6. Timestamp And Lookahead Invariants
 
 `as_of` is the logical time the result describes. `evaluated_at` is the
@@ -282,8 +302,8 @@ has occurred when a result is returned.
 
 This sequence is non-binding:
 
-1. A later phase: harden no-op evaluator traceability if additional edge cases
-   are identified.
+1. A later phase: harden explicit input snapshot or fingerprinting contracts if
+   additional edge cases are identified.
 2. A later phase: design any real deterministic evaluator separately before it
    computes signal values.
 3. A later phase: design any signal-evaluation-to-risk bridge separately after

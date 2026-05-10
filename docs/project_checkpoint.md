@@ -162,10 +162,15 @@ contract as the first evaluator-shaped code. It only constructs advisory
 no real signal computation, feature computation, scoring, ranking, direction,
 actionability, risk approval, execution behavior, broker behavior, runtime
 behavior, persistence, live data access, ML, or LLM trading-path logic.
+Phase 26 Step 4 hardens `NoOpSignalEvaluator` traceability with tests and
+documentation only. It adds no production behavior. The evaluator remains
+deterministic and advisory-only, proves the evaluator input/output boundary
+without real signal computation, and preserves traceability without
+actionability.
 The latest full-suite result is:
 
 ```text
-627 passed, 4 skipped
+634 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -345,6 +350,11 @@ payloads, access live data, score, rank, infer direction, recommend trades,
 approve risk, create execution intents, mutate execution plans, route to
 brokers, submit orders, use scheduler/runtime/persistence behavior, run ML, or
 call LLMs.
+Phase 26 Step 4 hardens that boundary with tests/docs only. It adds no
+production source or behavior. The no-op evaluator remains deterministic,
+offline-safe, credential-free, advisory-only, broker-isolated, and traceable
+without implying a signal fired, a recommendation exists, risk was approved, or
+execution readiness exists.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2572,7 +2582,7 @@ runtime/persistence/ML/LLM fields, and absence of forbidden imports or hidden
 I/O, network, wall-clock, random, environment, broker, Alpaca, database,
 persistence, ML, or LLM calls.
 
-Focused validation:
+Phase 26 Step 3 focused validation at the time:
 
 ```text
 python -m pytest tests/unit/test_noop_signal_evaluator.py
@@ -2582,11 +2592,57 @@ python -m pytest tests/unit/test_dependency_direction.py
 9 passed
 ```
 
-The full suite is now:
+At the end of Step 3, the full suite was:
 
 ```text
 python -m pytest
 627 passed, 4 skipped
+```
+
+## Phase 26 Step 4 No-Op Signal Evaluator Traceability Hardening
+
+Phase 26 Step 4 is traceability hardening only. It strengthens
+`tests/unit/test_noop_signal_evaluator.py` and updates documentation. No
+production source code or production behavior was added.
+
+`NoOpSignalEvaluator` remains deterministic and advisory-only. It proves the
+evaluator input/output boundary without real signal computation and preserves
+traceability without actionability. The hardened tests prove exact signal
+definition id/version preservation, exact source validated research artifact
+id/version preservation, exact input snapshot id preservation through
+`input_fingerprint`, exact `as_of` and `evaluated_at` object identity, exact
+`NOOP_SIGNAL_EVALUATOR` reason-code preservation, and deterministic ordering of
+diagnostics, assumptions, and limitations.
+
+The tests also harden determinism and side-effect boundaries: repeated calls
+with identical inputs produce equal results, advisory tuple ordering is stable,
+results do not depend on wall-clock APIs, environment variables, or random
+state, and input definitions, snapshots, and tuple fields are not mutated.
+Timestamp/lookahead coverage now explicitly accepts input snapshots at or
+before the result `as_of` and rejects snapshots after the result `as_of`.
+
+The no-op evaluator still does not score, rank, infer direction, set
+confidence/probability, recommend trades, expose actionability, approve risk,
+create execution intents, mutate execution plans, access live data, route to
+brokers or Alpaca, submit orders, use scheduler/runtime/persistence behavior,
+run ML, or use LLMs in the trading path. Normal pytest remains offline,
+credential-free, and safe.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_noop_signal_evaluator.py
+29 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+634 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
