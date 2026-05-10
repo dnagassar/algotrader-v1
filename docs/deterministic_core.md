@@ -197,6 +197,10 @@ state.
   No real evaluator exists yet, real signal computation remains forbidden
   unless explicitly scoped in a later implementation phase, evaluator output
   remains advisory and pre-risk, and LLMs remain outside the trading hot path.
+- Phase 30 Step 1 defines the research support required before a real
+  threshold-style evaluator may be implemented. No real evaluator exists yet,
+  real signal computation remains forbidden, evaluator output remains advisory
+  and pre-risk, and LLMs remain outside the trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1207,6 +1211,15 @@ remains forbidden unless explicitly scoped in a later implementation phase.
 Evaluator output remains advisory and pre-risk, and LLMs remain outside the
 trading hot path.
 
+Phase 30 Step 1 defines the threshold evaluator research-support boundary in
+[`docs/design/phase30_threshold_evaluator_research_support_boundary.md`](design/phase30_threshold_evaluator_research_support_boundary.md).
+It is documentation-only. It records the validated research artifact,
+validated signal definition, threshold value/source evidence, acceptance
+criteria, non-actionability rule, and future test implications required before
+a real threshold-style evaluator may be implemented. No real evaluator exists
+yet, real signal computation remains forbidden, evaluator output remains
+advisory and pre-risk, and LLMs remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1313,6 +1326,8 @@ Ledger modes:
 - First real evaluator implementation
 - Evaluator behavior beyond the Phase 29 Step 6 constants/output semantics
   design
+- Threshold evaluator behavior beyond the Phase 30 Step 1 research-support
+  boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1336,12 +1351,10 @@ The next phase should keep any execution-boundary work pure and synthetic unless
 explicitly approved otherwise. A safe follow-up could design one explicit
 planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
-effects, ML, and LLM trading-path logic. Research-derived behavior should begin
-with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with a docs-only
-implementation prompt/test scaffold design, and exact validated signal/research
-support remains required before any real evaluator behavior or Signal -> Risk
-wiring.
+effects, ML, and LLM trading-path logic. Future threshold-evaluator work
+should continue by reviewing exact validated research and signal-definition
+support before any implementation prompt, test scaffold, real evaluator
+behavior, or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

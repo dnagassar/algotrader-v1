@@ -13,6 +13,12 @@ This design narrows evaluator-local constants and advisory result semantics. It
 does not invent production research evidence, promote a strategy, or authorize
 production evaluator code.
 
+Phase 30 Step 1 adds the research-support boundary in
+[`docs/design/phase30_threshold_evaluator_research_support_boundary.md`](phase30_threshold_evaluator_research_support_boundary.md).
+The constants and output semantics documented here do not authorize
+implementation until exact validated research and signal-definition support
+exist.
+
 ## 2. Candidate Recap
 
 The future evaluator remains:
@@ -206,6 +212,11 @@ Implementation remains blocked until the project defines:
 
 This phase must not invent production research evidence and must not promote an
 unsupported strategy into code.
+
+Phase 30 Step 1 defines the research and signal-definition evidence that must
+exist before these constants can be used by a real threshold-style evaluator.
+Until that boundary is satisfied, the values in this document remain design
+semantics only.
 
 ## 12. Updated Readiness Decision
 

@@ -244,6 +244,11 @@ and output semantics and recommends Option B: implementation remains blocked
 until exact validated signal and research artifacts are available. No
 production code or runtime behavior changed, and no real evaluator or signal
 computation was added.
+Phase 30 Step 1 is documentation-only. It defines the threshold evaluator
+research-support boundary and records the validated research artifact,
+validated signal definition, and threshold value/source evidence required
+before implementation. No production code or runtime behavior changed, and no
+real evaluator or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -529,6 +534,15 @@ completeness validation, deterministic missing/invalid-input rejection, and
 extra-input invariance. The updated recommendation is Option B: implementation
 remains blocked because exact validated signal and research artifacts are not
 available. No production code, runtime behavior, real evaluator, signal
+computation, or trading-path behavior was added.
+
+Phase 30 Step 1 defines the research-support boundary for the remaining
+threshold evaluator blockers. It requires an exact future
+`ValidatedResearchArtifact`, exact future `ValidatedSignalDefinition`, and a
+validated threshold value/source tied to supporting evidence before any
+implementation may proceed. It keeps evaluator output advisory, pre-risk,
+non-actionable, not broker-aware, not portfolio-aware, and outside the LLM
+trading hot path. No production code, runtime behavior, real evaluator, signal
 computation, or trading-path behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
@@ -3720,6 +3734,70 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 30 Step 1 Threshold Evaluator Research Support Boundary Design
+
+Phase 30 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+```
+
+It also updates:
+
+```text
+docs/design/phase29_threshold_evaluator_constants_output_semantics.md
+docs/design/phase29_first_real_evaluator_implementation_readiness.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step defines the research-support boundary that must be satisfied before
+the future threshold-style advisory evaluator may be implemented. It states
+that input contracts, drafted constants, documented test semantics, and a
+simple evaluator shape do not authorize production evaluator code without exact
+validated research evidence and exact validated signal-definition metadata.
+
+A future implementation must identify an exact `ValidatedResearchArtifact`
+with artifact id/version, research scope, dataset or sample description, input
+definition, threshold rationale, metric definitions, assumptions, limitations,
+validation date or as-of metadata if available, evidence that the threshold is
+not arbitrary, and evidence that the output remains advisory and not
+trade-actionable by itself.
+
+A future implementation must also identify an exact
+`ValidatedSignalDefinition` with signal id/version, source artifact id/version,
+required input name `indicator_value` unless later changed, expected input type
+`Decimal`, advisory output semantics, assumptions, limitations, no broker,
+order, runtime, or portfolio semantics, and no actionability semantics.
+
+The future production threshold must be tied to validated research. It must not
+come from live runtime state, environment variables, broker/account state,
+portfolio state, LLM output, ML inference, ad hoc evaluator tuning, hidden
+files, or persistence reads. Acceptable future sources may include explicit
+evaluator config produced from a reviewed design phase, an evaluator-local
+constant tied to a validated research artifact, or a clearly isolated test-only
+placeholder such as `Decimal("1")`.
+
+Implementation remains blocked until the exact validated research artifact
+exists, the exact validated signal definition exists, the threshold value and
+source are justified by that artifact, implementation scope is explicitly
+approved, and required tests are written or ready to be written.
+
+This phase adds no production code, tests, evaluator implementation, evaluator
+protocol, signal computation, feature computation, strategy logic, score,
+direction, confidence, actionability, risk approval, execution intent
+creation, broker or Alpaca behavior, order submission, runtime/scheduler
+behavior, persistence, live data ingestion, ML, or LLM trading-path behavior.
+Normal pytest remains offline, credential-free, and safe.
+
+The latest full-suite checkpoint is preserved from Phase 29 Step 6 until tests
+are rerun:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3784,6 +3862,8 @@ python -m pytest
 - first real evaluator implementation
 - evaluator behavior beyond the Phase 29 Step 6 constants/output semantics
   design
+- threshold evaluator behavior beyond the Phase 30 Step 1 research-support
+  boundary
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3807,8 +3887,9 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- final threshold evaluator implementation prompt/test scaffold design before
-  any real evaluator implementation
+- threshold evaluator research artifact candidate review, docs-only
+- validated signal definition candidate review before any real evaluator
+  implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

@@ -19,6 +19,12 @@ That design narrows evaluator-local constants and advisory output semantics,
 but implementation is still not ready unless validated signal and research
 support are also available.
 
+Phase 30 Step 1 defines the research-support boundary for those remaining
+blockers in
+[`docs/design/phase30_threshold_evaluator_research_support_boundary.md`](phase30_threshold_evaluator_research_support_boundary.md).
+It does not authorize implementation; it clarifies the evidence and
+signal-definition metadata required before implementation can be considered.
+
 ## 2. Current Candidate Recap
 
 The selected future candidate remains:
@@ -104,6 +110,9 @@ resolve:
 - explicit tie between the validated artifacts and threshold semantics
 
 These decisions must be documented before production evaluator code is added.
+Phase 30 Step 1 narrows the research and validated signal-definition evidence
+expected for these unresolved items, but the exact artifacts and production
+threshold remain absent.
 
 ## 6. Safe Minimal Implementation Shape, If Later Allowed
 
