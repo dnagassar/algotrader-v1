@@ -152,6 +152,11 @@ state.
   only. No production behavior was added; the bundle remains an immutable
   grouping contract for explicit `SignalInputValue` objects and still does not
   validate completeness or interpret values.
+- Phase 28 Step 4 documents the future completeness validation boundary between
+  `SignalEvaluationInputSnapshot.required_input_names` and
+  `SignalInputBundle.values`. No completeness validator exists yet; the bundle
+  remains a grouping contract only, and no real evaluator or signal computation
+  exists yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1079,6 +1084,15 @@ Alpaca, submit orders, use scheduler/runtime/persistence behavior, run ML, or
 use LLMs in the trading path. Evaluator output remains advisory and pre-risk,
 and LLMs remain outside the trading hot path.
 
+Phase 28 Step 4 documents the future completeness boundary in
+[`docs/design/phase28_signal_input_bundle_completeness_boundary.md`](design/phase28_signal_input_bundle_completeness_boundary.md).
+The future boundary may compare a snapshot's required input names and metadata
+with a bundle's explicit values before evaluator use, but no completeness
+validator exists yet. `SignalInputBundle` remains a grouping contract only; it
+does not know whether it satisfies a snapshot. No real evaluator or signal
+computation exists yet, evaluator output remains advisory and pre-risk, and
+LLMs remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1176,6 +1190,8 @@ Ledger modes:
 - Signal computation from validated signal definitions
 - Signal input bundle completeness validation against
   SignalEvaluationInputSnapshot
+- Signal input bundle completeness validator implementation or validation
+  result contract
 - Signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - Real evaluator consumption of SignalInputBundle

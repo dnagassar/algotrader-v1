@@ -32,6 +32,13 @@ rejection, the absence of completeness validation, and isolation from evaluator,
 risk, execution, broker, runtime, persistence, ML, and LLM trading-path
 behavior.
 
+Phase 28 Step 4 documents the separate completeness validation boundary in
+[`docs/design/phase28_signal_input_bundle_completeness_boundary.md`](phase28_signal_input_bundle_completeness_boundary.md).
+It does not implement completeness validation, change the bundle constructor, or
+add evaluator behavior. Completeness remains separate from the grouping
+contract: `SignalInputBundle` still only groups explicit observed values and
+enforces duplicate-name and lookahead safety.
+
 ## 2. Relationship To Existing Input Contracts
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -58,7 +65,10 @@ Step 2, it provides:
 - source and timestamp traceability
 
 Completeness validation against a snapshot remains deferred to a later pure
-validation phase or helper.
+validation phase or helper. That boundary is separate from the bundle
+constructor because completeness depends on comparing `SignalInputBundle` to
+`SignalEvaluationInputSnapshot`, while the bundle itself remains a grouping
+contract for explicit values.
 
 The bundle would sit between reference-only snapshots and future real
 evaluators. It would not itself be a signal result or trading decision.
@@ -140,8 +150,10 @@ Open design questions:
 - should ordering follow snapshot `required_input_names` or supplied input
   order?
 
-Step 3 does not decide or implement those questions. The next validation design
-should keep completeness behavior explicit and heavily tested.
+Step 3 hardened traceability only. Step 4 documents these completeness
+questions in a separate design note, but does not decide or implement a
+validator. The next validation implementation should keep completeness behavior
+explicit, pure, and heavily tested.
 
 ## 7. Lookahead Rules
 
@@ -209,13 +221,17 @@ A future real evaluator may eventually accept:
 
 That future evaluator remains out of scope here. Phase 28 Step 2 only adds the
 minimal input bundle contract needed before evaluator implementation can be
-considered.
+considered. Phase 28 Step 4 documents the future completeness boundary that may
+later sit between snapshot/bundle assembly and evaluator use.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 3 does not add:
+Phase 28 Step 4 does not add:
 
 - production behavior
+- completeness validator implementation
+- completeness result contract
+- bundle constructor changes
 - evaluator implementation
 - signal computation
 - feature computation
@@ -243,9 +259,11 @@ Possible future phases include:
 
 1. Phase 28 Step 2: minimal immutable signal input bundle contract.
 2. Phase 28 Step 3: signal input bundle traceability hardening.
-3. Phase 28 Step 4: signal input bundle completeness validation design.
-4. Phase 29 Step 1: first real evaluator design, docs-only.
-5. A later phase: minimal deterministic evaluator for one validated signal
+3. Phase 28 Step 4: signal input bundle completeness boundary design.
+4. Phase 28 Step 5: minimal completeness validation contract or pure function.
+5. Phase 28 Step 6: completeness validation traceability hardening.
+6. Phase 29 Step 1: first real evaluator design, docs-only.
+7. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sequence is non-binding. Any future work must remain contract-first,

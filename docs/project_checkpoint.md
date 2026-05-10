@@ -203,6 +203,10 @@ documentation only. It adds no production behavior. The bundle remains an
 immutable grouping contract for explicit `SignalInputValue` objects, preserves
 value ordering and object identity, rejects duplicate names and lookahead
 values, and still does not validate completeness or interpret values.
+Phase 28 Step 4 is documentation-only. It records the future completeness
+validation boundary between `SignalEvaluationInputSnapshot.required_input_names`
+and `SignalInputBundle.values`. No production code or runtime behavior changed,
+and no completeness validator, real evaluator, or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -417,6 +421,11 @@ runtime behavior changed. The bundle remains deterministic, immutable,
 traceable, lookahead-safe, non-computational, and isolated from evaluator,
 risk, execution, broker, runtime, persistence, ML, and LLM trading-path
 behavior.
+Phase 28 Step 4 documents the separate future completeness validation boundary.
+No production code or runtime behavior changed; `SignalInputBundle` remains a
+grouping contract only, and no completeness validator, real evaluator, signal
+computation, risk approval, execution behavior, broker behavior, persistence,
+ML, or LLM trading-path logic was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3086,6 +3095,63 @@ python -m pytest
 733 passed, 4 skipped
 ```
 
+## Phase 28 Step 4 Signal Input Bundle Completeness Boundary Design
+
+Phase 28 Step 4 is documentation-only. It adds:
+
+```text
+docs/design/phase28_signal_input_bundle_completeness_boundary.md
+```
+
+The new design documents the future boundary for validating whether a
+`SignalInputBundle` satisfies a `SignalEvaluationInputSnapshot`. It records the
+questions a later pure validation phase must answer: whether all required
+snapshot input names are present in the bundle, which required names are
+missing, how extra bundle inputs should be handled, whether snapshot ids must
+match, and whether bundle and snapshot `as_of` timestamps must match exactly or
+only satisfy an explicit compatibility rule.
+
+The design keeps the current contract roles separate:
+
+- `SignalEvaluationInputSnapshot` defines required input names and reference
+  context, but carries no values
+- `SignalInputBundle` carries explicit observed values, rejects duplicate names,
+  and enforces lookahead safety, but does not know whether it satisfies a
+  snapshot
+- future completeness validation may compare names and metadata across those
+  contracts, but must not inspect, compute, normalize, or interpret values
+
+The recommended future direction is a small pure validation boundary before
+evaluator use, rather than expanding the `SignalInputBundle` constructor. A
+future evaluator may eventually require a validated signal definition, input
+snapshot, input bundle, successful completeness validation, explicit `as_of`,
+and explicit `evaluated_at`, but no evaluator or validation logic is
+implemented here.
+
+Missing input behavior, extra input policy, snapshot id compatibility, and
+`as_of` compatibility remain open design questions. Any future implementation
+should report missing or extra names deterministically and preserve lookahead
+safety. The boundary must remain pure, offline-safe, credential-free, and free
+of network calls, live data access, broker/account/order/fill access,
+scheduler/runtime access, persistence writes, ML calls, and LLM calls in the
+trading path.
+
+This phase adds no production code, tests, completeness validator
+implementation, completeness result contract, bundle constructor changes, real
+evaluator, signal computation, feature computation, strategy logic, score,
+direction, confidence, actionability, signal-to-risk conversion, risk approval,
+execution intent creation, execution-plan mutation, portfolio mutation, broker
+or Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
+live data ingestion, ML, or LLM trading-path behavior. Normal pytest remains
+offline, credential-free, and safe.
+
+Verification after Phase 28 Step 4:
+
+```text
+python -m pytest
+733 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3141,6 +3207,8 @@ python -m pytest
 - system clock implementation
 - signal input bundle completeness validation against
   `SignalEvaluationInputSnapshot`
+- signal input bundle completeness validator implementation or validation
+  result contract
 - signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`
