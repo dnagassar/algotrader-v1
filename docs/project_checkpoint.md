@@ -3798,6 +3798,55 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 30 Step 2 Research Validation Checklist / Evidence Standard
+
+Phase 30 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase30_research_validation_evidence_standard.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+docs/design/phase29_threshold_evaluator_constants_output_semantics.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step defines the fixed research validation checklist and evidence
+standard that future `ValidatedResearchArtifact` candidates must be reviewed
+against before they can support a real evaluator. The standard is created
+before any candidate artifact review so that candidate artifacts are measured
+against a stable yardstick instead of shaping the definition of "validated"
+after the fact.
+
+The evidence standard covers required artifact evidence, reproducibility,
+dataset scope, data quality, bias controls, point-in-time and no-lookahead
+requirements, input definitions, threshold rationale, metric definitions,
+statistical claim classification, assumptions, limitations, non-claims,
+signal-definition binding, deterministic suitability, advisory-only semantics,
+pass/fail outcomes, and implementation blockers.
+
+No production code or runtime behavior changed. No research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation, broker or
+Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
+live data ingestion, ML, or LLM trading-path behavior was added.
+
+Implementation remains blocked pending exact validated research, exact
+validated signal-definition support, threshold/config provenance, explicit
+implementation scope approval, and implementation tests written or ready.
+
+Verification after Phase 30 Step 2:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3864,6 +3913,8 @@ python -m pytest
   design
 - threshold evaluator behavior beyond the Phase 30 Step 1 research-support
   boundary
+- threshold evaluator behavior beyond the Phase 30 Step 2 research validation
+  evidence standard
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3887,7 +3938,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- threshold evaluator research artifact candidate review, docs-only
+- threshold evaluator research artifact candidate review against the Phase 30
+  Step 2 evidence standard, docs-only
 - validated signal definition candidate review before any real evaluator
   implementation
 - explicit future execution-planning policy decisions only after their config

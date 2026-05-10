@@ -19,6 +19,11 @@ The constants and output semantics documented here do not authorize
 implementation until exact validated research and signal-definition support
 exist.
 
+Phase 30 Step 2 adds the fixed research validation evidence standard in
+[`docs/design/phase30_research_validation_evidence_standard.md`](phase30_research_validation_evidence_standard.md).
+Placeholder constants and test thresholds remain non-production until they are
+supported by exact validated research and an exact validated signal definition.
+
 ## 2. Candidate Recap
 
 The future evaluator remains:
@@ -217,6 +222,12 @@ Phase 30 Step 1 defines the research and signal-definition evidence that must
 exist before these constants can be used by a real threshold-style evaluator.
 Until that boundary is satisfied, the values in this document remain design
 semantics only.
+
+Phase 30 Step 2 further requires any future production threshold to be reviewed
+against a fixed evidence standard before candidate artifacts or signal
+definitions are promoted. Test-only thresholds remain isolated from production
+semantics unless later tied to exact artifact id/version and signal
+id/version.
 
 ## 12. Updated Readiness Decision
 

@@ -1220,6 +1220,14 @@ a real threshold-style evaluator may be implemented. No real evaluator exists
 yet, real signal computation remains forbidden, evaluator output remains
 advisory and pre-risk, and LLMs remain outside the trading hot path.
 
+Phase 30 Step 2 defines the research validation evidence standard in
+[`docs/design/phase30_research_validation_evidence_standard.md`](design/phase30_research_validation_evidence_standard.md).
+It is documentation-only and creates the fixed checklist future research
+artifacts must be reviewed against before they can support a real evaluator.
+No real evaluator exists yet, real signal computation remains forbidden,
+evaluator output remains advisory and pre-risk, and LLMs remain outside the
+trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1328,6 +1336,8 @@ Ledger modes:
   design
 - Threshold evaluator behavior beyond the Phase 30 Step 1 research-support
   boundary
+- Threshold evaluator behavior beyond the Phase 30 Step 2 research validation
+  evidence standard
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1353,8 +1363,8 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Future threshold-evaluator work
 should continue by reviewing exact validated research and signal-definition
-support before any implementation prompt, test scaffold, real evaluator
-behavior, or Signal -> Risk wiring.
+support against the Phase 30 Step 2 evidence standard before any implementation
+prompt, test scaffold, real evaluator behavior, or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

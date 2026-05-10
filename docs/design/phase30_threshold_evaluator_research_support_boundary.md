@@ -15,6 +15,12 @@ specific validated evidence. Input contracts, drafted constants, documented
 test semantics, and a simple evaluator shape are not enough by themselves to
 promote evaluator code.
 
+Phase 30 Step 2 defines the reusable research validation evidence standard in
+[`phase30_research_validation_evidence_standard.md`](phase30_research_validation_evidence_standard.md)
+before any candidate artifact is reviewed. Candidate artifacts must be measured
+against that fixed standard instead of shaping the standard after the fact.
+Implementation remains blocked.
+
 ## 2. Why Research Support Is Required
 
 A threshold evaluator should not enter production code simply because:
@@ -236,12 +242,13 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases based on this boundary include:
 
-1. Phase 30 Step 2: threshold evaluator research artifact candidate review,
+1. Phase 30 Step 2: research validation evidence standard, docs-only.
+2. Phase 30 Step 3: threshold evaluator research artifact candidate review,
    docs-only.
-2. Phase 30 Step 3: validated signal definition candidate review, docs-only or
+3. Phase 30 Step 4: validated signal definition candidate review, docs-only or
    tests/docs only.
-3. Phase 30 Step 4: implementation readiness re-check.
-4. Later: minimal threshold evaluator implementation only if all blockers are
+4. Phase 30 Step 5: implementation readiness re-check.
+5. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,
