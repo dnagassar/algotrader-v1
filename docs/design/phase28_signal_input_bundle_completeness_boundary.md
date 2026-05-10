@@ -2,11 +2,11 @@
 
 ## 1. Purpose
 
-Phase 28 Step 4 documents the future completeness validation boundary between
+Phase 28 Step 4 documented the future completeness validation boundary between
 `SignalEvaluationInputSnapshot.required_input_names` and
-`SignalInputBundle.values`. It is documentation-only and adds no production
-code, tests, validator, validation result, evaluator, signal computation, or
-runtime behavior.
+`SignalInputBundle.values`. Phase 28 Step 5 adds the minimal immutable
+completeness result contract and one pure validation function for that
+boundary.
 
 Completeness validation is needed before a future real evaluator can consume a
 `SignalInputBundle` because a bundle can be well-formed, immutable,
@@ -21,8 +21,12 @@ using only explicit contracts:
 - does `bundle.snapshot_id` need to match `snapshot.snapshot_id`?
 - does `bundle.as_of` need to match `snapshot.as_of`, or only be compatible?
 
-This phase records those questions and candidate rules without making final
-production decisions.
+Step 5 implements the smallest deterministic subset: it compares required input
+names with bundle value names, reports missing names in snapshot order, reports
+extra names in bundle order, and treats the bundle as complete when no required
+names are missing. Extra names are reported but do not make the result
+incomplete in this phase. Snapshot id equality and `as_of` equality are not
+enforced yet.
 
 ## 2. Current Contract Roles
 
@@ -45,7 +49,7 @@ behavior.
 
 ## 3. Where Completeness Validation Should Live
 
-The boundary can be designed several ways in a later implementation phase:
+The boundary can be designed several ways:
 
 - constructor-level validation inside `SignalInputBundle`
 - a pure function such as
@@ -53,12 +57,12 @@ The boundary can be designed several ways in a later implementation phase:
 - a separate immutable validation result contract
 - an evaluator precondition check before any real evaluator consumes a bundle
 
-The preferred direction is a small pure validation boundary before evaluator
-use, rather than expanding the `SignalInputBundle` constructor too much. The
-bundle constructor should remain focused on grouping explicit values,
-preserving deterministic traceability, rejecting duplicate names, and enforcing
-lookahead safety. Completeness depends on a second contract, so keeping it in a
-separate pure boundary would make the comparison explicit and easier to test.
+Phase 28 Step 5 chooses a small pure validation boundary before evaluator use,
+rather than expanding the `SignalInputBundle` constructor. The bundle
+constructor remains focused on grouping explicit values, preserving
+deterministic traceability, rejecting duplicate names, and enforcing lookahead
+safety. Completeness depends on a second contract, so keeping it in a separate
+pure boundary makes the comparison explicit and easy to test.
 
 An evaluator precondition may later require successful completeness validation,
 but the evaluator should not be the first place where missing names, extra
@@ -81,47 +85,49 @@ Future completeness validation may check:
 - validation does not compute signals
 - validation does not score, rank, infer direction, or imply actionability
 
-If a later phase adds a validation result, the result should represent only
-whether an explicit bundle satisfies an explicit snapshot according to the
-chosen policy. It should not be reused as a signal result, trading
-recommendation, risk verdict, execution intent, or broker-facing request.
+Phase 28 Step 5 implements `SignalInputBundleCompletenessResult` and
+`validate_signal_input_bundle_completeness(...)` as metadata-only validation
+surface. The result represents only whether an explicit bundle has all required
+names for an explicit snapshot according to the minimal Step 5 policy. It is
+not a signal result, trading recommendation, risk verdict, execution intent, or
+broker-facing request.
 
 ## 5. Missing Input Behavior
 
-Missing input behavior remains an open design question. Later phases should
-decide whether missing inputs should:
+Phase 28 Step 5 returns missing inputs in an immutable validation result.
+Missing inputs do not raise by themselves in this phase. Missing input names are
+ordered according to `snapshot.required_input_names`.
+
+Future phases may still decide whether stricter missing-input behavior should:
 
 - raise a validation error immediately
-- return an immutable validation result
 - be represented as advisory diagnostics
-- be ordered according to `snapshot.required_input_names`
 
-The current docs already imply that completeness validation should be explicit
-and deterministic, but they do not require a final production shape. A minimal
-future implementation could start strict and small, but this phase does not
-choose that behavior.
+The current Step 5 behavior is explicit and deterministic, but it is still a
+minimal boundary rather than final evaluator admission policy.
 
 ## 6. Extra Input Behavior
 
-Extra input behavior also remains open. Later phases should decide whether
-bundle values whose names are not in `snapshot.required_input_names` should be:
+Phase 28 Step 5 reports bundle values whose names are not in
+`snapshot.required_input_names` through `extra_input_names`. Extra names are
+ordered according to `bundle.values` and do not make the result incomplete in
+this phase.
 
-- allowed
-- ignored
+Future phases may still decide whether extra names should be:
+
 - warned about through diagnostics
 - rejected
-- reported deterministically
 - controlled by an explicit policy later
 
-The policy should not be implicit. If extra inputs are allowed, that allowance
-should be visible at the validation boundary so a future evaluator does not
-quietly consume hidden or irrelevant values. If extra inputs are rejected, the
-reported names should be deterministic.
+The Step 5 policy is intentionally explicit: extra inputs are visible to callers
+but not rejected. If a later phase rejects extras, the reported names should
+remain deterministic.
 
 ## 7. Snapshot/Bundle Time Compatibility
 
-Snapshot and bundle time compatibility remains open. Later phases should decide
-whether validation requires:
+Snapshot and bundle time compatibility remains open. Phase 28 Step 5 does not
+enforce `bundle.as_of == snapshot.as_of` or any other `as_of` compatibility
+rule. Later phases should decide whether validation requires:
 
 - `bundle.as_of == snapshot.as_of`
 - `bundle.as_of <= snapshot.as_of`
@@ -129,9 +135,9 @@ whether validation requires:
 - a different explicit compatibility rule
 
 Strict equality may be the simplest first rule because both contracts already
-carry explicit UTC-aware `as_of` timestamps. However, this phase does not make
-that a production decision. Any non-equality rule would need careful design so
-it does not weaken lookahead safety or make evaluator availability ambiguous.
+carry explicit UTC-aware `as_of` timestamps. However, Step 5 does not make that
+a production decision. Any non-equality rule would need careful design so it
+does not weaken lookahead safety or make evaluator availability ambiguous.
 
 Lookahead safety must remain preserved. `SignalInputBundle` already rejects
 values with `observed_at > bundle.as_of`; a future compatibility rule must not
@@ -194,17 +200,16 @@ A future real evaluator may eventually require:
 - explicit `evaluated_at`
 
 That evaluator is not implemented here. Phase 28 Step 4 does not implement
-validation logic, does not implement a completeness result, and does not add a
-real evaluator. Any future evaluator output remains advisory and pre-risk. LLMs
-remain outside the trading hot path and must not compute live signal outputs,
-approve trades, mutate execution plans, or interact with brokers.
+validation logic, completeness result, or a real evaluator. Phase 28 Step 5
+adds only minimal completeness validation. Any future evaluator output remains
+advisory and pre-risk. LLMs remain outside the trading hot path and must not
+compute live signal outputs, approve trades, mutate execution plans, or
+interact with brokers.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 4 does not add:
+Phase 28 Step 5 does not add:
 
-- completeness validator implementation
-- completeness result contract
 - bundle constructor changes
 - evaluator implementation
 - signal computation
@@ -232,10 +237,9 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 28 Step 5: minimal completeness validation contract or pure function.
-2. Phase 28 Step 6: completeness validation traceability hardening.
-3. Phase 29 Step 1: first real evaluator design, docs-only.
-4. A later phase: minimal deterministic evaluator for one validated signal
+1. Phase 28 Step 6: completeness validation traceability hardening.
+2. Phase 29 Step 1: first real evaluator design, docs-only.
+3. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sketch is non-binding. Any future work must remain contract-first,

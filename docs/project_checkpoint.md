@@ -207,10 +207,16 @@ Phase 28 Step 4 is documentation-only. It records the future completeness
 validation boundary between `SignalEvaluationInputSnapshot.required_input_names`
 and `SignalInputBundle.values`. No production code or runtime behavior changed,
 and no completeness validator, real evaluator, or signal computation was added.
+Phase 28 Step 5 adds the minimal immutable
+`SignalInputBundleCompletenessResult` contract and pure
+`validate_signal_input_bundle_completeness(...)` function. It compares required
+snapshot input names with bundle value names only, reports missing and extra
+names deterministically, keeps extra inputs non-failing in this phase, and adds
+no real evaluator or signal computation.
 The latest full-suite result is:
 
 ```text
-733 passed, 4 skipped
+765 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -426,6 +432,13 @@ No production code or runtime behavior changed; `SignalInputBundle` remains a
 grouping contract only, and no completeness validator, real evaluator, signal
 computation, risk approval, execution behavior, broker behavior, persistence,
 ML, or LLM trading-path logic was added.
+Phase 28 Step 5 implements the minimal separate completeness boundary. The
+bundle constructor is unchanged; completeness validation lives in a pure signal
+module and returns metadata only. It does not inspect or interpret values,
+compute signals or features, score, rank, infer direction, recommend trades,
+approve risk, create execution intents, mutate execution plans, access live
+data, route to brokers or Alpaca, submit orders, use scheduler/runtime or
+persistence behavior, run ML, or use LLMs in the trading path.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3152,6 +3165,77 @@ python -m pytest
 733 passed, 4 skipped
 ```
 
+## Phase 28 Step 5 Minimal Signal Input Bundle Completeness Validation Contract
+
+Phase 28 Step 5 adds:
+
+```text
+src/algotrader/signals/signal_input_bundle_completeness.py
+tests/unit/test_signal_input_bundle_completeness.py
+```
+
+`SignalInputBundleCompletenessResult` is a frozen, slotted metadata contract
+with exactly:
+
+```text
+snapshot_id
+bundle_snapshot_id
+is_complete
+missing_input_names
+extra_input_names
+```
+
+`validate_signal_input_bundle_completeness(snapshot, bundle)` is a pure
+validation function. It accepts a `SignalEvaluationInputSnapshot` and a
+`SignalInputBundle`, compares only
+`SignalEvaluationInputSnapshot.required_input_names` with
+`SignalInputBundle.values[n].name`, and returns the completeness result. It
+does not mutate either input or the underlying `SignalInputValue` objects.
+
+Missing input names are reported deterministically in
+`snapshot.required_input_names` order. Extra input names are reported
+deterministically in `bundle.values` order. `is_complete` is true only when no
+required input names are missing. Extra inputs are reported but do not make the
+bundle incomplete in this phase. The function does not require snapshot id
+equality and does not require `as_of` equality. Lookahead validation remains in
+the `SignalInputBundle` constructor.
+
+The new tests cover the result contract, exact field set, immutability, slots,
+tuple immutability, validation function behavior, deterministic missing/extra
+ordering, extra-input reporting without incompleteness, exact snapshot id and
+bundle snapshot id preservation, absence of snapshot id or `as_of` equality
+requirements, input non-mutation, repeated-call determinism, advisory-only
+surface area, dependency isolation, and absence of hidden wall-clock, random,
+environment, network, filesystem-write, database/cache/persistence, broker,
+ML, or LLM calls/imports.
+
+This phase does not change `SignalInputBundle` constructor behavior, does not
+add completeness fields to `SignalInputBundle` or
+`SignalEvaluationInputSnapshot`, and does not add a real evaluator, signal
+computation, feature computation, strategy logic, score, direction, confidence,
+actionability, signal-to-risk conversion, risk approval, execution intent
+creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, runtime/scheduler behavior, persistence, live data
+ingestion, ML, or LLM trading-path behavior. Normal pytest remains offline,
+credential-free, and safe.
+
+Focused validation after Phase 28 Step 5:
+
+```text
+python -m pytest tests/unit/test_signal_input_bundle_completeness.py
+32 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+765 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3205,10 +3289,11 @@ python -m pytest
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation
-- signal input bundle completeness validation against
-  `SignalEvaluationInputSnapshot`
-- signal input bundle completeness validator implementation or validation
-  result contract
+- signal input bundle completeness behavior beyond minimal metadata-only name
+  validation
+- strict extra-input rejection for signal input bundle completeness validation
+- snapshot id or `as_of` compatibility enforcement for signal input bundle
+  completeness validation
 - signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`

@@ -39,6 +39,15 @@ add evaluator behavior. Completeness remains separate from the grouping
 contract: `SignalInputBundle` still only groups explicit observed values and
 enforces duplicate-name and lookahead safety.
 
+Phase 28 Step 5 adds that minimal separate completeness boundary in
+`src/algotrader/signals/signal_input_bundle_completeness.py`. It adds
+`SignalInputBundleCompletenessResult` and
+`validate_signal_input_bundle_completeness(snapshot, bundle)`. The function
+compares only `SignalEvaluationInputSnapshot.required_input_names` with
+`SignalInputBundle.values[n].name`, reports missing names in snapshot order,
+reports extra names in bundle order, and does not inspect or interpret values.
+Extra names are reported but do not make the result incomplete in this phase.
+
 ## 2. Relationship To Existing Input Contracts
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -64,11 +73,10 @@ Step 2, it provides:
 - lookahead validation against evaluator `as_of`
 - source and timestamp traceability
 
-Completeness validation against a snapshot remains deferred to a later pure
-validation phase or helper. That boundary is separate from the bundle
-constructor because completeness depends on comparing `SignalInputBundle` to
-`SignalEvaluationInputSnapshot`, while the bundle itself remains a grouping
-contract for explicit values.
+Completeness validation against a snapshot now lives in a separate pure helper.
+That boundary is separate from the bundle constructor because completeness
+depends on comparing `SignalInputBundle` to `SignalEvaluationInputSnapshot`,
+while the bundle itself remains a grouping contract for explicit values.
 
 The bundle would sit between reference-only snapshots and future real
 evaluators. It would not itself be a signal result or trading decision.
@@ -150,10 +158,11 @@ Open design questions:
 - should ordering follow snapshot `required_input_names` or supplied input
   order?
 
-Step 3 hardened traceability only. Step 4 documents these completeness
-questions in a separate design note, but does not decide or implement a
-validator. The next validation implementation should keep completeness behavior
-explicit, pure, and heavily tested.
+Step 3 hardened traceability only. Step 4 documented these completeness
+questions in a separate design note. Step 5 implements the minimal pure
+validation boundary: missing names are returned in snapshot order, extra names
+are returned in bundle order, extras do not make the result incomplete, and
+snapshot id or `as_of` equality is not enforced yet.
 
 ## 7. Lookahead Rules
 
@@ -221,16 +230,13 @@ A future real evaluator may eventually accept:
 
 That future evaluator remains out of scope here. Phase 28 Step 2 only adds the
 minimal input bundle contract needed before evaluator implementation can be
-considered. Phase 28 Step 4 documents the future completeness boundary that may
+considered. Phase 28 Step 5 adds the minimal completeness boundary that may
 later sit between snapshot/bundle assembly and evaluator use.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 4 does not add:
+Phase 28 Step 5 does not add:
 
-- production behavior
-- completeness validator implementation
-- completeness result contract
 - bundle constructor changes
 - evaluator implementation
 - signal computation
@@ -260,7 +266,7 @@ Possible future phases include:
 1. Phase 28 Step 2: minimal immutable signal input bundle contract.
 2. Phase 28 Step 3: signal input bundle traceability hardening.
 3. Phase 28 Step 4: signal input bundle completeness boundary design.
-4. Phase 28 Step 5: minimal completeness validation contract or pure function.
+4. Phase 28 Step 5: minimal completeness validation contract and pure function.
 5. Phase 28 Step 6: completeness validation traceability hardening.
 6. Phase 29 Step 1: first real evaluator design, docs-only.
 7. A later phase: minimal deterministic evaluator for one validated signal
