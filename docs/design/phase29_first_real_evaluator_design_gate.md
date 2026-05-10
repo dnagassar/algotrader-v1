@@ -237,6 +237,12 @@ A future candidate should be chosen only after:
 
 No concrete trading strategy is selected in this phase.
 
+Phase 29 Step 2 performs candidate selection only in
+[`docs/design/phase29_first_real_evaluator_candidate_selection.md`](phase29_first_real_evaluator_candidate_selection.md).
+That selection does not authorize implementation. A future evaluator-specific
+design is still required before any production code, real evaluator behavior,
+or signal computation may be added.
+
 ## 12. Relationship To Existing Contracts
 
 `ValidatedResearchArtifact` is supporting evidence. It records reviewed
@@ -311,10 +317,12 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases include:
 
 1. Phase 29 Step 2: choose first real evaluator candidate, docs-only.
-2. Phase 29 Step 3: first real evaluator contract design, docs-only.
-3. Phase 29 Step 4: first real evaluator minimal implementation, if and only
+2. Phase 29 Step 3: first real evaluator candidate contract design, docs-only.
+3. Phase 29 Step 4: first real evaluator test matrix, tests/docs only if
+   possible.
+4. Phase 29 Step 5: first real evaluator minimal implementation, if and only
    if the gate is satisfied.
-4. Phase 29 Step 5: first real evaluator traceability/lookahead hardening.
+5. Phase 29 Step 6: first real evaluator traceability/lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

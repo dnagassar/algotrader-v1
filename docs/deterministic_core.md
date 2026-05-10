@@ -173,6 +173,12 @@ state.
   the gate, the current explicit-input stack does not make outputs actionable,
   evaluator output remains advisory and pre-risk, and LLMs remain outside the
   trading hot path.
+- Phase 29 Step 2 selects a first real evaluator candidate as documentation
+  only: a minimal threshold-style advisory evaluator over one explicit scalar
+  `SignalInputValue`. No real evaluator exists yet, real signal computation
+  remains forbidden until evaluator-specific design and tests satisfy the gate,
+  evaluator output remains advisory and pre-risk, and LLMs remain outside the
+  trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1139,6 +1145,15 @@ forbidden until a future evaluator-specific design satisfies the gate. Any
 future evaluator output remains advisory and pre-risk, and LLMs remain outside
 the trading hot path.
 
+Phase 29 Step 2 selects the first real evaluator candidate in
+[`docs/design/phase29_first_real_evaluator_candidate_selection.md`](design/phase29_first_real_evaluator_candidate_selection.md).
+The selected candidate is a minimal threshold-style advisory evaluator over one
+explicit scalar `SignalInputValue`. Candidate selection is documentation-only
+and does not authorize implementation. No real evaluator exists yet, and real
+signal computation remains forbidden until evaluator-specific design and tests
+satisfy the gate. Evaluator output remains advisory and pre-risk, and LLMs
+remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1242,8 +1257,9 @@ Ledger modes:
 - Signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - Real evaluator consumption of SignalInputBundle
-- First real evaluator candidate selection or implementation
-- Evaluator-specific design beyond the Phase 29 Step 1 gate
+- First real evaluator implementation
+- Evaluator-specific design beyond the Phase 29 Step 2 candidate-selection
+  review
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1270,7 +1286,6 @@ submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
 runtime wiring. Future signal-evaluator work should continue with
-documentation-only first real evaluator candidate selection and
 evaluator-specific contract design before any real evaluator behavior or Signal
 -> Risk wiring.
 

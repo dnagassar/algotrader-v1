@@ -223,6 +223,10 @@ design gate and states that no real evaluator or signal computation may be
 implemented until a future evaluator-specific design explicitly satisfies the
 gate. No production code, runtime behavior, real evaluator, signal
 computation, or trading-path behavior was added.
+Phase 29 Step 2 is documentation-only. It selects a first real evaluator
+candidate for later design: a minimal threshold-style advisory evaluator over
+one explicit scalar `SignalInputValue`. No production code or runtime behavior
+changed, and no real evaluator or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -463,6 +467,14 @@ compatibility, advisory output semantics, assumptions, limitations, and
 deterministic/no-lookahead/side-effect tests before implementation. No real
 evaluator, signal computation, runtime behavior, or trading-path behavior was
 added.
+
+Phase 29 Step 2 selects the first real evaluator candidate for the next design
+phase: a minimal threshold-style advisory evaluator over one explicit scalar
+`SignalInputValue`. The selection does not authorize implementation; a future
+evaluator-specific design must still define exact contracts, output semantics,
+completeness behavior, timestamp compatibility, and tests before production
+code can be considered. No production code, runtime behavior, real evaluator,
+signal computation, or trading-path behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3367,6 +3379,56 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 29 Step 2 First Real Evaluator Candidate Selection
+
+Phase 29 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase29_first_real_evaluator_candidate_selection.md
+```
+
+It also updates:
+
+```text
+docs/design/phase29_first_real_evaluator_design_gate.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+The selected candidate for the next evaluator-specific design phase is a
+minimal threshold-style advisory evaluator over one explicit scalar
+`SignalInputValue`. The concept uses one required input name such as
+`indicator_value`, consumes a deterministic scalar value from a
+`SignalInputBundle`, requires successful completeness handling, and may
+eventually produce advisory `SignalEvaluationResult` output.
+
+The candidate was selected because it has a small input surface, deterministic
+scalar values, no hidden data access, straightforward missing-input behavior,
+straightforward no-lookahead testing, clear advisory-only output, no ranking,
+no portfolio dependence, no broker/runtime/persistence dependence, and no
+ML/LLM dependence.
+
+The selection does not choose the exact validated signal definition, supporting
+research artifact, input name, accepted value type, threshold semantics,
+`output_value` meaning, reason codes, diagnostics, assumptions, limitations,
+missing-input behavior, extra-input behavior, snapshot id compatibility,
+`as_of` compatibility, completeness-result flow, no-lookahead tests, or
+forbidden-field tests. Those must be decided in a later evaluator-specific
+design phase before implementation.
+
+This phase adds no production code, tests, evaluator implementation, evaluator
+protocol, signal computation, feature computation, strategy logic, score,
+direction, confidence, actionability, risk approval, execution intent
+creation, broker or Alpaca behavior, order submission, runtime/scheduler
+behavior, persistence, live data ingestion, ML, or LLM trading-path behavior.
+
+The latest full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3428,8 +3490,9 @@ python -m pytest
 - signal input bundle behavior beyond minimal grouping, tuple coercion,
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`
-- first real evaluator candidate selection or implementation
-- evaluator-specific design beyond the Phase 29 Step 1 gate
+- first real evaluator implementation
+- evaluator-specific design beyond the Phase 29 Step 2 candidate-selection
+  review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3453,8 +3516,6 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- first real evaluator candidate selection as a documentation-only phase before
-  any real evaluator behavior
 - evaluator-specific contract design before any real evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
