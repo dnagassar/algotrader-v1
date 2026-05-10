@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 717-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 733-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -198,10 +198,15 @@ signals, implement a real evaluator, score, rank, infer direction, recommend
 trades, approve risk, mutate execution plans, access live data, route to
 brokers, submit orders, use scheduler/runtime/persistence behavior, run ML, or
 use LLMs in the trading path.
+Phase 28 Step 3 hardens `SignalInputBundle` traceability with tests and
+documentation only. It adds no production behavior. The bundle remains an
+immutable grouping contract for explicit `SignalInputValue` objects, preserves
+value ordering and object identity, rejects duplicate names and lookahead
+values, and still does not validate completeness or interpret values.
 The latest full-suite result is:
 
 ```text
-717 passed, 4 skipped
+733 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -407,6 +412,11 @@ immutable input container only: it groups explicit `SignalInputValue` objects,
 preserves ordering and value identity, rejects duplicate names, and rejects
 lookahead values where `observed_at > as_of`. Completeness validation against
 `SignalEvaluationInputSnapshot` remains deferred.
+Phase 28 Step 3 hardens that bundle with tests/docs only. No production code or
+runtime behavior changed. The bundle remains deterministic, immutable,
+traceable, lookahead-safe, non-computational, and isolated from evaluator,
+risk, execution, broker, runtime, persistence, ML, and LLM trading-path
+behavior.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3030,6 +3040,52 @@ python -m pytest
 717 passed, 4 skipped
 ```
 
+## Phase 28 Step 3 Signal Input Bundle Traceability Hardening
+
+Phase 28 Step 3 is tests/docs only. No production behavior was added.
+
+The strengthened tests harden `SignalInputBundle` traceability and safety:
+
+- exact `snapshot_id` string preservation
+- exact `as_of` identity preservation
+- exact `SignalInputValue` object identity preservation
+- exact value ordering, names, source ids, observed timestamp identity, and
+  payload preservation through the bundle
+- tuple coercion and tuple immutability
+- input-list mutation isolation
+- equality for bundles built from the same values in the same order
+- preservation of different supplied ordering for the same values
+- duplicate-name rejection, including differing source ids, observed values,
+  and observation timestamps
+- exact case/whitespace behavior without name normalization
+- lookahead rejection for any value with `observed_at > as_of`
+- no completeness validation against `SignalEvaluationInputSnapshot`
+- no signal output, score, rank, direction, confidence, actionability,
+  evaluator-kind, result-kind, or no-op marker surface
+- no risk, execution, broker, Alpaca, runtime, persistence, ML, LLM, or agent
+  trading-path surface
+- no hidden wall-clock, random, environment, network, filesystem-write,
+  database/cache/persistence, broker SDK, Alpaca SDK, ML, or LLM imports/calls
+
+`SignalInputBundle` remains an immutable grouping contract for explicit
+`SignalInputValue` objects. It preserves value ordering and object identity,
+rejects duplicate names and lookahead values, and still does not validate
+completeness against `SignalEvaluationInputSnapshot`. It does not compute
+signals or features, implement a real evaluator, score, rank, infer direction,
+recommend trades, approve risk, create execution intents, mutate execution
+plans, access live data, route to brokers or Alpaca, submit orders, use
+scheduler/runtime/persistence behavior, run ML, or use LLMs in the trading
+path.
+
+Normal pytest remains offline, credential-free, and safe.
+
+Verification after Phase 28 Step 3:
+
+```text
+python -m pytest
+733 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3111,8 +3167,7 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- signal input bundle traceability and completeness validation before any real
-  evaluator behavior
+- signal input bundle completeness validation before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `717` tests are passing, with `4` skipped paper-integration tests by default.
+- `733` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -148,6 +148,10 @@ state.
   execution plans, access live data, route to brokers, submit orders, use
   scheduler/runtime/persistence behavior, run ML, or use LLMs in the trading
   path.
+- Phase 28 Step 3 hardens `SignalInputBundle` traceability with tests and docs
+  only. No production behavior was added; the bundle remains an immutable
+  grouping contract for explicit `SignalInputValue` objects and still does not
+  validate completeness or interpret values.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1056,6 +1060,15 @@ ordering and input value object identity, rejects duplicate names, validates
 `as_of` as UTC-aware, and rejects lookahead values where
 `SignalInputValue.observed_at > bundle.as_of`.
 
+Phase 28 Step 3 hardens the bundle with tests and documentation only. No
+production behavior was added. The hardening pins exact `snapshot_id` string
+preservation, exact `as_of` identity preservation, exact grouped value object
+identity, exact value ordering, exact value names, source ids, observed
+timestamp identity, payload preservation, tuple immutability, duplicate-name
+rejection, and lookahead rejection. Multiple bundles built from the same values
+in the same order compare equal, while different supplied orders remain
+different orders.
+
 The bundle remains an input container only. It is not a signal result,
 recommendation, score, rank, direction, risk approval, execution intent, order
 request, or portfolio decision. It does not yet validate completeness against
@@ -1192,8 +1205,8 @@ submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
 runtime wiring. Future signal-evaluator work should continue with signal input
-bundle traceability and completeness validation before real evaluator behavior
-or Signal -> Risk wiring.
+bundle completeness validation before real evaluator behavior or Signal -> Risk
+wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

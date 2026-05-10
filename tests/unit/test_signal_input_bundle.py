@@ -62,6 +62,7 @@ _FORBIDDEN_SIGNAL_INPUT_BUNDLE_FIELD_NAMES = {
     "rank",
     "recommendation",
     "rejected",
+    "result_kind",
     "risk",
     "risk_approved",
     "runtime",
@@ -73,6 +74,7 @@ _FORBIDDEN_SIGNAL_INPUT_BUNDLE_FIELD_NAMES = {
     "signal_direction",
     "side",
     "strategy",
+    "is_noop",
 }
 
 _FORBIDDEN_IMPORT_PREFIXES = (
@@ -173,6 +175,8 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "execution_plan",
     "fill",
     "fired",
+    "feature",
+    "features",
     "long",
     "llm",
     "llm_output",
@@ -190,6 +194,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "prompt",
     "rank",
     "rejected",
+    "result_kind",
     "risk",
     "risk_approved",
     "runtime",
@@ -202,6 +207,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "side",
     "strategy",
     "submit_order",
+    "is_noop",
 }
 
 _FORBIDDEN_CALL_NAMES = {
@@ -407,6 +413,42 @@ def test_valid_construction_preserves_metadata_and_values() -> None:
     assert bundle.values[1] is second
 
 
+def test_bundle_preserves_full_value_traceability_without_interpretation() -> None:
+    close_payload = Decimal("00101.2300")
+    market_state_payload = " OPEN "
+    close_observed_at = datetime(2026, 5, 9, 14, 28, tzinfo=timezone.utc)
+    market_state_observed_at = datetime(2026, 5, 9, 14, 29, tzinfo=timezone.utc)
+    close_source_id = " Source:bars.synthetic.v1 "
+    market_state_source_id = " Source:market_state.synthetic.v1 "
+    close = signal_input_value(
+        name=" Input:BAR.close ",
+        value=close_payload,
+        observed_at=close_observed_at,
+        source_id=close_source_id,
+    )
+    market_state = signal_input_value(
+        name=" Input:MARKET.state ",
+        value=market_state_payload,
+        observed_at=market_state_observed_at,
+        source_id=market_state_source_id,
+    )
+
+    bundle = signal_input_bundle(values=[close, market_state])
+
+    assert bundle.values == (close, market_state)
+    assert bundle.values[0] is close
+    assert bundle.values[1] is market_state
+    assert bundle.values[0].name == " Input:BAR.close "
+    assert bundle.values[0].source_id is close_source_id
+    assert bundle.values[0].observed_at is close_observed_at
+    assert bundle.values[0].value is close_payload
+    assert bundle.values[0].value.as_tuple() == close_payload.as_tuple()
+    assert bundle.values[1].name == " Input:MARKET.state "
+    assert bundle.values[1].source_id is market_state_source_id
+    assert bundle.values[1].observed_at is market_state_observed_at
+    assert bundle.values[1].value is market_state_payload
+
+
 def test_naive_as_of_is_rejected() -> None:
     with pytest.raises(ValidationError, match="as_of"):
         signal_input_bundle(as_of=datetime(2026, 5, 9, 14, 30))
@@ -450,6 +492,30 @@ def test_values_are_coerced_to_tuple_from_iterable() -> None:
     assert bundle.values == (first, second)
 
 
+def test_list_values_are_coerced_to_tuple() -> None:
+    values = [
+        signal_input_value(name="bar.close"),
+        signal_input_value(name="quote.ask"),
+    ]
+
+    bundle = signal_input_bundle(values=values)
+
+    assert isinstance(bundle.values, tuple)
+    assert bundle.values == tuple(values)
+
+
+def test_tuple_values_remain_tuple_ordered_values() -> None:
+    values = (
+        signal_input_value(name="bar.close"),
+        signal_input_value(name="quote.ask"),
+    )
+
+    bundle = signal_input_bundle(values=values)
+
+    assert isinstance(bundle.values, tuple)
+    assert bundle.values == values
+
+
 def test_values_ordering_is_preserved_exactly() -> None:
     values = [
         signal_input_value(name="input.03.prior_session_close"),
@@ -460,6 +526,33 @@ def test_values_ordering_is_preserved_exactly() -> None:
     bundle = signal_input_bundle(values=values)
 
     assert bundle.values == tuple(values)
+
+
+def test_multiple_bundles_from_same_values_in_same_order_compare_equal() -> None:
+    values = (
+        signal_input_value(name="bar.close"),
+        signal_input_value(name="quote.ask"),
+    )
+
+    first_bundle = signal_input_bundle(values=values)
+    second_bundle = signal_input_bundle(values=values)
+
+    assert first_bundle == second_bundle
+    assert first_bundle.values == second_bundle.values
+    assert first_bundle.values[0] is second_bundle.values[0]
+    assert first_bundle.values[1] is second_bundle.values[1]
+
+
+def test_bundles_from_same_values_in_different_orders_preserve_different_order() -> None:
+    first = signal_input_value(name="bar.close")
+    second = signal_input_value(name="quote.ask")
+
+    original_order = signal_input_bundle(values=(first, second))
+    reversed_order = signal_input_bundle(values=(second, first))
+
+    assert original_order.values == (first, second)
+    assert reversed_order.values == (second, first)
+    assert original_order != reversed_order
 
 
 def test_input_value_object_identity_is_preserved() -> None:
@@ -508,12 +601,58 @@ def test_duplicate_signal_input_value_names_are_rejected() -> None:
         signal_input_bundle(values=(first, second))
 
 
+def test_duplicate_names_are_rejected_even_when_observed_values_differ() -> None:
+    first = signal_input_value(name="quote.ask", value=Decimal("101.23"))
+    second = signal_input_value(name="quote.ask", value=Decimal("102.34"))
+
+    with pytest.raises(ValidationError, match="duplicate"):
+        signal_input_bundle(values=(first, second))
+
+
+def test_duplicate_names_are_rejected_even_when_observed_at_differs() -> None:
+    first = signal_input_value(name="quote.ask", observed_at=EARLIER)
+    second = signal_input_value(name="quote.ask", observed_at=AS_OF)
+
+    with pytest.raises(ValidationError, match="duplicate"):
+        signal_input_bundle(values=(first, second))
+
+
+def test_duplicate_name_detection_preserves_exact_case_and_whitespace_contract() -> None:
+    lowercase = signal_input_value(name="quote.ask")
+    uppercase = signal_input_value(name="QUOTE.ASK")
+    padded = signal_input_value(name=" quote.ask ")
+
+    bundle = signal_input_bundle(values=(lowercase, uppercase, padded))
+
+    assert bundle.values == (lowercase, uppercase, padded)
+    assert tuple(value.name for value in bundle.values) == (
+        "quote.ask",
+        "QUOTE.ASK",
+        " quote.ask ",
+    )
+
+
 def test_accepts_value_observed_at_before_bundle_as_of() -> None:
     value = signal_input_value(observed_at=EARLIER)
 
     bundle = signal_input_bundle(values=(value,))
 
     assert bundle.values == (value,)
+
+
+def test_accepts_all_values_observed_before_bundle_as_of() -> None:
+    first = signal_input_value(
+        name="bar.close",
+        observed_at=datetime(2026, 5, 9, 14, 27, tzinfo=timezone.utc),
+    )
+    second = signal_input_value(
+        name="quote.ask",
+        observed_at=datetime(2026, 5, 9, 14, 28, tzinfo=timezone.utc),
+    )
+
+    bundle = signal_input_bundle(values=(first, second))
+
+    assert bundle.values == (first, second)
 
 
 def test_accepts_value_observed_at_equal_to_bundle_as_of() -> None:
@@ -524,11 +663,44 @@ def test_accepts_value_observed_at_equal_to_bundle_as_of() -> None:
     assert bundle.values == (value,)
 
 
+def test_accepts_all_values_observed_equal_to_bundle_as_of() -> None:
+    first = signal_input_value(name="bar.close", observed_at=AS_OF)
+    second = signal_input_value(name="quote.ask", observed_at=AS_OF)
+
+    bundle = signal_input_bundle(values=(first, second))
+
+    assert bundle.values == (first, second)
+
+
 def test_rejects_value_observed_at_after_bundle_as_of() -> None:
     value = signal_input_value(observed_at=LATER)
 
     with pytest.raises(ValidationError, match="observed_at"):
         signal_input_bundle(values=(value,))
+
+
+def test_rejects_one_future_value_among_otherwise_valid_values() -> None:
+    valid_before = signal_input_value(name="bar.close", observed_at=EARLIER)
+    future = signal_input_value(name="quote.ask", observed_at=LATER)
+    valid_equal = signal_input_value(name="market.is_open", observed_at=AS_OF)
+
+    with pytest.raises(ValidationError, match="observed_at"):
+        signal_input_bundle(values=(valid_before, future, valid_equal))
+
+
+def test_rejecting_future_value_does_not_mutate_input_values_or_list() -> None:
+    valid = signal_input_value(name="bar.close", observed_at=EARLIER)
+    future = signal_input_value(name="quote.ask", observed_at=LATER)
+    values = [valid, future]
+
+    with pytest.raises(ValidationError, match="observed_at"):
+        signal_input_bundle(values=values)
+
+    assert values == [valid, future]
+    assert values[0] is valid
+    assert values[1] is future
+    assert valid.observed_at is EARLIER
+    assert future.observed_at is LATER
 
 
 def test_does_not_perform_completeness_validation_against_input_snapshot() -> None:
@@ -553,6 +725,51 @@ def test_does_not_perform_completeness_validation_against_input_snapshot() -> No
     assert not hasattr(bundle, "source_ids")
 
 
+def test_bundle_does_not_require_signal_evaluation_input_snapshot() -> None:
+    bundle = signal_input_bundle()
+
+    assert isinstance(bundle, SignalInputBundle)
+    assert bundle.snapshot_id == "snapshot:ask-momentum:20260509T143000Z"
+
+
+def test_bundle_does_not_check_required_input_names_or_reject_extra_inputs() -> None:
+    value = signal_input_value(name="unexpected.extra.input")
+
+    bundle = signal_input_bundle(values=(value,))
+
+    assert bundle.values == (value,)
+    assert not hasattr(bundle, "required_input_names")
+    assert not hasattr(bundle, "extra_input_names")
+    assert not hasattr(bundle, "missing_input_names")
+
+
+def test_contract_exposes_no_completeness_result_surface() -> None:
+    bundle = signal_input_bundle()
+
+    for field_name in (
+        "complete",
+        "is_complete",
+        "completeness",
+        "completeness_status",
+        "missing_inputs",
+        "missing_input_names",
+        "extra_inputs",
+        "extra_input_names",
+        "required_input_names",
+        "source_ids",
+    ):
+        assert not hasattr(bundle, field_name)
+
+    for method_name in (
+        "validate_against_snapshot",
+        "check_required_inputs",
+        "missing_inputs",
+        "extra_inputs",
+        "is_complete",
+    ):
+        assert not hasattr(bundle, method_name)
+
+
 def test_contract_exposes_no_signal_output_behavior() -> None:
     bundle = signal_input_bundle()
 
@@ -565,6 +782,9 @@ def test_contract_exposes_no_signal_output_behavior() -> None:
         "signal",
         "signal_output",
         "recommendation",
+        "result_kind",
+        "evaluator_kind",
+        "is_noop",
     ):
         assert not hasattr(bundle, field_name)
 
@@ -591,6 +811,22 @@ def test_contract_exposes_no_score_direction_confidence_or_actionability_fields(
         "approved",
         "rejected",
         "risk_approved",
+        "result_kind",
+        "evaluator_kind",
+        "is_noop",
+    ):
+        assert not hasattr(bundle, field_name)
+
+
+def test_contract_has_no_evaluated_at_or_current_time_availability_surface() -> None:
+    bundle = signal_input_bundle()
+
+    for field_name in (
+        "evaluated_at",
+        "current_time",
+        "clock",
+        "now",
+        "available_at",
     ):
         assert not hasattr(bundle, field_name)
 
@@ -623,6 +859,10 @@ def test_contract_exposes_no_trading_path_fields() -> None:
         "agent",
         "prompt",
         "output",
+        "feature",
+        "features",
+        "signal_result",
+        "evaluator",
     ):
         assert not hasattr(bundle, field_name)
 

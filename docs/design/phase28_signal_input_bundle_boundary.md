@@ -23,6 +23,15 @@ execution-plan mutation, portfolio mutation, broker or Alpaca behavior, order
 submission, scheduler/runtime behavior, persistence writes, live data
 ingestion, network calls, ML training or inference, or LLM trading-path logic.
 
+Phase 28 Step 3 hardens traceability with tests and documentation only. It adds
+no production behavior. The hardening proves the bundle continues to preserve
+exact snapshot id strings, `as_of` identity, supplied value order, value object
+identity, and each grouped value's name, source id, observed timestamp identity,
+and payload. It also pins tuple behavior, duplicate-name rejection, lookahead
+rejection, the absence of completeness validation, and isolation from evaluator,
+risk, execution, broker, runtime, persistence, ML, and LLM trading-path
+behavior.
+
 ## 2. Relationship To Existing Input Contracts
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -97,20 +106,20 @@ introduced.
 
 The minimal bundle:
 
-- be frozen and slotted
-- preserve input value object identity
-- convert incoming iterables to tuples
-- preserve supplied ordering exactly
-- reject empty bundles
-- reject duplicate input names
-- validate all value `observed_at <= bundle as_of`
-- validate bundle `as_of` as UTC-aware
-- reject naive and non-UTC bundle timestamps
-- preserve exact value names, source ids, observed values, and observation
+- is frozen and slotted
+- preserves input value object identity
+- converts incoming iterables to tuples
+- preserves supplied ordering exactly
+- rejects empty bundles
+- rejects duplicate input names
+- validates all value `observed_at <= bundle as_of`
+- validates bundle `as_of` as UTC-aware
+- rejects naive and non-UTC bundle timestamps
+- preserves exact value names, source ids, observed values, and observation
   timestamps
-- perform no computation or interpretation
-- perform no feature computation
-- perform no signal computation
+- performs no computation or interpretation
+- performs no feature computation
+- performs no signal computation
 
 The bundle remains a deterministic input container. It does not
 normalize values, compute features, rank inputs, infer signal direction, or
@@ -131,7 +140,7 @@ Open design questions:
 - should ordering follow snapshot `required_input_names` or supplied input
   order?
 
-Step 2 does not decide or implement those questions. The next validation design
+Step 3 does not decide or implement those questions. The next validation design
 should keep completeness behavior explicit and heavily tested.
 
 ## 7. Lookahead Rules
@@ -204,8 +213,9 @@ considered.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 2 does not add:
+Phase 28 Step 3 does not add:
 
+- production behavior
 - evaluator implementation
 - signal computation
 - feature computation
@@ -232,10 +242,10 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases include:
 
 1. Phase 28 Step 2: minimal immutable signal input bundle contract.
-2. Phase 28 Step 3: signal input bundle traceability and completeness
-   validation design.
-3. Phase 29 Step 1: first real evaluator design, docs-only.
-4. A later phase: minimal deterministic evaluator for one validated signal
+2. Phase 28 Step 3: signal input bundle traceability hardening.
+3. Phase 28 Step 4: signal input bundle completeness validation design.
+4. Phase 29 Step 1: first real evaluator design, docs-only.
+5. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sequence is non-binding. Any future work must remain contract-first,
