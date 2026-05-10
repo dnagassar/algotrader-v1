@@ -253,6 +253,10 @@ Phase 30 Step 5 is documentation-only. It creates an initial unreviewed
 research candidate backlog only. No production code or runtime behavior
 changed, and no research artifact, validated signal definition, real evaluator,
 or signal computation was added.
+Phase 30 Step 6 is documentation-only. It selects the first research candidate
+sourcing target only. No production code or runtime behavior changed, and no
+research artifact, validated signal definition, real evaluator, or signal
+computation was added.
 The latest full-suite result is:
 
 ```text
@@ -555,6 +559,11 @@ until candidate sourcing, artifact review, validated research support, and
 validated signal-definition support are completed. No production code, runtime
 behavior, real evaluator, signal computation, or trading-path behavior was
 added.
+
+Phase 30 Step 6 selects `P30-BL-001` as the first sourcing target only.
+Selection is not source collection, artifact review, validation, approval, or
+implementation readiness. No production code, runtime behavior, real
+evaluator, signal computation, or trading-path behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -4009,6 +4018,66 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 30 Step 6 First Candidate Research Artifact Source Selection
+
+Phase 30 Step 6 is documentation-only. It adds:
+
+```text
+docs/design/phase30_first_research_candidate_source_selection.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/design/phase30_research_artifact_candidate_sourcing_plan.md
+docs/design/phase30_research_artifact_candidate_review_template.md
+docs/design/phase30_research_validation_evidence_standard.md
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step selects `P30-BL-001`, "Simple scalar threshold indicator
+definition", as the first sourcing target. The candidate was chosen because it
+is P0, close to threshold-style advisory evaluator mechanics, compatible with
+deterministic scalar input review, likely relevant to `indicator_value` and
+`Decimal`, lower complexity than predictive or performance studies, and less
+likely to imply profitability or actionability.
+
+The selected candidate remains unreviewed, unvalidated, not approved, not
+production-ready, and not implementation-ready. `P30-BL-001` is marked as
+`sourcing target` only. No source is collected in this phase.
+
+Before formal review, the required evidence package must collect
+source/provenance, artifact title or reference, author/source, date/version,
+dataset details if applicable, input definition, threshold/config rationale if
+applicable, method description, assumptions, limitations, non-claims,
+reproducibility notes, no-lookahead or bias-control notes if applicable,
+relevance to `indicator_value`, relevance to the threshold-style advisory
+evaluator, and whether the candidate can bind to a future
+`ValidatedSignalDefinition`.
+
+No production code or runtime behavior changed. No research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, signal-to-risk conversion, risk approval, execution
+intent creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, runtime/scheduler behavior, persistence, live data
+ingestion, ML, or LLM trading-path behavior was added.
+
+Implementation remains blocked pending selected source collection, artifact
+review using the Phase 30 template, exact validated research support, exact
+validated signal-definition support, threshold/config provenance, explicit
+implementation scope approval, and implementation tests written or ready.
+
+Verification after Phase 30 Step 6:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4083,6 +4152,8 @@ python -m pytest
   sourcing plan
 - threshold evaluator behavior beyond the Phase 30 Step 5 unreviewed research
   candidate backlog
+- threshold evaluator behavior beyond the Phase 30 Step 6 first candidate
+  source selection
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4106,10 +4177,10 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- source one P0/P1 candidate artifact for review, docs-only
+- collect/summarize the selected candidate source, docs-only
 - first candidate research artifact review against the Phase 30 Step 2
-  evidence standard and Phase 30 Step 3 template, docs-only, only when a
-  candidate artifact exists
+  evidence standard and Phase 30 Step 3 template, docs-only, only after a
+  candidate source package exists
 - validated signal definition candidate review before any real evaluator
   implementation
 - explicit future execution-planning policy decisions only after their config

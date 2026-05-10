@@ -16,9 +16,10 @@ make any evaluator output actionable. Entries are unreviewed candidates only.
 
 ## 2. Backlog Status Doctrine
 
-Every entry in this initial backlog starts as one of:
+Every entry in the backlog may use one of:
 
 - unsourced
+- sourcing target
 - sourced
 - needs review
 - informational only
@@ -34,7 +35,7 @@ implementation.
 
 | Candidate id | Title | Category | Source/provenance | Related evaluator candidate | Related signal idea | Expected inputs | Expected value types | Threshold relevance | Dataset scope | Claim type | Known limitations | Priority | Status | Next action |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | unsourced; local placeholder only | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | none yet | mechanical transformation only | No external source, no dataset, no evidence, no threshold rationale | P0 | unsourced | Locate a precise mechanical definition or write a reviewable internal artifact candidate before review |
+| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | unsourced; local placeholder only | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | none yet | mechanical transformation only | No external source, no dataset, no evidence, no threshold rationale | P0 | sourcing target | First Step 6 sourcing target; collect source/provenance and evidence package before any review |
 | P30-BL-002 | Threshold sanity check for `indicator_value` | threshold sanity-check studies | unsourced | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, threshold, comparator, `as_of` | `Decimal`; UTC-aware timestamp metadata if applicable | Directly relevant to non-arbitrary threshold selection | unknown | threshold sanity check | No reviewed threshold, no comparator evidence, no validation window | P0 | unsourced | Source a candidate artifact that explains threshold choice and non-claims |
 | P30-BL-003 | Deterministic scalar indicator feature-validity reference | data-quality / feature-validity studies | unsourced | future threshold-style advisory evaluator | deterministic scalar indicator input validity | raw source fields, derived scalar name, observation timestamp | deterministic scalar values such as `Decimal`, `int`, or `bool` as scoped | Indirectly relevant to whether `indicator_value` is a valid observed input | unknown | mechanical transformation only / data-quality claim | No source, no feature formula, no data-quality controls | P1 | unsourced | Source a candidate that documents feature construction, timestamp, and validity rules |
 | P30-BL-004 | No-lookahead bias-control reference | no-lookahead / bias-control references | unsourced | any future real evaluator | point-in-time signal evaluation | feature timestamps, label timestamps, `as_of` | UTC-aware datetimes plus explicit feature values | Indirectly relevant to evaluator timestamp and bundle rules | unknown | robustness claim / bias-control reference | No exact source, no asset universe, no tested artifact | P1 | unsourced | Source a point-in-time/no-lookahead methodology reference for template review |
@@ -91,6 +92,10 @@ Priorities are conservative:
 
 Priority is routing metadata only. It is not evidence quality, approval, or
 implementation readiness. A P0 candidate can still fail review.
+
+Phase 30 Step 6 selects `P30-BL-001` as the first sourcing target only. That
+status does not review, validate, approve, or make the candidate
+implementation-ready.
 
 ## 7. Non-Validation Warning
 
@@ -190,14 +195,15 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+1. Phase 30 Step 6: select first candidate source target, docs-only.
+2. Phase 30 Step 7: collect/summarize the selected candidate source,
    docs-only.
-2. Phase 30 Step 7: first candidate research artifact review using the
+3. Phase 30 Step 8: first candidate research artifact review using the
    template, docs-only.
-3. Phase 30 Step 8: candidate validated signal definition review and artifact
+4. Phase 30 Step 9: candidate validated signal definition review and artifact
    binding.
-4. Phase 30 Step 9: implementation scope approval review.
-5. Later: minimal threshold evaluator implementation only if all blockers are
+5. Phase 30 Step 10: implementation scope approval review.
+6. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

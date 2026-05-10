@@ -22,6 +22,12 @@ Phase 30 Step 5 creates an initial unreviewed candidate backlog in
 Those backlog entries are intake records only. They are not evidence, do not
 validate any artifact, and do not authorize evaluator implementation.
 
+Phase 30 Step 6 selects the first candidate to source in
+[`phase30_first_research_candidate_source_selection.md`](phase30_first_research_candidate_source_selection.md).
+Source selection is not validation. The selected candidate remains unreviewed
+until source/provenance is collected and the candidate passes through the
+evidence standard and review template.
+
 ## 2. Why A Sourcing Plan Is Needed
 
 The project should not invent research evidence just because evaluator
@@ -136,7 +142,7 @@ A future candidate backlog entry should capture:
 - claim type
 - known limitations
 - review priority
-- status: unsourced / sourced / needs review / reviewed / rejected /
+- status: unsourced / sourcing target / sourced / needs review /
   informational only
 - next action
 
@@ -228,14 +234,15 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases include:
 
 1. Phase 30 Step 5: populate candidate research backlog, docs-only.
-2. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+2. Phase 30 Step 6: select first candidate source target, docs-only.
+3. Phase 30 Step 7: collect/summarize the selected candidate source,
    docs-only.
-3. Phase 30 Step 7: first candidate research artifact review, docs-only, only
+4. Phase 30 Step 8: first candidate research artifact review, docs-only, only
    when a candidate exists.
-4. Phase 30 Step 8: candidate validated signal definition review and artifact
+5. Phase 30 Step 9: candidate validated signal definition review and artifact
    binding.
-5. Phase 30 Step 9: implementation scope approval review.
-6. Later: minimal threshold evaluator implementation only if all blockers are
+6. Phase 30 Step 10: implementation scope approval review.
+7. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

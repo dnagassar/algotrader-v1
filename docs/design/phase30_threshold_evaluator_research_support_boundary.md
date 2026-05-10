@@ -40,6 +40,12 @@ Backlog entries are not support for implementation. Evaluator implementation
 remains blocked until a candidate is reviewed and promoted into exact
 validated research support and exact validated signal-definition support.
 
+Phase 30 Step 6 selects the first candidate to source in
+[`phase30_first_research_candidate_source_selection.md`](phase30_first_research_candidate_source_selection.md).
+Threshold evaluator implementation remains blocked pending source collection,
+artifact review, validated research support, and validated signal-definition
+support.
+
 ## 2. Why Research Support Is Required
 
 A threshold evaluator should not enter production code simply because:
@@ -270,14 +276,15 @@ Possible future phases based on this boundary include:
 3. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
    boundary, docs-only.
 4. Phase 30 Step 5: populate candidate research backlog, docs-only.
-5. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+5. Phase 30 Step 6: select first candidate source target, docs-only.
+6. Phase 30 Step 7: collect/summarize the selected candidate source,
    docs-only.
-6. Phase 30 Step 7: threshold evaluator research artifact candidate review
+7. Phase 30 Step 8: threshold evaluator research artifact candidate review
    using the template, docs-only, only when a candidate artifact exists.
-7. Phase 30 Step 8: validated signal definition candidate review, docs-only or
+8. Phase 30 Step 9: validated signal definition candidate review, docs-only or
    tests/docs only.
-8. Phase 30 Step 9: implementation readiness re-check.
-9. Later: minimal threshold evaluator implementation only if all blockers are
+9. Phase 30 Step 10: implementation readiness re-check.
+10. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,
