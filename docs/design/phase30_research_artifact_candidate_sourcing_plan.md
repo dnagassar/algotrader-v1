@@ -17,6 +17,11 @@ The sourcing plan is documentation-only. It does not admit any research into
 the deterministic core, promote any threshold, or make any evaluator output
 actionable.
 
+Phase 30 Step 5 creates an initial unreviewed candidate backlog in
+[`phase30_research_artifact_candidate_backlog.md`](phase30_research_artifact_candidate_backlog.md).
+Those backlog entries are intake records only. They are not evidence, do not
+validate any artifact, and do not authorize evaluator implementation.
+
 ## 2. Why A Sourcing Plan Is Needed
 
 The project should not invent research evidence just because evaluator
@@ -223,12 +228,14 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases include:
 
 1. Phase 30 Step 5: populate candidate research backlog, docs-only.
-2. Phase 30 Step 6: first candidate research artifact review, docs-only, only
+2. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+   docs-only.
+3. Phase 30 Step 7: first candidate research artifact review, docs-only, only
    when a candidate exists.
-3. Phase 30 Step 7: candidate validated signal definition review and artifact
+4. Phase 30 Step 8: candidate validated signal definition review and artifact
    binding.
-4. Phase 30 Step 8: implementation scope approval review.
-5. Later: minimal threshold evaluator implementation only if all blockers are
+5. Phase 30 Step 9: implementation scope approval review.
+6. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

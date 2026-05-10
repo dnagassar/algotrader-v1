@@ -201,6 +201,10 @@ state.
   threshold-style evaluator may be implemented. No real evaluator exists yet,
   real signal computation remains forbidden, evaluator output remains advisory
   and pre-risk, and LLMs remain outside the trading hot path.
+- Phase 30 Step 5 creates an unreviewed research candidate backlog only. No
+  real evaluator exists yet, real signal computation remains forbidden,
+  evaluator output remains advisory and pre-risk, and LLMs remain outside the
+  trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1243,6 +1247,14 @@ triaged before review. No real evaluator exists yet, real signal computation
 remains forbidden, evaluator output remains advisory and pre-risk, and LLMs
 remain outside the trading hot path.
 
+Phase 30 Step 5 populates the initial unreviewed research candidate backlog in
+[`docs/design/phase30_research_artifact_candidate_backlog.md`](design/phase30_research_artifact_candidate_backlog.md).
+It is documentation-only and records candidate placeholders and sourcing
+targets only. No candidate artifact is reviewed or approved, no validated
+research artifact or validated signal definition is created, no real evaluator
+exists yet, real signal computation remains forbidden, evaluator output
+remains advisory and pre-risk, and LLMs remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1357,6 +1369,8 @@ Ledger modes:
   review template
 - Threshold evaluator behavior beyond the Phase 30 Step 4 research artifact
   sourcing plan
+- Threshold evaluator behavior beyond the Phase 30 Step 5 unreviewed research
+  candidate backlog
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1383,9 +1397,10 @@ submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Future threshold-evaluator work
 should continue by reviewing exact validated research and signal-definition
 support against the Phase 30 Step 2 evidence standard and Phase 30 Step 3
-review template, after candidate sourcing under the Phase 30 Step 4 plan,
-before any implementation prompt, test scaffold, real evaluator behavior, or
-Signal -> Risk wiring.
+review template, after candidate sourcing under the Phase 30 Step 4 plan and
+initial unreviewed backlog population in Phase 30 Step 5, before any
+implementation prompt, test scaffold, real evaluator behavior, or wiring
+signal output into risk.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

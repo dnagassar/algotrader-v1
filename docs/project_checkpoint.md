@@ -249,6 +249,10 @@ research-support boundary and records the validated research artifact,
 validated signal definition, and threshold value/source evidence required
 before implementation. No production code or runtime behavior changed, and no
 real evaluator or signal computation was added.
+Phase 30 Step 5 is documentation-only. It creates an initial unreviewed
+research candidate backlog only. No production code or runtime behavior
+changed, and no research artifact, validated signal definition, real evaluator,
+or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -544,6 +548,13 @@ implementation may proceed. It keeps evaluator output advisory, pre-risk,
 non-actionable, not broker-aware, not portfolio-aware, and outside the LLM
 trading hot path. No production code, runtime behavior, real evaluator, signal
 computation, or trading-path behavior was added.
+
+Phase 30 Step 5 populates an unreviewed candidate research backlog only.
+Backlog entries are not reviewed evidence and cannot support implementation
+until candidate sourcing, artifact review, validated research support, and
+validated signal-definition support are completed. No production code, runtime
+behavior, real evaluator, signal computation, or trading-path behavior was
+added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3832,9 +3843,10 @@ pass/fail outcomes, and implementation blockers.
 No production code or runtime behavior changed. No research artifact,
 validated signal definition, real evaluator, evaluator protocol, signal
 computation, feature computation, strategy logic, score, direction,
-confidence, actionability, risk approval, execution intent creation, broker or
-Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
-live data ingestion, ML, or LLM trading-path behavior was added.
+confidence, actionability, signal-to-risk conversion, risk approval, execution
+intent creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, runtime/scheduler behavior, persistence, live data
+ingestion, ML, or LLM trading-path behavior was added.
 
 Implementation remains blocked pending exact validated research, exact
 validated signal-definition support, threshold/config provenance, explicit
@@ -3880,9 +3892,10 @@ artifact before implementation can be considered.
 No production code or runtime behavior changed. No research artifact,
 validated signal definition, real evaluator, evaluator protocol, signal
 computation, feature computation, strategy logic, score, direction,
-confidence, actionability, risk approval, execution intent creation, broker or
-Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
-live data ingestion, ML, or LLM trading-path behavior was added.
+confidence, actionability, signal-to-risk conversion, risk approval, execution
+intent creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, runtime/scheduler behavior, persistence, live data
+ingestion, ML, or LLM trading-path behavior was added.
 
 Implementation remains blocked pending candidate artifact review, exact
 validated research support, exact validated signal-definition support,
@@ -3939,6 +3952,57 @@ support, threshold/config provenance, explicit implementation scope approval,
 and implementation tests written or ready.
 
 Verification after Phase 30 Step 4:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
+## Phase 30 Step 5 Populate Candidate Research Backlog
+
+Phase 30 Step 5 is documentation-only. It adds:
+
+```text
+docs/design/phase30_research_artifact_candidate_backlog.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_research_artifact_candidate_sourcing_plan.md
+docs/design/phase30_research_artifact_candidate_review_template.md
+docs/design/phase30_research_validation_evidence_standard.md
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step creates a small initial backlog of unreviewed research candidate
+entries. The starter queue includes mechanical indicator definitions,
+threshold sanity-check studies, regime indicator studies, predictive
+relationship studies, risk filter studies, data-quality / feature-validity
+studies, backtesting methodology references, and no-lookahead / bias-control
+references.
+
+The backlog entries are placeholders and sourcing targets only. No candidate
+artifact is reviewed, no artifact is approved, no evidence is accepted, no
+threshold is justified, no strategy or profitability claim is accepted, and no
+implementation readiness claim is created.
+
+No production code or runtime behavior changed. No research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, signal-to-risk conversion, risk approval, execution
+intent creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, runtime/scheduler behavior, persistence, live data
+ingestion, ML, or LLM trading-path behavior was added.
+
+Implementation remains blocked pending candidate sourcing, artifact review
+using the Phase 30 template, exact validated research support, exact validated
+signal-definition support, threshold/config provenance, explicit
+implementation scope approval, and implementation tests written or ready.
+
+Verification after Phase 30 Step 5:
 
 ```text
 python -m pytest
@@ -4017,6 +4081,8 @@ python -m pytest
   review template
 - threshold evaluator behavior beyond the Phase 30 Step 4 research artifact
   sourcing plan
+- threshold evaluator behavior beyond the Phase 30 Step 5 unreviewed research
+  candidate backlog
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4040,10 +4106,10 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- populate a candidate research backlog from sourced artifacts, docs-only
-- threshold evaluator research artifact candidate review against the Phase 30
-  Step 2 evidence standard and Phase 30 Step 3 template, docs-only, only when
-  a candidate artifact exists
+- source one P0/P1 candidate artifact for review, docs-only
+- first candidate research artifact review against the Phase 30 Step 2
+  evidence standard and Phase 30 Step 3 template, docs-only, only when a
+  candidate artifact exists
 - validated signal definition candidate review before any real evaluator
   implementation
 - explicit future execution-planning policy decisions only after their config

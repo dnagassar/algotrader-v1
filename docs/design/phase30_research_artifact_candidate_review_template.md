@@ -18,6 +18,12 @@ This template is applied only after a candidate artifact exists. Sourcing a
 candidate does not validate it, approve it, or authorize evaluator
 implementation.
 
+Phase 30 Step 5 creates an initial unreviewed candidate backlog in
+[`phase30_research_artifact_candidate_backlog.md`](phase30_research_artifact_candidate_backlog.md).
+Backlog entries must pass through this review template before they can support
+any validated research artifact, validated signal definition, or evaluator
+implementation readiness claim.
+
 The template is documentation-only. It does not make any evaluator output
 actionable, production-ready, risk-approved, execution-ready, portfolio-aware,
 or broker-aware.
@@ -304,12 +310,14 @@ Possible future phases include:
 1. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
    boundary, docs-only.
 2. Phase 30 Step 5: populate candidate research backlog, docs-only.
-3. Phase 30 Step 6: candidate `ValidatedResearchArtifact` review using this
+3. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+   docs-only.
+4. Phase 30 Step 7: candidate `ValidatedResearchArtifact` review using this
    template, docs-only, only when a candidate artifact exists.
-4. Phase 30 Step 7: candidate `ValidatedSignalDefinition` review and artifact
+5. Phase 30 Step 8: candidate `ValidatedSignalDefinition` review and artifact
    binding, docs-only.
-5. Phase 30 Step 8: implementation scope approval review.
-6. Later: minimal threshold evaluator implementation only if all blockers are
+6. Phase 30 Step 9: implementation scope approval review.
+7. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

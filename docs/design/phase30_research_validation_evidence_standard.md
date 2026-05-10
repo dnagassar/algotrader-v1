@@ -23,6 +23,11 @@ Sourcing candidates does not weaken this evidence standard. Any sourced
 candidate remains informational until reviewed against this standard and the
 candidate review template.
 
+Phase 30 Step 5 creates an initial unreviewed candidate backlog in
+[`phase30_research_artifact_candidate_backlog.md`](phase30_research_artifact_candidate_backlog.md).
+Backlog inclusion does not weaken this evidence standard, fill missing
+evidence, or let a candidate support implementation before review.
+
 The standard is documentation-only. It does not make any advisory evaluator
 actionable, production-ready, risk-approved, execution-ready, broker-aware, or
 portfolio-aware.
@@ -381,13 +386,15 @@ Possible future phases include:
 2. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
    boundary, docs-only.
 3. Phase 30 Step 5: populate candidate research backlog, docs-only.
-4. Phase 30 Step 6: candidate `ValidatedResearchArtifact` review using the
+4. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+   docs-only.
+5. Phase 30 Step 7: candidate `ValidatedResearchArtifact` review using the
    template and this standard, docs-only, only when a candidate artifact
    exists.
-5. Phase 30 Step 7: candidate `ValidatedSignalDefinition` review and artifact
+6. Phase 30 Step 8: candidate `ValidatedSignalDefinition` review and artifact
    binding, docs-only.
-6. Phase 30 Step 8: implementation scope approval review.
-7. Later: minimal threshold evaluator implementation only if all blockers are
+7. Phase 30 Step 9: implementation scope approval review.
+8. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

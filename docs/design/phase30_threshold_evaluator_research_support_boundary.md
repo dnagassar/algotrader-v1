@@ -34,6 +34,12 @@ Threshold evaluator implementation remains blocked pending sourced and
 reviewed research evidence, exact validated artifact support, and exact
 validated signal-definition support.
 
+Phase 30 Step 5 creates an initial unreviewed candidate backlog in
+[`phase30_research_artifact_candidate_backlog.md`](phase30_research_artifact_candidate_backlog.md).
+Backlog entries are not support for implementation. Evaluator implementation
+remains blocked until a candidate is reviewed and promoted into exact
+validated research support and exact validated signal-definition support.
+
 ## 2. Why Research Support Is Required
 
 A threshold evaluator should not enter production code simply because:
@@ -264,12 +270,14 @@ Possible future phases based on this boundary include:
 3. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
    boundary, docs-only.
 4. Phase 30 Step 5: populate candidate research backlog, docs-only.
-5. Phase 30 Step 6: threshold evaluator research artifact candidate review
+5. Phase 30 Step 6: source one P0/P1 candidate artifact for review,
+   docs-only.
+6. Phase 30 Step 7: threshold evaluator research artifact candidate review
    using the template, docs-only, only when a candidate artifact exists.
-6. Phase 30 Step 7: validated signal definition candidate review, docs-only or
+7. Phase 30 Step 8: validated signal definition candidate review, docs-only or
    tests/docs only.
-7. Phase 30 Step 8: implementation readiness re-check.
-8. Later: minimal threshold evaluator implementation only if all blockers are
+8. Phase 30 Step 9: implementation readiness re-check.
+9. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,
