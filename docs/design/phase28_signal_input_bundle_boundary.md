@@ -48,6 +48,13 @@ compares only `SignalEvaluationInputSnapshot.required_input_names` with
 reports extra names in bundle order, and does not inspect or interpret values.
 Extra names are reported but do not make the result incomplete in this phase.
 
+Phase 28 Step 6 hardens completeness traceability with tests and documentation
+only. No production behavior is added. The hardening pins that completeness
+validation remains separate from `SignalInputBundle` construction, name-only,
+metadata-only, non-mutating, deterministic, non-computational, and isolated
+from evaluator, risk, execution, broker, runtime, persistence, ML, and LLM
+trading-path behavior.
+
 ## 2. Relationship To Existing Input Contracts
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -163,6 +170,12 @@ questions in a separate design note. Step 5 implements the minimal pure
 validation boundary: missing names are returned in snapshot order, extra names
 are returned in bundle order, extras do not make the result incomplete, and
 snapshot id or `as_of` equality is not enforced yet.
+Step 6 hardens that contract with tests/docs only: it proves repeated calls are
+stable, missing and extra ordering remains deterministic, extras remain
+non-blocking, ids are preserved exactly, values/source ids/observed timestamps
+are not interpreted, and hidden wall-clock, random, environment, network,
+filesystem-write, database/cache/persistence, broker, Alpaca, ML, and LLM
+dependencies remain absent.
 
 ## 7. Lookahead Rules
 
@@ -235,9 +248,12 @@ later sit between snapshot/bundle assembly and evaluator use.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 5 does not add:
+Phase 28 Step 6 does not add:
 
+- production behavior
 - bundle constructor changes
+- completeness fields on `SignalInputBundle`
+- completeness fields on `SignalEvaluationInputSnapshot`
 - evaluator implementation
 - signal computation
 - feature computation

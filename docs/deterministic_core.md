@@ -163,6 +163,10 @@ state.
   validation remains separate from `SignalInputBundle` construction, compares
   required names with bundle value names only, reports missing and extra names
   deterministically, and still adds no real evaluator or signal computation.
+- Phase 28 Step 6 hardens completeness validation traceability with tests and
+  docs only. No production behavior was added; completeness remains name-only,
+  metadata-only, deterministic, non-mutating, separate from bundle
+  construction, and isolated from trading-path behavior.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1110,6 +1114,15 @@ bundle constructor rule, and does not inspect or interpret values.
 remains a separate pure boundary. No real evaluator or signal computation
 exists yet, evaluator output remains advisory and pre-risk, and LLMs remain
 outside the trading hot path.
+
+Phase 28 Step 6 hardens the existing completeness validation tests and docs
+only. The hardening pins exact result field shape, frozen/slotted behavior,
+tuple immutability, deterministic missing and extra name ordering, exact
+snapshot id and bundle snapshot id traceability, input non-mutation, repeated
+call determinism, environment/random independence, no hidden wall-clock access,
+and no value, source id, observed timestamp, lookahead, signal, feature, score,
+rank, direction, actionability, risk, execution, broker, runtime, persistence,
+ML, or LLM behavior.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML

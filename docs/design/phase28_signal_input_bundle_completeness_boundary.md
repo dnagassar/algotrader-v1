@@ -6,7 +6,8 @@ Phase 28 Step 4 documented the future completeness validation boundary between
 `SignalEvaluationInputSnapshot.required_input_names` and
 `SignalInputBundle.values`. Phase 28 Step 5 adds the minimal immutable
 completeness result contract and one pure validation function for that
-boundary.
+boundary. Phase 28 Step 6 hardens traceability with tests and documentation
+only; no production behavior is added.
 
 Completeness validation is needed before a future real evaluator can consume a
 `SignalInputBundle` because a bundle can be well-formed, immutable,
@@ -27,6 +28,14 @@ extra names in bundle order, and treats the bundle as complete when no required
 names are missing. Extra names are reported but do not make the result
 incomplete in this phase. Snapshot id equality and `as_of` equality are not
 enforced yet.
+
+Step 6 proves that behavior remains name-only, metadata-only, non-mutating,
+deterministic, and isolated from trading-path behavior. It pins that
+completeness validation does not inspect `SignalInputValue.value`, compare
+`SignalInputValue.source_id`, compare `SignalInputValue.observed_at`, perform
+lookahead validation, read wall-clock time, read environment variables, depend
+on random state, access live data, or call broker/runtime/persistence/ML/LLM
+systems.
 
 ## 2. Current Contract Roles
 
@@ -92,6 +101,12 @@ names for an explicit snapshot according to the minimal Step 5 policy. It is
 not a signal result, trading recommendation, risk verdict, execution intent, or
 broker-facing request.
 
+Phase 28 Step 6 hardens that surface with tests that pin the exact result field
+set, frozen/slotted dataclass behavior, tuple field immutability, deterministic
+missing and extra name ordering, snapshot id and bundle snapshot id
+traceability, input non-mutation, and the absence of advisory, evaluator,
+feature, risk, execution, broker, runtime, persistence, ML, and LLM concepts.
+
 ## 5. Missing Input Behavior
 
 Phase 28 Step 5 returns missing inputs in an immutable validation result.
@@ -123,6 +138,9 @@ The Step 5 policy is intentionally explicit: extra inputs are visible to callers
 but not rejected. If a later phase rejects extras, the reported names should
 remain deterministic.
 
+Phase 28 Step 6 keeps this policy unchanged: extra inputs remain non-blocking
+and continue to be reported deterministically.
+
 ## 7. Snapshot/Bundle Time Compatibility
 
 Snapshot and bundle time compatibility remains open. Phase 28 Step 5 does not
@@ -143,6 +161,10 @@ Lookahead safety must remain preserved. `SignalInputBundle` already rejects
 values with `observed_at > bundle.as_of`; a future compatibility rule must not
 allow a bundle to satisfy a snapshot in a way that makes values appear
 available before they were actually observed.
+
+Phase 28 Step 6 keeps this boundary unchanged. Completeness validation still
+does not compare `observed_at` values and does not perform lookahead validation;
+that remains the bundle constructor's responsibility.
 
 ## 8. Determinism And Side-Effect Rules
 
@@ -201,16 +223,20 @@ A future real evaluator may eventually require:
 
 That evaluator is not implemented here. Phase 28 Step 4 does not implement
 validation logic, completeness result, or a real evaluator. Phase 28 Step 5
-adds only minimal completeness validation. Any future evaluator output remains
-advisory and pre-risk. LLMs remain outside the trading hot path and must not
-compute live signal outputs, approve trades, mutate execution plans, or
-interact with brokers.
+adds only minimal completeness validation. Phase 28 Step 6 adds only
+traceability hardening tests and docs for that validation boundary. Any future
+evaluator output remains advisory and pre-risk. LLMs remain outside the trading
+hot path and must not compute live signal outputs, approve trades, mutate
+execution plans, or interact with brokers.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 5 does not add:
+Phase 28 Step 6 does not add:
 
+- production behavior
 - bundle constructor changes
+- completeness fields on `SignalInputBundle`
+- completeness fields on `SignalEvaluationInputSnapshot`
 - evaluator implementation
 - signal computation
 - feature computation
@@ -237,9 +263,8 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 28 Step 6: completeness validation traceability hardening.
-2. Phase 29 Step 1: first real evaluator design, docs-only.
-3. A later phase: minimal deterministic evaluator for one validated signal
+1. Phase 29 Step 1: first real evaluator design, docs-only.
+2. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sketch is non-binding. Any future work must remain contract-first,

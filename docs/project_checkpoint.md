@@ -213,10 +213,15 @@ Phase 28 Step 5 adds the minimal immutable
 snapshot input names with bundle value names only, reports missing and extra
 names deterministically, keeps extra inputs non-failing in this phase, and adds
 no real evaluator or signal computation.
+Phase 28 Step 6 hardens completeness validation traceability with tests and
+documentation only. No production source or runtime behavior changed.
+Completeness validation remains name-only, metadata-only, deterministic,
+non-mutating, separate from `SignalInputBundle` construction, and isolated from
+trading-path behavior.
 The latest full-suite result is:
 
 ```text
-765 passed, 4 skipped
+778 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -439,6 +444,12 @@ compute signals or features, score, rank, infer direction, recommend trades,
 approve risk, create execution intents, mutate execution plans, access live
 data, route to brokers or Alpaca, submit orders, use scheduler/runtime or
 persistence behavior, run ML, or use LLMs in the trading path.
+Phase 28 Step 6 hardens that contract with tests/docs only. No production code
+or runtime behavior changed. The tests prove completeness depends only on
+required-name presence, not observed values, source ids, or timestamps; extra
+inputs remain reported but non-blocking; snapshot id equality and `as_of`
+equality are still not required; and lookahead validation remains outside the
+completeness validator.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3234,6 +3245,66 @@ The full suite is now:
 ```text
 python -m pytest
 765 passed, 4 skipped
+```
+
+## Phase 28 Step 6 Signal Input Bundle Completeness Traceability Hardening
+
+Phase 28 Step 6 is tests/docs only. No production source or runtime behavior
+changed.
+
+The strengthened completeness tests harden:
+
+- exact `SignalInputBundleCompletenessResult` field set
+- frozen and slotted result behavior with no `__dict__`
+- tuple field type and immutability
+- complete and incomplete `is_complete` semantics
+- deterministic missing-name ordering from `snapshot.required_input_names`
+- deterministic extra-name ordering from `bundle.values`
+- empty missing and extra tuples
+- repeated-call equality and ordering stability
+- extra inputs remain non-blocking in this phase
+- missing required inputs plus extras remain incomplete
+- exact snapshot id and bundle snapshot id preservation
+- no snapshot id equality requirement
+- no `as_of` equality requirement
+- no lookahead validation inside completeness validation
+- no comparison of `SignalInputValue.value`, `source_id`, or `observed_at`
+- no mutation of `SignalEvaluationInputSnapshot`, `SignalInputBundle`, or
+  underlying `SignalInputValue` objects
+- output independence from environment variables and random state
+- absence of signal result, score, rank, direction, confidence, probability,
+  actionability, result-kind, evaluator-kind, or no-op marker fields
+- absence of risk, execution, order, broker, Alpaca, account, position, fill,
+  portfolio, cash, buying-power, scheduler, runtime, persistence, database,
+  cache, ML/model/prediction, LLM, agent, prompt, or output concepts
+- absence of hidden wall-clock, random, environment, network/socket,
+  filesystem-write, database/cache/persistence, broker SDK, Alpaca SDK, ML, and
+  LLM/agent imports or calls
+
+`validate_signal_input_bundle_completeness(...)` remains a pure metadata
+boundary. It compares required names and bundle value names only. It does not
+inspect or interpret `SignalInputValue.value`, compute signals or features,
+implement a real evaluator, score, rank, infer direction, recommend trades,
+approve risk, create execution intents, mutate execution plans, access live
+data, route to brokers or interact with Alpaca, submit orders, use
+scheduler/runtime/persistence behavior, run ML, or use LLMs in the trading
+path. Normal pytest remains offline, credential-free, and safe.
+
+Focused validation after Phase 28 Step 6:
+
+```text
+python -m pytest tests/unit/test_signal_input_bundle_completeness.py
+45 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+778 passed, 4 skipped
 ```
 
 ## Explicitly Not Included
