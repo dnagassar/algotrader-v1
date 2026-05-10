@@ -2,20 +2,26 @@
 
 ## 1. Purpose
 
-Phase 28 Step 1 designs the future signal input bundle boundary. The project
+Phase 28 Step 1 designed the future signal input bundle boundary. The project
 needs this boundary before any real evaluator can consume observed values
 because a future evaluator should receive one explicit immutable bundle, not
 loose lists, dictionaries, live data handles, feature stores, or runtime
 objects.
 
-This phase only designs the boundary. It does not implement a bundle and does
-not add evaluator behavior, signal computation, feature computation, strategy
-logic, scoring, ranking, confidence or probability, signal direction,
-actionability flags, signal-to-risk conversion, risk approval, execution intent
-creation, execution-plan mutation, portfolio mutation, broker or Alpaca
-behavior, order submission, scheduler/runtime behavior, persistence writes,
-live data ingestion, network calls, ML training or inference, or LLM
-trading-path logic.
+Phase 28 Step 2 adds only the minimal immutable `SignalInputBundle` contract.
+It groups explicit `SignalInputValue` objects for future evaluator use while
+preserving supplied ordering and input value object identity. It rejects
+duplicate input names and rejects lookahead values where
+`SignalInputValue.observed_at > bundle.as_of`.
+
+Step 2 still does not add completeness validation against
+`SignalEvaluationInputSnapshot`. It also does not add evaluator behavior,
+signal computation, feature computation, strategy logic, scoring, ranking,
+confidence or probability, signal direction, actionability flags,
+signal-to-risk conversion, risk approval, execution intent creation,
+execution-plan mutation, portfolio mutation, broker or Alpaca behavior, order
+submission, scheduler/runtime behavior, persistence writes, live data
+ingestion, network calls, ML training or inference, or LLM trading-path logic.
 
 ## 2. Relationship To Existing Input Contracts
 
@@ -34,14 +40,16 @@ trading-path logic.
 - observation timestamp through `observed_at`
 - source traceability through `source_id`
 
-A future `SignalInputBundle` would be an immutable collection of explicit
-observed values. Conceptually, it would provide:
+`SignalInputBundle` is an immutable collection of explicit observed values. In
+Step 2, it provides:
 
 - deterministic ordering
 - duplicate-name policy
-- completeness validation against a snapshot
 - lookahead validation against evaluator `as_of`
 - source and timestamp traceability
+
+Completeness validation against a snapshot remains deferred to a later pure
+validation phase or helper.
 
 The bundle would sit between reference-only snapshots and future real
 evaluators. It would not itself be a signal result or trading decision.
@@ -65,9 +73,9 @@ The bundle boundary keeps observed input assembly separate from evaluation. It
 also makes lookahead and completeness checks visible before any real signal
 logic exists.
 
-## 4. Candidate Future Fields
+## 4. Implemented Minimal Fields
 
-A future minimal bundle contract may include:
+The Step 2 bundle contract has exactly:
 
 - `snapshot_id`
 - `as_of`
@@ -81,20 +89,20 @@ Optional future fields should be added only if a later phase justifies them:
 - value name index
 - bundle fingerprint
 
-These are design candidates, not implementation requirements. The first
-implementation phase should choose the smallest field set that can enforce
-traceability, determinism, and no-lookahead behavior.
+The implemented field set is the smallest surface needed to enforce
+traceability, determinism, and no-lookahead behavior before any evaluator is
+introduced.
 
-## 5. Required Future Bundle Rules
+## 5. Implemented Bundle Rules
 
-A future bundle should likely:
+The minimal bundle:
 
 - be frozen and slotted
-- preserve input value object identity if appropriate
+- preserve input value object identity
 - convert incoming iterables to tuples
-- preserve deterministic ordering or explicitly define canonical ordering
-- reject empty bundles unless a future use case justifies them
-- reject duplicate input names unless explicitly allowed
+- preserve supplied ordering exactly
+- reject empty bundles
+- reject duplicate input names
 - validate all value `observed_at <= bundle as_of`
 - validate bundle `as_of` as UTC-aware
 - reject naive and non-UTC bundle timestamps
@@ -104,13 +112,13 @@ A future bundle should likely:
 - perform no feature computation
 - perform no signal computation
 
-The bundle should remain a deterministic input container. It should not
+The bundle remains a deterministic input container. It does not
 normalize values, compute features, rank inputs, infer signal direction, or
 convert observations into advisory outputs.
 
 ## 6. Completeness Against SignalEvaluationInputSnapshot
 
-A future bundle should be able to prove whether it satisfies a
+Later pure validation should be able to prove whether a bundle satisfies a
 `SignalEvaluationInputSnapshot` by matching required input names.
 
 Open design questions:
@@ -123,28 +131,28 @@ Open design questions:
 - should ordering follow snapshot `required_input_names` or supplied input
   order?
 
-This phase does not decide those questions. The next implementation design
+Step 2 does not decide or implement those questions. The next validation design
 should keep completeness behavior explicit and heavily tested.
 
 ## 7. Lookahead Rules
 
-A future bundle must support no-lookahead validation:
+The Step 2 bundle supports no-lookahead validation:
 
 - every `SignalInputValue.observed_at` must be `<= bundle.as_of`
 - every value must be available at or before evaluator `as_of`
-- future observations must be rejected
+- future observations are rejected
 - bundle construction must not fetch newer data
 - evaluator code must not fetch newer data
 - no wall-clock time may be used to infer availability
 
-This is the first natural place to validate a collection of input values
+This is the first place to validate a collection of input values
 against an `as_of`. `SignalInputValue` validates only its own timestamp; bundle
 or assembly phases should validate whether values are usable for a specific
 evaluation time.
 
 ## 8. Determinism And Side-Effect Rules
 
-Future bundle contracts must:
+Bundle contracts must:
 
 - use only explicit `SignalInputValue` objects
 - avoid network calls
@@ -159,7 +167,7 @@ Future bundle contracts must:
 - avoid ML calls in the trading path
 - avoid LLM calls in the trading path
 
-The bundle must not read from runtime state, credentials, broker adapters,
+The Step 2 bundle does not read from runtime state, credentials, broker adapters,
 files, caches, databases, notebooks, model services, or LLM outputs.
 
 ## 9. Output And Advisory Boundary
@@ -186,19 +194,18 @@ A future real evaluator may eventually accept:
 
 - `ValidatedSignalDefinition`
 - `SignalEvaluationInputSnapshot`
-- future `SignalInputBundle`
+- `SignalInputBundle`
 - explicit `as_of`
 - explicit `evaluated_at`
 
-That future evaluator remains out of scope here. Phase 28 Step 1 only defines
-why a bundle boundary is needed before evaluator implementation can be
+That future evaluator remains out of scope here. Phase 28 Step 2 only adds the
+minimal input bundle contract needed before evaluator implementation can be
 considered.
 
 ## 11. Explicitly Out Of Scope
 
-Phase 28 Step 1 does not add:
+Phase 28 Step 2 does not add:
 
-- bundle implementation
 - evaluator implementation
 - signal computation
 - feature computation
@@ -225,7 +232,8 @@ Normal pytest must remain offline, credential-free, and safe.
 Possible future phases include:
 
 1. Phase 28 Step 2: minimal immutable signal input bundle contract.
-2. Phase 28 Step 3: signal input bundle traceability and lookahead hardening.
+2. Phase 28 Step 3: signal input bundle traceability and completeness
+   validation design.
 3. Phase 29 Step 1: first real evaluator design, docs-only.
 4. A later phase: minimal deterministic evaluator for one validated signal
    definition.

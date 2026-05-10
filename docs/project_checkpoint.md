@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 681-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 717-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -189,10 +189,19 @@ behavior.
 Phase 28 Step 1 is documentation-only. It records the future signal input
 bundle boundary and states that no bundle contract, real evaluator, signal
 computation, production code, or runtime behavior was added.
+Phase 28 Step 2 adds the minimal immutable `SignalInputBundle` contract. It
+groups explicit `SignalInputValue` objects for future evaluator use, preserves
+ordering and input value identity, rejects duplicate names, and rejects
+lookahead values where `observed_at > as_of`. It does not validate
+completeness against `SignalEvaluationInputSnapshot`, compute features or
+signals, implement a real evaluator, score, rank, infer direction, recommend
+trades, approve risk, mutate execution plans, access live data, route to
+brokers, submit orders, use scheduler/runtime/persistence behavior, run ML, or
+use LLMs in the trading path.
 The latest full-suite result is:
 
 ```text
-681 passed, 4 skipped
+717 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -391,8 +400,13 @@ lookahead validation against evaluator `as_of` remains future work.
 Phase 27 Step 4 hardens that contract with tests/docs only. No production code
 or runtime behavior changed.
 Phase 28 Step 1 adds the signal input bundle boundary as documentation only.
-`SignalInputValue` remains a single observed-value contract; no input bundle
-contract, real evaluator, or signal computation exists yet.
+`SignalInputValue` remains a single observed-value contract, and no real
+evaluator or signal computation exists yet.
+Phase 28 Step 2 adds the minimal `SignalInputBundle` contract. It is an
+immutable input container only: it groups explicit `SignalInputValue` objects,
+preserves ordering and value identity, rejects duplicate names, and rejects
+lookahead values where `observed_at > as_of`. Completeness validation against
+`SignalEvaluationInputSnapshot` remains deferred.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2982,6 +2996,40 @@ python -m pytest
 681 passed, 4 skipped
 ```
 
+## Phase 28 Step 2 Minimal Signal Input Bundle Contract
+
+Phase 28 Step 2 adds:
+
+```text
+src/algotrader/signals/signal_input_bundle.py
+tests/unit/test_signal_input_bundle.py
+```
+
+`SignalInputBundle` is a frozen, slotted dataclass with exactly
+`snapshot_id`, `as_of`, and `values`. It groups explicit `SignalInputValue`
+objects for future evaluator use, coerces incoming value iterables to tuples,
+preserves supplied value ordering and input value object identity, rejects empty
+bundles, rejects duplicate `SignalInputValue.name` values, validates `as_of` as
+UTC-aware, and rejects lookahead values where
+`SignalInputValue.observed_at > bundle.as_of`.
+
+Completeness validation against `SignalEvaluationInputSnapshot` remains
+deferred to a later pure-validation phase or helper. The bundle does not compute
+signals or features and does not implement a real evaluator. It does not score,
+rank, infer direction, recommend trades, expose actionability, approve risk,
+create execution intents, mutate execution plans, access live data, route to
+brokers or Alpaca, submit orders, use scheduler/runtime/persistence behavior,
+run ML, or use LLMs in the trading path.
+
+Normal pytest remains offline, credential-free, and safe.
+
+Verification after Phase 28 Step 2:
+
+```text
+python -m pytest
+717 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3035,9 +3083,11 @@ python -m pytest
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation
-- signal input value collection or evaluator input bundle
-- signal input bundle implementation
-- lookahead validation across input values and evaluator `as_of`
+- signal input bundle completeness validation against
+  `SignalEvaluationInputSnapshot`
+- signal input bundle behavior beyond minimal grouping, tuple coercion,
+  duplicate-name rejection, and lookahead validation
+- real evaluator consumption of `SignalInputBundle`
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3061,8 +3111,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- minimal immutable signal input bundle contract plus bundle
-  traceability/lookahead hardening before any real evaluator behavior
+- signal input bundle traceability and completeness validation before any real
+  evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
