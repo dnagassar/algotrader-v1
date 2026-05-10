@@ -12,6 +12,12 @@ no validated signal definition, implements no evaluator, and adds no signal
 computation. The goal is to make future artifact review consistent,
 auditable, and independent of any convenient candidate.
 
+Phase 30 Step 4 defines how future candidates are sourced before review in
+[`phase30_research_artifact_candidate_sourcing_plan.md`](phase30_research_artifact_candidate_sourcing_plan.md).
+This template is applied only after a candidate artifact exists. Sourcing a
+candidate does not validate it, approve it, or authorize evaluator
+implementation.
+
 The template is documentation-only. It does not make any evaluator output
 actionable, production-ready, risk-approved, execution-ready, portfolio-aware,
 or broker-aware.
@@ -295,12 +301,15 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 30 Step 4: candidate `ValidatedResearchArtifact` review using this
+1. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
+   boundary, docs-only.
+2. Phase 30 Step 5: populate candidate research backlog, docs-only.
+3. Phase 30 Step 6: candidate `ValidatedResearchArtifact` review using this
    template, docs-only, only when a candidate artifact exists.
-2. Phase 30 Step 5: candidate `ValidatedSignalDefinition` review and artifact
+4. Phase 30 Step 7: candidate `ValidatedSignalDefinition` review and artifact
    binding, docs-only.
-3. Phase 30 Step 6: implementation scope approval review.
-4. Later: minimal threshold evaluator implementation only if all blockers are
+5. Phase 30 Step 8: implementation scope approval review.
+6. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

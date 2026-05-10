@@ -28,6 +28,12 @@ Evaluator implementation remains blocked until a candidate artifact passes a
 future review using the evidence standard and template, and until exact
 validated signal-definition support exists.
 
+Phase 30 Step 4 defines candidate artifact sourcing and backlog triage in
+[`phase30_research_artifact_candidate_sourcing_plan.md`](phase30_research_artifact_candidate_sourcing_plan.md).
+Threshold evaluator implementation remains blocked pending sourced and
+reviewed research evidence, exact validated artifact support, and exact
+validated signal-definition support.
+
 ## 2. Why Research Support Is Required
 
 A threshold evaluator should not enter production code simply because:
@@ -213,6 +219,7 @@ compatibility rules, and avoid hidden wall-clock access.
 
 Implementation remains blocked until:
 
+- at least one candidate artifact is sourced
 - exact validated research artifact exists
 - candidate artifact passes future review using the evidence standard and
   template
@@ -254,12 +261,15 @@ Possible future phases based on this boundary include:
 1. Phase 30 Step 2: research validation evidence standard, docs-only.
 2. Phase 30 Step 3: candidate research artifact review template and intake
    boundary, docs-only.
-3. Phase 30 Step 4: threshold evaluator research artifact candidate review
+3. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
+   boundary, docs-only.
+4. Phase 30 Step 5: populate candidate research backlog, docs-only.
+5. Phase 30 Step 6: threshold evaluator research artifact candidate review
    using the template, docs-only, only when a candidate artifact exists.
-4. Phase 30 Step 5: validated signal definition candidate review, docs-only or
+6. Phase 30 Step 7: validated signal definition candidate review, docs-only or
    tests/docs only.
-5. Phase 30 Step 6: implementation readiness re-check.
-6. Later: minimal threshold evaluator implementation only if all blockers are
+7. Phase 30 Step 8: implementation readiness re-check.
+8. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

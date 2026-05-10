@@ -17,6 +17,12 @@ intake boundary in
 That template applies this evidence standard to future artifacts, but the
 template itself approves no artifact and creates no validated research.
 
+Phase 30 Step 4 defines candidate sourcing and backlog triage in
+[`phase30_research_artifact_candidate_sourcing_plan.md`](phase30_research_artifact_candidate_sourcing_plan.md).
+Sourcing candidates does not weaken this evidence standard. Any sourced
+candidate remains informational until reviewed against this standard and the
+candidate review template.
+
 The standard is documentation-only. It does not make any advisory evaluator
 actionable, production-ready, risk-approved, execution-ready, broker-aware, or
 portfolio-aware.
@@ -372,13 +378,16 @@ Possible future phases include:
 
 1. Phase 30 Step 3: candidate research artifact review template and intake
    boundary, docs-only.
-2. Phase 30 Step 4: candidate `ValidatedResearchArtifact` review using the
+2. Phase 30 Step 4: research artifact candidate sourcing plan and backlog
+   boundary, docs-only.
+3. Phase 30 Step 5: populate candidate research backlog, docs-only.
+4. Phase 30 Step 6: candidate `ValidatedResearchArtifact` review using the
    template and this standard, docs-only, only when a candidate artifact
    exists.
-3. Phase 30 Step 5: candidate `ValidatedSignalDefinition` review and artifact
+5. Phase 30 Step 7: candidate `ValidatedSignalDefinition` review and artifact
    binding, docs-only.
-4. Phase 30 Step 6: implementation scope approval review.
-5. Later: minimal threshold evaluator implementation only if all blockers are
+6. Phase 30 Step 8: implementation scope approval review.
+7. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,

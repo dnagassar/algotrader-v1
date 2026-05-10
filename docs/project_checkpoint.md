@@ -3896,6 +3896,55 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 30 Step 4 Research Artifact Candidate Sourcing Plan / Backlog Boundary
+
+Phase 30 Step 4 is documentation-only. It adds:
+
+```text
+docs/design/phase30_research_artifact_candidate_sourcing_plan.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_research_artifact_candidate_review_template.md
+docs/design/phase30_research_validation_evidence_standard.md
+docs/design/phase30_threshold_evaluator_research_support_boundary.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step defines the sourcing plan and backlog boundary for future candidate
+research artifacts. It identifies candidate categories worth sourcing later,
+sourcing and rejection criteria, threshold evaluator research needs, a future
+backlog entry format, priority levels, intake routing, and explicit
+implementation blockers.
+
+The sourcing plan does not review a candidate artifact, approve an artifact,
+create a validated research artifact, create a validated signal definition, or
+authorize evaluator implementation. Sourced candidates remain informational
+until reviewed against the Phase 30 Step 2 evidence standard and documented
+with the Phase 30 Step 3 candidate review template.
+
+No production code or runtime behavior changed. No research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation, broker or
+Alpaca behavior, order submission, runtime/scheduler behavior, persistence,
+live data ingestion, ML, or LLM trading-path behavior was added.
+
+Implementation remains blocked pending candidate sourcing, candidate artifact
+review, exact validated research support, exact validated signal-definition
+support, threshold/config provenance, explicit implementation scope approval,
+and implementation tests written or ready.
+
+Verification after Phase 30 Step 4:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3966,6 +4015,8 @@ python -m pytest
   evidence standard
 - threshold evaluator behavior beyond the Phase 30 Step 3 research artifact
   review template
+- threshold evaluator behavior beyond the Phase 30 Step 4 research artifact
+  sourcing plan
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3989,6 +4040,7 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
+- populate a candidate research backlog from sourced artifacts, docs-only
 - threshold evaluator research artifact candidate review against the Phase 30
   Step 2 evidence standard and Phase 30 Step 3 template, docs-only, only when
   a candidate artifact exists
