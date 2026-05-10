@@ -15,6 +15,14 @@ portfolio mutation, broker or Alpaca behavior, order submission,
 scheduler/runtime behavior, persistence, live data ingestion, ML training or
 inference, or LLM trading-path logic.
 
+Phase 27 Step 3 adds the first minimal immutable input-value contract:
+`SignalInputValue`. It carries one explicit observed value with source and
+timestamp traceability only. It does not implement a real evaluator, compute
+signals or features, score, rank, infer direction, recommend trades, approve
+risk, create execution intents, mutate execution plans, access live data, route
+to brokers or Alpaca, submit orders, use scheduler/runtime/persistence, run ML,
+or use LLMs in the trading path.
+
 ## 2. Snapshot References Versus Input Values
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -75,6 +83,18 @@ A future minimal immutable contract should likely consider:
 These are design candidates, not implementation requirements. The next phase
 must decide the smallest safe field set before production code is added.
 
+Phase 27 Step 3 chooses the first minimal field set only:
+
+- `name`
+- `value`
+- `observed_at`
+- `source_id`
+
+Optional unit, quality, symbol, and instrument fields remain deferred. The
+first value surface is limited to deterministic scalar values and does not
+model collections, bars, quotes, feature vectors, unavailable values, units, or
+timeframes.
+
 ## 5. Timestamp And Lookahead Rules
 
 Future input values must support strict timestamp validation:
@@ -92,6 +112,10 @@ Future input values must support strict timestamp validation:
 The input-value boundary must make lookahead checks simple, explicit, and
 testable. No evaluator may fill missing observation timestamps from the system
 clock or silently accept untimestamped values.
+
+`SignalInputValue` validates only its own `observed_at` timestamp. It does not
+perform lookahead validation against an evaluator `as_of` because it has no
+`as_of` field. Assembly-level lookahead validation remains future work.
 
 ## 6. Determinism Rules
 
@@ -165,11 +189,14 @@ exist and the real evaluator admission criteria are met. Future feature
 contracts, if needed, must be designed separately before feature values are
 promoted into evaluator inputs.
 
+`SignalInputValue` is now the minimal observed-value contract. It is not an
+input collection, not an evaluator input bundle, not a feature contract, not a
+real evaluator, and not sufficient by itself to admit real signal computation.
+
 ## 9. Explicitly Out Of Scope
 
 Phase 27 Step 2 does not add:
 
-- input-value implementation
 - evaluator implementation
 - signal computation
 - feature computation
@@ -191,14 +218,20 @@ Phase 27 Step 2 does not add:
 
 Normal pytest must remain offline, credential-free, and safe.
 
+Phase 27 Step 3 adds only the minimal `SignalInputValue` implementation. It
+still does not add evaluator implementation, signal computation, feature
+computation, strategy logic, score/direction/confidence/actionability behavior,
+risk approval, execution intent creation, broker or Alpaca behavior, order
+submission, runtime/scheduler behavior, persistence, live data ingestion, ML,
+or LLM trading-path behavior.
+
 ## 10. Non-Binding Future Phase Sketch
 
 Possible future phases include:
 
-1. Phase 27 Step 3: minimal immutable signal input value contract.
-2. Phase 27 Step 4: input value traceability and lookahead hardening.
-3. Phase 28 Step 1: first real evaluator design, still docs-only.
-4. A later phase: minimal deterministic evaluator for one validated signal
+1. Phase 27 Step 4: input value traceability and lookahead hardening.
+2. Phase 28 Step 1: first real evaluator design, still docs-only.
+3. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sequence is non-binding. Any future work must remain contract-first,

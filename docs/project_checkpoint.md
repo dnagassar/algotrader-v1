@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 634-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 664-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -176,10 +176,16 @@ Phase 27 Step 2 is documentation-only. It records the future deterministic
 signal input-value boundary and states that no input-value contract exists yet,
 `SignalEvaluationInputSnapshot` remains reference metadata only, and no real
 evaluator or signal computation was added.
+Phase 27 Step 3 adds the minimal immutable `SignalInputValue` contract. It
+carries one explicit observed value with UTC-aware timestamp and source
+traceability only, and adds no real evaluator, signal computation, feature
+computation, scoring, ranking, direction, actionability, risk approval,
+execution behavior, broker behavior, runtime behavior, persistence, ML, or LLM
+trading-path logic.
 The latest full-suite result is:
 
 ```text
-634 passed, 4 skipped
+664 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -372,6 +378,9 @@ meaning, side-effect tests, and trading-path dependency tests are explicit.
 Phase 27 Step 2 adds the deterministic signal input-value boundary as
 documentation only. No production code, tests, runtime behavior, input-value
 contract, real evaluator, or signal computation was added.
+Phase 27 Step 3 adds `SignalInputValue` as a minimal signal-layer contract for
+one explicit observed value. It validates only its own metadata and timestamp;
+lookahead validation against evaluator `as_of` remains future work.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2769,6 +2778,81 @@ python -m pytest
 634 passed, 4 skipped
 ```
 
+## Phase 27 Step 3 Minimal Signal Input Value Contract
+
+Phase 27 Step 3 adds the first minimal signal input-value production contract:
+
+```text
+src/algotrader/signals/signal_input_value.py
+```
+
+The new `SignalInputValue` contract is a frozen, slotted dataclass with exactly
+four fields:
+
+```text
+name
+value
+observed_at
+source_id
+```
+
+It carries one explicit observed value with source and timestamp traceability.
+It validates `observed_at` as UTC-aware using the deterministic time contract,
+rejects naive and non-UTC datetimes, rejects empty or blank `name` and
+`source_id`, preserves accepted string values exactly, preserves accepted
+`observed_at` identity, and stores the value without computation or
+interpretation.
+
+The first value surface accepts deterministic scalar values only: `Decimal`,
+`int`, `str`, and `bool`. Mutable values, tuples, floats, and `None` are not
+part of this minimal contract. Optional unit, quality, symbol, and instrument
+fields remain deferred.
+
+`SignalInputValue` does not perform lookahead validation against evaluator
+`as_of`; it has no `as_of` field. Lookahead validation belongs to a later
+assembly or evaluator-input boundary.
+
+Focused tests live in:
+
+```text
+tests/unit/test_signal_input_value.py
+```
+
+They prove the contract exists, exposes the exact field set, is frozen and
+slotted, validates UTC-aware `observed_at`, rejects naive and non-UTC
+datetimes, preserves timestamp identity and exact accepted strings, preserves
+values without computation, accepts the deterministic scalar value set, rejects
+unsupported or mutable values, exposes no signal output/scoring/direction/
+confidence/actionability surface, exposes no risk/execution/order/broker/
+portfolio/runtime/persistence/ML/LLM fields, imports no forbidden downstream or
+external modules, and makes no hidden wall-clock, random, network,
+filesystem-write, environment-variable, or broker calls.
+
+This phase adds no real evaluator, signal computation, feature computation,
+strategy logic, scoring, ranking, confidence/probability, signal direction,
+actionability flags, signal-to-risk conversion, risk approval, execution intent
+creation, execution-plan mutation, portfolio mutation, broker or Alpaca
+behavior, order submission, scheduler/runtime behavior, persistence writes,
+live data ingestion, network calls, ML training or inference, or LLM
+trading-path logic. Normal pytest remains offline, credential-free, and safe.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_input_value.py
+30 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+664 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2822,8 +2906,8 @@ python -m pytest
 - signal evaluator registry
 - signal computation from validated signal definitions
 - system clock implementation
-- deterministic signal input value contract
-- signal input value implementation
+- signal input value collection or evaluator input bundle
+- lookahead validation across input values and evaluator `as_of`
 - feature computation
 - strategy engine
 - signal-evaluation-to-risk bridge
@@ -2846,8 +2930,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- minimal immutable signal input value contract plus observation
-  timestamp/lookahead hardening before any real evaluator behavior
+- input value traceability and lookahead hardening before any real evaluator
+  behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

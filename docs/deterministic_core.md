@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `634` tests are passing, with `4` skipped paper-integration tests by default.
+- `664` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -128,6 +128,11 @@ state.
   boundary only. No input-value contract exists yet,
   `SignalEvaluationInputSnapshot` remains reference metadata only, and no real
   evaluator or signal computation exists yet.
+- Phase 27 Step 3 adds the minimal immutable `SignalInputValue` contract for
+  one explicit observed value with UTC-aware timestamp and source traceability.
+  It adds no real evaluator, signal computation, feature computation, scoring,
+  ranking, direction, actionability, risk approval, execution behavior, broker
+  behavior, runtime behavior, persistence, ML, or LLM trading-path logic.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -992,6 +997,23 @@ compute signals. This phase adds no such contract, no real evaluator, and no
 signal computation. Evaluator output remains advisory and pre-risk, and LLMs
 remain outside the trading hot path.
 
+Phase 27 Step 3 adds the first minimal input-value implementation:
+`SignalInputValue` in `src/algotrader/signals/signal_input_value.py`. The
+contract is a frozen, slotted dataclass with `name`, `value`, `observed_at`, and
+`source_id`. It preserves accepted string values exactly, stores the observed
+value without computation or interpretation, validates `observed_at` as an
+explicit UTC-aware timestamp, rejects naive and non-UTC timestamps, and rejects
+empty or blank `name` and `source_id`.
+
+`SignalInputValue` accepts only deterministic scalar values for the first
+contract surface: `Decimal`, `int`, `str`, and `bool`. It does not perform
+lookahead validation against an evaluator `as_of`; that belongs to a later
+assembly or evaluator-input boundary. It does not compute signals or features,
+score, rank, infer direction, recommend trades, approve risk, create execution
+intents, mutate execution plans, access live data, route to brokers or Alpaca,
+submit orders, use scheduler/runtime/persistence, run ML, or use LLMs in the
+trading path. Normal pytest remains offline, credential-free, and safe.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1087,8 +1109,8 @@ Ledger modes:
 - No-op marker on SignalEvaluationResult
 - Signal evaluator registry
 - Signal computation from validated signal definitions
-- Deterministic signal input value contract
-- Signal input value implementation
+- Signal input value collection or evaluator input bundle
+- Lookahead validation across input values and evaluator `as_of`
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1114,9 +1136,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with a minimal
-immutable deterministic input-value contract and input timestamp/lookahead
-hardening before real evaluator behavior or Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with input value
+traceability and lookahead hardening before real evaluator behavior or Signal
+-> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
