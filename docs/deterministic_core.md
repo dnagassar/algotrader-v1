@@ -136,6 +136,9 @@ state.
 - Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and docs
   only. No production behavior was added; the contract remains immutable,
   scalar-only, non-computational, and isolated from trading-path behavior.
+- Phase 28 Step 1 documents the future signal input bundle boundary only. No
+  bundle contract exists yet, `SignalInputValue` remains a single observed-value
+  contract, and no real evaluator or signal computation exists yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1035,6 +1038,20 @@ to brokers or Alpaca, submit orders, use scheduler/runtime/persistence, run ML,
 or use LLMs in the trading path. Normal pytest remains offline,
 credential-free, and safe.
 
+Phase 28 Step 1 documents the future signal input bundle boundary in
+[`docs/design/phase28_signal_input_bundle_boundary.md`](design/phase28_signal_input_bundle_boundary.md).
+No bundle contract exists yet. `SignalInputValue` remains a single
+observed-value contract, and a future bundle would be the immutable collection
+boundary that can preserve deterministic ordering, apply duplicate-name policy,
+validate completeness against `SignalEvaluationInputSnapshot`, and prove every
+input value was available at or before evaluator `as_of`.
+
+The future bundle remains an input container only. It is not a signal result,
+recommendation, score, rank, direction, risk approval, execution intent, order
+request, or portfolio decision. No real evaluator or signal computation exists
+yet. Evaluator output remains advisory and pre-risk, and LLMs remain outside
+the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1131,6 +1148,7 @@ Ledger modes:
 - Signal evaluator registry
 - Signal computation from validated signal definitions
 - Signal input value collection or evaluator input bundle
+- Signal input bundle implementation
 - Lookahead validation across input values and evaluator `as_of`
 - System clock implementation
 - Feature computation
@@ -1157,9 +1175,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with input value
-traceability and lookahead hardening before real evaluator behavior or Signal
--> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with a minimal
+immutable signal input bundle contract and bundle traceability/lookahead
+hardening before real evaluator behavior or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

@@ -186,6 +186,9 @@ Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and
 documentation only. It adds no production behavior. The contract remains
 immutable, scalar-only, non-computational, and isolated from trading-path
 behavior.
+Phase 28 Step 1 is documentation-only. It records the future signal input
+bundle boundary and states that no bundle contract, real evaluator, signal
+computation, production code, or runtime behavior was added.
 The latest full-suite result is:
 
 ```text
@@ -387,6 +390,9 @@ one explicit observed value. It validates only its own metadata and timestamp;
 lookahead validation against evaluator `as_of` remains future work.
 Phase 27 Step 4 hardens that contract with tests/docs only. No production code
 or runtime behavior changed.
+Phase 28 Step 1 adds the signal input bundle boundary as documentation only.
+`SignalInputValue` remains a single observed-value contract; no input bundle
+contract, real evaluator, or signal computation exists yet.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2915,6 +2921,67 @@ python -m pytest
 681 passed, 4 skipped
 ```
 
+## Phase 28 Step 1 Signal Input Bundle Boundary Design
+
+Phase 28 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase28_signal_input_bundle_boundary.md
+```
+
+The new design defines why the project needs a future immutable signal input
+bundle before any real evaluator can consume observed values. A future evaluator
+should not receive loose lists, dictionaries, live data handles, feature stores,
+runtime objects, broker clients, or persistence queries. It should receive one
+explicit immutable bundle built before evaluation from precomputed observed
+values.
+
+The design distinguishes the existing contracts:
+
+- `SignalEvaluationInputSnapshot`: reference metadata with `snapshot_id`,
+  UTC-aware `as_of`, `required_input_names`, and `source_ids`, but no actual
+  values
+- `SignalInputValue`: one explicit observed scalar value with `name`, `value`,
+  `observed_at`, and `source_id`
+- future `SignalInputBundle`: an immutable collection of explicit observed
+  values with deterministic ordering, duplicate-name policy, completeness
+  validation against a snapshot, lookahead validation against evaluator `as_of`,
+  and source/timestamp traceability
+
+The candidate future field set is intentionally small: `snapshot_id`, `as_of`,
+and `values: tuple[SignalInputValue, ...]`. Optional source ids, completeness
+status, quality status, value name index, and bundle fingerprint remain
+deferred until justified by a later phase.
+
+Open design questions remain for completeness behavior: whether validation
+lives in the constructor or a separate pure function, whether missing inputs
+raise immediately or produce a validation result, whether extra inputs are
+allowed, and whether ordering follows snapshot `required_input_names` or
+supplied input order.
+
+The design records future lookahead rules: every `SignalInputValue.observed_at`
+must be `<= bundle.as_of`, every value must be available at or before evaluator
+`as_of`, future observations must be rejected, and neither bundle construction
+nor evaluator code may fetch newer data or rely on wall-clock time to infer
+availability.
+
+A bundle is only an input container. It is not a signal result,
+recommendation, score, rank, direction, risk approval, execution intent, order
+request, or portfolio decision. This phase adds no production code, tests,
+bundle implementation, real evaluator, signal computation, feature
+computation, strategy logic, scoring, ranking, confidence/probability, signal
+direction, actionability, risk approval, execution intent creation,
+execution-plan mutation, portfolio mutation, broker or Alpaca behavior, order
+submission, scheduler/runtime behavior, persistence writes, live data
+ingestion, network calls, ML training or inference, or LLM trading-path logic.
+
+Verification after Phase 28 Step 1:
+
+```text
+python -m pytest
+681 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2969,6 +3036,7 @@ python -m pytest
 - signal computation from validated signal definitions
 - system clock implementation
 - signal input value collection or evaluator input bundle
+- signal input bundle implementation
 - lookahead validation across input values and evaluator `as_of`
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
@@ -2993,7 +3061,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- first real evaluator design as docs-only before any real evaluator behavior
+- minimal immutable signal input bundle contract plus bundle
+  traceability/lookahead hardening before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
