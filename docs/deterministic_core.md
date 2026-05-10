@@ -179,6 +179,12 @@ state.
   remains forbidden until evaluator-specific design and tests satisfy the gate,
   evaluator output remains advisory and pre-risk, and LLMs remain outside the
   trading hot path.
+- Phase 29 Step 3 designs the selected first evaluator candidate contract as
+  documentation only. The future threshold-style advisory evaluator candidate
+  may consume one explicit scalar `SignalInputValue`, preferably `Decimal`, but
+  no real evaluator exists yet, real signal computation remains forbidden until
+  implementation is explicitly scoped, evaluator output remains advisory and
+  pre-risk, and LLMs remain outside the trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1154,6 +1160,16 @@ signal computation remains forbidden until evaluator-specific design and tests
 satisfy the gate. Evaluator output remains advisory and pre-risk, and LLMs
 remain outside the trading hot path.
 
+Phase 29 Step 3 designs that selected candidate contract in
+[`docs/design/phase29_first_real_evaluator_candidate_contract.md`](design/phase29_first_real_evaluator_candidate_contract.md).
+The contract design documents the placeholder input name `indicator_value`, the
+preferred initial value type `Decimal`, possible `>=` threshold semantics,
+advisory-only output expectations, completeness and timestamp questions, strict
+no-lookahead rules, forbidden semantics, and required future tests. It remains
+documentation-only. No real evaluator exists yet, and real signal computation
+remains forbidden until implementation is explicitly scoped. Evaluator output
+remains advisory and pre-risk, and LLMs remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1258,8 +1274,7 @@ Ledger modes:
   duplicate-name rejection, and lookahead validation
 - Real evaluator consumption of SignalInputBundle
 - First real evaluator implementation
-- Evaluator-specific design beyond the Phase 29 Step 2 candidate-selection
-  review
+- Evaluator behavior beyond the Phase 29 Step 3 contract design
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1285,9 +1300,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with
-evaluator-specific contract design before any real evaluator behavior or Signal
--> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with a first real
+evaluator test matrix before any real evaluator behavior or Signal -> Risk
+wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

@@ -227,6 +227,10 @@ Phase 29 Step 2 is documentation-only. It selects a first real evaluator
 candidate for later design: a minimal threshold-style advisory evaluator over
 one explicit scalar `SignalInputValue`. No production code or runtime behavior
 changed, and no real evaluator or signal computation was added.
+Phase 29 Step 3 is documentation-only. It designs the selected first evaluator
+candidate contract for a future threshold-style advisory evaluator over one
+explicit scalar `SignalInputValue`. No production code or runtime behavior
+changed, and no real evaluator or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -475,6 +479,15 @@ evaluator-specific design must still define exact contracts, output semantics,
 completeness behavior, timestamp compatibility, and tests before production
 code can be considered. No production code, runtime behavior, real evaluator,
 signal computation, or trading-path behavior was added.
+
+Phase 29 Step 3 designs the selected candidate contract. The contract records
+the placeholder input name `indicator_value`, preferred initial value type
+`Decimal`, possible `>=` threshold semantics, advisory-only output
+expectations, missing/extra input policy recommendations, strict timestamp
+compatibility preference, no-lookahead rules, forbidden semantics, and required
+future tests. It remains documentation-only and does not authorize
+implementation. No production code, runtime behavior, real evaluator, signal
+computation, or trading-path behavior was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -3429,6 +3442,59 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 29 Step 3 First Real Evaluator Candidate Contract Design
+
+Phase 29 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase29_first_real_evaluator_candidate_contract.md
+```
+
+It also updates:
+
+```text
+docs/design/phase29_first_real_evaluator_candidate_selection.md
+docs/design/phase29_first_real_evaluator_design_gate.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+The contract design keeps the selected candidate narrow: a future minimal
+threshold-style advisory evaluator over one explicit scalar `SignalInputValue`.
+The placeholder required input name is `indicator_value`, subject to final
+design. The preferred initial value type is `Decimal` because it is
+deterministic, avoids float reproducibility issues, is already supported by
+`SignalInputValue`, and fits explicit comparison semantics.
+
+The candidate may later use an explicit deterministic `Decimal` threshold and a
+`>=` comparator, but Step 3 does not implement those semantics. Any future
+result remains advisory and pre-risk. The comparator would only describe
+whether the supplied scalar met a documented advisory condition; it must not
+mean buy, sell, bullish, bearish, long, short, actionable, approved,
+risk-approved, or trade-ready.
+
+Open questions remain before implementation: exact
+`ValidatedSignalDefinition` identity/version, exact supporting
+`ValidatedResearchArtifact` identity/version, final input name, accepted value
+types, threshold/comparator semantics, `output_value` representation,
+`reason_code` meanings, diagnostics, assumptions, limitations, missing-input
+behavior, extra-input behavior, snapshot id compatibility, `as_of`
+compatibility, completeness-result flow, no-lookahead tests, and
+forbidden-field tests.
+
+This phase adds no production code, tests, evaluator implementation, evaluator
+protocol, signal computation, feature computation, strategy logic, score,
+direction, confidence, actionability, risk approval, execution intent
+creation, broker or Alpaca behavior, order submission, runtime/scheduler
+behavior, persistence, live data ingestion, ML, or LLM trading-path behavior.
+
+The latest full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -3491,8 +3557,7 @@ python -m pytest
   duplicate-name rejection, and lookahead validation
 - real evaluator consumption of `SignalInputBundle`
 - first real evaluator implementation
-- evaluator-specific design beyond the Phase 29 Step 2 candidate-selection
-  review
+- evaluator behavior beyond the Phase 29 Step 3 contract design
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -3516,7 +3581,7 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- evaluator-specific contract design before any real evaluator implementation
+- first real evaluator test matrix before any real evaluator implementation
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

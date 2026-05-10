@@ -135,6 +135,12 @@ evaluator-specific design phase.
 This recommendation is a candidate selection only. It does not authorize
 production code.
 
+Phase 29 Step 3 designs the selected candidate contract only in
+[`docs/design/phase29_first_real_evaluator_candidate_contract.md`](phase29_first_real_evaluator_candidate_contract.md).
+That contract design does not authorize implementation. Production code remains
+out of scope until a later implementation phase is explicitly scoped and the
+Phase 29 gate remains satisfied.
+
 ## 6. Why This Candidate Is Safe
 
 The threshold-over-one-explicit-scalar candidate is safer than the alternatives
@@ -292,12 +298,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 3: first real evaluator candidate contract design, docs-only.
-2. Phase 29 Step 4: first real evaluator test matrix, tests/docs only if
+1. Phase 29 Step 4: first real evaluator test matrix, tests/docs only if
    possible.
-3. Phase 29 Step 5: minimal evaluator implementation only if the gate and
+2. Phase 29 Step 5: minimal evaluator implementation only if the gate and
    design are satisfied.
-4. Phase 29 Step 6: evaluator traceability/no-lookahead hardening.
+3. Phase 29 Step 6: evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,
