@@ -172,6 +172,10 @@ future real deterministic signal evaluator and states that no real evaluator or
 signal computation may be added until an explicit deterministic input-value
 contract, timestamp/lookahead rules, advisory output semantics, and
 side-effect/dependency guardrails are documented and implemented.
+Phase 27 Step 2 is documentation-only. It records the future deterministic
+signal input-value boundary and states that no input-value contract exists yet,
+`SignalEvaluationInputSnapshot` remains reference metadata only, and no real
+evaluator or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -365,6 +369,9 @@ only. No production code, tests, runtime behavior, real evaluator, or signal
 computation was added. Real evaluator work remains blocked until deterministic
 input values, observation timestamps, no-lookahead proofs, advisory output
 meaning, side-effect tests, and trading-path dependency tests are explicit.
+Phase 27 Step 2 adds the deterministic signal input-value boundary as
+documentation only. No production code, tests, runtime behavior, input-value
+contract, real evaluator, or signal computation was added.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2705,6 +2712,63 @@ python -m pytest
 634 passed, 4 skipped
 ```
 
+## Phase 27 Step 2 Deterministic Signal Input Value Boundary Design
+
+Phase 27 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase27_signal_input_value_boundary.md
+```
+
+The new design defines the future deterministic signal input-value boundary
+needed before any real evaluator can compute signals. It records the difference
+between `SignalEvaluationInputSnapshot` and future input values:
+`SignalEvaluationInputSnapshot` is reference metadata only, preserving
+`snapshot_id`, UTC-aware `as_of`, `required_input_names`, and `source_ids`; it
+does not carry actual observed market values, feature values, bar payloads,
+quote payloads, or computed inputs.
+
+A future input-value contract is described conceptually as a small immutable
+contract for explicit deterministic observed values, observation timestamps,
+source traceability, value type constraints, and no-lookahead validation
+support. The design discusses possible value subjects such as market prices,
+bar fields, quote fields, volume, separately promoted feature values, and
+timestamped static metadata without defining a final production contract.
+
+The design records candidate fields for a future contract, including input
+name, observed value, `observed_at`, source id, optional symbol or instrument
+identity, optional value type or unit metadata, and optional quality or status
+metadata. These remain design candidates only.
+
+Timestamp rules require future `observed_at` values to be UTC-aware, reject
+naive and non-UTC datetimes, and support validation that every observation used
+by an evaluator satisfies `observed_at <= evaluator as_of`. The design also
+forbids hidden wall-clock reads, fetching newer data internally, and inference
+from data unavailable at `as_of`.
+
+The value representation questions remain open: whether values should be
+`Decimal`, `int`, `str`, `bool`, or a constrained union; whether floats should
+be forbidden or isolated; whether bars and quotes should be referenced by
+domain objects or flattened; whether feature values need a separate feature
+contract first; how missing values, units, currency, timeframe, and ordering
+should be represented.
+
+This phase adds no production code, tests, input-value implementation, real
+evaluator, signal computation, feature computation, strategy logic, ranking,
+priority, score, direction, confidence, actionability, signal-to-risk
+conversion, risk approval, execution intent creation, execution-plan mutation,
+portfolio mutation, broker or Alpaca behavior, order submission,
+scheduler/runtime behavior, persistence, live data ingestion, ML training or
+inference, or LLM trading-path logic. Normal pytest remains offline,
+credential-free, and safe.
+
+Verification after Phase 27 Step 2:
+
+```text
+python -m pytest
+634 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2759,6 +2823,7 @@ python -m pytest
 - signal computation from validated signal definitions
 - system clock implementation
 - deterministic signal input value contract
+- signal input value implementation
 - feature computation
 - strategy engine
 - signal-evaluation-to-risk bridge
@@ -2781,8 +2846,8 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- explicit deterministic signal input value boundary design plus observation
-  timestamp/lookahead contracts before any real evaluator behavior
+- minimal immutable signal input value contract plus observation
+  timestamp/lookahead hardening before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

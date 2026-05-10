@@ -124,6 +124,10 @@ state.
   No real evaluator exists yet, and actual signal computation remains forbidden
   until explicit deterministic input-value contracts and admission criteria are
   implemented.
+- Phase 27 Step 2 documents the future deterministic signal input-value
+  boundary only. No input-value contract exists yet,
+  `SignalEvaluationInputSnapshot` remains reference metadata only, and no real
+  evaluator or signal computation exists yet.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -973,6 +977,21 @@ a recommendation, not risk approval, not an execution intent, not an order
 request, not portfolio-aware, not broker-aware, and not actionability by itself.
 LLMs remain outside the trading hot path.
 
+Phase 27 Step 2 documents the future deterministic signal input-value boundary
+in
+[`docs/design/phase27_signal_input_value_boundary.md`](design/phase27_signal_input_value_boundary.md).
+No input-value contract exists yet. `SignalEvaluationInputSnapshot` remains
+reference metadata only: it preserves `snapshot_id`, UTC-aware `as_of`,
+`required_input_names`, and `source_ids`, but it does not carry actual observed
+market values, feature values, bar payloads, quote payloads, or computed inputs.
+
+Future input-value contracts are expected to carry explicit deterministic
+observed values, observation timestamps, source traceability, value type
+constraints, and no-lookahead validation support before any real evaluator can
+compute signals. This phase adds no such contract, no real evaluator, and no
+signal computation. Evaluator output remains advisory and pre-risk, and LLMs
+remain outside the trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1069,6 +1088,7 @@ Ledger modes:
 - Signal evaluator registry
 - Signal computation from validated signal definitions
 - Deterministic signal input value contract
+- Signal input value implementation
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1094,9 +1114,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with explicit
-deterministic input-value boundary design and input timestamp/lookahead
-contracts before real evaluator behavior or Signal -> Risk wiring.
+runtime wiring. Future signal-evaluator work should continue with a minimal
+immutable deterministic input-value contract and input timestamp/lookahead
+hardening before real evaluator behavior or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
