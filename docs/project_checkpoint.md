@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 664-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 681-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -182,10 +182,14 @@ traceability only, and adds no real evaluator, signal computation, feature
 computation, scoring, ranking, direction, actionability, risk approval,
 execution behavior, broker behavior, runtime behavior, persistence, ML, or LLM
 trading-path logic.
+Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and
+documentation only. It adds no production behavior. The contract remains
+immutable, scalar-only, non-computational, and isolated from trading-path
+behavior.
 The latest full-suite result is:
 
 ```text
-664 passed, 4 skipped
+681 passed, 4 skipped
 ```
 
 ## Architecture Summary
@@ -381,6 +385,8 @@ contract, real evaluator, or signal computation was added.
 Phase 27 Step 3 adds `SignalInputValue` as a minimal signal-layer contract for
 one explicit observed value. It validates only its own metadata and timestamp;
 lookahead validation against evaluator `as_of` remains future work.
+Phase 27 Step 4 hardens that contract with tests/docs only. No production code
+or runtime behavior changed.
 
 `LocalBroker` is the deterministic reference broker and now lives in:
 
@@ -2853,6 +2859,62 @@ python -m pytest
 664 passed, 4 skipped
 ```
 
+## Phase 27 Step 4 Signal Input Value Traceability Hardening
+
+Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and
+documentation only. No production source or runtime behavior changed.
+
+`SignalInputValue` remains an immutable observed-value contract. It carries one
+explicit observed scalar value with `name`, `observed_at`, and `source_id`
+traceability. It does not compute, normalize, rank, score, infer direction,
+recommend trades, approve risk, create execution intents, mutate execution
+plans, access live data, route to brokers or Alpaca, submit orders, use
+scheduler/runtime/persistence, run ML, or use LLMs in the trading path.
+
+The hardened tests prove exact `name` string preservation, exact `source_id`
+string preservation, exact `observed_at` identity preservation, exact
+`Decimal`, `int`, `str`, and `bool` value preservation, and that `bool` remains
+distinct from `int` even though both are supported scalar value types. Accepted
+values are stored exactly without normalization, rounding, conversion, or
+interpretation.
+
+The tests also strengthen immutability and value-surface guarantees: the
+contract is frozen, slotted, has no `__dict__`, fields cannot be reassigned,
+mutable values are rejected, floats are rejected, arbitrary objects are
+rejected, and `None` remains unsupported.
+
+Timestamp coverage now explicitly proves UTC-aware `observed_at` is accepted,
+naive and non-UTC timestamps are rejected, the contract does not compare to an
+evaluator `as_of`, does not perform lookahead validation internally, and does
+not call wall-clock APIs. Lookahead validation belongs to later assembly or
+evaluator phases with an explicit `as_of`.
+
+Surface and dependency tests now pin that `SignalInputValue` exposes no signal
+output, score, probability, confidence, rank, priority, direction,
+actionability, approval, risk, execution, order, broker, Alpaca, account,
+position, fill, portfolio, cash, buying-power, scheduler, runtime, persistence,
+database, cache, ML/model/prediction, LLM/agent/prompt/output, or evaluator
+behavior. AST checks guard against hidden wall-clock, random, environment,
+network/socket, filesystem-write, database/cache/persistence, broker SDK,
+Alpaca SDK, ML, LLM, and agent dependencies.
+
+Focused validation:
+
+```text
+python -m pytest tests/unit/test_signal_input_value.py
+47 passed
+
+python -m pytest tests/unit/test_dependency_direction.py
+9 passed
+```
+
+The full suite is now:
+
+```text
+python -m pytest
+681 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -2908,6 +2970,7 @@ python -m pytest
 - system clock implementation
 - signal input value collection or evaluator input bundle
 - lookahead validation across input values and evaluator `as_of`
+- SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
 - signal-evaluation-to-risk bridge
@@ -2930,8 +2993,7 @@ Safe next tasks include:
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- input value traceability and lookahead hardening before any real evaluator
-  behavior
+- first real evaluator design as docs-only before any real evaluator behavior
 - explicit future execution-planning policy decisions only after their config
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries

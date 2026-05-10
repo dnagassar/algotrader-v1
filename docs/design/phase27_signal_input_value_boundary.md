@@ -23,6 +23,13 @@ risk, create execution intents, mutate execution plans, access live data, route
 to brokers or Alpaca, submit orders, use scheduler/runtime/persistence, run ML,
 or use LLMs in the trading path.
 
+Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and
+documentation only. No production behavior was added. `SignalInputValue`
+remains an immutable observed-value contract that carries explicit observed
+scalar values and source/timestamp traceability without computing, normalizing,
+ranking, scoring, inferring direction, recommending trades, approving risk, or
+creating execution intents.
+
 ## 2. Snapshot References Versus Input Values
 
 `SignalEvaluationInputSnapshot` is reference metadata. It provides:
@@ -117,6 +124,11 @@ clock or silently accept untimestamped values.
 perform lookahead validation against an evaluator `as_of` because it has no
 `as_of` field. Assembly-level lookahead validation remains future work.
 
+Phase 27 Step 4 strengthens tests proving that `SignalInputValue` still does
+not compare against evaluator `as_of`, does not perform internal lookahead
+validation, and does not call wall-clock APIs internally. Lookahead validation
+belongs to later assembly or evaluator phases with an explicit `as_of`.
+
 ## 6. Determinism Rules
 
 Future input-value contracts and evaluators must:
@@ -193,6 +205,12 @@ promoted into evaluator inputs.
 input collection, not an evaluator input bundle, not a feature contract, not a
 real evaluator, and not sufficient by itself to admit real signal computation.
 
+Phase 27 Step 4 pins exact trace preservation for `name`, `source_id`,
+`observed_at`, `Decimal`, `int`, `str`, and `bool` values. It also pins that
+accepted values are stored exactly without normalization, rounding, conversion,
+or interpretation, and that `bool` remains distinct from `int` even though both
+are supported scalar value types.
+
 ## 9. Explicitly Out Of Scope
 
 Phase 27 Step 2 does not add:
@@ -225,13 +243,17 @@ risk approval, execution intent creation, broker or Alpaca behavior, order
 submission, runtime/scheduler behavior, persistence, live data ingestion, ML,
 or LLM trading-path behavior.
 
+Phase 27 Step 4 adds no production behavior. It only hardens tests and docs.
+`SignalInputValue` still does not access live data, route to brokers or Alpaca,
+submit orders, use scheduler/runtime/persistence, or use ML or LLMs in the
+trading path. Normal pytest remains offline, credential-free, and safe.
+
 ## 10. Non-Binding Future Phase Sketch
 
 Possible future phases include:
 
-1. Phase 27 Step 4: input value traceability and lookahead hardening.
-2. Phase 28 Step 1: first real evaluator design, still docs-only.
-3. A later phase: minimal deterministic evaluator for one validated signal
+1. Phase 28 Step 1: first real evaluator design, still docs-only.
+2. A later phase: minimal deterministic evaluator for one validated signal
    definition.
 
 This sequence is non-binding. Any future work must remain contract-first,

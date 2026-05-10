@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `664` tests are passing, with `4` skipped paper-integration tests by default.
+- `681` tests are passing, with `4` skipped paper-integration tests by default.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -133,6 +133,9 @@ state.
   It adds no real evaluator, signal computation, feature computation, scoring,
   ranking, direction, actionability, risk approval, execution behavior, broker
   behavior, runtime behavior, persistence, ML, or LLM trading-path logic.
+- Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and docs
+  only. No production behavior was added; the contract remains immutable,
+  scalar-only, non-computational, and isolated from trading-path behavior.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1013,6 +1016,24 @@ score, rank, infer direction, recommend trades, approve risk, create execution
 intents, mutate execution plans, access live data, route to brokers or Alpaca,
 submit orders, use scheduler/runtime/persistence, run ML, or use LLMs in the
 trading path. Normal pytest remains offline, credential-free, and safe.
+
+Phase 27 Step 4 hardens `SignalInputValue` traceability with tests and docs
+only. The tests now prove exact `name`, `source_id`, `observed_at`, `Decimal`,
+`int`, `str`, and `bool` preservation; `bool` remains distinct from `int`; and
+accepted values are stored without normalization, rounding, conversion, or
+interpretation. They also pin immutability, slots, UTC timestamp validation,
+string validation, scalar-only value support, unsupported mutable/object
+rejection, no internal evaluator `as_of` or lookahead validation, and no
+wall-clock, random, environment, network, filesystem-write, database/cache,
+broker, Alpaca, ML, LLM, agent, prompt, or output dependencies.
+
+`SignalInputValue` remains an immutable observed-value contract. It carries
+explicit observed scalar values and source/timestamp traceability, but it does
+not compute, normalize, rank, score, infer direction, recommend trades, approve
+risk, create execution intents, mutate execution plans, access live data, route
+to brokers or Alpaca, submit orders, use scheduler/runtime/persistence, run ML,
+or use LLMs in the trading path. Normal pytest remains offline,
+credential-free, and safe.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
