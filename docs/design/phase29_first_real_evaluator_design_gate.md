@@ -249,6 +249,11 @@ Step 3 remains design-only and preserves this implementation gate. Production
 code, real evaluator behavior, and signal computation remain forbidden until a
 later implementation phase is explicitly scoped and the gate remains satisfied.
 
+Phase 29 Step 4 strengthens this gate with an implementation test matrix in
+[`docs/design/phase29_first_real_evaluator_test_matrix.md`](phase29_first_real_evaluator_test_matrix.md).
+The matrix is pre-implementation only. It does not authorize production code,
+real evaluator behavior, or signal computation.
+
 ## 12. Relationship To Existing Contracts
 
 `ValidatedResearchArtifact` is supporting evidence. It records reviewed
@@ -322,11 +327,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 4: first real evaluator test matrix, tests/docs only if
-   possible.
-2. Phase 29 Step 5: first real evaluator minimal implementation, if and only
-   if the gate is satisfied.
-3. Phase 29 Step 6: first real evaluator traceability/lookahead hardening.
+1. Phase 29 Step 5: finalize evaluator-specific constants and contract
+   decisions, docs-only.
+2. Phase 29 Step 6: first real evaluator minimal implementation, if and only
+   if the gate and test matrix are satisfied.
+3. Phase 29 Step 7: first real evaluator traceability/lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

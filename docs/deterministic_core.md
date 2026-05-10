@@ -185,6 +185,10 @@ state.
   no real evaluator exists yet, real signal computation remains forbidden until
   implementation is explicitly scoped, evaluator output remains advisory and
   pre-risk, and LLMs remain outside the trading hot path.
+- Phase 29 Step 4 defines the first real evaluator test matrix only. No real
+  evaluator exists yet, real signal computation remains forbidden until
+  implementation is explicitly scoped, evaluator output remains advisory and
+  pre-risk, and LLMs remain outside the trading hot path.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1170,6 +1174,14 @@ documentation-only. No real evaluator exists yet, and real signal computation
 remains forbidden until implementation is explicitly scoped. Evaluator output
 remains advisory and pre-risk, and LLMs remain outside the trading hot path.
 
+Phase 29 Step 4 defines the first real evaluator implementation test matrix in
+[`docs/design/phase29_first_real_evaluator_test_matrix.md`](design/phase29_first_real_evaluator_test_matrix.md).
+It is documentation-only and does not add a real evaluator, signal computation,
+production behavior, runtime behavior, or trading-path behavior. Real signal
+computation remains forbidden until implementation is explicitly scoped.
+Evaluator output remains advisory and pre-risk, and LLMs remain outside the
+trading hot path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1274,7 +1286,7 @@ Ledger modes:
   duplicate-name rejection, and lookahead validation
 - Real evaluator consumption of SignalInputBundle
 - First real evaluator implementation
-- Evaluator behavior beyond the Phase 29 Step 3 contract design
+- Evaluator behavior beyond the Phase 29 Step 4 test matrix
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1300,9 +1312,9 @@ planning policy decision at a time, while still excluding broker wiring, order
 submission, scheduler/runtime behavior, persistence, cash reservation side
 effects, ML, and LLM trading-path logic. Research-derived behavior should begin
 with explicit artifact contracts/types and deterministic tests before any
-runtime wiring. Future signal-evaluator work should continue with a first real
-evaluator test matrix before any real evaluator behavior or Signal -> Risk
-wiring.
+runtime wiring. Future signal-evaluator work should continue by finalizing
+evaluator-specific constants and contract decisions before any real evaluator
+behavior or Signal -> Risk wiring.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

@@ -17,6 +17,12 @@ calls, ML training or inference, or LLM trading-path logic.
 This document narrows the candidate contract questions that a later
 implementation phase must answer. It does not authorize implementation.
 
+Phase 29 Step 4 defines the implementation test matrix only in
+[`docs/design/phase29_first_real_evaluator_test_matrix.md`](phase29_first_real_evaluator_test_matrix.md).
+Creating that matrix does not authorize implementation. The candidate remains
+unimplemented until a later implementation phase is explicitly scoped and all
+gate and matrix criteria are satisfied.
+
 ## 2. Candidate Summary
 
 The future evaluator concept is:
@@ -342,11 +348,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 29 Step 4: first real evaluator test matrix, docs/tests only if
-   possible.
-2. Phase 29 Step 5: minimal threshold evaluator implementation only if the
-   gate and contract design are satisfied.
-3. Phase 29 Step 6: threshold evaluator traceability/no-lookahead hardening.
+1. Phase 29 Step 5: finalize evaluator-specific constants and contract
+   decisions, docs-only.
+2. Phase 29 Step 6: minimal threshold evaluator implementation only if the
+   gate, contract design, and test matrix are satisfied.
+3. Phase 29 Step 7: threshold evaluator traceability/no-lookahead hardening.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,
