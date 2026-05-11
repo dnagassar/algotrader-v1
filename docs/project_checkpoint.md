@@ -265,6 +265,14 @@ code-free; production-code phases remain narrow, test-first, explicitly
 scoped, and heavily verified. No production code or runtime behavior changed,
 and no research artifact, validated signal definition, real evaluator, or
 signal computation was added.
+Phase 31 Step 2 is documentation-only. It adds a concise research-track next
+action plan that turns the Phase 30 backlog and first source-selection work
+into a practical sequence. `P30-BL-001` remains an unreviewed sourcing target,
+backlog entries remain non-evidence, research agents may assist only with
+source discovery and critique, and real evaluator implementation remains
+blocked. No production code or runtime behavior changed, and no research
+artifact, validated signal definition, real evaluator, or signal computation
+was added.
 The latest full-suite result is:
 
 ```text
@@ -4144,6 +4152,71 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 31 Step 2 Research Track Next Action Plan
+
+Phase 31 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase31_research_track_next_action_plan.md
+```
+
+It also updates:
+
+```text
+docs/agent_context/codex_operating_context.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step turns the Phase 30 research backlog and first source-selection work
+into a practical sequence. The recommended broader docs/research phases are:
+collect and summarize the `P30-BL-001` source package, normalize the source
+package for pre-review, review the candidate against the Phase 30 evidence
+standard and template, plan validated signal-definition binding if evidence
+supports it, and run an implementation-readiness gate before any production
+code prompt.
+
+`P30-BL-001`, "Simple scalar threshold indicator definition", remains the first
+sourcing target only. It is still unreviewed, unvalidated, not approved, not
+production-ready, and not implementation-ready. Backlog entries, source
+selection, research-agent summaries, familiar indicator names, and unsupported
+template notes are not evidence by themselves.
+
+Before `P30-BL-001` can be reviewed, a source package must collect traceable
+source/provenance, title or citation, author/source, date/version, source type,
+mechanical definition, exact input meaning, value type rationale, comparator
+and threshold semantics if applicable, assumptions, limitations, non-claims,
+reproducibility notes, no-lookahead or bias-control notes when applicable,
+relevance to the threshold-style advisory evaluator, and unresolved gaps.
+
+Perplexity, Claude, Gemini, and similar tools may help with source discovery,
+citation gathering, summaries, checklist prefill, contradiction finding,
+reviewer-style critique, and missing-evidence questions. They must not define
+production evaluator behavior, choose production thresholds or config, decide
+score, direction, confidence, ranking, or actionability, approve research or
+signal definitions, approve implementation scope, bypass tests, access trading
+state for decisions, or enter the trading hot path.
+
+Real evaluator implementation remains blocked pending a sourced and reviewed
+candidate, exact validated research support, exact validated signal-definition
+support, explicit threshold/config provenance, explicit implementation scope
+approval, and tests written or ready.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+The latest known full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4222,6 +4295,8 @@ python -m pytest
   candidate backlog
 - threshold evaluator behavior beyond the Phase 30 Step 6 first candidate
   source selection
+- threshold evaluator behavior beyond the Phase 31 Step 2 research-track next
+  action plan
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4246,6 +4321,10 @@ Safe next tasks include:
   docs
 - broader docs-only research or planning updates when they are low-risk,
   code-free, and preserve all safety gates
+- use `docs/design/phase31_research_track_next_action_plan.md` as the
+  research-track roadmap
+- collect and summarize the `P30-BL-001` source package as a docs-only next
+  action
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

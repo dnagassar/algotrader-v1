@@ -214,6 +214,10 @@ state.
   planning phases may now combine related documentation updates when low-risk
   and code-free; production-code phases remain narrow, test-first, explicitly
   scoped, and heavily verified.
+- Phase 31 Step 2 adds a concise research-track next action plan. It keeps
+  `P30-BL-001` as the first unreviewed sourcing target, confirms backlog
+  entries are not evidence, allows research agents only as assistants, and
+  keeps real evaluator implementation blocked.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1289,6 +1293,18 @@ scoped, and heavily verified. It does not validate a research artifact, create
 a signal definition, implement a real evaluator, compute signals, or add any
 trading-path behavior.
 
+Phase 31 Step 2 adds the research-track next action plan in
+[`docs/design/phase31_research_track_next_action_plan.md`](design/phase31_research_track_next_action_plan.md).
+It is documentation-only and turns the Phase 30 backlog and source-selection
+work into a practical sequence: source package collection, pre-review
+normalization, first candidate review, signal-definition binding planning, and
+an implementation-readiness gate. `P30-BL-001` remains unreviewed,
+unvalidated, not approved, and not implementation-ready. Backlog entries,
+source-selection decisions, and research-agent summaries are not evidence by
+themselves. Perplexity, Claude, Gemini, and similar tools may assist with
+source discovery, summaries, and critique, but they cannot define production
+behavior or enter the trading path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1409,6 +1425,8 @@ Ledger modes:
   candidate backlog
 - Threshold evaluator behavior beyond the Phase 30 Step 6 first candidate
   source selection
+- Threshold evaluator behavior beyond the Phase 31 Step 2 research-track next
+  action plan
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1430,19 +1448,19 @@ Ledger modes:
 
 Future Codex prompts should start from
 [`docs/agent_context/codex_operating_context.md`](agent_context/codex_operating_context.md)
-plus the relevant phase/design docs. Docs-only research and planning phases may
-combine related updates when they are low-risk and code-free. Any production
-source phase should stay narrow, test-first, explicitly scoped, and heavily
-verified.
+plus the relevant phase/design docs, especially
+[`docs/design/phase31_research_track_next_action_plan.md`](design/phase31_research_track_next_action_plan.md)
+for research-track work. Docs-only research and planning phases may combine
+related updates when they are low-risk and code-free. Any production source
+phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
-evidence standard and Phase 30 Step 3 review template, after candidate sourcing
-under the Phase 30 Step 4 plan, initial unreviewed backlog population in Phase
-30 Step 5, and first source-target selection in Phase 30 Step 6. Real evaluator
-behavior, signal computation, test scaffolds for implementation, and wiring
-signal output into risk remain blocked until those gates are explicitly
-resolved.
+evidence standard and Phase 30 Step 3 review template. The next practical
+research action is collecting and summarizing the `P30-BL-001` source package
+under the Phase 31 Step 2 plan. Real evaluator behavior, signal computation,
+test scaffolds for implementation, and wiring signal output into risk remain
+blocked until those gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

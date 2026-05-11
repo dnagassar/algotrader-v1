@@ -57,6 +57,12 @@ is a validated research artifact, a validated signal definition,
 threshold/config provenance, explicit implementation scope approval, and tests
 written or ready.
 
+The current research-track next action plan is
+`docs/design/phase31_research_track_next_action_plan.md`. It keeps
+`P30-BL-001` as the first unreviewed sourcing target and confirms that backlog
+entries, source-selection decisions, and research-agent summaries are not
+evidence by themselves.
+
 ## 5. Phase Granularity Policy
 
 Going forward:
@@ -94,6 +100,8 @@ Future Codex sessions should usually start with:
 
 - `docs/agent_context/codex_operating_context.md`
 - `docs/project_checkpoint.md`
+- `docs/design/phase31_research_track_next_action_plan.md` for research-track
+  planning
 - relevant phase or design docs only
 
 Avoid reading every historical design document unless the current phase depends
