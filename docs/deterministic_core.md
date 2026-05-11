@@ -209,6 +209,11 @@ state.
   No real evaluator exists yet, real signal computation remains forbidden,
   evaluator output remains advisory and pre-risk, and LLMs remain outside the
   trading hot path.
+- Phase 31 Step 1 adds a reusable Codex operating context and resets the
+  research-track workflow for shorter future prompts. Docs, research, and
+  planning phases may now combine related documentation updates when low-risk
+  and code-free; production-code phases remain narrow, test-first, explicitly
+  scoped, and heavily verified.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -263,6 +268,14 @@ immutable ExecutionPlan
   -> immutable PlanningPolicyResult
   -> future broker-facing execution request construction
   -> future broker adapter / execution layer
+```
+
+For compressed future prompts and research-track work, use
+[`docs/agent_context/codex_operating_context.md`](agent_context/codex_operating_context.md)
+as the first-read project summary. Its high-level planning pipeline is:
+
+```text
+Market Data -> Features -> Screener -> Signals -> Risk -> ExecutionIntent -> ExecutionPlan -> PlanningPolicy -> future OMS/Broker -> Fills/Portfolio/Reconciliation
 ```
 
 The screener-to-signal segment does not call risk, broker, Alpaca, execution,
@@ -1267,6 +1280,15 @@ artifact or validated signal definition is created, no real evaluator exists
 yet, real signal computation remains forbidden, evaluator output remains
 advisory and pre-risk, and LLMs remain outside the trading hot path.
 
+Phase 31 Step 1 adds the reusable operating context in
+[`docs/agent_context/codex_operating_context.md`](agent_context/codex_operating_context.md).
+It is documentation-only and resets research-track workflow granularity:
+related docs, research, and planning updates may be combined when low-risk and
+code-free, while production-code phases remain narrow, test-first, explicitly
+scoped, and heavily verified. It does not validate a research artifact, create
+a signal definition, implement a real evaluator, compute signals, or add any
+trading-path behavior.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1338,6 +1360,8 @@ Ledger modes:
 - Same-symbol execution conflict handling
 - Duplicate or competing order policy implementation
 - Priority or ranking policy implementation
+- Scoring, direction, confidence, or actionability semantics unless explicitly
+  designed and scoped
 - Research/backtesting outputs as direct trading logic
 - Notebooks or exploratory scripts in the deterministic core
 - Validated artifact metadata as signal generation
@@ -1404,17 +1428,26 @@ Ledger modes:
 
 ## Next Recommended Phase
 
-The next phase should keep any execution-boundary work pure and synthetic unless
-explicitly approved otherwise. A safe follow-up could design one explicit
-planning policy decision at a time, while still excluding broker wiring, order
-submission, scheduler/runtime behavior, persistence, cash reservation side
-effects, ML, and LLM trading-path logic. Future threshold-evaluator work
-should continue by reviewing exact validated research and signal-definition
-support against the Phase 30 Step 2 evidence standard and Phase 30 Step 3
-review template, after candidate sourcing under the Phase 30 Step 4 plan and
-initial unreviewed backlog population in Phase 30 Step 5, and after first
-source-target selection in Phase 30 Step 6, before any implementation prompt,
-test scaffold, real evaluator behavior, or wiring signal output into risk.
+Future Codex prompts should start from
+[`docs/agent_context/codex_operating_context.md`](agent_context/codex_operating_context.md)
+plus the relevant phase/design docs. Docs-only research and planning phases may
+combine related updates when they are low-risk and code-free. Any production
+source phase should stay narrow, test-first, explicitly scoped, and heavily
+verified.
+
+Future threshold-evaluator work should continue by sourcing and reviewing exact
+validated research and signal-definition support against the Phase 30 Step 2
+evidence standard and Phase 30 Step 3 review template, after candidate sourcing
+under the Phase 30 Step 4 plan, initial unreviewed backlog population in Phase
+30 Step 5, and first source-target selection in Phase 30 Step 6. Real evaluator
+behavior, signal computation, test scaffolds for implementation, and wiring
+signal output into risk remain blocked until those gates are explicitly
+resolved.
+
+Execution-boundary work should remain pure and synthetic unless explicitly
+approved otherwise. It should still exclude broker wiring, order submission,
+scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
+LLM trading-path logic.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

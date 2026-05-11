@@ -188,7 +188,28 @@ This document is a design boundary for research evidence admission. It defines
 how candidate research should enter the backlog before review, not how to
 invent strategies or promote ideas into the deterministic core.
 
-## 11. Explicit Implementation Blockers
+## 11. Relationship To Phase 31 Workflow Compression
+
+Phase 31 Step 1 adds
+[`../agent_context/codex_operating_context.md`](../agent_context/codex_operating_context.md)
+as the standard first-read context for future Codex prompts. Future research
+and planning work may reference that file instead of repeating the full project
+history.
+
+After Phase 31, related docs-only sourcing, collection, summary, and review
+planning updates may be combined when they are low-risk and do not change
+production code. This compression does not weaken the evidence gate:
+candidate sourcing is still not validation, backlog entries are still not
+research artifacts, and no real evaluator implementation may proceed without
+validated research, validated signal-definition support, threshold/config
+provenance, explicit scope approval, and tests written or ready.
+
+Any phase that adds evaluator behavior, signal computation, feature
+computation, risk approval, execution behavior, broker behavior, persistence,
+runtime behavior, live data ingestion, ML behavior, or LLM trading-path logic
+must remain narrow and separately reviewed.
+
+## 12. Explicit Implementation Blockers
 
 Evaluator implementation remains blocked until:
 
@@ -203,7 +224,7 @@ Evaluator implementation remains blocked until:
 
 The threshold-style advisory evaluator remains viable but unimplemented.
 
-## 12. Explicitly Out Of Scope
+## 13. Explicitly Out Of Scope
 
 Phase 30 Step 4 does not add:
 
@@ -229,21 +250,20 @@ Phase 30 Step 4 does not add:
 
 Normal pytest must remain offline, credential-free, and safe.
 
-## 13. Non-Binding Future Phase Sketch
+## 14. Non-Binding Future Phase Sketch
 
 Possible future phases include:
 
 1. Phase 30 Step 5: populate candidate research backlog, docs-only.
 2. Phase 30 Step 6: select first candidate source target, docs-only.
-3. Phase 30 Step 7: collect/summarize the selected candidate source,
-   docs-only.
-4. Phase 30 Step 8: first candidate research artifact review, docs-only, only
-   when a candidate exists.
-5. Phase 30 Step 9: candidate validated signal definition review and artifact
-   binding.
-6. Phase 30 Step 10: implementation scope approval review.
-7. Later: minimal threshold evaluator implementation only if all blockers are
-   resolved.
+3. Later docs-only research track: collect or summarize the selected source,
+   prepare review materials, and review the candidate when evidence exists.
+   Related documentation updates may be combined under the Phase 31 granularity
+   policy when safe.
+4. Later docs-only review track: candidate validated signal definition review,
+   artifact binding, and implementation scope approval review.
+5. Later implementation track: minimal threshold evaluator implementation only
+   if all blockers are resolved.
 
 This sketch is non-binding. Any future work must remain contract-first,
 test-first, deterministic, offline-safe, credential-free, broker-isolated,

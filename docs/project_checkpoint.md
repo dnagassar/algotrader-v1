@@ -257,6 +257,14 @@ Phase 30 Step 6 is documentation-only. It selects the first research candidate
 sourcing target only. No production code or runtime behavior changed, and no
 research artifact, validated signal definition, real evaluator, or signal
 computation was added.
+Phase 31 Step 1 is documentation-only. It adds a reusable Codex operating
+context and resets the research-track workflow so future prompts can be
+shorter while preserving deterministic safety gates. Docs, research, and
+planning phases may now combine related documentation updates when low-risk and
+code-free; production-code phases remain narrow, test-first, explicitly
+scoped, and heavily verified. No production code or runtime behavior changed,
+and no research artifact, validated signal definition, real evaluator, or
+signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -279,6 +287,14 @@ Bar + Quote
   -> reconciliation
   -> event ledger
   -> structured result
+```
+
+For near-term research and evaluator planning, future prompts may use the
+compressed architecture summary in
+[`docs/agent_context/codex_operating_context.md`](agent_context/codex_operating_context.md):
+
+```text
+Market Data -> Features -> Screener -> Signals -> Risk -> ExecutionIntent -> ExecutionPlan -> PlanningPolicy -> future OMS/Broker -> Fills/Portfolio/Reconciliation
 ```
 
 The project currently includes immutable domain models, deterministic signal and
@@ -4078,6 +4094,56 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 31 Step 1 Agent Workflow Compression And Research Track Reset
+
+Phase 31 Step 1 is documentation-only. It adds:
+
+```text
+docs/agent_context/codex_operating_context.md
+```
+
+It also updates:
+
+```text
+docs/design/phase30_research_artifact_candidate_sourcing_plan.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step creates a reusable Codex operating context so future prompts can
+reference a single project summary instead of repeating the full historical
+ledger. The new context records the project goal, safety rules, current
+pipeline, evaluator stack, standard files to read first, standard forbidden
+behavior, and standard verification commands.
+
+This step also resets phase granularity for the research track. Future
+documentation, research, and planning phases may combine related documentation
+updates when the work is low-risk and changes no production code. Production
+source changes remain narrow, test-first, explicitly scoped, and heavily
+verified. Any phase that adds behavior, evaluator logic, broker behavior,
+runtime behavior, persistence, or trading-path behavior must remain small and
+separately reviewed. Hardening phases should be used when risk justifies them,
+not automatically after every documentation-only phase.
+
+Real evaluator implementation remains blocked pending validated research
+artifact, validated signal definition, threshold/config provenance, explicit
+implementation scope approval, and tests written or ready.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+The latest known full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4106,6 +4172,8 @@ python -m pytest
 - same-symbol execution conflict handling
 - duplicate or competing order policy implementation
 - priority or ranking policy implementation
+- scoring, direction, confidence, or actionability semantics unless explicitly
+  designed and scoped
 - research/backtesting outputs as direct trading logic
 - notebooks or exploratory scripts in the deterministic core
 - validated artifact metadata as signal generation
@@ -4173,6 +4241,11 @@ Keep avoiding real Alpaca SDK work until explicitly approved.
 
 Safe next tasks include:
 
+- future Codex prompts that reference
+  `docs/agent_context/codex_operating_context.md` plus only the relevant phase
+  docs
+- broader docs-only research or planning updates when they are low-risk,
+  code-free, and preserve all safety gates
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
