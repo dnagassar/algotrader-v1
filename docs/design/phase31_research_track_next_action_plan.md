@@ -79,6 +79,14 @@ negative-control/no-lookahead use and routes the next review to
 validated artifact, create a validated signal definition, or authorize
 implementation.
 
+Phase 32 Step 7 adds the S03-only formal review in
+[`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md).
+The review passes `P30-BL-002-S03` only for limited
+negative-control/data-snooping/OOS guardrail use and routes the default next
+review to `P30-BL-002-S05` as the first limited candidate-evidence source. It
+does not validate a signal, approve a threshold, create a validated artifact,
+create a validated signal definition, or authorize implementation.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -121,6 +129,10 @@ Current status:
 - Phase 32 Step 6 records the S01-only formal review. `S01` passes only for
   limited negative-control/no-lookahead use; the pass is not validation,
   threshold approval, signal-definition support, or implementation readiness.
+- Phase 32 Step 7 records the S03-only formal review. `S03` passes only for
+  limited negative-control/data-snooping/OOS guardrail use; the pass is not
+  validation, threshold approval, signal-definition support, or implementation
+  readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -191,14 +203,21 @@ Recommended next phases:
    dataset, code/data, and deterministic-reproduction gaps, and routes next to
    S03. It does not validate a signal, approve a threshold, or authorize
    implementation.
-12. Future route: limited formal review for remaining selected `P30-BL-002`
-   candidates, starting with S03 and using the Step 5 intake plan. Any review
+12. Phase 32 Step 7: `P30-BL-002-S03` formal review.
+   This step is complete. It passes S03 only for limited
+   negative-control/data-snooping/OOS guardrail use, records unresolved exact
+   rule tables, sample windows, OOS details, costs, bootstrap assumptions, and
+   reproducibility gaps, and routes next by default to S05. It does not
+   validate a signal, approve a threshold, or authorize implementation.
+13. Future route: limited formal review for remaining selected `P30-BL-002`
+   candidates, starting by default with S05 and using the Step 5 intake plan.
+   Any review
    must preserve traceable dataset
    scope, point-in-time input assumptions, threshold or parameter rationale,
    no-lookahead controls, reproducibility notes, robustness or out-of-sample
    evidence, limitations, and non-claims. It may still fail, quarantine a
    source, or require additional sourcing.
-13. Later route: implementation readiness gate.
+14. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,

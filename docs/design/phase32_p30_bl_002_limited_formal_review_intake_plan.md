@@ -253,6 +253,19 @@ The review queue after S01 proceeds to `P30-BL-002-S03` as the second
 negative-control source. `P30-BL-002-S05` and `P30-BL-002-S08` remain
 unreviewed by Step 6.
 
+## Phase 32 Step 7 follow-up
+
+Phase 32 Step 7 adds the S03-only formal review in
+[`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md).
+It passes `P30-BL-002-S03` only for limited
+negative-control/data-snooping/OOS guardrail use. The pass is narrow and does
+not create validation, threshold approval, signal-definition support, or
+implementation readiness.
+
+The default review queue after S03 proceeds to `P30-BL-002-S05` as the first
+limited candidate-evidence source. `P30-BL-002-S08` may be reviewed before
+S05 only if point-in-time methodology should be locked down first.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,
@@ -274,7 +287,6 @@ trading-path behavior.
 
 Evaluator implementation remains blocked by all of the following:
 
-- no `P30-BL-002-S03` formal review
 - no `P30-BL-002-S05` formal review
 - no `P30-BL-002-S08` methodology review
 - the `P30-BL-002-S01` review is negative-control/no-lookahead only and does

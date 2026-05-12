@@ -361,6 +361,14 @@ reproduction gaps; routes the next formal review to `P30-BL-002-S03`; and does
 not validate a signal, approve a threshold, create a validated artifact, create
 a validated signal definition, add evaluator behavior, or authorize
 implementation.
+Phase 32 Step 7 is documentation-only. It adds the `P30-BL-002-S03` formal
+review and passes S03 only for limited negative-control/data-snooping/OOS
+guardrail use. The review records unresolved exact rule tables, sample windows,
+OOS details, costs, bootstrap assumptions, public code/data availability, and
+deterministic reproduction gaps; routes the default next formal review to
+`P30-BL-002-S05`; and does not validate a signal, approve a threshold, create a
+validated artifact, create a validated signal definition, add evaluator
+behavior, or authorize implementation.
 The latest full-suite result is:
 
 ```text
@@ -5201,6 +5209,8 @@ Manual documentation checks:
   formal review intake plan
 - threshold evaluator behavior beyond the Phase 32 Step 6 P30-BL-002-S01
   limited negative-control/no-lookahead formal review
+- threshold evaluator behavior beyond the Phase 32 Step 7 P30-BL-002-S03
+  limited negative-control/data-snooping/OOS guardrail formal review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -5213,6 +5223,69 @@ Manual documentation checks:
 - LangGraph
 - ML
 - LLM trading-path logic
+
+## Phase 32 Step 7 P30-BL-002-S03 Formal Review
+
+Phase 32 Step 7 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_s03_formal_review.md
+```
+
+It updates routing/status references in the Phase 30-32 research docs and the
+top-level checkpoint/core docs. This step formally reviews
+`P30-BL-002-S03` only, using the Phase 32 Step 4 primary-source verification
+gate and Phase 32 Step 5 intake plan as the source of truth.
+
+The S03 review outcome is: pass for negative-control/data-snooping/OOS
+guardrail use only. The pass is narrow. S03 can support falsification,
+multiple-testing awareness, data-snooping guardrail design, and out-of-sample
+negative-control expectations only. It does not support production threshold
+approval, predictive-edge claims, profitability claims, validated artifact
+readiness, validated signal definition readiness, implementation readiness,
+paper trading readiness, or live trading readiness.
+
+The review records unresolved S03 gaps for exact rule tables, parameter grids,
+selection process, exact sample dates, OOS details and result, transaction-cost
+assumptions, bootstrap assumptions, public code/data availability, and
+deterministic reproduction. Any future exact rule reproduction, bootstrap
+binding, exact OOS result claim, deterministic test binding, threshold
+comparison, or stronger claim requires additional S03 evidence.
+
+The default next routing step is `P30-BL-002-S05` formal review as the first
+limited candidate-evidence source. `P30-BL-002-S08` may be reviewed first only
+if point-in-time methodology should be locked down before candidate evidence.
+
+`P30-BL-002` remains candidate-only, unvalidated, unapproved, not promoted,
+not production-ready, not implementation-ready, and not threshold-justified.
+This phase does not create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+or add runtime, broker, persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 7:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+ M docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+ M docs/design/phase32_p30_bl_002_source_package.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_s03_formal_review.md
+```
 
 ## Next Recommended Steps
 
@@ -5227,9 +5300,11 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- formal review for `P30-BL-002-S03` as the second negative-control source
-  using the Phase 32 Step 5 intake plan, preserving S01 as limited
-  negative-control/no-lookahead support only, docs-only
+- formal review for `P30-BL-002-S05` as the first limited candidate-evidence
+  source using the Phase 32 Step 5 intake plan, preserving S01 and S03 as
+  limited negative-control support only, docs-only
+- optional `P30-BL-002-S08` methodology review first if point-in-time
+  guardrails should be locked down before S05 candidate evidence
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

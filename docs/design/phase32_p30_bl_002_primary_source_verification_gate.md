@@ -336,6 +336,13 @@ It uses this gate's S01 identity and scope findings, passes S01 only for
 limited negative-control/no-lookahead use, and keeps all validation,
 threshold-approval, signal-definition, and implementation routes blocked.
 
+Phase 32 Step 7 records the S03-only formal review in
+[`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md).
+It uses this gate's S03 identity and scope findings, passes S03 only for
+limited negative-control/data-snooping/OOS guardrail use, and keeps all
+validation, threshold-approval, signal-definition, and implementation routes
+blocked.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,
@@ -355,7 +362,8 @@ trading-path behavior.
 Evaluator implementation remains blocked by all of the following:
 
 - no formal review beyond S01's limited negative-control/no-lookahead review
-- no `P30-BL-002-S03`, `P30-BL-002-S05`, or `P30-BL-002-S08` formal review
+  and S03's limited negative-control/data-snooping/OOS guardrail review
+- no `P30-BL-002-S05` or `P30-BL-002-S08` formal review
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no approved threshold/config provenance

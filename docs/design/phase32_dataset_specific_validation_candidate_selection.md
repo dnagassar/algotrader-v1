@@ -113,6 +113,15 @@ design only. It does not validate a signal, approve a threshold, create a
 validated artifact, create a validated signal definition, or authorize
 implementation.
 
+Phase 32 Step 7 adds the S03-only formal review in
+[`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md).
+It passes `P30-BL-002-S03` only for limited
+negative-control/data-snooping/OOS guardrail use. That pass supports
+falsification, multiple-testing awareness, data-snooping guardrail design, and
+out-of-sample negative-control expectations only. It does not validate a
+signal, approve a threshold, create a validated artifact, create a validated
+signal definition, or authorize implementation.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -174,6 +183,14 @@ only. The next safest route after Step 6 is `P30-BL-002-S03` formal review as
 the second negative-control source. Additional S01 sourcing is required before
 any exact timing-rule reproduction, deterministic test binding, threshold
 comparison, or stronger claim.
+
+Phase 32 Step 7 completes the second docs-only negative-control review for
+`P30-BL-002-S03` only. The default next route after Step 7 is
+`P30-BL-002-S05` formal review as the first limited candidate-evidence source,
+unless `P30-BL-002-S08` point-in-time methodology should be locked down first.
+Additional S03 sourcing is required before any exact rule reproduction,
+bootstrap implementation binding, exact OOS result claim, deterministic test
+binding, threshold comparison, or stronger claim.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -242,6 +259,9 @@ resolved in later phases:
 - the Phase 32 Step 6 S01 review is used only as a narrow
   negative-control/no-lookahead result, not as signal validation or
   implementation approval
+- the Phase 32 Step 7 S03 review is used only as a narrow
+  negative-control/data-snooping/OOS guardrail result, not as signal validation
+  or implementation approval
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete

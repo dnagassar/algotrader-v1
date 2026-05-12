@@ -788,7 +788,7 @@ thresholds, artifacts, signal definitions, or implementation.
 | --- | --- | --- | --- | --- | --- |
 | `P30-BL-002-S01` | Revisiting the Profitability of Market Timing with Moving Averages | C | Negative-control MA timing benchmark | Verify code/data and exact timing correction | Yes |
 | `P30-BL-002-S02` | Simple Technical Trading Rules and the Stochastic Properties of Stock Returns | B | Canonical rule specification | No modern OOS/PIT design | Maybe |
-| `P30-BL-002-S03` | Data-Snooping, Technical Trading Rule Performance, and the Bootstrap | C | Multiple-testing and OOS negative-control benchmark | Verify implementation path | Yes |
+| `P30-BL-002-S03` | Data-Snooping, Technical Trading Rule Performance, and the Bootstrap | C | Multiple-testing and OOS negative-control benchmark | Formal review complete; use only as data-snooping/OOS guardrail context | Yes |
 | `P30-BL-002-S04` | Evidence-Based Technical Analysis | C | Large rule-universe falsification reference | Book/data/code details need reconstruction | Maybe |
 | `P30-BL-002-S05` | Time Series Momentum | A | Direct dataset-specific simple threshold-rule candidate | No public code/PIT vendor detail from scout | Yes |
 | `P30-BL-002-S06` | Double OOS crypto walk-forward optimization | D | DVC/walk-forward infrastructure candidate | arXiv/code/data verification; crypto scope | Maybe |
@@ -914,7 +914,16 @@ Phase 32 Step 6 adds the S01-only formal review in
 It passes `P30-BL-002-S01` only for limited negative-control/no-lookahead use.
 That narrow pass does not validate `P30-BL-002`, approve any threshold,
 promote any artifact, bind any signal definition, or authorize
-implementation. The next review route is `P30-BL-002-S03`.
+implementation. At Step 6, the next review route was `P30-BL-002-S03`.
+
+Phase 32 Step 7 adds the S03-only formal review in
+[`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md).
+It passes `P30-BL-002-S03` only for limited
+negative-control/data-snooping/OOS guardrail use. That narrow pass does not
+validate `P30-BL-002`, approve any threshold, promote any artifact, bind any
+signal definition, accept an OOS result, or authorize implementation. The
+default next review route is `P30-BL-002-S05`, unless `P30-BL-002-S08`
+methodology review should be completed first to lock point-in-time guardrails.
 
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any
