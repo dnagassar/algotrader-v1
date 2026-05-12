@@ -319,6 +319,15 @@ stronger traceable dataset-specific evidence. No production code or runtime
 behavior changed, and no research artifact, validated signal definition, real
 evaluator, signal computation, formal review, validation, approval, promotion,
 or implementation readiness was added.
+Phase 32 Step 2 is documentation-only. It defines the `P30-BL-002`
+source-package sourcing plan: required package fields, acceptable source
+types, unacceptable source types, minimum review-readiness criteria, and
+rejection/replacement criteria before any formal review can begin.
+`P30-BL-002` remains a sourcing target only, and no sources were collected or
+cited. No production code or runtime behavior changed, and no research
+artifact, validated signal definition, real evaluator, signal computation,
+formal review, validation, approval, promotion, threshold justification, or
+implementation readiness was added.
 The latest full-suite result is:
 
 ```text
@@ -4651,6 +4660,79 @@ git status --short
 ?? docs/design/phase32_dataset_specific_validation_candidate_selection.md
 ```
 
+## Phase 32 Step 2 P30-BL-002 Source Package Sourcing Plan
+
+Phase 32 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
+```
+
+It updates:
+
+```text
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+The plan defines what `P30-BL-002` must produce before any formal review can
+begin: source/provenance, title/reference, author/source, date/version,
+dataset scope, asset class/universe, timeframe, point-in-time assumptions,
+data quality assumptions, explicit input definition, threshold or parameter
+rationale, validation design, no-lookahead controls, reproducibility notes,
+robustness or out-of-sample evidence, limitations, non-claims, future binding
+notes, and unresolved gaps.
+
+The plan also defines acceptable source categories, unacceptable source
+categories, minimum review-readiness criteria, and rejection/replacement
+criteria. Weak, vague, non-reproducible, or non-dataset-specific material
+should reject or replace `P30-BL-002` with a better sourced P0 candidate before
+formal review.
+
+`P30-BL-002` remains unreviewed, unvalidated, unapproved, not production-ready,
+not implementation-ready, and not threshold-justified. This phase does not
+collect or cite actual research sources, validate a signal, approve a
+threshold, create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, promote a candidate, bind a signal definition, add
+evaluator behavior, add signal computation, or add runtime, broker,
+persistence, ML, or LLM trading-path behavior.
+
+The next route remains blocked on a concrete `P30-BL-002` source package or a
+better P0 replacement source package, formal review, exact validated research
+artifact, exact validated signal definition, threshold/config provenance, and
+explicit implementation approval.
+
+Verification after Phase 32 Step 2:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
+```
+
+Manual documentation checks:
+
+- edited markdown files have no trailing whitespace
+- edited markdown files have exactly one final newline
+- edited markdown files were inspected for completeness and were not truncated
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4743,6 +4825,8 @@ git status --short
   disposition and next-candidate routing
 - threshold evaluator behavior beyond the Phase 32 Step 1 dataset-specific
   validation candidate selection
+- threshold evaluator behavior beyond the Phase 32 Step 2 P30-BL-002 source
+  package sourcing plan
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4770,8 +4854,9 @@ Safe next tasks include:
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
 - source-package collection for `P30-BL-002` if it can supply
-  dataset-specific threshold or validation evidence, otherwise source a better
-  P0 replacement before formal review, docs-only
+  dataset-specific threshold or validation evidence under the Phase 32 Step 2
+  sourcing plan, otherwise source a better P0 replacement before formal review,
+  docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

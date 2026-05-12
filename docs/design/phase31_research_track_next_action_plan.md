@@ -44,6 +44,12 @@ routing handle only if sourcing can produce a concrete evidence package; a
 better P0 replacement should be sourced first if it offers stronger traceable
 dataset-specific evidence.
 
+Phase 32 Step 2 adds the `P30-BL-002` source-package sourcing plan in
+[`phase32_p30_bl_002_source_package_sourcing_plan.md`](phase32_p30_bl_002_source_package_sourcing_plan.md).
+The plan defines the minimum package fields, acceptable source types,
+unacceptable source types, review-readiness criteria, and
+rejection/replacement triggers before any formal review can begin.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -70,6 +76,8 @@ Current status:
   dispositioned, in the mechanics-only sense only.
 - Phase 32 Step 1 selects dataset-specific threshold or validation evidence
   sourcing as the next research direction.
+- Phase 32 Step 2 defines the `P30-BL-002` source-package sourcing plan before
+  collection or review.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -115,13 +123,17 @@ Recommended next phases:
    current backlog routing handle; a better sourced replacement P0 candidate
    should be used first if `P30-BL-002` cannot produce a concrete
    dataset-specific evidence package.
-7. Future route: source-package collection for `P30-BL-002` or a better P0
+7. Phase 32 Step 2: `P30-BL-002` source-package sourcing plan.
+   This step is complete. It defines the required package fields, acceptable
+   and unacceptable source material, minimum review-readiness criteria, and
+   rejection/replacement criteria before any formal review can begin.
+8. Future route: source-package collection for `P30-BL-002` or a better P0
    replacement. This must collect traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    and non-claims before formal review. Validated signal-definition binding
    remains deferred until exact evidence supports it.
-8. Later route: implementation readiness gate.
+9. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -289,15 +301,16 @@ Read first:
 - docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
 - docs/design/phase31_p30_bl_001_final_disposition.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
+- docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only source-package collection for P30-BL-002 only if it
-can supply dataset-specific threshold or validation evidence; otherwise source
-a better P0 replacement before formal review. Preserve P30-BL-001 as
-mechanics-only dispositioned and unvalidated. Do not review, validate, approve,
-promote, or implement the next candidate unless that is explicitly scoped in a
-later phase.
+can satisfy the Phase 32 Step 2 sourcing plan with dataset-specific threshold
+or validation evidence; otherwise source a better P0 replacement before formal
+review. Preserve P30-BL-001 as mechanics-only dispositioned and unvalidated. Do
+not review, validate, approve, promote, or implement the next candidate unless
+that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.

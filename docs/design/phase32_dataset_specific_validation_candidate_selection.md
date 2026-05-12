@@ -79,6 +79,11 @@ candidate package under this backlog id if the search finds traceable,
 dataset-specific threshold or validation evidence that satisfies the selection
 criteria above.
 
+Phase 32 Step 2 adds the source-package sourcing plan in
+[`phase32_p30_bl_002_source_package_sourcing_plan.md`](phase32_p30_bl_002_source_package_sourcing_plan.md).
+That plan defines what `P30-BL-002` must produce before formal review can even
+begin. It does not collect, review, approve, validate, or implement evidence.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -114,6 +119,10 @@ sourcing pass can produce a concrete source package with dataset-specific
 threshold or validation evidence. If that sourcing pass cannot produce a
 sufficiently clear package, source a better P0 replacement before formal
 review.
+
+Phase 32 Step 2 narrows the next sourcing pass by defining the required source
+package fields, acceptable and unacceptable source material, review-readiness
+criteria, and rejection/replacement triggers for `P30-BL-002`.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -173,6 +182,7 @@ resolved in later phases:
 
 - a concrete `P30-BL-002` source package or better P0 replacement source
   package exists
+- the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete
 - all review gaps needed for promotion are resolved

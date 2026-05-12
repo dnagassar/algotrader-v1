@@ -244,6 +244,12 @@ state.
   routing handle only if sourcing can produce a concrete evidence package; a
   better P0 replacement should be sourced first if it offers stronger
   traceable dataset-specific evidence.
+- Phase 32 Step 2 defines the `P30-BL-002` source-package sourcing plan. It is
+  documentation-only and sets required package fields, acceptable and
+  unacceptable source material, minimum review-readiness criteria, and
+  rejection/replacement triggers before formal review can begin. It does not
+  collect sources, validate or approve `P30-BL-002`, create a research
+  artifact or signal definition, or authorize implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1388,6 +1394,18 @@ non-claims. A better P0 replacement should be sourced first if it offers
 stronger traceable evidence. This selection does not review, validate, approve,
 promote, bind, or implement any candidate.
 
+Phase 32 Step 2 adds the `P30-BL-002` source-package sourcing plan in
+[`docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md`](design/phase32_p30_bl_002_source_package_sourcing_plan.md).
+It is documentation-only and defines the required package fields, acceptable
+source types, unacceptable source types, minimum review-readiness criteria, and
+rejection/replacement criteria before any formal review can begin. `P30-BL-002`
+remains a sourcing target only: unreviewed, unvalidated, unapproved, not
+production-ready, not implementation-ready, and not threshold-justified. This
+step does not collect or cite actual research sources, create a
+`ValidatedResearchArtifact`, create a `ValidatedSignalDefinition`, approve a
+threshold, add evaluator behavior, add signal computation, or add runtime,
+broker, persistence, ML, or LLM trading-path behavior.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1522,6 +1540,8 @@ Ledger modes:
   disposition and next-candidate routing
 - Threshold evaluator behavior beyond the Phase 32 Step 1 dataset-specific
   validation candidate selection
+- Threshold evaluator behavior beyond the Phase 32 Step 2 P30-BL-002 source
+  package sourcing plan
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1552,13 +1572,13 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing exact research and
 signal-definition support candidates for later review against the Phase 30
 Step 2 evidence standard and Phase 30 Step 3 review template. The next
-practical research action after Phase 32 Step 1 is source-package collection for
-`P30-BL-002` only if it can supply dataset-specific threshold or validation
-evidence; otherwise a better P0 replacement should be sourced first. Tier B
-review may still provide context later, but formal review, real evaluator
-behavior, signal computation, test scaffolds for implementation, and wiring
-signal output into risk remain blocked until those gates are explicitly
-resolved.
+practical research action after Phase 32 Step 2 is source-package collection
+for `P30-BL-002` only if it can satisfy the sourcing plan with
+dataset-specific threshold or validation evidence; otherwise a better P0
+replacement should be sourced first. Tier B review may still provide context
+later, but formal review, real evaluator behavior, signal computation, test
+scaffolds for implementation, and wiring signal output into risk remain
+blocked until those gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
