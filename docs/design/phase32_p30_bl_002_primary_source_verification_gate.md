@@ -324,6 +324,12 @@ PIT-snapshot source if `P30-BL-002-S08` proves too proprietary for review needs.
 This routing decision does not approve, validate, promote, or implement any
 source.
 
+Phase 32 Step 5 records the next documentation-only intake plan in
+[`phase32_p30_bl_002_limited_formal_review_intake_plan.md`](phase32_p30_bl_002_limited_formal_review_intake_plan.md).
+That plan uses this gate as the source of truth for selected candidates, places
+negative-control review before candidate-evidence review, and defines evidence
+requirements without performing formal review.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,

@@ -99,6 +99,12 @@ The gate checks selected high-value entries only: `P30-BL-002-S01`,
 source identity and intake eligibility only; it is not formal review,
 validation, approval, promotion, or implementation readiness.
 
+Phase 32 Step 5 adds the limited formal review intake plan in
+[`phase32_p30_bl_002_limited_formal_review_intake_plan.md`](phase32_p30_bl_002_limited_formal_review_intake_plan.md).
+The plan defines review order, criteria, possible outcomes, and evidence
+requirements for those selected sources only. It is intake planning, not
+formal review, validation, approval, promotion, or implementation readiness.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -145,11 +151,15 @@ formal review intake for selected candidates, with additional sourcing or a
 better P0 replacement if the selected candidates fail review-readiness checks.
 
 Phase 32 Step 4 completes the primary-source verification gate for selected
-entries. The next safest route is limited formal review intake for
-`P30-BL-002-S05`, `P30-BL-002-S03`, and `P30-BL-002-S01`, with
-`P30-BL-002-S08` held to methodology-only PIT/no-lookahead review intake if
-its proprietary-source limitations are acceptable. Scout-only claims remain
+entries. Phase 32 Step 5 records the limited formal review intake plan for
+`P30-BL-002-S01`, `P30-BL-002-S03`, `P30-BL-002-S05`, and `P30-BL-002-S08`.
+The plan reviews negative-control sources first, holds `S08` to
+methodology-only PIT/no-lookahead criteria, and keeps scout-only claims
 quarantined until formal review verifies them directly.
+
+The next safest route after Step 5 is a later docs-only formal review using
+the Step 5 plan. That later review still may fail, require additional sourcing,
+or classify a source as negative-control or methodology-only.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -213,6 +223,8 @@ resolved in later phases:
   sources or replaced by stronger sourced candidates; Phase 32 Step 4 satisfies
   this only for selected source identity and intake eligibility, not formal
   review
+- the Phase 32 Step 5 intake plan is used only as a later review checklist, not
+  as evidence of review success
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete

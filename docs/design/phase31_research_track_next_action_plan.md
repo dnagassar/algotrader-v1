@@ -65,6 +65,12 @@ The gate verifies selected source identities and intake eligibility for
 only. It does not formally review, approve, validate, promote, or implement
 any candidate.
 
+Phase 32 Step 5 adds the `P30-BL-002` limited formal review intake plan in
+[`phase32_p30_bl_002_limited_formal_review_intake_plan.md`](phase32_p30_bl_002_limited_formal_review_intake_plan.md).
+The plan defines review order, criteria, possible outcomes, and evidence
+requirements for a later formal review. It does not formally review, approve,
+validate, promote, or implement any source.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -101,6 +107,9 @@ Current status:
   eligibility for selected high-value `P30-BL-002` entries only. `S05`, `S03`,
   and `S01` are eligible for limited formal review intake; `S08` is maybe
   eligible as methodology-only PIT review material.
+- Phase 32 Step 5 records the limited formal review intake plan for selected
+  `P30-BL-002` entries only. It places `S01` and `S03` negative-control review
+  before `S05` candidate-evidence review and keeps `S08` methodology-only.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -160,15 +169,18 @@ Recommended next phases:
    eligibility only. It routes `S05`, `S03`, and `S01` to limited formal
    review intake and routes `S08` only as maybe-eligible methodology-only PIT
    material. It does not validate, approve, promote, or implement any source.
-10. Future route: limited formal review intake for selected `P30-BL-002`
-   candidates, with additional sourcing or a better P0 replacement if selected
-   candidates fail review-readiness checks. Any package moving to review must
-   preserve traceable dataset scope, point-in-time input assumptions,
-   threshold or parameter rationale, no-lookahead controls, reproducibility
-   notes, robustness or out-of-sample evidence, limitations, and non-claims.
-   Validated signal-definition binding remains deferred until exact evidence
-   supports it.
-11. Later route: implementation readiness gate.
+10. Phase 32 Step 5: `P30-BL-002` limited formal review intake plan.
+   This step is complete. It defines review order, shared and source-specific
+   criteria, pass/fail outcomes, required review artifacts, and evidence
+   requirements. It does not perform formal review or validate any selected
+   source.
+11. Future route: limited formal review for selected `P30-BL-002` candidates,
+   using the Step 5 intake plan. Any review must preserve traceable dataset
+   scope, point-in-time input assumptions, threshold or parameter rationale,
+   no-lookahead controls, reproducibility notes, robustness or out-of-sample
+   evidence, limitations, and non-claims. It may still fail, quarantine a
+   source, or require additional sourcing.
+12. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -326,7 +338,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Next Candidate Dataset-Specific Threshold Evidence Route
+Future Step -- P30-BL-002 Limited Formal Source Review
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -341,15 +353,16 @@ Read first:
 - docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
 - docs/design/phase32_p30_bl_002_source_package.md
 - docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+- docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only limited formal review intake for selected P30-BL-002
-source-package candidates that passed the Phase 32 Step 4 verification gate,
-with additional sourcing or a better P0 replacement if unresolved source gaps
-block review-readiness. Preserve P30-BL-001 as mechanics-only dispositioned and
-unvalidated. Do not validate, approve, promote, or implement the next candidate
-unless that is explicitly scoped in a later phase.
+Scope: documentation-only limited formal review for selected P30-BL-002
+source-package candidates using the Phase 32 Step 5 intake plan. Preserve
+P30-BL-001 as mechanics-only dispositioned and unvalidated. Do not validate,
+approve, promote, create a ValidatedResearchArtifact, create a
+ValidatedSignalDefinition, or implement the next candidate unless that is
+explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.

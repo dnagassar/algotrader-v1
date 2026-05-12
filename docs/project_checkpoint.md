@@ -346,6 +346,14 @@ eligibility only. No production code or runtime behavior changed, and no
 research artifact, validated signal definition, real evaluator, signal
 computation, formal review, validation, approval, promotion, threshold
 justification, or implementation readiness was added.
+Phase 32 Step 5 is documentation-only. It adds the `P30-BL-002` limited formal
+review intake plan for the Step 4 selected candidates. It defines review order,
+shared and source-specific criteria, possible pass/fail outcomes, required
+review artifacts, non-claims, and remaining blockers. No production code or
+runtime behavior changed, and no research artifact, validated signal
+definition, real evaluator, signal computation, formal review, validation,
+approval, promotion, threshold justification, or implementation readiness was
+added.
 The latest full-suite result is:
 
 ```text
@@ -4904,6 +4912,101 @@ Manual documentation checks:
 - edited markdown files have exactly one final newline
 - edited markdown files were inspected for completeness and were not truncated
 
+## Phase 32 Step 5 P30-BL-002 Limited Formal Review Intake Plan
+
+Phase 32 Step 5 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+```
+
+It updates:
+
+```text
+docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+docs/design/phase32_p30_bl_002_source_package.md
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step uses the Phase 32 Step 4 verification gate as the source of truth for
+selected intake candidates. It admits only `P30-BL-002-S01`, `P30-BL-002-S03`,
+`P30-BL-002-S05`, and `P30-BL-002-S08` into the intake plan.
+
+The review order is deliberately conservative:
+
+1. `P30-BL-002-S01` for moving-average timing / lookahead negative-control
+   review.
+2. `P30-BL-002-S03` for data-snooping / out-of-sample negative-control review.
+3. `P30-BL-002-S05` for limited time-series momentum candidate-evidence
+   review.
+4. `P30-BL-002-S08` for methodology-only PIT/no-lookahead infrastructure
+   review.
+
+The plan records shared formal review criteria covering primary-source
+identity, dataset scope, asset universe, timeframe, input/indicator definition,
+threshold/parameter relevance, validation design, no-lookahead/PIT controls,
+reproducibility, robustness or out-of-sample evidence, limitations,
+non-claims, future binding relevance, and unresolved gaps.
+
+The source-specific criteria keep roles narrow:
+
+- `S01` can support only negative-control/no-lookahead review planning and
+  cannot support production threshold approval.
+- `S03` can support only falsification and multiple-testing guardrail review
+  planning and cannot support production threshold approval.
+- `S05` is the only selected source currently eligible for limited
+  candidate-evidence review planning, but it remains unvalidated.
+- `S08` can support only methodology-only PIT/no-lookahead review planning and
+  cannot validate a signal or threshold.
+
+Possible later formal review outcomes are pass for negative-control use only,
+pass for methodology-only use only, conditional pass for limited candidate
+evidence, fail/quarantine, or needs additional sourcing. No future outcome
+automatically creates a `ValidatedResearchArtifact`, creates a
+`ValidatedSignalDefinition`, approves a threshold, validates a signal, or
+authorizes implementation.
+
+`P30-BL-002` remains unreviewed, unvalidated, unapproved, not
+production-ready, not implementation-ready, and not threshold-justified. This
+phase does not validate a signal, approve a threshold, create a
+`ValidatedResearchArtifact`, create a `ValidatedSignalDefinition`, add
+evaluator behavior, add signal computation, or add runtime, broker,
+persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 5:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+ M docs/design/phase32_p30_bl_002_source_package.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+```
+
+Manual documentation checks:
+
+- edited markdown files have no trailing whitespace
+- edited markdown files have exactly one final newline
+- edited markdown files were inspected for completeness and were not truncated
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -5002,6 +5105,8 @@ Manual documentation checks:
   package collection attempt
 - threshold evaluator behavior beyond the Phase 32 Step 4 P30-BL-002 primary
   source verification gate
+- threshold evaluator behavior beyond the Phase 32 Step 5 P30-BL-002 limited
+  formal review intake plan
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -5028,9 +5133,10 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- limited formal review intake for the Phase 32 Step 4 selected `P30-BL-002`
-  candidates, with additional sourcing or a better P0 replacement if unresolved
-  source gaps block review-readiness, docs-only
+- limited formal review for the Phase 32 Step 4 selected `P30-BL-002`
+  candidates using the Phase 32 Step 5 intake plan, with additional sourcing
+  or a better P0 replacement if unresolved source gaps block review-readiness,
+  docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

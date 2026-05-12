@@ -884,24 +884,30 @@ Phase 32 Step 4 adds a docs-only primary-source verification gate in
 That gate verifies selected source identities and intake eligibility only. It
 does not formally review, approve, validate, promote, or implement any source.
 
-Recommended safest next route after the verification gate: limited formal
-review intake for selected candidates plus additional verification of unresolved
-source details.
+Phase 32 Step 5 adds a docs-only limited formal review intake plan in
+[`phase32_p30_bl_002_limited_formal_review_intake_plan.md`](phase32_p30_bl_002_limited_formal_review_intake_plan.md).
+That plan defines the review order, review criteria, pass/fail outcomes, and
+required evidence for a later formal review. It does not perform the review or
+validate any selected source.
 
-Suggested review intake shortlist, still candidate-only:
+Current review intake shortlist, still candidate-only:
 
-1. `P30-BL-002-S03` for threshold-rule data-snooping and OOS negative control.
-2. `P30-BL-002-S01` for lookahead-bias correction in moving-average timing.
+1. `P30-BL-002-S01` for lookahead-bias correction in moving-average timing.
+2. `P30-BL-002-S03` for threshold-rule data-snooping and OOS negative control.
 3. `P30-BL-002-S05` for a direct simple zero-threshold momentum rule across a
    broad dataset.
 4. `P30-BL-002-S08` for point-in-time and no-lookahead infrastructure
    semantics.
-5. `P30-BL-002-S10` and `P30-BL-002-S11` only as validation-design references.
 
 Phase 32 Step 4 narrows the first four as follows: `P30-BL-002-S05`,
 `P30-BL-002-S03`, and `P30-BL-002-S01` are eligible for limited formal review
 intake only; `P30-BL-002-S08` is maybe eligible for methodology-only PIT review
 intake and is not a direct threshold-source candidate.
+
+Phase 32 Step 5 records that `P30-BL-002-S01` and `P30-BL-002-S03` can support
+only negative-control review roles, `P30-BL-002-S05` is the only selected
+source currently eligible for limited candidate-evidence review, and
+`P30-BL-002-S08` can support methodology-only PIT/no-lookahead review at most.
 
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any
