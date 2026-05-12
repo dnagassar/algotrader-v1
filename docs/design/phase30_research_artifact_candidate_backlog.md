@@ -206,6 +206,15 @@ material, classifies preliminary routing categories, and records source-level
 and package-level gaps. It does not validate, approve, promote, or make
 `P30-BL-002` implementation-ready.
 
+Phase 32 Step 4 adds the `P30-BL-002` primary-source verification gate in
+[`phase32_p30_bl_002_primary_source_verification_gate.md`](phase32_p30_bl_002_primary_source_verification_gate.md).
+It verifies selected source identities and formal-review intake eligibility
+only for `P30-BL-002-S01`, `P30-BL-002-S03`, `P30-BL-002-S05`, and
+`P30-BL-002-S08`. It routes `S05`, `S03`, and `S01` to limited formal review
+intake and holds `S08` to maybe-eligible methodology-only PIT review intake.
+It does not formally review, approve, validate, promote, or implement
+`P30-BL-002`.
+
 The Phase 30 threshold evaluator research-support boundary remains the
 implementation blocker. The threshold evaluator remains unimplemented until a
 candidate is reviewed and promoted into exact validated research and exact
@@ -253,10 +262,10 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Future step: primary-source verification or limited formal review intake
-   for selected `P30-BL-002` source-package candidates, with additional
-   sourcing or a better P0 replacement if those entries fail Phase 32 Step 2
-   review-readiness checks, docs-only.
+1. Future step: limited formal review intake for selected `P30-BL-002`
+   source-package candidates that passed the Phase 32 Step 4 verification gate,
+   with additional sourcing or a better P0 replacement if unresolved source
+   gaps block Phase 32 Step 2 review-readiness checks, docs-only.
 2. Later step: candidate validated signal definition review and artifact
    binding, docs-only, only if later evidence supports it.
 3. Later step: implementation scope approval review.

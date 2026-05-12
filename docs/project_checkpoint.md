@@ -338,6 +338,14 @@ formal review can rely on any entry. No production code or runtime behavior
 changed, and no research artifact, validated signal definition, real
 evaluator, signal computation, formal review, validation, approval, promotion,
 threshold justification, or implementation readiness was added.
+Phase 32 Step 4 is documentation-only. It adds the `P30-BL-002`
+primary-source verification gate for selected high-value entries:
+`P30-BL-002-S01`, `P30-BL-002-S03`, `P30-BL-002-S05`, and
+`P30-BL-002-S08`. It verifies source identity and limited formal-review intake
+eligibility only. No production code or runtime behavior changed, and no
+research artifact, validated signal definition, real evaluator, signal
+computation, formal review, validation, approval, promotion, threshold
+justification, or implementation readiness was added.
 The latest full-suite result is:
 
 ```text
@@ -4829,6 +4837,73 @@ Manual documentation checks:
 - edited markdown files have exactly one final newline
 - edited markdown files were inspected for completeness and were not truncated
 
+## Phase 32 Step 4 P30-BL-002 Primary Source Verification Gate
+
+Phase 32 Step 4 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+```
+
+It updates:
+
+```text
+docs/design/phase32_p30_bl_002_source_package.md
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step verifies selected primary-source identities and intake eligibility
+for `P30-BL-002-S01`, `P30-BL-002-S03`, `P30-BL-002-S05`, and
+`P30-BL-002-S08`. It corrects the `P30-BL-002-S08` title to "Accurately
+Backtesting Financial Models Through Point-in-Time Consensus Estimates" and
+records the source as methodology-only PIT/no-lookahead material.
+
+The Step 4 routing result is limited. `P30-BL-002-S05`, `P30-BL-002-S03`, and
+`P30-BL-002-S01` are eligible for limited formal review intake only.
+`P30-BL-002-S08` is maybe eligible only as a methodology-only PIT review
+candidate. Scout-only claims remain quarantined until formal review checks
+them from primary sources.
+
+`P30-BL-002` remains unreviewed, unvalidated, unapproved, not
+production-ready, not implementation-ready, and not threshold-justified. This
+phase does not validate a signal, approve a threshold, create a
+`ValidatedResearchArtifact`, create a `ValidatedSignalDefinition`, add
+evaluator behavior, add signal computation, or add runtime, broker,
+persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 4:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/design/phase32_p30_bl_002_source_package.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+```
+
+Manual documentation checks:
+
+- edited markdown files have no trailing whitespace
+- edited markdown files have exactly one final newline
+- edited markdown files were inspected for completeness and were not truncated
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4925,6 +5000,8 @@ Manual documentation checks:
   package sourcing plan
 - threshold evaluator behavior beyond the Phase 32 Step 3 P30-BL-002 source
   package collection attempt
+- threshold evaluator behavior beyond the Phase 32 Step 4 P30-BL-002 primary
+  source verification gate
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4951,10 +5028,9 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- additional sourcing for `P30-BL-002` if actual source candidates can satisfy
-  the Phase 32 Step 2 sourcing plan with dataset-specific threshold or
-  validation evidence, otherwise source a better P0 replacement before formal
-  review, docs-only
+- limited formal review intake for the Phase 32 Step 4 selected `P30-BL-002`
+  candidates, with additional sourcing or a better P0 replacement if unresolved
+  source gaps block review-readiness, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -308,10 +308,10 @@ thresholds, artifacts, signal definitions, or implementation.
 | --- | --- |
 | normalized source id | `P30-BL-002-S08` |
 | original scout id(s) | Gemini/browser `C3-FCT-PIT-DB-POINTINTIME` |
-| title/reference | "Accurately Backtesting Financial Models Using Point-in-Time Data" |
+| title/reference | "Accurately Backtesting Financial Models Through Point-in-Time Consensus Estimates" |
 | link or citation text | <https://www.insight.factset.com/hubfs/Resources%20Section/White%20Papers/ID11996_point_in_time.pdf> |
 | author/source | FactSet Research Systems Inc. |
-| date/version | Date not normalized by scout report; source version must be checked |
+| date/version | Date not normalized by scout report; Phase 32 Step 4 did not verify an explicit publication date in the primary PDF |
 | source type | Vendor white paper on point-in-time data and backtesting methodology |
 | scout-report origin | Gemini/browser |
 | dataset scope | FactSet point-in-time estimates and fundamentals snapshots for global equities |
@@ -879,8 +879,14 @@ triage.
 
 ## Recommended Routing
 
-Recommended safest next route: limited formal review intake for selected
-candidate sources plus additional primary-source verification.
+Phase 32 Step 4 adds a docs-only primary-source verification gate in
+[`phase32_p30_bl_002_primary_source_verification_gate.md`](phase32_p30_bl_002_primary_source_verification_gate.md).
+That gate verifies selected source identities and intake eligibility only. It
+does not formally review, approve, validate, promote, or implement any source.
+
+Recommended safest next route after the verification gate: limited formal
+review intake for selected candidates plus additional verification of unresolved
+source details.
 
 Suggested review intake shortlist, still candidate-only:
 
@@ -891,6 +897,11 @@ Suggested review intake shortlist, still candidate-only:
 4. `P30-BL-002-S08` for point-in-time and no-lookahead infrastructure
    semantics.
 5. `P30-BL-002-S10` and `P30-BL-002-S11` only as validation-design references.
+
+Phase 32 Step 4 narrows the first four as follows: `P30-BL-002-S05`,
+`P30-BL-002-S03`, and `P30-BL-002-S01` are eligible for limited formal review
+intake only; `P30-BL-002-S08` is maybe eligible for methodology-only PIT review
+intake and is not a direct threshold-source candidate.
 
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any

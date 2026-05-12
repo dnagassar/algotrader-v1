@@ -255,6 +255,11 @@ state.
   supplied Claude, Perplexity, and Gemini/browser scout reports, records
   preliminary routing categories and gaps, and remains unreviewed,
   unvalidated, unapproved, not promoted, and not implementation-ready.
+- Phase 32 Step 4 records the `P30-BL-002` primary-source verification gate.
+  It verifies selected source identities and intake eligibility for
+  `P30-BL-002-S01`, `P30-BL-002-S03`, `P30-BL-002-S05`, and `P30-BL-002-S08`
+  only. It does not formally review, approve, validate, promote, or implement
+  any source.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1422,6 +1427,15 @@ verification before any selected entry can be used in formal review. It does
 not validate a signal, approve a threshold, create a research artifact, create
 a signal definition, promote `P30-BL-002`, or authorize implementation.
 
+Phase 32 Step 4 adds the `P30-BL-002` primary-source verification gate in
+[`docs/design/phase32_p30_bl_002_primary_source_verification_gate.md`](design/phase32_p30_bl_002_primary_source_verification_gate.md).
+The gate verifies selected primary-source identities and limited intake
+eligibility only. It routes `P30-BL-002-S05`, `P30-BL-002-S03`, and
+`P30-BL-002-S01` to limited formal review intake and keeps `P30-BL-002-S08`
+as maybe-eligible methodology-only PIT review material. It does not validate a
+signal, approve a threshold, create a research artifact, create a signal
+definition, promote `P30-BL-002`, or authorize implementation.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1560,6 +1574,8 @@ Ledger modes:
   package sourcing plan
 - Threshold evaluator behavior beyond the Phase 32 Step 3 P30-BL-002 source
   package collection attempt
+- Threshold evaluator behavior beyond the Phase 32 Step 4 P30-BL-002 primary
+  source verification gate
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1590,13 +1606,13 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing exact research and
 signal-definition support candidates for later review against the Phase 30
 Step 2 evidence standard and Phase 30 Step 3 review template. The next
-practical research action after Phase 32 Step 3 is primary-source verification
-or limited formal review intake for selected `P30-BL-002` source-package
-candidates, with additional sourcing or a better P0 replacement if those
-candidates fail review-readiness checks. Tier B review may still provide
-context later, but formal review, real evaluator behavior, signal computation,
-test scaffolds for implementation, and wiring signal output into risk remain
-blocked until those gates are explicitly resolved.
+practical research action after Phase 32 Step 4 is limited formal review
+intake for selected `P30-BL-002` source-package candidates, with additional
+sourcing or a better P0 replacement if unresolved source gaps block
+review-readiness. Tier B review may still provide context later, but formal
+review, real evaluator behavior, signal computation, test scaffolds for
+implementation, and wiring signal output into risk remain blocked until those
+gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

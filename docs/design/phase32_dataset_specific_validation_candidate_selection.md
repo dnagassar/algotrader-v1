@@ -92,6 +92,13 @@ source categories, deduplication, source-level gaps, package-level gaps, and
 non-claims. It is still not formal review, validation, approval, promotion, or
 implementation readiness.
 
+Phase 32 Step 4 adds the primary-source verification gate in
+[`phase32_p30_bl_002_primary_source_verification_gate.md`](phase32_p30_bl_002_primary_source_verification_gate.md).
+The gate checks selected high-value entries only: `P30-BL-002-S01`,
+`P30-BL-002-S03`, `P30-BL-002-S05`, and `P30-BL-002-S08`. It verifies
+source identity and intake eligibility only; it is not formal review,
+validation, approval, promotion, or implementation readiness.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -136,6 +143,13 @@ Phase 32 Step 3 normalized the supplied scout-report candidates for
 `P30-BL-002`. The next safest route is primary-source verification and limited
 formal review intake for selected candidates, with additional sourcing or a
 better P0 replacement if the selected candidates fail review-readiness checks.
+
+Phase 32 Step 4 completes the primary-source verification gate for selected
+entries. The next safest route is limited formal review intake for
+`P30-BL-002-S05`, `P30-BL-002-S03`, and `P30-BL-002-S01`, with
+`P30-BL-002-S08` held to methodology-only PIT/no-lookahead review intake if
+its proprietary-source limitations are acceptable. Scout-only claims remain
+quarantined until formal review verifies them directly.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -196,7 +210,9 @@ resolved in later phases:
 - a concrete `P30-BL-002` source package or better P0 replacement source
   package exists
 - the Phase 32 Step 3 scout-normalized candidates are verified against primary
-  sources or replaced by stronger sourced candidates
+  sources or replaced by stronger sourced candidates; Phase 32 Step 4 satisfies
+  this only for selected source identity and intake eligibility, not formal
+  review
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete
