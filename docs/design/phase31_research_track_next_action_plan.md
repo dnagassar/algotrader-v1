@@ -29,6 +29,13 @@ keeps it unvalidated and unapproved, and recommends research/data/backtesting
 validation design or targeted production-threshold evidence as the next safe
 route if the threshold evaluator remains the focus.
 
+Phase 31 Step 7 adds the final mechanics-only disposition in
+[`phase31_p30_bl_001_final_disposition.md`](phase31_p30_bl_001_final_disposition.md).
+The disposition closes `P30-BL-001` only in the mechanics-only sense, keeps it
+non-validated, not production-ready, and not implementation-ready, and routes
+the next research direction toward dataset-specific threshold or validation
+evidence without approving implementation.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -51,8 +58,10 @@ Current status:
 - The Step 5 routing plan keeps the Tier A result mechanics-only.
 - The Step 6 mechanics-only summary records a conditional pass for
   mechanics/methodology only and does not promote the candidate.
-- `P30-BL-001` remains unvalidated, not approved, not production-ready, and
-  not implementation-ready.
+- The Step 7 final disposition records `P30-BL-001` as mechanics-only
+  dispositioned, in the mechanics-only sense only.
+- `P30-BL-001` remains unvalidated, not approved, not production-ready, not
+  threshold-justified, and not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
 - No candidate artifact has been accepted.
 - No `ValidatedResearchArtifact` supports the threshold-style evaluator.
@@ -82,11 +91,18 @@ Recommended next phases:
 4. Phase 31 Step 6: mechanics-only candidate artifact review summary.
    This step is complete. It keeps `P30-BL-001` unvalidated and conditionally
    useful for mechanics/methodology only.
-5. Future route: research/data/backtesting validation design or targeted
+5. Phase 31 Step 7: final mechanics-only disposition and next-candidate
+   routing.
+   This step is complete. It closes `P30-BL-001` only in the mechanics-only
+   sense and recommends routing next work toward dataset-specific threshold or
+   validation evidence.
+6. Future route: research/data/backtesting validation design or targeted
    production-threshold evidence collection if the threshold evaluator remains
-   the focus. Validated signal-definition binding remains deferred until exact
+   the focus. `P30-BL-002` or a replacement P0 candidate may be sourced only
+   if it can provide traceable dataset-specific threshold or validation
+   evidence. Validated signal-definition binding remains deferred until exact
    evidence supports it.
-6. Later route: implementation readiness gate.
+7. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -139,7 +155,8 @@ true:
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
-  31 Step 6 summarizes it as mechanics-only, but neither step validates the
+  31 Step 6 summarizes it as mechanics-only. Phase 31 Step 7 dispositioned it
+  only in the mechanics-only sense. None of these steps validates the
   candidate.
 - The review result is pass, or conditional pass with all gaps resolved.
 - An exact `ValidatedResearchArtifact` exists.
@@ -238,7 +255,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- P30-BL-001 Research/Data Validation Or Threshold Evidence Route
+Future Step -- Next Candidate Dataset-Specific Threshold Evidence Route
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -247,14 +264,15 @@ Read first:
 - docs/design/phase31_p30_bl_001_tier_a_review.md
 - docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
 - docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
+- docs/design/phase31_p30_bl_001_final_disposition.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only routing for research/data/backtesting validation
-design or targeted production-threshold evidence. Preserve P30-BL-001 as
-unvalidated unless a later review explicitly satisfies the Phase 30 evidence
-standard.
+Scope: documentation-only routing for a next candidate that can supply
+dataset-specific threshold or validation evidence. Preserve P30-BL-001 as
+mechanics-only dispositioned and unvalidated. Do not review or validate the
+next candidate unless that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.

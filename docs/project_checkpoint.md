@@ -303,6 +303,14 @@ design or targeted production-threshold evidence as the next safe route if the
 threshold evaluator remains the focus. No production code or runtime behavior
 changed, and no research artifact, validated signal definition, real evaluator,
 or signal computation was added.
+Phase 31 Step 7 is documentation-only. It adds the final `P30-BL-001`
+disposition, marks the candidate mechanics-only dispositioned only in the
+mechanics-only sense, keeps it non-validated, not production-ready, and not
+implementation-ready, and routes the next safest research direction toward
+dataset-specific threshold or validation evidence. No production code or
+runtime behavior changed, and no research artifact, validated signal
+definition, real evaluator, signal computation, or implementation approval was
+added.
 The latest full-suite result is:
 
 ```text
@@ -4484,6 +4492,82 @@ git diff --check
 clean
 ```
 
+## Phase 31 Step 7 P30-BL-001 Final Disposition And Next-Candidate Routing
+
+Phase 31 Step 7 is documentation-only. It adds:
+
+```text
+docs/design/phase31_p30_bl_001_final_disposition.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
+docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+Final disposition: `P30-BL-001` is mechanics-only dispositioned, in the
+mechanics-only sense only. It remains non-validated, unapproved, not
+production-ready, not implementation-ready, and not threshold-justified.
+
+The candidate supports scalar comparator mechanics, explicit threshold
+vocabulary, possible `Decimal` scalar representation, deterministic scalar
+input review questions, indicator function shape, no-lookahead and
+reproducibility review prompts, and advisory-only non-claim framing. Tier A
+sources remain informational and methodological only.
+
+The candidate does not support a production threshold value/source,
+threshold/config provenance, profitability, predictive edge, risk-adjusted
+return, live-trading suitability, exact `ValidatedResearchArtifact`, exact
+`ValidatedSignalDefinition`, signal-definition binding, evaluator
+implementation readiness, signal scoring, ranking, direction, confidence,
+probability, actionability, risk approval, execution readiness, broker
+behavior, portfolio behavior, runtime behavior, persistence, ML, or LLM
+trading-path behavior.
+
+Implementation remains blocked because there is no exact validated research
+artifact, no exact validated signal definition, no dataset-specific validation,
+no explicit threshold rationale tied to reviewed evidence, no out-of-sample or
+robustness evidence, no applied no-lookahead audit, no performance evidence,
+no risk-adjusted-return evidence, no approved implementation scope, and no
+production evaluator tests.
+
+The backlog now marks `P30-BL-001` as mechanics-only dispositioned. That status
+does not mean validated, approved, production-ready, implementation-ready,
+evidence accepted, or threshold justified.
+
+The next safest research route is a candidate or research task that can supply
+dataset-specific threshold or validation evidence. `P30-BL-002` remains a
+possible unsourced direction, or a replacement P0 candidate may be chosen if it
+offers better traceable dataset-specific threshold evidence. This phase does
+not review, validate, or approve the next candidate.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, probability, ranking, actionability, risk approval, execution
+intent creation, execution-plan mutation, broker or Alpaca behavior, order
+submission, runtime/scheduler behavior, persistence, live data ingestion, ML,
+or LLM trading-path behavior was added.
+
+Verification after Phase 31 Step 7:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4572,6 +4656,8 @@ clean
   routing plan
 - threshold evaluator behavior beyond the Phase 31 Step 6 mechanics-only
   candidate artifact review summary
+- threshold evaluator behavior beyond the Phase 31 Step 7 final mechanics-only
+  disposition and next-candidate routing
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4598,8 +4684,8 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- research/data/backtesting validation design or targeted production-threshold
-  evidence collection for `P30-BL-001`, docs-only
+- next-candidate sourcing or routing for dataset-specific threshold or
+  validation evidence, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

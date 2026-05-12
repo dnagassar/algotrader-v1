@@ -234,6 +234,11 @@ state.
   summary. It conditionally passes `P30-BL-001` for mechanics/methodology only
   and keeps validated artifact, signal-definition binding, production
   threshold, and evaluator implementation routes blocked.
+- Phase 31 Step 7 records the final `P30-BL-001` disposition. It closes the
+  candidate only in the mechanics-only sense, keeps it non-validated, not
+  production-ready, and not implementation-ready, and routes the next research
+  direction toward dataset-specific threshold or validation evidence without
+  approving implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1355,6 +1360,17 @@ create a validated research artifact, create a validated signal definition,
 justify a production threshold, authorize evaluator implementation, or add
 any production behavior.
 
+Phase 31 Step 7 adds the final `P30-BL-001` disposition in
+[`docs/design/phase31_p30_bl_001_final_disposition.md`](design/phase31_p30_bl_001_final_disposition.md).
+It is documentation-only and marks `P30-BL-001` mechanics-only dispositioned,
+in the mechanics-only sense only. It preserves Tier A sources as informational
+and methodological only. It does not validate the candidate, approve an
+artifact, create a validated research artifact, create a validated signal
+definition, justify a production threshold, authorize evaluator implementation,
+or add any production behavior. The next safest research route is a candidate
+or research task that can supply dataset-specific threshold or validation
+evidence; that route remains unreviewed and unapproved by this phase.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1485,6 +1501,8 @@ Ledger modes:
   routing plan
 - Threshold evaluator behavior beyond the Phase 31 Step 6 mechanics-only
   candidate artifact review summary
+- Threshold evaluator behavior beyond the Phase 31 Step 7 final mechanics-only
+  disposition and next-candidate routing
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1515,12 +1533,13 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
 evidence standard and Phase 30 Step 3 review template. The next practical
-research action after the Phase 31 Step 6 mechanics-only summary is
-research/data/backtesting validation design or targeted production-threshold
-evidence collection if the threshold evaluator remains the focus. Tier B
-review may still provide context later, but real evaluator behavior, signal
-computation, test scaffolds for implementation, and wiring signal output into
-risk remain blocked until those gates are explicitly resolved.
+research action after the Phase 31 Step 7 final disposition is
+research/data/backtesting validation design or a candidate that can supply
+dataset-specific threshold evidence if the threshold evaluator remains the
+focus. Tier B review may still provide context later, but real evaluator
+behavior, signal computation, test scaffolds for implementation, and wiring
+signal output into risk remain blocked until those gates are explicitly
+resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

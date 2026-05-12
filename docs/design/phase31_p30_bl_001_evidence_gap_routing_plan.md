@@ -21,6 +21,9 @@ Current status:
   summary in
   [`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md)
   without promoting the candidate.
+- Phase 31 Step 7 records the final mechanics-only disposition in
+  [`phase31_p30_bl_001_final_disposition.md`](phase31_p30_bl_001_final_disposition.md)
+  without validating, approving, or making the candidate implementation-ready.
 
 ## 2. Tier A Outcome Summary
 
@@ -110,16 +113,24 @@ Do not recommend implementation. Do not proceed to validated signal-definition
 binding until a later review has exact artifact support, exact signal
 definition semantics, threshold/config provenance, and resolved blockers.
 
+Phase 31 Step 7 completes the final mechanics-only disposition. After that
+disposition, the safest next route is no longer more implementation planning
+for `P30-BL-001`; it is research/data/backtesting validation design or a
+separate candidate that can provide dataset-specific threshold evidence. That
+future candidate is not reviewed or approved by this plan.
+
 ## 6. Backlog/Status Update Guidance
 
-`P30-BL-001` may be marked as Tier A reviewed or mechanics-only conditional.
-It must not be marked validated, approved, production-ready,
-implementation-ready, evidence accepted, or threshold justified.
+`P30-BL-001` may be marked as Tier A reviewed, mechanics-only conditional, or
+mechanics-only dispositioned. Mechanics-only dispositioned means the candidate
+is closed only for the mechanics-only path. It must not be marked validated,
+approved, production-ready, implementation-ready, evidence accepted, or
+threshold justified.
 
 Backlog language should preserve:
 
 - Tier A reviewed status only, unless a later formal review records
-  mechanics-only conditional status.
+  mechanics-only conditional or mechanics-only dispositioned status.
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no production threshold/config provenance

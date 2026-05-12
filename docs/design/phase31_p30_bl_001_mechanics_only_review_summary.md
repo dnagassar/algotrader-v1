@@ -17,6 +17,9 @@ Current status:
 - No evaluator implementation is authorized.
 - No production threshold, trading claim, or implementation-readiness claim is
   supported.
+- Phase 31 Step 7 records the final mechanics-only disposition in
+  [`phase31_p30_bl_001_final_disposition.md`](phase31_p30_bl_001_final_disposition.md)
+  without promoting the candidate.
 
 ## 2. Source Basis
 
@@ -136,13 +139,18 @@ Recommended disposition:
 - conditional pass for mechanics/methodology only
 - informational only for threshold, profitability, trading, and
   implementation claims
-- keep in backlog as tier-a-reviewed / mechanics-only
+- keep in backlog as tier-a-reviewed / mechanics-only, then mechanics-only
+  dispositioned once Phase 31 Step 7 is recorded
 - do not promote to `ValidatedResearchArtifact`
 - do not bind to `ValidatedSignalDefinition`
 - do not unblock evaluator implementation
 
 This disposition records what the candidate can safely support while
 preventing accidental promotion into production semantics.
+
+Phase 31 Step 7 closes `P30-BL-001` only in this mechanics-only sense. It does
+not convert the candidate into validated evidence, a threshold justification,
+or an implementation-ready artifact.
 
 ## 9. Remaining Blockers
 
@@ -167,8 +175,9 @@ later phase.
 ## 10. Recommended Next Route
 
 Recommended next route: move to research/data/backtesting validation design or
-collect targeted production-threshold evidence if the threshold evaluator
-remains the focus.
+collect targeted production-threshold evidence from a candidate that can supply
+dataset-specific validation evidence if the threshold evaluator remains the
+focus.
 
 Do not recommend implementation. Do not proceed to signal-definition binding
 until exact artifact support, exact signal-definition semantics,
