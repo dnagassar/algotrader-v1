@@ -273,6 +273,12 @@ source discovery and critique, and real evaluator implementation remains
 blocked. No production code or runtime behavior changed, and no research
 artifact, validated signal definition, real evaluator, or signal computation
 was added.
+Phase 31 Step 3 is documentation-only. It adds a normalized `P30-BL-001`
+source package and updates the research-track routing docs. `P30-BL-001` is
+source-package-ready only; it is not reviewed, validated, approved,
+production-ready, implementation-ready, or a threshold/trading justification.
+No production code or runtime behavior changed, and no research artifact,
+validated signal definition, real evaluator, or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -4217,6 +4223,59 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 31 Step 3 P30-BL-001 Source Package Normalization
+
+Phase 31 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase31_p30_bl_001_source_package.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_first_research_candidate_source_selection.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step normalizes the `P30-BL-001` source package using source-discovery
+material from research-agent-assisted collection. The package records source
+ids, titles, organizations, source types, dates or access notes, URLs,
+categories, support boundaries, non-proofs, relevance to `indicator_value`,
+relevance to the threshold-style advisory evaluator, limitations, source
+tiers, candidate groupings, preferred formal-review candidates, known gaps,
+and next routing.
+
+`P30-BL-001` is source-package-ready only. It remains unreviewed,
+unvalidated, not approved, not production-ready, not implementation-ready, and
+not a justification for a production threshold, comparator, signal definition,
+evaluator implementation, scoring, ranking, direction, actionability,
+profitability, or risk-adjusted-return claim.
+
+The next research phase should be formal review of the strongest source subset
+using the Phase 30 evidence standard and candidate review template. That future
+review may still pass, conditionally pass with gaps, fail, or classify the
+package as informational only. A favorable review would still not be
+implementation approval.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+The latest known full-suite checkpoint remains:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4297,6 +4356,8 @@ python -m pytest
   source selection
 - threshold evaluator behavior beyond the Phase 31 Step 2 research-track next
   action plan
+- threshold evaluator behavior beyond the Phase 31 Step 3 source package
+  normalization
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4323,13 +4384,12 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- collect and summarize the `P30-BL-001` source package as a docs-only next
-  action
+- formal review of the strongest `P30-BL-001` source subset against the Phase
+  30 evidence standard and candidate review template, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
 - explicit research artifact contracts/types before any runtime wiring
-- collect/summarize the selected candidate source, docs-only
 - first candidate research artifact review against the Phase 30 Step 2
   evidence standard and Phase 30 Step 3 template, docs-only, only after a
   candidate source package exists

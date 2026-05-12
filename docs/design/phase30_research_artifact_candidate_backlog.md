@@ -20,6 +20,7 @@ Every entry in the backlog may use one of:
 
 - unsourced
 - sourcing target
+- source-package-ready
 - sourced
 - needs review
 - informational only
@@ -35,7 +36,7 @@ implementation.
 
 | Candidate id | Title | Category | Source/provenance | Related evaluator candidate | Related signal idea | Expected inputs | Expected value types | Threshold relevance | Dataset scope | Claim type | Known limitations | Priority | Status | Next action |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | unsourced; local placeholder only | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | none yet | mechanical transformation only | No external source, no dataset, no evidence, no threshold rationale | P0 | sourcing target | First Step 6 sourcing target; collect source/provenance and evidence package before any review |
+| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | Normalized source package: [`phase31_p30_bl_001_source_package.md`](phase31_p30_bl_001_source_package.md) | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | not applicable for mechanical sources; no dataset-specific validation | mechanical transformation only | No formal review, no validated artifact, no validated signal definition, no production threshold rationale, no dataset validation | P0 | source-package-ready | Formal review of strongest source subset using Phase 30 evidence standard/template before any promotion |
 | P30-BL-002 | Threshold sanity check for `indicator_value` | threshold sanity-check studies | unsourced | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, threshold, comparator, `as_of` | `Decimal`; UTC-aware timestamp metadata if applicable | Directly relevant to non-arbitrary threshold selection | unknown | threshold sanity check | No reviewed threshold, no comparator evidence, no validation window | P0 | unsourced | Source a candidate artifact that explains threshold choice and non-claims |
 | P30-BL-003 | Deterministic scalar indicator feature-validity reference | data-quality / feature-validity studies | unsourced | future threshold-style advisory evaluator | deterministic scalar indicator input validity | raw source fields, derived scalar name, observation timestamp | deterministic scalar values such as `Decimal`, `int`, or `bool` as scoped | Indirectly relevant to whether `indicator_value` is a valid observed input | unknown | mechanical transformation only / data-quality claim | No source, no feature formula, no data-quality controls | P1 | unsourced | Source a candidate that documents feature construction, timestamp, and validity rules |
 | P30-BL-004 | No-lookahead bias-control reference | no-lookahead / bias-control references | unsourced | any future real evaluator | point-in-time signal evaluation | feature timestamps, label timestamps, `as_of` | UTC-aware datetimes plus explicit feature values | Indirectly relevant to evaluator timestamp and bundle rules | unknown | robustness claim / bias-control reference | No exact source, no asset universe, no tested artifact | P1 | unsourced | Source a point-in-time/no-lookahead methodology reference for template review |
@@ -93,9 +94,10 @@ Priorities are conservative:
 Priority is routing metadata only. It is not evidence quality, approval, or
 implementation readiness. A P0 candidate can still fail review.
 
-Phase 30 Step 6 selects `P30-BL-001` as the first sourcing target only. That
-status does not review, validate, approve, or make the candidate
-implementation-ready.
+Phase 30 Step 6 selects `P30-BL-001` as the first sourcing target only. Phase
+31 Step 3 normalizes the `P30-BL-001` source package and moves it to
+source-package-ready only. That status does not review, validate, approve, or
+make the candidate implementation-ready.
 
 ## 7. Non-Validation Warning
 
@@ -123,6 +125,7 @@ Future routing is:
 ```text
 backlog entry
   -> source collected
+  -> source package normalized
   -> candidate review using Phase 30 template
   -> pass / conditional pass / fail / informational only
   -> possible ValidatedResearchArtifact
@@ -147,6 +150,10 @@ template before promotion is considered.
 The Phase 30 sourcing plan defines how candidate sources should be collected,
 triaged, prioritized, and routed. This backlog is the first small population
 of that queue.
+
+The Phase 31 `P30-BL-001` source package records normalized source candidates,
+source tiers, grouping, known gaps, and next routing only. It does not lower
+the evidence bar or validate the candidate.
 
 The Phase 30 threshold evaluator research-support boundary remains the
 implementation blocker. The threshold evaluator remains unimplemented until a
@@ -194,6 +201,17 @@ Normal pytest must remain offline, credential-free, and safe.
 ## 11. Non-Binding Future Phase Sketch
 
 Possible future phases include:
+
+1. Phase 31 Step 4: first candidate research artifact/source package review
+   using the Phase 30 evidence standard and candidate review template,
+   docs-only.
+2. Phase 31 Step 5: candidate validated signal definition review and artifact
+   binding, docs-only, only if review supports it.
+3. Phase 31 Step 6: implementation scope approval review.
+4. Later: minimal threshold evaluator implementation only if all blockers are
+   resolved.
+
+Historical Phase 30 sketch before Phase 31 normalization was:
 
 1. Phase 30 Step 6: select first candidate source target, docs-only.
 2. Phase 30 Step 7: collect/summarize the selected candidate source,

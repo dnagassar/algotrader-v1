@@ -218,6 +218,9 @@ state.
   `P30-BL-001` as the first unreviewed sourcing target, confirms backlog
   entries are not evidence, allows research agents only as assistants, and
   keeps real evaluator implementation blocked.
+- Phase 31 Step 3 normalizes the `P30-BL-001` source package. The candidate is
+  source-package-ready only, not reviewed, validated, approved, production-ready,
+  implementation-ready, or a trading/threshold justification.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1305,6 +1308,15 @@ themselves. Perplexity, Claude, Gemini, and similar tools may assist with
 source discovery, summaries, and critique, but they cannot define production
 behavior or enter the trading path.
 
+Phase 31 Step 3 adds the normalized `P30-BL-001` source package in
+[`docs/design/phase31_p30_bl_001_source_package.md`](design/phase31_p30_bl_001_source_package.md).
+It is documentation-only and makes `P30-BL-001` source-package-ready only. It
+does not review, validate, approve, or implement any research artifact, signal
+definition, threshold, comparator, evaluator behavior, signal computation,
+feature computation, strategy logic, scoring, ranking, direction,
+actionability, broker behavior, runtime behavior, persistence, ML, or LLM
+trading-path behavior.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1427,6 +1439,8 @@ Ledger modes:
   source selection
 - Threshold evaluator behavior beyond the Phase 31 Step 2 research-track next
   action plan
+- Threshold evaluator behavior beyond the Phase 31 Step 3 source package
+  normalization
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1457,10 +1471,10 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
 evidence standard and Phase 30 Step 3 review template. The next practical
-research action is collecting and summarizing the `P30-BL-001` source package
-under the Phase 31 Step 2 plan. Real evaluator behavior, signal computation,
-test scaffolds for implementation, and wiring signal output into risk remain
-blocked until those gates are explicitly resolved.
+research action is formal review of the strongest `P30-BL-001` source subset.
+Real evaluator behavior, signal computation, test scaffolds for
+implementation, and wiring signal output into risk remain blocked until those
+gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

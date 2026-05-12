@@ -5,6 +5,11 @@
 Phase 31 Step 2 turns the Phase 30 candidate backlog and first source-selection
 work into a practical research-track sequence.
 
+Phase 31 Step 3 adds the normalized `P30-BL-001` source package in
+[`phase31_p30_bl_001_source_package.md`](phase31_p30_bl_001_source_package.md).
+That package is source normalization only. It is not formal review,
+validation, approval, production readiness, or implementation readiness.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -21,6 +26,8 @@ Current status:
   template, sourcing plan, initial backlog, and first source-selection decision.
 - The first sourcing target is `P30-BL-001`, "Simple scalar threshold indicator
   definition".
+- `P30-BL-001` now has a normalized source package, but remains
+  source-package-ready only.
 - `P30-BL-001` remains unreviewed, unvalidated, not approved, not
   production-ready, and not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
@@ -35,23 +42,20 @@ Current status:
 Future docs/research phases may combine related documentation work when safe.
 Recommended next phases:
 
-1. Phase 31 Step 3: `P30-BL-001` source package collection and summary.
-   Collect source/provenance, primary references, mechanical definition details,
-   non-claims, and review gaps. This may include research-agent assistance, but
-   produces only a source package, not validation.
-2. Phase 31 Step 4: source package normalization and pre-review readiness.
-   Convert collected material into the Phase 30 review-template shape, identify
-   missing evidence, classify claims, and decide whether the package is ready
-   for formal review or should remain informational.
-3. Phase 31 Step 5: first candidate artifact review.
+1. Phase 31 Step 3: `P30-BL-001` source package normalization.
+   Normalize source/provenance, primary references, mechanical definition
+   details, non-claims, source tiers, groupings, preferred review candidates,
+   and review gaps. This may include research-agent assistance, but produces
+   only a source package, not validation.
+2. Phase 31 Step 4: first candidate artifact review.
    Apply the Phase 30 evidence standard and candidate review template to
    `P30-BL-001`. The outcome may be pass, conditional pass with resolved gaps,
    fail, or informational only. A pass still does not implement an evaluator.
-4. Phase 31 Step 6: validated signal-definition binding plan.
+3. Phase 31 Step 5: validated signal-definition binding plan.
    If and only if review supports it, plan the exact future binding between a
    reviewed research artifact, input names/types, advisory output semantics,
    threshold/config provenance, assumptions, limitations, and non-claims.
-5. Phase 31 Step 7: implementation readiness gate.
+4. Phase 31 Step 6: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -62,7 +66,8 @@ docs-only research tasks when the work remains low-risk and code-free.
 
 ## 4. Evidence Required Before Reviewing `P30-BL-001`
 
-Before `P30-BL-001` enters formal review, collect an evidence package with:
+Phase 31 Step 3 normalized a source package for `P30-BL-001`. Before formal
+review can promote anything, the reviewer still needs to check the package for:
 
 - source/provenance and primary reference
 - artifact title or citation
@@ -96,7 +101,9 @@ evidence.
 Real evaluator implementation remains blocked until all of the following are
 true:
 
-- `P30-BL-001` or another candidate has a collected source package.
+- `P30-BL-001` or another candidate has a collected and normalized source
+  package. `P30-BL-001` now satisfies this source-package-ready routing step
+  only.
 - The candidate has been reviewed against the Phase 30 evidence standard.
 - The review result is pass, or conditional pass with all gaps resolved.
 - An exact `ValidatedResearchArtifact` exists.
@@ -195,15 +202,18 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Phase 31 Step 3 -- P30-BL-001 Source Package Collection
+Phase 31 Step 4 -- P30-BL-001 Formal Source Package Review
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
+- docs/design/phase31_p30_bl_001_source_package.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
 - docs/design/phase30_first_research_candidate_source_selection.md
+- docs/design/phase30_research_validation_evidence_standard.md
+- docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only source package.
+Scope: documentation-only formal review of the strongest source subset.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
