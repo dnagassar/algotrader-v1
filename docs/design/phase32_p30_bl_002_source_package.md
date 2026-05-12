@@ -909,6 +909,13 @@ only negative-control review roles, `P30-BL-002-S05` is the only selected
 source currently eligible for limited candidate-evidence review, and
 `P30-BL-002-S08` can support methodology-only PIT/no-lookahead review at most.
 
+Phase 32 Step 6 adds the S01-only formal review in
+[`phase32_p30_bl_002_s01_formal_review.md`](phase32_p30_bl_002_s01_formal_review.md).
+It passes `P30-BL-002-S01` only for limited negative-control/no-lookahead use.
+That narrow pass does not validate `P30-BL-002`, approve any threshold,
+promote any artifact, bind any signal definition, or authorize
+implementation. The next review route is `P30-BL-002-S03`.
+
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any
 production threshold or advisory signal behavior.

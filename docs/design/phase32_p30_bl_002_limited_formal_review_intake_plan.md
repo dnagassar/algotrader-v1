@@ -240,6 +240,19 @@ If a source is reviewed in a later phase, that phase must keep the review
 artifact separate from validation and separate from any implementation-readiness
 decision.
 
+## Phase 32 Step 6 follow-up
+
+Phase 32 Step 6 adds the S01-only formal review in
+[`phase32_p30_bl_002_s01_formal_review.md`](phase32_p30_bl_002_s01_formal_review.md).
+That review passes `P30-BL-002-S01` only for limited
+negative-control/no-lookahead use. The pass is narrow and does not create
+validation, approve a threshold, bind a signal definition, or authorize
+implementation.
+
+The review queue after S01 proceeds to `P30-BL-002-S03` as the second
+negative-control source. `P30-BL-002-S05` and `P30-BL-002-S08` remain
+unreviewed by Step 6.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,
@@ -261,7 +274,12 @@ trading-path behavior.
 
 Evaluator implementation remains blocked by all of the following:
 
-- no formal review
+- no `P30-BL-002-S03` formal review
+- no `P30-BL-002-S05` formal review
+- no `P30-BL-002-S08` methodology review
+- the `P30-BL-002-S01` review is negative-control/no-lookahead only and does
+  not validate a signal, threshold, artifact, signal definition, or
+  implementation
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no approved threshold/config provenance

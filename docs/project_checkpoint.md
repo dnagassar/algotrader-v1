@@ -354,6 +354,13 @@ runtime behavior changed, and no research artifact, validated signal
 definition, real evaluator, signal computation, formal review, validation,
 approval, promotion, threshold justification, or implementation readiness was
 added.
+Phase 32 Step 6 is documentation-only. It adds the `P30-BL-002-S01` formal
+review and passes S01 only for limited negative-control/no-lookahead use. The
+review records unresolved exact timing, dataset, code/data, and deterministic
+reproduction gaps; routes the next formal review to `P30-BL-002-S03`; and does
+not validate a signal, approve a threshold, create a validated artifact, create
+a validated signal definition, add evaluator behavior, or authorize
+implementation.
 The latest full-suite result is:
 
 ```text
@@ -5007,6 +5014,91 @@ Manual documentation checks:
 - edited markdown files have exactly one final newline
 - edited markdown files were inspected for completeness and were not truncated
 
+## Phase 32 Step 6 P30-BL-002-S01 Formal Review
+
+Phase 32 Step 6 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_s01_formal_review.md
+```
+
+It updates:
+
+```text
+docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+docs/design/phase32_p30_bl_002_source_package.md
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step formally reviews `P30-BL-002-S01` only, using the Phase 32 Step 4
+primary-source verification gate and Phase 32 Step 5 intake plan as the source
+of truth. It records the source identity as Valeriy Zakamulin's "Revisiting
+the Profitability of Market Timing with Moving Averages", with the SSRN page
+and DOI `10.2139/ssrn.2743119` verified by Step 4. The Wiley DOI
+`10.1111/irfi.12132` remains a later citation check because the Wiley page was
+not accessible during Step 4.
+
+The S01 review outcome is: pass for negative-control/no-lookahead use only.
+The pass is narrow. S01 can support falsification and moving-average
+timing-bias guardrail design only. It does not support production threshold
+approval, predictive-edge claims, profitability claims, validated artifact
+readiness, validated signal definition readiness, implementation readiness,
+paper trading readiness, or live trading readiness.
+
+The review records unresolved S01 gaps for exact signal date, execution date,
+return-measurement date, moving-average windows, comparators, price/return
+transformations, dataset vendor/source, sample dates, total-return treatment,
+transaction-cost assumptions, code/data access, licensing, archival path, and
+deterministic rerun feasibility. Any future exact timing-rule reproduction,
+deterministic test binding, threshold comparison, or stronger claim requires
+additional S01 evidence.
+
+The next routing step is `P30-BL-002-S03` formal review as the second
+negative-control source. `P30-BL-002-S05` and `P30-BL-002-S08` remain
+unreviewed by Step 6.
+
+`P30-BL-002` remains candidate-only, unvalidated, unapproved, not promoted,
+not production-ready, not implementation-ready, and not threshold-justified.
+This phase does not create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+or add runtime, broker, persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 6:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+ M docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+ M docs/design/phase32_p30_bl_002_source_package.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_s01_formal_review.md
+```
+
+Manual documentation checks:
+
+- edited markdown files have no trailing whitespace
+- edited markdown files have exactly one final newline
+- edited markdown files were inspected for completeness and were not truncated
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -5107,6 +5199,8 @@ Manual documentation checks:
   source verification gate
 - threshold evaluator behavior beyond the Phase 32 Step 5 P30-BL-002 limited
   formal review intake plan
+- threshold evaluator behavior beyond the Phase 32 Step 6 P30-BL-002-S01
+  limited negative-control/no-lookahead formal review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -5133,10 +5227,9 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- limited formal review for the Phase 32 Step 4 selected `P30-BL-002`
-  candidates using the Phase 32 Step 5 intake plan, with additional sourcing
-  or a better P0 replacement if unresolved source gaps block review-readiness,
-  docs-only
+- formal review for `P30-BL-002-S03` as the second negative-control source
+  using the Phase 32 Step 5 intake plan, preserving S01 as limited
+  negative-control/no-lookahead support only, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -330,6 +330,12 @@ That plan uses this gate as the source of truth for selected candidates, places
 negative-control review before candidate-evidence review, and defines evidence
 requirements without performing formal review.
 
+Phase 32 Step 6 records the S01-only formal review in
+[`phase32_p30_bl_002_s01_formal_review.md`](phase32_p30_bl_002_s01_formal_review.md).
+It uses this gate's S01 identity and scope findings, passes S01 only for
+limited negative-control/no-lookahead use, and keeps all validation,
+threshold-approval, signal-definition, and implementation routes blocked.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,
@@ -348,7 +354,8 @@ trading-path behavior.
 
 Evaluator implementation remains blocked by all of the following:
 
-- no formal review
+- no formal review beyond S01's limited negative-control/no-lookahead review
+- no `P30-BL-002-S03`, `P30-BL-002-S05`, or `P30-BL-002-S08` formal review
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no approved threshold/config provenance

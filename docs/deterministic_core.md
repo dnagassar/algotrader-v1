@@ -264,6 +264,12 @@ state.
   It defines review order, criteria, possible outcomes, and evidence
   requirements for selected sources only. It does not formally review, approve,
   validate, promote, or implement any source.
+- Phase 32 Step 6 records the `P30-BL-002-S01` formal review. It passes S01
+  only for limited negative-control/no-lookahead use, records unresolved exact
+  timing, dataset, code/data, and deterministic-reproduction gaps, and routes
+  next review to `P30-BL-002-S03`. It does not validate a signal, approve a
+  threshold, create a validated artifact, create a validated signal definition,
+  or authorize implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1448,6 +1454,16 @@ shared and source-specific criteria for later review. It does not validate a
 signal, approve a threshold, create a research artifact, create a signal
 definition, promote `P30-BL-002`, or authorize implementation.
 
+Phase 32 Step 6 adds the `P30-BL-002-S01` formal review in
+[`docs/design/phase32_p30_bl_002_s01_formal_review.md`](design/phase32_p30_bl_002_s01_formal_review.md).
+The review passes S01 only for limited negative-control/no-lookahead use. It
+can support falsification and moving-average timing-bias guardrail design only;
+it cannot support production threshold approval, predictive-edge claims,
+profitability claims, a validated artifact, a validated signal definition,
+implementation readiness, paper trading readiness, or live trading readiness.
+`P30-BL-002` remains unvalidated, unapproved, not promoted, and not
+implementation-ready. The next formal review route is `P30-BL-002-S03`.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1590,6 +1606,8 @@ Ledger modes:
   source verification gate
 - Threshold evaluator behavior beyond the Phase 32 Step 5 P30-BL-002 limited
   formal review intake plan
+- Threshold evaluator behavior beyond the Phase 32 Step 6 P30-BL-002-S01
+  limited negative-control/no-lookahead formal review
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1620,12 +1638,13 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing exact research and
 signal-definition support candidates for later review against the Phase 30
 Step 2 evidence standard and Phase 30 Step 3 review template. The next
-practical research action after Phase 32 Step 5 is docs-only limited formal
-review for selected `P30-BL-002` source-package candidates using the Step 5
-intake plan, with additional sourcing or a better P0 replacement if unresolved
-source gaps block review-readiness. Tier B review may still provide context
-later, but validation, real evaluator behavior, signal computation, test
-scaffolds for implementation, and wiring signal output into risk remain
+practical research action after Phase 32 Step 6 is docs-only formal review of
+`P30-BL-002-S03` as the second negative-control source, using the Step 5
+intake plan and preserving S01 as negative-control/no-lookahead support only.
+Additional sourcing or a better P0 replacement remains appropriate if
+unresolved source gaps block review-readiness. Tier B review may still provide
+context later, but validation, real evaluator behavior, signal computation,
+test scaffolds for implementation, and wiring signal output into risk remain
 blocked until those gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly

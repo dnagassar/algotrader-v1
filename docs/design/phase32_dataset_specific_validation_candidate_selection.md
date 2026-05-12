@@ -105,6 +105,14 @@ The plan defines review order, criteria, possible outcomes, and evidence
 requirements for those selected sources only. It is intake planning, not
 formal review, validation, approval, promotion, or implementation readiness.
 
+Phase 32 Step 6 adds the S01-only formal review in
+[`phase32_p30_bl_002_s01_formal_review.md`](phase32_p30_bl_002_s01_formal_review.md).
+It passes `P30-BL-002-S01` only for limited negative-control/no-lookahead use.
+That pass supports falsification and moving-average timing-bias guardrail
+design only. It does not validate a signal, approve a threshold, create a
+validated artifact, create a validated signal definition, or authorize
+implementation.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -160,6 +168,12 @@ quarantined until formal review verifies them directly.
 The next safest route after Step 5 is a later docs-only formal review using
 the Step 5 plan. That later review still may fail, require additional sourcing,
 or classify a source as negative-control or methodology-only.
+
+Phase 32 Step 6 completes that first docs-only review for `P30-BL-002-S01`
+only. The next safest route after Step 6 is `P30-BL-002-S03` formal review as
+the second negative-control source. Additional S01 sourcing is required before
+any exact timing-rule reproduction, deterministic test binding, threshold
+comparison, or stronger claim.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -225,6 +239,9 @@ resolved in later phases:
   review
 - the Phase 32 Step 5 intake plan is used only as a later review checklist, not
   as evidence of review success
+- the Phase 32 Step 6 S01 review is used only as a narrow
+  negative-control/no-lookahead result, not as signal validation or
+  implementation approval
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete
