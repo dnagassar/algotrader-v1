@@ -19,6 +19,9 @@ Current status:
 - Tier A formal source review was performed separately in
   [`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md).
   That review conditionally passes Tier A for mechanics and methodology only.
+- Phase 31 Step 5 routes that Tier A result in
+  [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md)
+  without promoting the candidate.
 - No source has been accepted as a `ValidatedResearchArtifact`.
 - No `ValidatedSignalDefinition` binds to this package.
 - No production threshold value, comparator, or evaluator behavior is approved.
@@ -418,14 +421,19 @@ That review supports mechanics and methodology only. It does not validate the
 candidate, approve a threshold, create a validated signal definition, or
 authorize evaluator implementation.
 
-The next research phase should either review Tier B support, create a
-mechanics-only candidate review summary, or collect targeted evidence for a
-production threshold using:
+Phase 31 Step 5 routes the Tier A result in
+[`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md).
+The recommended next research action is a formal mechanics-only candidate
+artifact review summary. Tier B review and targeted production-threshold
+evidence collection remain possible later routes, but the current package
+still cannot support a production threshold or evaluator implementation.
+
+Any future review or summary should continue using:
 
 - `docs/design/phase30_research_validation_evidence_standard.md`
 - `docs/design/phase30_research_artifact_candidate_review_template.md`
 
-Any next review or summary should decide whether `P30-BL-001` remains
+Any future review or summary should decide whether `P30-BL-001` remains
 mechanics-only, conditionally reviewable with gaps, failed, or informational
 only. Even a favorable review would still not approve a production evaluator,
 signal computation, feature computation, strategy logic, scoring, ranking,

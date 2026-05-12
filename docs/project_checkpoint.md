@@ -287,6 +287,13 @@ not a production threshold, profitability, predictive-edge, live-trading,
 validated-signal-definition, or evaluator-implementation justification. No
 production code or runtime behavior changed, and no research artifact,
 validated signal definition, real evaluator, or signal computation was added.
+Phase 31 Step 5 is documentation-only. It adds an evidence gap and routing
+plan after the Tier A review. The plan preserves `P30-BL-001` as mechanics and
+methodology support only, keeps the candidate unvalidated, and recommends a
+formal mechanics-only candidate artifact review summary before any production
+threshold, validated signal definition, or evaluator implementation route. No
+production code or runtime behavior changed, and no research artifact,
+validated signal definition, real evaluator, or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -4322,12 +4329,70 @@ execution-plan mutation, broker or Alpaca behavior, order submission,
 runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
 trading-path behavior was added.
 
-The next research step should either create a mechanics-only candidate review
-summary, review Tier B support for additional context, or collect targeted
-evidence for production threshold justification. Validated signal-definition
-binding and evaluator implementation remain blocked.
+Phase 31 Step 5 later routes this result and recommends a formal
+mechanics-only candidate artifact review summary. Tier B support and targeted
+production-threshold evidence remain later options. Validated
+signal-definition binding and evaluator implementation remain blocked.
 
 Verification after Phase 31 Step 4:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+no whitespace errors; Git emitted LF-to-CRLF working-copy warnings for
+modified existing docs
+```
+
+## Phase 31 Step 5 P30-BL-001 Evidence Gap And Routing Plan
+
+Phase 31 Step 5 is documentation-only. It adds:
+
+```text
+docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_p30_bl_001_tier_a_review.md
+docs/design/phase31_p30_bl_001_source_package.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step routes the Tier A result without promoting it. The Tier A outcome
+remains a conditional pass for mechanics and methodology only, and is
+informational only for validation, threshold, trading, or implementation
+claims.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no dataset-specific validation, no production
+threshold value/source, no threshold rationale tied to research evidence, no
+predictive/profitability evidence, no risk-adjusted-return evidence, no
+signal-definition binding, no applied no-lookahead audit, no implementation
+scope approval, and no evaluator implementation tests.
+
+The recommended next route is a formal mechanics-only candidate artifact
+review summary for `P30-BL-001`. That summary may support future evaluator
+mechanics, but it must explicitly state that it cannot support a production
+threshold or evaluator implementation.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+Verification after Phase 31 Step 5:
 
 ```text
 python -m pytest
@@ -4424,6 +4489,8 @@ clean
   normalization
 - threshold evaluator behavior beyond the Phase 31 Step 4 Tier A formal source
   review
+- threshold evaluator behavior beyond the Phase 31 Step 5 evidence gap and
+  routing plan
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4450,8 +4517,7 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- mechanics-only candidate review summary, Tier B supporting-source review, or
-  targeted evidence collection for production threshold justification,
+- formal mechanics-only candidate artifact review summary for `P30-BL-001`,
   docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit

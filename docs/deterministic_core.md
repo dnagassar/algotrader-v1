@@ -226,6 +226,10 @@ state.
   unvalidated, not approved, not production-ready, not implementation-ready,
   and not a trading, threshold, validated-signal-definition, or evaluator
   implementation justification.
+- Phase 31 Step 5 routes the Tier A result through an evidence gap plan. It
+  recommends a formal mechanics-only candidate artifact review summary and
+  keeps production threshold, signal-definition, and evaluator implementation
+  routes blocked.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1331,6 +1335,13 @@ production threshold, authorize evaluator implementation, compute signals, add
 features, change strategy logic, touch risk or execution, call brokers, add
 runtime behavior, persist data, add ML, or put LLMs in the trading path.
 
+Phase 31 Step 5 adds the evidence gap and routing plan in
+[`docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md`](design/phase31_p30_bl_001_evidence_gap_routing_plan.md).
+It is documentation-only and preserves `P30-BL-001` as unvalidated. The safest
+next route is a formal mechanics-only candidate artifact review summary that
+may support future evaluator mechanics but cannot support a production
+threshold or evaluator implementation.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1457,6 +1468,8 @@ Ledger modes:
   normalization
 - Threshold evaluator behavior beyond the Phase 31 Step 4 Tier A formal source
   review
+- Threshold evaluator behavior beyond the Phase 31 Step 5 evidence gap and
+  routing plan
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1487,11 +1500,12 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
 evidence standard and Phase 30 Step 3 review template. The next practical
-research action is either a mechanics-only candidate review summary, Tier B
-supporting-source review, or targeted evidence collection for production
-threshold justification. Real evaluator behavior, signal computation, test
-scaffolds for implementation, and wiring signal output into risk remain blocked
-until those gates are explicitly resolved.
+research action is the Phase 31 Step 5 recommendation: a formal mechanics-only
+candidate artifact review summary for `P30-BL-001`. Tier B review or targeted
+production-threshold evidence collection may follow later, but real evaluator
+behavior, signal computation, test scaffolds for implementation, and wiring
+signal output into risk remain blocked until those gates are explicitly
+resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

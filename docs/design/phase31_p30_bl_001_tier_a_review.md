@@ -20,6 +20,9 @@ Current status:
 - No real evaluator implementation is authorized.
 - No signal computation, feature computation, strategy logic, runtime behavior,
   broker behavior, persistence, ML, or LLM trading-path behavior is added.
+- Phase 31 Step 5 routes this Tier A result in
+  [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md)
+  without promoting `P30-BL-001`.
 
 ## 2. Review Scope
 
@@ -325,10 +328,10 @@ Remaining blockers:
 
 ## 9. Routing Recommendation
 
-Recommended next phase: create a candidate review summary or routing note that
-marks `P30-BL-001` as mechanics-only / conditional / informational based on
-this Tier A review, then decide whether Tier B support should be reviewed for
-additional vocabulary and context.
+Phase 31 Step 5 routes this result in
+[`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md).
+That routing plan recommends a formal mechanics-only candidate artifact review
+summary for `P30-BL-001`; it does not recommend implementation.
 
 Do not proceed to validated signal-definition binding yet. Before any signal
 definition or evaluator implementation can be considered, the project needs

@@ -16,6 +16,12 @@ That review conditionally passes Tier A for mechanics and methodology only.
 It does not validate `P30-BL-001`, approve a threshold, create a validated
 signal definition, or authorize evaluator implementation.
 
+Phase 31 Step 5 adds the evidence gap and routing plan in
+[`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md).
+That plan preserves the Tier A outcome as mechanics/methodology support only
+and recommends a formal mechanics-only candidate artifact review summary
+before any validated artifact, signal-definition binding, or implementation.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -35,6 +41,8 @@ Current status:
 - `P30-BL-001` now has a normalized source package and a Tier A formal source
   review.
 - The Tier A review conditionally supports mechanics and methodology only.
+- The Step 5 routing plan keeps the Tier A result mechanics-only and
+  recommends a formal mechanics-only candidate artifact review summary.
 - `P30-BL-001` remains unvalidated, not approved, not production-ready, and
   not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
@@ -59,13 +67,13 @@ Recommended next phases:
    no-lookahead methodology, reproducibility, and non-claim governance. This
    step is complete and conditionally supports mechanics and methodology only.
 3. Phase 31 Step 5: next routing after Tier A review.
-   Either review Tier B supporting sources, create a mechanics-only candidate
-   review summary that keeps `P30-BL-001` conditional or informational, or
-   collect targeted evidence for production threshold justification.
+   This step is complete. It recommends a formal mechanics-only candidate
+   artifact review summary that may support future evaluator mechanics but
+   explicitly cannot support a production threshold or evaluator
+   implementation.
 4. Phase 31 Step 6: validated signal-definition binding plan.
-   Only if later evidence supports it, plan the exact future binding between a
-   reviewed research artifact, input names/types, advisory output semantics,
-   threshold/config provenance, assumptions, limitations, and non-claims.
+   Defer this until later evidence supports it. The immediate safer route is
+   the mechanics-only candidate artifact review summary recommended by Step 5.
 5. Phase 31 Step 7: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
@@ -118,7 +126,8 @@ true:
   only.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
-  validation remains incomplete.
+  validation remains incomplete. Phase 31 Step 5 routes the result but does
+  not validate the candidate.
 - The review result is pass, or conditional pass with all gaps resolved.
 - An exact `ValidatedResearchArtifact` exists.
 - An exact `ValidatedSignalDefinition` exists and binds to that artifact.
@@ -216,20 +225,21 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Phase 31 Step 5 -- P30-BL-001 Post-Tier-A Routing
+Phase 31 Step 6 -- P30-BL-001 Mechanics-Only Candidate Review Summary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
 - docs/design/phase31_p30_bl_001_source_package.md
 - docs/design/phase31_p30_bl_001_tier_a_review.md
+- docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only routing after Tier A review. Either create a
-mechanics-only candidate review summary, review Tier B supporting sources, or
-identify targeted evidence needed for production threshold justification.
+Scope: documentation-only formal mechanics-only candidate artifact review
+summary. Preserve P30-BL-001 as unvalidated and explicitly unable to support a
+production threshold or evaluator implementation.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
