@@ -279,6 +279,14 @@ source-package-ready only; it is not reviewed, validated, approved,
 production-ready, implementation-ready, or a threshold/trading justification.
 No production code or runtime behavior changed, and no research artifact,
 validated signal definition, real evaluator, or signal computation was added.
+Phase 31 Step 4 is documentation-only. It adds a formal Tier A source review
+for `P30-BL-001` and updates the research-track routing docs. Tier A receives
+a conditional mechanics and methodology outcome only. `P30-BL-001` remains
+unvalidated, not approved, not production-ready, not implementation-ready, and
+not a production threshold, profitability, predictive-edge, live-trading,
+validated-signal-definition, or evaluator-implementation justification. No
+production code or runtime behavior changed, and no research artifact,
+validated signal definition, real evaluator, or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -4276,6 +4284,62 @@ python -m pytest
 778 passed, 4 skipped
 ```
 
+## Phase 31 Step 4 P30-BL-001 Tier A Formal Source Review
+
+Phase 31 Step 4 is documentation-only. It adds:
+
+```text
+docs/design/phase31_p30_bl_001_tier_a_review.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_p30_bl_001_source_package.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step formally reviews the Tier A subset from the normalized
+`P30-BL-001` source package: comparator mechanics, `Decimal` scalar
+representation, TA-Lib indicator function shape, no-lookahead methodology,
+reproducibility, and non-claim governance. The Tier A subset receives a
+conditional pass for mechanics and methodology only.
+
+`P30-BL-001` remains unvalidated, not approved, not production-ready, not
+implementation-ready, and not a justification for a production threshold,
+comparator, signal definition, evaluator implementation, scoring, ranking,
+direction, actionability, profitability, predictive edge, live trading, or
+risk-adjusted-return claim.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+The next research step should either create a mechanics-only candidate review
+summary, review Tier B support for additional context, or collect targeted
+evidence for production threshold justification. Validated signal-definition
+binding and evaluator implementation remain blocked.
+
+Verification after Phase 31 Step 4:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+clean
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4358,6 +4422,8 @@ python -m pytest
   action plan
 - threshold evaluator behavior beyond the Phase 31 Step 3 source package
   normalization
+- threshold evaluator behavior beyond the Phase 31 Step 4 Tier A formal source
+  review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4384,8 +4450,9 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- formal review of the strongest `P30-BL-001` source subset against the Phase
-  30 evidence standard and candidate review template, docs-only
+- mechanics-only candidate review summary, Tier B supporting-source review, or
+  targeted evidence collection for production threshold justification,
+  docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

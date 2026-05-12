@@ -12,8 +12,13 @@ trading claim.
 
 Current status:
 
-- `P30-BL-001` is source-package-ready only.
+- This source package is normalization support only.
+- `P30-BL-001` has a normalized source package and separate Tier A review, but
+  remains unvalidated and not approved.
 - The sources below are collected and normalized for later review.
+- Tier A formal source review was performed separately in
+  [`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md).
+  That review conditionally passes Tier A for mechanics and methodology only.
 - No source has been accepted as a `ValidatedResearchArtifact`.
 - No `ValidatedSignalDefinition` binds to this package.
 - No production threshold value, comparator, or evaluator behavior is approved.
@@ -407,14 +412,22 @@ Known blockers remain:
 
 ## 7. Routing To Next Phase
 
-The next research phase should be formal review of the strongest subset using:
+Phase 31 Step 4 separately reviews the Tier A subset in
+[`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md).
+That review supports mechanics and methodology only. It does not validate the
+candidate, approve a threshold, create a validated signal definition, or
+authorize evaluator implementation.
+
+The next research phase should either review Tier B support, create a
+mechanics-only candidate review summary, or collect targeted evidence for a
+production threshold using:
 
 - `docs/design/phase30_research_validation_evidence_standard.md`
 - `docs/design/phase30_research_artifact_candidate_review_template.md`
 
-That review should decide whether `P30-BL-001` is reviewable, conditionally
-reviewable with gaps, failed, or informational only. Even a favorable review
-would still not approve a production evaluator, signal computation, feature
-computation, strategy logic, scoring, ranking, direction, actionability, risk
-approval, broker behavior, runtime behavior, persistence, ML, or LLM
-trading-path behavior.
+Any next review or summary should decide whether `P30-BL-001` remains
+mechanics-only, conditionally reviewable with gaps, failed, or informational
+only. Even a favorable review would still not approve a production evaluator,
+signal computation, feature computation, strategy logic, scoring, ranking,
+direction, actionability, risk approval, broker behavior, runtime behavior,
+persistence, ML, or LLM trading-path behavior.

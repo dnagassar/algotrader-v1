@@ -218,9 +218,14 @@ state.
   `P30-BL-001` as the first unreviewed sourcing target, confirms backlog
   entries are not evidence, allows research agents only as assistants, and
   keeps real evaluator implementation blocked.
-- Phase 31 Step 3 normalizes the `P30-BL-001` source package. The candidate is
-  source-package-ready only, not reviewed, validated, approved, production-ready,
-  implementation-ready, or a trading/threshold justification.
+- Phase 31 Step 3 normalizes the `P30-BL-001` source package. That step made
+  the candidate source-package-ready only and did not validate, approve, or
+  justify trading or threshold behavior.
+- Phase 31 Step 4 formally reviews the Tier A `P30-BL-001` sources. Tier A
+  conditionally supports mechanics and methodology only; `P30-BL-001` remains
+  unvalidated, not approved, not production-ready, not implementation-ready,
+  and not a trading, threshold, validated-signal-definition, or evaluator
+  implementation justification.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1317,6 +1322,15 @@ feature computation, strategy logic, scoring, ranking, direction,
 actionability, broker behavior, runtime behavior, persistence, ML, or LLM
 trading-path behavior.
 
+Phase 31 Step 4 adds the Tier A formal source review in
+[`docs/design/phase31_p30_bl_001_tier_a_review.md`](design/phase31_p30_bl_001_tier_a_review.md).
+It is documentation-only and conditionally passes Tier A for mechanics and
+methodology only. It does not validate `P30-BL-001`, create or approve a
+validated research artifact, create a validated signal definition, justify a
+production threshold, authorize evaluator implementation, compute signals, add
+features, change strategy logic, touch risk or execution, call brokers, add
+runtime behavior, persist data, add ML, or put LLMs in the trading path.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1441,6 +1455,8 @@ Ledger modes:
   action plan
 - Threshold evaluator behavior beyond the Phase 31 Step 3 source package
   normalization
+- Threshold evaluator behavior beyond the Phase 31 Step 4 Tier A formal source
+  review
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1471,10 +1487,11 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
 evidence standard and Phase 30 Step 3 review template. The next practical
-research action is formal review of the strongest `P30-BL-001` source subset.
-Real evaluator behavior, signal computation, test scaffolds for
-implementation, and wiring signal output into risk remain blocked until those
-gates are explicitly resolved.
+research action is either a mechanics-only candidate review summary, Tier B
+supporting-source review, or targeted evidence collection for production
+threshold justification. Real evaluator behavior, signal computation, test
+scaffolds for implementation, and wiring signal output into risk remain blocked
+until those gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

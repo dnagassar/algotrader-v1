@@ -10,6 +10,12 @@ Phase 31 Step 3 adds the normalized `P30-BL-001` source package in
 That package is source normalization only. It is not formal review,
 validation, approval, production readiness, or implementation readiness.
 
+Phase 31 Step 4 adds the Tier A formal source review in
+[`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md).
+That review conditionally passes Tier A for mechanics and methodology only.
+It does not validate `P30-BL-001`, approve a threshold, create a validated
+signal definition, or authorize evaluator implementation.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -26,10 +32,11 @@ Current status:
   template, sourcing plan, initial backlog, and first source-selection decision.
 - The first sourcing target is `P30-BL-001`, "Simple scalar threshold indicator
   definition".
-- `P30-BL-001` now has a normalized source package, but remains
-  source-package-ready only.
-- `P30-BL-001` remains unreviewed, unvalidated, not approved, not
-  production-ready, and not implementation-ready.
+- `P30-BL-001` now has a normalized source package and a Tier A formal source
+  review.
+- The Tier A review conditionally supports mechanics and methodology only.
+- `P30-BL-001` remains unvalidated, not approved, not production-ready, and
+  not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
 - No candidate artifact has been accepted.
 - No `ValidatedResearchArtifact` supports the threshold-style evaluator.
@@ -47,15 +54,19 @@ Recommended next phases:
    details, non-claims, source tiers, groupings, preferred review candidates,
    and review gaps. This may include research-agent assistance, but produces
    only a source package, not validation.
-2. Phase 31 Step 4: first candidate artifact review.
-   Apply the Phase 30 evidence standard and candidate review template to
-   `P30-BL-001`. The outcome may be pass, conditional pass with resolved gaps,
-   fail, or informational only. A pass still does not implement an evaluator.
-3. Phase 31 Step 5: validated signal-definition binding plan.
-   If and only if review supports it, plan the exact future binding between a
+2. Phase 31 Step 4: Tier A formal source review.
+   Review comparator mechanics, `Decimal`, TA-Lib function shape,
+   no-lookahead methodology, reproducibility, and non-claim governance. This
+   step is complete and conditionally supports mechanics and methodology only.
+3. Phase 31 Step 5: next routing after Tier A review.
+   Either review Tier B supporting sources, create a mechanics-only candidate
+   review summary that keeps `P30-BL-001` conditional or informational, or
+   collect targeted evidence for production threshold justification.
+4. Phase 31 Step 6: validated signal-definition binding plan.
+   Only if later evidence supports it, plan the exact future binding between a
    reviewed research artifact, input names/types, advisory output semantics,
    threshold/config provenance, assumptions, limitations, and non-claims.
-4. Phase 31 Step 6: implementation readiness gate.
+5. Phase 31 Step 7: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -66,8 +77,9 @@ docs-only research tasks when the work remains low-risk and code-free.
 
 ## 4. Evidence Required Before Reviewing `P30-BL-001`
 
-Phase 31 Step 3 normalized a source package for `P30-BL-001`. Before formal
-review can promote anything, the reviewer still needs to check the package for:
+Phase 31 Step 3 normalized a source package for `P30-BL-001`, and Phase 31
+Step 4 reviewed the Tier A subset. Before any future review can promote
+anything, the reviewer still needs to check or collect:
 
 - source/provenance and primary reference
 - artifact title or citation
@@ -105,6 +117,8 @@ true:
   package. `P30-BL-001` now satisfies this source-package-ready routing step
   only.
 - The candidate has been reviewed against the Phase 30 evidence standard.
+  Tier A review is complete for mechanics and methodology only; full candidate
+  validation remains incomplete.
 - The review result is pass, or conditional pass with all gaps resolved.
 - An exact `ValidatedResearchArtifact` exists.
 - An exact `ValidatedSignalDefinition` exists and binds to that artifact.
@@ -202,18 +216,20 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Phase 31 Step 4 -- P30-BL-001 Formal Source Package Review
+Phase 31 Step 5 -- P30-BL-001 Post-Tier-A Routing
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
 - docs/design/phase31_p30_bl_001_source_package.md
+- docs/design/phase31_p30_bl_001_tier_a_review.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
-- docs/design/phase30_first_research_candidate_source_selection.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only formal review of the strongest source subset.
+Scope: documentation-only routing after Tier A review. Either create a
+mechanics-only candidate review summary, review Tier B supporting sources, or
+identify targeted evidence needed for production threshold justification.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
