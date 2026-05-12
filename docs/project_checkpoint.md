@@ -311,6 +311,14 @@ dataset-specific threshold or validation evidence. No production code or
 runtime behavior changed, and no research artifact, validated signal
 definition, real evaluator, signal computation, or implementation approval was
 added.
+Phase 32 Step 1 is documentation-only. It selects dataset-specific threshold
+or validation evidence sourcing as the next research direction. `P30-BL-002`
+is the current backlog routing handle only if sourcing can produce a concrete
+evidence package; a better P0 replacement should be sourced first if it offers
+stronger traceable dataset-specific evidence. No production code or runtime
+behavior changed, and no research artifact, validated signal definition, real
+evaluator, signal computation, formal review, validation, approval, promotion,
+or implementation readiness was added.
 The latest full-suite result is:
 
 ```text
@@ -4568,6 +4576,81 @@ git diff --check
 passed; Git emitted LF-to-CRLF working-copy warnings only
 ```
 
+## Phase 32 Step 1 Dataset-Specific Validation Candidate Selection
+
+Phase 32 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+Selection: dataset-specific threshold or validation evidence sourcing is the
+next research direction. `P30-BL-002` is the current backlog routing handle
+only if sourcing can produce a concrete evidence package with dataset scope,
+point-in-time assumptions, explicit input definitions, threshold or parameter
+rationale, no-lookahead controls, reproducibility notes, robustness or
+out-of-sample evidence, limitations, and non-claims. If that package cannot be
+sourced, a better P0 replacement should be sourced before formal review.
+
+`P30-BL-002` remains unreviewed, unvalidated, unapproved, not production-ready,
+not implementation-ready, and not threshold-justified. This phase does not
+review, validate, approve, promote, or implement `P30-BL-002` or any
+replacement candidate.
+
+The backlog now marks `P30-BL-002` as a sourcing target only. That status does
+not mean validated, approved, production-ready, implementation-ready, evidence
+accepted, or threshold justified.
+
+The minimum evidence package before formal review includes source provenance,
+dataset scope, point-in-time assumptions, explicit inputs, threshold or
+parameter rationale, validation design, no-lookahead controls, reproducibility
+notes, limitations, non-claims, possible future binding notes, and unresolved
+gaps.
+
+Implementation remains blocked because there is no exact validated research
+artifact, no exact validated signal definition, no reviewed dataset-specific
+validation, no explicit threshold rationale tied to reviewed evidence, no
+out-of-sample or robustness evidence, no applied no-lookahead audit, no
+approved implementation scope, and no production evaluator tests.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, probability, ranking, actionability, risk approval, execution
+intent creation, execution-plan mutation, broker or Alpaca behavior, order
+submission, runtime/scheduler behavior, persistence, live data ingestion, ML,
+or LLM trading-path behavior was added.
+
+Verification after Phase 32 Step 1:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_dataset_specific_validation_candidate_selection.md
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4658,6 +4741,8 @@ passed; Git emitted LF-to-CRLF working-copy warnings only
   candidate artifact review summary
 - threshold evaluator behavior beyond the Phase 31 Step 7 final mechanics-only
   disposition and next-candidate routing
+- threshold evaluator behavior beyond the Phase 32 Step 1 dataset-specific
+  validation candidate selection
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4684,8 +4769,9 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- next-candidate sourcing or routing for dataset-specific threshold or
-  validation evidence, docs-only
+- source-package collection for `P30-BL-002` if it can supply
+  dataset-specific threshold or validation evidence, otherwise source a better
+  P0 replacement before formal review, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

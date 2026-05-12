@@ -239,6 +239,11 @@ state.
   production-ready, and not implementation-ready, and routes the next research
   direction toward dataset-specific threshold or validation evidence without
   approving implementation.
+- Phase 32 Step 1 selects dataset-specific threshold or validation evidence
+  sourcing as the next research direction. `P30-BL-002` is the current backlog
+  routing handle only if sourcing can produce a concrete evidence package; a
+  better P0 replacement should be sourced first if it offers stronger
+  traceable dataset-specific evidence.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1371,6 +1376,18 @@ or add any production behavior. The next safest research route is a candidate
 or research task that can supply dataset-specific threshold or validation
 evidence; that route remains unreviewed and unapproved by this phase.
 
+Phase 32 Step 1 adds dataset-specific validation candidate selection in
+[`docs/design/phase32_dataset_specific_validation_candidate_selection.md`](design/phase32_dataset_specific_validation_candidate_selection.md).
+It is documentation-only and selects dataset-specific threshold or validation
+evidence sourcing as the next research direction. `P30-BL-002` is only the
+current backlog routing handle, and only if sourcing can produce a concrete
+evidence package with dataset scope, point-in-time assumptions, explicit
+inputs, threshold or parameter rationale, no-lookahead controls,
+reproducibility notes, robustness or out-of-sample evidence, limitations, and
+non-claims. A better P0 replacement should be sourced first if it offers
+stronger traceable evidence. This selection does not review, validate, approve,
+promote, bind, or implement any candidate.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1503,6 +1520,8 @@ Ledger modes:
   candidate artifact review summary
 - Threshold evaluator behavior beyond the Phase 31 Step 7 final mechanics-only
   disposition and next-candidate routing
+- Threshold evaluator behavior beyond the Phase 32 Step 1 dataset-specific
+  validation candidate selection
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1530,13 +1549,13 @@ for research-track work. Docs-only research and planning phases may combine
 related updates when they are low-risk and code-free. Any production source
 phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 
-Future threshold-evaluator work should continue by sourcing and reviewing exact
-validated research and signal-definition support against the Phase 30 Step 2
-evidence standard and Phase 30 Step 3 review template. The next practical
-research action after the Phase 31 Step 7 final disposition is
-research/data/backtesting validation design or a candidate that can supply
-dataset-specific threshold evidence if the threshold evaluator remains the
-focus. Tier B review may still provide context later, but real evaluator
+Future threshold-evaluator work should continue by sourcing exact research and
+signal-definition support candidates for later review against the Phase 30
+Step 2 evidence standard and Phase 30 Step 3 review template. The next
+practical research action after Phase 32 Step 1 is source-package collection for
+`P30-BL-002` only if it can supply dataset-specific threshold or validation
+evidence; otherwise a better P0 replacement should be sourced first. Tier B
+review may still provide context later, but formal review, real evaluator
 behavior, signal computation, test scaffolds for implementation, and wiring
 signal output into risk remain blocked until those gates are explicitly
 resolved.

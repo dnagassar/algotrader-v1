@@ -36,6 +36,14 @@ non-validated, not production-ready, and not implementation-ready, and routes
 the next research direction toward dataset-specific threshold or validation
 evidence without approving implementation.
 
+Phase 32 Step 1 adds the dataset-specific validation candidate selection in
+[`phase32_dataset_specific_validation_candidate_selection.md`](phase32_dataset_specific_validation_candidate_selection.md).
+The selection chooses dataset-specific threshold or validation evidence
+sourcing as the next research direction. `P30-BL-002` is the current backlog
+routing handle only if sourcing can produce a concrete evidence package; a
+better P0 replacement should be sourced first if it offers stronger traceable
+dataset-specific evidence.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -60,6 +68,11 @@ Current status:
   mechanics/methodology only and does not promote the candidate.
 - The Step 7 final disposition records `P30-BL-001` as mechanics-only
   dispositioned, in the mechanics-only sense only.
+- Phase 32 Step 1 selects dataset-specific threshold or validation evidence
+  sourcing as the next research direction.
+- `P30-BL-002` is the current routing handle only, not a reviewed or approved
+  artifact; a better P0 replacement remains preferred if it can provide a
+  stronger source package.
 - `P30-BL-001` remains unvalidated, not approved, not production-ready, not
   threshold-justified, and not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
@@ -96,13 +109,19 @@ Recommended next phases:
    This step is complete. It closes `P30-BL-001` only in the mechanics-only
    sense and recommends routing next work toward dataset-specific threshold or
    validation evidence.
-6. Future route: research/data/backtesting validation design or targeted
-   production-threshold evidence collection if the threshold evaluator remains
-   the focus. `P30-BL-002` or a replacement P0 candidate may be sourced only
-   if it can provide traceable dataset-specific threshold or validation
-   evidence. Validated signal-definition binding remains deferred until exact
-   evidence supports it.
-7. Later route: implementation readiness gate.
+6. Phase 32 Step 1: dataset-specific validation candidate selection.
+   This step is complete. It selects dataset-specific threshold or validation
+   evidence sourcing as the next research direction. `P30-BL-002` is only the
+   current backlog routing handle; a better sourced replacement P0 candidate
+   should be used first if `P30-BL-002` cannot produce a concrete
+   dataset-specific evidence package.
+7. Future route: source-package collection for `P30-BL-002` or a better P0
+   replacement. This must collect traceable dataset scope, point-in-time input
+   assumptions, threshold or parameter rationale, no-lookahead controls,
+   reproducibility notes, robustness or out-of-sample evidence, limitations,
+   and non-claims before formal review. Validated signal-definition binding
+   remains deferred until exact evidence supports it.
+8. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -152,6 +171,9 @@ true:
 - `P30-BL-001` or another candidate has a collected and normalized source
   package. `P30-BL-001` now satisfies this source-package-ready routing step
   only.
+- `P30-BL-002` or a better replacement P0 candidate has a dataset-specific
+  source package. Phase 32 selected this sourcing direction only; no package,
+  review, validation, or approval exists yet.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -260,6 +282,7 @@ Future Step -- Next Candidate Dataset-Specific Threshold Evidence Route
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
+- docs/design/phase32_dataset_specific_validation_candidate_selection.md
 - docs/design/phase31_p30_bl_001_source_package.md
 - docs/design/phase31_p30_bl_001_tier_a_review.md
 - docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
@@ -269,10 +292,12 @@ Read first:
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only routing for a next candidate that can supply
-dataset-specific threshold or validation evidence. Preserve P30-BL-001 as
-mechanics-only dispositioned and unvalidated. Do not review or validate the
-next candidate unless that is explicitly scoped in a later phase.
+Scope: documentation-only source-package collection for P30-BL-002 only if it
+can supply dataset-specific threshold or validation evidence; otherwise source
+a better P0 replacement before formal review. Preserve P30-BL-001 as
+mechanics-only dispositioned and unvalidated. Do not review, validate, approve,
+promote, or implement the next candidate unless that is explicitly scoped in a
+later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
