@@ -23,6 +23,10 @@ Current status:
 - Phase 31 Step 5 routes this Tier A result in
   [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md)
   without promoting `P30-BL-001`.
+- Phase 31 Step 6 records the formal mechanics-only candidate artifact review
+  summary in
+  [`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md).
+  That summary preserves this review as methodology/mechanics support only.
 
 ## 2. Review Scope
 
@@ -332,6 +336,11 @@ Phase 31 Step 5 routes this result in
 [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md).
 That routing plan recommends a formal mechanics-only candidate artifact review
 summary for `P30-BL-001`; it does not recommend implementation.
+
+Phase 31 Step 6 records that summary in
+[`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md).
+It keeps the candidate unvalidated, unapproved, not threshold-justified, and
+not implementation-ready.
 
 Do not proceed to validated signal-definition binding yet. Before any signal
 definition or evaluator implementation can be considered, the project needs

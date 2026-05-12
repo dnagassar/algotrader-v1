@@ -294,6 +294,15 @@ formal mechanics-only candidate artifact review summary before any production
 threshold, validated signal definition, or evaluator implementation route. No
 production code or runtime behavior changed, and no research artifact,
 validated signal definition, real evaluator, or signal computation was added.
+Phase 31 Step 6 is documentation-only. It adds the formal mechanics-only
+candidate artifact review summary for `P30-BL-001`. The summary conditionally
+passes the candidate for mechanics and methodology only, keeps it unvalidated,
+unapproved, not threshold-justified, not production-ready, and not
+implementation-ready, and recommends research/data/backtesting validation
+design or targeted production-threshold evidence as the next safe route if the
+threshold evaluator remains the focus. No production code or runtime behavior
+changed, and no research artifact, validated signal definition, real evaluator,
+or signal computation was added.
 The latest full-suite result is:
 
 ```text
@@ -4405,6 +4414,76 @@ git diff --check
 clean
 ```
 
+## Phase 31 Step 6 P30-BL-001 Mechanics-Only Candidate Artifact Review Summary
+
+Phase 31 Step 6 is documentation-only. It adds:
+
+```text
+docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
+```
+
+It also updates:
+
+```text
+docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
+docs/design/phase31_p30_bl_001_tier_a_review.md
+docs/design/phase31_p30_bl_001_source_package.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step records the formal mechanics-only candidate artifact review summary
+for `P30-BL-001`, "Simple scalar threshold indicator definition". The summary
+is based on the normalized source package, Tier A formal source review,
+evidence gap and routing plan, Phase 30 evidence standard, and Phase 30
+candidate review template.
+
+Disposition: conditional pass for mechanics/methodology only. The candidate
+may support comparator mechanics, `Decimal` scalar representation,
+deterministic scalar input concepts, indicator function shape, no-lookahead
+methodology questions, reproducibility expectations, conservative non-claims,
+and advisory-only threshold semantics.
+
+`P30-BL-001` remains unvalidated, unapproved, not production-ready, not
+implementation-ready, and not threshold-justified. It does not support a
+production threshold value/source, profitability claim, predictive edge,
+risk-adjusted return claim, live-trading suitability, validated signal
+definition, signal-definition binding, evaluator implementation readiness,
+risk approval, execution readiness, broker behavior, or portfolio behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no dataset-specific validation, no production
+threshold source or rationale, no predictive/profitability/risk-adjusted-return
+evidence, no signal-definition binding, no applied no-lookahead audit, no
+implementation approval, and no evaluator tests.
+
+The recommended next route is research/data/backtesting validation design or
+targeted production-threshold evidence collection if the threshold evaluator
+remains the focus. Implementation is not recommended.
+
+No production code or runtime behavior changed. No tests, research artifact,
+validated signal definition, real evaluator, evaluator protocol, signal
+computation, feature computation, strategy logic, score, direction,
+confidence, actionability, risk approval, execution intent creation,
+execution-plan mutation, broker or Alpaca behavior, order submission,
+runtime/scheduler behavior, persistence, live data ingestion, ML, or LLM
+trading-path behavior was added.
+
+Verification after Phase 31 Step 6:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+clean
+```
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4491,6 +4570,8 @@ clean
   review
 - threshold evaluator behavior beyond the Phase 31 Step 5 evidence gap and
   routing plan
+- threshold evaluator behavior beyond the Phase 31 Step 6 mechanics-only
+  candidate artifact review summary
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4517,8 +4598,8 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- formal mechanics-only candidate artifact review summary for `P30-BL-001`,
-  docs-only
+- research/data/backtesting validation design or targeted production-threshold
+  evidence collection for `P30-BL-001`, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

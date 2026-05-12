@@ -40,7 +40,7 @@ implementation.
 
 | Candidate id | Title | Category | Source/provenance | Related evaluator candidate | Related signal idea | Expected inputs | Expected value types | Threshold relevance | Dataset scope | Claim type | Known limitations | Priority | Status | Next action |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | Normalized source package: [`phase31_p30_bl_001_source_package.md`](phase31_p30_bl_001_source_package.md); Tier A review: [`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md); evidence gap routing plan: [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md) | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | not applicable for mechanical sources; no dataset-specific validation | mechanical transformation only / methodology support only | Tier A conditionally supports mechanics and methodology only; Step 5 routes this as mechanics-only / conditional support; no validated artifact, no validated signal definition, no production threshold rationale, no dataset validation, no implementation approval | P0 | tier-a-reviewed | Create a formal mechanics-only candidate artifact review summary before any promotion; do not proceed to production threshold or evaluator implementation |
+| P30-BL-001 | Simple scalar threshold indicator definition | mechanical indicator definitions | Normalized source package: [`phase31_p30_bl_001_source_package.md`](phase31_p30_bl_001_source_package.md); Tier A review: [`phase31_p30_bl_001_tier_a_review.md`](phase31_p30_bl_001_tier_a_review.md); evidence gap routing plan: [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md); mechanics-only summary: [`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md) | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, comparator, threshold | `Decimal` for `indicator_value`; explicit comparator and threshold metadata | Directly relevant to `indicator_value >= threshold` mechanics | not applicable for mechanical sources; no dataset-specific validation | mechanical transformation only / methodology support only | Tier A conditionally supports mechanics and methodology only; Step 6 records mechanics-only conditional support; no validated artifact, no validated signal definition, no production threshold rationale, no dataset validation, no implementation approval | P0 | mechanics-only conditional | Move to research/data/backtesting validation design or collect targeted production-threshold evidence if the threshold evaluator remains the focus; do not proceed to evaluator implementation |
 | P30-BL-002 | Threshold sanity check for `indicator_value` | threshold sanity-check studies | unsourced | future threshold-style advisory evaluator | scalar threshold advisory state | `indicator_value`, threshold, comparator, `as_of` | `Decimal`; UTC-aware timestamp metadata if applicable | Directly relevant to non-arbitrary threshold selection | unknown | threshold sanity check | No reviewed threshold, no comparator evidence, no validation window | P0 | unsourced | Source a candidate artifact that explains threshold choice and non-claims |
 | P30-BL-003 | Deterministic scalar indicator feature-validity reference | data-quality / feature-validity studies | unsourced | future threshold-style advisory evaluator | deterministic scalar indicator input validity | raw source fields, derived scalar name, observation timestamp | deterministic scalar values such as `Decimal`, `int`, or `bool` as scoped | Indirectly relevant to whether `indicator_value` is a valid observed input | unknown | mechanical transformation only / data-quality claim | No source, no feature formula, no data-quality controls | P1 | unsourced | Source a candidate that documents feature construction, timestamp, and validity rules |
 | P30-BL-004 | No-lookahead bias-control reference | no-lookahead / bias-control references | unsourced | any future real evaluator | point-in-time signal evaluation | feature timestamps, label timestamps, `as_of` | UTC-aware datetimes plus explicit feature values | Indirectly relevant to evaluator timestamp and bundle rules | unknown | robustness claim / bias-control reference | No exact source, no asset universe, no tested artifact | P1 | unsourced | Source a point-in-time/no-lookahead methodology reference for template review |
@@ -102,9 +102,10 @@ Phase 30 Step 6 selects `P30-BL-001` as the first sourcing target only. Phase
 31 Step 3 normalizes the `P30-BL-001` source package and moves it to
 source-package-ready only. Phase 31 Step 4 reviews Tier A sources and moves it
 to tier-a-reviewed only. Phase 31 Step 5 routes the Tier A result and
-recommends a formal mechanics-only candidate artifact review summary. These
-statuses do not validate, approve, justify a production threshold, or make the
-candidate implementation-ready.
+recommends a formal mechanics-only candidate artifact review summary. Phase 31
+Step 6 records that summary and moves `P30-BL-001` to mechanics-only
+conditional. These statuses do not validate, approve, justify a production
+threshold, or make the candidate implementation-ready.
 
 ## 7. Non-Validation Warning
 
@@ -172,6 +173,11 @@ unvalidated and recommends a formal mechanics-only candidate artifact review
 summary before any production threshold, validated signal definition, or
 evaluator implementation route is considered.
 
+The Phase 31 mechanics-only candidate artifact review summary records
+`P30-BL-001` as mechanics-only conditional. It does not create a validated
+research artifact, create a validated signal definition, justify a production
+threshold, or authorize evaluator implementation.
+
 The Phase 30 threshold evaluator research-support boundary remains the
 implementation blocker. The threshold evaluator remains unimplemented until a
 candidate is reviewed and promoted into exact validated research and exact
@@ -219,11 +225,11 @@ Normal pytest must remain offline, credential-free, and safe.
 
 Possible future phases include:
 
-1. Phase 31 Step 6: formal mechanics-only candidate artifact review summary,
-   docs-only.
-2. Phase 31 Step 7: candidate validated signal definition review and artifact
+1. Future step: research/data/backtesting validation design or targeted
+   production-threshold evidence collection, docs-only.
+2. Later step: candidate validated signal definition review and artifact
    binding, docs-only, only if later evidence supports it.
-3. Phase 31 Step 8: implementation scope approval review.
+3. Later step: implementation scope approval review.
 4. Later: minimal threshold evaluator implementation only if all blockers are
    resolved.
 

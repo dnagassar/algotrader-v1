@@ -17,6 +17,10 @@ Current status:
 - No evaluator implementation is authorized.
 - No production threshold, trading claim, or implementation-readiness claim is
   supported.
+- Phase 31 Step 6 formalizes the mechanics-only candidate artifact review
+  summary in
+  [`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md)
+  without promoting the candidate.
 
 ## 2. Tier A Outcome Summary
 
@@ -96,6 +100,11 @@ That summary may support future evaluator mechanics, such as comparator
 language, explicit scalar representation, and advisory non-claim framing. It
 must explicitly state that it cannot support a production threshold or
 evaluator implementation.
+
+Phase 31 Step 6 completes that formal mechanics-only summary in
+[`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md).
+The summary keeps `P30-BL-001` unvalidated, unapproved, mechanics-only, and
+blocked from validated signal-definition binding or evaluator implementation.
 
 Do not recommend implementation. Do not proceed to validated signal-definition
 binding until a later review has exact artifact support, exact signal

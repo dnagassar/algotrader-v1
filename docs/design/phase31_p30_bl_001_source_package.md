@@ -22,6 +22,10 @@ Current status:
 - Phase 31 Step 5 routes that Tier A result in
   [`phase31_p30_bl_001_evidence_gap_routing_plan.md`](phase31_p30_bl_001_evidence_gap_routing_plan.md)
   without promoting the candidate.
+- Phase 31 Step 6 records the mechanics-only candidate artifact review
+  summary in
+  [`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md)
+  and keeps the package unvalidated and unapproved.
 - No source has been accepted as a `ValidatedResearchArtifact`.
 - No `ValidatedSignalDefinition` binds to this package.
 - No production threshold value, comparator, or evaluator behavior is approved.
@@ -427,6 +431,13 @@ The recommended next research action is a formal mechanics-only candidate
 artifact review summary. Tier B review and targeted production-threshold
 evidence collection remain possible later routes, but the current package
 still cannot support a production threshold or evaluator implementation.
+
+Phase 31 Step 6 records that mechanics-only candidate artifact review summary
+in
+[`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md).
+The summary conditionally passes `P30-BL-001` for mechanics/methodology only
+and does not promote it to validated research, signal-definition binding, or
+implementation readiness.
 
 Any future review or summary should continue using:
 

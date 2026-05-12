@@ -230,6 +230,10 @@ state.
   recommends a formal mechanics-only candidate artifact review summary and
   keeps production threshold, signal-definition, and evaluator implementation
   routes blocked.
+- Phase 31 Step 6 records that formal mechanics-only candidate artifact review
+  summary. It conditionally passes `P30-BL-001` for mechanics/methodology only
+  and keeps validated artifact, signal-definition binding, production
+  threshold, and evaluator implementation routes blocked.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1342,6 +1346,15 @@ next route is a formal mechanics-only candidate artifact review summary that
 may support future evaluator mechanics but cannot support a production
 threshold or evaluator implementation.
 
+Phase 31 Step 6 adds that formal mechanics-only candidate artifact review
+summary in
+[`docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md`](design/phase31_p30_bl_001_mechanics_only_review_summary.md).
+It is documentation-only and conditionally passes `P30-BL-001` for mechanics
+and methodology only. It does not validate the candidate, approve an artifact,
+create a validated research artifact, create a validated signal definition,
+justify a production threshold, authorize evaluator implementation, or add
+any production behavior.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1470,6 +1483,8 @@ Ledger modes:
   review
 - Threshold evaluator behavior beyond the Phase 31 Step 5 evidence gap and
   routing plan
+- Threshold evaluator behavior beyond the Phase 31 Step 6 mechanics-only
+  candidate artifact review summary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1500,12 +1515,12 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing and reviewing exact
 validated research and signal-definition support against the Phase 30 Step 2
 evidence standard and Phase 30 Step 3 review template. The next practical
-research action is the Phase 31 Step 5 recommendation: a formal mechanics-only
-candidate artifact review summary for `P30-BL-001`. Tier B review or targeted
-production-threshold evidence collection may follow later, but real evaluator
-behavior, signal computation, test scaffolds for implementation, and wiring
-signal output into risk remain blocked until those gates are explicitly
-resolved.
+research action after the Phase 31 Step 6 mechanics-only summary is
+research/data/backtesting validation design or targeted production-threshold
+evidence collection if the threshold evaluator remains the focus. Tier B
+review may still provide context later, but real evaluator behavior, signal
+computation, test scaffolds for implementation, and wiring signal output into
+risk remain blocked until those gates are explicitly resolved.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

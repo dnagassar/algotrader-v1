@@ -22,6 +22,13 @@ That plan preserves the Tier A outcome as mechanics/methodology support only
 and recommends a formal mechanics-only candidate artifact review summary
 before any validated artifact, signal-definition binding, or implementation.
 
+Phase 31 Step 6 adds that mechanics-only candidate artifact review summary in
+[`phase31_p30_bl_001_mechanics_only_review_summary.md`](phase31_p30_bl_001_mechanics_only_review_summary.md).
+The summary conditionally passes `P30-BL-001` for mechanics/methodology only,
+keeps it unvalidated and unapproved, and recommends research/data/backtesting
+validation design or targeted production-threshold evidence as the next safe
+route if the threshold evaluator remains the focus.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -41,8 +48,9 @@ Current status:
 - `P30-BL-001` now has a normalized source package and a Tier A formal source
   review.
 - The Tier A review conditionally supports mechanics and methodology only.
-- The Step 5 routing plan keeps the Tier A result mechanics-only and
-  recommends a formal mechanics-only candidate artifact review summary.
+- The Step 5 routing plan keeps the Tier A result mechanics-only.
+- The Step 6 mechanics-only summary records a conditional pass for
+  mechanics/methodology only and does not promote the candidate.
 - `P30-BL-001` remains unvalidated, not approved, not production-ready, and
   not implementation-ready.
 - Backlog entries are intake records only. They are not evidence.
@@ -71,10 +79,14 @@ Recommended next phases:
    artifact review summary that may support future evaluator mechanics but
    explicitly cannot support a production threshold or evaluator
    implementation.
-4. Phase 31 Step 6: validated signal-definition binding plan.
-   Defer this until later evidence supports it. The immediate safer route is
-   the mechanics-only candidate artifact review summary recommended by Step 5.
-5. Phase 31 Step 7: implementation readiness gate.
+4. Phase 31 Step 6: mechanics-only candidate artifact review summary.
+   This step is complete. It keeps `P30-BL-001` unvalidated and conditionally
+   useful for mechanics/methodology only.
+5. Future route: research/data/backtesting validation design or targeted
+   production-threshold evidence collection if the threshold evaluator remains
+   the focus. Validated signal-definition binding remains deferred until exact
+   evidence supports it.
+6. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -126,8 +138,9 @@ true:
   only.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
-  validation remains incomplete. Phase 31 Step 5 routes the result but does
-  not validate the candidate.
+  validation remains incomplete. Phase 31 Step 5 routes the result and Phase
+  31 Step 6 summarizes it as mechanics-only, but neither step validates the
+  candidate.
 - The review result is pass, or conditional pass with all gaps resolved.
 - An exact `ValidatedResearchArtifact` exists.
 - An exact `ValidatedSignalDefinition` exists and binds to that artifact.
@@ -225,7 +238,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Phase 31 Step 6 -- P30-BL-001 Mechanics-Only Candidate Review Summary
+Future Step -- P30-BL-001 Research/Data Validation Or Threshold Evidence Route
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -233,13 +246,15 @@ Read first:
 - docs/design/phase31_p30_bl_001_source_package.md
 - docs/design/phase31_p30_bl_001_tier_a_review.md
 - docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
+- docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only formal mechanics-only candidate artifact review
-summary. Preserve P30-BL-001 as unvalidated and explicitly unable to support a
-production threshold or evaluator implementation.
+Scope: documentation-only routing for research/data/backtesting validation
+design or targeted production-threshold evidence. Preserve P30-BL-001 as
+unvalidated unless a later review explicitly satisfies the Phase 30 evidence
+standard.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
