@@ -50,6 +50,14 @@ The plan defines the minimum package fields, acceptable source types,
 unacceptable source types, review-readiness criteria, and
 rejection/replacement triggers before any formal review can begin.
 
+Phase 32 Step 3 adds the `P30-BL-002` source-package collection attempt in
+[`phase32_p30_bl_002_source_package.md`](phase32_p30_bl_002_source_package.md).
+The revised package normalizes 23 candidate-only entries from the supplied
+Claude, Perplexity, and Gemini/browser scout reports, deduplicates overlapping
+material, classifies sources by preliminary routing category, and records
+source-level gaps. It remains partial, unreviewed, unvalidated, and not
+implementation-ready.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -78,6 +86,10 @@ Current status:
   sourcing as the next research direction.
 - Phase 32 Step 2 defines the `P30-BL-002` source-package sourcing plan before
   collection or review.
+- Phase 32 Step 3 normalizes 23 candidate-only `P30-BL-002` source entries
+  from the supplied Claude, Perplexity, and Gemini/browser scout reports. The
+  package is partial and requires primary-source verification before formal
+  review can rely on any entry.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -127,13 +139,20 @@ Recommended next phases:
    This step is complete. It defines the required package fields, acceptable
    and unacceptable source material, minimum review-readiness criteria, and
    rejection/replacement criteria before any formal review can begin.
-8. Future route: source-package collection for `P30-BL-002` or a better P0
-   replacement. This must collect traceable dataset scope, point-in-time input
-   assumptions, threshold or parameter rationale, no-lookahead controls,
-   reproducibility notes, robustness or out-of-sample evidence, limitations,
-   and non-claims before formal review. Validated signal-definition binding
+8. Phase 32 Step 3: `P30-BL-002` source-package collection and normalization.
+   This step normalizes 23 candidate-only source entries from the supplied
+   scout reports. It records preliminary routing categories, deduplication,
+   source-level gaps, package-level gaps, and non-claims. It does not review,
+   validate, approve, promote, or implement `P30-BL-002`.
+9. Future route: primary-source verification and limited formal review intake
+   for selected `P30-BL-002` candidates, with additional sourcing or a better
+   P0 replacement if the selected candidates fail review-readiness checks. Any
+   package moving to review must preserve traceable dataset scope,
+   point-in-time input assumptions, threshold or parameter rationale,
+   no-lookahead controls, reproducibility notes, robustness or out-of-sample
+   evidence, limitations, and non-claims. Validated signal-definition binding
    remains deferred until exact evidence supports it.
-9. Later route: implementation readiness gate.
+10. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -184,8 +203,10 @@ true:
   package. `P30-BL-001` now satisfies this source-package-ready routing step
   only.
 - `P30-BL-002` or a better replacement P0 candidate has a dataset-specific
-  source package. Phase 32 selected this sourcing direction only; no package,
-  review, validation, or approval exists yet.
+  source package. Phase 32 selected this sourcing direction only; the Step 3
+  package is now normalized from scout reports, but it remains candidate-only
+  and requires direct primary-source verification before any formal review,
+  validation, or approval can exist.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -302,15 +323,16 @@ Read first:
 - docs/design/phase31_p30_bl_001_final_disposition.md
 - docs/design/phase30_research_artifact_candidate_backlog.md
 - docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
+- docs/design/phase32_p30_bl_002_source_package.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only source-package collection for P30-BL-002 only if it
-can satisfy the Phase 32 Step 2 sourcing plan with dataset-specific threshold
-or validation evidence; otherwise source a better P0 replacement before formal
-review. Preserve P30-BL-001 as mechanics-only dispositioned and unvalidated. Do
-not review, validate, approve, promote, or implement the next candidate unless
-that is explicitly scoped in a later phase.
+Scope: documentation-only primary-source verification or limited formal review
+intake for selected P30-BL-002 source-package candidates, with additional
+sourcing or a better P0 replacement if the package fails review-readiness
+checks. Preserve P30-BL-001 as mechanics-only dispositioned and unvalidated. Do
+not validate, approve, promote, or implement the next candidate unless that is
+explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.

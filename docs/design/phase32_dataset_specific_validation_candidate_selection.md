@@ -84,6 +84,14 @@ Phase 32 Step 2 adds the source-package sourcing plan in
 That plan defines what `P30-BL-002` must produce before formal review can even
 begin. It does not collect, review, approve, validate, or implement evidence.
 
+Phase 32 Step 3 adds the collection and normalization attempt in
+[`phase32_p30_bl_002_source_package.md`](phase32_p30_bl_002_source_package.md).
+The revised package normalizes 23 candidate-only entries from the supplied
+Claude, Perplexity, and Gemini/browser scout reports. It records preliminary
+source categories, deduplication, source-level gaps, package-level gaps, and
+non-claims. It is still not formal review, validation, approval, promotion, or
+implementation readiness.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -123,6 +131,11 @@ review.
 Phase 32 Step 2 narrows the next sourcing pass by defining the required source
 package fields, acceptable and unacceptable source material, review-readiness
 criteria, and rejection/replacement triggers for `P30-BL-002`.
+
+Phase 32 Step 3 normalized the supplied scout-report candidates for
+`P30-BL-002`. The next safest route is primary-source verification and limited
+formal review intake for selected candidates, with additional sourcing or a
+better P0 replacement if the selected candidates fail review-readiness checks.
 
 This phase does not select `P30-BL-002` as a reviewed artifact. It does not
 approve `P30-BL-002`, validate it, promote it, bind it to a
@@ -182,6 +195,8 @@ resolved in later phases:
 
 - a concrete `P30-BL-002` source package or better P0 replacement source
   package exists
+- the Phase 32 Step 3 scout-normalized candidates are verified against primary
+  sources or replaced by stronger sourced candidates
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete

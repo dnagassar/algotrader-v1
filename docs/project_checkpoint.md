@@ -328,6 +328,16 @@ cited. No production code or runtime behavior changed, and no research
 artifact, validated signal definition, real evaluator, signal computation,
 formal review, validation, approval, promotion, threshold justification, or
 implementation readiness was added.
+Phase 32 Step 3 is documentation-only. It adds the `P30-BL-002`
+source-package collection and normalization pass. The revised package
+normalizes 23 candidate-only entries from the supplied Claude, Perplexity, and
+Gemini/browser scout reports, deduplicates overlapping material, classifies
+preliminary routing categories, and records source-level and package-level
+gaps. It remains partial and requires primary-source verification before
+formal review can rely on any entry. No production code or runtime behavior
+changed, and no research artifact, validated signal definition, real
+evaluator, signal computation, formal review, validation, approval, promotion,
+threshold justification, or implementation readiness was added.
 The latest full-suite result is:
 
 ```text
@@ -4733,6 +4743,92 @@ Manual documentation checks:
 - edited markdown files have exactly one final newline
 - edited markdown files were inspected for completeness and were not truncated
 
+## Phase 32 Step 3 P30-BL-002 Source Package Collection and Normalization
+
+Phase 32 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_source_package.md
+```
+
+It updates:
+
+```text
+docs/design/phase32_dataset_specific_validation_candidate_selection.md
+docs/design/phase31_research_track_next_action_plan.md
+docs/design/phase30_research_artifact_candidate_backlog.md
+docs/deterministic_core.md
+docs/project_checkpoint.md
+```
+
+This step normalizes the supplied Claude, Perplexity, and Gemini/browser scout
+report material for `P30-BL-002`. The revised package records 23 normalized
+candidate-only source entries, assigns `P30-BL-002-S01` through
+`P30-BL-002-S23`, deduplicates the overlapping "Interpretable
+Hypothesis-Driven Trading" candidate across Claude and Perplexity, and
+quarantines bibliography-only links that lacked candidate-level metadata.
+
+The package status is partial. It is useful for routing and possible limited
+formal review intake after primary-source verification, but it is not
+sufficient to validate or approve a threshold. It records package-level gaps
+against the Phase 32 Step 2 sourcing plan: primary-source provenance
+verification, dataset scope details, asset-universe timing, exact timeframe
+boundaries, point-in-time assumptions, data quality assumptions, explicit
+input definitions, threshold or parameter rationale, validation design,
+no-lookahead controls, reproducibility, robustness or out-of-sample evidence,
+source-specific limitations, source-specific non-claims, and future binding
+notes.
+
+The source-package readiness classification is partial but needs additional
+sourcing. The most promising intake candidates are negative-control
+moving-average timing, data-snooping/OOS negative-control, time-series
+momentum, and point-in-time snapshot methodology entries. Several arXiv,
+blog, vendor, ML-heavy, optimizer-heavy, or data-dependent entries are
+methodology-only, too complex, or reject/replacement-needed candidates. That
+classification is not validation, formal review, approval, promotion, or
+implementation readiness.
+
+Recommended routing is primary-source verification and limited formal review
+intake for selected candidate sources, with additional sourcing or a better P0
+replacement if selected entries fail provenance, dataset-scope,
+point-in-time, no-lookahead, reproducibility, robustness, limitation, or
+non-claim checks.
+
+`P30-BL-002` remains a sourcing target only: unreviewed, unvalidated,
+unapproved, not production-ready, not implementation-ready, and not
+threshold-justified. This phase does not validate a signal, approve a
+threshold, create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+or add runtime, broker, persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 3:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_source_package.md
+```
+
+Manual documentation checks:
+
+- edited markdown files have no trailing whitespace
+- edited markdown files have exactly one final newline
+- edited markdown files were inspected for completeness and were not truncated
+
 ## Explicitly Not Included
 
 - `alpaca-trade-api` or unrelated SDK dependencies
@@ -4827,6 +4923,8 @@ Manual documentation checks:
   validation candidate selection
 - threshold evaluator behavior beyond the Phase 32 Step 2 P30-BL-002 source
   package sourcing plan
+- threshold evaluator behavior beyond the Phase 32 Step 3 P30-BL-002 source
+  package collection attempt
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -4853,10 +4951,10 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- source-package collection for `P30-BL-002` if it can supply
-  dataset-specific threshold or validation evidence under the Phase 32 Step 2
-  sourcing plan, otherwise source a better P0 replacement before formal review,
-  docs-only
+- additional sourcing for `P30-BL-002` if actual source candidates can satisfy
+  the Phase 32 Step 2 sourcing plan with dataset-specific threshold or
+  validation evidence, otherwise source a better P0 replacement before formal
+  review, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
