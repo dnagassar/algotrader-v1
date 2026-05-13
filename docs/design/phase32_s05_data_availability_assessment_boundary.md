@@ -26,6 +26,7 @@ boundary, and the S01, S03, and S08 guardrail reviews.
 - [`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md)
 - [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md)
 - [`phase32_p30_bl_002_source_status_index.md`](phase32_p30_bl_002_source_status_index.md)
+- [`phase32_s05_data_provider_source_comparison_plan.md`](phase32_s05_data_provider_source_comparison_plan.md)
 
 ## Required Data Categories
 
@@ -178,7 +179,8 @@ it would still not ingest data or implement a reproduction.
 
 If data remains uncertain, the next safe route is a future source/vendor
 comparison or data-provider matrix entry that records availability, licensing,
-PIT/as-of, universe, roll, and offline replay gaps.
+PIT/as-of, universe, roll, and offline replay gaps. Phase 32 Step 13 records
+that comparison plan as documentation only.
 
 If data appears infeasible, S05 should be downgraded to methodology or
 candidate-context only for this project unless a later approved sourcing route

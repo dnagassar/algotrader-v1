@@ -5647,6 +5647,80 @@ git status --short
 ?? docs/design/phase32_s05_data_availability_assessment_boundary.md
 ```
 
+## Phase 32 Step 13 S05 Data Provider / Source Comparison Plan
+
+Phase 32 Step 13 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_data_provider_source_comparison_plan.md
+```
+
+It updates only navigation/checkpoint docs around the new boundary. This step
+defines how future data-source categories should be compared for possible
+`P30-BL-002-S05` deterministic reproduction feasibility. It does not select,
+purchase, subscribe to, acquire, ingest, download, transform, store, validate,
+reproduce, approve, or implement any data source.
+
+The source categories to compare are academic/paper replication data, paid
+institutional futures data, retail futures/continuous futures vendors,
+broker-provided historical data, public/free datasets, internally constructed
+proxy datasets, and methodology-only/manual reconstruction from published
+tables.
+
+Comparison criteria include S05 universe coverage, January 1965 through
+December 2009 coverage, futures/forwards support, price/return series quality,
+excess-return construction support, roll/continuous contract documentation,
+PIT/as-of support, survivorship and delisting treatment, restatement/revision
+handling, currency handling, transaction cost/slippage/liquidity inputs,
+licensing for local research use, offline reproducibility after acquisition,
+deterministic versioning, cost/complexity, and fit with normal pytest remaining
+offline and credential-free.
+
+Outcome categories are routing labels only: exact reproduction candidate,
+partial reproduction candidate, proxy reproduction candidate, methodology-only
+support, reject / incompatible, and unresolved / needs further source
+verification.
+
+The recommended next route is dataset schema/design if at least one exact or
+partial candidate is plausible, a proxy reproduction worth/cost decision if
+only proxy candidates are plausible, downgrade of S05 to
+methodology/candidate-context only if only methodology support is plausible, or
+a future source/vendor verification step if unresolved. No implementation is
+authorized.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no acquired data,
+no project-local deterministic reproduction, no production threshold/config
+provenance, no applied no-lookahead audit inside the project, no
+implementation-scope approval, and no evaluator tests.
+
+This phase does not choose a vendor, buy a subscription, acquire data, ingest
+data, implement a schema, add code/notebooks/scripts, add a backtest,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Verification after Phase 32 Step 13:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/design/phase32_s05_data_availability_assessment_boundary.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_data_provider_source_comparison_plan.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5660,10 +5734,11 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 dataset schema/design if data appears feasible, source/vendor comparison
-  if data remains uncertain, or downgrade of S05 to
-  methodology/candidate-context only if data is infeasible under
-  `docs/design/phase32_s05_data_availability_assessment_boundary.md`,
+- S05 dataset schema/design if exact or partial source candidates are
+  plausible, proxy reproduction worth/cost decision if only proxy candidates
+  are plausible, future source/vendor verification if unresolved, or downgrade
+  of S05 to methodology/candidate-context only if data is infeasible under
+  `docs/design/phase32_s05_data_provider_source_comparison_plan.md`,
   preserving S01 and S03 as limited negative-control support only, preserving
   S08 as methodology-only PIT support, and preserving S05 as limited
   candidate-evidence planning only, docs-only
