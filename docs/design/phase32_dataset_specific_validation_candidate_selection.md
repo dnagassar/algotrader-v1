@@ -131,6 +131,16 @@ constraints for later candidate-evidence reviews only. It does not validate a
 signal, approve a threshold, create a validated artifact, create a validated
 signal definition, or authorize implementation.
 
+Phase 32 Step 9 adds the S05-only formal review in
+[`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md).
+It conditionally passes `P30-BL-002-S05` only for limited
+candidate-evidence planning. That pass supports a bounded time-series momentum
+candidate-evidence claim, future structured evaluation planning, possible
+future reproduction requirements, and constraints for any future candidate
+signal-definition discussion only. It does not validate a signal, approve a
+threshold, create a validated artifact, create a validated signal definition,
+or authorize implementation.
+
 ### Better sourced replacement P0 candidate
 
 A replacement P0 candidate is safer than forcing `P30-BL-002` forward if source
@@ -195,10 +205,12 @@ comparison, or stronger claim.
 
 Phase 32 Step 7 completes the second docs-only negative-control review for
 `P30-BL-002-S03` only. Phase 32 Step 8 then completes the docs-only
-methodology review for `P30-BL-002-S08` before S05. The next route after Step
-8 is `P30-BL-002-S05` formal review as the first limited candidate-evidence
-source, constrained by the PIT/no-lookahead, survivorship, and restatement
-expectations recorded by S08.
+methodology review for `P30-BL-002-S08` before S05. Phase 32 Step 9 then
+completes the docs-only S05 review as limited candidate-evidence planning
+only, constrained by the PIT/no-lookahead, survivorship, and restatement
+expectations recorded by S08. The next route after Step 9 is a docs-only
+structured local reproduction/evidence plan or additional sourcing if S05 gaps
+block planning.
 Additional S03 sourcing is required before any exact rule reproduction,
 bootstrap implementation binding, exact OOS result claim, deterministic test
 binding, threshold comparison, or stronger claim.
@@ -276,6 +288,9 @@ resolved in later phases:
 - the Phase 32 Step 8 S08 review is used only as methodology-only PIT review
   material, not as signal validation, threshold approval, dataset-specific
   reproduction, or implementation approval
+- the Phase 32 Step 9 S05 review is used only as limited candidate-evidence
+  planning, not as signal validation, threshold approval, dataset-specific
+  reproduction acceptance, or implementation approval
 - the source package satisfies the Phase 32 Step 2 sourcing-plan requirements
 - the package has dataset-specific evidence rather than generic mechanics only
 - formal review against the Phase 30 evidence standard is complete

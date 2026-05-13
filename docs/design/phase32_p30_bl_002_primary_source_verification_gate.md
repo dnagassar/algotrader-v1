@@ -350,6 +350,13 @@ methodology-only PIT review material, and keeps all validation,
 threshold-approval, signal-definition, implementation, and trading-readiness
 routes blocked.
 
+Phase 32 Step 9 records the S05-only formal review in
+[`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md).
+It uses this gate's S05 identity and scope findings, conditionally passes S05
+only for limited candidate-evidence planning, and keeps all validation,
+threshold-approval, signal-definition, implementation, and trading-readiness
+routes blocked.
+
 ## Explicit non-claims
 
 This phase does not validate a signal, threshold, edge, profitability,
@@ -369,19 +376,25 @@ trading-path behavior.
 Evaluator implementation remains blocked by all of the following:
 
 - no formal review beyond S01's limited negative-control/no-lookahead review,
-  S03's limited negative-control/data-snooping/OOS guardrail review, and S08's
-  methodology-only PIT review
-- no `P30-BL-002-S05` formal review
+  S03's limited negative-control/data-snooping/OOS guardrail review, S08's
+  methodology-only PIT review, and S05's limited candidate-evidence planning
+  review
+- the `P30-BL-002-S05` review is limited candidate-evidence planning only and
+  does not provide project-local deterministic reproduction, threshold
+  approval, signal validation, artifact promotion, signal-definition support,
+  or implementation readiness
 - the `P30-BL-002-S08` review is methodology-only and does not provide
   dataset-specific reproduction, threshold approval, signal validation,
   artifact promotion, signal-definition support, or implementation readiness
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no approved threshold/config provenance
+- no project-local deterministic reproduction
+- no applied no-lookahead audit inside the project
 - no implementation scope approval
 - no evaluator tests
-- no accepted point-in-time/no-lookahead review for any proposed dataset and
-  input definition
+- no accepted point-in-time/no-lookahead implementation audit for any proposed
+  dataset and input definition
 - no deterministic reproducibility path for any candidate source
 
 ## Verification

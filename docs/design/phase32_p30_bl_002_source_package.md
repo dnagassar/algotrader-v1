@@ -933,9 +933,19 @@ awareness, restatement / historical-revision awareness, lookahead-risk
 framing, and constraints for later candidate-evidence reviews only. It does
 not validate `P30-BL-002`, approve any threshold, promote any artifact, bind
 any signal definition, create implementation readiness, or authorize trading
-behavior. The next review route is `P30-BL-002-S05` as the first limited
-candidate-evidence source, constrained by the S08 PIT/no-lookahead,
+behavior. At Step 8, the next review route was `P30-BL-002-S05` as the first
+limited candidate-evidence source, constrained by the S08 PIT/no-lookahead,
 survivorship, and restatement expectations.
+
+Phase 32 Step 9 adds the S05-only formal review in
+[`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md).
+It conditionally passes `P30-BL-002-S05` only for limited
+candidate-evidence planning. That narrow pass can support a bounded
+time-series momentum candidate-evidence claim, future structured evaluation
+planning, possible future reproduction requirements, and constraints for any
+future candidate signal-definition discussion. It does not validate
+`P30-BL-002`, approve any threshold, promote any artifact, bind any signal
+definition, create implementation readiness, or authorize trading behavior.
 
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any

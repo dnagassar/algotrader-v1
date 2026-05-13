@@ -279,11 +279,26 @@ lookahead-risk framing, and constraints for later candidate-evidence reviews
 only. It does not create validation, threshold approval, signal-definition
 support, implementation readiness, or trading readiness.
 
-The review queue after S08 proceeds to `P30-BL-002-S05` as the first limited
-candidate-evidence source. S05 must be reviewed under the PIT/no-lookahead,
-survivorship, and restatement expectations recorded by S08. A future S05 pass
-would mean only eligible for further structured evaluation, not
-implementation-ready.
+At Step 8, the review queue after S08 proceeded to `P30-BL-002-S05` as the
+first limited candidate-evidence source. S05 had to be reviewed under the
+PIT/no-lookahead, survivorship, and restatement expectations recorded by S08.
+A future S05 pass could mean only eligible for further structured evaluation,
+not implementation-ready.
+
+## Phase 32 Step 9 follow-up
+
+Phase 32 Step 9 adds the S05-only formal review in
+[`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md).
+It conditionally passes `P30-BL-002-S05` only for limited
+candidate-evidence planning. The pass is narrow and supports only a bounded
+time-series momentum candidate-evidence claim, future structured evaluation
+planning, possible future reproduction requirements, and constraints for any
+future candidate signal-definition discussion.
+
+The Step 9 S05 review does not create validation, threshold approval,
+signal-definition support, implementation readiness, trading readiness, or
+broker/runtime/trading-path behavior. It leaves all later promotion and
+implementation gates blocked.
 
 ## Explicit non-claims
 
@@ -306,7 +321,9 @@ trading-path behavior.
 
 Evaluator implementation remains blocked by all of the following:
 
-- no `P30-BL-002-S05` formal review
+- the `P30-BL-002-S05` review is limited candidate-evidence planning only and
+  does not validate a signal, threshold, artifact, signal definition, or
+  implementation
 - the `P30-BL-002-S08` review is methodology-only PIT material and does not
   validate a signal, threshold, artifact, signal definition, or implementation
 - the `P30-BL-002-S01` review is negative-control/no-lookahead only and does
@@ -315,11 +332,13 @@ Evaluator implementation remains blocked by all of the following:
 - no `ValidatedResearchArtifact`
 - no `ValidatedSignalDefinition`
 - no approved threshold/config provenance
+- no project-local deterministic reproduction
+- no applied no-lookahead audit inside the project
 - no implementation scope approval
 - no evaluator tests
 - no deterministic production contract binding
-- no accepted point-in-time/no-lookahead review for any proposed dataset and
-  input definition
+- no accepted point-in-time/no-lookahead implementation audit for any proposed
+  dataset and input definition
 - no deterministic reproducibility path for any candidate source
 
 ## Verification
