@@ -107,16 +107,17 @@ signal-definition discussion. It does not validate a signal, approve a
 threshold, create a validated artifact, create a validated signal definition,
 or authorize implementation.
 
-Phase 32 Steps 10 through 16 add docs-only S05 status and sourcing boundaries:
+Phase 32 Steps 10 through 17 add docs-only S05 status and sourcing boundaries:
 the source status index, deterministic reproduction planning boundary, data
 availability assessment boundary, data-provider/source comparison plan, and
 external scout research normalization, followed by the primary-verification
-questionnaire and manual outreach template, then a public-documentation
-verification sweep. These steps keep S05 limited to candidate-evidence
-planning, treat scout research as unverified, separate primary documentation,
-secondary documentation, and inference, and route the next action toward
-direct confirmation before any provider choice, schema design, acquisition, or
-reproduction decision.
+questionnaire and manual outreach template, a public-documentation verification
+sweep, and a public-documentation-only feasibility decision. These steps keep
+S05 limited to candidate-evidence planning, treat scout research as unverified,
+separate primary documentation, secondary documentation, and inference, and
+record the owner decision to avoid vendor/source contact for now. S05 remains
+only a public-doc-supported proxy/partial planning candidate before any
+provider choice, schema design, acquisition, or reproduction decision.
 
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
@@ -173,14 +174,15 @@ Current status:
   passes only for limited candidate-evidence planning; the pass is not
   validation, threshold approval, signal-definition support, implementation
   readiness, or trading readiness.
-- Phase 32 Steps 10 through 16 record the S05 source status index,
+- Phase 32 Steps 10 through 17 record the S05 source status index,
   deterministic reproduction planning boundary, data availability assessment
   boundary, data-provider/source comparison plan, and scout research
   normalization, then add the primary-verification questionnaire and manual
-  outreach template plus a public-documentation verification sweep. The
-  Perplexity scout output remains unverified and cannot support source
-  selection, data approval, reproduction approval, validation, implementation
-  readiness, or trading readiness.
+  outreach template plus a public-documentation verification sweep and
+  public-documentation-only feasibility decision. The Perplexity scout output
+  remains unverified, the owner avoids vendor/source contact for now, and S05
+  cannot support source selection, data approval, reproduction approval,
+  validation, implementation readiness, or trading readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -303,12 +305,18 @@ Recommended next phases:
    and carries forward direct-confirmation questions. It does not choose a
    provider, acquire data, design a schema, approve reproduction, validate
    S05, or authorize implementation.
-22. Future route: source/vendor direct confirmation capture for S05.
+22. Phase 32 Step 17: S05 public-documentation-only feasibility decision.
+   This step is complete. It records the owner decision to avoid
+   vendor/source contact for now, keeps S05 only as a public-doc-supported
+   proxy/partial planning candidate, and pauses exact reproduction, source
+   selection, dataset approval, schema design, validation, and implementation
+   unless future evidence or access changes materially.
+23. Future route: docs-only proxy boundary, easier-data candidate, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-23. Later route: implementation readiness gate.
+24. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -367,7 +375,7 @@ true:
   use, Step 7 reviews S03 only for limited negative-control/data-snooping/OOS
   guardrail use, Step 8 reviews S08 only for methodology-only PIT use, Step 9
   reviews S05 only for limited candidate-evidence planning, and Steps 10
-  through 16 keep S05 in docs-only planning/source-verification routing.
+  through 17 keep S05 in docs-only planning/source-verification routing.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -471,7 +479,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- S05 Primary Verification Response Capture
+Future Step -- S05 Public-Documentation-Only Proxy Boundary Or Alternative Routing
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -498,19 +506,23 @@ Read first:
 - docs/design/phase32_s05_data_provider_scout_research_normalization.md
 - docs/design/phase32_s05_primary_verification_questionnaire.md
 - docs/design/phase32_s05_public_documentation_verification_sweep.md
+- docs/design/phase32_s05_public_documentation_only_feasibility_decision.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only capture of primary documentation findings or
-manually obtained owner outreach responses for S05 candidate data sources.
-Use the Step 15 questionnaire as the template and the Step 16 public-doc sweep
-as cautious routing context only. Preserve Perplexity findings as unverified
-scout research, preserve P30-BL-001 as mechanics-only dispositioned and
-unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
-methodology-only, and preserve S05 as limited candidate-evidence planning only.
-Do not choose a vendor, acquire data, validate, approve, promote, create a
-ValidatedResearchArtifact, create a ValidatedSignalDefinition, design a schema,
-or implement the candidate unless that is explicitly scoped in a later phase.
+Scope: documentation-only routing after the owner decision to avoid
+vendor/source contact for now. Use the Step 16 public-doc sweep and Step 17
+feasibility decision as cautious routing context only. Safe routes are a
+docs-only proxy reproduction boundary that is explicitly not S05-exact, an
+easier-data candidate evaluation, or backlog pending future vendor contact,
+budget/access change, or stronger public documentation. Preserve Perplexity
+findings as unverified scout research, preserve P30-BL-001 as mechanics-only
+dispositioned and unvalidated, preserve S01 and S03 as negative-control only,
+preserve S08 as methodology-only, and preserve S05 as limited
+candidate-evidence planning only. Do not contact vendors, choose a vendor,
+acquire data, validate, approve, promote, create a ValidatedResearchArtifact,
+create a ValidatedSignalDefinition, design a schema, or implement the candidate
+unless that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, data ingestion, notebooks, scripts, ML,
 and LLM trading-path logic.

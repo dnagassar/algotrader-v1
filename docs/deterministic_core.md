@@ -307,6 +307,11 @@ state.
   sources; and carries forward direct-confirmation gaps without selecting a
   provider, acquiring data, approving reproduction, validating S05, or
   authorizing implementation.
+- Phase 32 Step 17 adds an S05 public-documentation-only feasibility decision.
+  It records the owner decision to avoid vendor/source contact for now, keeps
+  S05 only as a public-doc-supported proxy/partial planning candidate, and
+  pauses exact reproduction, source selection, dataset approval, schema design,
+  validation, and implementation unless future evidence or access changes.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1578,6 +1583,18 @@ does not choose a provider, acquire data, design a schema, approve
 reproduction, create a validated artifact, create a validated signal
 definition, or authorize implementation.
 
+Phase 32 Step 17 adds the S05 public-documentation-only feasibility decision in
+[`docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`](design/phase32_s05_public_documentation_only_feasibility_decision.md).
+It is documentation-only and records the owner decision to avoid direct
+vendor/source contact for now. It keeps S05 only as a public-doc-supported
+proxy/partial planning candidate, pauses exact reproduction, source selection,
+dataset approval, schema design, validation, and implementation, and routes
+future safe work toward a docs-only non-exact proxy boundary, another
+easier-data candidate, or backlog pending future contact/access changes. It
+does not contact vendors, choose a vendor, acquire data, ingest data, create a
+validated artifact, create a validated signal definition, approve a production
+threshold, or authorize implementation.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1742,6 +1759,8 @@ Ledger modes:
   verification questionnaire
 - Threshold evaluator behavior beyond the Phase 32 Step 16 S05 public
   documentation verification sweep
+- Threshold evaluator behavior beyond the Phase 32 Step 17 S05
+  public-documentation-only feasibility decision
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1779,14 +1798,16 @@ comparison plan; Phase 32 Step 14 normalizes external scout research as
 unverified routing input; Phase 32 Step 15 adds a primary-verification
 questionnaire and manual outreach template; Phase 32 Step 16 records a
 public-documentation verification sweep with cautious feasibility labels and
-direct-confirmation gaps. None of these steps reproduce, validate, approve,
-select a vendor, acquire data, or implement S05. The next practical research
-action after Phase 32 Step 16 is direct confirmation capture or owner-sent
-outreach response capture, using the questionnaire before any source choice,
-schema, acquisition, or reproduction route. S01 and S03 remain negative-control
-support only, S08 remains methodology-only PIT support only, and S05 remains
-limited to candidate-evidence planning unless a later phase resolves the named
-blockers.
+direct-confirmation gaps; Phase 32 Step 17 records the owner decision to avoid
+vendor/source contact for now and keeps S05 only as a public-doc-supported
+proxy/partial planning candidate. None of these steps reproduce, validate,
+approve, select a vendor, acquire data, or implement S05. The next practical
+research action after Phase 32 Step 17 is a docs-only non-exact proxy boundary,
+an easier-data candidate evaluation, or backlog pending future vendor contact,
+budget/access change, or stronger public documentation. S01 and S03 remain
+negative-control support only, S08 remains methodology-only PIT support only,
+and S05 remains limited to candidate-evidence planning unless a later phase
+resolves the named blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,

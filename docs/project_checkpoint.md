@@ -5975,6 +5975,86 @@ git status --short
 ?? docs/design/phase32_s05_public_documentation_verification_sweep.md
 ```
 
+## Phase 32 Step 17 S05 Public-Documentation-Only Feasibility Decision
+
+Phase 32 Step 17 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_public_documentation_only_feasibility_decision.md
+```
+
+It updates research-track navigation/checkpoint docs around the owner decision
+to avoid external vendor/source contact for now. Vendor/source direct
+confirmation remains optional future work, not a current dependency.
+
+Without direct vendor/source confirmation or acquired access, exact S05
+reproduction cannot be established. No source can be selected or approved from
+public documentation alone, and licensing, archival, private repo use,
+derived-statistics publication, PIT/versioning, exact universe coverage,
+roll metadata, correction history, and offline-use rights remain unresolved
+unless public docs fully answer them.
+
+The public-documentation-only routing remains cautious: AQR is
+calibration/context only; CSI is a documentation-supported partial candidate,
+not selected; Pinnacle/CLC is a documentation-supported partial/proxy
+candidate, not selected; Norgate is a documentation-supported proxy candidate,
+not selected; Portara/PortaraCQG is a documentation-supported partial
+candidate, not selected; TradeStation is likely unsuitable as primary and only
+conditional/proxy; institutional feeds are calibration/context only under
+current personal/offline constraints; broker-native APIs are likely unsuitable;
+and public/free APIs plus ETF/index proxies are proxy only.
+
+The feasibility decision keeps S05 as a public-doc-supported proxy/partial
+planning candidate only. Exact reproduction, source selection, dataset
+approval, acquisition, schema design, validation, and implementation are paused
+unless future public evidence, owner-approved direct confirmation, or
+owner-approved access changes materially.
+
+Recommended safe routes are a docs-only non-exact proxy reproduction boundary,
+pausing S05 to evaluate another candidate with easier data availability, or
+keeping S05 in the backlog pending future vendor contact, budget/access change,
+or stronger public documentation.
+
+This phase does not contact vendors, choose a vendor, buy a subscription,
+acquire data, ingest data, add schema/code/notebooks/scripts, add a backtest,
+reproduce S05, implement a strategy, implement a signal/evaluator, create a
+validated artifact, approve a production threshold, or add broker, OMS,
+runtime, scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML,
+or LLM trading-path behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, no evaluator tests, no deterministic offline snapshot path, and no
+resolved exact S05 universe, 1965-2009 instrument coverage, raw contract, roll,
+PIT/as-of, correction-history, or versioning basis.
+
+Verification after Phase 32 Step 17:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_public_documentation_only_feasibility_decision.md
+```
+
+Manual documentation checks confirmed that edited markdown files have no
+trailing whitespace, exactly one final newline, no truncation, and intact final
+sections.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5988,16 +6068,15 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 direct confirmation or owner-sent outreach response capture using
-  `docs/design/phase32_s05_primary_verification_questionnaire.md`, with
-  `docs/design/phase32_s05_public_documentation_verification_sweep.md` as
-  cautious routing context only, focused first on CSI, Pinnacle, Norgate,
-  Portara, and AQR, with TradeStation only if project-owner access, export
-  rights, and offline archival rights exist or are expected,
-  preserving S01 and S03 as limited negative-control support only, preserving
-  S08 as methodology-only PIT support, preserving S05 as limited
-  candidate-evidence planning only, and avoiding provider choice, acquisition,
-  schema design, or reproduction approval
+- S05 docs-only proxy boundary planning, another easier-data candidate
+  evaluation, or backlog routing using
+  `docs/design/phase32_s05_public_documentation_verification_sweep.md` and
+  `docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`
+  as cautious routing context only; preserve the owner decision to avoid
+  vendor/source contact for now, preserve S01 and S03 as limited
+  negative-control support only, preserve S08 as methodology-only PIT support,
+  preserve S05 as limited candidate-evidence planning only, and avoid provider
+  choice, acquisition, schema design, or reproduction approval
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -32,6 +32,7 @@ Related planning boundaries:
 - [`phase32_s05_data_provider_scout_research_normalization.md`](phase32_s05_data_provider_scout_research_normalization.md)
 - [`phase32_s05_primary_verification_questionnaire.md`](phase32_s05_primary_verification_questionnaire.md)
 - [`phase32_s05_public_documentation_verification_sweep.md`](phase32_s05_public_documentation_verification_sweep.md)
+- [`phase32_s05_public_documentation_only_feasibility_decision.md`](phase32_s05_public_documentation_only_feasibility_decision.md)
 
 ## Source-status table
 
@@ -41,7 +42,7 @@ Related planning boundaries:
 | `P30-BL-002-S02` | Brock/Lakonishok/LeBaron technical rules | Unreviewed scout-normalized Category B candidate | Scout-only rule-specification context | None | No formal disposition; no validation | Primary-source verification required before any formal review or stronger use. |
 | `P30-BL-002-S03` | Sullivan/Timmermann/White data-snooping / OOS negative control | Formal review complete | Limited data-snooping, multiple-testing, and OOS guardrail use only | [`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md) | Pass for negative-control/data-snooping/OOS guardrail use only | Collect more S03 evidence before exact rule reproduction, bootstrap binding, exact OOS result claims, deterministic test binding, or threshold comparison. |
 | `P30-BL-002-S04` | Aronson evidence-based technical analysis | Unreviewed scout-normalized Category C candidate | Scout-only falsification / multiple-testing context | None | No formal disposition; not direct threshold evidence | Verify exact rule set, data, code availability, and methodology details if routed later. |
-| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan; Step 14 normalizes external scout research without verification; Step 15 adds a primary-verification questionnaire and manual outreach template; Step 16 records a public-documentation verification sweep with cautious feasibility labels. Next action is direct confirmation capture before any source choice, schema, acquisition, or reproduction route. |
+| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan; Step 14 normalizes external scout research without verification; Step 15 adds a primary-verification questionnaire and manual outreach template; Step 16 records a public-documentation verification sweep with cautious feasibility labels; Step 17 records the owner decision to avoid vendor/source contact for now and keeps S05 only as a public-doc-supported proxy/partial planning candidate. Next action is docs-only proxy-boundary planning, another easier-data candidate, or backlog pending future contact/access changes. |
 | `P30-BL-002-S06` | Double-OOS crypto walk-forward optimization | Unreviewed scout-normalized Category D candidate; preprint/code/data unverified | Scout-only validation-architecture lead | None | No formal disposition; not validation evidence | Verify arXiv version, code license, data access, deterministic rerun, costs, and offline safety if pursued. |
 | `P30-BL-002-S07` | Interpretable hypothesis-driven trading | Unreviewed scout-normalized Category E candidate; too complex/preprint-based for current route | Scout-only baseline / OOS design context at most | None | No current formal-review route; no evidence use | No current action unless a later research scope explicitly verifies and re-routes it. |
 | `P30-BL-002-S08` | FactSet PIT consensus-estimates methodology | Formal review complete | Methodology-only PIT review material only | [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md) | Pass for methodology-only PIT review material only | Collect more S08 or replacement PIT evidence before exact data-contract binding, vendor query semantics, deterministic local replay, or stronger use. |
@@ -86,20 +87,20 @@ normalizes external scout research as unverified routing input. Phase 32 Step
 Phase 32 Step 16 records a public-documentation verification sweep that
 separates primary documentation, secondary documentation, and inference,
 assigns cautious feasibility labels, and carries forward direct-confirmation
-questions. None of these phases reproduce, validate, approve, select a vendor,
-acquire data, or implement S05.
+questions. Phase 32 Step 17 records the owner decision to avoid vendor/source
+contact for now and keeps S05 only as a public-doc-supported proxy/partial
+planning candidate. None of these phases reproduce, validate, approve, select a
+vendor, acquire data, or implement S05.
 
 The next likely route should remain documentation-only and should be one of:
 
-1. Use the Step 15 questionnaire to capture direct confirmation for CSI,
-   Pinnacle, Norgate, Portara, and AQR.
-2. Include TradeStation only if the project owner already has access or expects
-   access, export rights, and offline archival rights.
-3. Keep broker/free APIs and ETF/index proxies unsuitable for primary S05
+1. Define a docs-only proxy reproduction boundary using public/free or
+   retail-accessible data assumptions, explicitly not S05-exact.
+2. Pause S05 and evaluate another candidate with easier data availability.
+3. Keep S05 in the backlog pending future vendor contact, budget/access change,
+   or stronger public documentation.
+4. Keep broker/free APIs and ETF/index proxies unsuitable for primary S05
    reproduction unless later primary evidence changes that.
-4. Defer dataset schema/design, acquisition, proxy-worth decisions, and
-   downgrade decisions until direct confirmation is complete enough to route
-   them.
 
 Do not start implementation from this index.
 
