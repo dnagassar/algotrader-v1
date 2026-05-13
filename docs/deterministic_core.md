@@ -328,6 +328,12 @@ state.
   decision. It records non-approving proxy source categories, keeps every
   category unselected, keeps S05 in backlog, and recommends evaluating an
   easier-data candidate next.
+- Phase 33 Step 1 adds an easier-data research candidate selection boundary.
+  It compares candidate families for docs-only source-review routing,
+  shortlists broad-ETF moving-average trend-following, equity index
+  momentum/trend-following using public index or ETF data, and
+  volatility-targeting/risk-parity style allocation using public ETF/index
+  data for further source review only, and keeps S05 in backlog.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1660,6 +1666,20 @@ provider, dataset, schema, reproduction protocol, validation route, or
 implementation path, keeps S05 in backlog, and recommends evaluating an
 easier-data candidate next.
 
+Phase 33 Step 1 adds the easier-data research candidate selection boundary in
+[`docs/design/phase33_easier_data_research_candidate_selection_boundary.md`](design/phase33_easier_data_research_candidate_selection_boundary.md).
+It is documentation-only and compares candidate families by public/easy data
+availability, licensing clarity, offline reproducibility, simple universe
+definition, PIT/survivorship complexity, benchmark clarity, deterministic
+workflow usefulness, core-architecture fit, overclaiming risk, vendor-contact
+dependency, and implementation distance. It shortlists broad-ETF moving-average
+trend-following as the primary source-review candidate, with equity index
+momentum/trend-following and volatility-targeting/risk-parity style allocation
+as secondary source-review candidates only. It does not select or approve a
+dataset, source package, schema, reproduction, validation, implementation,
+production threshold, `ValidatedResearchArtifact`, or
+`ValidatedSignalDefinition`.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1834,6 +1854,8 @@ Ledger modes:
   proxy dataset requirements boundary
 - Threshold evaluator behavior beyond the Phase 32 Step 21 S05 proxy source
   shortlist and backlog routing decision
+- Threshold evaluator behavior beyond the Phase 33 Step 1 easier-data research
+  candidate selection boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1888,6 +1910,13 @@ documentation, or owner preference materially changes the S05 route. S01 and
 S03 remain negative-control support only, S08 remains methodology-only PIT
 support only, and S05 remains limited to candidate-evidence planning unless a
 later phase resolves the named blockers.
+
+Phase 33 Step 1 adds that easier-data candidate selection boundary. The next
+practical research action is a docs-only source package for the selected
+easier-data candidate, starting with simple moving-average trend-following on
+broad ETFs. That gate must still avoid data acquisition, ingestion, schema
+design, backtesting, reproduction, evaluator behavior, signal computation,
+validated artifacts, validated signal definitions, and trading implications.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,

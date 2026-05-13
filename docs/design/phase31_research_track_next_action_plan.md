@@ -126,6 +126,20 @@ schema, reproduction, validation, or implementation route. S05 remains only a
 public-doc-supported proxy/partial planning candidate before any provider
 choice, schema design, acquisition, or reproduction decision.
 
+Phase 33 Step 1 adds the easier-data research candidate selection boundary in
+[`phase33_easier_data_research_candidate_selection_boundary.md`](phase33_easier_data_research_candidate_selection_boundary.md).
+It compares candidate families by data availability, licensing clarity,
+offline reproducibility, universe simplicity, PIT/survivorship complexity,
+benchmark clarity, deterministic-workflow usefulness, architecture fit,
+overclaiming risk, vendor-contact dependency, and implementation distance. It
+shortlists simple moving-average trend-following on broad ETFs, equity index
+momentum/trend-following using public index or ETF data, and
+volatility-targeting/risk-parity style allocation using public ETF/index data
+for further docs-only source review, with the broad-ETF moving-average route
+as the primary first source-package candidate. It keeps S05 in backlog and
+does not validate, implement, reproduce, backtest, approve, or make any
+strategy actionable.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -348,13 +362,23 @@ Recommended next phases:
    level, keeps S05 in backlog, and recommends evaluating an easier-data
    candidate next. It does not select or approve a source, provider, dataset,
    schema, reproduction protocol, validation route, or implementation path.
-27. Future route: easier-data candidate evaluation, S05 backlog recheck, or
+27. Phase 33 Step 1: easier-data research candidate selection boundary.
+   This step is complete. It compares easier-data candidate families, records
+   evaluation criteria, keeps S05 paused in backlog, and shortlists simple
+   moving-average trend-following on broad ETFs, equity index
+   momentum/trend-following using public index or ETF data, and
+   volatility-targeting/risk-parity style allocation using public ETF/index
+   data for further docs-only source review only. It does not approve a
+   dataset, source package, reproduction, validation, implementation, or
+   trading implication.
+28. Future route: source package for the selected easier-data candidate, S05
+   backlog recheck, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-28. Later route: implementation readiness gate.
+29. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -551,18 +575,22 @@ Read first:
 - docs/design/phase32_s05_proxy_route_selection_boundary.md
 - docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
 - docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md
+- docs/design/phase33_easier_data_research_candidate_selection_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only routing after the owner decision to avoid
-vendor/source contact for now. Use the Step 16 public-doc sweep, Step 17
-feasibility decision, Step 18 non-exact proxy boundary, Step 19 route selection
-boundary, Step 20 route-neutral proxy dataset requirements boundary, and Step
-21 proxy source shortlist/backlog routing decision as cautious routing context
-only. The preferred safe route is an easier-data candidate evaluation. S05
-should remain in backlog unless a later prompt explicitly reopens it because
-future vendor contact, budget/access change, stronger public documentation, or
-owner preference changes materially.
+vendor/source contact for now and after the Phase 33 easier-data candidate
+selection boundary. Use the Step 16 public-doc sweep, Step 17 feasibility
+decision, Step 18 non-exact proxy boundary, Step 19 route selection boundary,
+Step 20 route-neutral proxy dataset requirements boundary, Step 21 proxy source
+shortlist/backlog routing decision, and Phase 33 candidate selection boundary
+as cautious routing context only. The preferred safe route is a docs-only
+source package for the selected easier-data candidate, starting with simple
+moving-average trend-following on broad ETFs. S05 should remain in backlog
+unless a later prompt explicitly reopens it because future vendor contact,
+budget/access change, stronger public documentation, or owner preference
+changes materially.
 Preserve Perplexity findings as unverified scout research, preserve P30-BL-001
 as mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
 negative-control only, preserve S08 as methodology-only, and preserve S05 as

@@ -6328,6 +6328,68 @@ offline snapshot path, and no resolved exact S05 universe, 1965-2009
 instrument coverage, raw contract, roll, PIT/as-of, correction-history, or
 versioning basis.
 
+## Phase 33 Step 1 Easier-Data Research Candidate Selection Boundary
+
+Phase 33 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase33_easier_data_research_candidate_selection_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The new
+boundary compares easier-data candidate families by public or easy-access data
+availability, licensing clarity, offline reproducibility, simple universe
+definition, PIT/as-of complexity, survivorship complexity, benchmark clarity,
+deterministic-workflow usefulness, core-architecture fit, overclaiming risk,
+vendor-contact dependency, and implementation distance.
+
+The boundary keeps S05 paused in backlog. S05 remains useful as a
+public-document-supported proxy/partial planning candidate, but exact
+reproduction, dataset approval, schema design, project-local reproduction,
+validation, and implementation remain paused.
+
+The compared candidate families are equity index momentum/trend-following
+using public index or ETF data, equity cross-sectional momentum using
+public/free data with survivorship caveats, simple moving-average
+trend-following on broad ETFs, volatility targeting or risk-parity style
+allocation using public ETF/index data, pairs/spread research only where data
+and benchmark constraints are clear, and S05 futures momentum in backlog.
+
+The conservative decision is a docs-only shortlist for further source review:
+simple moving-average trend-following on broad ETFs as the primary next
+source-package candidate, plus equity index momentum/trend-following using
+public index or ETF data and volatility-targeting/risk-parity style allocation
+using public ETF/index data as secondary source-review candidates only. The
+decision does not approve any dataset, source package, reproduction,
+validation, implementation, production threshold, or trading implication.
+
+Recommended next gate: source package for the selected easier-data candidate,
+starting with simple moving-average trend-following on broad ETFs. That later
+gate must still avoid data acquisition, ingestion, schema design, backtesting,
+reproduction, evaluator implementation, signal computation, validated-artifact
+creation, and validated signal-definition creation.
+
+This phase does not perform or authorize implementation, data acquisition,
+data ingestion, dataset approval, source approval, schema/code/notebooks/scripts,
+backtesting, reproduction, signal or evaluator implementation, signal
+computation, scoring, ranking, direction, confidence, actionability,
+`ValidatedResearchArtifact`, `ValidatedSignalDefinition`, new contract type,
+production threshold, production-readiness claim, implementation-readiness
+claim, profitability claim, trading implication, or broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no selected/approved dataset, no selected/approved
+source package, no project-local deterministic reproduction, no production
+threshold/config provenance, no applied no-lookahead audit, no
+implementation-scope approval, no evaluator tests, no data acquisition or
+ingestion approval, no schema or storage policy approval, no
+benchmark/comparison target approval, no offline snapshot approval, no
+licensing/offline-use review for a selected source, no candidate-specific
+source review, no validated signal definition binding, and no trading
+implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6358,6 +6420,9 @@ Safe next tasks include:
   preserve S05 as limited candidate-evidence planning only, keep all proxy
   source categories unselected, and avoid provider choice, acquisition, schema
   design, reproduction approval, validation, or implementation approval
+- docs-only source package for the Phase 33 selected easier-data candidate,
+  starting with simple moving-average trend-following on broad ETFs, while
+  keeping the secondary shortlist and S05 backlog status non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
