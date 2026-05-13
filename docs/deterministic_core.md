@@ -316,6 +316,10 @@ state.
   defines proxy reproduction as a controlled approximation for methodology
   mechanics and research workflow testing only, not exact S05 reproduction,
   validation, implementation approval, or trading readiness.
+- Phase 32 Step 19 adds an S05 proxy route selection boundary. It keeps
+  multiple proxy routes under consideration for docs-only planning, selects no
+  provider, dataset, schema, reproduction, validation, or implementation route,
+  and recommends a route-neutral proxy dataset requirement boundary.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1611,6 +1615,16 @@ keeps proxy results from supporting exact S05 replication, validated artifacts,
 validated signal definitions, production thresholds, implementation approval,
 profitability claims, or trading readiness.
 
+Phase 32 Step 19 adds the S05 proxy route selection boundary in
+[`docs/design/phase32_s05_proxy_route_selection_boundary.md`](design/phase32_s05_proxy_route_selection_boundary.md).
+It is documentation-only and compares the modern futures subset,
+reduced-universe futures, ETF/index proxy, AQR factor-level context,
+manually reconstructed published-table check, and pause/defer routes. The
+conservative decision keeps multiple routes under consideration, selects no
+provider, dataset, subscription, schema, reproduction, validation, or
+implementation route, and recommends a route-neutral proxy dataset requirement
+boundary before any further route narrowing.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1779,6 +1793,8 @@ Ledger modes:
   public-documentation-only feasibility decision
 - Threshold evaluator behavior beyond the Phase 32 Step 18 S05 non-exact proxy
   reproduction boundary
+- Threshold evaluator behavior beyond the Phase 32 Step 19 S05 proxy route
+  selection boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1820,9 +1836,12 @@ direct-confirmation gaps; Phase 32 Step 17 records the owner decision to avoid
 vendor/source contact for now and keeps S05 only as a public-doc-supported
 proxy/partial planning candidate; Phase 32 Step 18 defines a non-exact proxy
 reproduction boundary for methodology mechanics and research workflow testing
-only. None of these steps reproduce, validate, approve, select a vendor, acquire
-data, or implement S05. The next practical research action after Phase 32 Step
-18 is a docs-only proxy route selection boundary, an easier-data candidate
+only; Phase 32 Step 19 compares proxy route options and keeps multiple routes
+under consideration without selecting a provider, dataset, schema,
+reproduction, validation, or implementation route. None of these steps
+reproduce, validate, approve, select a vendor, acquire data, or implement S05.
+The next practical research action after Phase 32 Step 19 is a docs-only,
+route-neutral proxy dataset requirement boundary, an easier-data candidate
 evaluation, or backlog pending future vendor contact, budget/access change, or
 stronger public documentation. S01 and S03 remain negative-control support
 only, S08 remains methodology-only PIT support only, and S05 remains limited to

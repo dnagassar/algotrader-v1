@@ -6142,6 +6142,56 @@ Manual documentation checks confirmed that edited markdown files have no
 trailing whitespace, exactly one final newline, no truncation, and intact final
 sections.
 
+## Phase 32 Step 19 S05 Proxy Route Selection Boundary
+
+Phase 32 Step 19 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_proxy_route_selection_boundary.md
+```
+
+It compares allowed non-exact S05 proxy routes for planning only: modern
+futures subset, reduced-universe futures, ETF/index proxy, AQR factor-level
+calibration/context, manually reconstructed published-table checks, and
+pause/defer S05 while evaluating another easier-data candidate.
+
+The comparison criteria are data availability, offline reproducibility,
+licensing uncertainty, S05 similarity, methodological usefulness,
+no-lookahead/as-of discipline usefulness, cost/complexity, risk of
+overclaiming, fit with normal offline credential-free pytest, and usefulness
+before any code implementation.
+
+The route decision is conservative: keep multiple proxy routes under
+consideration for docs-only planning, but select no single route for data,
+schema, reproduction, validation, or implementation planning. The futures
+routes remain most methodology-relevant but too unresolved for narrowing; the
+ETF/index route remains workflow-rehearsal only; AQR and published-table routes
+remain context/table-check only; and S05 remains proxy/partial planning and
+backlog status.
+
+The recommended next gate is a route-neutral proxy dataset requirement
+boundary. That gate should define minimum requirements for any later proxy
+route before narrowing, without selecting or approving a provider, dataset,
+subscription, schema, reproduction, validation, or implementation.
+
+This phase does not perform exact replication, select a dataset, acquire data,
+ingest data, add schema/code/notebooks/scripts, add a backtest, reproduce S05,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, no evaluator tests, no selected proxy route for data planning, no
+approved proxy data-storage policy, no approved proxy reproduction protocol, no
+deterministic offline snapshot path, and no resolved exact S05 universe,
+1965-2009 instrument coverage, raw contract, roll, PIT/as-of,
+correction-history, or versioning basis.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6155,17 +6205,19 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 docs-only proxy route selection planning, another easier-data candidate
-  evaluation, or backlog routing using
+- S05 docs-only proxy dataset requirement planning, another easier-data
+  candidate evaluation, or backlog routing using
   `docs/design/phase32_s05_public_documentation_verification_sweep.md` and
   `docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`
   plus
   `docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md` as
-  cautious routing context only; preserve the owner decision to avoid
-  vendor/source contact for now, preserve S01 and S03 as limited
-  negative-control support only, preserve S08 as methodology-only PIT support,
-  preserve S05 as limited candidate-evidence planning only, and avoid provider
-  choice, acquisition, schema design, or reproduction approval
+  cautious routing context plus
+  `docs/design/phase32_s05_proxy_route_selection_boundary.md` as the current
+  route-selection boundary; preserve the owner decision to avoid vendor/source
+  contact for now, preserve S01 and S03 as limited negative-control support
+  only, preserve S08 as methodology-only PIT support, preserve S05 as limited
+  candidate-evidence planning only, and avoid provider choice, acquisition,
+  schema design, reproduction approval, validation, or implementation approval
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
