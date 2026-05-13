@@ -114,6 +114,7 @@ The following are planning-level phases only:
 1. Data availability assessment: determine whether exact or acceptable
    substitute historical futures/forwards data can be obtained with clear
    provenance, offline replay, and licensing compatible with project use.
+   Phase 32 Step 12 records this assessment boundary as documentation only.
 2. Dataset schema/design: define project-local schema requirements for
    instruments, contract metadata, prices or returns, excess-return inputs,
    `as_of` timestamps, revisions, and data-quality flags.
@@ -201,10 +202,12 @@ following:
 ## Routing Outcome
 
 The only outcome of this phase is a documentation-only planning boundary for a
-possible future deterministic reproduction. The next safe route remains
-documentation-only: data availability assessment, dataset schema/design, or
-additional sourcing if the required data and timing assumptions cannot be
-resolved.
+possible future deterministic reproduction. Phase 32 Step 12 adds the
+documentation-only data availability assessment boundary. The next safe route
+remains documentation-only: dataset schema/design if data appears feasible,
+source/vendor comparison or a data-provider matrix if data remains uncertain,
+or downgrade of S05 to methodology/candidate-context only if data is infeasible
+under current project constraints.
 
 Do not start implementation from this boundary.
 

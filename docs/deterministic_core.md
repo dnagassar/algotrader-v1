@@ -1679,6 +1679,8 @@ Ledger modes:
   status index
 - Threshold evaluator behavior beyond the Phase 32 Step 11 S05 deterministic
   reproduction planning boundary
+- Threshold evaluator behavior beyond the Phase 32 Step 12 S05 data
+  availability assessment boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1710,13 +1712,15 @@ Future threshold-evaluator work should continue by sourcing exact research and
 signal-definition support candidates for later review against the Phase 30
 Step 2 evidence standard and Phase 30 Step 3 review template. Phase 32 Step 11
 adds a docs-only deterministic reproduction planning boundary for
-`P30-BL-002-S05` and does not reproduce, validate, approve, or implement S05.
-The next practical research action after Phase 32 Step 11 is docs-only data
-availability assessment, dataset schema/design, or additional source
-verification where blockers require it, preserving S01 and S03 as
-negative-control support only, preserving S08 as methodology-only PIT support
-only, and keeping S05 limited to candidate-evidence planning unless a later
-phase resolves the named blockers.
+`P30-BL-002-S05`; Phase 32 Step 12 adds a docs-only data availability
+assessment boundary. Neither step reproduces, validates, approves, or
+implements S05. The next practical research action after Phase 32 Step 12 is
+dataset schema/design if data appears feasible, source/vendor comparison or a
+data-provider matrix if data remains uncertain, or downgrade of S05 to
+methodology/candidate-context only if data is infeasible under current project
+constraints. S01 and S03 remain negative-control support only, S08 remains
+methodology-only PIT support only, and S05 remains limited to
+candidate-evidence planning unless a later phase resolves the named blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,

@@ -5570,6 +5570,83 @@ git status --short
 ?? docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
 ```
 
+## Phase 32 Step 12 S05 Data Availability Assessment Boundary
+
+Phase 32 Step 12 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_data_availability_assessment_boundary.md
+```
+
+It updates only navigation/checkpoint docs around the new boundary. This step
+defines the data categories, availability dimensions, dataset
+acceptance/rejection criteria, feasibility outcomes, and routing choices that
+would be required before any possible future project-local deterministic
+reproduction of the `P30-BL-002-S05` candidate-evidence claim.
+
+The required data categories are futures/forwards universe definition,
+historical prices or returns, excess-return construction inputs, risk-free or
+collateral return assumptions if required, contract rolls / continuous futures
+construction, currency handling, timestamp/as-of availability, survivorship
+metadata, restatement/revision metadata, transaction cost, slippage, liquidity,
+execution assumption inputs, and missing-data flags or quality metadata.
+
+Candidate dataset acceptance remains limited to future planning gates:
+deterministic and versioned data, local reproducibility after acquisition,
+documented provenance, stable schema, explicit timestamps/as-of semantics,
+clear universe membership rules, clear roll/contract construction rules,
+explicit missing-data handling, explicit cost/slippage treatment, and no
+default online dependency during normal pytest.
+
+Candidate dataset rejection triggers include unclear provenance, inability to
+run offline, missing timestamp/as-of semantics where required, unevaluable
+survivorship bias, undocumented continuous-contract construction, impossible
+or meaningless universe mapping, incompatible licensing, uninspectable data
+quality, hidden vendor logic, insufficient sample-window coverage, or missing
+assumptions that cannot be separately modeled as limitations.
+
+Possible outcomes are routing labels only: exact reproduction potentially
+feasible, partial reproduction feasible, proxy reproduction feasible,
+methodology-only reproduction feasible, not feasible without paid/vendor data,
+or not feasible with current project constraints.
+
+The recommended next route is dataset schema/design if data appears feasible,
+source/vendor comparison or a data-provider matrix if data remains uncertain,
+or downgrade of S05 to methodology/candidate-context only if data is
+infeasible. No implementation is authorized.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no approved dataset, no acquired data, no
+project-local deterministic reproduction, no production threshold/config
+provenance, no applied no-lookahead audit inside the project, no
+implementation-scope approval, and no evaluator tests.
+
+This phase does not acquire data, ingest data, implement a schema, add a
+research script, add a notebook, add a backtest, implement a strategy,
+implement a signal/evaluator, create a validated artifact, approve a
+production threshold, or add broker, OMS, runtime, scheduler, persistence,
+portfolio, ledger, reconciliation, Alpaca, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 12:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_data_availability_assessment_boundary.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5583,12 +5660,13 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 data availability assessment or dataset schema/design under
-  `docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md`,
+- S05 dataset schema/design if data appears feasible, source/vendor comparison
+  if data remains uncertain, or downgrade of S05 to
+  methodology/candidate-context only if data is infeasible under
+  `docs/design/phase32_s05_data_availability_assessment_boundary.md`,
   preserving S01 and S03 as limited negative-control support only, preserving
-  S08 as methodology-only PIT support, preserving S05 as limited
-  candidate-evidence planning only, and applying the S08 PIT/no-lookahead,
-  survivorship, and restatement expectations, docs-only
+  S08 as methodology-only PIT support, and preserving S05 as limited
+  candidate-evidence planning only, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
