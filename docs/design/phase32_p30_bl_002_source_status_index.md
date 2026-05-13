@@ -24,6 +24,10 @@ This index summarizes only the existing docs:
 - [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md)
 - [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md)
 
+Related planning boundary:
+
+- [`phase32_s05_deterministic_reproduction_planning_boundary.md`](phase32_s05_deterministic_reproduction_planning_boundary.md)
+
 ## Source-status table
 
 | Source ID | Short label / topic | Current status | Eligible use | Formal review doc | Disposition | Next action |
@@ -32,7 +36,7 @@ This index summarizes only the existing docs:
 | `P30-BL-002-S02` | Brock/Lakonishok/LeBaron technical rules | Unreviewed scout-normalized Category B candidate | Scout-only rule-specification context | None | No formal disposition; no validation | Primary-source verification required before any formal review or stronger use. |
 | `P30-BL-002-S03` | Sullivan/Timmermann/White data-snooping / OOS negative control | Formal review complete | Limited data-snooping, multiple-testing, and OOS guardrail use only | [`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md) | Pass for negative-control/data-snooping/OOS guardrail use only | Collect more S03 evidence before exact rule reproduction, bootstrap binding, exact OOS result claims, deterministic test binding, or threshold comparison. |
 | `P30-BL-002-S04` | Aronson evidence-based technical analysis | Unreviewed scout-normalized Category C candidate | Scout-only falsification / multiple-testing context | None | No formal disposition; not direct threshold evidence | Verify exact rule set, data, code availability, and methodology details if routed later. |
-| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Define a docs-only project-local deterministic reproduction plan, or perform additional sourcing if the blockers prevent useful planning. |
+| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; next action is data availability assessment, dataset schema/design, or additional sourcing if blockers prevent useful planning. |
 | `P30-BL-002-S06` | Double-OOS crypto walk-forward optimization | Unreviewed scout-normalized Category D candidate; preprint/code/data unverified | Scout-only validation-architecture lead | None | No formal disposition; not validation evidence | Verify arXiv version, code license, data access, deterministic rerun, costs, and offline safety if pursued. |
 | `P30-BL-002-S07` | Interpretable hypothesis-driven trading | Unreviewed scout-normalized Category E candidate; too complex/preprint-based for current route | Scout-only baseline / OOS design context at most | None | No current formal-review route; no evidence use | No current action unless a later research scope explicitly verifies and re-routes it. |
 | `P30-BL-002-S08` | FactSet PIT consensus-estimates methodology | Formal review complete | Methodology-only PIT review material only | [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md) | Pass for methodology-only PIT review material only | Collect more S08 or replacement PIT evidence before exact data-contract binding, vendor query semantics, deterministic local replay, or stronger use. |
@@ -68,14 +72,17 @@ trading-path behavior.
 ## Recommended next routing
 
 Candidate evidence remains conditional and incomplete. The narrow S05
-conditional pass supports only future structured evaluation planning.
+conditional pass supports only future structured evaluation planning. Phase 32
+Step 11 adds a planning boundary for a possible future local deterministic
+reproduction, but it does not reproduce, validate, approve, or implement S05.
 
 The next likely route should remain documentation-only and should be one of:
 
-1. Define a project-local deterministic reproduction plan for `P30-BL-002-S05`
-   under the S08 PIT/no-lookahead/survivorship/restatement expectations and
-   the S01/S03 negative-control guardrails.
-2. Perform additional source verification only where the existing gaps require
+1. Assess S05 data availability and provenance under the Step 11 planning
+   boundary.
+2. Draft dataset schema/design requirements for a future deterministic
+   research-only reproduction.
+3. Perform additional source verification only where the existing gaps require
    it, especially if S05 blockers prevent useful reproduction planning.
 
 Do not start implementation from this index.

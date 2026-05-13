@@ -5506,6 +5506,70 @@ git status --short
 ?? docs/design/phase32_p30_bl_002_source_status_index.md
 ```
 
+## Phase 32 Step 11 S05 Deterministic Reproduction Planning Boundary
+
+Phase 32 Step 11 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
+```
+
+It updates only navigation/checkpoint docs around the new boundary. This step
+defines requirements for a possible future project-local deterministic
+reproduction of the `P30-BL-002-S05` time-series momentum candidate-evidence
+claim. It does not reproduce, validate, approve, implement, score, rank, or
+promote S05.
+
+The bounded candidate claim remains limited to the existing S05 review:
+time-series momentum framing for lagged own excess returns across 58
+futures/forwards, January 1965 through December 2009, monthly
+formation/holding framing, sign-based lagged-return variants, robustness
+targets, and unresolved data, timing, cost, and reproducibility gaps.
+
+The planning boundary records required future assumptions for universe
+definition, historical price/return data, excess-return construction,
+currency/contract handling, roll or continuous-futures handling, PIT
+availability, survivorship, restatements/revisions, costs/slippage, and
+missing data. It records required controls from S08 PIT discipline, S03
+data-snooping/multiple-testing/OOS guardrails, and S01 no-lookahead
+negative-control awareness.
+
+Future phases remain planning-only: data availability assessment, dataset
+schema/design, offline fixture or prototype dataset planning, reproduction
+protocol design, deterministic research notebook/script boundary, result-review
+template, and a promotion decision gate.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no project-local deterministic reproduction, no
+approved dataset, no production threshold/config provenance, no applied
+no-lookahead audit inside the project, no implementation-scope approval, and
+no evaluator tests.
+
+This phase does not create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+add data ingestion, add a backtest engine, or add runtime, broker, persistence,
+portfolio, ledger, reconciliation, Alpaca, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 11:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5519,7 +5583,8 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- structured local reproduction/evidence planning for `P30-BL-002-S05`,
+- S05 data availability assessment or dataset schema/design under
+  `docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md`,
   preserving S01 and S03 as limited negative-control support only, preserving
   S08 as methodology-only PIT support, preserving S05 as limited
   candidate-evidence planning only, and applying the S08 PIT/no-lookahead,
