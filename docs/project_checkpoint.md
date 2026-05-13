@@ -5801,6 +5801,83 @@ git status --short
 ?? docs/design/phase32_s05_data_provider_scout_research_normalization.md
 ```
 
+## Phase 32 Step 15 S05 Primary Verification Questionnaire / Outreach Template
+
+Phase 32 Step 15 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_primary_verification_questionnaire.md
+```
+
+It updates research-track navigation/checkpoint docs around the new
+questionnaire. This step defines a primary-verification questionnaire and
+manual outreach template for candidate S05 data sources. It is intended to
+support future manual outreach or primary documentation review only. It does
+not select, approve, purchase, acquire, ingest, store, validate, reproduce, or
+implement any data source.
+
+The questionnaire covers CSI, Pinnacle, Norgate, AQR, and conditional
+TradeStation only if project-owner access already exists or is expected. Its
+general verification questions cover exact instrument and contract coverage,
+S05 58 futures/forwards universe mapping, January 1965 through December 2009
+coverage, individual versus continuous contracts, roll methodology and roll
+metadata, PIT/as-of/versioning, survivorship/delisting treatment,
+restatement/revision/correction handling, excess-return construction inputs,
+currency handling, cost/slippage/liquidity fields, missing-data and quality
+metadata, licensing, private local archival, private repository use,
+derived-statistics publication, offline use, deterministic snapshots, and
+cost/subscription requirements.
+
+Source-specific sections ask AQR whether only factor data or any raw panel is
+available; ask CSI about contract-level coverage, continuous-series options,
+earliest coverage, export format/versioning, and roll/back-adjustment details;
+ask Pinnacle about CLC methodology, asset-class breadth, historical depth, and
+individual versus linked series; ask Norgate about start dates, contract versus
+continuous availability, offline export workflow, and whether 1965-1980 gaps
+make it partial/proxy only; and ask TradeStation only conditionally about
+access, export rights, and offline freezing.
+
+The response-capture table records source, question area, answer, evidence or
+contact reference, confidence, reproduction implication, licensing
+implication, and follow-up needed. The routing rules classify a source only as
+exact reproduction candidate, partial candidate, proxy candidate,
+calibration/context only, reject, or unresolved. These are routing labels only
+and do not validate S05 or authorize implementation.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, and no evaluator tests.
+
+This phase does not choose a vendor, buy a subscription, acquire data, ingest
+data, implement a schema, add code/notebooks/scripts, add a backtest,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Verification after Phase 32 Step 15:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_primary_verification_questionnaire.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5814,9 +5891,10 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 source/vendor primary-verification questionnaire or outreach template
-  focused first on CSI, Pinnacle, Norgate, and AQR under
-  `docs/design/phase32_s05_data_provider_scout_research_normalization.md`,
+- S05 primary documentation review or owner-sent outreach response capture
+  using `docs/design/phase32_s05_primary_verification_questionnaire.md`,
+  focused first on CSI, Pinnacle, Norgate, and AQR, with TradeStation only if
+  project-owner access exists or is expected,
   preserving S01 and S03 as limited negative-control support only, preserving
   S08 as methodology-only PIT support, preserving S05 as limited
   candidate-evidence planning only, and avoiding provider choice, acquisition,

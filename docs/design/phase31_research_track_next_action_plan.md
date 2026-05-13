@@ -107,13 +107,15 @@ signal-definition discussion. It does not validate a signal, approve a
 threshold, create a validated artifact, create a validated signal definition,
 or authorize implementation.
 
-Phase 32 Steps 10 through 14 add docs-only S05 status and sourcing boundaries:
+Phase 32 Steps 10 through 15 add docs-only S05 status and sourcing boundaries:
 the source status index, deterministic reproduction planning boundary, data
 availability assessment boundary, data-provider/source comparison plan, and
-external scout research normalization. These steps keep S05 limited to
+external scout research normalization, followed by the primary-verification
+questionnaire and manual outreach template. These steps keep S05 limited to
 candidate-evidence planning, treat scout research as unverified, and route the
-next action toward primary source/vendor verification before any provider
-choice, schema design, acquisition, or reproduction decision.
+next action toward primary response capture or primary documentation review
+before any provider choice, schema design, acquisition, or reproduction
+decision.
 
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
@@ -170,10 +172,11 @@ Current status:
   passes only for limited candidate-evidence planning; the pass is not
   validation, threshold approval, signal-definition support, implementation
   readiness, or trading readiness.
-- Phase 32 Steps 10 through 14 record the S05 source status index,
+- Phase 32 Steps 10 through 15 record the S05 source status index,
   deterministic reproduction planning boundary, data availability assessment
   boundary, data-provider/source comparison plan, and scout research
-  normalization. The Perplexity scout output remains unverified and cannot
+  normalization, then add the primary-verification questionnaire and manual
+  outreach template. The Perplexity scout output remains unverified and cannot
   support source selection, data approval, reproduction approval, validation,
   implementation readiness, or trading readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
@@ -282,12 +285,20 @@ Recommended next phases:
    them by cautious feasibility labels, and routes the next phase toward a
    primary-verification questionnaire or outreach template focused first on
    CSI, Pinnacle, Norgate, and AQR.
-20. Future route: source/vendor primary verification for S05.
+20. Phase 32 Step 15: S05 primary-verification questionnaire and outreach
+   template.
+   This step is complete. It defines vendor-neutral questions, source-specific
+   question areas for CSI, Pinnacle, Norgate, AQR, and conditional
+   TradeStation, response-capture fields, decision routing labels, explicit
+   non-goals, and remaining blockers. It does not contact vendors, select a
+   source, acquire data, approve reproduction, validate S05, or authorize
+   implementation.
+21. Future route: source/vendor primary response capture for S05.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-21. Later route: implementation readiness gate.
+22. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -346,7 +357,7 @@ true:
   use, Step 7 reviews S03 only for limited negative-control/data-snooping/OOS
   guardrail use, Step 8 reviews S08 only for methodology-only PIT use, Step 9
   reviews S05 only for limited candidate-evidence planning, and Steps 10
-  through 14 keep S05 in docs-only planning/source-verification routing.
+  through 15 keep S05 in docs-only planning/source-verification routing.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -450,7 +461,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- S05 Source/Vendor Primary Verification Questionnaire
+Future Step -- S05 Primary Verification Response Capture
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -475,15 +486,15 @@ Read first:
 - docs/design/phase32_s05_data_availability_assessment_boundary.md
 - docs/design/phase32_s05_data_provider_source_comparison_plan.md
 - docs/design/phase32_s05_data_provider_scout_research_normalization.md
+- docs/design/phase32_s05_primary_verification_questionnaire.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only source/vendor primary-verification questionnaire or
-direct outreach template for S05 data-source candidates, focused first on CSI,
-Pinnacle, Norgate, and AQR. Optionally include TradeStation only if project
-owner access exists or is expected. Treat Perplexity findings as unverified
-scout research. Preserve P30-BL-001 as mechanics-only dispositioned and
-unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
+Scope: documentation-only capture of primary documentation findings or
+manually obtained owner outreach responses for S05 candidate data sources.
+Use the Step 15 questionnaire as the template. Preserve Perplexity findings as
+unverified scout research, preserve P30-BL-001 as mechanics-only dispositioned
+and unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
 methodology-only, and preserve S05 as limited candidate-evidence planning only.
 Do not choose a vendor, acquire data, validate, approve, promote, create a
 ValidatedResearchArtifact, create a ValidatedSignalDefinition, or implement the

@@ -296,6 +296,10 @@ state.
   classifications and routes next work toward primary source/vendor
   verification without choosing a vendor, acquiring data, approving
   reproduction, validating S05, or authorizing implementation.
+- Phase 32 Step 15 adds an S05 primary-verification questionnaire and manual
+  outreach template. It defines questions and response-capture fields only; it
+  does not contact vendors, select a source, acquire data, approve
+  reproduction, validate S05, or authorize implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1543,6 +1547,16 @@ reproduction. It does not verify those claims, choose a vendor, acquire data,
 approve reproduction, create a validated artifact, create a validated signal
 definition, or authorize implementation.
 
+Phase 32 Step 15 adds the S05 primary-verification questionnaire in
+[`docs/design/phase32_s05_primary_verification_questionnaire.md`](design/phase32_s05_primary_verification_questionnaire.md).
+It is documentation-only and defines general and source-specific questions for
+CSI, Pinnacle, Norgate, AQR, and conditional TradeStation. It includes a
+response-capture table, decision routing rules, a vendor-neutral manual
+outreach template, explicit non-goals, and remaining blockers. It does not
+contact vendors, select a source, purchase data, acquire data, ingest data,
+approve reproduction, create a validated artifact, create a validated signal
+definition, or authorize implementation.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1703,6 +1717,8 @@ Ledger modes:
   provider/source comparison plan
 - Threshold evaluator behavior beyond the Phase 32 Step 14 S05 data provider
   scout research normalization
+- Threshold evaluator behavior beyond the Phase 32 Step 15 S05 primary
+  verification questionnaire
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1737,14 +1753,15 @@ adds a docs-only deterministic reproduction planning boundary for
 `P30-BL-002-S05`; Phase 32 Step 12 adds a docs-only data availability
 assessment boundary; Phase 32 Step 13 adds a docs-only data-provider/source
 comparison plan; Phase 32 Step 14 normalizes external scout research as
-unverified routing input. None of these steps reproduce, validate, approve,
-select a vendor, acquire data, or implement S05. The next practical research
-action after Phase 32 Step 14 is a source/vendor primary-verification
-questionnaire or outreach template focused first on CSI, Pinnacle, Norgate,
-and AQR, with TradeStation included only if project-owner access exists or is
-expected. S01 and S03 remain negative-control support only, S08 remains
-methodology-only PIT support only, and S05 remains limited to
-candidate-evidence planning unless a later phase resolves the named blockers.
+unverified routing input; Phase 32 Step 15 adds a primary-verification
+questionnaire and manual outreach template. None of these steps reproduce,
+validate, approve, select a vendor, acquire data, or implement S05. The next
+practical research action after Phase 32 Step 15 is primary documentation
+review or owner-sent outreach response capture, using the questionnaire before
+any source choice, schema, acquisition, or reproduction route. S01 and S03
+remain negative-control support only, S08 remains methodology-only PIT support
+only, and S05 remains limited to candidate-evidence planning unless a later
+phase resolves the named blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,
