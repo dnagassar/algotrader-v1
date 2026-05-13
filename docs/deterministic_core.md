@@ -273,8 +273,15 @@ state.
 - Phase 32 Step 7 records the `P30-BL-002-S03` formal review. It passes S03
   only for limited negative-control/data-snooping/OOS guardrail use, records
   unresolved exact rule tables, sample windows, OOS details, costs, bootstrap
-  assumptions, and reproducibility gaps, and routes the default next review to
-  `P30-BL-002-S05`. It does not validate a signal, approve a threshold, create
+  assumptions, and reproducibility gaps, and routes the next review to
+  `P30-BL-002-S08` before candidate-evidence review. It does not validate a
+  signal, approve a threshold, create a validated artifact, create a
+  validated signal definition, or authorize implementation.
+- Phase 32 Step 8 records the `P30-BL-002-S08` formal review. It passes S08
+  only for methodology-only PIT review material, records proprietary/vendor,
+  exact FQL, cutoff, access, and local replay gaps, and routes the next review
+  to `P30-BL-002-S05` under PIT/no-lookahead, survivorship, and restatement
+  expectations. It does not validate a signal, approve a threshold, create
   a validated artifact, create a validated signal definition, or authorize
   implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
@@ -1480,9 +1487,22 @@ out-of-sample negative-control expectations only; it cannot support production
 threshold approval, predictive-edge claims, profitability claims, a validated
 artifact, a validated signal definition, implementation readiness, paper
 trading readiness, or live trading readiness. `P30-BL-002` remains
-unvalidated, unapproved, not promoted, and not implementation-ready. The
-default next formal review route is `P30-BL-002-S05`, unless `P30-BL-002-S08`
-PIT methodology should be reviewed first.
+unvalidated, unapproved, not promoted, and not implementation-ready. The next
+formal review route is `P30-BL-002-S08` so PIT methodology can be reviewed
+before candidate evidence.
+
+Phase 32 Step 8 adds the `P30-BL-002-S08` formal review in
+[`docs/design/phase32_p30_bl_002_s08_formal_review.md`](design/phase32_p30_bl_002_s08_formal_review.md).
+The review passes S08 only for methodology-only PIT review material. It can
+support point-in-time methodology framing, survivorship-bias awareness,
+restatement / historical-revision awareness, lookahead-risk framing, and
+constraints for later candidate-evidence reviews only; it cannot support
+production threshold approval, predictive-edge claims, profitability claims, a
+validated artifact, a validated signal definition, implementation readiness,
+paper trading readiness, or live trading readiness. `P30-BL-002` remains
+unvalidated, unapproved, not promoted, and not implementation-ready. The next
+formal review route is `P30-BL-002-S05` under the S08 PIT/no-lookahead,
+survivorship, and restatement expectations.
 
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
@@ -1630,6 +1650,8 @@ Ledger modes:
   limited negative-control/no-lookahead formal review
 - Threshold evaluator behavior beyond the Phase 32 Step 7 P30-BL-002-S03
   limited negative-control/data-snooping/OOS guardrail formal review
+- Threshold evaluator behavior beyond the Phase 32 Step 8 P30-BL-002-S08
+  methodology-only PIT formal review
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1660,11 +1682,11 @@ phase should stay narrow, test-first, explicitly scoped, and heavily verified.
 Future threshold-evaluator work should continue by sourcing exact research and
 signal-definition support candidates for later review against the Phase 30
 Step 2 evidence standard and Phase 30 Step 3 review template. The next
-practical research action after Phase 32 Step 7 is docs-only formal review of
+practical research action after Phase 32 Step 8 is docs-only formal review of
 `P30-BL-002-S05` as the first limited candidate-evidence source, using the
-Step 5 intake plan and preserving S01 and S03 as negative-control support only.
-`P30-BL-002-S08` may be reviewed first if point-in-time methodology should be
-locked down before candidate evidence.
+Step 5 intake plan, preserving S01 and S03 as negative-control support only,
+and applying the S08 PIT/no-lookahead, survivorship, and restatement
+expectations as methodology constraints.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,

@@ -59,8 +59,8 @@ Later formal review should use this order:
    control.
 2. `P30-BL-002-S03` - Sullivan/Timmermann/White data-snooping /
    out-of-sample negative control.
-3. `P30-BL-002-S05` - Time-series momentum candidate.
-4. `P30-BL-002-S08` - FactSet PIT methodology-only reference.
+3. `P30-BL-002-S08` - FactSet PIT methodology-only reference.
+4. `P30-BL-002-S05` - Time-series momentum candidate.
 
 Negative-control sources should be reviewed before any candidate-evidence
 source because they define failure modes that can invalidate apparent threshold
@@ -68,9 +68,11 @@ or strategy evidence. The later review should first establish no-lookahead,
 timing, multiple-testing, and out-of-sample guardrails, then apply those
 guardrails to any direct candidate-evidence source.
 
-`P30-BL-002-S08` is last because it is methodology-only and proprietary. It may
-inform future point-in-time data-contract expectations, but it cannot validate
-a strategy, threshold, or signal definition.
+`P30-BL-002-S08` should be reviewed before `P30-BL-002-S05` when the project
+needs to lock point-in-time methodology before reviewing candidate evidence.
+S08 is methodology-only and proprietary. It may inform future point-in-time
+data-contract expectations, but it cannot validate a strategy, threshold, or
+signal definition.
 
 ## Shared formal review criteria
 
@@ -262,9 +264,26 @@ negative-control/data-snooping/OOS guardrail use. The pass is narrow and does
 not create validation, threshold approval, signal-definition support, or
 implementation readiness.
 
-The default review queue after S03 proceeds to `P30-BL-002-S05` as the first
-limited candidate-evidence source. `P30-BL-002-S08` may be reviewed before
-S05 only if point-in-time methodology should be locked down first.
+The review queue after S03 proceeds to `P30-BL-002-S08` first so
+point-in-time methodology can be locked down before the first limited
+candidate-evidence source, `P30-BL-002-S05`.
+
+## Phase 32 Step 8 follow-up
+
+Phase 32 Step 8 adds the S08-only formal review in
+[`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md).
+It passes `P30-BL-002-S08` only for methodology-only PIT review material. The
+pass is narrow and supports point-in-time data methodology framing,
+survivorship-bias awareness, restatement / historical-revision awareness,
+lookahead-risk framing, and constraints for later candidate-evidence reviews
+only. It does not create validation, threshold approval, signal-definition
+support, implementation readiness, or trading readiness.
+
+The review queue after S08 proceeds to `P30-BL-002-S05` as the first limited
+candidate-evidence source. S05 must be reviewed under the PIT/no-lookahead,
+survivorship, and restatement expectations recorded by S08. A future S05 pass
+would mean only eligible for further structured evaluation, not
+implementation-ready.
 
 ## Explicit non-claims
 
@@ -288,7 +307,8 @@ trading-path behavior.
 Evaluator implementation remains blocked by all of the following:
 
 - no `P30-BL-002-S05` formal review
-- no `P30-BL-002-S08` methodology review
+- the `P30-BL-002-S08` review is methodology-only PIT material and does not
+  validate a signal, threshold, artifact, signal definition, or implementation
 - the `P30-BL-002-S01` review is negative-control/no-lookahead only and does
   not validate a signal, threshold, artifact, signal definition, or
   implementation

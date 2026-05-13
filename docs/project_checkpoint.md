@@ -365,10 +365,18 @@ Phase 32 Step 7 is documentation-only. It adds the `P30-BL-002-S03` formal
 review and passes S03 only for limited negative-control/data-snooping/OOS
 guardrail use. The review records unresolved exact rule tables, sample windows,
 OOS details, costs, bootstrap assumptions, public code/data availability, and
-deterministic reproduction gaps; routes the default next formal review to
-`P30-BL-002-S05`; and does not validate a signal, approve a threshold, create a
-validated artifact, create a validated signal definition, add evaluator
-behavior, or authorize implementation.
+deterministic reproduction gaps; routes the next formal review to
+`P30-BL-002-S08` before candidate-evidence review; and does not validate a
+signal, approve a threshold, create a validated artifact, create a validated
+signal definition, add evaluator behavior, or authorize implementation.
+Phase 32 Step 8 is documentation-only. It adds the `P30-BL-002-S08` formal
+review and passes S08 only for methodology-only PIT review material. The
+review records point-in-time, no-lookahead, survivorship, and restatement
+expectations for later candidate-evidence reviews, along with proprietary
+vendor, exact FQL, cutoff, access, and local replay gaps; routes the next
+formal review to `P30-BL-002-S05`; and does not validate a signal, approve a
+threshold, create a validated artifact, create a validated signal definition,
+add evaluator behavior, or authorize implementation.
 The latest full-suite result is:
 
 ```text
@@ -4956,9 +4964,9 @@ The review order is deliberately conservative:
 1. `P30-BL-002-S01` for moving-average timing / lookahead negative-control
    review.
 2. `P30-BL-002-S03` for data-snooping / out-of-sample negative-control review.
-3. `P30-BL-002-S05` for limited time-series momentum candidate-evidence
+3. `P30-BL-002-S08` for methodology-only PIT/no-lookahead infrastructure
    review.
-4. `P30-BL-002-S08` for methodology-only PIT/no-lookahead infrastructure
+4. `P30-BL-002-S05` for limited time-series momentum candidate-evidence
    review.
 
 The plan records shared formal review criteria covering primary-source
@@ -5211,6 +5219,8 @@ Manual documentation checks:
   limited negative-control/no-lookahead formal review
 - threshold evaluator behavior beyond the Phase 32 Step 7 P30-BL-002-S03
   limited negative-control/data-snooping/OOS guardrail formal review
+- threshold evaluator behavior beyond the Phase 32 Step 8 P30-BL-002-S08
+  methodology-only PIT formal review
 - SignalInputValue behavior beyond minimal observed scalar traceability
 - feature computation
 - strategy engine
@@ -5252,9 +5262,8 @@ deterministic reproduction. Any future exact rule reproduction, bootstrap
 binding, exact OOS result claim, deterministic test binding, threshold
 comparison, or stronger claim requires additional S03 evidence.
 
-The default next routing step is `P30-BL-002-S05` formal review as the first
-limited candidate-evidence source. `P30-BL-002-S08` may be reviewed first only
-if point-in-time methodology should be locked down before candidate evidence.
+The next routing step is `P30-BL-002-S08` methodology-only formal review so
+point-in-time methodology can be locked down before candidate evidence.
 
 `P30-BL-002` remains candidate-only, unvalidated, unapproved, not promoted,
 not production-ready, not implementation-ready, and not threshold-justified.
@@ -5287,6 +5296,73 @@ git status --short
 ?? docs/design/phase32_p30_bl_002_s03_formal_review.md
 ```
 
+## Phase 32 Step 8 P30-BL-002-S08 Formal Review
+
+Phase 32 Step 8 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_s08_formal_review.md
+```
+
+It updates routing/status references in the Phase 30-32 research docs and the
+top-level checkpoint/core docs. This step formally reviews
+`P30-BL-002-S08` only, using the Phase 32 Step 4 primary-source verification
+gate and Phase 32 Step 5 intake plan as the source of truth.
+
+The S08 review outcome is: pass for methodology-only PIT review material
+only. The pass is narrow. S08 can support point-in-time methodology framing,
+survivorship-bias awareness, restatement / historical-revision awareness,
+lookahead-risk framing, and constraints for later candidate-evidence reviews
+only. It does not support production threshold approval, predictive-edge
+claims, profitability claims, time-series momentum validation, validated
+artifact readiness, validated signal definition readiness, implementation
+readiness, paper trading readiness, live trading readiness, or trading
+readiness.
+
+The review records unresolved S08 gaps for publication/version date,
+license/access restrictions, exact FQL behavior, timezone/cutoff behavior under
+local data constraints, deterministic local replay path, and applicability to
+any future offline point-in-time store. Any future exact data-contract binding,
+vendor query semantics, deterministic local replay, threshold comparison, or
+stronger claim requires additional S08 or replacement PIT evidence.
+
+The next routing step is `P30-BL-002-S05` formal review as the first limited
+candidate-evidence source. S05 must be evaluated under the PIT/no-lookahead,
+survivorship, and restatement expectations recorded by S08. A future S05 pass,
+if any, should mean only eligible for further structured evaluation, not
+implementation-ready.
+
+`P30-BL-002` remains candidate-only, unvalidated, unapproved, not promoted,
+not production-ready, not implementation-ready, and not threshold-justified.
+This phase does not create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+or add runtime, broker, persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 8:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/design/phase30_research_artifact_candidate_backlog.md
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_dataset_specific_validation_candidate_selection.md
+ M docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
+ M docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
+ M docs/design/phase32_p30_bl_002_source_package.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_s08_formal_review.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5302,9 +5378,9 @@ Safe next tasks include:
   research-track roadmap
 - formal review for `P30-BL-002-S05` as the first limited candidate-evidence
   source using the Phase 32 Step 5 intake plan, preserving S01 and S03 as
-  limited negative-control support only, docs-only
-- optional `P30-BL-002-S08` methodology review first if point-in-time
-  guardrails should be locked down before S05 candidate evidence
+  limited negative-control support only, preserving S08 as methodology-only
+  PIT support, and applying the S08 PIT/no-lookahead, survivorship, and
+  restatement expectations, docs-only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

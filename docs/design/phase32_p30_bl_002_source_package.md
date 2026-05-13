@@ -793,7 +793,7 @@ thresholds, artifacts, signal definitions, or implementation.
 | `P30-BL-002-S05` | Time Series Momentum | A | Direct dataset-specific simple threshold-rule candidate | No public code/PIT vendor detail from scout | Yes |
 | `P30-BL-002-S06` | Double OOS crypto walk-forward optimization | D | DVC/walk-forward infrastructure candidate | arXiv/code/data verification; crypto scope | Maybe |
 | `P30-BL-002-S07` | Interpretable Hypothesis-Driven Trading | E | Walk-forward template with honest OOS decay | arXiv, RL complexity, possible LLM/NLP layer | No |
-| `P30-BL-002-S08` | FactSet point-in-time backtesting white paper | D | PIT snapshot semantics | Vendor/proprietary and not direct threshold evidence | Maybe |
+| `P30-BL-002-S08` | FactSet point-in-time backtesting white paper | D | PIT snapshot semantics | Formal review complete for methodology-only use; vendor/proprietary and not direct threshold evidence | Yes, methodology-only |
 | `P30-BL-002-S09` | Small-Cap Stock Trading Strategies for Retail | D | PIT/delisting checklist candidate | Weak provenance and no public code/data | Maybe |
 | `P30-BL-002-S10` | Harvey and Liu, Backtesting | B | Multiple-testing methodology | Not dataset-specific threshold evidence | Maybe |
 | `P30-BL-002-S11` | Probability of Backtest Overfitting | B | PBO/CSCV methodology | Not dataset-specific | Maybe |
@@ -894,10 +894,10 @@ Current review intake shortlist, still candidate-only:
 
 1. `P30-BL-002-S01` for lookahead-bias correction in moving-average timing.
 2. `P30-BL-002-S03` for threshold-rule data-snooping and OOS negative control.
-3. `P30-BL-002-S05` for a direct simple zero-threshold momentum rule across a
-   broad dataset.
-4. `P30-BL-002-S08` for point-in-time and no-lookahead infrastructure
+3. `P30-BL-002-S08` for point-in-time and no-lookahead infrastructure
    semantics.
+4. `P30-BL-002-S05` for a direct simple zero-threshold momentum rule across a
+   broad dataset.
 
 Phase 32 Step 4 narrows the first four as follows: `P30-BL-002-S05`,
 `P30-BL-002-S03`, and `P30-BL-002-S01` are eligible for limited formal review
@@ -922,8 +922,20 @@ It passes `P30-BL-002-S03` only for limited
 negative-control/data-snooping/OOS guardrail use. That narrow pass does not
 validate `P30-BL-002`, approve any threshold, promote any artifact, bind any
 signal definition, accept an OOS result, or authorize implementation. The
-default next review route is `P30-BL-002-S05`, unless `P30-BL-002-S08`
-methodology review should be completed first to lock point-in-time guardrails.
+next review route is `P30-BL-002-S08` so point-in-time methodology is locked
+down before candidate-evidence review.
+
+Phase 32 Step 8 adds the S08-only formal review in
+[`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md).
+It passes `P30-BL-002-S08` only for methodology-only PIT review material. That
+narrow pass supports point-in-time methodology framing, survivorship-bias
+awareness, restatement / historical-revision awareness, lookahead-risk
+framing, and constraints for later candidate-evidence reviews only. It does
+not validate `P30-BL-002`, approve any threshold, promote any artifact, bind
+any signal definition, create implementation readiness, or authorize trading
+behavior. The next review route is `P30-BL-002-S05` as the first limited
+candidate-evidence source, constrained by the S08 PIT/no-lookahead,
+survivorship, and restatement expectations.
 
 Do not start implementation from this package. Do not create a
 `ValidatedResearchArtifact` or `ValidatedSignalDefinition`. Do not approve any
