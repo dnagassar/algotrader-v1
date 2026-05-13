@@ -5442,6 +5442,70 @@ git status --short
 ?? docs/design/phase32_p30_bl_002_s05_formal_review.md
 ```
 
+## Phase 32 Step 10 P30-BL-002 Source Status Index
+
+Phase 32 Step 10 is documentation-only. It adds:
+
+```text
+docs/design/phase32_p30_bl_002_source_status_index.md
+```
+
+It updates only the top-level checkpoint/core docs for navigation. This step
+creates a source-status index for normalized `P30-BL-002-S01` through
+`P30-BL-002-S23`. The index consolidates current status, eligible use, formal
+review doc where one exists, disposition, and next action. It does not
+re-review sources, change dispositions, validate evidence, promote artifacts,
+approve implementation, or introduce any production behavior.
+
+The index preserves the completed formal-review outcomes:
+
+- `P30-BL-002-S01`: limited negative-control / no-lookahead guardrail use
+  only.
+- `P30-BL-002-S03`: limited data-snooping / multiple-testing / OOS
+  negative-control guardrail use only.
+- `P30-BL-002-S08`: methodology-only PIT review material only.
+- `P30-BL-002-S05`: conditional pass for limited candidate-evidence planning
+  only.
+
+Unreviewed sources remain marked as unreviewed scout-only material,
+methodology context, unresolved source leads, preliminary reject/replacement
+material, or quarantined-from-current-route material according to the existing
+source package and verification docs. No unreviewed source is promoted to
+validated evidence.
+
+The next routing remains docs-only: either define a project-local deterministic
+reproduction plan for `P30-BL-002-S05`, or perform additional source
+verification only where existing gaps require it. Do not start implementation.
+
+Remaining blockers are unchanged: no exact `ValidatedResearchArtifact`, no
+exact `ValidatedSignalDefinition`, no project-local deterministic
+reproduction, no production threshold/config provenance, no applied
+no-lookahead audit inside the project, no implementation-scope approval, and
+no evaluator tests.
+
+This phase does not create a `ValidatedResearchArtifact`, create a
+`ValidatedSignalDefinition`, add evaluator behavior, add signal computation,
+or add runtime, broker, persistence, ML, or LLM trading-path behavior.
+
+Verification after Phase 32 Step 10:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified
+existing docs
+
+git status --short
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_p30_bl_002_source_status_index.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
