@@ -5878,6 +5878,103 @@ git status --short
 ?? docs/design/phase32_s05_primary_verification_questionnaire.md
 ```
 
+## Phase 32 Step 16 S05 Public Documentation Verification Sweep
+
+Phase 32 Step 16 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_public_documentation_verification_sweep.md
+```
+
+It updates research-track navigation/checkpoint docs around the new public
+documentation sweep. This step records what appears supported by public
+documentation for S05 candidate data-source categories, while treating the
+externally provided Perplexity report as scout research input only. It does not
+replace direct vendor/source confirmation and does not select, approve,
+purchase, acquire, ingest, store, validate, reproduce, or implement any data
+source.
+
+The sweep applies an evidence-quality policy that separates primary
+documentation, secondary documentation, and inference. Public vendor
+documentation may support cautious routing labels, but it does not equal legal
+approval, signed license approval, local archival permission, private
+repository permission, offline-use permission, or deterministic snapshot
+support. Marketing claims remain provisional until supported by detailed
+documentation or direct confirmation.
+
+Sources reviewed include AQR TSMOM factor data, CSI, Pinnacle/CLC, Norgate
+futures package, Portara/PortaraCQG, TradeStation, institutional feeds such as
+Bloomberg/LSEG/Datastream at high level, broker-native historical APIs, and
+public/free APIs plus ETF/index proxies.
+
+The cautious feasibility labels are:
+
+- AQR: calibration/context only.
+- CSI: documentation-supported partial candidate.
+- Pinnacle/CLC: documentation-supported partial candidate, with proxy limits
+  still possible.
+- Norgate: documentation-supported proxy candidate.
+- Portara/PortaraCQG: documentation-supported partial candidate.
+- TradeStation: likely unsuitable as a primary S05 source.
+- Institutional feeds: calibration/context only under current personal/offline
+  constraints.
+- Broker-native historical APIs: likely unsuitable as a primary S05 source.
+- Public/free APIs and ETF/index proxies: documentation-supported proxy
+  candidate only.
+
+Remaining unclear items include exact S05 universe mapping, January 1965
+through December 2009 coverage by instrument, individual contract availability,
+continuous contract construction, roll methodology and roll metadata, PIT/as-of
+versioning, previous-version preservation after corrections, survivorship and
+delisting treatment, corrections/revisions handling, missing-data and quality
+flags, excess-return inputs, collateral/risk-free assumptions, currency
+handling, local archival permission, private repository permission, automated
+local test usage permission, derived-statistics publication permission, offline
+use after acquisition, deterministic snapshot/version support, and
+pricing/subscription terms.
+
+Recommended routing is to keep CSI, Pinnacle, Norgate, and Portara in the
+direct-confirmation queue; keep AQR as calibration/context unless raw
+instrument-level access is verified; keep TradeStation conditional/proxy-only
+unless owner access and export/archival rights are verified; and mark broker,
+free API, and ETF/index proxy routes unsuitable for primary S05 reproduction.
+No provider should be chosen yet, and no dataset schema should be designed
+unless a later phase explicitly decides there is enough source clarity.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, and no evaluator tests.
+
+This phase does not choose a provider, buy a subscription, acquire data, ingest
+data, implement a schema, add code/notebooks/scripts, add a backtest,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Verification after Phase 32 Step 16:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_public_documentation_verification_sweep.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5891,10 +5988,12 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 primary documentation review or owner-sent outreach response capture
-  using `docs/design/phase32_s05_primary_verification_questionnaire.md`,
-  focused first on CSI, Pinnacle, Norgate, and AQR, with TradeStation only if
-  project-owner access exists or is expected,
+- S05 direct confirmation or owner-sent outreach response capture using
+  `docs/design/phase32_s05_primary_verification_questionnaire.md`, with
+  `docs/design/phase32_s05_public_documentation_verification_sweep.md` as
+  cautious routing context only, focused first on CSI, Pinnacle, Norgate,
+  Portara, and AQR, with TradeStation only if project-owner access, export
+  rights, and offline archival rights exist or are expected,
   preserving S01 and S03 as limited negative-control support only, preserving
   S08 as methodology-only PIT support, preserving S05 as limited
   candidate-evidence planning only, and avoiding provider choice, acquisition,

@@ -300,6 +300,13 @@ state.
   outreach template. It defines questions and response-capture fields only; it
   does not contact vendors, select a source, acquire data, approve
   reproduction, validate S05, or authorize implementation.
+- Phase 32 Step 16 adds an S05 public-documentation verification sweep. It
+  separates primary documentation, secondary documentation, and inference;
+  assigns cautious feasibility labels for AQR, CSI, Pinnacle, Norgate,
+  Portara, TradeStation, institutional feeds, broker APIs, and public/proxy
+  sources; and carries forward direct-confirmation gaps without selecting a
+  provider, acquiring data, approving reproduction, validating S05, or
+  authorizing implementation.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1557,6 +1564,20 @@ contact vendors, select a source, purchase data, acquire data, ingest data,
 approve reproduction, create a validated artifact, create a validated signal
 definition, or authorize implementation.
 
+Phase 32 Step 16 adds the S05 public-documentation verification sweep in
+[`docs/design/phase32_s05_public_documentation_verification_sweep.md`](design/phase32_s05_public_documentation_verification_sweep.md).
+It is documentation-only and treats the externally provided public-documentation
+research report as scout input rather than source-of-truth evidence. The sweep
+separates primary documentation, secondary documentation, and inference; records
+what appears documentation-supported for AQR, CSI, Pinnacle, Norgate, Portara,
+TradeStation, institutional feeds, broker-native APIs, and public/free or
+ETF/index proxies; assigns only cautious feasibility labels; and carries
+forward direct-confirmation questions around exact S05 mapping, 1965-2009
+coverage, roll/PIT/versioning, licensing, offline archival, and pricing. It
+does not choose a provider, acquire data, design a schema, approve
+reproduction, create a validated artifact, create a validated signal
+definition, or authorize implementation.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1719,6 +1740,8 @@ Ledger modes:
   scout research normalization
 - Threshold evaluator behavior beyond the Phase 32 Step 15 S05 primary
   verification questionnaire
+- Threshold evaluator behavior beyond the Phase 32 Step 16 S05 public
+  documentation verification sweep
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1754,14 +1777,16 @@ adds a docs-only deterministic reproduction planning boundary for
 assessment boundary; Phase 32 Step 13 adds a docs-only data-provider/source
 comparison plan; Phase 32 Step 14 normalizes external scout research as
 unverified routing input; Phase 32 Step 15 adds a primary-verification
-questionnaire and manual outreach template. None of these steps reproduce,
-validate, approve, select a vendor, acquire data, or implement S05. The next
-practical research action after Phase 32 Step 15 is primary documentation
-review or owner-sent outreach response capture, using the questionnaire before
-any source choice, schema, acquisition, or reproduction route. S01 and S03
-remain negative-control support only, S08 remains methodology-only PIT support
-only, and S05 remains limited to candidate-evidence planning unless a later
-phase resolves the named blockers.
+questionnaire and manual outreach template; Phase 32 Step 16 records a
+public-documentation verification sweep with cautious feasibility labels and
+direct-confirmation gaps. None of these steps reproduce, validate, approve,
+select a vendor, acquire data, or implement S05. The next practical research
+action after Phase 32 Step 16 is direct confirmation capture or owner-sent
+outreach response capture, using the questionnaire before any source choice,
+schema, acquisition, or reproduction route. S01 and S03 remain negative-control
+support only, S08 remains methodology-only PIT support only, and S05 remains
+limited to candidate-evidence planning unless a later phase resolves the named
+blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,
