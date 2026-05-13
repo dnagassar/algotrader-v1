@@ -107,20 +107,22 @@ signal-definition discussion. It does not validate a signal, approve a
 threshold, create a validated artifact, create a validated signal definition,
 or authorize implementation.
 
-Phase 32 Steps 10 through 19 add docs-only S05 status and sourcing boundaries:
+Phase 32 Steps 10 through 20 add docs-only S05 status and sourcing boundaries:
 the source status index, deterministic reproduction planning boundary, data
 availability assessment boundary, data-provider/source comparison plan, and
 external scout research normalization, followed by the primary-verification
 questionnaire and manual outreach template, a public-documentation verification
 sweep, a public-documentation-only feasibility decision, and a non-exact proxy
-reproduction boundary, then a proxy route selection boundary. These steps keep
-S05 limited to candidate-evidence planning, treat scout research as unverified,
-separate primary documentation, secondary documentation, and inference, record
-the owner decision to avoid vendor/source contact for now, and keep multiple
-proxy routes under consideration without selecting a provider, dataset, schema,
-reproduction, validation, or implementation route. S05 remains only a
-public-doc-supported proxy/partial planning candidate before any provider
-choice, schema design, acquisition, or reproduction decision.
+reproduction boundary, then a proxy route selection boundary and route-neutral
+proxy dataset requirements boundary. These steps keep S05 limited to
+candidate-evidence planning, treat scout research as unverified, separate
+primary documentation, secondary documentation, and inference, record the owner
+decision to avoid vendor/source contact for now, keep multiple proxy routes
+under consideration, and define minimum proxy dataset requirements without
+selecting a provider, dataset, schema, reproduction, validation, or
+implementation route. S05 remains only a public-doc-supported proxy/partial
+planning candidate before any provider choice, schema design, acquisition, or
+reproduction decision.
 
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
@@ -177,15 +179,17 @@ Current status:
   passes only for limited candidate-evidence planning; the pass is not
   validation, threshold approval, signal-definition support, implementation
   readiness, or trading readiness.
-- Phase 32 Steps 10 through 19 record the S05 source status index,
+- Phase 32 Steps 10 through 20 record the S05 source status index,
   deterministic reproduction planning boundary, data availability assessment
   boundary, data-provider/source comparison plan, and scout research
   normalization, then add the primary-verification questionnaire and manual
   outreach template plus a public-documentation verification sweep and
   public-documentation-only feasibility decision, followed by the non-exact
-  proxy reproduction boundary and proxy route selection boundary. The Perplexity
-  scout output remains unverified, the owner avoids vendor/source contact for
-  now, multiple proxy routes remain under consideration, and S05 cannot support
+  proxy reproduction boundary, proxy route selection boundary, and
+  route-neutral proxy dataset requirements boundary. The Perplexity scout
+  output remains unverified, the owner avoids vendor/source contact for now,
+  multiple proxy routes remain under consideration, minimum proxy dataset
+  requirements are documented without route narrowing, and S05 cannot support
   source selection, data approval, reproduction approval, validation,
   implementation readiness, or trading readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
@@ -329,13 +333,17 @@ Recommended next phases:
    routes under consideration for docs-only planning, selects no provider,
    dataset, schema, reproduction, validation, or implementation route, and
    recommends a route-neutral proxy dataset requirement boundary.
-25. Future route: proxy dataset requirement boundary, easier-data candidate, or
+25. Phase 32 Step 20: S05 route-neutral proxy dataset requirements boundary.
+   This step is complete. It defines minimum requirements for any possible
+   future S05 proxy dataset without selecting a route, provider, dataset,
+   schema, reproduction protocol, validation route, or implementation path.
+26. Future route: proxy dataset source shortlist, easier-data candidate, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-26. Later route: implementation readiness gate.
+27. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -394,8 +402,8 @@ true:
   use, Step 7 reviews S03 only for limited negative-control/data-snooping/OOS
   guardrail use, Step 8 reviews S08 only for methodology-only PIT use, Step 9
   reviews S05 only for limited candidate-evidence planning, and Steps 10
-  through 18 keep S05 in docs-only planning/source-verification/proxy-boundary
-  routing.
+  through 20 keep S05 in docs-only planning/source-verification/proxy-boundary
+  and route-neutral requirement routing.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -499,7 +507,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- S05 Proxy Dataset Requirement Boundary Or Alternative Routing
+Future Step -- S05 Proxy Dataset Source Shortlist Boundary Or Alternative Routing
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -529,16 +537,18 @@ Read first:
 - docs/design/phase32_s05_public_documentation_only_feasibility_decision.md
 - docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md
 - docs/design/phase32_s05_proxy_route_selection_boundary.md
+- docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only routing after the owner decision to avoid
 vendor/source contact for now. Use the Step 16 public-doc sweep, Step 17
-feasibility decision, Step 18 non-exact proxy boundary, and Step 19 route
-selection boundary as cautious routing context only. Safe routes are a
-docs-only, route-neutral proxy dataset requirement boundary that does not choose
-a provider or dataset, an easier-data candidate evaluation, or backlog pending
-future vendor contact, budget/access change, or stronger public documentation.
+feasibility decision, Step 18 non-exact proxy boundary, Step 19 route selection
+boundary, and Step 20 route-neutral proxy dataset requirements boundary as
+cautious routing context only. Safe routes are a docs-only proxy dataset source
+shortlist boundary that does not choose a provider or dataset, an easier-data
+candidate evaluation, or backlog pending future vendor contact, budget/access
+change, or stronger public documentation.
 Preserve Perplexity findings as unverified scout research, preserve P30-BL-001
 as mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
 negative-control only, preserve S08 as methodology-only, and preserve S05 as
@@ -549,5 +559,6 @@ or implement the candidate unless that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, data ingestion, notebooks, scripts, ML,
 and LLM trading-path logic.
-Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
+Verification: python -m pytest; git diff --name-only HEAD -- src;
+git diff --check; git status --short.
 ```

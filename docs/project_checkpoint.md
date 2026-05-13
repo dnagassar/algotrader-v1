@@ -6192,6 +6192,81 @@ deterministic offline snapshot path, and no resolved exact S05 universe,
 1965-2009 instrument coverage, raw contract, roll, PIT/as-of,
 correction-history, or versioning basis.
 
+## Phase 32 Step 20 S05 Route-Neutral Proxy Dataset Requirements Boundary
+
+Phase 32 Step 20 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
+```
+
+It defines minimum requirements for any possible future S05 proxy dataset while
+remaining route-neutral. It does not choose among modern futures, reduced
+futures, ETF/index proxy, AQR factor-level context, or manually reconstructed
+published-table checks.
+
+The requirements cover universe definition, date range, frequency,
+price/return fields, timestamp/as-of semantics, provenance,
+versioning/snapshot discipline, missing-data handling, survivorship,
+corporate-action or contract-adjustment assumptions, roll/continuous
+construction assumptions, currency handling, cost/slippage/liquidity
+assumptions, license/offline-use constraints, reproducibility constraints, and
+comparison target.
+
+It records route-specific notes without route selection for modern futures
+subset, reduced-universe futures, ETF/index proxy, AQR factor-level
+calibration/context, and manually reconstructed published-table checks. Each
+route remains a planning possibility only, with special requirements and
+weaknesses documented to prevent overclaiming.
+
+Minimum future acceptance criteria include an explicit non-S05-exact label,
+clear universe and date range, documented source/provenance, deterministic
+local snapshot plan, explicit `as_of` and no-lookahead assumptions, explicit
+survivorship and missing-data assumptions, cost/slippage assumptions where
+relevant, a clear comparison target, limitations and non-claims, and normal
+pytest remaining offline and credential-free.
+
+Future proxy plans should be rejected or deferred if source/provenance is
+unclear, the route is framed as exact S05 replication, data cannot be
+snapshotted deterministically, license/offline-use constraints block local
+use, `as_of` and no-lookahead assumptions cannot be stated, universe/date range
+are ambiguous, methodology encourages overclaiming, or the plan implies
+implementation or validation before reproduction review.
+
+Required non-claims state that any future proxy dataset plan does not prove
+exact S05 replication, original S05 edge, profitability, live or paper trading
+readiness, production threshold validity, strategy generalization, or
+implementation approval.
+
+Future docs-only gates may include proxy route selection revisit, proxy dataset
+source shortlist boundary, proxy data storage/fixture policy boundary, proxy
+reproduction protocol boundary, proxy result-review template, or pausing S05
+and evaluating another easier-data candidate.
+
+The safest next routing is to keep S05 in backlog after documenting proxy
+requirements. If one more S05 planning step is useful, it should be a docs-only
+proxy dataset source shortlist boundary without selecting, approving,
+acquiring, ingesting, or implementing data. The other safe route is to evaluate
+another easier-data research candidate.
+
+This phase does not perform exact replication, select a route, select a
+dataset, acquire data, ingest data, add schema/code/notebooks/scripts, add a
+backtest, reproduce S05, implement a strategy, implement a signal/evaluator,
+create a validated artifact, approve a production threshold, or add broker,
+OMS, runtime, scheduler, persistence, portfolio, ledger, reconciliation,
+Alpaca, ML, or LLM trading-path behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, no evaluator tests, no selected proxy route, no approved proxy
+dataset source shortlist, no approved proxy data-storage or fixture policy, no
+approved proxy reproduction protocol, no deterministic offline snapshot path,
+and no resolved exact S05 universe, 1965-2009 instrument coverage, raw
+contract, roll, PIT/as-of, correction-history, or versioning basis.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6205,19 +6280,22 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 docs-only proxy dataset requirement planning, another easier-data
+- S05 docs-only proxy dataset source shortlist planning, another easier-data
   candidate evaluation, or backlog routing using
   `docs/design/phase32_s05_public_documentation_verification_sweep.md` and
   `docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`
   plus
   `docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md` as
   cautious routing context plus
-  `docs/design/phase32_s05_proxy_route_selection_boundary.md` as the current
-  route-selection boundary; preserve the owner decision to avoid vendor/source
-  contact for now, preserve S01 and S03 as limited negative-control support
-  only, preserve S08 as methodology-only PIT support, preserve S05 as limited
-  candidate-evidence planning only, and avoid provider choice, acquisition,
-  schema design, reproduction approval, validation, or implementation approval
+  `docs/design/phase32_s05_proxy_route_selection_boundary.md` as the
+  route-selection boundary and
+  `docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md`
+  as the current requirements boundary; preserve the owner decision to avoid
+  vendor/source contact for now, preserve S01 and S03 as limited
+  negative-control support only, preserve S08 as methodology-only PIT support,
+  preserve S05 as limited candidate-evidence planning only, and avoid provider
+  choice, acquisition, schema design, reproduction approval, validation, or
+  implementation approval
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

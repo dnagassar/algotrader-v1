@@ -34,6 +34,8 @@ Related planning boundaries:
 - [`phase32_s05_public_documentation_verification_sweep.md`](phase32_s05_public_documentation_verification_sweep.md)
 - [`phase32_s05_public_documentation_only_feasibility_decision.md`](phase32_s05_public_documentation_only_feasibility_decision.md)
 - [`phase32_s05_non_exact_proxy_reproduction_boundary.md`](phase32_s05_non_exact_proxy_reproduction_boundary.md)
+- [`phase32_s05_proxy_route_selection_boundary.md`](phase32_s05_proxy_route_selection_boundary.md)
+- [`phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md`](phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md)
 
 ## Source-status table
 
@@ -43,7 +45,7 @@ Related planning boundaries:
 | `P30-BL-002-S02` | Brock/Lakonishok/LeBaron technical rules | Unreviewed scout-normalized Category B candidate | Scout-only rule-specification context | None | No formal disposition; no validation | Primary-source verification required before any formal review or stronger use. |
 | `P30-BL-002-S03` | Sullivan/Timmermann/White data-snooping / OOS negative control | Formal review complete | Limited data-snooping, multiple-testing, and OOS guardrail use only | [`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md) | Pass for negative-control/data-snooping/OOS guardrail use only | Collect more S03 evidence before exact rule reproduction, bootstrap binding, exact OOS result claims, deterministic test binding, or threshold comparison. |
 | `P30-BL-002-S04` | Aronson evidence-based technical analysis | Unreviewed scout-normalized Category C candidate | Scout-only falsification / multiple-testing context | None | No formal disposition; not direct threshold evidence | Verify exact rule set, data, code availability, and methodology details if routed later. |
-| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan; Step 14 normalizes external scout research without verification; Step 15 adds a primary-verification questionnaire and manual outreach template; Step 16 records a public-documentation verification sweep with cautious feasibility labels; Step 17 records the owner decision to avoid vendor/source contact for now and keeps S05 only as a public-doc-supported proxy/partial planning candidate; Step 18 defines the non-exact proxy reproduction boundary; Step 19 keeps multiple proxy routes under consideration without selecting data, schema, reproduction, validation, or implementation. Next action is a route-neutral proxy dataset requirement boundary, another easier-data candidate, or backlog pending future contact/access changes. |
+| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan; Step 14 normalizes external scout research without verification; Step 15 adds a primary-verification questionnaire and manual outreach template; Step 16 records a public-documentation verification sweep with cautious feasibility labels; Step 17 records the owner decision to avoid vendor/source contact for now and keeps S05 only as a public-doc-supported proxy/partial planning candidate; Step 18 defines the non-exact proxy reproduction boundary; Step 19 keeps multiple proxy routes under consideration without selecting data, schema, reproduction, validation, or implementation; Step 20 defines route-neutral proxy dataset requirements without selecting a route, provider, dataset, schema, reproduction, validation, or implementation. Next action is backlog, one more docs-only proxy dataset source shortlist boundary, or another easier-data candidate. |
 | `P30-BL-002-S06` | Double-OOS crypto walk-forward optimization | Unreviewed scout-normalized Category D candidate; preprint/code/data unverified | Scout-only validation-architecture lead | None | No formal disposition; not validation evidence | Verify arXiv version, code license, data access, deterministic rerun, costs, and offline safety if pursued. |
 | `P30-BL-002-S07` | Interpretable hypothesis-driven trading | Unreviewed scout-normalized Category E candidate; too complex/preprint-based for current route | Scout-only baseline / OOS design context at most | None | No current formal-review route; no evidence use | No current action unless a later research scope explicitly verifies and re-routes it. |
 | `P30-BL-002-S08` | FactSet PIT consensus-estimates methodology | Formal review complete | Methodology-only PIT review material only | [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md) | Pass for methodology-only PIT review material only | Collect more S08 or replacement PIT evidence before exact data-contract binding, vendor query semantics, deterministic local replay, or stronger use. |
@@ -96,15 +98,20 @@ Phase 32 Step 19 compares candidate proxy routes and keeps multiple routes
 under consideration without selecting a provider, dataset, subscription,
 schema, reproduction, validation, or implementation route. None of these phases
 reproduce, validate, approve, select a vendor, acquire data, or implement S05.
+Phase 32 Step 20 defines route-neutral proxy dataset requirements before any
+future proxy route narrowing. It does not select a proxy route, provider,
+dataset, source shortlist, schema, reproduction protocol, validation route, or
+implementation path.
 
 The next likely route should remain documentation-only and should be one of:
 
-1. Define a docs-only, route-neutral proxy dataset requirement boundary without
-   choosing a provider, dataset, subscription, schema, or implementation.
-2. Pause S05 and evaluate another candidate with easier data availability.
-3. Keep S05 in the backlog pending future vendor contact, budget/access change,
+1. Keep S05 in backlog after documenting the proxy requirements.
+2. Define a docs-only proxy dataset source shortlist boundary without choosing
+   a provider, dataset, subscription, schema, or implementation.
+3. Pause S05 and evaluate another candidate with easier data availability.
+4. Keep S05 in the backlog pending future vendor contact, budget/access change,
    or stronger public documentation.
-4. Keep broker/free APIs and ETF/index proxies unsuitable for primary S05
+5. Keep broker/free APIs and ETF/index proxies unsuitable for primary S05
    reproduction unless later primary evidence changes that.
 
 Do not start implementation from this index.
@@ -124,6 +131,7 @@ Evaluator implementation remains blocked by all of the following:
 - no implementation-scope approval
 - no evaluator tests
 - no approved proxy route
+- no approved proxy dataset source shortlist
 - no approved proxy data-storage policy
 - no approved proxy reproduction protocol
 
