@@ -6459,6 +6459,84 @@ reproduction protocol approval, no result-review template approval, no
 promotion/rejection decision, and no trading implication or production
 threshold.
 
+## Phase 33 Step 3 Broad ETF Data Feasibility, Universe, and Benchmark Boundary
+
+Phase 33 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The grouped
+boundary evaluates candidate public/easy data source feasibility, defines
+future ETF universe requirements, and defines future benchmark/cash proxy
+requirements for the broad-ETF simple moving-average trend-following
+candidate.
+
+The candidate remains the primary easier-data source-review candidate only. It
+is not validated, implemented, production-ready, trading-ready, or actionable.
+
+The data source feasibility comparison covers Stooq, Yahoo Finance / yfinance,
+Nasdaq Data Link where applicable, Alpha Vantage free/retail APIs, official
+ETF issuer pages, FRED where applicable, and broker historical data as context
+only. Each category records possible role, strengths, weaknesses,
+adjusted-price or total-return support, local snapshot possibility,
+licensing/offline-use clarity, fit with normal offline credential-free pytest,
+and cautious current status. All categories remain candidate or context
+sources only, not approved.
+
+Future ETF universe requirements include broad, liquid, simple instruments,
+clear inception dates, stable symbol identity, sufficient history,
+survivorship-bias controls, anti-cherry-picking controls, inactive/delisted
+handling where applicable, asset class categories before performance
+inspection, and preference for broad-market exposures over niche/thematic
+ETFs. No final ETF list or universe rule is approved.
+
+Future benchmark/cash proxy requirements include buy-and-hold comparison
+definition, cash or T-bill proxy definition, FRED as a candidate risk-free
+series source only where applicable, date alignment, ETF inception handling,
+total-return versus price-return caveats, and transaction cost/friction
+assumptions to define later. No benchmark or cash proxy is approved.
+
+Source-quality requirements include adjusted close/corporate-action handling,
+dividend and split adjustment transparency, timestamp/date semantics,
+missing-data handling, local snapshot/versioning, provenance and citation,
+license/offline-use review, deterministic reproducibility, explicit
+no-lookahead assumptions, and normal pytest remaining offline and
+credential-free.
+
+The allowed cautious feasibility labels are promising for source review,
+usable only as secondary/check source, proxy/context only, unresolved / needs
+documentation review, and likely unsuitable. They are routing labels only and
+do not approve any data source, universe, benchmark, or implementation.
+
+The recommended next docs-only gate is a public-source documentation
+verification sweep. A methodology-only moving-average review should wait until
+basic source documentation questions are clearer. If the source route cannot
+remain public/easy, license-reviewable, offline-safe, and non-claiming, the
+candidate should remain in backlog or route to another easier-data candidate.
+
+This phase does not perform or authorize data approval, ETF universe approval,
+benchmark approval, data acquisition, data ingestion, schema/code/notebooks/scripts,
+backtesting, reproduction, methodology approval, moving-average parameter
+approval, strategy implementation, evaluator or signal implementation, signal
+computation, validated artifacts, validated signal definitions, production
+thresholds, profitability claims, trading implications, or broker, OMS,
+runtime, scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML,
+or LLM trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no acquired data, no
+project-local deterministic reproduction, no no-lookahead audit, no production
+threshold/config provenance, no implementation-scope approval, no evaluator
+tests, no approved methodology, no approved moving-average parameters, no
+approved data license/offline-use path, no approved local snapshot/versioning
+policy, no source-documentation verification sweep, no total-return versus
+price-return comparison decision, no transaction cost/friction review, no
+result-review template, no promotion/rejection decision, and no trading
+implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6490,8 +6568,9 @@ Safe next tasks include:
   source categories unselected, and avoid provider choice, acquisition, schema
   design, reproduction approval, validation, or implementation approval
 - docs-only source feasibility review for the Phase 33 selected broad-ETF
-  moving-average candidate, while keeping the secondary shortlist and S05
-  backlog status non-approving
+  moving-average candidate is now grouped in Phase 33 Step 3; the next
+  docs-only gate should be a public-source documentation verification sweep
+  while keeping the secondary shortlist and S05 backlog status non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

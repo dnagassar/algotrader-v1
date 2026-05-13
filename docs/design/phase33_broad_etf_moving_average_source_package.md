@@ -134,6 +134,14 @@ Future docs-only gates should remain separate and non-promoting:
 7. Result-review template.
 8. Promotion or rejection decision boundary.
 
+Phase 33 Step 3 groups the first three gates into
+[`phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md`](phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md).
+That grouped boundary remains non-approving. It evaluates candidate source
+categories, defines future ETF universe requirements, and defines future
+benchmark/cash proxy requirements without selecting or approving any source,
+universe, benchmark, data, methodology, reproduction, validation, or
+implementation.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic

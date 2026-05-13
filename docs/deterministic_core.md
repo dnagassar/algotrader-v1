@@ -339,6 +339,12 @@ state.
   source categories, source-quality requirements, docs-only review gates, and
   blockers without approving a universe, source, dataset, benchmark,
   reproduction, validation, implementation, or trading implication.
+- Phase 33 Step 3 adds a grouped broad-ETF data feasibility, universe, and
+  benchmark boundary. It compares candidate source categories, defines future
+  ETF universe requirements, defines future benchmark/cash proxy requirements,
+  and recommends a public-source documentation verification sweep without
+  approving data, a universe, a benchmark, reproduction, validation,
+  implementation, or trading implication.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1696,6 +1702,21 @@ remaining blockers. It does not approve an ETF universe, data source, dataset,
 benchmark, parameter, signal definition, schema, reproduction, validation,
 implementation, or trading implication.
 
+Phase 33 Step 3 adds the broad-ETF data feasibility, universe, and benchmark
+boundary in
+[`docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md`](design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md).
+It is documentation-only and groups public/easy data source feasibility, ETF
+universe requirements, and benchmark/cash proxy requirements for the broad-ETF
+moving-average candidate. It compares Stooq, Yahoo Finance / yfinance, Nasdaq
+Data Link where applicable, Alpha Vantage free/retail APIs, official ETF issuer
+pages, FRED where applicable, and broker historical data as candidate or
+context source categories only. It defines cautious feasibility labels,
+source-quality requirements, future universe and benchmark constraints, a
+public-source documentation verification sweep as the next gate, explicit
+non-goals, and remaining blockers. It does not approve a source, universe,
+benchmark, cash proxy, methodology, data acquisition, reproduction, validation,
+implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1874,6 +1895,8 @@ Ledger modes:
   candidate selection boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 2 broad-ETF
   moving-average source package
+- Threshold evaluator behavior beyond the Phase 33 Step 3 broad-ETF data
+  feasibility, universe, and benchmark boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1949,6 +1972,14 @@ docs-only review gates, explicit non-goals, and remaining blockers. It does
 not approve an ETF universe, data source, dataset, benchmark, parameter,
 signal definition, schema, reproduction, validation, implementation, or
 trading implication.
+
+Phase 33 Step 3 adds the broad-ETF data feasibility, universe, and benchmark
+boundary. It groups source feasibility, future ETF universe requirements, and
+future benchmark/cash proxy requirements for the selected easier-data
+candidate. It recommends a docs-only public-source documentation verification
+sweep before methodology review. It does not approve data, a universe, a
+benchmark, a cash proxy, methodology, reproduction, validation,
+implementation, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
