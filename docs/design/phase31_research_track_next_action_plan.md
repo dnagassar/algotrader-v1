@@ -107,6 +107,14 @@ signal-definition discussion. It does not validate a signal, approve a
 threshold, create a validated artifact, create a validated signal definition,
 or authorize implementation.
 
+Phase 32 Steps 10 through 14 add docs-only S05 status and sourcing boundaries:
+the source status index, deterministic reproduction planning boundary, data
+availability assessment boundary, data-provider/source comparison plan, and
+external scout research normalization. These steps keep S05 limited to
+candidate-evidence planning, treat scout research as unverified, and route the
+next action toward primary source/vendor verification before any provider
+choice, schema design, acquisition, or reproduction decision.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -162,6 +170,12 @@ Current status:
   passes only for limited candidate-evidence planning; the pass is not
   validation, threshold approval, signal-definition support, implementation
   readiness, or trading readiness.
+- Phase 32 Steps 10 through 14 record the S05 source status index,
+  deterministic reproduction planning boundary, data availability assessment
+  boundary, data-provider/source comparison plan, and scout research
+  normalization. The Perplexity scout output remains unverified and cannot
+  support source selection, data approval, reproduction approval, validation,
+  implementation readiness, or trading readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -251,12 +265,29 @@ Recommended next phases:
    approval gaps, and keeps all validation and implementation routes blocked.
    It does not validate a signal, approve a threshold, or authorize
    implementation.
-15. Future route: structured local reproduction/evidence planning for S05, or
-   additional sourcing if S05 gaps block planning. Any review must preserve
-   traceable dataset scope, point-in-time input assumptions, threshold or
-   parameter rationale, no-lookahead controls, reproducibility notes,
-   robustness or out-of-sample evidence, limitations, and non-claims.
-16. Later route: implementation readiness gate.
+15. Phase 32 Step 10: `P30-BL-002` source status index.
+   This step is complete. It consolidates source statuses and preserves S05 as
+   conditional candidate-evidence planning only.
+16. Phase 32 Step 11: S05 deterministic reproduction planning boundary.
+   This step is complete. It defines planning requirements only and does not
+   reproduce or validate S05.
+17. Phase 32 Step 12: S05 data availability assessment boundary.
+   This step is complete. It defines data availability dimensions and routing
+   outcomes only.
+18. Phase 32 Step 13: S05 data-provider/source comparison plan.
+   This step is complete. It compares source categories only and does not
+   select, acquire, ingest, validate, or implement data.
+19. Phase 32 Step 14: S05 data-provider scout research normalization.
+   This step is complete. It normalizes external scout findings, classifies
+   them by cautious feasibility labels, and routes the next phase toward a
+   primary-verification questionnaire or outreach template focused first on
+   CSI, Pinnacle, Norgate, and AQR.
+20. Future route: source/vendor primary verification for S05.
+   Any review must preserve traceable dataset scope, point-in-time input
+   assumptions, threshold or parameter rationale, no-lookahead controls,
+   reproducibility notes, robustness or out-of-sample evidence, limitations,
+   licensing constraints, offline replay requirements, and non-claims.
+21. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -313,7 +344,9 @@ true:
   primary-source identity and intake eligibility only, Step 5 plans the review
   sequence, Step 6 reviews S01 only for limited negative-control/no-lookahead
   use, Step 7 reviews S03 only for limited negative-control/data-snooping/OOS
-  guardrail use, and Step 8 reviews S08 only for methodology-only PIT use.
+  guardrail use, Step 8 reviews S08 only for methodology-only PIT use, Step 9
+  reviews S05 only for limited candidate-evidence planning, and Steps 10
+  through 14 keep S05 in docs-only planning/source-verification routing.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -417,7 +450,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- P30-BL-002 Limited Formal Source Review
+Future Step -- S05 Source/Vendor Primary Verification Questionnaire
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -437,19 +470,26 @@ Read first:
 - docs/design/phase32_p30_bl_002_s03_formal_review.md
 - docs/design/phase32_p30_bl_002_s08_formal_review.md
 - docs/design/phase32_p30_bl_002_s05_formal_review.md
+- docs/design/phase32_p30_bl_002_source_status_index.md
+- docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
+- docs/design/phase32_s05_data_availability_assessment_boundary.md
+- docs/design/phase32_s05_data_provider_source_comparison_plan.md
+- docs/design/phase32_s05_data_provider_scout_research_normalization.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
-Scope: documentation-only structured local reproduction/evidence planning for
-S05 after the completed S01 negative-control/no-lookahead review, S03
-negative-control/data-snooping/OOS review, S08 methodology-only PIT review, and
-S05 limited candidate-evidence planning review. Preserve P30-BL-001 as
-mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
-negative-control only, preserve S08 as methodology-only, and preserve S05 as
-limited candidate-evidence planning only. Do not validate, approve, promote,
-create a ValidatedResearchArtifact, create a ValidatedSignalDefinition, or
-implement the candidate unless that is explicitly scoped in a later phase.
+Scope: documentation-only source/vendor primary-verification questionnaire or
+direct outreach template for S05 data-source candidates, focused first on CSI,
+Pinnacle, Norgate, and AQR. Optionally include TradeStation only if project
+owner access exists or is expected. Treat Perplexity findings as unverified
+scout research. Preserve P30-BL-001 as mechanics-only dispositioned and
+unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
+methodology-only, and preserve S05 as limited candidate-evidence planning only.
+Do not choose a vendor, acquire data, validate, approve, promote, create a
+ValidatedResearchArtifact, create a ValidatedSignalDefinition, or implement the
+candidate unless that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
-broker/runtime behavior, persistence, ML, and LLM trading-path logic.
+broker/runtime behavior, persistence, data ingestion, notebooks, scripts, ML,
+and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src; git diff --check.
 ```

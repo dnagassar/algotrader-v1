@@ -29,6 +29,7 @@ Related planning boundaries:
 - [`phase32_s05_deterministic_reproduction_planning_boundary.md`](phase32_s05_deterministic_reproduction_planning_boundary.md)
 - [`phase32_s05_data_availability_assessment_boundary.md`](phase32_s05_data_availability_assessment_boundary.md)
 - [`phase32_s05_data_provider_source_comparison_plan.md`](phase32_s05_data_provider_source_comparison_plan.md)
+- [`phase32_s05_data_provider_scout_research_normalization.md`](phase32_s05_data_provider_scout_research_normalization.md)
 
 ## Source-status table
 
@@ -38,7 +39,7 @@ Related planning boundaries:
 | `P30-BL-002-S02` | Brock/Lakonishok/LeBaron technical rules | Unreviewed scout-normalized Category B candidate | Scout-only rule-specification context | None | No formal disposition; no validation | Primary-source verification required before any formal review or stronger use. |
 | `P30-BL-002-S03` | Sullivan/Timmermann/White data-snooping / OOS negative control | Formal review complete | Limited data-snooping, multiple-testing, and OOS guardrail use only | [`phase32_p30_bl_002_s03_formal_review.md`](phase32_p30_bl_002_s03_formal_review.md) | Pass for negative-control/data-snooping/OOS guardrail use only | Collect more S03 evidence before exact rule reproduction, bootstrap binding, exact OOS result claims, deterministic test binding, or threshold comparison. |
 | `P30-BL-002-S04` | Aronson evidence-based technical analysis | Unreviewed scout-normalized Category C candidate | Scout-only falsification / multiple-testing context | None | No formal disposition; not direct threshold evidence | Verify exact rule set, data, code availability, and methodology details if routed later. |
-| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan. Next action is dataset schema/design if exact/partial candidates are plausible, proxy-worth decision if only proxy candidates are plausible, source/vendor verification if unresolved, or downgrade to methodology/candidate-context only if infeasible. |
+| `P30-BL-002-S05` | Moskowitz/Ooi/Pedersen time-series momentum | Formal review complete | Limited candidate-evidence planning only | [`phase32_p30_bl_002_s05_formal_review.md`](phase32_p30_bl_002_s05_formal_review.md) | Conditional pass for limited candidate-evidence planning only | Step 11 defines a docs-only deterministic reproduction planning boundary; Step 12 defines the data availability assessment boundary; Step 13 defines a source-category comparison plan; Step 14 normalizes external scout research without verification. Next action is a primary-verification questionnaire or outreach template before any source choice, schema, acquisition, or reproduction route. |
 | `P30-BL-002-S06` | Double-OOS crypto walk-forward optimization | Unreviewed scout-normalized Category D candidate; preprint/code/data unverified | Scout-only validation-architecture lead | None | No formal disposition; not validation evidence | Verify arXiv version, code license, data access, deterministic rerun, costs, and offline safety if pursued. |
 | `P30-BL-002-S07` | Interpretable hypothesis-driven trading | Unreviewed scout-normalized Category E candidate; too complex/preprint-based for current route | Scout-only baseline / OOS design context at most | None | No current formal-review route; no evidence use | No current action unless a later research scope explicitly verifies and re-routes it. |
 | `P30-BL-002-S08` | FactSet PIT consensus-estimates methodology | Formal review complete | Methodology-only PIT review material only | [`phase32_p30_bl_002_s08_formal_review.md`](phase32_p30_bl_002_s08_formal_review.md) | Pass for methodology-only PIT review material only | Collect more S08 or replacement PIT evidence before exact data-contract binding, vendor query semantics, deterministic local replay, or stronger use. |
@@ -77,20 +78,22 @@ Candidate evidence remains conditional and incomplete. The narrow S05
 conditional pass supports only future structured evaluation planning. Phase 32
 Step 11 adds a planning boundary for a possible future local deterministic
 reproduction. Phase 32 Step 12 adds a data availability assessment boundary.
-Phase 32 Step 13 adds a source-category comparison plan. None of these phases
-reproduce, validate, approve, or implement S05.
+Phase 32 Step 13 adds a source-category comparison plan. Phase 32 Step 14
+normalizes external scout research as unverified routing input. None of these
+phases reproduce, validate, approve, select a vendor, acquire data, or
+implement S05.
 
 The next likely route should remain documentation-only and should be one of:
 
-1. Draft dataset schema/design requirements for a future deterministic
-   research-only reproduction if exact or partial source candidates are
-   plausible.
-2. Decide whether proxy reproduction is worth the sourcing and maintenance cost
-   if only proxy source candidates are plausible.
-3. Perform future source/vendor verification if source categories remain
-   unresolved.
-4. Downgrade S05 to methodology/candidate-context only if data availability is
-   infeasible under current project constraints.
+1. Draft a vendor/source primary-verification questionnaire or direct outreach
+   template focused first on CSI, Pinnacle, Norgate, and AQR.
+2. Include TradeStation only if the project owner already has access or expects
+   access.
+3. Keep broker/free APIs proxy-only or unsuitable for exact reproduction unless
+   later primary evidence changes that.
+4. Defer dataset schema/design, acquisition, proxy-worth decisions, and
+   downgrade decisions until primary verification is complete enough to route
+   them.
 
 Do not start implementation from this index.
 
@@ -102,6 +105,7 @@ Evaluator implementation remains blocked by all of the following:
 - no exact `ValidatedSignalDefinition`
 - no project-local deterministic reproduction
 - no selected/approved dataset
+- no primary-source vendor verification
 - no acquired data
 - no production threshold/config provenance
 - no applied no-lookahead audit inside the project

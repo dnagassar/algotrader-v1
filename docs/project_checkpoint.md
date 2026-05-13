@@ -5721,6 +5721,86 @@ git status --short
 ?? docs/design/phase32_s05_data_provider_source_comparison_plan.md
 ```
 
+## Phase 32 Step 14 S05 Data Provider Scout Research Normalization
+
+Phase 32 Step 14 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_data_provider_scout_research_normalization.md
+```
+
+It updates research-track navigation/checkpoint docs around the new
+normalization. This step records the externally provided Perplexity output as
+unverified scout research only. It separates scout-reported evidence,
+normalization inferences, and unresolved questions, and it requires
+primary-source verification before any dataset selection, source approval,
+schema design, acquisition, or reproduction planning.
+
+The normalized executive finding records, cautiously and without verification,
+that exact S05 reproduction appears unlikely under personal/offline
+constraints, partial or proxy reproduction appears more realistic, AQR appears
+useful for factor-level calibration/context only, CSI/Pinnacle/Norgate and
+possibly TradeStation require primary verification, institutional feeds appear
+theoretically strong but practically unsuitable unless access/licensing is
+resolved, and broker/free APIs appear unsuitable for exact S05 reproduction.
+
+The candidate classification table covers AQR TSMOM factor data, CSI,
+Pinnacle, Norgate, TradeStation, Bloomberg/LSEG/Datastream/institutional
+feeds, retail charting/futures vendors, broker-native historical APIs,
+public/free datasets, ETF/index proxy universe, and manually reconstructed
+published table checks. The classifications are routing labels only and do
+not validate, select, approve, or acquire any source.
+
+The primary verification checklist records future questions for exact
+instrument/contract coverage, January 1965 through December 2009 coverage,
+futures/forwards support, individual contracts versus continuous series, roll
+methodology, PIT/as-of/versioning, survivorship/delisting treatment,
+restatement/revision handling, excess-return construction, currency,
+transaction cost/slippage/liquidity fields, local archival permissions,
+private repo permissions, derived-statistics sharing, offline use,
+deterministic snapshots, and costs/subscriptions.
+
+The recommended next route is a vendor/source primary-verification
+questionnaire or direct outreach template focused first on CSI, Pinnacle,
+Norgate, and AQR. TradeStation should be included only if the project owner
+already has access or expects access. Broker/free APIs remain proxy-only or
+unsuitable for exact S05 reproduction unless later primary evidence changes
+that. No implementation is authorized.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no primary-source
+vendor verification, no acquired data, no project-local deterministic
+reproduction, no production threshold/config provenance, no applied
+no-lookahead audit inside the project, no implementation-scope approval, and
+no evaluator tests.
+
+This phase does not choose a vendor, buy a subscription, acquire data, ingest
+data, implement a schema, add code/notebooks/scripts, add a backtest,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Verification after Phase 32 Step 14:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_data_provider_scout_research_normalization.md
+```
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -5734,14 +5814,13 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 dataset schema/design if exact or partial source candidates are
-  plausible, proxy reproduction worth/cost decision if only proxy candidates
-  are plausible, future source/vendor verification if unresolved, or downgrade
-  of S05 to methodology/candidate-context only if data is infeasible under
-  `docs/design/phase32_s05_data_provider_source_comparison_plan.md`,
+- S05 source/vendor primary-verification questionnaire or outreach template
+  focused first on CSI, Pinnacle, Norgate, and AQR under
+  `docs/design/phase32_s05_data_provider_scout_research_normalization.md`,
   preserving S01 and S03 as limited negative-control support only, preserving
-  S08 as methodology-only PIT support, and preserving S05 as limited
-  candidate-evidence planning only, docs-only
+  S08 as methodology-only PIT support, preserving S05 as limited
+  candidate-evidence planning only, and avoiding provider choice, acquisition,
+  schema design, or reproduction approval
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
