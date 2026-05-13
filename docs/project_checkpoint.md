@@ -6532,10 +6532,104 @@ project-local deterministic reproduction, no no-lookahead audit, no production
 threshold/config provenance, no implementation-scope approval, no evaluator
 tests, no approved methodology, no approved moving-average parameters, no
 approved data license/offline-use path, no approved local snapshot/versioning
-policy, no source-documentation verification sweep, no total-return versus
-price-return comparison decision, no transaction cost/friction review, no
-result-review template, no promotion/rejection decision, and no trading
-implication or production threshold.
+policy, no source-documentation approval or terms/license resolution, no
+total-return versus price-return comparison decision, no transaction
+cost/friction review, no result-review template, no promotion/rejection
+decision, and no trading implication or production threshold.
+
+## Phase 33 Step 4 Broad ETF Public-Source Documentation Verification Sweep
+
+Phase 33 Step 4 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
+```
+
+It also updates research-track navigation/checkpoint context only. The sweep
+records what appears supported by public documentation for broad ETF data, ETF
+metadata, and cash/benchmark candidates while preserving the boundary that
+public documentation is not legal, license, redistribution, private-repository,
+offline-use, data, universe, benchmark, methodology, reproduction, validation,
+or implementation approval.
+
+The evidence-quality policy separates primary documentation, secondary
+documentation, and inference. It treats the external Perplexity report as
+public-documentation scout research only, not as source of truth, and does not
+promote marketing, third-party, client-library, search-snippet, or scout-report
+claims into verified project facts without official documentation support.
+
+The sweep covers Stooq, Yahoo Finance / yfinance, Nasdaq Data Link, Alpha
+Vantage, official ETF issuer pages such as iShares/BlackRock, Vanguard,
+SPDR/State Street, and Invesco, FRED, and broker historical data as context
+only. It assigns the allowed cautious feasibility labels only: promising for
+source review, usable only as secondary/check source, proxy/context only,
+unresolved / needs documentation review, and likely unsuitable.
+
+The assigned routing labels are cautious and non-approving:
+
+- Stooq: promising for source review, with adjusted/dividend/revision/license
+  details unresolved.
+- Yahoo Finance / yfinance: promising for source review, with automation, API
+  stability, cache/archive, adjustment methodology, and private-repo terms
+  unresolved.
+- Nasdaq Data Link: usable only as secondary/check source unless specific ETF
+  coverage and terms are later clarified.
+- Alpha Vantage: usable only as secondary/check source because rate limits,
+  ETF coverage, adjustment detail, and archival terms remain unresolved.
+- ETF issuer pages: proxy/context only for metadata such as inception dates,
+  expense ratios, distributions, holdings, objectives, and index context, not
+  primary historical price data.
+- FRED: proxy/context only for cash/T-bill/risk-free comparison review, with
+  `TB3MS` and `DGS3MO` carried forward as candidate series only.
+- Broker historical data: context only, not the default project source.
+
+The sweep records ETF universe documentation notes for broad U.S. equity ETFs,
+broad international equity ETFs, broad bond ETFs, broad commodity/gold ETFs,
+and cash/T-bill proxy candidates. No ETF universe, ticker list, asset-class
+mix, issuer set, inclusion rule, exclusion rule, inception rule,
+inactive-fund policy, metadata source, benchmark, or cash proxy is approved.
+
+The direct follow-up backlog carries forward adjusted-close methodology,
+total-return versus price-plus-dividend assumptions, dividend/reinvestment
+treatment, split/corporate-action handling, correction/revision policies,
+point-in-time/as-of semantics, local archival permission, private repo
+permission, derived-stat publication permission, API rate limits, long-term
+reproducibility, and terms/license review.
+
+Recommended routing after the sweep is to keep Stooq and Yahoo Finance /
+yfinance in the candidate source queue for further docs-only review; keep
+Nasdaq Data Link and Alpha Vantage as secondary/check candidates only; keep
+ETF issuer pages as metadata/context only; keep FRED as a cash/risk-free proxy
+candidate only; keep broker historical data as context only; and approve no
+source. The next docs-only gate should be methodology-only moving-average
+review, no-lookahead/as-of review, or ETF universe shortlist boundary.
+
+This phase does not perform or authorize source approval, data approval, ETF
+universe approval, benchmark approval, cash proxy approval, methodology
+approval, moving-average parameter approval, data acquisition, data ingestion,
+schema/code/notebooks/scripts, backtesting, reproduction, strategy
+implementation, evaluator or signal implementation, signal computation,
+signal scoring/ranking/direction/confidence/actionability, validated
+artifacts, validated signal definitions, new contract types, production
+thresholds, profitability claims, implementation-readiness claims,
+production-readiness claims, trading implications, or broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no acquired data, no
+project-local deterministic reproduction, no no-lookahead audit, no production
+threshold/config provenance, no implementation-scope approval, no evaluator
+tests, no approved methodology, no approved moving-average parameters, no
+approved data license/offline-use path, no approved local snapshot/versioning
+policy, no total-return versus price-return comparison decision, no
+dividend/reinvestment treatment, no corporate-action handling policy, no
+correction/revision policy, no point-in-time/as-of policy, no source-specific
+local archival/private-repo/derived-stat publication permission, no
+transaction cost/friction review, no result-review template, no
+promotion/rejection decision, and no trading implication or production
+threshold.
 
 ## Next Recommended Steps
 
@@ -6567,10 +6661,12 @@ Safe next tasks include:
   preserve S05 as limited candidate-evidence planning only, keep all proxy
   source categories unselected, and avoid provider choice, acquisition, schema
   design, reproduction approval, validation, or implementation approval
-- docs-only source feasibility review for the Phase 33 selected broad-ETF
-  moving-average candidate is now grouped in Phase 33 Step 3; the next
-  docs-only gate should be a public-source documentation verification sweep
-  while keeping the secondary shortlist and S05 backlog status non-approving
+- docs-only public-source documentation verification for the Phase 33 selected
+  broad-ETF moving-average candidate is now recorded in Phase 33 Step 4; the
+  next docs-only gate should be methodology-only moving-average review,
+  no-lookahead/as-of review, or ETF universe shortlist boundary while keeping
+  all source, universe, benchmark, data, validation, implementation, secondary
+  shortlist, and S05 backlog statuses non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

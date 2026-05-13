@@ -345,6 +345,11 @@ state.
   and recommends a public-source documentation verification sweep without
   approving data, a universe, a benchmark, reproduction, validation,
   implementation, or trading implication.
+- Phase 33 Step 4 adds a broad-ETF public-source documentation verification
+  sweep. It separates primary documentation, secondary documentation, and
+  inference; assigns cautious source-routing labels; and keeps all data,
+  universe, benchmark, methodology, reproduction, validation, implementation,
+  and trading-use approvals blocked.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1717,6 +1722,19 @@ non-goals, and remaining blockers. It does not approve a source, universe,
 benchmark, cash proxy, methodology, data acquisition, reproduction, validation,
 implementation, or trading implication.
 
+Phase 33 Step 4 adds the broad-ETF public-source documentation verification
+sweep in
+[`docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md`](design/phase33_broad_etf_public_source_documentation_verification_sweep.md).
+It is documentation-only and records what public documentation appears to
+support for Stooq, Yahoo Finance / yfinance, Nasdaq Data Link, Alpha Vantage,
+official ETF issuer pages, FRED, and broker historical data. It separates
+primary documentation, secondary documentation, and inference; treats the
+external Perplexity report as scout input only; assigns cautious feasibility
+labels; records ETF universe and benchmark/cash proxy notes; and carries
+forward direct follow-up questions. It does not approve a source, universe,
+benchmark, cash proxy, methodology, data acquisition, reproduction, validation,
+implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1897,6 +1915,8 @@ Ledger modes:
   moving-average source package
 - Threshold evaluator behavior beyond the Phase 33 Step 3 broad-ETF data
   feasibility, universe, and benchmark boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 4 broad-ETF
+  public-source documentation verification sweep
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1979,6 +1999,14 @@ future benchmark/cash proxy requirements for the selected easier-data
 candidate. It recommends a docs-only public-source documentation verification
 sweep before methodology review. It does not approve data, a universe, a
 benchmark, a cash proxy, methodology, reproduction, validation,
+implementation, or trading implication.
+
+Phase 33 Step 4 adds the broad-ETF public-source documentation verification
+sweep. It normalizes public documentation and external scout-report input for
+candidate source categories, records cautious feasibility labels, and routes
+next work toward a methodology-only moving-average review, no-lookahead/as-of
+review, or ETF universe shortlist boundary. It does not approve a source,
+universe, benchmark, cash proxy, data, methodology, reproduction, validation,
 implementation, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly

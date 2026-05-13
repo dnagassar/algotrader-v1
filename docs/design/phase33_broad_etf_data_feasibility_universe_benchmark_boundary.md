@@ -137,18 +137,33 @@ Any unresolved source-quality item blocks data approval, ETF universe approval,
 benchmark approval, reproduction approval, signal-definition review, and
 implementation-scope review.
 
+## Public-Source Documentation Verification Sweep
+
+Phase 33 Step 4 adds the public-source documentation verification sweep in
+[`phase33_broad_etf_public_source_documentation_verification_sweep.md`](phase33_broad_etf_public_source_documentation_verification_sweep.md).
+That sweep normalizes public documentation and external scout-report findings
+for Stooq, Yahoo Finance / yfinance, Nasdaq Data Link, Alpha Vantage, official
+ETF issuer pages, FRED, and broker historical data as cautious routing context
+only.
+
+Step 4 does not approve a source, ETF universe, benchmark, cash proxy,
+methodology, reproduction, validation, implementation, or trading implication.
+It keeps Stooq and Yahoo Finance / yfinance in the candidate source queue,
+keeps Nasdaq Data Link and Alpha Vantage as secondary/check candidates only,
+keeps issuer pages as metadata/context only, keeps FRED as a cash/risk-free
+proxy candidate only, and keeps broker historical data as context only.
+
 ## Recommended Next Gate
 
-Recommended next docs-only gate: public-source documentation verification
-sweep.
+Recommended next docs-only gate after the public-source documentation
+verification sweep: either methodology-only moving-average review,
+no-lookahead/as-of review, or ETF universe shortlist boundary.
 
-That gate should verify source documentation for the candidate source
-categories, especially terms, adjusted-price semantics, timestamp semantics,
-snapshot permission, and normal-pytest isolation. If that sweep cannot keep
-the route public/easy, license-reviewable, offline-safe, and non-claiming, the
-candidate should stay in backlog or be routed to a different easier-data
-candidate. A methodology-only moving-average review should wait until basic
-source documentation questions are clearer.
+Those gates must remain documentation-only unless a later phase explicitly
+approves a narrower scope. They must not acquire data, ingest data, approve a
+source, approve a universe, approve a benchmark, approve a cash proxy,
+reproduce results, validate, backtest, implement methodology, implement an
+evaluator, compute signals, or create trading implications.
 
 ## Explicit Non-Goals
 
@@ -201,7 +216,7 @@ following:
 - no approved moving-average parameters
 - no approved data license or offline-use path
 - no approved local snapshot/versioning policy
-- no source-documentation verification sweep
+- no source-documentation approval or terms/license resolution
 - no total-return versus price-return comparison decision
 - no transaction cost, slippage, spread, or friction assumption review
 - no result-review template

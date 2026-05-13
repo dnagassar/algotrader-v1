@@ -159,6 +159,17 @@ requirements, and future benchmark/cash proxy requirements. It does not
 approve a data source, ETF universe, benchmark, cash proxy, methodology,
 reproduction, validation, implementation, or trading implication.
 
+Phase 33 Step 4 adds the broad-ETF public-source documentation verification
+sweep in
+[`phase33_broad_etf_public_source_documentation_verification_sweep.md`](phase33_broad_etf_public_source_documentation_verification_sweep.md).
+It separates primary documentation, secondary documentation, and inference;
+normalizes external public-source scout research as unverified input only; and
+assigns cautious feasibility labels for Stooq, Yahoo Finance / yfinance,
+Nasdaq Data Link, Alpha Vantage, ETF issuer pages, FRED, and broker
+historical data. It does not approve a source, universe, benchmark, cash
+proxy, methodology, reproduction, validation, implementation, or trading
+implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -244,6 +255,17 @@ Current status:
   benchmark/cash proxy requirements; and recommends a public-source
   documentation verification sweep. It does not approve a source, universe,
   benchmark, cash proxy, data, reproduction, validation, implementation, or
+  trading implication.
+- Phase 33 Step 4 records the broad-ETF public-source documentation
+  verification sweep. It separates primary documentation, secondary
+  documentation, and inference; treats the external Perplexity report as
+  scout input only; assigns cautious feasibility labels; records ETF universe
+  and benchmark/cash proxy notes; and routes Stooq and Yahoo Finance /
+  yfinance to further docs-only source review, Nasdaq Data Link and Alpha
+  Vantage to secondary/check review only, ETF issuer pages to metadata/context
+  only, FRED to cash/risk-free proxy review only, and broker historical data
+  to context only. It does not approve a source, universe, benchmark, cash
+  proxy, data, methodology, reproduction, validation, implementation, or
   trading implication.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
@@ -420,13 +442,23 @@ Recommended next phases:
    broad-ETF moving-average candidate. It does not approve a source, universe,
    benchmark, cash proxy, data, methodology, reproduction, validation,
    implementation, or trading implication.
-30. Future route: public-source documentation verification sweep for the
-   selected easier-data candidate, S05 backlog recheck, or backlog.
+30. Phase 33 Step 4: broad-ETF public-source documentation verification
+   sweep.
+   This step is complete. It normalizes public documentation and external
+   scout-report input for Stooq, Yahoo Finance / yfinance, Nasdaq Data Link,
+   Alpha Vantage, official ETF issuer pages, FRED, and broker historical data;
+   assigns cautious feasibility labels; records universe and benchmark/cash
+   proxy notes; and carries forward direct follow-up questions. It does not
+   approve a source, universe, benchmark, cash proxy, data, methodology,
+   reproduction, validation, implementation, or trading implication.
+31. Future route: methodology-only moving-average review,
+   no-lookahead/as-of review, ETF universe shortlist boundary, S05 backlog
+   recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-31. Later route: implementation readiness gate.
+32. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -626,21 +658,24 @@ Read first:
 - docs/design/phase33_easier_data_research_candidate_selection_boundary.md
 - docs/design/phase33_broad_etf_moving_average_source_package.md
 - docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md
+- docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only routing after the owner decision to avoid
 vendor/source contact for now and after the Phase 33 easier-data candidate
 selection boundary, broad-ETF moving-average source package, and grouped
-broad-ETF data feasibility/universe/benchmark boundary. Use the Step 16
+broad-ETF data feasibility/universe/benchmark boundary plus public-source
+documentation verification sweep. Use the Step 16
 public-doc sweep, Step 17 feasibility decision, Step 18 non-exact proxy
 boundary, Step 19 route selection boundary, Step 20 route-neutral proxy
 dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
 decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
-package, and Phase 33 grouped boundary as cautious routing context only. The
-preferred safe route is a docs-only public-source documentation verification
-sweep for the selected broad-ETF moving-average candidate. S05 should remain
-in backlog
+package, Phase 33 grouped boundary, and Phase 33 public-source sweep as
+cautious routing context only. The preferred safe route is a docs-only
+methodology-only moving-average review, no-lookahead/as-of review, or ETF
+universe shortlist boundary for the selected broad-ETF moving-average
+candidate. S05 should remain in backlog
 unless a later prompt explicitly reopens it because future vendor contact,
 budget/access change, stronger public documentation, or owner preference
 changes materially.

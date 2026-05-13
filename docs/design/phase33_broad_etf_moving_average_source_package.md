@@ -142,6 +142,14 @@ benchmark/cash proxy requirements without selecting or approving any source,
 universe, benchmark, data, methodology, reproduction, validation, or
 implementation.
 
+Phase 33 Step 4 adds the public-source documentation verification sweep in
+[`phase33_broad_etf_public_source_documentation_verification_sweep.md`](phase33_broad_etf_public_source_documentation_verification_sweep.md).
+It separates primary documentation, secondary documentation, and inference;
+normalizes external public-source scout research as unverified input only; and
+assigns cautious routing labels without approving any source, universe,
+benchmark, cash proxy, methodology, reproduction, validation, implementation,
+or trading use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic
