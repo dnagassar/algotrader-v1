@@ -107,22 +107,24 @@ signal-definition discussion. It does not validate a signal, approve a
 threshold, create a validated artifact, create a validated signal definition,
 or authorize implementation.
 
-Phase 32 Steps 10 through 20 add docs-only S05 status and sourcing boundaries:
+Phase 32 Steps 10 through 21 add docs-only S05 status and sourcing boundaries:
 the source status index, deterministic reproduction planning boundary, data
 availability assessment boundary, data-provider/source comparison plan, and
 external scout research normalization, followed by the primary-verification
 questionnaire and manual outreach template, a public-documentation verification
 sweep, a public-documentation-only feasibility decision, and a non-exact proxy
-reproduction boundary, then a proxy route selection boundary and route-neutral
-proxy dataset requirements boundary. These steps keep S05 limited to
+reproduction boundary, then a proxy route selection boundary, route-neutral
+proxy dataset requirements boundary, and non-approving proxy source
+shortlist/backlog routing decision. These steps keep S05 limited to
 candidate-evidence planning, treat scout research as unverified, separate
 primary documentation, secondary documentation, and inference, record the owner
 decision to avoid vendor/source contact for now, keep multiple proxy routes
-under consideration, and define minimum proxy dataset requirements without
-selecting a provider, dataset, schema, reproduction, validation, or
-implementation route. S05 remains only a public-doc-supported proxy/partial
-planning candidate before any provider choice, schema design, acquisition, or
-reproduction decision.
+under consideration, define minimum proxy dataset requirements, and record a
+conservative decision to keep S05 in backlog while evaluating an easier-data
+candidate next. They do not select a provider, source category, dataset,
+schema, reproduction, validation, or implementation route. S05 remains only a
+public-doc-supported proxy/partial planning candidate before any provider
+choice, schema design, acquisition, or reproduction decision.
 
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
@@ -179,19 +181,21 @@ Current status:
   passes only for limited candidate-evidence planning; the pass is not
   validation, threshold approval, signal-definition support, implementation
   readiness, or trading readiness.
-- Phase 32 Steps 10 through 20 record the S05 source status index,
+- Phase 32 Steps 10 through 21 record the S05 source status index,
   deterministic reproduction planning boundary, data availability assessment
   boundary, data-provider/source comparison plan, and scout research
   normalization, then add the primary-verification questionnaire and manual
   outreach template plus a public-documentation verification sweep and
   public-documentation-only feasibility decision, followed by the non-exact
   proxy reproduction boundary, proxy route selection boundary, and
-  route-neutral proxy dataset requirements boundary. The Perplexity scout
-  output remains unverified, the owner avoids vendor/source contact for now,
-  multiple proxy routes remain under consideration, minimum proxy dataset
-  requirements are documented without route narrowing, and S05 cannot support
-  source selection, data approval, reproduction approval, validation,
-  implementation readiness, or trading readiness.
+  route-neutral proxy dataset requirements boundary, then a non-approving
+  proxy source shortlist/backlog routing decision. The Perplexity scout output
+  remains unverified, the owner avoids vendor/source contact for now, multiple
+  proxy routes remain under consideration, proxy source categories remain
+  unselected, the chosen next route is to keep S05 in backlog and evaluate an
+  easier-data candidate, and S05 cannot support source selection, data
+  approval, reproduction approval, validation, implementation readiness, or
+  trading readiness.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -337,13 +341,20 @@ Recommended next phases:
    This step is complete. It defines minimum requirements for any possible
    future S05 proxy dataset without selecting a route, provider, dataset,
    schema, reproduction protocol, validation route, or implementation path.
-26. Future route: proxy dataset source shortlist, easier-data candidate, or
+26. Phase 32 Step 21: S05 proxy source shortlist and backlog routing
+   decision.
+   This step is complete. It groups non-approving proxy source categories,
+   records that none satisfies Step 20 minimum requirements at category-only
+   level, keeps S05 in backlog, and recommends evaluating an easier-data
+   candidate next. It does not select or approve a source, provider, dataset,
+   schema, reproduction protocol, validation route, or implementation path.
+27. Future route: easier-data candidate evaluation, S05 backlog recheck, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-27. Later route: implementation readiness gate.
+28. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -402,8 +413,9 @@ true:
   use, Step 7 reviews S03 only for limited negative-control/data-snooping/OOS
   guardrail use, Step 8 reviews S08 only for methodology-only PIT use, Step 9
   reviews S05 only for limited candidate-evidence planning, and Steps 10
-  through 20 keep S05 in docs-only planning/source-verification/proxy-boundary
-  and route-neutral requirement routing.
+  through 21 keep S05 in docs-only planning/source-verification/proxy-boundary,
+  route-neutral requirement routing, non-approving source-category routing, and
+  backlog/easier-data candidate routing.
 - The candidate has been reviewed against the Phase 30 evidence standard.
   Tier A review is complete for mechanics and methodology only; full candidate
   validation remains incomplete. Phase 31 Step 5 routes the result and Phase
@@ -507,7 +519,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- S05 Proxy Dataset Source Shortlist Boundary Or Alternative Routing
+Future Step -- Easier-Data Candidate Evaluation Or S05 Backlog Recheck
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -538,17 +550,19 @@ Read first:
 - docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md
 - docs/design/phase32_s05_proxy_route_selection_boundary.md
 - docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
+- docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only routing after the owner decision to avoid
 vendor/source contact for now. Use the Step 16 public-doc sweep, Step 17
 feasibility decision, Step 18 non-exact proxy boundary, Step 19 route selection
-boundary, and Step 20 route-neutral proxy dataset requirements boundary as
-cautious routing context only. Safe routes are a docs-only proxy dataset source
-shortlist boundary that does not choose a provider or dataset, an easier-data
-candidate evaluation, or backlog pending future vendor contact, budget/access
-change, or stronger public documentation.
+boundary, Step 20 route-neutral proxy dataset requirements boundary, and Step
+21 proxy source shortlist/backlog routing decision as cautious routing context
+only. The preferred safe route is an easier-data candidate evaluation. S05
+should remain in backlog unless a later prompt explicitly reopens it because
+future vendor contact, budget/access change, stronger public documentation, or
+owner preference changes materially.
 Preserve Perplexity findings as unverified scout research, preserve P30-BL-001
 as mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
 negative-control only, preserve S08 as methodology-only, and preserve S05 as

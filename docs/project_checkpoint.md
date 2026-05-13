@@ -6267,6 +6267,67 @@ approved proxy reproduction protocol, no deterministic offline snapshot path,
 and no resolved exact S05 universe, 1965-2009 instrument coverage, raw
 contract, roll, PIT/as-of, correction-history, or versioning basis.
 
+## Phase 32 Step 21 S05 Proxy Source Shortlist and Backlog Routing Decision
+
+Phase 32 Step 21 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md
+```
+
+It groups non-approving S05 proxy source categories with a backlog and
+next-routing decision. It does not select a dataset, approve a source, acquire
+data, design schemas, define a reproduction protocol, validate S05, or
+authorize implementation.
+
+The non-approving shortlist covers AQR factor-level data for
+calibration/context, ETF/index proxy datasets, public/free market data for
+methodology demos only, unselected modern futures vendor categories,
+unselected reduced futures universe categories, and manually reconstructed
+public-table checks.
+
+For each category, the boundary records possible role, strengths,
+limitations, overclaiming risk, Step 20 minimum-requirement status, and current
+status. Every category remains candidate category only, not selected, and none
+satisfies the Step 20 minimum requirements at category-only level.
+
+The conservative backlog decision is to keep S05 in backlog and avoid another
+immediate S05-specific docs-only proxy planning gate. Step 20 and Step 21 are
+enough to preserve future optionality without narrowing a route, approving a
+source, selecting a dataset, designing a schema, defining reproduction, or
+authorizing implementation.
+
+The easier-data candidate routing says the next research-track effort should
+evaluate another candidate with public data, clear licensing, offline
+reproducibility, a simpler universe, easier benchmark comparison, lower
+PIT/survivorship complexity, no vendor contact dependency, and no immediate
+implementation requirement.
+
+The chosen next project route is to keep S05 in backlog and evaluate an
+easier-data candidate next. Deferred gates are data storage/fixture policy,
+schema/design, reproduction protocol, result-review template, and any code or
+tests.
+
+This phase does not perform exact replication, approve a route, select a
+dataset, acquire data, ingest data, add schema/code/notebooks/scripts, create a
+storage/fixture policy, define a reproduction protocol, add a backtest,
+reproduce S05, implement a strategy, implement a signal/evaluator, create a
+validated artifact, approve a production threshold, or add broker, OMS,
+runtime, scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML,
+or LLM trading-path behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, no evaluator tests, no selected proxy route, no approved proxy source
+category, source, provider, or dataset, no approved proxy data-storage or
+fixture policy, no approved proxy reproduction protocol, no deterministic
+offline snapshot path, and no resolved exact S05 universe, 1965-2009
+instrument coverage, raw contract, roll, PIT/as-of, correction-history, or
+versioning basis.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6280,8 +6341,7 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 docs-only proxy dataset source shortlist planning, another easier-data
-  candidate evaluation, or backlog routing using
+- easier-data candidate evaluation while keeping S05 in backlog, using
   `docs/design/phase32_s05_public_documentation_verification_sweep.md` and
   `docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`
   plus
@@ -6290,12 +6350,14 @@ Safe next tasks include:
   `docs/design/phase32_s05_proxy_route_selection_boundary.md` as the
   route-selection boundary and
   `docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md`
-  as the current requirements boundary; preserve the owner decision to avoid
-  vendor/source contact for now, preserve S01 and S03 as limited
+  as the requirements boundary plus
+  `docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md` as
+  the current backlog/easier-data routing decision; preserve the owner decision
+  to avoid vendor/source contact for now, preserve S01 and S03 as limited
   negative-control support only, preserve S08 as methodology-only PIT support,
-  preserve S05 as limited candidate-evidence planning only, and avoid provider
-  choice, acquisition, schema design, reproduction approval, validation, or
-  implementation approval
+  preserve S05 as limited candidate-evidence planning only, keep all proxy
+  source categories unselected, and avoid provider choice, acquisition, schema
+  design, reproduction approval, validation, or implementation approval
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

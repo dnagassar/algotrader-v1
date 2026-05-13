@@ -324,6 +324,10 @@ state.
   boundary. It defines minimum requirements for any possible future S05 proxy
   dataset without selecting a route, provider, dataset, schema, reproduction
   protocol, validation route, or implementation path.
+- Phase 32 Step 21 adds an S05 proxy source shortlist and backlog routing
+  decision. It records non-approving proxy source categories, keeps every
+  category unselected, keeps S05 in backlog, and recommends evaluating an
+  easier-data candidate next.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1643,6 +1647,19 @@ routing, non-goals, and blockers. It selects no proxy route, provider, dataset,
 source shortlist, schema, reproduction protocol, validation route, or
 implementation path.
 
+Phase 32 Step 21 adds the S05 proxy source shortlist and backlog routing
+decision in
+[`docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md`](design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md).
+It is documentation-only and groups non-approving proxy source categories:
+AQR factor-level calibration/context, ETF/index proxy datasets, public/free
+market data for methodology demos only, unselected modern futures vendor
+categories, unselected reduced futures universe categories, and manually
+reconstructed public-table checks. It records that none satisfies the Step 20
+minimum requirements at category-only level, selects no route, source,
+provider, dataset, schema, reproduction protocol, validation route, or
+implementation path, keeps S05 in backlog, and recommends evaluating an
+easier-data candidate next.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1815,6 +1832,8 @@ Ledger modes:
   selection boundary
 - Threshold evaluator behavior beyond the Phase 32 Step 20 S05 route-neutral
   proxy dataset requirements boundary
+- Threshold evaluator behavior beyond the Phase 32 Step 21 S05 proxy source
+  shortlist and backlog routing decision
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1858,16 +1877,17 @@ proxy/partial planning candidate; Phase 32 Step 18 defines a non-exact proxy
 reproduction boundary for methodology mechanics and research workflow testing
 only; Phase 32 Step 19 compares proxy route options and keeps multiple routes
 under consideration without selecting a provider, dataset, schema,
-reproduction, validation, or implementation route; and Phase 32 Step 20 defines
-route-neutral proxy dataset requirements before any future route narrowing.
-None of these steps reproduce, validate, approve, select a vendor, acquire
-data, or implement S05. The next practical research action after Phase 32 Step
-20 is a docs-only proxy dataset source shortlist boundary, an easier-data
-candidate evaluation, or backlog pending future vendor contact, budget/access
-change, or stronger public documentation. S01 and S03 remain negative-control
-support only, S08 remains methodology-only PIT support only, and S05 remains
-limited to candidate-evidence planning unless a later phase resolves the named
-blockers.
+reproduction, validation, or implementation route; Phase 32 Step 20 defines
+route-neutral proxy dataset requirements before any future route narrowing; and
+Phase 32 Step 21 records a non-approving proxy source shortlist plus backlog
+routing decision. None of these steps reproduce, validate, approve, select a
+vendor, acquire data, or implement S05. The next practical research action
+after Phase 32 Step 21 is to keep S05 in backlog and evaluate an easier-data
+candidate unless future vendor contact, budget/access change, stronger public
+documentation, or owner preference materially changes the S05 route. S01 and
+S03 remain negative-control support only, S08 remains methodology-only PIT
+support only, and S05 remains limited to candidate-evidence planning unless a
+later phase resolves the named blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,
