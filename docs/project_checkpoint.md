@@ -6631,6 +6631,83 @@ transaction cost/friction review, no result-review template, no
 promotion/rejection decision, and no trading implication or production
 threshold.
 
+## Phase 33 Step 5 Broad ETF Methodology and No-Lookahead Review Boundary
+
+Phase 33 Step 5 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines methodology-review and no-lookahead/as-of requirements for
+the broad-ETF simple moving-average candidate. It does not approve
+methodology, parameters, data, an ETF universe, a benchmark, a cash proxy,
+reproduction, validation, implementation, or trading use.
+
+The candidate remains an easier-data research candidate for review only. It is
+not validated, implemented, trading-ready, production-ready, or actionable.
+
+The methodology-review scope requires future review of the moving-average
+trend-following concept, price-only versus total-return inputs, daily versus
+monthly evaluation cadence, signal observation date versus action date,
+cash/benchmark comparison rules, cost/friction assumptions, parameter
+discipline, performance-driven parameter-selection safeguards, and
+anti-cherry-picking controls for ETF universe construction.
+
+The no-lookahead/as-of boundary requires future protocols to use only prices
+available as of the decision timestamp, treat adjusted close and corporate
+action data carefully, respect ETF inception and first usable observation
+dates, align benchmark/cash proxy data by availability date and frequency,
+define universe membership before result inspection, avoid same-day
+close-to-close assumptions unless later justified, lag action timing after
+signal observation, and keep normal `python -m pytest` offline and
+credential-free.
+
+The methodology evidence standards require source references, cadence
+rationale, parameter rationale, comparison target, non-claims, limitations,
+sensitivity/robustness expectations, OOS or holdout expectations where
+applicable, and an explanation of suitability for deterministic research
+workflow.
+
+Required non-claims include no profitability, live or paper trading readiness,
+production threshold validity, strategy generalization,
+`ValidatedResearchArtifact` eligibility, `ValidatedSignalDefinition`
+eligibility, or implementation approval.
+
+Step 5 ties back to Step 4 by preserving Stooq and Yahoo Finance / yfinance as
+source-review candidates only, Nasdaq Data Link and Alpha Vantage as
+secondary/check candidates only, ETF issuer pages as metadata/context only,
+FRED as a cash/risk-free proxy candidate only, and broker historical data as
+context only. No source is approved.
+
+The recommended next docs-only gate is an ETF universe shortlist boundary.
+Benchmark/cash proxy shortlist review and moving-average evidence source
+packaging remain possible docs-only gates. A reproduction protocol boundary
+should wait until data, universe, and benchmark/cash proxy are later approved.
+
+This phase does not perform or authorize methodology approval, moving-average
+parameter approval, data approval, ETF universe approval, benchmark approval,
+cash proxy approval, data acquisition, data ingestion, schema/code/notebooks/scripts,
+backtesting, reproduction, strategy implementation, evaluator or signal
+implementation, signal computation, signal scoring/ranking/direction/confidence/actionability,
+validated artifacts, validated signal definitions, new contract types,
+production thresholds, profitability claims, implementation-readiness claims,
+production-readiness claims, trading implications, or broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no approved methodology or
+parameters, no acquired data, no project-local deterministic reproduction, no
+no-lookahead audit, no production threshold/config provenance, no
+implementation-scope approval, no evaluator tests, no data license or
+offline-use approval, no local snapshot/versioning policy, no point-in-time
+policy, no cost/friction assumptions, no result-review template, no
+promotion/rejection decision, and no trading implication or production
+threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6661,12 +6738,12 @@ Safe next tasks include:
   preserve S05 as limited candidate-evidence planning only, keep all proxy
   source categories unselected, and avoid provider choice, acquisition, schema
   design, reproduction approval, validation, or implementation approval
-- docs-only public-source documentation verification for the Phase 33 selected
-  broad-ETF moving-average candidate is now recorded in Phase 33 Step 4; the
-  next docs-only gate should be methodology-only moving-average review,
-  no-lookahead/as-of review, or ETF universe shortlist boundary while keeping
-  all source, universe, benchmark, data, validation, implementation, secondary
-  shortlist, and S05 backlog statuses non-approving
+- docs-only methodology and no-lookahead/as-of review for the Phase 33
+  selected broad-ETF moving-average candidate is now recorded in Phase 33 Step
+  5; the next docs-only gate should be an ETF universe shortlist boundary
+  while keeping all source, universe, benchmark, data, methodology,
+  validation, implementation, secondary shortlist, and S05 backlog statuses
+  non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

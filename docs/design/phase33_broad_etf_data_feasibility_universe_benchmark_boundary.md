@@ -153,14 +153,35 @@ keeps Nasdaq Data Link and Alpha Vantage as secondary/check candidates only,
 keeps issuer pages as metadata/context only, keeps FRED as a cash/risk-free
 proxy candidate only, and keeps broker historical data as context only.
 
+## Methodology And No-Lookahead Review Boundary
+
+Phase 33 Step 5 adds the methodology and no-lookahead/as-of review boundary in
+[`phase33_broad_etf_methodology_no_lookahead_review_boundary.md`](phase33_broad_etf_methodology_no_lookahead_review_boundary.md).
+That boundary defines what a future methodology review must cover before any
+reproduction, including moving-average concept, price-only versus total-return
+inputs, daily versus monthly cadence, signal observation date versus action
+date, benchmark/cash comparison rules, cost/friction assumptions, parameter
+discipline, and anti-cherry-picking controls.
+
+Step 5 also defines no-lookahead/as-of constraints for future protocols,
+including decision-time price availability, adjusted data caution,
+inception-date handling, benchmark/cash availability alignment, corporate
+actions, universe membership timing, no same-day close-to-close assumption
+without later justification, lagged action timing, and normal offline,
+credential-free pytest.
+
+Step 5 does not approve methodology, parameters, data, an ETF universe, a
+benchmark, a cash proxy, reproduction, validation, implementation, or trading
+implication.
+
 ## Recommended Next Gate
 
 Recommended next docs-only gate after the public-source documentation
-verification sweep: either methodology-only moving-average review,
-no-lookahead/as-of review, or ETF universe shortlist boundary.
+verification sweep and methodology/no-lookahead boundary: ETF universe
+shortlist boundary.
 
-Those gates must remain documentation-only unless a later phase explicitly
-approves a narrower scope. They must not acquire data, ingest data, approve a
+That gate must remain documentation-only unless a later phase explicitly
+approves a narrower scope. It must not acquire data, ingest data, approve a
 source, approve a universe, approve a benchmark, approve a cash proxy,
 reproduce results, validate, backtest, implement methodology, implement an
 evaluator, compute signals, or create trading implications.

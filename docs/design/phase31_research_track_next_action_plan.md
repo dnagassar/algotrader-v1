@@ -170,6 +170,16 @@ historical data. It does not approve a source, universe, benchmark, cash
 proxy, methodology, reproduction, validation, implementation, or trading
 implication.
 
+Phase 33 Step 5 adds the broad-ETF methodology and no-lookahead/as-of review
+boundary in
+[`phase33_broad_etf_methodology_no_lookahead_review_boundary.md`](phase33_broad_etf_methodology_no_lookahead_review_boundary.md).
+It groups moving-average methodology-review scope, no-lookahead/as-of
+requirements, methodology evidence standards, required future non-claims,
+relationship to current data-source findings, next-gate routing, explicit
+non-goals, and blockers. It does not approve methodology, parameters, data, an
+ETF universe, benchmark, cash proxy, reproduction, validation, implementation,
+or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -267,6 +277,13 @@ Current status:
   to context only. It does not approve a source, universe, benchmark, cash
   proxy, data, methodology, reproduction, validation, implementation, or
   trading implication.
+- Phase 33 Step 5 records the broad-ETF methodology and no-lookahead/as-of
+  review boundary. It defines methodology-review scope, no-lookahead/as-of
+  requirements, methodology evidence standards, required future non-claims,
+  relationship to current data-source findings, preferred ETF universe
+  shortlist routing, explicit non-goals, and remaining blockers. It does not
+  approve methodology, parameters, data, an ETF universe, benchmark, cash
+  proxy, reproduction, validation, implementation, or trading implication.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -451,14 +468,24 @@ Recommended next phases:
    proxy notes; and carries forward direct follow-up questions. It does not
    approve a source, universe, benchmark, cash proxy, data, methodology,
    reproduction, validation, implementation, or trading implication.
-31. Future route: methodology-only moving-average review,
-   no-lookahead/as-of review, ETF universe shortlist boundary, S05 backlog
+31. Phase 33 Step 5: broad-ETF methodology and no-lookahead/as-of review
+   boundary.
+   This step is complete. It groups methodology-review scope, no-lookahead/as-of
+   requirements, methodology evidence standards, required future non-claims,
+   relationship to current data-source findings, explicit non-goals, and
+   blockers. It does not approve methodology, parameters, data, an ETF
+   universe, benchmark, cash proxy, reproduction, validation, implementation,
+   or trading implication.
+32. Future route: ETF universe shortlist boundary, benchmark/cash proxy
+   shortlist boundary, moving-average evidence source package, S05 backlog
    recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-32. Later route: implementation readiness gate.
+   A reproduction protocol boundary should wait until data, universe, and
+   benchmark/cash proxy are later approved.
+33. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -659,6 +686,7 @@ Read first:
 - docs/design/phase33_broad_etf_moving_average_source_package.md
 - docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md
 - docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
+- docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
@@ -671,11 +699,10 @@ public-doc sweep, Step 17 feasibility decision, Step 18 non-exact proxy
 boundary, Step 19 route selection boundary, Step 20 route-neutral proxy
 dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
 decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
-package, Phase 33 grouped boundary, and Phase 33 public-source sweep as
-cautious routing context only. The preferred safe route is a docs-only
-methodology-only moving-average review, no-lookahead/as-of review, or ETF
-universe shortlist boundary for the selected broad-ETF moving-average
-candidate. S05 should remain in backlog
+package, Phase 33 grouped boundary, Phase 33 public-source sweep, and Phase 33
+methodology/no-lookahead boundary as cautious routing context only. The
+preferred safe route is a docs-only ETF universe shortlist boundary for the
+selected broad-ETF moving-average candidate. S05 should remain in backlog
 unless a later prompt explicitly reopens it because future vendor contact,
 budget/access change, stronger public documentation, or owner preference
 changes materially.

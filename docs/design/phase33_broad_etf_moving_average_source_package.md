@@ -150,6 +150,14 @@ assigns cautious routing labels without approving any source, universe,
 benchmark, cash proxy, methodology, reproduction, validation, implementation,
 or trading use.
 
+Phase 33 Step 5 adds the methodology and no-lookahead/as-of review boundary in
+[`phase33_broad_etf_methodology_no_lookahead_review_boundary.md`](phase33_broad_etf_methodology_no_lookahead_review_boundary.md).
+It groups moving-average methodology-review requirements, no-lookahead/as-of
+requirements, methodology evidence standards, required non-claims, and
+remaining blockers without approving methodology, parameters, data, an ETF
+universe, a benchmark, reproduction, validation, implementation, or trading
+use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic

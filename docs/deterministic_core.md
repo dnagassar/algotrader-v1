@@ -350,6 +350,12 @@ state.
   inference; assigns cautious source-routing labels; and keeps all data,
   universe, benchmark, methodology, reproduction, validation, implementation,
   and trading-use approvals blocked.
+- Phase 33 Step 5 adds a broad-ETF methodology and no-lookahead/as-of review
+  boundary. It defines methodology-review scope, no-lookahead/as-of
+  requirements, methodology evidence standards, required non-claims, and
+  next-gate routing without approving methodology, parameters, data, a
+  universe, benchmark, reproduction, validation, implementation, or trading
+  use.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1735,6 +1741,16 @@ forward direct follow-up questions. It does not approve a source, universe,
 benchmark, cash proxy, methodology, data acquisition, reproduction, validation,
 implementation, or trading implication.
 
+Phase 33 Step 5 adds the broad-ETF methodology and no-lookahead/as-of review
+boundary in
+[`docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md`](design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md).
+It is documentation-only and defines moving-average methodology-review scope,
+no-lookahead/as-of requirements, methodology evidence standards, required
+future non-claims, relationship to current data-source findings, preferred ETF
+universe shortlist routing, explicit non-goals, and remaining blockers. It
+does not approve methodology, parameters, data, an ETF universe, benchmark,
+cash proxy, reproduction, validation, implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1917,6 +1933,8 @@ Ledger modes:
   feasibility, universe, and benchmark boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 4 broad-ETF
   public-source documentation verification sweep
+- Threshold evaluator behavior beyond the Phase 33 Step 5 broad-ETF
+  methodology and no-lookahead/as-of review boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2008,6 +2026,14 @@ next work toward a methodology-only moving-average review, no-lookahead/as-of
 review, or ETF universe shortlist boundary. It does not approve a source,
 universe, benchmark, cash proxy, data, methodology, reproduction, validation,
 implementation, or trading implication.
+
+Phase 33 Step 5 adds the broad-ETF methodology and no-lookahead/as-of review
+boundary. It defines what any later methodology review must cover and what
+no-lookahead/as-of constraints must hold before future reproduction or
+implementation work. It routes the next docs-only gate toward an ETF universe
+shortlist boundary. It does not approve methodology, parameters, data, a
+universe, benchmark, cash proxy, reproduction, validation, implementation, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

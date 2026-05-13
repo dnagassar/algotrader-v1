@@ -178,11 +178,20 @@ Recommended routing after this sweep:
 - Keep broker historical data as context only, not a default project source.
 - Do not approve any source yet.
 
-The next docs-only gate should be one of:
+Phase 33 Step 5 adds the methodology and no-lookahead/as-of review boundary in
+[`phase33_broad_etf_methodology_no_lookahead_review_boundary.md`](phase33_broad_etf_methodology_no_lookahead_review_boundary.md).
+That boundary groups methodology-review scope, no-lookahead/as-of constraints,
+methodology evidence standards, required non-claims, and remaining blockers
+without approving methodology, parameters, data, an ETF universe, a benchmark,
+reproduction, validation, implementation, or trading use.
 
-1. methodology-only moving-average review
-2. no-lookahead/as-of review
-3. ETF universe shortlist boundary
+The next docs-only gate after Step 5 should be the ETF universe shortlist
+boundary. Other possible docs-only gates remain:
+
+1. benchmark/cash proxy shortlist boundary
+2. moving-average evidence source package
+3. reproduction protocol boundary only if data, universe, and benchmark/cash
+   proxy are later approved
 
 None of those gates may acquire data, ingest data, approve data, approve an
 ETF universe, approve a benchmark, approve a cash proxy, approve methodology,
