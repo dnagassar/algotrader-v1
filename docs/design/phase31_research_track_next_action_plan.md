@@ -140,6 +140,17 @@ as the primary first source-package candidate. It keeps S05 in backlog and
 does not validate, implement, reproduce, backtest, approve, or make any
 strategy actionable.
 
+Phase 33 Step 2 adds the broad-ETF moving-average source package in
+[`phase33_broad_etf_moving_average_source_package.md`](phase33_broad_etf_moving_average_source_package.md).
+It prepares source review for the broad-ETF simple moving-average
+trend-following candidate by recording the bounded research question,
+possible broad ETF categories, high-level methodology framing, possible
+public/easy source categories, source-quality requirements, later evidence
+sources, review gates, explicit non-goals, and blockers. It does not approve
+an ETF universe, data source, dataset, benchmark, parameter, signal
+definition, schema, reproduction protocol, validation route, implementation
+route, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -210,6 +221,13 @@ Current status:
   easier-data candidate, and S05 cannot support source selection, data
   approval, reproduction approval, validation, implementation readiness, or
   trading readiness.
+- Phase 33 Step 2 records the broad-ETF moving-average source package for
+  source review preparation only. It identifies the bounded research question,
+  candidate scope categories, candidate-only data-source categories,
+  source-quality requirements, later evidence sources, review gates, explicit
+  non-goals, and remaining blockers. It does not approve an ETF universe,
+  source, dataset, benchmark, parameter, signal definition, reproduction,
+  validation, implementation, or trading implication.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -371,14 +389,20 @@ Recommended next phases:
    data for further docs-only source review only. It does not approve a
    dataset, source package, reproduction, validation, implementation, or
    trading implication.
-28. Future route: source package for the selected easier-data candidate, S05
-   backlog recheck, or
-   backlog.
+28. Phase 33 Step 2: broad-ETF moving-average source package.
+   This step is complete. It prepares source review for simple moving-average
+   trend-following on broad ETFs, records candidate-only public/easy source
+   categories and source-quality requirements, and defines later docs-only
+   review gates. It does not approve a universe, data source, dataset,
+   benchmark, parameter, signal definition, reproduction, validation,
+   implementation, or trading implication.
+29. Future route: source feasibility review for the selected easier-data
+   candidate, S05 backlog recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-29. Later route: implementation readiness gate.
+30. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -576,18 +600,20 @@ Read first:
 - docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
 - docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md
 - docs/design/phase33_easier_data_research_candidate_selection_boundary.md
+- docs/design/phase33_broad_etf_moving_average_source_package.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
 Scope: documentation-only routing after the owner decision to avoid
 vendor/source contact for now and after the Phase 33 easier-data candidate
-selection boundary. Use the Step 16 public-doc sweep, Step 17 feasibility
-decision, Step 18 non-exact proxy boundary, Step 19 route selection boundary,
-Step 20 route-neutral proxy dataset requirements boundary, Step 21 proxy source
-shortlist/backlog routing decision, and Phase 33 candidate selection boundary
-as cautious routing context only. The preferred safe route is a docs-only
-source package for the selected easier-data candidate, starting with simple
-moving-average trend-following on broad ETFs. S05 should remain in backlog
+selection boundary and broad-ETF moving-average source package. Use the Step
+16 public-doc sweep, Step 17 feasibility decision, Step 18 non-exact proxy
+boundary, Step 19 route selection boundary, Step 20 route-neutral proxy
+dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
+decision, Phase 33 candidate selection boundary, and Phase 33 broad-ETF source
+package as cautious routing context only. The preferred safe route is a
+docs-only source feasibility review for the selected broad-ETF moving-average
+candidate. S05 should remain in backlog
 unless a later prompt explicitly reopens it because future vendor contact,
 budget/access change, stronger public documentation, or owner preference
 changes materially.

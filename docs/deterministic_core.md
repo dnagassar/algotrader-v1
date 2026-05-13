@@ -334,6 +334,11 @@ state.
   momentum/trend-following using public index or ETF data, and
   volatility-targeting/risk-parity style allocation using public ETF/index
   data for further source review only, and keeps S05 in backlog.
+- Phase 33 Step 2 adds a broad-ETF moving-average source package for source
+  review preparation only. It records candidate-only scope, possible data
+  source categories, source-quality requirements, docs-only review gates, and
+  blockers without approving a universe, source, dataset, benchmark,
+  reproduction, validation, implementation, or trading implication.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1680,6 +1685,17 @@ dataset, source package, schema, reproduction, validation, implementation,
 production threshold, `ValidatedResearchArtifact`, or
 `ValidatedSignalDefinition`.
 
+Phase 33 Step 2 adds the broad-ETF moving-average source package in
+[`docs/design/phase33_broad_etf_moving_average_source_package.md`](design/phase33_broad_etf_moving_average_source_package.md).
+It is documentation-only and prepares source review for the broad-ETF simple
+moving-average trend-following candidate. It records the bounded research
+question, possible broad ETF categories, high-level methodology framing,
+possible public/easy data-source categories, source-quality requirements,
+later evidence sources, docs-only review gates, explicit non-goals, and
+remaining blockers. It does not approve an ETF universe, data source, dataset,
+benchmark, parameter, signal definition, schema, reproduction, validation,
+implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1856,6 +1872,8 @@ Ledger modes:
   shortlist and backlog routing decision
 - Threshold evaluator behavior beyond the Phase 33 Step 1 easier-data research
   candidate selection boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 2 broad-ETF
+  moving-average source package
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1911,8 +1929,8 @@ S03 remain negative-control support only, S08 remains methodology-only PIT
 support only, and S05 remains limited to candidate-evidence planning unless a
 later phase resolves the named blockers.
 
-Phase 33 Step 1 adds that easier-data candidate selection boundary. The next
-practical research action is a docs-only source package for the selected
+Phase 33 Step 1 adds that easier-data candidate selection boundary and routes
+the next research work toward a docs-only source package for the selected
 easier-data candidate, starting with simple moving-average trend-following on
 broad ETFs. That gate must still avoid data acquisition, ingestion, schema
 design, backtesting, reproduction, evaluator behavior, signal computation,
@@ -1922,6 +1940,15 @@ unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,
 test scaffolds for implementation, and wiring signal output into risk remain
 blocked until those gates are explicitly resolved.
+
+Phase 33 Step 2 adds the broad-ETF moving-average source package. It prepares
+source review only by recording the bounded research question, possible broad
+ETF categories, high-level methodology framing, candidate-only public/easy
+data-source categories, source-quality requirements, later evidence sources,
+docs-only review gates, explicit non-goals, and remaining blockers. It does
+not approve an ETF universe, data source, dataset, benchmark, parameter,
+signal definition, schema, reproduction, validation, implementation, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

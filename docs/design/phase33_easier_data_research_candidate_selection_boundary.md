@@ -117,6 +117,13 @@ S05 remains in backlog.
 Recommended next docs-only gate: source package for the selected easier-data
 candidate, starting with simple moving-average trend-following on broad ETFs.
 
+Phase 33 Step 2 adds that candidate-only source package in
+[`phase33_broad_etf_moving_average_source_package.md`](phase33_broad_etf_moving_average_source_package.md).
+The package prepares source review only. It does not select or approve an ETF
+universe, data source, dataset, benchmark, parameter, signal definition,
+schema, reproduction protocol, validation route, implementation route, or
+trading implication.
+
 That source package should identify candidate source documents or datasets,
 licensing/offline-use terms, exact universe labels, benchmark/comparison
 target, access-date and snapshot expectations, point-in-time assumptions,
