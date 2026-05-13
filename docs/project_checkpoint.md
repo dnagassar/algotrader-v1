@@ -6055,6 +6055,93 @@ Manual documentation checks confirmed that edited markdown files have no
 trailing whitespace, exactly one final newline, no truncation, and intact final
 sections.
 
+## Phase 32 Step 18 S05 Non-Exact Proxy Reproduction Boundary
+
+Phase 32 Step 18 is documentation-only. It adds:
+
+```text
+docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md
+```
+
+It defines non-exact proxy reproduction as a controlled approximation intended
+to test methodology mechanics and research workflow discipline, not to recreate
+S05 exactly. It distinguishes exact S05 reproduction, partial reproduction,
+proxy reproduction, and methodology-only/context use.
+
+Allowed proxy routes are planning-only: modern futures subset using a
+public-doc-supported vendor category with no vendor selected, reduced-universe
+futures proxy, ETF/index proxy universe, AQR factor-level calibration/context
+check, and manually reconstructed published-table checks.
+
+A future proxy route could support deterministic research workflow testing,
+no-lookahead/as-of discipline testing, data handling and provenance discipline,
+rough methodology sanity checks, broad-behavior comparison against published
+context, and a later decision about whether deeper data investment is
+worthwhile.
+
+Proxy reproduction cannot support exact S05 replication, a
+`ValidatedResearchArtifact`, a `ValidatedSignalDefinition`, production
+threshold/config approval, live or paper trading readiness, profitability or
+generalization claims, implementation approval, or a claim that S05's original
+edge has been reproduced.
+
+Any future proxy plan still needs explicit universe, date range, source and
+provenance, offline snapshot/versioning plan, no-lookahead/as-of assumptions,
+survivorship and missing-data assumptions, cost/slippage assumptions if
+relevant, comparison target, limitations, non-claims, deterministic
+reproducibility, and normal offline credential-free pytest.
+
+The future docs-only gates are proxy route selection boundary, proxy dataset
+schema/design boundary, proxy fixture/data-storage policy boundary, proxy
+reproduction protocol boundary, proxy result-review template, and
+promotion/rejection decision boundary.
+
+The recommended next route is to keep S05 in proxy/partial planning only, do
+not implement, and either write a docs-only proxy route selection boundary or
+evaluate another candidate with easier data availability.
+
+This phase does not perform exact replication, select a dataset, acquire data,
+ingest data, add schema/code/notebooks/scripts, add a backtest, reproduce S05,
+implement a strategy, implement a signal/evaluator, create a validated
+artifact, approve a production threshold, or add broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no exact `ValidatedResearchArtifact`, no exact
+`ValidatedSignalDefinition`, no selected/approved dataset, no completed
+primary-source vendor verification, no acquired data, no project-local
+deterministic reproduction, no production threshold/config provenance, no
+applied no-lookahead audit inside the project, no implementation-scope
+approval, no evaluator tests, no approved proxy route, no approved proxy
+data-storage policy, no approved proxy reproduction protocol, no deterministic
+offline snapshot path, and no resolved exact S05 universe, 1965-2009 instrument
+coverage, raw contract, roll, PIT/as-of, correction-history, or versioning
+basis.
+
+Verification after Phase 32 Step 18:
+
+```text
+python -m pytest
+778 passed, 4 skipped
+
+git diff --name-only HEAD -- src
+(no output)
+
+git diff --check
+passed; Git emitted LF-to-CRLF working-copy warnings only for modified docs
+
+git status --short
+ M docs/design/phase31_research_track_next_action_plan.md
+ M docs/design/phase32_p30_bl_002_source_status_index.md
+ M docs/deterministic_core.md
+ M docs/project_checkpoint.md
+?? docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md
+```
+
+Manual documentation checks confirmed that edited markdown files have no
+trailing whitespace, exactly one final newline, no truncation, and intact final
+sections.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6068,11 +6155,13 @@ Safe next tasks include:
   code-free, and preserve all safety gates
 - use `docs/design/phase31_research_track_next_action_plan.md` as the
   research-track roadmap
-- S05 docs-only proxy boundary planning, another easier-data candidate
+- S05 docs-only proxy route selection planning, another easier-data candidate
   evaluation, or backlog routing using
   `docs/design/phase32_s05_public_documentation_verification_sweep.md` and
   `docs/design/phase32_s05_public_documentation_only_feasibility_decision.md`
-  as cautious routing context only; preserve the owner decision to avoid
+  plus
+  `docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md` as
+  cautious routing context only; preserve the owner decision to avoid
   vendor/source contact for now, preserve S01 and S03 as limited
   negative-control support only, preserve S08 as methodology-only PIT support,
   preserve S05 as limited candidate-evidence planning only, and avoid provider

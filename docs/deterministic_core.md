@@ -312,6 +312,10 @@ state.
   S05 only as a public-doc-supported proxy/partial planning candidate, and
   pauses exact reproduction, source selection, dataset approval, schema design,
   validation, and implementation unless future evidence or access changes.
+- Phase 32 Step 18 adds an S05 non-exact proxy reproduction boundary. It
+  defines proxy reproduction as a controlled approximation for methodology
+  mechanics and research workflow testing only, not exact S05 reproduction,
+  validation, implementation approval, or trading readiness.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1595,6 +1599,18 @@ does not contact vendors, choose a vendor, acquire data, ingest data, create a
 validated artifact, create a validated signal definition, approve a production
 threshold, or authorize implementation.
 
+Phase 32 Step 18 adds the S05 non-exact proxy reproduction boundary in
+[`docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md`](design/phase32_s05_non_exact_proxy_reproduction_boundary.md).
+It is documentation-only and defines proxy reproduction as a controlled
+approximation for methodology mechanics and research workflow testing only. It
+distinguishes exact S05 reproduction, partial reproduction, proxy reproduction,
+and methodology-only/context use; allows only planning-level proxy routes such
+as modern futures subset, reduced-universe futures, ETF/index proxy, AQR
+factor-level context, or manually reconstructed published-table checks; and
+keeps proxy results from supporting exact S05 replication, validated artifacts,
+validated signal definitions, production thresholds, implementation approval,
+profitability claims, or trading readiness.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1761,6 +1777,8 @@ Ledger modes:
   documentation verification sweep
 - Threshold evaluator behavior beyond the Phase 32 Step 17 S05
   public-documentation-only feasibility decision
+- Threshold evaluator behavior beyond the Phase 32 Step 18 S05 non-exact proxy
+  reproduction boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -1800,14 +1818,15 @@ questionnaire and manual outreach template; Phase 32 Step 16 records a
 public-documentation verification sweep with cautious feasibility labels and
 direct-confirmation gaps; Phase 32 Step 17 records the owner decision to avoid
 vendor/source contact for now and keeps S05 only as a public-doc-supported
-proxy/partial planning candidate. None of these steps reproduce, validate,
-approve, select a vendor, acquire data, or implement S05. The next practical
-research action after Phase 32 Step 17 is a docs-only non-exact proxy boundary,
-an easier-data candidate evaluation, or backlog pending future vendor contact,
-budget/access change, or stronger public documentation. S01 and S03 remain
-negative-control support only, S08 remains methodology-only PIT support only,
-and S05 remains limited to candidate-evidence planning unless a later phase
-resolves the named blockers.
+proxy/partial planning candidate; Phase 32 Step 18 defines a non-exact proxy
+reproduction boundary for methodology mechanics and research workflow testing
+only. None of these steps reproduce, validate, approve, select a vendor, acquire
+data, or implement S05. The next practical research action after Phase 32 Step
+18 is a docs-only proxy route selection boundary, an easier-data candidate
+evaluation, or backlog pending future vendor contact, budget/access change, or
+stronger public documentation. S01 and S03 remain negative-control support
+only, S08 remains methodology-only PIT support only, and S05 remains limited to
+candidate-evidence planning unless a later phase resolves the named blockers.
 Additional sourcing or a better P0 replacement remains appropriate if
 unresolved source gaps block review-readiness. Tier B review may still provide
 context later, but validation, real evaluator behavior, signal computation,
