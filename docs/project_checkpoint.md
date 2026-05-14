@@ -7778,6 +7778,17 @@ approve reproduction, methodology, parameters, data, an ETF universe,
 benchmark, cash proxy, validation, implementation, evaluator behavior, signal
 computation, or trading implication.
 
+Phase 33 Step 19 adds the broad-ETF source/universe/benchmark
+decision-readiness boundary. It assesses whether source, ETF universe,
+benchmark/cash proxy, return-construction, and data-policy gates are ready for
+concrete decisions, finds no gate approval-ready now, keeps most gates partial,
+keeps return construction, survivorship/inception/delisting, reproduction
+protocol, result-review template, and implementation scope blocked, and
+recommends a docs-only return-construction boundary as the next narrow blocker.
+It does not approve a source, universe, benchmark, cash proxy, methodology,
+parameter, data policy, reproduction protocol, implementation, signal
+definition, evaluator, or trading implication.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7825,15 +7836,17 @@ Safe next tasks include:
   `ETF-ACADEMIC-001` limited formal evidence review is now recorded in Phase
   33 Step 16; and the broad ETF methodology evidence synthesis boundary is now
   recorded in Phase 33 Step 17; and the broad ETF reproduction readiness
-  checklist is now recorded in Phase 33 Step 18. The next docs-only route
-  should pause Phase 33 before code until source, data policy, universe,
-  benchmark, and cash-proxy choices can be made concrete. If Phase 33 resumes
-  with concrete owner/source constraints, consider a source/universe/benchmark
-  approval boundary before any reproduction protocol planning. Do not proceed
-  to a fixture policy approval boundary, reproduction protocol, evaluator
-  route, or implementation route while keeping all evidence, source, universe,
-  benchmark, cash proxy, data, methodology, validation, implementation,
-  secondary shortlist, and S05 backlog statuses non-approving
+  checklist is now recorded in Phase 33 Step 18; and the broad ETF source,
+  universe, and benchmark decision-readiness boundary is now recorded in Phase
+  33 Step 19. The next docs-only route should pause Phase 33 before code and
+  prefer a return-construction boundary because it blocks source suitability,
+  universe suitability, benchmark comparability, cash handling, survivorship
+  handling, no-lookahead timing, result review, and any eventual reproduction
+  protocol. Do not proceed to a fixture policy approval boundary,
+  source/universe/benchmark approval boundary, reproduction protocol,
+  evaluator route, or implementation route while keeping all evidence, source,
+  universe, benchmark, cash proxy, data, methodology, validation,
+  implementation, secondary shortlist, and S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,

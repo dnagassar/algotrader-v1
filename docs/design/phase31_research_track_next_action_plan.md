@@ -837,16 +837,29 @@ Recommended next phases:
    methodology, parameters, universe, source, benchmark/cash proxy, data
    acquisition, validation, implementation, evaluator behavior, signal
    computation, or trading implication.
-48. Future route: pause Phase 33 before code until source, data policy,
-   universe, benchmark, and cash-proxy choices can be made concrete. If Phase
-   33 resumes with concrete owner/source constraints, a docs-only
-   source/universe/benchmark approval boundary can be considered before any
-   reproduction protocol planning. Any future review must preserve traceable
-   dataset scope, point-in-time input assumptions, parameter rationale,
-   no-lookahead controls, reproducibility notes, robustness or out-of-sample
-   evidence, limitations, licensing constraints, offline replay requirements,
-   and non-claims.
-49. Later route: implementation readiness gate.
+48. Phase 33 Step 19: broad-ETF source/universe/benchmark decision-readiness
+   boundary.
+   This step is complete. It assesses whether source, ETF universe,
+   benchmark/cash proxy, return-construction, and data-policy gates are ready
+   for concrete decisions. It finds no gate approval-ready now, keeps most
+   major gates partial, keeps return construction, survivorship/inception/
+   delisting, reproduction protocol, result-review template, and
+   implementation scope blocked, chooses not ready for approval and pause
+   before code, and recommends a docs-only return-construction boundary as the
+   next narrow blocker. It does not approve a source, universe, benchmark,
+   cash proxy, methodology, parameter, data policy, reproduction protocol,
+   implementation, signal definition, evaluator, or trading implication.
+49. Future route: pause Phase 33 before code. The preferred next docs-only
+   route is a return-construction boundary because it blocks source
+   suitability, universe suitability, benchmark comparability, cash handling,
+   survivorship handling, no-lookahead timing, result review, and any eventual
+   reproduction protocol. A source/universe/benchmark approval boundary should
+   not be attempted until the necessary upstream constraints are concrete. Any
+   future review must preserve traceable dataset scope, point-in-time input
+   assumptions, parameter rationale, no-lookahead controls, reproducibility
+   notes, robustness or out-of-sample evidence, limitations, licensing
+   constraints, offline replay requirements, and non-claims.
+50. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -1011,7 +1024,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Source/Universe/Benchmark Approval Boundary
+Future Step -- Broad ETF Return-Construction Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -1024,11 +1037,14 @@ Read first:
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase33_broad_etf_reproduction_readiness_checklist.md
+- docs/design/phase33_broad_etf_source_universe_benchmark_decision_readiness_boundary.md
 
-Scope: documentation-only source/universe/benchmark approval boundary only if
-source, data-policy, universe, benchmark, and cash-proxy choices can be made
-concrete. Otherwise pause Phase 33 before code. Do not approve reproduction,
-methodology, parameters, data acquisition, fixture creation, schema design,
+Scope: documentation-only return-construction boundary for the broad-ETF
+candidate. Assess adjusted close versus total return, dividends,
+distributions, splits, corporate actions, fund expenses, missing values, and
+rebalance-period questions only as unresolved policy choices. Do not approve a
+source, universe, benchmark, cash proxy, methodology, parameter, data policy,
+reproduction protocol, data acquisition, fixture creation, schema design,
 notebooks, scripts, backtests, evaluator behavior, signal computation,
 validated artifacts, validated signal definitions, implementation, or trading
 use. Preserve normal pytest as offline, credential-free, deterministic, and

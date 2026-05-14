@@ -2310,6 +2310,17 @@ approve reproduction, methodology, parameters, data, an ETF universe,
 benchmark, cash proxy, validation, implementation, evaluator behavior, signal
 computation, or trading implication.
 
+Phase 33 Step 19 adds the broad-ETF source/universe/benchmark
+decision-readiness boundary. It assesses whether source, ETF universe,
+benchmark/cash proxy, return-construction, and data-policy gates are ready for
+concrete decisions, finds no gate approval-ready now, keeps most gates partial,
+keeps return construction, survivorship/inception/delisting, reproduction
+protocol, result-review template, and implementation scope blocked, and
+recommends a docs-only return-construction boundary as the next narrow blocker.
+It does not approve a source, universe, benchmark, cash proxy, methodology,
+parameter, data policy, reproduction protocol, implementation, signal
+definition, evaluator, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
