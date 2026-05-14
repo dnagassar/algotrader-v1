@@ -2048,6 +2048,8 @@ Ledger modes:
   return-construction boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 21 broad-ETF
   no-lookahead/as-of protocol boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 22 broad-ETF
+  survivorship/inception/delisting boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2358,6 +2360,19 @@ and recommends a docs-only survivorship/inception/delisting boundary next. It
 does not approve timing, return construction, source, universe, benchmark,
 cash proxy, methodology, parameter, data policy, reproduction protocol,
 implementation, signal definition, evaluator, or trading implication.
+
+Phase 33 Step 22 adds the broad-ETF survivorship/inception/delisting boundary.
+It defines the core pre-result universe principle and records unresolved
+requirements for ETF inception dates, first usable observations,
+inactive/delisted ETF history, survivorship bias, symbol identity, ticker
+changes, fund mergers, closures, issuer metadata, universe membership timing,
+source coverage, and the relationship to return construction and
+no-lookahead/as-of timing. It keeps survivorship/inception/delisting policy
+approval blocked and recommends a docs-only cash/benchmark return treatment
+boundary next. It does not approve an ETF universe, source, benchmark, cash
+proxy, return construction, no-lookahead/as-of protocol, methodology,
+parameter, data policy, reproduction protocol, implementation, signal
+definition, evaluator, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

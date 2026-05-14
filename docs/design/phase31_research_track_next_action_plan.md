@@ -873,19 +873,34 @@ Recommended next phases:
    return construction, source, universe, benchmark, cash proxy, methodology,
    parameter, data policy, reproduction protocol, implementation, signal
    definition, evaluator, or trading implication.
-51. Future route: pause Phase 33 before code. The preferred next docs-only
-   route is a survivorship/inception/delisting boundary because no-lookahead
-   review cannot be made approval-ready until every ETF's first usable
-   observation, inactive/delisted-fund handling, and pre-result universe
-   membership rules are concrete. A source/universe/benchmark approval
-   boundary, no-lookahead/as-of approval boundary, or reproduction protocol
-   should not be attempted until the necessary upstream constraints are
-   concrete. Any future review must preserve traceable dataset scope,
-   point-in-time input assumptions, parameter rationale, no-lookahead
-   controls, reproducibility notes, robustness or out-of-sample evidence,
-   limitations, licensing constraints, offline replay requirements, and
-   non-claims.
-52. Later route: implementation readiness gate.
+51. Phase 33 Step 22: broad-ETF survivorship/inception/delisting boundary.
+   This step is complete. It defines the core pre-result universe principle
+   and unresolved requirements for ETF inception dates, first usable
+   observations, inactive/delisted ETF history, survivorship bias, symbol
+   identity, ticker changes, fund mergers, closures, issuer metadata,
+   universe membership timing, source coverage, and the relationship to return
+   construction and no-lookahead/as-of timing. It keeps
+   survivorship/inception/delisting policy approval blocked and recommends a
+   docs-only cash/benchmark return treatment boundary next. It does not
+   approve an ETF universe, source, benchmark, cash proxy, return
+   construction, no-lookahead/as-of protocol, methodology, parameter, data
+   policy, reproduction protocol, implementation, signal definition,
+   evaluator, or trading implication.
+52. Future route: pause Phase 33 before code. The preferred next docs-only
+   route is a cash/benchmark return treatment boundary because return
+   construction, no-lookahead timing, and universe/inception rules still
+   cannot be reviewed against results until cash/risk-free series, benchmark
+   returns, buy-and-hold comparisons, frequency alignment, publication timing,
+   and zero-return placeholders are scoped without approving a benchmark or
+   cash proxy. A source/universe/benchmark approval boundary,
+   no-lookahead/as-of approval boundary, survivorship/inception/delisting
+   approval boundary, or reproduction protocol should not be attempted until
+   the necessary upstream constraints are concrete. Any future review must
+   preserve traceable dataset scope, point-in-time input assumptions,
+   parameter rationale, no-lookahead controls, reproducibility notes,
+   robustness or out-of-sample evidence, limitations, licensing constraints,
+   offline replay requirements, and non-claims.
+53. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -1050,7 +1065,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Survivorship / Inception / Delisting Boundary
+Future Step -- Broad ETF Cash / Benchmark Return Treatment Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -1066,21 +1081,23 @@ Read first:
 - docs/design/phase33_broad_etf_source_universe_benchmark_decision_readiness_boundary.md
 - docs/design/phase33_broad_etf_return_construction_boundary.md
 - docs/design/phase33_broad_etf_no_lookahead_asof_protocol_boundary.md
+- docs/design/phase33_broad_etf_survivorship_inception_delisting_boundary.md
 
-Scope: documentation-only survivorship/inception/delisting boundary for the
-broad-ETF candidate. Define unresolved requirements for ETF first usable
-observations, inception handling, inactive and delisted fund treatment,
-ticker-change/merger handling, predefined universe membership, optional asset
-exclusions, source coverage gaps, and how these constraints interact with
-no-lookahead/as-of timing. Do not approve a source, universe, benchmark, cash
-proxy, return construction, no-lookahead/as-of protocol, methodology,
-parameter, data policy, reproduction protocol, data acquisition, fixture
-creation, schema design, notebooks, scripts, backtests, evaluator behavior,
-signal computation, validated artifacts, validated signal definitions,
-implementation, or trading use. Preserve normal pytest as offline,
-credential-free, deterministic, and free of network, credentials, external
-data providers, notebooks, prototype tools, brokers, runtime behavior, and
-trading-path behavior.
+Scope: documentation-only cash/benchmark return treatment boundary for the
+broad-ETF candidate. Define unresolved requirements for cash/risk-free series,
+benchmark return basis, buy-and-hold comparison timing, zero-return
+placeholder treatment, daily/monthly alignment, compounding, publication or
+revision timing, and how cash/benchmark treatment interacts with return
+construction, no-lookahead/as-of timing, and universe/inception rules. Do not
+approve a source, universe, benchmark, cash proxy, return construction,
+no-lookahead/as-of protocol, survivorship/inception/delisting policy,
+methodology, parameter, data policy, reproduction protocol, data acquisition,
+fixture creation, schema design, notebooks, scripts, backtests, evaluator
+behavior, signal computation, validated artifacts, validated signal
+definitions, implementation, or trading use. Preserve normal pytest as
+offline, credential-free, deterministic, and free of network, credentials,
+external data providers, notebooks, prototype tools, brokers, runtime
+behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

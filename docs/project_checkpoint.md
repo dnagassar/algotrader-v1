@@ -7882,6 +7882,94 @@ semantics, no approved total-return method, no approved cash-rate conversion,
 no approved benchmark alignment, no result-review template, no reproduction
 protocol, and no trading implication or production threshold.
 
+## Phase 33 Step 22 Broad ETF Survivorship / Inception / Delisting Boundary
+
+Phase 33 Step 22 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_survivorship_inception_delisting_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines the core pre-result universe principle for the broad-ETF
+moving-average candidate: any future ETF universe must be defined before
+result inspection and must avoid survivorship-biased selection, cherry-picked
+winners, and retroactive inclusion rules.
+
+The inception-date section records that ETFs cannot be used before actual
+inception, inception dates must come from reliable metadata sources, first
+usable observations may be later than inception, pre-inception data must be
+rejected unless an explicitly approved proxy policy exists, index proxies
+before ETF inception are not approved, and start dates must be aligned across
+ETF, benchmark, and cash data.
+
+The delisting/inactive section records that inactive or delisted ETF handling
+remains unresolved, future sources must document whether delisted/inactive ETF
+history is available, excluding delisted ETFs may create survivorship bias,
+relying only on current surviving funds requires justification and limitation
+labels if later used, and any later exclusion of inactive ETFs must be
+documented as a limitation.
+
+The symbol-identity section records that stable identity must be verified and
+that ticker changes, fund mergers, closures, share class changes, issuer
+changes, exchange changes, provider symbol formats, and index changes require
+a handling policy. Current issuer metadata may not preserve historical
+metadata, so symbol continuity cannot be assumed from current ticker alone.
+
+The universe-membership section records that candidate buckets,
+inclusion/exclusion rules, liquidity/expense/history filters, and replacement
+rules must be fixed before performance inspection. It disallows
+performance-based ETF selection and grants no final ETF universe approval.
+
+The source implications preserve prior routing: Stooq remains a possible
+planning candidate with delisting/inactive/symbol-history coverage unresolved;
+Yahoo Finance / yfinance remains secondary/check or unresolved with
+survivorship and reproducibility unresolved; ETF issuer pages remain
+metadata/context only with historical metadata limits unresolved; broker data
+remains context only and not default; and no source is approved.
+
+The relationship section records that inception handling affects return
+windows, delisting/inactive handling affects survivorship bias, symbol changes
+affect adjusted-return continuity, metadata availability affects as-of
+correctness, and universe membership must not use future knowledge.
+
+Decision: survivorship/inception/delisting policy remains blocked for
+approval. Required future approval criteria include approved ETF universe
+construction rules, approved inception-date source, approved inactive/delisted
+ETF handling, approved symbol-identity policy, approved proxy policy if any,
+approved metadata snapshot/provenance policy, explicit limitations and
+non-claims, and deterministic examples if fixtures are later allowed.
+
+Recommended next route: a docs-only cash/benchmark return treatment boundary.
+That is the narrowest next gate because return construction, no-lookahead
+timing, and universe/inception rules still cannot be reviewed against results
+until cash/risk-free series, benchmark returns, buy-and-hold comparisons,
+frequency alignment, publication timing, and zero-return placeholders are
+scoped without approving a benchmark or cash proxy.
+
+This phase does not approve survivorship/inception/delisting policy, ETF
+universe, source, benchmark, cash proxy, return construction,
+no-lookahead/as-of protocol, methodology, parameter, data policy, data
+acquisition, ingestion, files, fixtures, schemas, code, notebooks, scripts,
+backtests, reproduction, signal definitions, evaluator behavior, validated
+artifacts, validated signal definitions, implementation, production
+thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no approved return-construction policy, no approved
+no-lookahead/as-of protocol, no approved cost/friction assumptions, no
+approved survivorship/inception/delisting policy, no acquired data, no
+project-local deterministic reproduction, no implementation-scope approval,
+no evaluator tests, no approved inception-date source, no approved
+first-usable-observation rule, no approved inactive/delisted ETF handling, no
+approved symbol-identity policy, no approved proxy policy, no approved
+metadata snapshot/provenance policy, no approved benchmark/cash return
+treatment, no result-review template, no reproduction protocol, and no trading
+implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7933,16 +8021,21 @@ Safe next tasks include:
   universe, and benchmark decision-readiness boundary is now recorded in Phase
   33 Step 19; and the broad ETF return-construction boundary is now recorded
   in Phase 33 Step 20; and the broad ETF no-lookahead/as-of protocol boundary
-  is now recorded in Phase 33 Step 21. The next docs-only route should pause
-  Phase 33 before code and prefer a survivorship/inception/delisting boundary
-  because no-lookahead review cannot be made approval-ready until every ETF's
-  first usable observation, inactive/delisted-fund handling, and pre-result
-  universe membership rules are concrete. Do not proceed to a fixture policy
-  approval boundary, source/universe/benchmark approval boundary,
-  no-lookahead/as-of approval boundary, reproduction protocol, evaluator route,
-  or implementation route while keeping all evidence, source, universe,
-  benchmark, cash proxy, data, return construction, no-lookahead/as-of
-  protocol, methodology, validation, implementation, secondary shortlist, and
+  is now recorded in Phase 33 Step 21; and the broad ETF
+  survivorship/inception/delisting boundary is now recorded in Phase 33 Step
+  22. The next docs-only route should pause Phase 33 before code and prefer a
+  cash/benchmark return treatment boundary because return construction,
+  no-lookahead timing, and universe/inception rules still cannot be reviewed
+  against results until cash/risk-free series, benchmark returns,
+  buy-and-hold comparisons, frequency alignment, publication timing, and
+  zero-return placeholders are scoped without approving a benchmark or cash
+  proxy. Do not proceed to a fixture policy approval boundary,
+  source/universe/benchmark approval boundary, no-lookahead/as-of approval
+  boundary, survivorship/inception/delisting approval boundary, reproduction
+  protocol, evaluator route, or implementation route while keeping all
+  evidence, source, universe, benchmark, cash proxy, data, return
+  construction, no-lookahead/as-of protocol, survivorship/inception/delisting
+  policy, methodology, validation, implementation, secondary shortlist, and
   S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
