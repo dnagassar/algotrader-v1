@@ -287,6 +287,20 @@ approve evidence, methodology, parameters, data, universe, benchmark/cash
 proxy, reproduction, validation, implementation, evaluator behavior, signal
 computation, or trading implication.
 
+Phase 33 Step 14 adds the broad-ETF primary citation verification
+normalization in
+[`phase33_broad_etf_primary_citation_verification_normalization.md`](phase33_broad_etf_primary_citation_verification_normalization.md).
+It records the externally supplied Perplexity verification report as scout
+material, normalizes primary citation metadata for Faber,
+`ETF-ACADEMIC-001`, the unresolved "Simple Market Timing with Moving Averages"
+label, `ZAKAMULIN-2014`, `ZAKAMULIN-2016`, and optional related Zakamulin SSRN
+leads, and routes only citation/readiness status for later review. It
+recommends limited formal review of Faber first only after open PDF and SSRN
+metadata are verified in the repo trail. It does not approve evidence,
+methodology, parameters, data, universe, benchmark/cash proxy, reproduction,
+validation, implementation, evaluator behavior, signal computation, or trading
+implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -451,6 +465,13 @@ Current status:
   scout material only, records which sources have reported primary-text
   availability, which need citation verification, which are unresolved, and
   which may be conditional candidates for later limited formal review.
+- Phase 33 Step 14 records the broad-ETF primary citation verification
+  normalization. It treats the Perplexity verification report as scout
+  material only, records citation metadata and source-identity status for
+  Faber, `ETF-ACADEMIC-001`, the unresolved "Simple Market Timing with Moving
+  Averages" label, and related Zakamulin candidates, and recommends Faber as
+  the conservative first later review target only after repo-trail PDF and
+  SSRN verification.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -742,7 +763,20 @@ Recommended next phases:
    not approve evidence, methodology, parameters, data, universe,
    benchmark/cash proxy, reproduction, validation, implementation, evaluator
    behavior, signal computation, or trading implication.
-43. Future route: pause for primary text and citation verification, first
+43. Phase 33 Step 14: broad-ETF primary citation verification normalization.
+   This step is complete. It normalizes externally reported citation metadata
+   for Faber, `ETF-ACADEMIC-001`, the unresolved "Simple Market Timing with
+   Moving Averages" label, `ZAKAMULIN-2014`, `ZAKAMULIN-2016`, and optional
+   related Zakamulin SSRN leads, distinguishes verified or partially verified
+   citation identity from source/evidence approval, keeps full-text-limited
+   entries conditional, and recommends a later limited formal review of Faber
+   first only after the open PDF and SSRN metadata are verified in the repo
+   trail. It does not approve evidence, methodology, parameters, data,
+   universe, benchmark/cash proxy, reproduction, validation, implementation,
+   evaluator behavior, signal computation, or trading implication.
+44. Future route: limited formal review of Faber only after repo-trail primary
+   text and citation verification, limited review of `ETF-ACADEMIC-001` or
+   Zakamulin candidates only if primary full text is accessible, first
    limited methodology
    evidence review, broad ETF source
    approval boundary, fixture policy approval boundary, S05 backlog recheck, or
@@ -753,7 +787,7 @@ Recommended next phases:
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-44. Later route: implementation readiness gate.
+45. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -918,7 +952,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Moving-Average Primary-Text Citation Verification Gate
+Future Step -- Broad ETF Faber Limited Formal Review Gate
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -928,24 +962,28 @@ Read first:
 - docs/design/phase33_broad_etf_moving_average_evidence_intake_plan.md
 - docs/design/phase33_broad_etf_evidence_source_collection_normalization.md
 - docs/design/phase33_broad_etf_primary_evidence_text_intake_normalization.md
+- docs/design/phase33_broad_etf_primary_citation_verification_normalization.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only citation and primary-text verification gate for the
-strongest Step 33.13 conditional candidates. Confirm exact title, authors,
-year, venue, DOI, SSRN/RePEc identifiers, primary pages, access path, version,
-and source identity for one to three high-priority candidates before any
-formal methodology review. If primary texts or citations remain unavailable,
-pause and record blockers. Do not approve a source, ETF universe, benchmark,
-cash proxy, methodology, parameter, storage policy, fixture, reproduction
-protocol, validation route, signal definition, evaluator, implementation, or
-trading use. Preserve normal pytest as offline, credential-free,
-deterministic, and free of network, credentials, external data providers,
-notebooks, prototype tools, brokers, runtime behavior, and trading-path
-behavior.
+Scope: documentation-only limited formal review of `MA-PRACT-001` Faber only,
+and only after the open PDF and SSRN metadata are verified in the repo trail.
+Use the full primary text rather than summaries. Extract the exact
+moving-average rule, universe, period, frequency, benchmark, cash proxy,
+return construction, dividend/corporate-action treatment, costs/frictions,
+OOS/robustness/parameter-sensitivity treatment, lookahead/survivorship/data
+snooping controls, limitations, and non-claims. Do not review
+`ETF-ACADEMIC-001` or Zakamulin candidates unless a later prompt separately
+confirms primary full-text access. Do not approve a source, ETF universe,
+benchmark, cash proxy, methodology, parameter, storage policy, fixture,
+reproduction protocol, validation route, signal definition, evaluator,
+implementation, or trading use. Preserve normal pytest as offline,
+credential-free, deterministic, and free of network, credentials, external
+data providers, notebooks, prototype tools, brokers, runtime behavior, and
+trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

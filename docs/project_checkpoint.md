@@ -7580,6 +7580,80 @@ robustness or parameter-sensitivity review, no benchmark/cash/risk-metric
 review, no result-review template, no promotion/rejection decision, and no
 trading implication or production threshold.
 
+## Phase 33 Step 14 Broad ETF Primary Citation Verification Normalization
+
+Phase 33 Step 14 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_primary_citation_verification_normalization.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+normalization records the externally supplied Perplexity primary-source
+verification report as external scout material under Phase 34 artifact-intake
+rules. The report is not treated as evidence approval, source-of-truth
+material, methodology validation, parameter approval, data approval, universe
+approval, benchmark approval, reproduction approval, validation approval,
+implementation approval, or trading approval.
+
+The citation verification table covers `MA-PRACT-001` Faber,
+`ETF-ACADEMIC-001`, `MA-ACADEMIC-001 / unresolved`, `ZAKAMULIN-2014`,
+`ZAKAMULIN-2016`, and optional related Zakamulin SSRN leads. Rows record
+verified title, author, year, venue, DOI/SSRN/RePEc/publisher identifiers,
+reported primary links, full-text access status, citation reliability,
+identity status, later limited formal review eligibility, and remaining
+follow-up.
+
+The readiness decision is conservative. Faber is eligible for later limited
+formal review only if the open PDF and SSRN metadata are verified in the repo
+trail. `ETF-ACADEMIC-001` is eligible only conditionally because the published
+version appears restricted and working-paper/full-text access must be
+confirmed. "Simple Market Timing with Moving Averages" remains unresolved and
+should not be reviewed under that title. `ZAKAMULIN-2014` and
+`ZAKAMULIN-2016` may become separate later review candidates only if primary
+text access and exact identifiers are confirmed.
+
+The document records citation-quality cautions: Perplexity output may mix
+primary links with inferred statements, abstracts and claims must be checked
+against primary pages/full text, publication metadata must be recorded before
+review, formal review must use full primary text rather than summaries, and no
+performance claim is accepted until independently reviewed and later
+reproduced where applicable.
+
+Required follow-up before formal review includes confirming full-text access,
+verifying exact title/author/year/venue identifiers, obtaining or inspecting
+primary PDF or official full text, recording DOI/SSRN/RePEc/publisher/version
+metadata, extracting exact moving-average rules, universe, period, frequency,
+benchmark, cash proxy, return construction, dividend/corporate-action
+treatment, costs/frictions, OOS/robustness/parameter-sensitivity treatment,
+lookahead/survivorship/data-snooping controls, limitations, and non-claims.
+
+The recommended next gate is limited formal review of Faber only after the
+open PDF and SSRN metadata are verified in the repo trail. Reviews of
+`ETF-ACADEMIC-001` or Zakamulin candidates remain conditional pending primary
+full-text access and version verification.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, PDFs,
+fixtures, reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no
+source-specific formal evidence review, no primary full-text verification in
+the repo trail, no approved source identity for "Simple Market Timing with
+Moving Averages", no verified version alignment, no extracted rule/universe/
+benchmark/cash proxy from reviewed primary text, no approved return-treatment
+or corporate-action handling decisions, no approved friction assumptions, no
+robustness or parameter-sensitivity review, no benchmark/cash/risk-metric
+review, no result-review template, no promotion/rejection decision, and no
+trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7621,8 +7695,11 @@ Safe next tasks include:
   moving-average evidence intake plan is now recorded in Phase 33 Step 11; the
   externally collected evidence source normalization is now recorded in Phase
   33 Step 12; and the primary evidence text intake normalization is now
-  recorded in Phase 33 Step 13. The next docs-only route should pause until
-  primary text and citation verification is complete, then may proceed to a
+  recorded in Phase 33 Step 13; and the primary citation verification
+  normalization is now recorded in Phase 33 Step 14. The next docs-only route
+  should be limited formal review of Faber only after repo-trail primary text
+  and citation verification, or review of `ETF-ACADEMIC-001` or Zakamulin
+  candidates only if primary full text is accessible; otherwise pause before a
   first limited methodology evidence review, broad ETF source approval
   boundary, or fixture policy approval boundary while
   keeping all evidence, source, universe, benchmark, cash proxy, data,

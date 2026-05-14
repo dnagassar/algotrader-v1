@@ -2237,6 +2237,18 @@ It does not approve evidence, methodology, parameters, data, an ETF universe,
 benchmark, cash proxy, reproduction, validation, implementation, evaluator
 behavior, signal computation, or trading implication.
 
+Phase 33 Step 14 adds the broad-ETF primary citation verification
+normalization. It records the externally supplied Perplexity verification
+report as scout material, normalizes citation metadata for Faber,
+`ETF-ACADEMIC-001`, the unresolved "Simple Market Timing with Moving Averages"
+label, `ZAKAMULIN-2014`, `ZAKAMULIN-2016`, and optional Zakamulin SSRN leads,
+and separates verified source identity from evidence approval. It recommends a
+conservative later limited formal review of Faber only after the open PDF and
+SSRN metadata are verified in the repo trail. It does not approve evidence,
+methodology, parameters, data, an ETF universe, benchmark, cash proxy,
+reproduction, validation, implementation, evaluator behavior, signal
+computation, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
