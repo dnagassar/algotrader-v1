@@ -886,21 +886,39 @@ Recommended next phases:
    construction, no-lookahead/as-of protocol, methodology, parameter, data
    policy, reproduction protocol, implementation, signal definition,
    evaluator, or trading implication.
-52. Future route: pause Phase 33 before code. The preferred next docs-only
-   route is a cash/benchmark return treatment boundary because return
-   construction, no-lookahead timing, and universe/inception rules still
-   cannot be reviewed against results until cash/risk-free series, benchmark
-   returns, buy-and-hold comparisons, frequency alignment, publication timing,
-   and zero-return placeholders are scoped without approving a benchmark or
-   cash proxy. A source/universe/benchmark approval boundary,
-   no-lookahead/as-of approval boundary, survivorship/inception/delisting
-   approval boundary, or reproduction protocol should not be attempted until
-   the necessary upstream constraints are concrete. Any future review must
-   preserve traceable dataset scope, point-in-time input assumptions,
-   parameter rationale, no-lookahead controls, reproducibility notes,
-   robustness or out-of-sample evidence, limitations, licensing constraints,
-   offline replay requirements, and non-claims.
-53. Later route: implementation readiness gate.
+52. Phase 33 Step 23: broad-ETF cash/benchmark return treatment boundary.
+   This step is complete. It scopes unresolved benchmark comparison
+   candidates, cash/T-bill proxy candidates, benchmark return basis,
+   cash-return conversion and compounding, daily/monthly frequency alignment,
+   ETF signal cadence versus benchmark/cash cadence, date alignment,
+   FRED publication/revision/as-of timing, non-trading-day treatment,
+   out-of-market cash treatment, zero-return placeholder limits, and the
+   relationship to return construction, no-lookahead/as-of timing,
+   survivorship/inception/delisting, source shortlist, universe/benchmark
+   shortlist, and storage/fixture policy gates. It keeps cash/benchmark return
+   treatment approval blocked and recommends a docs-only cost/friction
+   assumptions boundary next. It does not approve a benchmark, cash proxy,
+   cash-rate series, source, universe, return construction,
+   no-lookahead/as-of protocol, survivorship/inception/delisting policy,
+   methodology, parameter, data policy, reproduction protocol,
+   implementation, signal definition, evaluator, or trading implication.
+53. Future route: pause Phase 33 before code. The preferred next docs-only
+   route is a cost/friction assumptions boundary because cash and benchmark
+   comparability still depends on whether out-of-market cash earns return,
+   whether idle cash is modeled, and whether transaction costs, spreads,
+   slippage, taxes, fund expenses, opening gaps, turnover, and rebalance
+   friction are included, excluded, or deferred without approving a benchmark,
+   cash proxy, source, return construction, reproduction, implementation, or
+   trading use. A benchmark/cash approval boundary,
+   source/universe/benchmark approval boundary, no-lookahead/as-of approval
+   boundary, survivorship/inception/delisting approval boundary, or
+   reproduction protocol should not be attempted until the necessary upstream
+   constraints are concrete. Any future review must preserve traceable dataset
+   scope, point-in-time input assumptions, parameter rationale,
+   no-lookahead controls, reproducibility notes, robustness or out-of-sample
+   evidence, limitations, licensing constraints, offline replay requirements,
+   and non-claims.
+54. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -1065,7 +1083,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Cash / Benchmark Return Treatment Boundary
+Future Step -- Broad ETF Cost / Friction Assumptions Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -1082,22 +1100,23 @@ Read first:
 - docs/design/phase33_broad_etf_return_construction_boundary.md
 - docs/design/phase33_broad_etf_no_lookahead_asof_protocol_boundary.md
 - docs/design/phase33_broad_etf_survivorship_inception_delisting_boundary.md
+- docs/design/phase33_broad_etf_cash_benchmark_return_treatment_boundary.md
 
-Scope: documentation-only cash/benchmark return treatment boundary for the
-broad-ETF candidate. Define unresolved requirements for cash/risk-free series,
-benchmark return basis, buy-and-hold comparison timing, zero-return
-placeholder treatment, daily/monthly alignment, compounding, publication or
-revision timing, and how cash/benchmark treatment interacts with return
-construction, no-lookahead/as-of timing, and universe/inception rules. Do not
-approve a source, universe, benchmark, cash proxy, return construction,
-no-lookahead/as-of protocol, survivorship/inception/delisting policy,
-methodology, parameter, data policy, reproduction protocol, data acquisition,
-fixture creation, schema design, notebooks, scripts, backtests, evaluator
-behavior, signal computation, validated artifacts, validated signal
-definitions, implementation, or trading use. Preserve normal pytest as
-offline, credential-free, deterministic, and free of network, credentials,
-external data providers, notebooks, prototype tools, brokers, runtime
-behavior, and trading-path behavior.
+Scope: documentation-only cost/friction assumptions boundary for the
+broad-ETF candidate. Define unresolved requirements for transaction costs,
+spreads, slippage, opening gaps, turnover, rebalance friction, taxes, fund
+expenses, cash drag, idle cash, out-of-market cash return interaction,
+benchmark comparability, and how cost/friction assumptions interact with
+return construction, no-lookahead/as-of timing, universe/inception rules, and
+cash/benchmark treatment. Do not approve a source, universe, benchmark, cash
+proxy, cash-rate series, return construction, no-lookahead/as-of protocol,
+survivorship/inception/delisting policy, methodology, parameter, data policy,
+reproduction protocol, data acquisition, fixture creation, schema design,
+notebooks, scripts, backtests, evaluator behavior, signal computation,
+validated artifacts, validated signal definitions, implementation, or trading
+use. Preserve normal pytest as offline, credential-free, deterministic, and
+free of network, credentials, external data providers, notebooks, prototype
+tools, brokers, runtime behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

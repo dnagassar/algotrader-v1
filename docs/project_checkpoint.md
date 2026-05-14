@@ -7970,6 +7970,102 @@ metadata snapshot/provenance policy, no approved benchmark/cash return
 treatment, no result-review template, no reproduction protocol, and no trading
 implication or production threshold.
 
+## Phase 33 Step 23 Broad ETF Cash / Benchmark Return Treatment Boundary
+
+Phase 33 Step 23 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_cash_benchmark_return_treatment_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines cash and benchmark return-treatment questions before any
+reproduction planning and prevents premature benchmark, cash proxy,
+cash-rate series, source, ETF universe, return construction,
+no-lookahead/as-of protocol, methodology, parameter, data policy,
+implementation, evaluator, signal-definition, or trading-use approval.
+
+Benchmark comparison candidates remain candidate-only: buy-and-hold versions
+of any later selected ETF universe, a broad U.S. equity benchmark candidate,
+asset-class-matched benchmark candidates, a cash/T-bill proxy comparison, and
+a zero-return placeholder only as a last-resort methodology placeholder.
+
+Cash/T-bill proxy candidates remain candidate-only: FRED `TB3MS`, FRED
+`DGS3MO`, any other FRED Treasury/cash-rate candidates only if separately
+identified and reviewed later, and zero-return cash only as an unapproved
+sensitivity/context placeholder. Rate type, frequency, publication timing,
+revision behavior, vintage handling, annualized-rate conversion, compounding,
+day count, and period-return conversion remain unresolved.
+
+Required decision areas include benchmark return basis, cash return basis and
+compounding, daily versus monthly frequency alignment, ETF signal cadence
+versus benchmark/cash cadence, date alignment across ETF, benchmark, and cash
+data, FRED publication/revision/as-of timing, non-trading days and holidays,
+whether cash earns return while out of market, transaction-cost and idle-cash
+assumptions, inflation or real-return treatment, and zero-return cash as
+sensitivity/context only.
+
+No-lookahead/as-of constraints require cash and benchmark data to be available
+as of the decision/evaluation timestamp, FRED publication/revision timing to
+be documented before use, benchmark/cash alignment to avoid hindsight
+convenience, monthly cash returns not to use future daily data, same-period
+comparisons to define observation/action rules, and normal pytest not to call
+FRED, vendor APIs, broker APIs, or online sources.
+
+The relationship section ties this boundary back to Step 33.20 return
+construction, Step 33.21 no-lookahead/as-of timing, Step 33.22
+survivorship/inception/delisting, Step 33.6 universe/benchmark shortlist,
+Step 33.8 final source shortlist, and Step 33.9 data storage/fixture policy.
+
+Required future approval criteria include selected benchmark definition,
+selected cash/risk-free proxy, selected source and series identifiers,
+documented frequency and conversion method, documented publication/revision/
+as-of handling, documented alignment with ETF universe and return
+construction, documented limitations and non-claims, and a deterministic
+fixture/local-data policy if data is used later.
+
+Decision: cash/benchmark return treatment remains blocked for approval. This
+phase creates a partial planning boundary only and does not make the
+broad-ETF candidate ready for data acquisition, schemas, notebooks, scripts,
+fixtures, backtests, reproduction, result review, evaluators, signal
+definitions, validated artifacts, implementation, or trading-path work.
+
+Recommended next route: a docs-only cost/friction assumptions boundary. That
+is the narrowest next gate because cash and benchmark comparability still
+depends on whether out-of-market cash earns return, whether idle cash is
+modeled, and whether transaction costs, spreads, slippage, taxes, fund
+expenses, opening gaps, turnover, and rebalance friction are included,
+excluded, or deferred without approving a benchmark, cash proxy, source,
+return construction, reproduction, implementation, or trading use.
+
+This phase does not approve benchmark/cash proxy, cash-rate series, source,
+universe, return construction, no-lookahead/as-of protocol,
+survivorship/inception/delisting policy, methodology, parameter, data policy,
+data acquisition, ingestion, files, fixtures, schemas, code, notebooks,
+scripts, backtests, reproduction, signal definitions, evaluator behavior,
+validated artifacts, validated signal definitions, implementation, production
+thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no approved return-construction policy, no approved
+no-lookahead/as-of protocol, no approved cost/friction assumptions, no
+approved survivorship/inception/delisting policy, no acquired data, no
+project-local deterministic reproduction, no implementation-scope approval,
+no evaluator tests, no approved benchmark definition, no approved
+buy-and-hold comparison convention, no approved asset-class-matched benchmark
+convention, no approved cash/risk-free proxy, no approved cash-rate series,
+no approved FRED publication/revision/as-of handling, no approved cash-rate
+conversion or compounding rule, no approved benchmark return basis, no
+approved benchmark/cash frequency-alignment rule, no approved benchmark/cash
+date-alignment rule, no approved non-trading-day or holiday policy, no
+approved out-of-market cash return assumption, no approved idle-cash
+assumption, no approved inflation or real-return treatment, no approved
+zero-return placeholder policy, no result-review template, no reproduction
+protocol, and no trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -8023,17 +8119,20 @@ Safe next tasks include:
   in Phase 33 Step 20; and the broad ETF no-lookahead/as-of protocol boundary
   is now recorded in Phase 33 Step 21; and the broad ETF
   survivorship/inception/delisting boundary is now recorded in Phase 33 Step
-  22. The next docs-only route should pause Phase 33 before code and prefer a
-  cash/benchmark return treatment boundary because return construction,
-  no-lookahead timing, and universe/inception rules still cannot be reviewed
-  against results until cash/risk-free series, benchmark returns,
-  buy-and-hold comparisons, frequency alignment, publication timing, and
-  zero-return placeholders are scoped without approving a benchmark or cash
-  proxy. Do not proceed to a fixture policy approval boundary,
-  source/universe/benchmark approval boundary, no-lookahead/as-of approval
-  boundary, survivorship/inception/delisting approval boundary, reproduction
-  protocol, evaluator route, or implementation route while keeping all
-  evidence, source, universe, benchmark, cash proxy, data, return
+  22; and the broad ETF cash/benchmark return treatment boundary is now
+  recorded in Phase 33 Step 23. The next docs-only route should pause Phase 33
+  before code and prefer a cost/friction assumptions boundary because cash and
+  benchmark comparability still depends on whether out-of-market cash earns
+  return, whether idle cash is modeled, and whether transaction costs, spreads,
+  slippage, taxes, fund expenses, opening gaps, turnover, and rebalance
+  friction are included, excluded, or deferred without approving a benchmark,
+  cash proxy, source, return construction, reproduction, implementation, or
+  trading use. Do not proceed to a fixture policy approval boundary,
+  benchmark/cash approval boundary, source/universe/benchmark approval
+  boundary, no-lookahead/as-of approval boundary,
+  survivorship/inception/delisting approval boundary, reproduction protocol,
+  evaluator route, or implementation route while keeping all evidence, source,
+  universe, benchmark, cash proxy, cash-rate series, data, return
   construction, no-lookahead/as-of protocol, survivorship/inception/delisting
   policy, methodology, validation, implementation, secondary shortlist, and
   S05 backlog statuses non-approving

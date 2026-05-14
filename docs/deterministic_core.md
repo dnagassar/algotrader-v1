@@ -2050,6 +2050,8 @@ Ledger modes:
   no-lookahead/as-of protocol boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 22 broad-ETF
   survivorship/inception/delisting boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 23 broad-ETF
+  cash/benchmark return treatment boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2373,6 +2375,23 @@ boundary next. It does not approve an ETF universe, source, benchmark, cash
 proxy, return construction, no-lookahead/as-of protocol, methodology,
 parameter, data policy, reproduction protocol, implementation, signal
 definition, evaluator, or trading implication.
+
+Phase 33 Step 23 adds the broad-ETF cash/benchmark return treatment boundary.
+It scopes unresolved benchmark comparison candidates, cash/T-bill proxy
+candidates, benchmark return basis, cash-return conversion and compounding,
+daily/monthly frequency alignment, ETF signal cadence versus benchmark/cash
+cadence, date alignment, FRED publication/revision/as-of timing,
+non-trading-day treatment, out-of-market cash treatment, zero-return
+placeholder limits, required future approval criteria, and the relationship to
+return construction, no-lookahead/as-of timing, survivorship/inception/
+delisting, source shortlist, universe/benchmark shortlist, and
+storage/fixture policy gates. It keeps cash/benchmark return treatment
+approval blocked and recommends a docs-only cost/friction assumptions
+boundary next. It does not approve a benchmark, cash proxy, cash-rate series,
+source, universe, return construction, no-lookahead/as-of protocol,
+survivorship/inception/delisting policy, methodology, parameter, data policy,
+reproduction protocol, implementation, signal definition, evaluator, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
