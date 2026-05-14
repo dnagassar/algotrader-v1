@@ -7513,6 +7513,73 @@ benchmark/cash/risk-metric review, no result-review template, no
 promotion/rejection decision, and no trading implication or production
 threshold.
 
+## Phase 33 Step 13 Broad ETF Primary Evidence Text Intake Normalization
+
+Phase 33 Step 13 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_primary_evidence_text_intake_normalization.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+normalization records the second Perplexity source-gathering report as
+external scout material under Phase 34 artifact-intake rules. The report is
+not treated as evidence approval, source-of-truth material, methodology
+validation, parameter approval, data approval, universe approval, benchmark
+approval, reproduction approval, validation approval, implementation approval,
+or trading approval.
+
+The source status table covers `ETF-ACADEMIC-001`, `MA-PRACT-001`,
+`MA-ACADEMIC-001 / unresolved`, related Zakamulin/SSRN-style candidates, and
+the Perplexity report itself as `EXT-SCOUT-002`. Rows record reported primary
+link type, cautious full-text availability status, citation verification
+status, whether methodology/data/bias/cost details are available from primary
+text, current status, follow-up, and conditional eligibility for later limited
+formal review.
+
+The preliminary readiness decision is conservative: pause until primary text
+and citation verification is complete. Faber may be eligible later only if the
+reported open PDF and citation metadata are verified. `ETF-ACADEMIC-001` may
+be eligible later only if the reported SSRN working paper or official text is
+accessible and citation metadata is verified. "Simple Market Timing with
+Moving Averages" remains unresolved and not eligible until the exact intended
+source is identified.
+
+The document records that the Perplexity report contains mixed citation
+quality and that some fields may cite secondary or unrelated pages. Exact
+author/title/year/venue/DOI/SSRN/RePEc metadata must be verified from primary
+pages before formal review, and source claims must be extracted from actual
+primary text rather than the Perplexity summary.
+
+Required follow-up before formal review includes verifying citation metadata,
+inspecting full primary text, recording abstracts from primary sources only,
+extracting exact moving-average rules, universe, period, frequency, benchmark,
+cash proxy, return construction, dividend/corporate-action treatment,
+costs/frictions, OOS/robustness/parameter-sensitivity treatment,
+lookahead/survivorship/data-snooping controls, limitations, and non-claims.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, PDFs,
+fixtures, reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no
+source-specific primary-text verification, no verified citation metadata for
+the second Perplexity source list, no resolved identity for "Simple Market
+Timing with Moving Averages", no verified separation between related
+Zakamulin/SSRN-style candidates and the unresolved `MA-ACADEMIC-001` label,
+no reviewed practitioner-source classification, no approved return-treatment
+or corporate-action handling decisions, no approved friction assumptions, no
+robustness or parameter-sensitivity review, no benchmark/cash/risk-metric
+review, no result-review template, no promotion/rejection decision, and no
+trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7551,12 +7618,13 @@ Safe next tasks include:
   boundary is now recorded in Phase 33 Step 8; and the data storage/fixture
   policy boundary is now recorded in Phase 33 Step 9; the moving-average
   evidence source package is now recorded in Phase 33 Step 10; the
-  moving-average evidence intake plan is now recorded in Phase 33 Step 11; and
-  the externally collected evidence source normalization is now recorded in
-  Phase 33 Step 12. The next docs-only route should pause until full primary
-  texts are available, then may proceed to a first limited methodology
-  evidence review, broad ETF source approval boundary, or fixture policy
-  approval boundary while
+  moving-average evidence intake plan is now recorded in Phase 33 Step 11; the
+  externally collected evidence source normalization is now recorded in Phase
+  33 Step 12; and the primary evidence text intake normalization is now
+  recorded in Phase 33 Step 13. The next docs-only route should pause until
+  primary text and citation verification is complete, then may proceed to a
+  first limited methodology evidence review, broad ETF source approval
+  boundary, or fixture policy approval boundary while
   keeping all evidence, source, universe, benchmark, cash proxy, data,
   methodology, validation, implementation, secondary shortlist, and S05
   backlog statuses non-approving

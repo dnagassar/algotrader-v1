@@ -2227,6 +2227,16 @@ methodology, parameters, source data, an ETF universe, benchmark, cash proxy,
 reproduction, validation, implementation, evaluator behavior, signal
 computation, or trading implication.
 
+Phase 33 Step 13 adds the broad-ETF primary evidence text intake
+normalization. It records the second Perplexity source-gathering report as
+external scout material, normalizes reported primary-text availability for
+`ETF-ACADEMIC-001`, `MA-PRACT-001`, unresolved `MA-ACADEMIC-001`, and related
+Zakamulin/SSRN-style candidates, records citation-quality cautions, and
+recommends pausing until primary text and citation verification is complete.
+It does not approve evidence, methodology, parameters, data, an ETF universe,
+benchmark, cash proxy, reproduction, validation, implementation, evaluator
+behavior, signal computation, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
