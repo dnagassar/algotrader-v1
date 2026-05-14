@@ -806,18 +806,47 @@ Recommended next phases:
    approve evidence, methodology, parameters, data, universe, benchmark/cash
    proxy, reproduction, validation, implementation, evaluator behavior, signal
    computation, or trading implication.
-45. Future route: `ETF-ACADEMIC-001` full-text verification / limited review
-   if accessible, Zakamulin limited review only if separately selected and
-   full text is accessible, broad ETF methodology evidence synthesis boundary
-   only after enough primary-text review exists, S05 backlog recheck, or
-   pause formal evidence review until more primary texts are available.
-   Any review must preserve traceable dataset scope, point-in-time input
-   assumptions, threshold or parameter rationale, no-lookahead controls,
-   reproducibility notes, robustness or out-of-sample evidence, limitations,
-   licensing constraints, offline replay requirements, and non-claims.
-   A reproduction protocol boundary should wait until source, data, universe,
-   benchmark/cash proxy, and data policy choices are later approved.
-46. Later route: implementation readiness gate.
+45. Phase 33 Step 16: broad-ETF `ETF-ACADEMIC-001` limited formal
+   evidence review.
+   This step is complete. It reviews Huang and Huang's "Testing moving
+   average trading strategies on ETFs" as ETF-specific methodology/friction
+   context only, records source identity, access status, moving-average and
+   `QUIMA` framing, benchmark/cash context, opening-gap and transaction-cost
+   cautions, lag-length and data-snooping cautions, required follow-up, and
+   remaining blockers. It does not approve evidence, methodology, parameters,
+   data, universe, benchmark/cash proxy, reproduction, validation,
+   implementation, evaluator behavior, signal computation, or trading
+   implication.
+46. Phase 33 Step 17: broad-ETF methodology evidence synthesis boundary.
+   This step is complete. It synthesizes Faber plus `ETF-ACADEMIC-001` as
+   limited context-only evidence, records common methodology themes and
+   unresolved tensions, states what the evidence can and cannot support, lists
+   minimum requirements before reproduction planning, and recommends a
+   docs-only reproduction readiness checklist. It does not approve evidence,
+   methodology, parameters, data, universe, benchmark/cash proxy,
+   reproduction, validation, implementation, evaluator behavior, signal
+   computation, or trading implication.
+47. Phase 33 Step 18: broad-ETF reproduction readiness checklist.
+   This step is complete. It enumerates unresolved readiness gates for
+   evidence, methodology, parameters, universe, source, terms/license,
+   storage/fixtures, benchmark/cash proxy, return construction,
+   no-lookahead/as-of handling, costs/frictions, survivorship, reproduction
+   protocol, result review, and implementation scope. It recommends pausing
+   Phase 33 before code until source, data policy, universe, benchmark, and
+   cash-proxy choices can be made concrete. It does not approve reproduction,
+   methodology, parameters, universe, source, benchmark/cash proxy, data
+   acquisition, validation, implementation, evaluator behavior, signal
+   computation, or trading implication.
+48. Future route: pause Phase 33 before code until source, data policy,
+   universe, benchmark, and cash-proxy choices can be made concrete. If Phase
+   33 resumes with concrete owner/source constraints, a docs-only
+   source/universe/benchmark approval boundary can be considered before any
+   reproduction protocol planning. Any future review must preserve traceable
+   dataset scope, point-in-time input assumptions, parameter rationale,
+   no-lookahead controls, reproducibility notes, robustness or out-of-sample
+   evidence, limitations, licensing constraints, offline replay requirements,
+   and non-claims.
+49. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -982,42 +1011,29 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF ETF-ACADEMIC-001 Full-Text Verification Gate
+Future Step -- Broad ETF Source/Universe/Benchmark Approval Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
-- docs/design/phase33_broad_etf_moving_average_source_package.md
-- docs/design/phase33_broad_etf_moving_average_evidence_source_package.md
-- docs/design/phase33_broad_etf_moving_average_evidence_intake_plan.md
-- docs/design/phase33_broad_etf_evidence_source_collection_normalization.md
-- docs/design/phase33_broad_etf_primary_evidence_text_intake_normalization.md
-- docs/design/phase33_broad_etf_primary_citation_verification_normalization.md
 - docs/design/phase33_broad_etf_faber_limited_formal_evidence_review.md
+- docs/design/phase33_broad_etf_etf_academic_001_limited_formal_evidence_review.md
+- docs/design/phase33_broad_etf_methodology_evidence_synthesis_boundary.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
+- docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
-- docs/design/phase34_external_research_artifact_intake_checklist.md
-- docs/design/phase34_notebook_prototype_policy_boundary.md
+- docs/design/phase33_broad_etf_reproduction_readiness_checklist.md
 
-Scope: documentation-only full-text verification and, only if accessible,
-limited formal review of `ETF-ACADEMIC-001`. Use primary pages and full text
-rather than summaries. Confirm exact title, authors, year, venue, DOI, RePEc,
-SSRN or working-paper identifiers, version, access status, and whether the
-reviewed text is inspectable. If full text is accessible, extract only scoped
-methodology context: moving-average rules, ETF universe, period, frequency,
-benchmark, cash proxy, return construction, dividend/corporate-action
-treatment, costs/frictions, OOS/robustness/parameter-sensitivity treatment,
-lookahead/survivorship/data-snooping controls, limitations, and non-claims.
-If full text is not accessible, stop at a verification boundary and do not
-perform evidence review. Do not review Zakamulin candidates unless separately
-selected with confirmed full-text access. Do not approve a source, ETF
-universe, benchmark, cash proxy, methodology, parameter, storage policy,
-fixture, reproduction protocol, validation route, signal definition,
-evaluator, implementation, or trading use. Preserve normal pytest as offline,
-credential-free, deterministic, and free of network, credentials, external
-data providers, notebooks, prototype tools, brokers, runtime behavior, and
-trading-path behavior.
+Scope: documentation-only source/universe/benchmark approval boundary only if
+source, data-policy, universe, benchmark, and cash-proxy choices can be made
+concrete. Otherwise pause Phase 33 before code. Do not approve reproduction,
+methodology, parameters, data acquisition, fixture creation, schema design,
+notebooks, scripts, backtests, evaluator behavior, signal computation,
+validated artifacts, validated signal definitions, implementation, or trading
+use. Preserve normal pytest as offline, credential-free, deterministic, and
+free of network, credentials, external data providers, notebooks, prototype
+tools, brokers, runtime behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

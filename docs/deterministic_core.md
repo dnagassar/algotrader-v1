@@ -2299,6 +2299,17 @@ data, an ETF universe, benchmark, cash proxy, reproduction, validation,
 implementation, evaluator behavior, signal computation, or trading
 implication.
 
+Phase 33 Step 18 adds the broad-ETF reproduction readiness checklist. It
+enumerates unresolved gates for evidence, methodology, parameter discipline,
+ETF universe, data source, terms/license, storage/fixtures, benchmark/cash
+proxy, return construction, no-lookahead/as-of handling, costs/frictions,
+survivorship, reproduction protocol, result review, and implementation scope.
+It recommends pausing Phase 33 before code until source, data policy,
+universe, benchmark, and cash-proxy choices can be made concrete. It does not
+approve reproduction, methodology, parameters, data, an ETF universe,
+benchmark, cash proxy, validation, implementation, evaluator behavior, signal
+computation, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
