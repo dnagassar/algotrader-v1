@@ -2036,6 +2036,18 @@ Ledger modes:
   citation verification normalization
 - Threshold evaluator behavior beyond the Phase 33 Step 15 broad-ETF Faber
   limited formal evidence review
+- Threshold evaluator behavior beyond the Phase 33 Step 16 broad-ETF
+  `ETF-ACADEMIC-001` limited formal evidence review
+- Threshold evaluator behavior beyond the Phase 33 Step 17 broad-ETF
+  methodology evidence synthesis boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 18 broad-ETF
+  reproduction readiness checklist
+- Threshold evaluator behavior beyond the Phase 33 Step 19 broad-ETF
+  source/universe/benchmark decision-readiness boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 20 broad-ETF
+  return-construction boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 21 broad-ETF
+  no-lookahead/as-of protocol boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2334,6 +2346,18 @@ recommends a docs-only no-lookahead/as-of protocol boundary next. It does not
 approve a return basis, source, universe, benchmark, cash proxy, methodology,
 parameter, data policy, reproduction protocol, implementation, signal
 definition, evaluator, or trading implication.
+
+Phase 33 Step 21 adds the broad-ETF no-lookahead/as-of protocol boundary. It
+defines the core as-of principle, timing concepts for observation, decision,
+action, effective trade date, close-to-close, next-open, next-close, monthly
+rebalance, cash-rate observation, dividend/distribution dates, and
+publication/revision timestamps, and records unresolved moving-average signal
+timing, adjusted-data, total-return, cash, benchmark, ETF inception, and
+delisting constraints. It keeps no-lookahead/as-of protocol approval blocked
+and recommends a docs-only survivorship/inception/delisting boundary next. It
+does not approve timing, return construction, source, universe, benchmark,
+cash proxy, methodology, parameter, data policy, reproduction protocol,
+implementation, signal definition, evaluator, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

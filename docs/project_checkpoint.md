@@ -7803,6 +7803,85 @@ basis, source, universe, benchmark, cash proxy, methodology, parameter, data
 policy, reproduction protocol, implementation, signal definition, evaluator,
 or trading implication.
 
+## Phase 33 Step 21 Broad ETF No-Lookahead / As-Of Protocol Boundary
+
+Phase 33 Step 21 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_no_lookahead_asof_protocol_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines the core as-of principle for the broad-ETF moving-average
+candidate: signals may use only information available at the decision
+timestamp, action timing must occur after signal observation, data revisions
+and adjusted data must be handled explicitly, benchmark/cash availability must
+be aligned by availability date, and normal `python -m pytest` must remain
+offline, credential-free, deterministic, and free of live data, credentials,
+network, brokers, notebooks, external providers, and runtime trading behavior.
+
+The timing vocabulary covers observation date, decision timestamp, action
+timestamp, effective trade date, close-to-close assumption, next-open
+assumption, next-close assumption, monthly rebalance date, cash-rate
+observation date, dividend/distribution ex-date and payment-date
+implications, and data publication/revision timestamp.
+
+The moving-average timing section records unresolved choices for prior-close
+inputs, after-close signal observation, next-open versus next-close or later
+action, same-close signal/action assumptions, end-of-month data availability,
+holiday/non-trading-day lags, and explicit lag documentation before results.
+
+The adjusted-data and total-return section records that adjusted close may
+reflect later corporate-action information, dividend/split/other adjustment
+semantics must be documented, total-return construction must define when
+distributions become knowable, retroactive vendor adjustments are both
+reproducibility and as-of risks, and source snapshots must record retrieval
+date and adjustment assumptions.
+
+The cash/benchmark section records that FRED or other cash-rate series may
+have publication, vintage, correction, and revision timing; daily versus
+monthly cash-rate alignment remains unresolved; benchmark returns must be
+compared on the same availability/timing basis; zero-return placeholder is not
+approved; and no benchmark or cash proxy is approved.
+
+The ETF universe and inception section records that ETFs cannot be used before
+inception or first usable observation, index proxies before ETF inception are
+not approved, delisting/inactive handling remains unresolved, universe
+membership must be predefined before performance inspection, and future
+inclusion/exclusion rules must be documented before results.
+
+Decision: no-lookahead/as-of protocol remains blocked for approval. Required
+future approval criteria include selected observation/action timing, explicit
+lag convention, selected return basis, source snapshot policy,
+dividend/split/corporate-action timing policy, cash-rate availability policy,
+benchmark alignment policy, universe inception/delisting policy, testable
+deterministic examples, and explicit non-claims.
+
+Recommended next route: a docs-only survivorship/inception/delisting boundary.
+That is the narrowest next gate because no-lookahead review cannot become
+approval-ready until ETF first-usable observations, inactive or delisted funds,
+and pre-result universe membership are defined.
+
+This phase does not approve no-lookahead/as-of protocol, return construction,
+source, universe, benchmark, cash proxy, methodology, parameter, data policy,
+data acquisition, ingestion, files, fixtures, schemas, code, notebooks,
+scripts, backtests, reproduction, signal definitions, evaluator behavior,
+validated artifacts, validated signal definitions, implementation, production
+thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no approved return-construction policy, no approved
+no-lookahead/as-of protocol, no approved cost/friction assumptions, no
+approved survivorship/inception/delisting policy, no acquired data, no
+project-local deterministic reproduction, no implementation-scope approval,
+no evaluator tests, no approved source fields, no approved adjusted-close
+semantics, no approved total-return method, no approved cash-rate conversion,
+no approved benchmark alignment, no result-review template, no reproduction
+protocol, and no trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7853,16 +7932,18 @@ Safe next tasks include:
   checklist is now recorded in Phase 33 Step 18; and the broad ETF source,
   universe, and benchmark decision-readiness boundary is now recorded in Phase
   33 Step 19; and the broad ETF return-construction boundary is now recorded
-  in Phase 33 Step 20. The next docs-only route should pause Phase 33 before
-  code and prefer a no-lookahead/as-of protocol boundary because return
-  construction cannot be reviewed without explicit observation time, decision
-  time, action time, availability, adjustment, distribution, cash-rate,
-  correction, revision, benchmark, and same-close assumptions. Do not proceed
-  to a fixture policy approval boundary, source/universe/benchmark approval
-  boundary, reproduction protocol, evaluator route, or implementation route
-  while keeping all evidence, source, universe, benchmark, cash proxy, data,
-  return construction, methodology, validation, implementation, secondary
-  shortlist, and S05 backlog statuses non-approving
+  in Phase 33 Step 20; and the broad ETF no-lookahead/as-of protocol boundary
+  is now recorded in Phase 33 Step 21. The next docs-only route should pause
+  Phase 33 before code and prefer a survivorship/inception/delisting boundary
+  because no-lookahead review cannot be made approval-ready until every ETF's
+  first usable observation, inactive/delisted-fund handling, and pre-result
+  universe membership rules are concrete. Do not proceed to a fixture policy
+  approval boundary, source/universe/benchmark approval boundary,
+  no-lookahead/as-of approval boundary, reproduction protocol, evaluator route,
+  or implementation route while keeping all evidence, source, universe,
+  benchmark, cash proxy, data, return construction, no-lookahead/as-of
+  protocol, methodology, validation, implementation, secondary shortlist, and
+  S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
