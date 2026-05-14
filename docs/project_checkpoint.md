@@ -7049,6 +7049,99 @@ no approved repository policy for notebooks/scratch artifacts/hosted exports,
 no result-review template, no promotion/rejection decision, and no trading
 implication or production threshold.
 
+## Phase 34 Step 2 External Research Artifact Intake Checklist
+
+Phase 34 Step 2 is documentation-only. It adds:
+
+```text
+docs/design/phase34_external_research_artifact_intake_checklist.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+checklist defines how external research artifacts enter the project trail
+before they can influence decisions while preserving Git, reviewed docs, and
+deterministic tests as the trust boundary.
+
+The covered artifact types are Perplexity reports, Claude/Gemini reviews,
+Codex implementation reports, QuantConnect results, vectorbt experiments,
+notebooks, vendor/public data documentation, academic/practitioner papers,
+spreadsheets and ad hoc analysis files, screenshots, and manual observations.
+
+Required intake metadata includes artifact title, source/tool, date received
+or reviewed, author/tool identity, prompt or query when applicable, reviewed
+files/links, source type, claims made, evidence cited, assumptions,
+uncertainty, proposed use, and allowed status. Allowed status values are
+scout, critique, context, candidate evidence, rejected, and needs
+verification.
+
+Evidence classification labels are primary source, secondary source,
+external-tool inference, local repo evidence, manual observation, unverified
+claim, and rejected / unsupported claim. The checklist keeps LLM-generated
+text, hosted backtest output, notebook output, screenshots, and spreadsheet
+conclusions outside primary evidence unless the underlying source material is
+primary and separately reviewed.
+
+Required review questions ask what claim is being made, whether primary
+evidence supports it, whether it conflicts with repo docs, whether current
+source verification is needed, whether data/licensing/performance/methodology
+or implementation claims are involved, whether deterministic local
+reproduction is required, whether lookahead/survivorship/data-snooping/license
+risk is introduced, whether code/dependency/network/credential/broker/runtime
+or trading-path behavior is implied, and what is explicitly out of scope.
+
+Routing outcomes are reject, keep as scout/context only, normalize into
+`docs/design`, place in `docs/proposals` only if that speculative route exists
+or is explicitly created later, require primary-source verification, require
+terms/license review, require deterministic reproduction plan, require human
+owner decision, or mark eligible for a later scoped phase.
+
+Promotion constraints state that external artifacts cannot directly create or
+approve `ValidatedResearchArtifact`, `ValidatedSignalDefinition`,
+signal/evaluator code, production threshold/config, trading action,
+broker/runtime behavior, normal pytest dependency, or source/data approval.
+They also cannot directly approve notebooks as canonical, vendor/public data
+as project data, hosted backtest results as reproduced, or LLM output as
+project authority.
+
+Repository placement keeps reviewed phase decisions in `docs/design`,
+speculative external-agent outputs in `docs/proposals` only if that directory
+exists or is explicitly created later, concise milestones in
+`project_checkpoint.md`, raw vendor data and notebook outputs out of the repo
+without storage/fixture policy, and `src` changes behind later scoped
+implementation approval.
+
+The reusable checklist template captures artifact metadata, evidence labels,
+review questions, routing outcome, follow-up, explicit non-goals, owner,
+normal pytest impact, and repository placement. Completing the template records
+intake only; it does not validate, approve, promote, implement, reproduce, or
+make an artifact actionable.
+
+The recommended next docs-only gate is a notebook/prototype policy boundary.
+That gate should define how notebooks, vectorbt prototypes, spreadsheets, and
+other exploratory artifacts may be referenced or summarized without becoming
+canonical repo artifacts, dependencies, datasets, normal pytest inputs,
+validated research, signal definitions, or trading-path behavior.
+
+This phase does not perform or authorize implementation, dependencies,
+notebooks, data acquisition, data ingestion, schema/code/scripts, backtests,
+reproduction, QuantConnect/vectorbt integration, LLM runtime integration,
+evaluator or signal implementation, signal computation,
+scoring/ranking/direction/confidence/actionability, validated artifacts,
+validated signal definitions, production thresholds, source approval, data
+approval, profitability claims, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact` from external
+artifacts, no `ValidatedSignalDefinition` from external artifacts, no approved
+external research integration, no approved data storage/fixture policy, no
+approved Phase 33 source/universe/benchmark/cash proxy, no project-local
+deterministic reproduction, no no-lookahead audit, no implementation-scope
+approval, no evaluator tests, no approved notebook/prototype policy, no
+approved terms/license route for external data or hosted outputs, no approved
+source/data approval route from external artifacts, no approved result-review
+template for reproduced outputs, no promotion/rejection decision for any
+specific external artifact, and no trading implication or production
+threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7089,12 +7182,19 @@ Safe next tasks include:
   source package while keeping all source, universe, benchmark, cash proxy,
   data, methodology, validation, implementation, secondary shortlist, and S05
   backlog statuses non-approving
-- Phase 34 Step 1 now records the external research integration boundary; the
-  next docs-only gate should be an external research artifact intake checklist
-  while keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt,
-  notebooks, vendor/public data, external research, spreadsheets, and ad hoc
-  analysis advisory-only and outside normal pytest, production dependencies,
-  validated artifacts, validated signal definitions, and trading-path behavior
+- Phase 34 Step 1 records the external research integration boundary; Phase 34
+  Step 2 now records the intake checklist that Step 1 recommended, while
+  keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
+  vendor/public data, external research, spreadsheets, and ad hoc analysis
+  advisory-only and outside normal pytest, production dependencies, validated
+  artifacts, validated signal definitions, and trading-path behavior
+- Phase 34 Step 2 now records the external research artifact intake checklist;
+  the next docs-only gate should be a notebook/prototype policy boundary while
+  keeping notebooks, vectorbt prototypes, spreadsheets, screenshots, manual
+  observations, hosted outputs, vendor/public data notes, and LLM outputs
+  exploratory or advisory only and outside normal pytest, production
+  dependencies, validated artifacts, validated signal definitions, and
+  trading-path behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

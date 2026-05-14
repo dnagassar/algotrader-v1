@@ -215,6 +215,15 @@ analysis may assist research without becoming trusted production dependencies,
 source-of-truth artifacts, normal pytest inputs, validated artifacts,
 validated signal definitions, or trading-path behavior.
 
+Phase 34 Step 2 adds the external research artifact intake checklist in
+[`phase34_external_research_artifact_intake_checklist.md`](phase34_external_research_artifact_intake_checklist.md).
+It defines required metadata, evidence labels, review questions, routing
+outcomes, promotion constraints, repository placement, and a reusable checklist
+template for external research outputs before they can influence project
+decisions. It does not approve any external artifact, dependency, notebook,
+data, reproduction, validated artifact, validated signal definition,
+implementation, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -343,8 +352,13 @@ Current status:
 - Phase 34 Step 1 records the external research integration boundary. It keeps
   Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
   vendor/public data, external research, spreadsheets, and ad hoc analysis as
-  advisory research accelerators only and recommends an external research
-  artifact intake checklist as the next docs-only gate.
+  advisory research accelerators only; Phase 34 Step 2 now records the
+  external research artifact intake checklist that Step 1 recommended.
+- Phase 34 Step 2 records that external research artifact intake checklist.
+  It defines intake metadata, evidence classification, review questions,
+  routing outcomes, promotion constraints, repository placement, and a
+  reusable markdown template while keeping all external outputs untrusted until
+  later scoped review.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -568,16 +582,25 @@ Recommended next phases:
    dependency, notebook, data source, source-of-truth artifact, deterministic
    reproduction, validation, validated artifact, validated signal definition,
    implementation, normal pytest runtime call, or trading implication.
-36. Future route: external research artifact intake checklist,
-   data storage/fixture policy boundary, moving-average
-   evidence source package, S05 backlog recheck, or backlog.
+36. Phase 34 Step 2: external research artifact intake checklist.
+   This step is complete. It defines how Perplexity reports, Claude/Gemini
+   reviews, Codex implementation reports, QuantConnect results, vectorbt
+   experiments, notebooks, vendor/public data docs, papers, spreadsheets, ad
+   hoc analyses, screenshots, and manual observations are captured, labeled,
+   reviewed, and routed before they can influence project decisions. It does
+   not approve external artifacts, dependencies, notebooks, data, source
+   approval, reproduction, validated artifacts, validated signal definitions,
+   implementation, or trading implications.
+37. Future route: notebook/prototype policy boundary, data storage/fixture
+   policy boundary, moving-average evidence source package, S05 backlog
+   recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-37. Later route: implementation readiness gate.
+38. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -742,28 +765,27 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- External Research Artifact Intake Checklist
+Future Step -- Notebook/Prototype Policy Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
 - docs/design/phase34_external_research_integration_boundary.md
-- docs/design/phase30_research_validation_evidence_standard.md
-- docs/design/phase30_research_artifact_candidate_review_template.md
+- docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 
-Scope: documentation-only intake checklist for external research artifacts.
-Define how Perplexity outputs, Claude/Gemini reviews, Codex notes,
-QuantConnect/vectorbt hosted or prototype notes, notebooks, spreadsheets,
-vendor/public data notes, external research, citations, screenshots, manual
-observations, and ad hoc files should be captured as advisory inputs before
-formal review. Preserve source-of-truth status in the local Git repo, keep
-primary-source verification separate from inference, require uncertainty and
-non-claims, and keep normal pytest offline and credential-free. Do not acquire
-data, add datasets, create notebooks, add scripts, add dependencies, approve
-an external integration, validate, approve, promote, create a
-ValidatedResearchArtifact, create a ValidatedSignalDefinition, design a
-schema, reproduce, backtest, or implement any candidate.
+Scope: documentation-only notebook/prototype policy boundary. Define how
+notebooks, vectorbt prototypes, spreadsheets, and other exploratory outputs may
+be referenced, summarized, stored outside canonical paths, or normalized into
+reviewed docs without becoming canonical artifacts, dependencies, datasets,
+normal pytest inputs, validated research, signal definitions, or trading-path
+behavior. Preserve source-of-truth status in the local Git repo, require
+primary-source and deterministic reproduction review before trust, and keep
+normal pytest offline and credential-free. Do not create notebooks, acquire
+data, add datasets, add scripts, add dependencies, approve vectorbt, approve a
+notebook, validate, promote, create a ValidatedResearchArtifact, create a
+ValidatedSignalDefinition, design a schema, reproduce, backtest, or implement
+any candidate.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 evaluator behavior, signal computation, broker/runtime behavior, persistence,
 data ingestion, notebooks, scripts, dependencies, QuantConnect/vectorbt

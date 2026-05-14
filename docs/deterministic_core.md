@@ -379,6 +379,12 @@ state.
   vendor/public data, external research, and ad hoc analysis as advisory
   research accelerators only, not trusted production dependencies or normal
   pytest/runtime inputs.
+- Phase 34 Step 2 adds an external research artifact intake checklist. It
+  defines how Perplexity reports, Claude/Gemini reviews, Codex implementation
+  reports, QuantConnect results, vectorbt experiments, notebooks,
+  vendor/public data docs, papers, spreadsheets, ad hoc analyses, screenshots,
+  and manual observations are captured, labeled, reviewed, and routed before
+  they can influence project decisions.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -2006,6 +2012,8 @@ Ledger modes:
   source shortlist decision boundary
 - Threshold evaluator behavior beyond the Phase 34 Step 1 external research
   integration boundary
+- Threshold evaluator behavior beyond the Phase 34 Step 2 external research
+  artifact intake checklist
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2139,6 +2147,15 @@ advisory inputs only. It does not approve any external integration,
 dependency, notebook, data, source, reproduction, validation, implementation,
 validated artifact, validated signal definition, production threshold, or
 trading implication.
+
+Phase 34 Step 2 adds that external research artifact intake checklist. It
+records required metadata, evidence labels, review questions, routing outcomes,
+promotion constraints, repository placement rules, and a reusable markdown
+template for future external research artifacts. It recommends a docs-only
+notebook/prototype policy boundary next and does not approve any external
+artifact, notebook, vendor/public data source, dependency, reproduction,
+implementation, validated artifact, validated signal definition, production
+threshold, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
