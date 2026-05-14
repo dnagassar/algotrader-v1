@@ -2028,6 +2028,8 @@ Ledger modes:
   moving-average evidence source package
 - Threshold evaluator behavior beyond the Phase 33 Step 11 broad-ETF
   moving-average evidence intake plan
+- Threshold evaluator behavior beyond the Phase 33 Step 12 broad-ETF evidence
+  source collection normalization
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2210,6 +2212,17 @@ defines source priority, intake workflow, disposition vocabulary, rejection
 criteria, review sequence, a required intake table, Phase 34 relationships, a
 recommended first limited methodology evidence review gate, explicit
 non-goals, and remaining blockers. It does not review or approve evidence,
+methodology, parameters, source data, an ETF universe, benchmark, cash proxy,
+reproduction, validation, implementation, evaluator behavior, signal
+computation, or trading implication.
+
+Phase 33 Step 12 adds the broad-ETF evidence source collection normalization.
+It converts the externally supplied Perplexity moving-average source list into
+the project intake trail, separates academic/formal, ETF-specific,
+practitioner, benchmark/friction, bias-control, context-only, and unsupported
+direct-evidence sources, identifies strongest later review candidates, records
+required follow-up and provisional grading labels, and recommends pausing
+until full primary texts are available. It does not approve evidence,
 methodology, parameters, source data, an ETF universe, benchmark, cash proxy,
 reproduction, validation, implementation, evaluator behavior, signal
 computation, or trading implication.

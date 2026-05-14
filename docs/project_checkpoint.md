@@ -7437,6 +7437,82 @@ assumptions, no robustness or parameter-sensitivity review, no result-review
 template, no promotion/rejection decision, and no trading implication or
 production threshold.
 
+## Phase 33 Step 12 Broad ETF Evidence Source Collection Normalization
+
+Phase 33 Step 12 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_evidence_source_collection_normalization.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+normalization converts the externally supplied Perplexity moving-average
+source collection into the project's intake trail while treating the report as
+external scout material only.
+
+The normalized groups cover academic/formal methodology candidates,
+ETF-specific candidates, practitioner/tactical allocation candidates,
+benchmark/cash/risk-metric candidates, friction/cost candidates,
+bias/no-lookahead/backtest-bias candidates, context-only or weak sources, and
+rejected or unsupported direct-evidence sources.
+
+The intake table records source IDs, titles/citations, source types,
+categories, discussed rules, universes, known period/frequency fields, claims
+to verify later, evidence-quality labels, bias-control relevance,
+cost/friction relevance, broad-ETF relevance, current dispositions, and
+required follow-up. Rows are intake records only and do not approve any source
+or claim.
+
+The strongest later review candidates are `ETF-ACADEMIC-001`,
+`MA-ACADEMIC-001`, `MA-ACADEMIC-002` / `MA-ACADEMIC-003`,
+`MA-ACADEMIC-004`, `MA-ACADEMIC-005`, `MA-ACADEMIC-006`,
+`MA-PRACT-001`, and selected benchmark/friction references only after exact
+citations are identified. Inclusion means review candidate only, not evidence
+approval.
+
+Context-only sources such as ETFdb, ETFtrends, Schwab educational material,
+ETFreplay, personal blogs, secondary summaries, and the Perplexity report text
+itself may support terminology, examples, or source discovery only. They are
+rejected for direct performance evidence unless later primary-source review
+supports the exact claim.
+
+Required follow-up before formal review includes obtaining or inspecting full
+primary texts, verifying citations and authorship, extracting exact rule
+definitions, universe, date range, frequency, benchmark, return treatment,
+dividend/split/corporate-action handling, transaction-cost assumptions,
+OOS/robustness/parameter-sensitivity treatment, lookahead/survivorship/data
+snooping controls, broad-ETF transfer limits, limitations, and non-claims.
+
+The evidence grading proposal includes high-priority formal review candidate,
+review candidate, methodology context, bias-control context,
+benchmark/friction context, context only, reject for direct evidence, and
+requires primary-source verification.
+
+The recommended next route is to pause until full primary texts are obtained
+or inspectable for at least one to three high-priority candidates. The project
+should not start a limited methodology evidence review from the Perplexity
+summary alone.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, fixtures,
+reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no
+source-specific primary-text verification, no verified citation metadata for
+the external source list, no reviewed practitioner-source classification, no
+approved return-treatment or corporate-action handling decisions, no approved
+friction assumptions, no robustness or parameter-sensitivity review, no
+benchmark/cash/risk-metric review, no result-review template, no
+promotion/rejection decision, and no trading implication or production
+threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7474,10 +7550,13 @@ Safe next tasks include:
   is now recorded in Phase 33 Step 7; the final source shortlist decision
   boundary is now recorded in Phase 33 Step 8; and the data storage/fixture
   policy boundary is now recorded in Phase 33 Step 9; the moving-average
-  evidence source package is now recorded in Phase 33 Step 10; and the
-  moving-average evidence intake plan is now recorded in Phase 33 Step 11. The
-  next docs-only gates may be a first limited methodology evidence review,
-  broad ETF source approval boundary, or fixture policy approval boundary while
+  evidence source package is now recorded in Phase 33 Step 10; the
+  moving-average evidence intake plan is now recorded in Phase 33 Step 11; and
+  the externally collected evidence source normalization is now recorded in
+  Phase 33 Step 12. The next docs-only route should pause until full primary
+  texts are available, then may proceed to a first limited methodology
+  evidence review, broad ETF source approval boundary, or fixture policy
+  approval boundary while
   keeping all evidence, source, universe, benchmark, cash proxy, data,
   methodology, validation, implementation, secondary shortlist, and S05
   backlog statuses non-approving

@@ -265,6 +265,17 @@ approve evidence, methodology, parameters, source data, an ETF universe,
 benchmark, cash proxy, reproduction, validation, implementation, evaluator
 behavior, signal computation, or trading implication.
 
+Phase 33 Step 12 adds the broad-ETF evidence source collection normalization
+in
+[`phase33_broad_etf_evidence_source_collection_normalization.md`](phase33_broad_etf_evidence_source_collection_normalization.md).
+It normalizes externally collected moving-average source candidates from a
+Perplexity scout report into the intake format, separates primary-source
+candidates from context-only and external-tool inference, proposes cautious
+grading labels, and recommends pausing until full primary texts are available.
+It does not approve evidence, methodology, parameters, data, universe,
+benchmark/cash proxy, reproduction, validation, implementation, evaluator
+behavior, signal computation, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -419,6 +430,11 @@ Current status:
   It defines source priority, workflow, disposition labels, rejection criteria,
   review sequence, required intake table columns, and Phase 34 relationships
   before any evidence review occurs.
+- Phase 33 Step 12 records the broad-ETF evidence source collection
+  normalization. It treats the Perplexity source collection as scout material
+  only, records strongest review candidates and weak/context-only sources, and
+  keeps formal review blocked until primary texts and exact citations are
+  available.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -690,7 +706,18 @@ Recommended next phases:
    It does not approve evidence, methodology, parameters, data, universe,
    benchmark/cash proxy, reproduction, validation, implementation, evaluator
    behavior, signal computation, or trading implication.
-41. Future route: first limited methodology evidence review, broad ETF source
+41. Phase 33 Step 12: broad-ETF evidence source collection normalization.
+   This step is complete. It normalizes externally collected moving-average
+   evidence-source candidates into the project intake trail, classifies
+   academic/formal, ETF-specific, practitioner, benchmark/friction,
+   bias-control, context-only, and unsupported direct-evidence sources,
+   identifies strongest later review candidates, records required follow-up,
+   and recommends pausing until full primary texts are available. It does not
+   approve evidence, methodology, parameters, data, universe, benchmark/cash
+   proxy, reproduction, validation, implementation, evaluator behavior, signal
+   computation, or trading implication.
+42. Future route: pause for full primary texts, first limited methodology
+   evidence review, broad ETF source
    approval boundary, fixture policy approval boundary, S05 backlog recheck, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
@@ -699,7 +726,7 @@ Recommended next phases:
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-42. Later route: implementation readiness gate.
+43. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -864,7 +891,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Moving-Average First Limited Methodology Evidence Review
+Future Step -- Broad ETF Moving-Average Primary-Text Availability Gate
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -872,22 +899,24 @@ Read first:
 - docs/design/phase33_broad_etf_moving_average_source_package.md
 - docs/design/phase33_broad_etf_moving_average_evidence_source_package.md
 - docs/design/phase33_broad_etf_moving_average_evidence_intake_plan.md
+- docs/design/phase33_broad_etf_evidence_source_collection_normalization.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only first limited methodology evidence review only after
-specific candidate sources have been collected externally and entered through
-the Step 33.11 intake plan. Review narrow moving-average methodology claims and
-record evidence, inference, uncertainty, limitations, and non-claims. Do not
-approve a source, ETF universe, benchmark, cash proxy, methodology, parameter,
-storage policy, fixture, reproduction protocol, validation route, signal
-definition, evaluator, implementation, or trading use. Preserve normal pytest
-as offline, credential-free, deterministic, and free of network, credentials,
-external data providers, notebooks, prototype tools, brokers, runtime behavior,
-and trading-path behavior.
+Scope: documentation-only primary-text availability and citation verification
+gate for the strongest Step 33.12 candidates. Confirm whether full primary
+texts, stable citations, authorship/version details, and source identities are
+available for one to three high-priority candidates before any formal
+methodology review. If primary texts are still unavailable, pause and record
+blockers. Do not approve a source, ETF universe, benchmark, cash proxy,
+methodology, parameter, storage policy, fixture, reproduction protocol,
+validation route, signal definition, evaluator, implementation, or trading
+use. Preserve normal pytest as offline, credential-free, deterministic, and
+free of network, credentials, external data providers, notebooks, prototype
+tools, brokers, runtime behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,
