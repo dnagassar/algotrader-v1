@@ -256,6 +256,15 @@ and blockers. It does not approve evidence, methodology, parameters, source
 data, an ETF universe, benchmark, cash proxy, reproduction, validation,
 implementation, or trading implication.
 
+Phase 33 Step 11 adds the broad-ETF moving-average evidence intake plan in
+[`phase33_broad_etf_moving_average_evidence_intake_plan.md`](phase33_broad_etf_moving_average_evidence_intake_plan.md).
+It defines source priorities, intake workflow, disposition vocabulary,
+rejection criteria, review sequence, a required intake table, Phase 34
+relationships, next routing, non-goals, and blockers. It does not review or
+approve evidence, methodology, parameters, source data, an ETF universe,
+benchmark, cash proxy, reproduction, validation, implementation, evaluator
+behavior, signal computation, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -406,6 +415,10 @@ Current status:
   evidence, methodology, parameters, sources, universes, benchmarks,
   reproduction, validation, implementation, and trading implications
   unapproved.
+- Phase 33 Step 11 records the broad-ETF moving-average evidence intake plan.
+  It defines source priority, workflow, disposition labels, rejection criteria,
+  review sequence, required intake table columns, and Phase 34 relationships
+  before any evidence review occurs.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -669,7 +682,15 @@ Recommended next phases:
    blockers. It does not approve evidence, methodology, parameters, source
    data, an ETF universe, benchmark, cash proxy, reproduction, validation,
    implementation, or trading implication.
-40. Future route: moving-average evidence intake plan, broad ETF source
+40. Phase 33 Step 11: broad-ETF moving-average evidence intake plan.
+   This step is complete. It defines the collection and review workflow,
+   source priority, cautious disposition labels, rejection/downgrade criteria,
+   recommended review sequence, required intake table, Phase 34 relationships,
+   next routing, non-goals, and blockers before any actual evidence review.
+   It does not approve evidence, methodology, parameters, data, universe,
+   benchmark/cash proxy, reproduction, validation, implementation, evaluator
+   behavior, signal computation, or trading implication.
+41. Future route: first limited methodology evidence review, broad ETF source
    approval boundary, fixture policy approval boundary, S05 backlog recheck, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
@@ -678,7 +699,7 @@ Recommended next phases:
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-41. Later route: implementation readiness gate.
+42. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -843,30 +864,30 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Moving-Average Evidence Intake Plan
+Future Step -- Broad ETF Moving-Average First Limited Methodology Evidence Review
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
 - docs/design/phase33_broad_etf_moving_average_source_package.md
 - docs/design/phase33_broad_etf_moving_average_evidence_source_package.md
+- docs/design/phase33_broad_etf_moving_average_evidence_intake_plan.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only moving-average evidence intake plan. Define how
-specific primary, secondary, practitioner, benchmark, friction, data-adjustment,
-no-lookahead, bias-control, robustness, and parameter-sensitivity sources will
-be collected, cited, labeled, and reviewed later. Keep all evidence
-candidate-only unless later reviewed; do not approve a source, ETF universe,
-benchmark, cash proxy, methodology, parameter, storage policy, fixture,
-reproduction protocol, validation route, signal definition, evaluator,
-implementation, or trading use. Preserve normal pytest as offline,
-credential-free, deterministic, and free of network, credentials, external
-data providers, notebooks, prototype tools, brokers, runtime behavior, and
-trading-path behavior.
+Scope: documentation-only first limited methodology evidence review only after
+specific candidate sources have been collected externally and entered through
+the Step 33.11 intake plan. Review narrow moving-average methodology claims and
+record evidence, inference, uncertainty, limitations, and non-claims. Do not
+approve a source, ETF universe, benchmark, cash proxy, methodology, parameter,
+storage policy, fixture, reproduction protocol, validation route, signal
+definition, evaluator, implementation, or trading use. Preserve normal pytest
+as offline, credential-free, deterministic, and free of network, credentials,
+external data providers, notebooks, prototype tools, brokers, runtime behavior,
+and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

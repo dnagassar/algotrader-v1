@@ -2022,6 +2022,12 @@ Ledger modes:
   artifact intake checklist
 - Threshold evaluator behavior beyond the Phase 34 Step 3 notebook/prototype
   policy boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 9 broad-ETF data
+  storage and fixture policy boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 10 broad-ETF
+  moving-average evidence source package
+- Threshold evaluator behavior beyond the Phase 33 Step 11 broad-ETF
+  moving-average evidence intake plan
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2198,6 +2204,15 @@ non-goals, and remaining blockers. It does not approve evidence, methodology,
 parameters, source data, an ETF universe, benchmark, cash proxy, reproduction,
 validation, implementation, evaluator behavior, signal computation, or trading
 implication.
+
+Phase 33 Step 11 adds the broad-ETF moving-average evidence intake plan. It
+defines source priority, intake workflow, disposition vocabulary, rejection
+criteria, review sequence, a required intake table, Phase 34 relationships, a
+recommended first limited methodology evidence review gate, explicit
+non-goals, and remaining blockers. It does not review or approve evidence,
+methodology, parameters, source data, an ETF universe, benchmark, cash proxy,
+reproduction, validation, implementation, evaluator behavior, signal
+computation, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

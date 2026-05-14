@@ -7354,6 +7354,89 @@ provenance, no implementation-scope approval, no evaluator tests, no
 robustness or parameter-sensitivity review, no result-review template, and no
 trading implication or production threshold.
 
+## Phase 33 Step 11 Broad ETF Moving-Average Evidence Intake Plan
+
+Phase 33 Step 11 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_moving_average_evidence_intake_plan.md
+```
+
+It also updates research-track navigation/checkpoint context only. The plan
+defines how future moving-average evidence should be collected, cited,
+classified, summarized, reviewed, downgraded, and dispositioned before any
+formal evidence review occurs.
+
+Intake scope covers academic moving-average papers, practitioner
+trend-following references, ETF-specific references, benchmark/buy-and-hold
+references, transaction-cost and friction references, data-adjustment and
+total-return caveat references, no-lookahead and backtest-bias references, and
+robustness or parameter-sensitivity references.
+
+Source priority is primary academic papers or official publications, official
+methodology documentation, reputable practitioner research, official data or
+source documentation, secondary summaries, blogs or marketing as context only,
+and LLM summaries never as evidence.
+
+The intake workflow records citation details, classifies source type,
+summarizes exact claims, separates evidence from inference and uncertainty,
+captures methodology/universe/period/frequency/benchmark details, records bias
+controls and costs/frictions, assesses broad-ETF transferability, preserves
+limitations and non-claims, and assigns a cautious disposition.
+
+Allowed dispositions are review candidate, methodology context,
+benchmark/context, bias-control context, friction/cost context, rejected /
+unsupported, requires primary-source verification, and eligible for later
+formal review.
+
+Rejection criteria cover missing primary citations, unsupported or vague
+claims, performance claims without data/provenance, unclear universe/date
+range/frequency, unaddressed lookahead/survivorship/data-snooping concerns,
+cherry-picked parameters, marketing-only sources, implementation or trading
+readiness implications, and conflicts with project constraints.
+
+The recommended later review sequence is methodology/core moving-average
+references, bias/no-lookahead references, ETF-specific or broad-market trend
+references, benchmark/cash/friction references, then robustness and
+parameter-sensitivity references.
+
+The required intake table captures Source ID, Citation / reference, Source
+type, Claim reviewed, Universe / data, Period / frequency, Methodology
+relevance, Bias controls, Costs/frictions, ETF transferability, Limitations,
+Disposition, and Follow-up needed.
+
+The Phase 34 relationship keeps external research, notebooks, prototype
+scripts, vectorbt experiments, QuantConnect outputs, spreadsheets, CSV
+extracts, charts, copied snippets, and LLM outputs advisory unless normalized,
+tied to traceable sources, checked against constraints, and later reproduced
+through a scoped deterministic project-local protocol.
+
+The recommended next docs-only gate is a first limited methodology evidence
+review after specific candidate sources are collected externally and entered
+through the intake plan. If sources are unavailable, the safer route is to
+pause until candidate citations and links are collected.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, fixtures,
+reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no
+source-specific intake records, no collected primary evidence package, no
+reviewed practitioner-source classification, no approved total-return versus
+price-return decision, no approved dividend/reinvestment treatment, no
+approved corporate-action handling policy, no approved correction/revision
+policy, no approved point-in-time/as-of policy, no approved friction
+assumptions, no robustness or parameter-sensitivity review, no result-review
+template, no promotion/rejection decision, and no trading implication or
+production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7391,12 +7474,13 @@ Safe next tasks include:
   is now recorded in Phase 33 Step 7; the final source shortlist decision
   boundary is now recorded in Phase 33 Step 8; and the data storage/fixture
   policy boundary is now recorded in Phase 33 Step 9; the moving-average
-  evidence source package is now recorded in Phase 33 Step 10. The next
-  docs-only gates may be a moving-average evidence intake plan, broad ETF
-  source approval boundary, or fixture policy approval boundary while keeping
-  all evidence, source, universe, benchmark, cash proxy, data, methodology,
-  validation, implementation, secondary shortlist, and S05 backlog statuses
-  non-approving
+  evidence source package is now recorded in Phase 33 Step 10; and the
+  moving-average evidence intake plan is now recorded in Phase 33 Step 11. The
+  next docs-only gates may be a first limited methodology evidence review,
+  broad ETF source approval boundary, or fixture policy approval boundary while
+  keeping all evidence, source, universe, benchmark, cash proxy, data,
+  methodology, validation, implementation, secondary shortlist, and S05
+  backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
