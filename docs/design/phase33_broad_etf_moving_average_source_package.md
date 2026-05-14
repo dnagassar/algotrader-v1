@@ -183,6 +183,21 @@ docs-only data storage/fixture policy boundary next without approving a
 source, data, universe, benchmark, cash proxy, methodology, reproduction,
 validation, implementation, or trading use.
 
+Phase 33 Step 9 adds the data storage/fixture policy boundary in
+[`phase33_broad_etf_data_storage_fixture_policy_boundary.md`](phase33_broad_etf_data_storage_fixture_policy_boundary.md).
+It defines future data storage and fixture policy requirements, compares
+storage options, preserves normal `python -m pytest` as offline and
+credential-free, and keeps all data, fixtures, storage policy, reproduction,
+validation, implementation, and trading use unapproved.
+
+Phase 33 Step 10 adds the evidence source package in
+[`phase33_broad_etf_moving_average_evidence_source_package.md`](phase33_broad_etf_moving_average_evidence_source_package.md).
+It identifies evidence categories, evidence-quality standards, review
+questions, a starter evidence intake table, non-claims, relationship to prior
+gates, next routing, explicit non-goals, and blockers without approving
+evidence, methodology, parameters, data, universe, benchmark, cash proxy,
+reproduction, validation, implementation, or trading use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic

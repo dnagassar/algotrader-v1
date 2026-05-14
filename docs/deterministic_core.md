@@ -2190,6 +2190,15 @@ cash proxy, methodology, parameter, final storage policy, data acquisition,
 data files, fixtures, reproduction, validation, implementation, evaluator
 behavior, signal computation, or trading implication.
 
+Phase 33 Step 10 adds the broad-ETF moving-average evidence source package.
+It identifies evidence categories, evidence-quality standards, review
+questions, a candidate evidence intake table, non-claims, relationships to
+prior Phase 33 gates, a recommended evidence-intake-plan gate, explicit
+non-goals, and remaining blockers. It does not approve evidence, methodology,
+parameters, source data, an ETF universe, benchmark, cash proxy, reproduction,
+validation, implementation, evaluator behavior, signal computation, or trading
+implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

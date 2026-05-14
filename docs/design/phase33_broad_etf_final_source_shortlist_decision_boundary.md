@@ -138,8 +138,8 @@ approval, dataset approval, schema implementation, reproduction, validation,
 signal computation, evaluator implementation, and trading implications.
 
 If the project wants to strengthen methodology evidence before moving closer
-to reproducible research mechanics, the alternate docs-only gate is a
-moving-average evidence/source package.
+to reproducible research mechanics, the later docs-only route is a
+moving-average evidence intake plan after the evidence/source package.
 
 A reproduction protocol boundary should wait until source, universe,
 benchmark, cash proxy, and data storage/fixture policy choices are later

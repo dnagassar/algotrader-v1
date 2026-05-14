@@ -178,12 +178,12 @@ categories without approving any source.
 
 Recommended next docs-only gate after Step 7: final source shortlist decision
 boundary. An acceptable alternate next docs-only gate is a moving-average
-evidence source package if the next prompt prioritizes methodology literature
-before source narrowing. A data storage/fixture policy boundary should wait
-until source terms are acceptable. A reproduction protocol boundary should
-wait until source, universe, benchmark, cash proxy, and data policy choices are
-later approved. A result-review template should wait until a protocol is later
-approved.
+evidence intake plan after an evidence/source package if the next prompt
+prioritizes methodology literature before source narrowing. A data
+storage/fixture policy boundary should wait until source terms are acceptable.
+A reproduction protocol boundary should wait until source, universe,
+benchmark, cash proxy, and data policy choices are later approved. A
+result-review template should wait until a protocol is later approved.
 
 No next gate may acquire data, ingest data, approve a source, approve a
 universe, approve a benchmark, approve a cash proxy, approve methodology,

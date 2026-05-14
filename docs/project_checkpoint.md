@@ -7300,6 +7300,60 @@ production threshold/config provenance, no implementation-scope approval, no
 evaluator tests, no approved pytest-eligible fixture set, and no trading
 implication or production threshold.
 
+## Phase 33 Step 10 Broad ETF Moving-Average Evidence Source Package
+
+Phase 33 Step 10 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_moving_average_evidence_source_package.md
+```
+
+It also updates research-track navigation/checkpoint context only. The package
+identifies evidence categories to collect for the broad-ETF simple
+moving-average candidate before any methodology review, reproduction protocol,
+validation route, implementation planning, signal-definition discussion, or
+evaluator work.
+
+Evidence categories include academic papers on moving-average
+trend-following, practitioner references on time-series trend-following,
+ETF-specific trend-following or tactical allocation references if available,
+benchmark and buy-and-hold comparison references, transaction-cost and
+friction references, data-adjustment and total-return caveat references,
+no-lookahead and backtest-bias references, and robustness or
+parameter-sensitivity references.
+
+The package defines evidence-quality standards: primary sources are preferred,
+secondary and practitioner sources must be labeled, blog or marketing content
+is context only unless later reviewed, LLM summaries are not evidence, exact
+claims require exact citations, claims must separate evidence, inference, and
+uncertainty, and performance claims require reproducible data before trust.
+
+The review questions cover the exact moving-average rule, studied universe,
+date range, frequency, return construction, dividends, splits, corporate
+actions, benchmark, costs/frictions, out-of-sample evidence, robustness,
+parameter choice, lookahead/survivorship/data-snooping risks, limitations, and
+what can or cannot transfer to broad ETFs.
+
+The starter evidence intake table records placeholder source IDs for academic,
+practitioner, ETF-specific, benchmark, friction, data-adjustment, bias-control,
+and robustness references. Those rows are collection targets only; they are
+not reviewed evidence and not approval.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, fixtures,
+reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no approved methodology or
+parameters, no approved final data storage/fixture policy, no approved
+evidence review, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no
+robustness or parameter-sensitivity review, no result-review template, and no
+trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7336,11 +7390,13 @@ Safe next tasks include:
   recorded in Phase 33 Step 6; the data-source terms/license review boundary
   is now recorded in Phase 33 Step 7; the final source shortlist decision
   boundary is now recorded in Phase 33 Step 8; and the data storage/fixture
-  policy boundary is now recorded in Phase 33 Step 9. The next docs-only gates
-  may be a moving-average evidence/source package, broad ETF source approval
-  boundary, or fixture policy approval boundary while keeping all source,
-  universe, benchmark, cash proxy, data, methodology, validation,
-  implementation, secondary shortlist, and S05 backlog statuses non-approving
+  policy boundary is now recorded in Phase 33 Step 9; the moving-average
+  evidence source package is now recorded in Phase 33 Step 10. The next
+  docs-only gates may be a moving-average evidence intake plan, broad ETF
+  source approval boundary, or fixture policy approval boundary while keeping
+  all evidence, source, universe, benchmark, cash proxy, data, methodology,
+  validation, implementation, secondary shortlist, and S05 backlog statuses
+  non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,

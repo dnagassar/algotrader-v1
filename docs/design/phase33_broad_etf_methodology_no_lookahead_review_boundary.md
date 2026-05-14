@@ -156,7 +156,7 @@ trading use.
 Other possible docs-only gates remain:
 
 - benchmark/cash proxy shortlist boundary
-- moving-average evidence source package
+- moving-average evidence intake plan after an evidence/source package
 - reproduction protocol boundary only if data, universe, and benchmark/cash
   proxy are later approved
 

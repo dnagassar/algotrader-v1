@@ -183,7 +183,7 @@ normal pytest use.
 
 Recommended later docs-only gates:
 
-- moving-average evidence/source package
+- moving-average evidence intake plan
 - broad ETF source approval boundary, only after refreshed source terms and
   storage constraints are reviewed
 - fixture policy approval boundary, only if the project wants to approve exact

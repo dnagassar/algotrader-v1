@@ -247,6 +247,15 @@ benchmark/cash proxy, methodology, parameter, final storage policy, data
 acquisition, data files, fixtures, reproduction, validation, implementation,
 or trading implication.
 
+Phase 33 Step 10 adds the broad-ETF moving-average evidence source package in
+[`phase33_broad_etf_moving_average_evidence_source_package.md`](phase33_broad_etf_moving_average_evidence_source_package.md).
+It identifies evidence categories, evidence-quality standards, review
+questions, a starter evidence intake table, non-claims, relationships to prior
+Phase 33 gates, a recommended evidence-intake-plan gate, explicit non-goals,
+and blockers. It does not approve evidence, methodology, parameters, source
+data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+implementation, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -391,6 +400,12 @@ Current status:
   fixtures, manifests, charts/results, and notebook/prototype outputs outside
   normal pytest unless later scoped approval makes a deterministic,
   credential-free, redistribution-safe route explicit.
+- Phase 33 Step 10 records the broad-ETF moving-average evidence source
+  package. It identifies evidence categories, evidence-quality standards,
+  review questions, and a starter evidence intake table while keeping all
+  evidence, methodology, parameters, sources, universes, benchmarks,
+  reproduction, validation, implementation, and trading implications
+  unapproved.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -645,7 +660,16 @@ Recommended next phases:
    approve a source, universe, benchmark/cash proxy, methodology, parameter,
    final storage policy, data acquisition, data files, fixtures, reproduction,
    validation, implementation, or trading implication.
-39. Future route: moving-average evidence source package, broad ETF source
+39. Phase 33 Step 10: broad-ETF moving-average evidence source package.
+   This step is complete. It identifies academic, practitioner, ETF-specific,
+   benchmark, friction, data-adjustment, no-lookahead, bias-control,
+   robustness, and parameter-sensitivity evidence categories for later review.
+   It defines evidence-quality standards, review questions, a starter intake
+   table, non-claims, prior-gate relationships, next routing, non-goals, and
+   blockers. It does not approve evidence, methodology, parameters, source
+   data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+   implementation, or trading implication.
+40. Future route: moving-average evidence intake plan, broad ETF source
    approval boundary, fixture policy approval boundary, S05 backlog recheck, or
    backlog.
    Any review must preserve traceable dataset scope, point-in-time input
@@ -654,7 +678,7 @@ Recommended next phases:
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-40. Later route: implementation readiness gate.
+41. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -819,28 +843,30 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Moving-Average Evidence / Source Package Boundary
+Future Step -- Broad ETF Moving-Average Evidence Intake Plan
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
 - docs/design/phase33_broad_etf_moving_average_source_package.md
+- docs/design/phase33_broad_etf_moving_average_evidence_source_package.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only moving-average evidence/source package boundary.
-Normalize primary and secondary evidence candidates for broad-ETF
-moving-average methodology, no-lookahead controls, data assumptions,
-limitations, and non-claims. Keep all evidence candidate-only unless later
-reviewed; do not approve a source, ETF universe, benchmark, cash proxy,
-methodology, parameter, storage policy, fixture, reproduction protocol,
-validation route, signal definition, evaluator, implementation, or trading
-use. Preserve normal pytest as offline, credential-free, deterministic, and
-free of network, credentials, external data providers, notebooks, prototype
-tools, brokers, runtime behavior, and trading-path behavior.
+Scope: documentation-only moving-average evidence intake plan. Define how
+specific primary, secondary, practitioner, benchmark, friction, data-adjustment,
+no-lookahead, bias-control, robustness, and parameter-sensitivity sources will
+be collected, cited, labeled, and reviewed later. Keep all evidence
+candidate-only unless later reviewed; do not approve a source, ETF universe,
+benchmark, cash proxy, methodology, parameter, storage policy, fixture,
+reproduction protocol, validation route, signal definition, evaluator,
+implementation, or trading use. Preserve normal pytest as offline,
+credential-free, deterministic, and free of network, credentials, external
+data providers, notebooks, prototype tools, brokers, runtime behavior, and
+trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,
