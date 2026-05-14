@@ -6961,6 +6961,94 @@ conversion rule, no cost/friction assumptions, no result-review template, no
 promotion/rejection decision, and no trading implication or production
 threshold.
 
+## Phase 34 Step 1 External Research Integration Boundary
+
+Phase 34 Step 1 is documentation-only. It adds:
+
+```text
+docs/design/phase34_external_research_integration_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines how external research tools and outputs may support the
+project without becoming trusted production dependencies, source-of-truth
+artifacts, normal pytest inputs, or trading-path behavior.
+
+The tools covered include Perplexity, Claude/Gemini or other LLM reviewers,
+Codex or other local implementation/documentation agents, QuantConnect,
+vectorbt, notebooks, vendor/public data sources, external academic or
+practitioner research, spreadsheets, CSV scratchpads, ad hoc analysis files,
+and similar scout, review, sandbox, or prototype outputs.
+
+Allowed uses are advisory only: scout research, source discovery, literature
+review, methodology critique, contradiction finding, code review suggestions,
+test-matrix suggestions, risk/assumption/edge-case discovery, benchmark or
+context comparison, prototype experiments outside the deterministic core,
+drafting docs/proposals, and identifying licensing, reproducibility,
+no-lookahead, data, and overclaiming concerns.
+
+Forbidden uses include direct production dependency, trading hot-path
+dependency, live/paper order generation, direct signal/threshold approval,
+direct `ValidatedResearchArtifact` or `ValidatedSignalDefinition` creation,
+normal pytest runtime calls, credential/network dependency in normal pytest,
+direct portfolio/broker/order/OMS/risk mutation, treating notebooks or hosted
+results as validation without repo reproduction, and treating LLM output as
+disposition authority.
+
+The promotion path requires external output to be captured as proposal/scout
+input, normalized into docs with evidence/inference/uncertainty separated,
+reviewed for source terms and data feasibility, planned for deterministic
+local reproduction, blocked from repository data entry until fixture/storage
+policy approval, implemented only in a later scoped phase, enforced by tests,
+and reviewed with limitations and non-claims before any future promotion
+discussion.
+
+Tool-specific boundaries keep Perplexity as scout research only,
+Claude/Gemini as review/critique only, Codex as a scoped local
+implementation/documentation agent subject to tests and review, QuantConnect
+as external sandbox/backtest reference only, vectorbt as potential research
+or prototyping engine only, notebooks as exploratory only, and vendor/public
+data as candidate input requiring terms, storage, provenance, citation,
+versioning, and offline policy before use.
+
+The repository boundary keeps speculative or external-agent outputs in
+`docs/proposals` only when such a route is explicitly needed, reviewed phase
+boundaries in `docs/design`, `src` changes behind later scoped
+implementation approval, tests only for deterministic enforcement in later
+scoped phases, and data files out of the repository unless a future
+storage/fixture policy approves them. No `docs/proposals` files were created
+because the current repository has no `docs/proposals` directory and no
+proposal artifact is needed for this boundary.
+
+The recommended next docs-only gate is an external research artifact intake
+checklist. It should define how scout outputs, LLM reviews, hosted backtest
+notes, notebooks, spreadsheets, vendor/public data notes, citations, manual
+observations, and prototype summaries are captured while preserving advisory
+status, uncertainty labels, source verification requirements, non-claims, and
+the normal pytest rule.
+
+This phase does not perform or authorize implementation, dependency changes,
+notebooks, scripts, data acquisition, data ingestion, dataset addition,
+schema/code/contract changes, backtests, reproduction, QuantConnect
+integration, vectorbt integration, broker/runtime/scheduler/persistence
+integration, LLM runtime integration, evaluator or signal implementation,
+signal computation, scoring/ranking/direction/confidence/actionability,
+validated artifacts, validated signal definitions, production thresholds,
+profitability claims, implementation-readiness claims, production-readiness
+claims, trading implications, or broker, OMS, runtime, scheduler,
+persistence, portfolio, Alpaca, ML, or LLM trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact` from external
+tools, no `ValidatedSignalDefinition` from external tools, no approved
+external research integration, no approved data storage/fixture policy, no
+approved source/universe/benchmark/cash proxy for the Phase 33 broad-ETF
+candidate, no approved methodology or parameters, no approved data
+acquisition or ingestion route, no project-local deterministic reproduction,
+no no-lookahead audit, no implementation-scope approval, no evaluator tests,
+no approved repository policy for notebooks/scratch artifacts/hosted exports,
+no result-review template, no promotion/rejection decision, and no trading
+implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7001,6 +7089,12 @@ Safe next tasks include:
   source package while keeping all source, universe, benchmark, cash proxy,
   data, methodology, validation, implementation, secondary shortlist, and S05
   backlog statuses non-approving
+- Phase 34 Step 1 now records the external research integration boundary; the
+  next docs-only gate should be an external research artifact intake checklist
+  while keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt,
+  notebooks, vendor/public data, external research, spreadsheets, and ad hoc
+  analysis advisory-only and outside normal pytest, production dependencies,
+  validated artifacts, validated signal definitions, and trading-path behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

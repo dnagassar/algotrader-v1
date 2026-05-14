@@ -374,6 +374,11 @@ state.
   candidate, not default source, or unresolved / requires further review
   without approving a source, data, universe, benchmark, cash proxy,
   methodology, reproduction, validation, implementation, or trading use.
+- Phase 34 Step 1 adds an external research integration boundary. It keeps
+  Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
+  vendor/public data, external research, and ad hoc analysis as advisory
+  research accelerators only, not trusted production dependencies or normal
+  pytest/runtime inputs.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1800,6 +1805,15 @@ broker historical data as context only and not default. It approves no source,
 data, universe, benchmark, cash proxy, methodology, acquisition,
 reproduction, validation, implementation, or trading implication.
 
+Phase 34 Step 1 adds the external research integration boundary in
+[`docs/design/phase34_external_research_integration_boundary.md`](design/phase34_external_research_integration_boundary.md).
+It is documentation-only and defines how Perplexity, Claude/Gemini, Codex,
+QuantConnect, vectorbt, notebooks, vendor/public data, external research,
+spreadsheets, and ad hoc analysis may support scout research, critique,
+proposals, and prototype notes without becoming source-of-truth artifacts,
+production dependencies, normal pytest inputs, validated artifacts, validated
+signal definitions, or trading-path behavior.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1990,6 +2004,8 @@ Ledger modes:
   data-source terms/license review boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 8 broad-ETF final
   source shortlist decision boundary
+- Threshold evaluator behavior beyond the Phase 34 Step 1 external research
+  integration boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2114,6 +2130,15 @@ only, and broker historical data as context only and not default. It recommends
 a docs-only data storage/fixture policy boundary next and does not approve a
 source, data, universe, benchmark, cash proxy, methodology, acquisition,
 reproduction, validation, implementation, or trading implication.
+
+Phase 34 Step 1 adds the external research integration boundary. It recommends
+a docs-only external research artifact intake checklist next and keeps
+Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
+vendor/public data, external research, spreadsheets, and ad hoc analysis as
+advisory inputs only. It does not approve any external integration,
+dependency, notebook, data, source, reproduction, validation, implementation,
+validated artifact, validated signal definition, production threshold, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

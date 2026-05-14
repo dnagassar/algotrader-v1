@@ -207,6 +207,14 @@ future planning only. It does not approve a source, data, universe, benchmark,
 cash proxy, methodology, reproduction, validation, implementation, or trading
 implication.
 
+Phase 34 Step 1 adds the external research integration boundary in
+[`phase34_external_research_integration_boundary.md`](phase34_external_research_integration_boundary.md).
+It defines how Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt,
+notebooks, vendor/public data, external research, spreadsheets, and ad hoc
+analysis may assist research without becoming trusted production dependencies,
+source-of-truth artifacts, normal pytest inputs, validated artifacts,
+validated signal definitions, or trading-path behavior.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -332,6 +340,11 @@ Current status:
   historical data as context only and not default. It does not approve a
   source, data, universe, benchmark, cash proxy, methodology, reproduction,
   validation, implementation, or trading implication.
+- Phase 34 Step 1 records the external research integration boundary. It keeps
+  Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
+  vendor/public data, external research, spreadsheets, and ad hoc analysis as
+  advisory research accelerators only and recommends an external research
+  artifact intake checklist as the next docs-only gate.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -546,7 +559,17 @@ Recommended next phases:
    storage/fixture policy boundary next. It does not approve a source, data,
    universe, benchmark, cash proxy, methodology, reproduction, validation,
    implementation, or trading implication.
-35. Future route: data storage/fixture policy boundary, moving-average
+35. Phase 34 Step 1: external research integration boundary.
+   This step is complete. It defines how Perplexity, Claude/Gemini, Codex,
+   QuantConnect, vectorbt, notebooks, vendor/public data, external research,
+   spreadsheets, and ad hoc analysis can accelerate scout research, critique,
+   docs/proposals, prototype notes, and risk discovery while remaining
+   advisory-only. It does not approve any external integration, production
+   dependency, notebook, data source, source-of-truth artifact, deterministic
+   reproduction, validation, validated artifact, validated signal definition,
+   implementation, normal pytest runtime call, or trading implication.
+36. Future route: external research artifact intake checklist,
+   data storage/fixture policy boundary, moving-average
    evidence source package, S05 backlog recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
@@ -554,7 +577,7 @@ Recommended next phases:
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-36. Later route: implementation readiness gate.
+37. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -719,81 +742,32 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Easier-Data Candidate Evaluation Or S05 Backlog Recheck
+Future Step -- External Research Artifact Intake Checklist
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
-- docs/design/phase32_dataset_specific_validation_candidate_selection.md
-- docs/design/phase31_p30_bl_001_source_package.md
-- docs/design/phase31_p30_bl_001_tier_a_review.md
-- docs/design/phase31_p30_bl_001_evidence_gap_routing_plan.md
-- docs/design/phase31_p30_bl_001_mechanics_only_review_summary.md
-- docs/design/phase31_p30_bl_001_final_disposition.md
-- docs/design/phase30_research_artifact_candidate_backlog.md
-- docs/design/phase32_p30_bl_002_source_package_sourcing_plan.md
-- docs/design/phase32_p30_bl_002_source_package.md
-- docs/design/phase32_p30_bl_002_primary_source_verification_gate.md
-- docs/design/phase32_p30_bl_002_limited_formal_review_intake_plan.md
-- docs/design/phase32_p30_bl_002_s01_formal_review.md
-- docs/design/phase32_p30_bl_002_s03_formal_review.md
-- docs/design/phase32_p30_bl_002_s08_formal_review.md
-- docs/design/phase32_p30_bl_002_s05_formal_review.md
-- docs/design/phase32_p30_bl_002_source_status_index.md
-- docs/design/phase32_s05_deterministic_reproduction_planning_boundary.md
-- docs/design/phase32_s05_data_availability_assessment_boundary.md
-- docs/design/phase32_s05_data_provider_source_comparison_plan.md
-- docs/design/phase32_s05_data_provider_scout_research_normalization.md
-- docs/design/phase32_s05_primary_verification_questionnaire.md
-- docs/design/phase32_s05_public_documentation_verification_sweep.md
-- docs/design/phase32_s05_public_documentation_only_feasibility_decision.md
-- docs/design/phase32_s05_non_exact_proxy_reproduction_boundary.md
-- docs/design/phase32_s05_proxy_route_selection_boundary.md
-- docs/design/phase32_s05_route_neutral_proxy_dataset_requirements_boundary.md
-- docs/design/phase32_s05_proxy_source_shortlist_and_backlog_routing.md
-- docs/design/phase33_easier_data_research_candidate_selection_boundary.md
-- docs/design/phase33_broad_etf_moving_average_source_package.md
-- docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md
-- docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
-- docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
-- docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
-- docs/design/phase33_broad_etf_data_source_terms_license_review_boundary.md
-- docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
+- docs/design/phase34_external_research_integration_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
+- docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 
-Scope: documentation-only routing after the owner decision to avoid
-vendor/source contact for now and after the Phase 33 easier-data candidate
-selection boundary, broad-ETF moving-average source package, and grouped
-broad-ETF data feasibility/universe/benchmark boundary plus public-source
-documentation verification sweep. Use the Step 16
-public-doc sweep, Step 17 feasibility decision, Step 18 non-exact proxy
-boundary, Step 19 route selection boundary, Step 20 route-neutral proxy
-dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
-decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
-package, Phase 33 grouped boundary, Phase 33 public-source sweep, and Phase 33
-methodology/no-lookahead boundary plus Phase 33 Step 6 universe/benchmark/cash
-proxy shortlist boundary plus Phase 33 Step 7 terms/license review boundary as
-well as Phase 33 Step 8 final source shortlist decision boundary as cautious
-routing context only. The preferred safe route is a docs-only data
-storage/fixture policy boundary or a moving-average evidence source package
-for the selected broad-ETF moving-average candidate. The data policy boundary
-must not acquire data, approve a source, approve a universe, approve a
-benchmark, approve a cash proxy, design a schema, reproduce, validate, or
-implement the candidate. S05 should
-remain in backlog unless a later prompt explicitly reopens it because future
-vendor contact, budget/access change, stronger public documentation, or owner
-preference changes materially. Preserve Perplexity findings as unverified
-scout research, preserve P30-BL-001 as mechanics-only dispositioned and
-unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
-methodology-only, and preserve S05 as limited candidate-evidence planning
-only. Do not contact vendors, choose a vendor, acquire data, validate,
-approve, promote, create a ValidatedResearchArtifact, create a
-ValidatedSignalDefinition, design a schema, or implement the candidate unless
-that is explicitly scoped in a later phase.
-Forbidden: production code, tests, evaluator behavior, signal computation,
-broker/runtime behavior, persistence, data ingestion, notebooks, scripts, ML,
-and LLM trading-path logic.
+Scope: documentation-only intake checklist for external research artifacts.
+Define how Perplexity outputs, Claude/Gemini reviews, Codex notes,
+QuantConnect/vectorbt hosted or prototype notes, notebooks, spreadsheets,
+vendor/public data notes, external research, citations, screenshots, manual
+observations, and ad hoc files should be captured as advisory inputs before
+formal review. Preserve source-of-truth status in the local Git repo, keep
+primary-source verification separate from inference, require uncertainty and
+non-claims, and keep normal pytest offline and credential-free. Do not acquire
+data, add datasets, create notebooks, add scripts, add dependencies, approve
+an external integration, validate, approve, promote, create a
+ValidatedResearchArtifact, create a ValidatedSignalDefinition, design a
+schema, reproduce, backtest, or implement any candidate.
+Forbidden: production code, tests unless strictly docs/checkpoint related,
+evaluator behavior, signal computation, broker/runtime behavior, persistence,
+data ingestion, notebooks, scripts, dependencies, QuantConnect/vectorbt
+integration, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src;
 git diff --check; git status --short.
 ```
