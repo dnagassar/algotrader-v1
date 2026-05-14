@@ -2287,6 +2287,18 @@ data, an ETF universe, benchmark, cash proxy, reproduction, validation,
 implementation, evaluator behavior, signal computation, or trading
 implication.
 
+Phase 33 Step 17 adds the broad-ETF methodology evidence synthesis boundary.
+It synthesizes Faber plus `ETF-ACADEMIC-001` as limited context-only evidence,
+records common moving-average, benchmark/cash, total-return, ETF-friction,
+parameter-discipline, and no-lookahead/action-timing themes, separates areas
+of agreement from unresolved tensions, states what the evidence can and cannot
+support, lists minimum requirements before reproduction planning, and
+recommends a docs-only broad ETF reproduction readiness checklist as the next
+conservative gate. It does not approve evidence, methodology, parameters,
+data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+implementation, evaluator behavior, signal computation, or trading
+implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

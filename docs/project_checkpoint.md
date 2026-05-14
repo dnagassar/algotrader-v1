@@ -7755,6 +7755,18 @@ data, an ETF universe, benchmark, cash proxy, reproduction, validation,
 implementation, evaluator behavior, signal computation, or trading
 implication.
 
+Phase 33 Step 17 adds the broad-ETF methodology evidence synthesis boundary.
+It synthesizes Faber plus `ETF-ACADEMIC-001` as limited context-only evidence,
+records common moving-average, benchmark/cash, total-return, ETF-friction,
+parameter-discipline, and no-lookahead/action-timing themes, separates areas
+of agreement from unresolved tensions, states what the evidence can and cannot
+support, lists minimum requirements before reproduction planning, and
+recommends a docs-only broad ETF reproduction readiness checklist as the next
+conservative gate. It does not approve evidence, methodology, parameters,
+data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+implementation, evaluator behavior, signal computation, or trading
+implication.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7800,11 +7812,12 @@ Safe next tasks include:
   normalization is now recorded in Phase 33 Step 14; and the Faber limited
   formal evidence review is now recorded in Phase 33 Step 15; and the
   `ETF-ACADEMIC-001` limited formal evidence review is now recorded in Phase
-  33 Step 16. The next docs-only route should be a broad ETF methodology
-  evidence synthesis boundary using Faber plus `ETF-ACADEMIC-001`,
-  `ZAKAMULIN-2014` full-text verification / limited review if accessible, a
-  benchmark/friction evidence review, or a pause in formal evidence review
-  until more primary texts are available. Do not proceed to a broad ETF source
+  33 Step 16; and the broad ETF methodology evidence synthesis boundary is now
+  recorded in Phase 33 Step 17. The next docs-only route should be a broad ETF
+  reproduction readiness checklist that enumerates unresolved gates before
+  code, a benchmark/friction evidence review, an ETF universe/source approval
+  boundary, or a pause until source, universe, benchmark, cash-proxy, and data
+  policy are ready. Do not proceed to a broad ETF source
   approval boundary, fixture policy approval boundary, reproduction protocol,
   evaluator route, or implementation route while keeping all evidence, source,
   universe, benchmark, cash proxy, data, methodology, validation,
