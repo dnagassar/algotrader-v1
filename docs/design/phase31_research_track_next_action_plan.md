@@ -180,6 +180,16 @@ non-goals, and blockers. It does not approve methodology, parameters, data, an
 ETF universe, benchmark, cash proxy, reproduction, validation, implementation,
 or trading implication.
 
+Phase 33 Step 6 adds the grouped broad-ETF universe and benchmark/cash proxy
+shortlist boundary in
+[`phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+It records non-approving ETF universe principles, candidate buckets, example
+tickers, benchmark/cash proxy candidates, alignment requirements, rejection
+criteria, prior-gate relationships, next-gate routing, explicit non-goals, and
+blockers. It does not approve a universe, benchmark, cash proxy, source,
+methodology, parameters, reproduction, validation, implementation, or trading
+implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -284,6 +294,13 @@ Current status:
   shortlist routing, explicit non-goals, and remaining blockers. It does not
   approve methodology, parameters, data, an ETF universe, benchmark, cash
   proxy, reproduction, validation, implementation, or trading implication.
+- Phase 33 Step 6 records the grouped broad-ETF universe and benchmark/cash
+  proxy shortlist boundary. It defines non-approving universe principles,
+  candidate ETF buckets and examples, benchmark/cash proxy candidates,
+  alignment requirements, rejection criteria, prior-gate relationships, and
+  next routing. It does not approve a universe, benchmark, cash proxy, source,
+  methodology, parameter, reproduction, validation, implementation, or trading
+  implication.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -476,16 +493,23 @@ Recommended next phases:
    blockers. It does not approve methodology, parameters, data, an ETF
    universe, benchmark, cash proxy, reproduction, validation, implementation,
    or trading implication.
-32. Future route: ETF universe shortlist boundary, benchmark/cash proxy
-   shortlist boundary, moving-average evidence source package, S05 backlog
-   recheck, or backlog.
+32. Phase 33 Step 6: broad-ETF universe and benchmark/cash proxy shortlist
+   boundary.
+   This step is complete. It groups non-approving ETF universe principles,
+   candidate buckets and examples, benchmark/cash proxy candidates, alignment
+   requirements, rejection criteria, relationship to prior gates, explicit
+   non-goals, and blockers. It does not approve a universe, benchmark, cash
+   proxy, source, methodology, parameter, reproduction, validation,
+   implementation, or trading implication.
+33. Future route: data-source terms/license review boundary, moving-average
+   evidence source package, S05 backlog recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until data, universe, and
    benchmark/cash proxy are later approved.
-33. Later route: implementation readiness gate.
+34. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -687,6 +711,7 @@ Read first:
 - docs/design/phase33_broad_etf_data_feasibility_universe_benchmark_boundary.md
 - docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
+- docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
@@ -700,12 +725,13 @@ boundary, Step 19 route selection boundary, Step 20 route-neutral proxy
 dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
 decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
 package, Phase 33 grouped boundary, Phase 33 public-source sweep, and Phase 33
-methodology/no-lookahead boundary as cautious routing context only. The
-preferred safe route is a docs-only ETF universe shortlist boundary for the
-selected broad-ETF moving-average candidate. S05 should remain in backlog
-unless a later prompt explicitly reopens it because future vendor contact,
-budget/access change, stronger public documentation, or owner preference
-changes materially.
+methodology/no-lookahead boundary plus Phase 33 Step 6 universe/benchmark/cash
+proxy shortlist boundary as cautious routing context only. The preferred safe
+route is a docs-only data-source terms/license review boundary or a
+moving-average evidence source package for the selected broad-ETF
+moving-average candidate. S05 should remain in backlog unless a later prompt
+explicitly reopens it because future vendor contact, budget/access change,
+stronger public documentation, or owner preference changes materially.
 Preserve Perplexity findings as unverified scout research, preserve P30-BL-001
 as mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
 negative-control only, preserve S08 as methodology-only, and preserve S05 as

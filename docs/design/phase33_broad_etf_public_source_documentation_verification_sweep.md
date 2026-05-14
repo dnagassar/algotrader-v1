@@ -185,10 +185,15 @@ methodology evidence standards, required non-claims, and remaining blockers
 without approving methodology, parameters, data, an ETF universe, a benchmark,
 reproduction, validation, implementation, or trading use.
 
-The next docs-only gate after Step 5 should be the ETF universe shortlist
-boundary. Other possible docs-only gates remain:
+Phase 33 Step 6 adds the grouped ETF universe and benchmark/cash proxy
+shortlist boundary in
+[`phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+That boundary keeps candidate ETF buckets, example tickers, benchmark/cash
+proxy candidates, rejection criteria, and next routing non-approving.
 
-1. benchmark/cash proxy shortlist boundary
+Other possible docs-only gates remain:
+
+1. data-source terms/license review boundary
 2. moving-average evidence source package
 3. reproduction protocol boundary only if data, universe, and benchmark/cash
    proxy are later approved

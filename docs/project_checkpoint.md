@@ -6708,6 +6708,103 @@ policy, no cost/friction assumptions, no result-review template, no
 promotion/rejection decision, and no trading implication or production
 threshold.
 
+## Phase 33 Step 6 Broad ETF Universe and Benchmark/Cash Proxy Shortlist Boundary
+
+Phase 33 Step 6 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines non-approving shortlists for ETF universe candidates and
+benchmark/cash proxy candidates for the broad-ETF simple moving-average
+candidate. It does not approve an ETF universe, benchmark, cash proxy, data
+source, methodology, reproduction, validation, signal definition, evaluator,
+implementation, or trading use.
+
+The candidate remains an easier-data research candidate for review only. It is
+not validated, implemented, trading-ready, production-ready, or actionable.
+
+The ETF universe shortlist principles require broad, liquid, simple ETFs only;
+avoid thematic, niche, leveraged, inverse, thinly traded, complex, or
+performance-selected exposures; define asset-class buckets before result
+inspection; respect inception/listing dates and first usable observations;
+preserve symbol identity; record expense ratio and index tracked where
+available; record survivorship, closure, merger, ticker-change, and delisting
+caveats; and prefer instruments with public issuer documentation.
+
+The candidate buckets are broad U.S. equity, broad international developed
+equity, broad emerging-market equity, broad U.S. aggregate bond,
+long-duration Treasury or Treasury bond exposure, optional broad commodity or
+gold exposure only if source quality and methodology caveats are acceptable,
+and cash/T-bill proxy handled separately.
+
+The candidate examples are `SPY` / `IVV` / `VOO` for broad U.S. equity,
+`EFA` / `VEA` for developed international equity, `EEM` / `VWO` for
+emerging-market equity, `AGG` / `BND` for aggregate bond exposure, `TLT` /
+`IEF` for Treasury-duration exposure, and `GLD` / `IAU` or broad commodity
+ETF/ETN candidates only if source quality and methodology caveats are
+acceptable. All examples are candidates only and are not approved final
+tickers or selected based on known performance.
+
+The benchmark/cash proxy shortlist records the buy-and-hold version of a later
+selected ETF universe, a broad U.S. equity benchmark candidate, FRED T-bill or
+cash-rate candidates such as `TB3MS` or `DGS3MO`, and a zero-return cash
+placeholder only as a last-resort methodology placeholder. No benchmark, cash
+proxy, risk-free proxy, return convention, or comparison target is approved.
+
+Any future benchmark/cash proxy proposal must document date alignment,
+frequency alignment, availability-date/as-of assumptions, monthly versus daily
+rate treatment, conversion assumptions if later needed, total-return versus
+price-return caveats, cash proxy limitations, unequal histories, and deferred
+transaction-cost/friction assumptions.
+
+The rejection criteria defer or reject candidates when inception history is
+too short, symbol identity is unstable or ambiguous, source quality is unclear,
+corporate-action/dividend treatment cannot be documented, the candidate is
+thematic/niche or performance-selected, benchmark frequency cannot align with
+candidate data, cash proxy assumptions cannot be stated, or the route
+encourages overclaiming.
+
+Step 6 ties back to Step 4 and Step 5. Stooq and Yahoo Finance / yfinance
+remain source-review candidates only; Nasdaq Data Link and Alpha Vantage
+remain secondary/check candidates only; ETF issuer pages remain
+metadata/context only; FRED remains a cash/risk-free proxy candidate only; and
+no source is approved.
+
+The recommended next docs-only gate is a data-source terms/license review
+boundary, with a moving-average evidence source package as an acceptable
+alternate. A reproduction protocol boundary should wait until source,
+universe, benchmark, and cash proxy choices are later approved. A result-review
+template should wait until a protocol is later approved.
+
+This phase does not perform or authorize universe approval, benchmark
+approval, cash proxy approval, source approval, methodology approval,
+moving-average parameter approval, data acquisition, data ingestion,
+schema/code/notebooks/scripts, backtesting, reproduction, strategy
+implementation, evaluator or signal implementation, signal computation,
+signal scoring/ranking/direction/confidence/actionability, validated
+artifacts, validated signal definitions, new contract types, production
+thresholds, profitability claims, implementation-readiness claims,
+production-readiness claims, trading implications, or broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no approved methodology or
+parameters, no acquired data, no project-local deterministic reproduction, no
+no-lookahead audit, no production threshold/config provenance, no
+implementation-scope approval, no evaluator tests, no data license or
+offline-use approval, no local snapshot/versioning policy, no total-return
+versus price-return decision, no dividend/reinvestment treatment, no
+corporate-action handling policy, no correction/revision policy, no
+point-in-time/as-of policy, no inactive-fund or ticker-change policy, no
+benchmark/cash-proxy frequency alignment rule, no cash-rate conversion rule,
+no cost/friction assumptions, no result-review template, no promotion/rejection
+decision, and no trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6740,10 +6837,12 @@ Safe next tasks include:
   design, reproduction approval, validation, or implementation approval
 - docs-only methodology and no-lookahead/as-of review for the Phase 33
   selected broad-ETF moving-average candidate is now recorded in Phase 33 Step
-  5; the next docs-only gate should be an ETF universe shortlist boundary
-  while keeping all source, universe, benchmark, data, methodology,
-  validation, implementation, secondary shortlist, and S05 backlog statuses
-  non-approving
+  5; the grouped universe and benchmark/cash proxy shortlist boundary is now
+  recorded in Phase 33 Step 6; the next docs-only gate should be a data-source
+  terms/license review boundary or moving-average evidence source package
+  while keeping all source, universe, benchmark, cash proxy, data,
+  methodology, validation, implementation, secondary shortlist, and S05
+  backlog statuses non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

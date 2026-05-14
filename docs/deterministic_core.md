@@ -356,6 +356,12 @@ state.
   next-gate routing without approving methodology, parameters, data, a
   universe, benchmark, reproduction, validation, implementation, or trading
   use.
+- Phase 33 Step 6 adds a grouped broad-ETF universe and benchmark/cash proxy
+  shortlist boundary. It defines non-approving ETF universe principles,
+  candidate buckets and examples, benchmark/cash proxy candidates, alignment
+  requirements, rejection criteria, and next-gate routing without approving a
+  universe, benchmark, cash proxy, source, methodology, reproduction,
+  validation, implementation, or trading use.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1751,6 +1757,16 @@ universe shortlist routing, explicit non-goals, and remaining blockers. It
 does not approve methodology, parameters, data, an ETF universe, benchmark,
 cash proxy, reproduction, validation, implementation, or trading implication.
 
+Phase 33 Step 6 adds the broad-ETF universe and benchmark/cash proxy shortlist
+boundary in
+[`docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+It is documentation-only and defines non-approving ETF universe principles,
+candidate buckets and examples, benchmark/cash proxy candidates, alignment
+requirements, rejection criteria, relationship to prior gates, recommended
+next routing, explicit non-goals, and remaining blockers. It does not approve
+a universe, benchmark, cash proxy, source, methodology, parameters,
+reproduction, validation, implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1935,6 +1951,8 @@ Ledger modes:
   public-source documentation verification sweep
 - Threshold evaluator behavior beyond the Phase 33 Step 5 broad-ETF
   methodology and no-lookahead/as-of review boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 6 broad-ETF universe
+  and benchmark/cash proxy shortlist boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2034,6 +2052,13 @@ implementation work. It routes the next docs-only gate toward an ETF universe
 shortlist boundary. It does not approve methodology, parameters, data, a
 universe, benchmark, cash proxy, reproduction, validation, implementation, or
 trading implication.
+
+Phase 33 Step 6 adds the broad-ETF universe and benchmark/cash proxy shortlist
+boundary. It records candidate-only universe principles, ETF buckets and
+examples, benchmark/cash proxy candidates, alignment requirements, rejection
+criteria, and next routing. It does not approve a universe, benchmark, cash
+proxy, source, methodology, parameters, reproduction, validation,
+implementation, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

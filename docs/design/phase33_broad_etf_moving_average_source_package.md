@@ -158,6 +158,16 @@ remaining blockers without approving methodology, parameters, data, an ETF
 universe, a benchmark, reproduction, validation, implementation, or trading
 use.
 
+Phase 33 Step 6 adds the grouped ETF universe and benchmark/cash proxy
+shortlist boundary in
+[`phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+It records non-approving ETF universe principles, candidate buckets and
+examples, benchmark/cash proxy candidates, alignment requirements, rejection
+criteria, prior-gate relationships, next routing, explicit non-goals, and
+remaining blockers without approving a universe, benchmark, cash proxy,
+source, methodology, parameters, reproduction, validation, implementation, or
+trading use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic

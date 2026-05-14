@@ -176,15 +176,23 @@ implication.
 
 ## Recommended Next Gate
 
-Recommended next docs-only gate after the public-source documentation
-verification sweep and methodology/no-lookahead boundary: ETF universe
-shortlist boundary.
+Phase 33 Step 6 adds the grouped ETF universe and benchmark/cash proxy
+shortlist boundary in
+[`phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+It defines candidate buckets, example tickers, benchmark/cash proxy
+candidates, rejection criteria, and next routing as non-approving review
+context only.
 
-That gate must remain documentation-only unless a later phase explicitly
+That boundary remains documentation-only unless a later phase explicitly
 approves a narrower scope. It must not acquire data, ingest data, approve a
 source, approve a universe, approve a benchmark, approve a cash proxy,
 reproduce results, validate, backtest, implement methodology, implement an
 evaluator, compute signals, or create trading implications.
+
+Recommended next docs-only gate after Step 6: data-source terms/license review
+boundary or moving-average evidence source package. A reproduction protocol
+boundary should wait until data, universe, and benchmark/cash proxy are later
+approved.
 
 ## Explicit Non-Goals
 

@@ -144,6 +144,15 @@ exclusion rules before any performance review. It must not approve a final ETF
 universe, acquire data, inspect results, reproduce, validate, implement, or
 create signal/evaluator behavior.
 
+Phase 33 Step 6 adds that grouped ETF universe and benchmark/cash proxy
+shortlist boundary in
+[`phase33_broad_etf_universe_benchmark_shortlist_boundary.md`](phase33_broad_etf_universe_benchmark_shortlist_boundary.md).
+It records candidate buckets, example tickers, benchmark/cash proxy
+candidates, rejection criteria, relationship to prior gates, explicit
+non-goals, and remaining blockers without approving a universe, benchmark,
+cash proxy, source, methodology, reproduction, validation, implementation, or
+trading use.
+
 Other possible docs-only gates remain:
 
 - benchmark/cash proxy shortlist boundary
