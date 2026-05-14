@@ -7,7 +7,12 @@ state.
 
 ## Current Status
 
-- `778` tests are passing, with `4` skipped paper-integration tests by default.
+- `784` tests are passing, with `4` skipped paper-integration tests by default.
+- Phase 35 Step 1 adds a default pytest network kill-switch. Normal
+  `python -m pytest` blocks `socket.socket` and `socket.create_connection`
+  with a clear offline, credential-free failure message unless
+  `--allow-network` or `ALGO_TRADER_ALLOW_NETWORK_TESTS=1` is explicitly used
+  for gated integration tests.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2392,6 +2397,16 @@ source, universe, return construction, no-lookahead/as-of protocol,
 survivorship/inception/delisting policy, methodology, parameter, data policy,
 reproduction protocol, implementation, signal definition, evaluator, or
 trading implication.
+
+Phase 35 Step 1 adds the default pytest network kill-switch. It patches
+`socket.socket` and `socket.create_connection` during normal pytest
+configuration so accidental network access fails loudly before any broker,
+vendor, SDK, notebook, research, runtime, or trading path can make a socket.
+The explicit escape hatches are `--allow-network` and
+`ALGO_TRADER_ALLOW_NETWORK_TESTS=1`, reserved for future explicitly gated
+integration tests only. Existing paper integration tests remain skipped by
+default, and this step adds no source, broker, runtime, data, signal,
+evaluator, portfolio, or trading behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

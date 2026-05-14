@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 778-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 784-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8065,6 +8065,28 @@ approved out-of-market cash return assumption, no approved idle-cash
 assumption, no approved inflation or real-return treatment, no approved
 zero-return placeholder policy, no result-review template, no reproduction
 protocol, and no trading implication or production threshold.
+
+## Phase 35 Step 1 Default Pytest Network Kill-Switch
+
+Phase 35 Step 1 is the smallest safe enforcement implementation after the
+documentation-heavy research-planning sequence. It adds a default pytest
+network kill-switch in `tests/conftest.py` so normal `python -m pytest`
+patches `socket.socket` and `socket.create_connection` to raise a clear
+offline, credential-free failure before accidental network access can proceed.
+
+The explicit escape hatches are `--allow-network` and
+`ALGO_TRADER_ALLOW_NETWORK_TESTS=1`, reserved for future explicitly gated
+integration tests only. They do not unskip existing paper integration tests by
+themselves and do not add broker, Alpaca SDK, vendor API, credential,
+runtime/scheduler, persistence, data acquisition, data ingestion, notebook,
+portfolio, order-submission, signal, evaluator, return-construction, broad-ETF
+research, live, or paper behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_default_pytest_network_guard.py` -> 6 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 784 passed, 4 skipped
 
 ## Next Recommended Steps
 
