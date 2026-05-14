@@ -849,17 +849,31 @@ Recommended next phases:
    next narrow blocker. It does not approve a source, universe, benchmark,
    cash proxy, methodology, parameter, data policy, reproduction protocol,
    implementation, signal definition, evaluator, or trading implication.
-49. Future route: pause Phase 33 before code. The preferred next docs-only
-   route is a return-construction boundary because it blocks source
-   suitability, universe suitability, benchmark comparability, cash handling,
-   survivorship handling, no-lookahead timing, result review, and any eventual
-   reproduction protocol. A source/universe/benchmark approval boundary should
-   not be attempted until the necessary upstream constraints are concrete. Any
-   future review must preserve traceable dataset scope, point-in-time input
-   assumptions, parameter rationale, no-lookahead controls, reproducibility
-   notes, robustness or out-of-sample evidence, limitations, licensing
-   constraints, offline replay requirements, and non-claims.
-50. Later route: implementation readiness gate.
+49. Phase 33 Step 20: broad-ETF return-construction boundary.
+   This step is complete. It compares raw close returns, adjusted close
+   returns, explicit total-return construction, vendor-provided total-return
+   series, cash/T-bill return series, and a zero-return placeholder as
+   unresolved options only. It records required decisions for dividends,
+   distributions, splits, corporate actions, adjusted-data transparency,
+   expenses, cash-rate conversion, benchmark comparability, compounding,
+   inception alignment, missing/stale data, frequency alignment, and timing.
+   It keeps return construction blocked for approval and recommends a
+   docs-only no-lookahead/as-of protocol boundary next. It does not approve a
+   return basis, source, universe, benchmark, cash proxy, methodology,
+   parameter, data policy, reproduction protocol, implementation, signal
+   definition, evaluator, or trading implication.
+50. Future route: pause Phase 33 before code. The preferred next docs-only
+   route is a no-lookahead/as-of protocol boundary because return construction
+   cannot be reviewed without explicit observation time, decision time, action
+   time, availability, adjustment, distribution, cash-rate, correction,
+   revision, benchmark, and same-close assumptions. A source/universe/
+   benchmark approval boundary should not be attempted until the necessary
+   upstream constraints are concrete. Any future review must preserve
+   traceable dataset scope, point-in-time input assumptions, parameter
+   rationale, no-lookahead controls, reproducibility notes, robustness or
+   out-of-sample evidence, limitations, licensing constraints, offline replay
+   requirements, and non-claims.
+51. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -1024,7 +1038,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Return-Construction Boundary
+Future Step -- Broad ETF No-Lookahead / As-Of Protocol Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -1038,18 +1052,21 @@ Read first:
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase33_broad_etf_reproduction_readiness_checklist.md
 - docs/design/phase33_broad_etf_source_universe_benchmark_decision_readiness_boundary.md
+- docs/design/phase33_broad_etf_return_construction_boundary.md
 
-Scope: documentation-only return-construction boundary for the broad-ETF
-candidate. Assess adjusted close versus total return, dividends,
-distributions, splits, corporate actions, fund expenses, missing values, and
-rebalance-period questions only as unresolved policy choices. Do not approve a
-source, universe, benchmark, cash proxy, methodology, parameter, data policy,
-reproduction protocol, data acquisition, fixture creation, schema design,
-notebooks, scripts, backtests, evaluator behavior, signal computation,
-validated artifacts, validated signal definitions, implementation, or trading
-use. Preserve normal pytest as offline, credential-free, deterministic, and
-free of network, credentials, external data providers, notebooks, prototype
-tools, brokers, runtime behavior, and trading-path behavior.
+Scope: documentation-only no-lookahead/as-of protocol boundary for the
+broad-ETF candidate. Define unresolved requirements for signal observation
+time, decision time, action time, fill convention, source-field availability,
+adjusted-data timing, dividend/distribution availability, cash-rate release
+timing, benchmark construction, corrections, revisions, ETF inception, and
+same-close assumptions. Do not approve a source, universe, benchmark, cash
+proxy, return construction, methodology, parameter, data policy, reproduction
+protocol, data acquisition, fixture creation, schema design, notebooks,
+scripts, backtests, evaluator behavior, signal computation, validated
+artifacts, validated signal definitions, implementation, or trading use.
+Preserve normal pytest as offline, credential-free, deterministic, and free of
+network, credentials, external data providers, notebooks, prototype tools,
+brokers, runtime behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
 data acquisition, downloads, ingestion, data files, fixtures, schemas,
 notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,

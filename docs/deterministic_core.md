@@ -2321,6 +2321,20 @@ It does not approve a source, universe, benchmark, cash proxy, methodology,
 parameter, data policy, reproduction protocol, implementation, signal
 definition, evaluator, or trading implication.
 
+Phase 33 Step 20 adds the broad-ETF return-construction boundary. It compares
+raw close returns, adjusted close returns, explicit total-return construction,
+vendor-provided total-return series, cash/T-bill return series, and a
+zero-return placeholder as unresolved options only. It records required
+decision areas for dividends and distributions, splits and corporate actions,
+adjusted-data transparency, expenses, cash/T-bill returns, benchmark
+comparability, compounding, ETF inception alignment, missing/stale data,
+frequency alignment, no-lookahead/as-of timing, and timing/action-date
+implications. It keeps return construction blocked for approval and
+recommends a docs-only no-lookahead/as-of protocol boundary next. It does not
+approve a return basis, source, universe, benchmark, cash proxy, methodology,
+parameter, data policy, reproduction protocol, implementation, signal
+definition, evaluator, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

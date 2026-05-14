@@ -7789,6 +7789,20 @@ It does not approve a source, universe, benchmark, cash proxy, methodology,
 parameter, data policy, reproduction protocol, implementation, signal
 definition, evaluator, or trading implication.
 
+Phase 33 Step 20 adds the broad-ETF return-construction boundary. It compares
+raw close returns, adjusted close returns, explicit total-return construction,
+vendor-provided total-return series, cash/T-bill return series, and a
+zero-return placeholder as unresolved options only. It records required
+decisions for price versus total return, dividends and distributions, splits
+and corporate actions, adjusted-data transparency, expenses, cash/T-bill
+returns, benchmark comparability, compounding, ETF inception alignment,
+missing/stale data, frequency alignment, and timing/action-date implications.
+It keeps return construction blocked for approval, recommends a docs-only
+no-lookahead/as-of protocol boundary next, and does not approve a return
+basis, source, universe, benchmark, cash proxy, methodology, parameter, data
+policy, reproduction protocol, implementation, signal definition, evaluator,
+or trading implication.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7838,15 +7852,17 @@ Safe next tasks include:
   recorded in Phase 33 Step 17; and the broad ETF reproduction readiness
   checklist is now recorded in Phase 33 Step 18; and the broad ETF source,
   universe, and benchmark decision-readiness boundary is now recorded in Phase
-  33 Step 19. The next docs-only route should pause Phase 33 before code and
-  prefer a return-construction boundary because it blocks source suitability,
-  universe suitability, benchmark comparability, cash handling, survivorship
-  handling, no-lookahead timing, result review, and any eventual reproduction
-  protocol. Do not proceed to a fixture policy approval boundary,
-  source/universe/benchmark approval boundary, reproduction protocol,
-  evaluator route, or implementation route while keeping all evidence, source,
-  universe, benchmark, cash proxy, data, methodology, validation,
-  implementation, secondary shortlist, and S05 backlog statuses non-approving
+  33 Step 19; and the broad ETF return-construction boundary is now recorded
+  in Phase 33 Step 20. The next docs-only route should pause Phase 33 before
+  code and prefer a no-lookahead/as-of protocol boundary because return
+  construction cannot be reviewed without explicit observation time, decision
+  time, action time, availability, adjustment, distribution, cash-rate,
+  correction, revision, benchmark, and same-close assumptions. Do not proceed
+  to a fixture policy approval boundary, source/universe/benchmark approval
+  boundary, reproduction protocol, evaluator route, or implementation route
+  while keeping all evidence, source, universe, benchmark, cash proxy, data,
+  return construction, methodology, validation, implementation, secondary
+  shortlist, and S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
