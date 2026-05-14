@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `814` tests are passing, with `4` skipped paper-integration tests by default.
+- `847` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -18,6 +18,10 @@ state.
   returns, close-to-close return tuple construction, and calendar-day lag
   examples only; it is not strategy logic, signal evaluation, backtesting,
   benchmark construction, or real-data approval.
+- Phase 35 Step 3 adds a tiny research fixture manifest contract. It records
+  fixture metadata and provenance for synthetic, derived, and local-only
+  research fixtures without approving any source, data, universe, benchmark,
+  cash proxy, validation result, profitability claim, or trading use.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2433,6 +2437,30 @@ notebooks, vectorbt, QuantConnect, ML, LLM trading-path logic, validated
 research artifacts, validated signal definitions, profitability claims,
 validation claims, implementation-readiness claims, production thresholds, or
 trading-readiness claims.
+
+Phase 35 Step 3 adds the metadata-only fixture manifest contract in
+`algotrader.research.fixture_manifest`. `ResearchFixtureManifest` is a frozen
+slotted dataclass that records only provenance fields such as fixture identity,
+fixture kind, source name/type, optional plain dates, field names, checksum,
+normal-pytest eligibility, redistribution safety, limitations, and non-claims.
+It supports synthetic fixtures, derived fixtures, and local-only snapshot
+manifests as metadata categories only.
+
+The manifest validates non-empty required strings, allowed fixture kinds and
+source types, plain `date` values instead of `datetime`, ordered data date
+ranges, immutable tuple fields, plain boolean flags, and normal-pytest
+eligibility. A fixture can be normal-pytest eligible only when it is
+redistribution-safe and does not use local-only, third-party, or local-snapshot
+source categories. Local-only manifests and third-party raw-data manifests are
+therefore metadata records only and remain outside normal pytest fixtures.
+
+This contract does not add data files, data downloads, data acquisition, data
+ingestion, vendor access, public data, source approval, ETF universe approval,
+benchmark approval, cash-proxy approval, backtests, strategies, signal
+evaluators, portfolio mutation, order generation, broker behavior, runtime
+behavior, notebooks, scripts, `ValidatedResearchArtifact`,
+`ValidatedSignalDefinition`, profitability claims, validation claims,
+production thresholds, or trading-readiness claims.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

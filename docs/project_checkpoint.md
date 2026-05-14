@@ -8137,6 +8137,68 @@ signal/evaluator implementation, order generation, `ValidatedResearchArtifact`,
 implementation-readiness claims, production-threshold claims, or
 trading-readiness claims.
 
+## Phase 35 Step 3 Research Fixture / Manifest Contract
+
+Phase 35 Step 3 adds a tiny immutable research fixture manifest contract for
+future synthetic fixtures, derived fixtures, and local-only snapshot metadata.
+The new `src/algotrader/research/fixture_manifest.py` module exposes
+`ResearchFixtureManifest`, a frozen slotted dataclass that records provenance
+and eligibility metadata only.
+
+Files changed in this phase:
+
+- `src/algotrader/research/fixture_manifest.py`
+- `tests/unit/test_fixture_manifest.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+The contract records fixture identity, fixture kind, description, source name,
+source type, optional retrieval and data-range dates, field names, checksum,
+normal-pytest eligibility, redistribution safety, limitations, and non-claims.
+It intentionally has no broker, runtime, network, vendor, strategy, signal,
+evaluator, backtest, portfolio, order, approval, profitability, validation, or
+trading-readiness fields.
+
+Validation added in this phase requires non-empty required strings, allowed
+fixture kinds (`synthetic`, `derived`, `local_only`), allowed source types
+(`synthetic`, `manual`, `third_party`, `local_snapshot`), immutable tuple
+fields with non-empty string entries, plain `date` values rather than
+`datetime`, ordered data date ranges, and plain boolean flags.
+`normal_pytest_eligible=True` requires `redistribution_safe=True`, rejects
+local-only fixtures, rejects third-party and local-snapshot source categories,
+requires synthetic fixtures to use synthetic sources, and allows derived
+normal-pytest fixtures only when their source type is synthetic or manual.
+
+The unit tests cover valid synthetic manifest creation, valid local-only
+manifest creation with `normal_pytest_eligible=False`, safe derived/manual
+metadata, frozen/slotted behavior, tuple conversion and immutability, exact
+metadata field names, empty required strings, unknown fixture kinds, malformed
+tuple fields, `datetime` rejection, bad date ranges, local-only and external
+raw-source normal-pytest rejection, redistribution-safety requirements, plain
+boolean validation, forbidden import/dependency checks, and absence of broker,
+network, vendor, runtime, strategy, signal, evaluator, and trading-path calls
+or names.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 33 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_default_pytest_network_guard.py` -> 6 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 847 passed, 4 skipped
+- `git diff --check` -> passed with existing docs CRLF warnings only
+
+Explicit non-goals remain in force: no real market data, vendor/public data
+files, source approval, ETF universe approval, benchmark approval, cash-proxy
+approval, data acquisition, data download, data ingestion, network calls,
+credentials, notebooks, scripts, backtests, strategy implementation,
+signal/evaluator implementation, broker behavior, OMS/runtime/scheduler/
+persistence behavior, portfolio mutation, ledger or reconciliation behavior,
+Alpaca behavior, ML, LLM trading-path behavior, vectorbt, QuantConnect,
+`ValidatedResearchArtifact`, `ValidatedSignalDefinition`, production
+thresholds, profitability claims, validation claims, trading-readiness claims,
+or trading-path behavior.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
