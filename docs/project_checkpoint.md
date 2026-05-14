@@ -7142,6 +7142,90 @@ template for reproduced outputs, no promotion/rejection decision for any
 specific external artifact, and no trading implication or production
 threshold.
 
+## Phase 34 Step 3 Notebook / Prototype Policy Boundary
+
+Phase 34 Step 3 is documentation-only. It adds:
+
+```text
+docs/design/phase34_notebook_prototype_policy_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The policy
+defines how notebooks, prototype scripts, vectorbt experiments, QuantConnect
+outputs, spreadsheets, CSV extracts, charts, external platform reports, and
+copied snippets may support research without becoming trusted project
+artifacts, deterministic source of truth, production dependencies, normal
+pytest inputs, or trading-path behavior.
+
+Allowed uses are exploratory calculations, hypothesis sketching,
+visualization, sanity checks, API or data-source learning outside the
+deterministic core, performance-shape exploration with explicit non-claims,
+generating questions for later deterministic phases, and drafting docs or
+proposals. These uses create context for review only.
+
+Forbidden uses include production source of truth, direct trading signal
+source, direct threshold source, direct validation evidence, direct source/data
+approval, direct normal pytest dependency, direct broker/runtime/OMS
+dependency, direct portfolio mutation, direct artifact or signal-definition
+creation, replacement for deterministic local reproduction, and hiding manual
+edits or undocumented data cleaning.
+
+Required metadata for future exploratory artifacts includes purpose, date,
+author/tool, data source, data snapshot or retrieval date, assumptions,
+dependencies/tools used, whether network or credentials were involved,
+limitations, non-claims, what must be reproduced locally before trust, and
+recommended routing.
+
+The promotion path requires Phase 34 intake capture, normalized reviewed docs,
+source/data terms review, approved fixture/storage policy, deterministic local
+reproduction planning, later scoped implementation approval, deterministic
+tests, and a result-review template recording limits and non-claims. No
+notebook, script, spreadsheet, vectorbt run, QuantConnect report, chart, LLM
+snippet, website snippet, or hosted result can skip this path.
+
+Repository placement keeps reviewed policy in `docs/design`, reserves
+`docs/proposals` for later explicitly scoped speculative summaries, keeps raw
+data and generated outputs out of the repo until storage/fixture policy is
+approved, and keeps `src` off-limits until later implementation approval.
+
+The vectorbt boundary states that vectorbt may be considered for research
+prototyping only. It is not production infrastructure, cannot be in the
+trading hot path, cannot validate a signal without project-approved
+deterministic reproduction, and is not added as a dependency in this phase.
+
+The QuantConnect boundary states that QuantConnect may be used only as an
+external sandbox or reference. QuantConnect results are not source of truth,
+screenshots and backtest reports are external artifacts, useful findings must
+be reproduced locally before trust, and no QuantConnect integration is added.
+
+Normal `python -m pytest` remains offline, credential-free, deterministic,
+free of network, credentials, SDK/platform calls, notebook/prototype runtime
+dependencies, data acquisition, data ingestion, broker/runtime/OMS behavior,
+vectorbt, QuantConnect, ML, LLM runtime, and trading-path behavior. Any future
+integration tests must be explicitly gated and skipped by default.
+
+The recommended next docs-only gate is to return to the Phase 33 data
+storage/fixture policy boundary.
+
+This phase does not perform or authorize implementation, dependencies,
+notebooks, scripts, data acquisition, data ingestion, schema/code, backtests,
+reproduction, vectorbt integration, QuantConnect integration, LLM runtime
+integration, evaluator or signal implementation, signal computation,
+scoring/ranking/direction/confidence/actionability, validated artifacts,
+validated signal definitions, production thresholds, profitability claims, or
+trading implications.
+
+Remaining blockers include no approved notebook/prototype integration, no
+approved vectorbt integration, no approved QuantConnect integration, no
+approved data storage/fixture policy, no approved Phase 33
+source/universe/benchmark/cash proxy, no project-local deterministic
+reproduction, no no-lookahead audit, no implementation-scope approval, no
+evaluator tests, no approved source/data approval route from exploratory
+artifacts, no approved terms/license route for external data or hosted
+outputs, no approved result-review template for reproduced outputs, no
+promotion/rejection decision for any specific exploratory artifact, and no
+trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7193,6 +7277,13 @@ Safe next tasks include:
   keeping notebooks, vectorbt prototypes, spreadsheets, screenshots, manual
   observations, hosted outputs, vendor/public data notes, and LLM outputs
   exploratory or advisory only and outside normal pytest, production
+  dependencies, validated artifacts, validated signal definitions, and
+  trading-path behavior
+- Phase 34 Step 3 now records that notebook/prototype policy boundary; the
+  next docs-only gate should return to the Phase 33 data storage/fixture policy
+  boundary while keeping notebooks, prototype scripts, vectorbt experiments,
+  QuantConnect outputs, spreadsheets, CSV extracts, charts, external reports,
+  and copied snippets exploratory only and outside normal pytest, production
   dependencies, validated artifacts, validated signal definitions, and
   trading-path behavior
 - small deterministic screener polish with synthetic inputs only

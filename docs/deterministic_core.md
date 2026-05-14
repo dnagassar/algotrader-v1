@@ -385,6 +385,12 @@ state.
   vendor/public data docs, papers, spreadsheets, ad hoc analyses, screenshots,
   and manual observations are captured, labeled, reviewed, and routed before
   they can influence project decisions.
+- Phase 34 Step 3 adds a notebook/prototype policy boundary. It defines how
+  notebooks, ad hoc scripts, vectorbt prototypes, QuantConnect outputs,
+  spreadsheets, CSV extracts, charts, external reports, and copied snippets may
+  support exploratory research without becoming trusted artifacts, deterministic
+  source of truth, production dependencies, normal pytest inputs, or
+  trading-path behavior.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -2014,6 +2020,8 @@ Ledger modes:
   integration boundary
 - Threshold evaluator behavior beyond the Phase 34 Step 2 external research
   artifact intake checklist
+- Threshold evaluator behavior beyond the Phase 34 Step 3 notebook/prototype
+  policy boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2156,6 +2164,18 @@ notebook/prototype policy boundary next and does not approve any external
 artifact, notebook, vendor/public data source, dependency, reproduction,
 implementation, validated artifact, validated signal definition, production
 threshold, or trading implication.
+
+Phase 34 Step 3 adds that notebook/prototype policy boundary. It records safe
+exploratory uses, forbidden uses, required metadata, promotion path,
+repository placement policy, vectorbt and QuantConnect boundaries, normal
+pytest rules, explicit non-goals, and remaining blockers for notebooks,
+prototype scripts, vectorbt experiments, QuantConnect outputs, spreadsheets,
+CSV extracts, charts, external reports, and copied snippets. It recommends
+returning to the Phase 33 data storage/fixture policy boundary and does not
+approve notebooks, scripts, dependencies, data acquisition, ingestion,
+reproduction, backtests, vectorbt or QuantConnect integration, validated
+artifacts, validated signal definitions, production thresholds, or trading
+implications.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

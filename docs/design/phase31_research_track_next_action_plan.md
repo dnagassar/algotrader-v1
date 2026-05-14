@@ -224,6 +224,19 @@ decisions. It does not approve any external artifact, dependency, notebook,
 data, reproduction, validated artifact, validated signal definition,
 implementation, or trading implication.
 
+Phase 34 Step 3 adds the notebook/prototype policy boundary in
+[`phase34_notebook_prototype_policy_boundary.md`](phase34_notebook_prototype_policy_boundary.md).
+It defines allowed exploratory uses, forbidden uses, required metadata,
+promotion path, repository placement policy, vectorbt and QuantConnect
+boundaries, normal pytest rules, non-goals, and blockers for notebooks,
+prototype scripts, vectorbt experiments, QuantConnect outputs, spreadsheets,
+CSV extracts, charts, external reports, and copied snippets. It recommends
+returning to the Phase 33 data storage/fixture policy boundary and does not
+approve notebooks, scripts, dependencies, data acquisition, ingestion,
+reproduction, backtests, vectorbt or QuantConnect integration, validated
+artifacts, validated signal definitions, production thresholds, or trading
+implications.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -359,6 +372,10 @@ Current status:
   routing outcomes, promotion constraints, repository placement, and a
   reusable markdown template while keeping all external outputs untrusted until
   later scoped review.
+- Phase 34 Step 3 records the notebook/prototype policy boundary. It keeps
+  notebooks, prototype scripts, vectorbt experiments, QuantConnect outputs,
+  spreadsheets, CSV extracts, charts, external reports, and copied snippets as
+  exploratory aids only until later deterministic review.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -591,16 +608,26 @@ Recommended next phases:
    not approve external artifacts, dependencies, notebooks, data, source
    approval, reproduction, validated artifacts, validated signal definitions,
    implementation, or trading implications.
-37. Future route: notebook/prototype policy boundary, data storage/fixture
-   policy boundary, moving-average evidence source package, S05 backlog
-   recheck, or backlog.
+37. Phase 34 Step 3: notebook/prototype policy boundary.
+   This step is complete. It defines how notebooks, prototype scripts, vectorbt
+   experiments, QuantConnect outputs, spreadsheets, CSV extracts, charts,
+   external reports, and copied snippets may support research without becoming
+   trusted artifacts, deterministic source of truth, production dependencies,
+   normal pytest inputs, or trading-path behavior. It recommends returning to
+   the Phase 33 data storage/fixture policy boundary and does not approve
+   notebooks, scripts, dependencies, data acquisition, ingestion, reproduction,
+   backtests, vectorbt or QuantConnect integration, validated artifacts,
+   validated signal definitions, production thresholds, or trading
+   implications.
+38. Future route: data storage/fixture policy boundary, moving-average
+   evidence source package, S05 backlog recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-38. Later route: implementation readiness gate.
+39. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
