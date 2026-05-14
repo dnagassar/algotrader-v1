@@ -7,12 +7,17 @@ state.
 
 ## Current Status
 
-- `784` tests are passing, with `4` skipped paper-integration tests by default.
+- `814` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
   `--allow-network` or `ALGO_TRADER_ALLOW_NETWORK_TESTS=1` is explicitly used
   for gated integration tests.
+- Phase 35 Step 2 adds a tiny synthetic-only return construction and lagged
+  observation/action-date mechanics kernel. It covers arithmetic simple
+  returns, close-to-close return tuple construction, and calendar-day lag
+  examples only; it is not strategy logic, signal evaluation, backtesting,
+  benchmark construction, or real-data approval.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2407,6 +2412,27 @@ The explicit escape hatches are `--allow-network` and
 integration tests only. Existing paper integration tests remain skipped by
 default, and this step adds no source, broker, runtime, data, signal,
 evaluator, portfolio, or trading behavior.
+
+Phase 35 Step 2 adds the synthetic-only return construction / as-of mechanics
+kernel in `algotrader.research.return_construction`. It provides arithmetic
+`simple_return`, immutable close-to-close return tuple construction from
+synthetic `Decimal` values, and lagged observation/action-date pairs from
+strictly increasing synthetic `date` inputs. The lag examples use a simple
+calendar-day offset only and make no trading-calendar, execution-calendar,
+same-day execution, next-open, next-close, rebalance, or data-availability
+claim. The kernel rejects malformed inputs, non-`Decimal` return inputs,
+non-positive prior values, unordered or duplicate observation dates, and
+negative lag values.
+
+This kernel is mechanical only. It does not approve or implement real market
+data, vendor data, data downloads, data files, adjusted-close logic,
+total-return logic, dividends, splits, cash returns, benchmark returns, costs,
+frictions, moving-average rules, strategies, signals, evaluators, backtests,
+portfolio mutation, order generation, broker behavior, runtime behavior,
+notebooks, vectorbt, QuantConnect, ML, LLM trading-path logic, validated
+research artifacts, validated signal definitions, profitability claims,
+validation claims, implementation-readiness claims, production thresholds, or
+trading-readiness claims.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

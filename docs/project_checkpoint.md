@@ -8088,6 +8088,55 @@ Verification for this phase:
 - `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
 - `python -m pytest` -> 784 passed, 4 skipped
 
+## Phase 35 Step 2 Synthetic Return Construction / As-Of Mechanics Kernel
+
+Phase 35 Step 2 adds a tiny pure-function research mechanics kernel for
+synthetic fixtures only. The new
+`src/algotrader/research/return_construction.py` module exposes arithmetic
+`simple_return`, immutable close-to-close return tuple construction, and
+lagged observation/action-date pairs using calendar-day offsets over strictly
+increasing synthetic dates.
+
+Files changed in this phase:
+
+- `src/algotrader/research/return_construction.py`
+- `tests/unit/test_return_construction.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+The unit tests use only synthetic `Decimal` values and synthetic `date` values.
+They cover simple return calculation, close-to-close tuple construction,
+Decimal precision preservation, zero and negative prior-value rejection,
+non-`Decimal` numeric rejection, malformed return sequences, lagged action
+date construction, no same-day action when lag is positive, zero-lag mechanical
+examples, immutable tuple outputs, malformed observation-date rejection, and
+AST guardrails against network, broker, vendor API, data-library, strategy,
+signal-definition, evaluator, backtest, portfolio, runtime, and data-file
+dependencies.
+
+Validation added in this phase rejects malformed sequences, non-`Decimal`
+return inputs, zero or negative prior values, empty observation-date sequences,
+non-`date` observation values, unordered or duplicate observation dates,
+non-integer lag values, boolean lag values, and negative lag values.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_default_pytest_network_guard.py` -> 6 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 814 passed, 4 skipped
+
+Explicit non-goals remain in force: no real market data, vendor data,
+Stooq/Yahoo/FRED/Alpha Vantage/Nasdaq calls, network calls, credentials, data
+downloads, data files, notebooks, scripts, broker behavior, Alpaca behavior,
+OMS/runtime/scheduler/persistence behavior, portfolio mutation, ledger or
+reconciliation behavior, ML, LLM trading-path behavior, vectorbt,
+QuantConnect, strategy implementation, broad ETF SMA implementation,
+signal/evaluator implementation, order generation, `ValidatedResearchArtifact`,
+`ValidatedSignalDefinition`, profitability claims, validation claims,
+implementation-readiness claims, production-threshold claims, or
+trading-readiness claims.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
