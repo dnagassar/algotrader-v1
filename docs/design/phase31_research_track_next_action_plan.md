@@ -301,6 +301,21 @@ methodology, parameters, data, universe, benchmark/cash proxy, reproduction,
 validation, implementation, evaluator behavior, signal computation, or trading
 implication.
 
+Phase 33 Step 15 adds the broad-ETF Faber limited formal evidence review in
+[`phase33_broad_etf_faber_limited_formal_evidence_review.md`](phase33_broad_etf_faber_limited_formal_evidence_review.md).
+It reviews Mebane T. Faber's "A Quantitative Approach to Tactical Asset
+Allocation" as methodology and practitioner/TAA context only, records source
+identity, SSRN ID, author-hosted PDF and SSRN access status, monthly 10-month
+SMA rule framing, broad index asset classes, total-return and cash treatment,
+buy-and-hold comparison framing, parameter-stability discussion, bias and
+friction caveats, transferability limits, cautious disposition labels,
+required follow-up, and remaining blockers. It recommends
+`ETF-ACADEMIC-001` full-text verification / limited review if accessible, or
+pausing formal evidence review until more primary texts are available. It does
+not approve evidence, methodology, parameters, data, universe, benchmark/cash
+proxy, reproduction, validation, implementation, evaluator behavior, signal
+computation, or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -472,6 +487,12 @@ Current status:
   Averages" label, and related Zakamulin candidates, and recommends Faber as
   the conservative first later review target only after repo-trail PDF and
   SSRN verification.
+- Phase 33 Step 15 records the broad-ETF Faber limited formal evidence
+  review. It treats Faber as methodology and practitioner/TAA context only,
+  extracts rule framing, universe, benchmark/cash treatment, bias and
+  robustness cautions, transferability limits, disposition, follow-up, and
+  blockers, and recommends `ETF-ACADEMIC-001` full-text verification /
+  limited review if accessible.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -774,20 +795,29 @@ Recommended next phases:
    trail. It does not approve evidence, methodology, parameters, data,
    universe, benchmark/cash proxy, reproduction, validation, implementation,
    evaluator behavior, signal computation, or trading implication.
-44. Future route: limited formal review of Faber only after repo-trail primary
-   text and citation verification, limited review of `ETF-ACADEMIC-001` or
-   Zakamulin candidates only if primary full text is accessible, first
-   limited methodology
-   evidence review, broad ETF source
-   approval boundary, fixture policy approval boundary, S05 backlog recheck, or
-   backlog.
+44. Phase 33 Step 15: broad-ETF Faber limited formal evidence review.
+   This step is complete. It reviews Faber's "A Quantitative Approach to
+   Tactical Asset Allocation" as methodology and practitioner/TAA context only,
+   records source identity, monthly 10-month SMA rule framing, broad index
+   asset classes, total-return and cash treatment, buy-and-hold comparison
+   framing, parameter-stability discussion, same-close timing caution,
+   practical friction caveats, index-proxy/ETF-inception limits,
+   transferability limits, disposition, follow-up, and blockers. It does not
+   approve evidence, methodology, parameters, data, universe, benchmark/cash
+   proxy, reproduction, validation, implementation, evaluator behavior, signal
+   computation, or trading implication.
+45. Future route: `ETF-ACADEMIC-001` full-text verification / limited review
+   if accessible, Zakamulin limited review only if separately selected and
+   full text is accessible, broad ETF methodology evidence synthesis boundary
+   only after enough primary-text review exists, S05 backlog recheck, or
+   pause formal evidence review until more primary texts are available.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-45. Later route: implementation readiness gate.
+46. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -952,7 +982,7 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Broad ETF Faber Limited Formal Review Gate
+Future Step -- Broad ETF ETF-ACADEMIC-001 Full-Text Verification Gate
 
 Read first:
 - docs/agent_context/codex_operating_context.md
@@ -963,24 +993,28 @@ Read first:
 - docs/design/phase33_broad_etf_evidence_source_collection_normalization.md
 - docs/design/phase33_broad_etf_primary_evidence_text_intake_normalization.md
 - docs/design/phase33_broad_etf_primary_citation_verification_normalization.md
+- docs/design/phase33_broad_etf_faber_limited_formal_evidence_review.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
 - docs/design/phase34_external_research_artifact_intake_checklist.md
 - docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only limited formal review of `MA-PRACT-001` Faber only,
-and only after the open PDF and SSRN metadata are verified in the repo trail.
-Use the full primary text rather than summaries. Extract the exact
-moving-average rule, universe, period, frequency, benchmark, cash proxy,
-return construction, dividend/corporate-action treatment, costs/frictions,
-OOS/robustness/parameter-sensitivity treatment, lookahead/survivorship/data
-snooping controls, limitations, and non-claims. Do not review
-`ETF-ACADEMIC-001` or Zakamulin candidates unless a later prompt separately
-confirms primary full-text access. Do not approve a source, ETF universe,
-benchmark, cash proxy, methodology, parameter, storage policy, fixture,
-reproduction protocol, validation route, signal definition, evaluator,
-implementation, or trading use. Preserve normal pytest as offline,
+Scope: documentation-only full-text verification and, only if accessible,
+limited formal review of `ETF-ACADEMIC-001`. Use primary pages and full text
+rather than summaries. Confirm exact title, authors, year, venue, DOI, RePEc,
+SSRN or working-paper identifiers, version, access status, and whether the
+reviewed text is inspectable. If full text is accessible, extract only scoped
+methodology context: moving-average rules, ETF universe, period, frequency,
+benchmark, cash proxy, return construction, dividend/corporate-action
+treatment, costs/frictions, OOS/robustness/parameter-sensitivity treatment,
+lookahead/survivorship/data-snooping controls, limitations, and non-claims.
+If full text is not accessible, stop at a verification boundary and do not
+perform evidence review. Do not review Zakamulin candidates unless separately
+selected with confirmed full-text access. Do not approve a source, ETF
+universe, benchmark, cash proxy, methodology, parameter, storage policy,
+fixture, reproduction protocol, validation route, signal definition,
+evaluator, implementation, or trading use. Preserve normal pytest as offline,
 credential-free, deterministic, and free of network, credentials, external
 data providers, notebooks, prototype tools, brokers, runtime behavior, and
 trading-path behavior.

@@ -2030,6 +2030,12 @@ Ledger modes:
   moving-average evidence intake plan
 - Threshold evaluator behavior beyond the Phase 33 Step 12 broad-ETF evidence
   source collection normalization
+- Threshold evaluator behavior beyond the Phase 33 Step 13 broad-ETF primary
+  evidence text intake normalization
+- Threshold evaluator behavior beyond the Phase 33 Step 14 broad-ETF primary
+  citation verification normalization
+- Threshold evaluator behavior beyond the Phase 33 Step 15 broad-ETF Faber
+  limited formal evidence review
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2248,6 +2254,20 @@ SSRN metadata are verified in the repo trail. It does not approve evidence,
 methodology, parameters, data, an ETF universe, benchmark, cash proxy,
 reproduction, validation, implementation, evaluator behavior, signal
 computation, or trading implication.
+
+Phase 33 Step 15 adds the broad-ETF Faber limited formal evidence review. It
+reviews Mebane T. Faber's "A Quantitative Approach to Tactical Asset
+Allocation" as methodology and practitioner/TAA context only, records source
+identity, SSRN ID 962461, author-hosted PDF and SSRN access status, the
+monthly 10-month SMA rule framing, broad index asset classes, total-return
+and cash treatment, buy-and-hold comparison framing, parameter-stability
+discussion, practical friction caveats, index-proxy/ETF-inception limits,
+transferability limits, cautious disposition labels, required follow-up, and
+remaining blockers. It recommends ETF-ACADEMIC-001 full-text verification /
+limited review if accessible. It does not approve evidence, methodology,
+parameters, data, an ETF universe, benchmark, cash proxy, reproduction,
+validation, implementation, evaluator behavior, signal computation, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

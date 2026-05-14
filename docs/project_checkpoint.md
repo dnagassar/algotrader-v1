@@ -7654,6 +7654,88 @@ robustness or parameter-sensitivity review, no benchmark/cash/risk-metric
 review, no result-review template, no promotion/rejection decision, and no
 trading implication or production threshold.
 
+## Phase 33 Step 15 Broad ETF Faber Limited Formal Evidence Review
+
+Phase 33 Step 15 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_faber_limited_formal_evidence_review.md
+```
+
+It also updates research-track navigation/checkpoint context only. The review
+inspects Mebane T. Faber's "A Quantitative Approach to Tactical Asset
+Allocation" as methodology and practitioner/TAA context for the broad-ETF
+moving-average candidate. It records source identity, SSRN ID 962461, author
+hosted PDF and SSRN access status, publication/update trail, full-text access
+status, citation reliability, and evidence status as limited formal review
+candidate only.
+
+The methodology summary records the primary-text framing of a monthly
+10-month simple moving-average rule, month-end update cadence, same-close
+entry/exit statement, total-return series treatment, 90-day Treasury-bill cash
+treatment, five broad index asset classes, equal-weight buy-and-hold
+comparison, parameter-stability discussion, monthly rebalancing notes, and
+index-proxy / ETF-inception caveats.
+
+The relevance section keeps Faber in methodology-context territory only. It
+can inform later questions about broad asset-class trend following, ETF/TAA
+translation, rule design, benchmark/cash framing, parameter discipline, and
+no-lookahead/as-of handling. It does not approve the paper's evidence, the
+10-month parameter, the original universe, benchmark, cash proxy, data source,
+return construction, reproduction route, validation route, evaluator behavior,
+or implementation.
+
+Bias and robustness considerations include the paper's post-2005
+out-of-sample framing, parameter-stability discussion, same-close timing
+caution, lack of project-usable survivorship handling extracted for the
+five-index GTAA test, data-snooping cautions, index-proxy and ETF-inception
+limits, base-test exclusion of taxes/commissions/slippage, total-return
+assumptions, and unresolved project-local data-source reproducibility.
+
+Transferability limits state that historical performance figures, original
+universe validity, parameter validity, benchmark validity, cash/risk-free
+proxy validity, cost/friction assumptions, total-return assumptions,
+same-close timing, original index-proxy history, ETF implementation readiness,
+live/paper trading readiness, and broad ETF implementation approval cannot
+transfer directly.
+
+The disposition labels are cautious only: methodology context,
+practitioner/TAA context, benchmark/context, cash-treatment context,
+parameter-discipline context, no-lookahead/as-of caution context, requires
+project-local reproduction, not validated evidence, and not
+implementation-ready.
+
+Required follow-up includes verifying the exact reviewed version, extracting
+exact tables/figures only if needed later, comparing paper assumptions to
+project source/universe/benchmark/cash/storage gates, checking total-return
+and corporate-action assumptions, defining any project-local reproduction and
+no-lookahead action convention only in later phases, reviewing
+`ETF-ACADEMIC-001` separately if full text becomes available, and reviewing
+Zakamulin separately if selected as a formal candidate.
+
+The recommended next docs-only gate is `ETF-ACADEMIC-001` full-text
+verification / limited review if accessible. If that source is inaccessible,
+formal evidence review should pause until more primary texts are available.
+
+This phase does not approve evidence, methodology, parameters, source data, an
+ETF universe, benchmark, cash proxy, data acquisition, data files, PDFs,
+fixtures, reproduction, validation, signal definitions, evaluator behavior,
+implementation, production thresholds, or trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved evidence review, no approved
+methodology or parameters, no approved ETF universe, no selected/approved data
+source, no approved benchmark/cash proxy, no approved final data
+storage/fixture policy, no acquired data, no project-local deterministic
+reproduction, no no-lookahead audit, no production threshold/config
+provenance, no implementation-scope approval, no evaluator tests, no approved
+source identity for "Simple Market Timing with Moving Averages", no
+`ETF-ACADEMIC-001` full-text review, no Zakamulin full-text review, no
+approved return-treatment or corporate-action handling decisions, no approved
+friction assumptions, no benchmark/cash/risk-metric approval, no
+result-review template for Faber-derived claims, no promotion/rejection
+decision, and no trading implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7696,15 +7778,15 @@ Safe next tasks include:
   externally collected evidence source normalization is now recorded in Phase
   33 Step 12; and the primary evidence text intake normalization is now
   recorded in Phase 33 Step 13; and the primary citation verification
-  normalization is now recorded in Phase 33 Step 14. The next docs-only route
-  should be limited formal review of Faber only after repo-trail primary text
-  and citation verification, or review of `ETF-ACADEMIC-001` or Zakamulin
-  candidates only if primary full text is accessible; otherwise pause before a
-  first limited methodology evidence review, broad ETF source approval
-  boundary, or fixture policy approval boundary while
-  keeping all evidence, source, universe, benchmark, cash proxy, data,
-  methodology, validation, implementation, secondary shortlist, and S05
-  backlog statuses non-approving
+  normalization is now recorded in Phase 33 Step 14; and the Faber limited
+  formal evidence review is now recorded in Phase 33 Step 15. The next
+  docs-only route should be `ETF-ACADEMIC-001` full-text verification /
+  limited review if accessible, or a pause in formal evidence review until
+  more primary texts are available. Do not proceed to a broad ETF source
+  approval boundary, fixture policy approval boundary, reproduction protocol,
+  evaluator route, or implementation route while keeping all evidence, source,
+  universe, benchmark, cash proxy, data, methodology, validation,
+  implementation, secondary shortlist, and S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
