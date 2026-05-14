@@ -170,14 +170,20 @@ reproduction, validation, implementation, or trading use.
 
 ## Recommended Next Gate
 
-Preferred next docs-only gate: data-source terms/license review boundary for
-the broad-ETF candidate.
+Phase 33 Step 7 adds the data-source terms/license review boundary in
+[`phase33_broad_etf_data_source_terms_license_review_boundary.md`](phase33_broad_etf_data_source_terms_license_review_boundary.md).
+It reviews public terms, license, caching, private-repo, redistribution,
+derived-publication, API, and offline-use constraints for candidate source
+categories without approving any source.
 
-An acceptable alternate next docs-only gate is a moving-average evidence
-source package if the next prompt prioritizes methodology literature before
-source terms. A reproduction protocol boundary should wait until source,
-universe, benchmark, and cash proxy choices are later approved. A result-review
-template should wait until a protocol is later approved.
+Recommended next docs-only gate after Step 7: final source shortlist decision
+boundary. An acceptable alternate next docs-only gate is a moving-average
+evidence source package if the next prompt prioritizes methodology literature
+before source narrowing. A data storage/fixture policy boundary should wait
+until source terms are acceptable. A reproduction protocol boundary should
+wait until source, universe, benchmark, cash proxy, and data policy choices are
+later approved. A result-review template should wait until a protocol is later
+approved.
 
 No next gate may acquire data, ingest data, approve a source, approve a
 universe, approve a benchmark, approve a cash proxy, approve methodology,

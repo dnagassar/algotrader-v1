@@ -168,6 +168,14 @@ remaining blockers without approving a universe, benchmark, cash proxy,
 source, methodology, parameters, reproduction, validation, implementation, or
 trading use.
 
+Phase 33 Step 7 adds the data-source terms/license review boundary in
+[`phase33_broad_etf_data_source_terms_license_review_boundary.md`](phase33_broad_etf_data_source_terms_license_review_boundary.md).
+It reviews public terms, license, caching, private-repo, redistribution,
+derived-publication, API, and offline-use constraints for candidate source
+categories without approving a source, universe, benchmark, cash proxy,
+methodology, data acquisition, reproduction, validation, implementation, or
+trading use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic

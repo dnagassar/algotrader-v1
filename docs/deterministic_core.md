@@ -362,6 +362,12 @@ state.
   requirements, rejection criteria, and next-gate routing without approving a
   universe, benchmark, cash proxy, source, methodology, reproduction,
   validation, implementation, or trading use.
+- Phase 33 Step 7 adds a broad-ETF data-source terms/license review boundary.
+  It reviews public terms, license, caching, private-repo, redistribution,
+  derived-publication, API, and offline-use constraints for candidate source
+  categories without approving a source, universe, benchmark, cash proxy,
+  methodology, data acquisition, reproduction, validation, implementation, or
+  trading use.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1767,6 +1773,17 @@ next routing, explicit non-goals, and remaining blockers. It does not approve
 a universe, benchmark, cash proxy, source, methodology, parameters,
 reproduction, validation, implementation, or trading implication.
 
+Phase 33 Step 7 adds the broad-ETF data-source terms/license review boundary
+in
+[`docs/design/phase33_broad_etf_data_source_terms_license_review_boundary.md`](design/phase33_broad_etf_data_source_terms_license_review_boundary.md).
+It is documentation-only and reviews public terms, license, caching,
+private-repo, redistribution, derived-publication, API, and offline-use
+constraints for Stooq, Yahoo Finance / yfinance / Yahoo API terms, Nasdaq Data
+Link, Alpha Vantage, FRED, ETF issuer pages, and broker historical data as
+context only. It does not provide legal advice or approve a source, universe,
+benchmark, cash proxy, methodology, data acquisition, reproduction,
+validation, implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1953,6 +1970,8 @@ Ledger modes:
   methodology and no-lookahead/as-of review boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 6 broad-ETF universe
   and benchmark/cash proxy shortlist boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 7 broad-ETF
+  data-source terms/license review boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2059,6 +2078,14 @@ examples, benchmark/cash proxy candidates, alignment requirements, rejection
 criteria, and next routing. It does not approve a universe, benchmark, cash
 proxy, source, methodology, parameters, reproduction, validation,
 implementation, or trading implication.
+
+Phase 33 Step 7 adds the broad-ETF data-source terms/license review boundary.
+It records public terms/license/offline-use constraints, cautious terms-risk
+labels, source-specific cautions, required conclusions, recommended next
+routing, explicit non-goals, and remaining blockers. It does not provide legal
+advice or approve a source, universe, benchmark, cash proxy, methodology,
+parameters, data acquisition, reproduction, validation, implementation, or
+trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

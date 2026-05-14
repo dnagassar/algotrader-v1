@@ -191,11 +191,18 @@ shortlist boundary in
 That boundary keeps candidate ETF buckets, example tickers, benchmark/cash
 proxy candidates, rejection criteria, and next routing non-approving.
 
+Phase 33 Step 7 adds the data-source terms/license review boundary in
+[`phase33_broad_etf_data_source_terms_license_review_boundary.md`](phase33_broad_etf_data_source_terms_license_review_boundary.md).
+That boundary keeps public terms, license, caching, private-repo,
+redistribution, derived-publication, API, and offline-use findings
+non-approving.
+
 Other possible docs-only gates remain:
 
-1. data-source terms/license review boundary
+1. final source shortlist decision boundary
 2. moving-average evidence source package
-3. reproduction protocol boundary only if data, universe, and benchmark/cash
+3. data storage/fixture policy boundary only after source terms are acceptable
+4. reproduction protocol boundary only if data, universe, and benchmark/cash
    proxy are later approved
 
 None of those gates may acquire data, ingest data, approve data, approve an

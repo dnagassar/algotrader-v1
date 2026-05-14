@@ -712,6 +712,7 @@ Read first:
 - docs/design/phase33_broad_etf_public_source_documentation_verification_sweep.md
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
+- docs/design/phase33_broad_etf_data_source_terms_license_review_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
@@ -726,19 +727,21 @@ dataset requirements boundary, Step 21 proxy source shortlist/backlog routing
 decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
 package, Phase 33 grouped boundary, Phase 33 public-source sweep, and Phase 33
 methodology/no-lookahead boundary plus Phase 33 Step 6 universe/benchmark/cash
-proxy shortlist boundary as cautious routing context only. The preferred safe
-route is a docs-only data-source terms/license review boundary or a
-moving-average evidence source package for the selected broad-ETF
-moving-average candidate. S05 should remain in backlog unless a later prompt
-explicitly reopens it because future vendor contact, budget/access change,
-stronger public documentation, or owner preference changes materially.
-Preserve Perplexity findings as unverified scout research, preserve P30-BL-001
-as mechanics-only dispositioned and unvalidated, preserve S01 and S03 as
-negative-control only, preserve S08 as methodology-only, and preserve S05 as
-limited candidate-evidence planning only. Do not contact vendors, choose a
-vendor, acquire data, validate, approve, promote, create a
-ValidatedResearchArtifact, create a ValidatedSignalDefinition, design a schema,
-or implement the candidate unless that is explicitly scoped in a later phase.
+proxy shortlist boundary plus Phase 33 Step 7 terms/license review boundary as
+cautious routing context only. The preferred safe route is a docs-only final
+source shortlist decision boundary or a moving-average evidence source package
+for the selected broad-ETF moving-average candidate. A data storage/fixture
+policy boundary should wait until source terms are acceptable. S05 should
+remain in backlog unless a later prompt explicitly reopens it because future
+vendor contact, budget/access change, stronger public documentation, or owner
+preference changes materially. Preserve Perplexity findings as unverified
+scout research, preserve P30-BL-001 as mechanics-only dispositioned and
+unvalidated, preserve S01 and S03 as negative-control only, preserve S08 as
+methodology-only, and preserve S05 as limited candidate-evidence planning
+only. Do not contact vendors, choose a vendor, acquire data, validate,
+approve, promote, create a ValidatedResearchArtifact, create a
+ValidatedSignalDefinition, design a schema, or implement the candidate unless
+that is explicitly scoped in a later phase.
 Forbidden: production code, tests, evaluator behavior, signal computation,
 broker/runtime behavior, persistence, data ingestion, notebooks, scripts, ML,
 and LLM trading-path logic.

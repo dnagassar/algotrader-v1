@@ -6805,6 +6805,80 @@ benchmark/cash-proxy frequency alignment rule, no cash-rate conversion rule,
 no cost/friction assumptions, no result-review template, no promotion/rejection
 decision, and no trading implication or production threshold.
 
+## Phase 33 Step 7 Broad ETF Data-Source Terms / License Review Boundary
+
+Phase 33 Step 7 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_data_source_terms_license_review_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary reviews public terms, license, and offline-use constraints for
+candidate broad-ETF data and metadata sources. It does not provide legal
+advice and does not approve data, a data source, an ETF universe, benchmark,
+cash proxy, methodology, reproduction, validation, signal definition,
+evaluator, implementation, or trading use.
+
+The reviewed source categories are Stooq, Yahoo Finance / yfinance / Yahoo
+API terms, Nasdaq Data Link, Alpha Vantage, FRED, ETF issuer pages such as
+iShares, Vanguard, SPDR, and Invesco, and broker historical data as context
+only.
+
+The boundary records terms-risk labels only: low apparent terms risk pending
+final review, moderate terms uncertainty, high terms uncertainty, likely
+unsuitable for project-local archival, and context only. Stooq is labeled
+moderate terms uncertainty; Yahoo Finance / yfinance / Yahoo API terms are
+labeled high terms uncertainty; Nasdaq Data Link and Alpha Vantage are labeled
+moderate terms uncertainty and secondary/check only; FRED is labeled low
+apparent terms risk pending final review for cash/risk-free proxy review only;
+ETF issuer pages and broker historical data remain context only.
+
+Source-specific cautions include that Stooq terms reviewed do not explicitly
+allow local archival/private-repo use; Yahoo/yfinance has personal-use,
+automation, storage, and redistribution uncertainty; Nasdaq Data Link terms may
+vary by dataset; Alpha Vantage rate limits and terms must be respected; FRED
+requires API, series-owner, archival, and citation review; ETF issuer pages
+are metadata/context only; and broker data remains context only because
+credentials, subscriptions, terms, and runtime access conflict with default
+offline testing if used directly.
+
+The required conclusions are that no source is approved, any future approved
+source must permit deterministic local snapshotting or have an explicit
+fixture/storage policy that avoids normal pytest network or credential access,
+future derived-stat publication must avoid raw-data redistribution and follow
+source terms, and normal `python -m pytest` must remain offline and
+credential-free.
+
+The recommended next docs-only gate is a final source shortlist decision
+boundary. Acceptable later gates include a broad ETF evidence/source package
+for moving-average literature, a data storage/fixture policy boundary only
+after source terms are acceptable, and a reproduction protocol boundary only
+after source, universe, benchmark, and data policy approval.
+
+This phase does not perform or authorize legal advice, source approval,
+universe approval, benchmark approval, cash proxy approval, methodology
+approval, moving-average parameter approval, data acquisition, data ingestion,
+schema/code/notebooks/scripts, backtesting, reproduction, strategy
+implementation, evaluator or signal implementation, signal computation,
+validated artifacts, validated signal definitions, new contract types,
+production thresholds, profitability claims, implementation-readiness claims,
+production-readiness claims, trading implications, or broker, OMS, runtime,
+scheduler, persistence, portfolio, ledger, reconciliation, Alpaca, ML, or LLM
+trading-path behavior.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no approved methodology or
+parameters, no approved data storage/fixture policy, no acquired data, no
+project-local deterministic reproduction, no no-lookahead audit, no production
+threshold/config provenance, no implementation-scope approval, no evaluator
+tests, no approved data license/offline-use path, no approved local
+snapshot/versioning policy, no approved redistribution or derived-stat
+publication policy, no approved API rate-limit/access policy, no result-review
+template, no promotion/rejection decision, and no trading implication or
+production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -6838,10 +6912,11 @@ Safe next tasks include:
 - docs-only methodology and no-lookahead/as-of review for the Phase 33
   selected broad-ETF moving-average candidate is now recorded in Phase 33 Step
   5; the grouped universe and benchmark/cash proxy shortlist boundary is now
-  recorded in Phase 33 Step 6; the next docs-only gate should be a data-source
-  terms/license review boundary or moving-average evidence source package
-  while keeping all source, universe, benchmark, cash proxy, data,
-  methodology, validation, implementation, secondary shortlist, and S05
+  recorded in Phase 33 Step 6; and the data-source terms/license review
+  boundary is now recorded in Phase 33 Step 7; the next docs-only gate should
+  be a final source shortlist decision boundary or moving-average evidence
+  source package while keeping all source, universe, benchmark, cash proxy,
+  data, methodology, validation, implementation, secondary shortlist, and S05
   backlog statuses non-approving
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
