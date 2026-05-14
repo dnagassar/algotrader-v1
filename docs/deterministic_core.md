@@ -368,6 +368,12 @@ state.
   categories without approving a source, universe, benchmark, cash proxy,
   methodology, data acquisition, reproduction, validation, implementation, or
   trading use.
+- Phase 33 Step 8 adds a broad-ETF final source shortlist decision boundary.
+  It routes source categories as primary planning candidate,
+  secondary/check candidate, metadata/context only, cash/risk-free proxy
+  candidate, not default source, or unresolved / requires further review
+  without approving a source, data, universe, benchmark, cash proxy,
+  methodology, reproduction, validation, implementation, or trading use.
 - A deterministic scenario harness exists for named local demo/test cases.
 - The `demo-core` command can run selected named scenarios.
 - `LocalBroker` is the working deterministic broker reference implementation in
@@ -1784,6 +1790,16 @@ context only. It does not provide legal advice or approve a source, universe,
 benchmark, cash proxy, methodology, data acquisition, reproduction,
 validation, implementation, or trading implication.
 
+Phase 33 Step 8 adds the broad-ETF final source shortlist decision boundary in
+[`docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md`](design/phase33_broad_etf_final_source_shortlist_decision_boundary.md).
+It is documentation-only and routes Stooq as a possible primary planning
+candidate, Yahoo/yfinance as secondary/check or unresolved and not default,
+Nasdaq Data Link and Alpha Vantage as secondary/check only, FRED as a
+cash/risk-free proxy candidate, ETF issuer pages as metadata/context only, and
+broker historical data as context only and not default. It approves no source,
+data, universe, benchmark, cash proxy, methodology, acquisition,
+reproduction, validation, implementation, or trading implication.
+
 The deterministic core must not directly depend on notebooks, research scripts,
 backtesting engines, exploratory data-mining tools, live data ingestion, ML
 training workflows, or LLM clients. LLMs may assist with research narration,
@@ -1972,6 +1988,8 @@ Ledger modes:
   and benchmark/cash proxy shortlist boundary
 - Threshold evaluator behavior beyond the Phase 33 Step 7 broad-ETF
   data-source terms/license review boundary
+- Threshold evaluator behavior beyond the Phase 33 Step 8 broad-ETF final
+  source shortlist decision boundary
 - System clock implementation
 - Feature computation
 - Strategy engine
@@ -2086,6 +2104,16 @@ routing, explicit non-goals, and remaining blockers. It does not provide legal
 advice or approve a source, universe, benchmark, cash proxy, methodology,
 parameters, data acquisition, reproduction, validation, implementation, or
 trading implication.
+
+Phase 33 Step 8 adds the broad-ETF final source shortlist decision boundary.
+It records cautious final source routing labels, routes Stooq as a possible
+primary planning candidate, Yahoo/yfinance as secondary/check or unresolved
+and not default, Nasdaq Data Link and Alpha Vantage as secondary/check only,
+FRED as a cash/risk-free proxy candidate, ETF issuer pages as metadata/context
+only, and broker historical data as context only and not default. It recommends
+a docs-only data storage/fixture policy boundary next and does not approve a
+source, data, universe, benchmark, cash proxy, methodology, acquisition,
+reproduction, validation, implementation, or trading implication.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

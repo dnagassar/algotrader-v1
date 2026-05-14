@@ -176,6 +176,13 @@ categories without approving a source, universe, benchmark, cash proxy,
 methodology, data acquisition, reproduction, validation, implementation, or
 trading use.
 
+Phase 33 Step 8 adds the final source shortlist decision boundary in
+[`phase33_broad_etf_final_source_shortlist_decision_boundary.md`](phase33_broad_etf_final_source_shortlist_decision_boundary.md).
+It records cautious source routing for future planning only and recommends a
+docs-only data storage/fixture policy boundary next without approving a
+source, data, universe, benchmark, cash proxy, methodology, reproduction,
+validation, implementation, or trading use.
+
 Passing any early gate must not imply that later gates are passed. No gate may
 promote the candidate into implementation without explicit approval of exact
 validated research, exact signal-definition binding, deterministic
@@ -226,7 +233,7 @@ following:
 - no production threshold/config provenance
 - no implementation-scope approval
 - no evaluator tests
-- no approved dataset, source package, or offline snapshot policy
+- no approved dataset, source package, or data storage/fixture policy
 - no license/offline-use approval
 - no methodology-only moving-average review
 - no reproduction protocol approval

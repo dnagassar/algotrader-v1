@@ -190,6 +190,23 @@ blockers. It does not approve a universe, benchmark, cash proxy, source,
 methodology, parameters, reproduction, validation, implementation, or trading
 implication.
 
+Phase 33 Step 7 adds the broad-ETF data-source terms/license review boundary
+in
+[`phase33_broad_etf_data_source_terms_license_review_boundary.md`](phase33_broad_etf_data_source_terms_license_review_boundary.md).
+It reviews public terms, license, caching, private-repo, redistribution,
+derived-publication, API, and offline-use constraints for candidate sources
+without providing legal advice or approving a source, universe, benchmark,
+cash proxy, methodology, data acquisition, reproduction, validation,
+implementation, or trading implication.
+
+Phase 33 Step 8 adds the broad-ETF final source shortlist decision boundary
+in
+[`phase33_broad_etf_final_source_shortlist_decision_boundary.md`](phase33_broad_etf_final_source_shortlist_decision_boundary.md).
+It records cautious source routing labels and routes source categories for
+future planning only. It does not approve a source, data, universe, benchmark,
+cash proxy, methodology, reproduction, validation, implementation, or trading
+implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -301,6 +318,20 @@ Current status:
   next routing. It does not approve a universe, benchmark, cash proxy, source,
   methodology, parameter, reproduction, validation, implementation, or trading
   implication.
+- Phase 33 Step 7 records the broad-ETF data-source terms/license review
+  boundary. It reviews public terms/license/offline-use constraints, records
+  cautious terms-risk labels and source-specific cautions, and keeps all source
+  approvals blocked. It does not provide legal advice or approve a source,
+  data, universe, benchmark, cash proxy, methodology, acquisition,
+  reproduction, validation, implementation, or trading implication.
+- Phase 33 Step 8 records the broad-ETF final source shortlist decision
+  boundary. It routes Stooq as a possible primary planning candidate,
+  Yahoo/yfinance as secondary/check or unresolved and not default, Nasdaq Data
+  Link and Alpha Vantage as secondary/check only, FRED as a cash/risk-free
+  proxy candidate, ETF issuer pages as metadata/context only, and broker
+  historical data as context only and not default. It does not approve a
+  source, data, universe, benchmark, cash proxy, methodology, reproduction,
+  validation, implementation, or trading implication.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -501,15 +532,29 @@ Recommended next phases:
    non-goals, and blockers. It does not approve a universe, benchmark, cash
    proxy, source, methodology, parameter, reproduction, validation,
    implementation, or trading implication.
-33. Future route: data-source terms/license review boundary, moving-average
+33. Phase 33 Step 7: broad-ETF data-source terms/license review boundary.
+   This step is complete. It reviews public terms/license/offline-use
+   constraints, terms-risk labels, source-specific cautions, required
+   conclusions, recommended next routing, explicit non-goals, and blockers.
+   It does not provide legal advice or approve a source, universe, benchmark,
+   cash proxy, methodology, parameter, data acquisition, reproduction,
+   validation, implementation, or trading implication.
+34. Phase 33 Step 8: broad-ETF final source shortlist decision boundary.
+   This step is complete. It records cautious source routing for future
+   planning only, keeps no source approved, prohibits data acquisition and
+   dataset addition under the phase, and recommends a docs-only data
+   storage/fixture policy boundary next. It does not approve a source, data,
+   universe, benchmark, cash proxy, methodology, reproduction, validation,
+   implementation, or trading implication.
+35. Future route: data storage/fixture policy boundary, moving-average
    evidence source package, S05 backlog recheck, or backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
-   A reproduction protocol boundary should wait until data, universe, and
-   benchmark/cash proxy are later approved.
-34. Later route: implementation readiness gate.
+   A reproduction protocol boundary should wait until source, data, universe,
+   benchmark/cash proxy, and data policy choices are later approved.
+36. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -713,6 +758,7 @@ Read first:
 - docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_universe_benchmark_shortlist_boundary.md
 - docs/design/phase33_broad_etf_data_source_terms_license_review_boundary.md
+- docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
 - docs/design/phase30_research_validation_evidence_standard.md
 - docs/design/phase30_research_artifact_candidate_review_template.md
 
@@ -728,10 +774,13 @@ decision, Phase 33 candidate selection boundary, Phase 33 broad-ETF source
 package, Phase 33 grouped boundary, Phase 33 public-source sweep, and Phase 33
 methodology/no-lookahead boundary plus Phase 33 Step 6 universe/benchmark/cash
 proxy shortlist boundary plus Phase 33 Step 7 terms/license review boundary as
-cautious routing context only. The preferred safe route is a docs-only final
-source shortlist decision boundary or a moving-average evidence source package
-for the selected broad-ETF moving-average candidate. A data storage/fixture
-policy boundary should wait until source terms are acceptable. S05 should
+well as Phase 33 Step 8 final source shortlist decision boundary as cautious
+routing context only. The preferred safe route is a docs-only data
+storage/fixture policy boundary or a moving-average evidence source package
+for the selected broad-ETF moving-average candidate. The data policy boundary
+must not acquire data, approve a source, approve a universe, approve a
+benchmark, approve a cash proxy, design a schema, reproduce, validate, or
+implement the candidate. S05 should
 remain in backlog unless a later prompt explicitly reopens it because future
 vendor contact, budget/access change, stronger public documentation, or owner
 preference changes materially. Preserve Perplexity findings as unverified
