@@ -7730,11 +7730,30 @@ storage/fixture policy, no acquired data, no project-local deterministic
 reproduction, no no-lookahead audit, no production threshold/config
 provenance, no implementation-scope approval, no evaluator tests, no approved
 source identity for "Simple Market Timing with Moving Averages", no
-`ETF-ACADEMIC-001` full-text review, no Zakamulin full-text review, no
-approved return-treatment or corporate-action handling decisions, no approved
-friction assumptions, no benchmark/cash/risk-metric approval, no
-result-review template for Faber-derived claims, no promotion/rejection
-decision, and no trading implication or production threshold.
+Zakamulin full-text review, no approved return-treatment or corporate-action
+handling decisions, no approved friction assumptions, no
+benchmark/cash/risk-metric approval, no result-review template for
+ETF-ACADEMIC-001-derived claims, no comparison synthesis with Faber, no
+promotion/rejection decision, and no trading implication or production
+threshold.
+
+Phase 33 Step 16 adds the broad-ETF `ETF-ACADEMIC-001` limited formal
+evidence review. It reviews Huang and Huang's "Testing moving average trading
+strategies on ETFs" as ETF-specific methodology and context only, records
+source identity, DOI 10.1016/j.jempfin.2019.10.002, RePEc handle
+RePEc:eee:empfin:v:57:y:2020:i:c:p:16-32, SSRN working paper ID 3138690,
+ScienceDirect publisher reference S0927539819300830, working-paper versus
+published-version access status, no supplementary data/code found on reviewed
+primary pages, moving-average and `QUIMA` framing, ETF-versus-index comparison
+context, buy-and-hold and zero-return/risk-free benchmark context,
+risk-adjusted evaluation context, opening-gap and transaction-cost cautions,
+lag-length and data-snooping cautions, transferability limits, cautious
+disposition labels, required follow-up, and remaining blockers. It recommends
+a docs-only broad ETF methodology evidence synthesis boundary using Faber plus
+`ETF-ACADEMIC-001`. It does not approve evidence, methodology, parameters,
+data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+implementation, evaluator behavior, signal computation, or trading
+implication.
 
 ## Next Recommended Steps
 
@@ -7779,10 +7798,13 @@ Safe next tasks include:
   33 Step 12; and the primary evidence text intake normalization is now
   recorded in Phase 33 Step 13; and the primary citation verification
   normalization is now recorded in Phase 33 Step 14; and the Faber limited
-  formal evidence review is now recorded in Phase 33 Step 15. The next
-  docs-only route should be `ETF-ACADEMIC-001` full-text verification /
-  limited review if accessible, or a pause in formal evidence review until
-  more primary texts are available. Do not proceed to a broad ETF source
+  formal evidence review is now recorded in Phase 33 Step 15; and the
+  `ETF-ACADEMIC-001` limited formal evidence review is now recorded in Phase
+  33 Step 16. The next docs-only route should be a broad ETF methodology
+  evidence synthesis boundary using Faber plus `ETF-ACADEMIC-001`,
+  `ZAKAMULIN-2014` full-text verification / limited review if accessible, a
+  benchmark/friction evidence review, or a pause in formal evidence review
+  until more primary texts are available. Do not proceed to a broad ETF source
   approval boundary, fixture policy approval boundary, reproduction protocol,
   evaluator route, or implementation route while keeping all evidence, source,
   universe, benchmark, cash proxy, data, methodology, validation,

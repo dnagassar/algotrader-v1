@@ -2269,6 +2269,24 @@ parameters, data, an ETF universe, benchmark, cash proxy, reproduction,
 validation, implementation, evaluator behavior, signal computation, or
 trading implication.
 
+Phase 33 Step 16 adds the broad-ETF `ETF-ACADEMIC-001` limited formal
+evidence review. It reviews Huang and Huang's "Testing moving average trading
+strategies on ETFs" as ETF-specific methodology and context only, records
+source identity, DOI 10.1016/j.jempfin.2019.10.002, RePEc handle
+RePEc:eee:empfin:v:57:y:2020:i:c:p:16-32, SSRN working paper ID 3138690,
+ScienceDirect publisher reference S0927539819300830, working-paper versus
+published-version access status, no supplementary data/code found on reviewed
+primary pages, moving-average and `QUIMA` framing, ETF-versus-index comparison
+context, buy-and-hold and zero-return/risk-free benchmark context,
+risk-adjusted evaluation context, opening-gap and transaction-cost cautions,
+lag-length and data-snooping cautions, transferability limits, cautious
+disposition labels, required follow-up, and remaining blockers. It recommends
+a docs-only broad ETF methodology evidence synthesis boundary using Faber plus
+`ETF-ACADEMIC-001`. It does not approve evidence, methodology, parameters,
+data, an ETF universe, benchmark, cash proxy, reproduction, validation,
+implementation, evaluator behavior, signal computation, or trading
+implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
