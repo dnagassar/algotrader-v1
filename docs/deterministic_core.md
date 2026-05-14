@@ -2177,6 +2177,19 @@ reproduction, backtests, vectorbt or QuantConnect integration, validated
 artifacts, validated signal definitions, production thresholds, or trading
 implications.
 
+Phase 33 Step 9 adds that broad-ETF data storage and fixture policy boundary.
+It defines non-approving handling rules for raw third-party price data,
+downloaded CSV/API snapshots, issuer metadata, FRED cash/risk-free series,
+manual metadata, tiny synthetic fixtures, tiny derived fixtures, manifests,
+provenance records, charts/results, and notebook/prototype outputs. It also
+compares possible future storage policies, fixture requirements,
+provenance/manifest requirements, local-only data boundaries, Phase 34
+relationships, terms/license constraints, future gates, non-goals, and
+remaining blockers. It does not approve a source, ETF universe, benchmark,
+cash proxy, methodology, parameter, final storage policy, data acquisition,
+data files, fixtures, reproduction, validation, implementation, evaluator
+behavior, signal computation, or trading implication.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

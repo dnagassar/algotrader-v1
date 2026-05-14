@@ -7226,6 +7226,80 @@ outputs, no approved result-review template for reproduced outputs, no
 promotion/rejection decision for any specific exploratory artifact, and no
 trading implication or production threshold.
 
+## Phase 33 Step 9 Broad ETF Data Storage / Fixture Policy Boundary
+
+Phase 33 Step 9 is documentation-only. It adds:
+
+```text
+docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
+```
+
+It also updates research-track navigation/checkpoint context only. The
+boundary defines future storage and fixture requirements for broad-ETF
+research data while preserving normal `python -m pytest` as offline,
+credential-free, deterministic, and safe.
+
+The covered categories are raw third-party price data, downloaded CSV/API
+snapshots, ETF issuer metadata, FRED cash/risk-free series, manually entered
+metadata, tiny synthetic fixtures, tiny derived fixtures, checksums/manifests,
+provenance records, charts/plots/results, and notebooks/prototype outputs.
+
+Storage options are compared without approval: no raw third-party data in the
+repo, local-only ignored data directories, small synthetic fixtures, small
+derived fixtures only if redistribution-safe, checksum/provenance manifests,
+external archival, and encrypted/private storage outside normal pytest.
+
+Future fixtures must be deterministic, redistribution-safe, small,
+credential-free, network-free, free of prohibited raw vendor data, and paired
+with provenance or synthetic-generation explanations. They must not imply
+strategy validation, production readiness, implementation readiness, or trading
+readiness. No broad-ETF fixture is approved in this phase.
+
+Future provenance or manifest records must include source, retrieval date,
+license/terms review status, ticker/universe, date range, fields, adjustment
+assumptions, checksum/hash, storage location, redistribution status, pytest
+eligibility, limitations, and non-claims.
+
+Local-only data may exist outside the repo only after future approval. It must
+be ignored by Git, excluded from normal pytest, documented by provenance and
+terms status, and never treated as validated evidence or a hidden dependency.
+Credentials and API keys must never be required for normal pytest.
+
+The boundary ties back to Phase 34 by keeping external research artifacts,
+notebooks, vectorbt prototypes, QuantConnect outputs, spreadsheets, CSV
+extracts, charts, external reports, and copied snippets exploratory only.
+Those outputs cannot become canonical data or fixtures without this policy and
+later scoped approval.
+
+Terms/license constraints remain non-approving: Stooq has moderate terms
+uncertainty, Yahoo/yfinance has high terms uncertainty, Nasdaq Data Link and
+Alpha Vantage are secondary/check only, FRED is a cash/risk-free proxy
+candidate only with low apparent terms risk pending final review, issuer pages
+are metadata/context only, broker historical data is context only, and no
+source is approved.
+
+Recommended later docs-only gates are a moving-average evidence/source
+package, a broad ETF source approval boundary only after refreshed source
+terms and storage constraints are reviewed, a fixture policy approval boundary,
+and a reproduction protocol boundary only after source, universe,
+benchmark/cash proxy, methodology, and data policy choices are approved.
+
+This phase does not approve or perform source selection, universe selection,
+benchmark/cash proxy selection, methodology selection, parameter selection,
+data acquisition, download, ingestion, data files, fixtures, schemas, code,
+notebooks, scripts, backtests, reproduction, evaluator/signal implementation,
+validated artifacts, validated signal definitions, production thresholds, or
+trading implications.
+
+Remaining blockers include no `ValidatedResearchArtifact`, no
+`ValidatedSignalDefinition`, no approved ETF universe, no selected/approved
+data source, no approved benchmark/cash proxy, no approved methodology or
+parameters, no approved final data storage/fixture policy, no acquired data,
+no project-local deterministic reproduction, no no-lookahead audit, no
+production threshold/config provenance, no implementation-scope approval, no
+evaluator tests, no approved pytest-eligible fixture set, and no trading
+implication or production threshold.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -7259,29 +7333,30 @@ Safe next tasks include:
 - docs-only methodology and no-lookahead/as-of review for the Phase 33
   selected broad-ETF moving-average candidate is now recorded in Phase 33 Step
   5; the grouped universe and benchmark/cash proxy shortlist boundary is now
-  recorded in Phase 33 Step 6; and the data-source terms/license review
-  boundary is now recorded in Phase 33 Step 7; the final source shortlist
-  decision boundary is now recorded in Phase 33 Step 8; the next docs-only gate
-  should be a data storage/fixture policy boundary or moving-average evidence
-  source package while keeping all source, universe, benchmark, cash proxy,
-  data, methodology, validation, implementation, secondary shortlist, and S05
-  backlog statuses non-approving
+  recorded in Phase 33 Step 6; the data-source terms/license review boundary
+  is now recorded in Phase 33 Step 7; the final source shortlist decision
+  boundary is now recorded in Phase 33 Step 8; and the data storage/fixture
+  policy boundary is now recorded in Phase 33 Step 9. The next docs-only gates
+  may be a moving-average evidence/source package, broad ETF source approval
+  boundary, or fixture policy approval boundary while keeping all source,
+  universe, benchmark, cash proxy, data, methodology, validation,
+  implementation, secondary shortlist, and S05 backlog statuses non-approving
 - Phase 34 Step 1 records the external research integration boundary; Phase 34
   Step 2 now records the intake checklist that Step 1 recommended, while
   keeping Perplexity, Claude/Gemini, Codex, QuantConnect, vectorbt, notebooks,
   vendor/public data, external research, spreadsheets, and ad hoc analysis
   advisory-only and outside normal pytest, production dependencies, validated
   artifacts, validated signal definitions, and trading-path behavior
-- Phase 34 Step 2 now records the external research artifact intake checklist;
-  the next docs-only gate should be a notebook/prototype policy boundary while
-  keeping notebooks, vectorbt prototypes, spreadsheets, screenshots, manual
-  observations, hosted outputs, vendor/public data notes, and LLM outputs
-  exploratory or advisory only and outside normal pytest, production
+- Phase 34 Step 2 records the external research artifact intake checklist, and
+  Phase 34 Step 3 records the notebook/prototype policy boundary that followed
+  it, while keeping notebooks, vectorbt prototypes, spreadsheets, screenshots,
+  manual observations, hosted outputs, vendor/public data notes, and LLM
+  outputs exploratory or advisory only and outside normal pytest, production
   dependencies, validated artifacts, validated signal definitions, and
   trading-path behavior
-- Phase 34 Step 3 now records that notebook/prototype policy boundary; the
-  next docs-only gate should return to the Phase 33 data storage/fixture policy
-  boundary while keeping notebooks, prototype scripts, vectorbt experiments,
+- Phase 34 Step 3 now records that notebook/prototype policy boundary; Phase
+  33 Step 9 ties those exploratory outputs back to data storage and fixture
+  controls while keeping notebooks, prototype scripts, vectorbt experiments,
   QuantConnect outputs, spreadsheets, CSV extracts, charts, external reports,
   and copied snippets exploratory only and outside normal pytest, production
   dependencies, validated artifacts, validated signal definitions, and

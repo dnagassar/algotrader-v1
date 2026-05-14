@@ -237,6 +237,16 @@ reproduction, backtests, vectorbt or QuantConnect integration, validated
 artifacts, validated signal definitions, production thresholds, or trading
 implications.
 
+Phase 33 Step 9 adds the broad-ETF data storage and fixture policy boundary in
+[`phase33_broad_etf_data_storage_fixture_policy_boundary.md`](phase33_broad_etf_data_storage_fixture_policy_boundary.md).
+It defines data-category handling, possible future storage policy options,
+fixture requirements, provenance/manifest requirements, local-only data
+boundaries, Phase 34 relationships, terms/license constraints, recommended
+future gates, non-goals, and blockers. It does not approve a source, universe,
+benchmark/cash proxy, methodology, parameter, final storage policy, data
+acquisition, data files, fixtures, reproduction, validation, implementation,
+or trading implication.
+
 This plan is documentation-only. It adds no production code, tests, evaluator
 behavior, signal computation, feature computation, strategy logic, broker or
 Alpaca behavior, runtime behavior, persistence, live data ingestion, ML, or LLM
@@ -376,6 +386,11 @@ Current status:
   notebooks, prototype scripts, vectorbt experiments, QuantConnect outputs,
   spreadsheets, CSV extracts, charts, external reports, and copied snippets as
   exploratory aids only until later deterministic review.
+- Phase 33 Step 9 records the broad-ETF data storage/fixture policy boundary.
+  It keeps raw third-party data, downloaded snapshots, local-only data,
+  fixtures, manifests, charts/results, and notebook/prototype outputs outside
+  normal pytest unless later scoped approval makes a deterministic,
+  credential-free, redistribution-safe route explicit.
 - `P30-BL-002` is the current routing handle only, not a reviewed or approved
   artifact; a better P0 replacement remains preferred if it can provide a
   stronger source package.
@@ -619,15 +634,27 @@ Recommended next phases:
    backtests, vectorbt or QuantConnect integration, validated artifacts,
    validated signal definitions, production thresholds, or trading
    implications.
-38. Future route: data storage/fixture policy boundary, moving-average
-   evidence source package, S05 backlog recheck, or backlog.
+38. Phase 33 Step 9: broad-ETF data storage/fixture policy boundary.
+   This step is complete. It defines non-approving handling rules for future
+   raw third-party data, downloaded snapshots, issuer metadata, FRED
+   cash/risk-free series, manual metadata, tiny synthetic fixtures, tiny
+   derived fixtures, checksums/manifests, provenance records, charts/results,
+   and notebook/prototype outputs. It compares storage options, fixture
+   requirements, provenance requirements, local-only data boundaries, Phase 34
+   relationships, terms/license constraints, and future gates. It does not
+   approve a source, universe, benchmark/cash proxy, methodology, parameter,
+   final storage policy, data acquisition, data files, fixtures, reproduction,
+   validation, implementation, or trading implication.
+39. Future route: moving-average evidence source package, broad ETF source
+   approval boundary, fixture policy approval boundary, S05 backlog recheck, or
+   backlog.
    Any review must preserve traceable dataset scope, point-in-time input
    assumptions, threshold or parameter rationale, no-lookahead controls,
    reproducibility notes, robustness or out-of-sample evidence, limitations,
    licensing constraints, offline replay requirements, and non-claims.
    A reproduction protocol boundary should wait until source, data, universe,
    benchmark/cash proxy, and data policy choices are later approved.
-39. Later route: implementation readiness gate.
+40. Later route: implementation readiness gate.
    Review whether exact validated research, exact validated signal-definition
    support, threshold/config provenance, implementation scope, and tests are
    all ready. Any production implementation remains a later narrow,
@@ -792,31 +819,34 @@ and safe.
 A useful next prompt can reference this plan and request:
 
 ```text
-Future Step -- Notebook/Prototype Policy Boundary
+Future Step -- Broad ETF Moving-Average Evidence / Source Package Boundary
 
 Read first:
 - docs/agent_context/codex_operating_context.md
 - docs/design/phase31_research_track_next_action_plan.md
-- docs/design/phase34_external_research_integration_boundary.md
-- docs/design/phase34_external_research_artifact_intake_checklist.md
+- docs/design/phase33_broad_etf_moving_average_source_package.md
+- docs/design/phase33_broad_etf_methodology_no_lookahead_review_boundary.md
 - docs/design/phase33_broad_etf_final_source_shortlist_decision_boundary.md
+- docs/design/phase33_broad_etf_data_storage_fixture_policy_boundary.md
+- docs/design/phase34_external_research_artifact_intake_checklist.md
+- docs/design/phase34_notebook_prototype_policy_boundary.md
 
-Scope: documentation-only notebook/prototype policy boundary. Define how
-notebooks, vectorbt prototypes, spreadsheets, and other exploratory outputs may
-be referenced, summarized, stored outside canonical paths, or normalized into
-reviewed docs without becoming canonical artifacts, dependencies, datasets,
-normal pytest inputs, validated research, signal definitions, or trading-path
-behavior. Preserve source-of-truth status in the local Git repo, require
-primary-source and deterministic reproduction review before trust, and keep
-normal pytest offline and credential-free. Do not create notebooks, acquire
-data, add datasets, add scripts, add dependencies, approve vectorbt, approve a
-notebook, validate, promote, create a ValidatedResearchArtifact, create a
-ValidatedSignalDefinition, design a schema, reproduce, backtest, or implement
-any candidate.
+Scope: documentation-only moving-average evidence/source package boundary.
+Normalize primary and secondary evidence candidates for broad-ETF
+moving-average methodology, no-lookahead controls, data assumptions,
+limitations, and non-claims. Keep all evidence candidate-only unless later
+reviewed; do not approve a source, ETF universe, benchmark, cash proxy,
+methodology, parameter, storage policy, fixture, reproduction protocol,
+validation route, signal definition, evaluator, implementation, or trading
+use. Preserve normal pytest as offline, credential-free, deterministic, and
+free of network, credentials, external data providers, notebooks, prototype
+tools, brokers, runtime behavior, and trading-path behavior.
 Forbidden: production code, tests unless strictly docs/checkpoint related,
-evaluator behavior, signal computation, broker/runtime behavior, persistence,
-data ingestion, notebooks, scripts, dependencies, QuantConnect/vectorbt
-integration, ML, and LLM trading-path logic.
+data acquisition, downloads, ingestion, data files, fixtures, schemas,
+notebooks, scripts, dependencies, backtests, reproduction, evaluator behavior,
+signal computation, signal scoring/ranking/direction/confidence/actionability,
+validated artifacts, validated signal definitions, broker/runtime behavior,
+QuantConnect/vectorbt integration, ML, and LLM trading-path logic.
 Verification: python -m pytest; git diff --name-only HEAD -- src;
 git diff --check; git status --short.
 ```
