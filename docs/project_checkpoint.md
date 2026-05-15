@@ -8901,6 +8901,16 @@ Safe next tasks include:
   ingestion pipeline, benchmark comparison, signal/evaluator behavior,
   broker/runtime behavior, portfolio engine, order generation, ML/LLM runtime,
   strategy validation, or trading behavior
+- Phase 47 adds a deterministic research-only SMA-200 exposure generator over
+  already loaded `HistoricalPriceSnapshot` data, emitting one immutable
+  `DailyExposure` per bar date with `Decimal("0")` before 200 bars and
+  `Decimal("1")` only when the current adjusted close is strictly greater than
+  the trailing 200-day adjusted-close mean including that current bar; the
+  helper preserves the daily backtest's previous-exposure no-lookahead rule and
+  adds no real data, file I/O, network access, ingestion pipeline, benchmark
+  comparison, production signal/evaluator behavior, broker/runtime behavior,
+  portfolio engine, order generation, ML/LLM runtime, strategy validation,
+  profitability claim, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

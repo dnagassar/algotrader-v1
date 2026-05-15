@@ -2743,6 +2743,30 @@ portfolio mutation outside the local equity curve calculation, order
 generation, ML, LLM runtime usage, strategy validation claims, profitability
 claims, trading-readiness claims, or trading-path behavior.
 
+Phase 47 adds `algotrader.research.sma_exposure` as a deterministic
+research-only SMA-200 exposure generator for the minimal daily backtest
+harness. `build_sma_200_daily_exposures(...)` accepts an already validated
+`HistoricalPriceSnapshot`, walks `snapshot.bars` in their existing
+chronological order, uses adjusted close prices only, and returns one immutable
+tuple of `DailyExposure` values aligned exactly to the snapshot bar dates.
+
+The first 199 bars always receive `Decimal("0")`. Starting with the 200th bar,
+the helper computes the arithmetic mean of the latest 200 adjusted close values,
+including the current bar, and emits `Decimal("1")` only when the current
+adjusted close is strictly greater than that trailing average. Equal or lower
+prices emit `Decimal("0")`. The generated date-T exposure may use price data
+available through date T; the daily backtest still applies that date-T exposure
+only to the following asset return through its existing previous-exposure rule.
+
+This helper is not a production signal evaluator, strategy framework, broker
+instruction, portfolio engine, order generator, or validated strategy. It adds
+no file I/O, CSV loading, JSON persistence, pandas, numpy, yfinance, vectorbt,
+QuantConnect, vendor SDK, API call, network access, ingestion pipeline,
+benchmark comparison, broker/runtime/scheduler behavior, signal/evaluator
+behavior, portfolio engine, order generation, ML, LLM runtime usage, strategy
+validation claims, profitability claims, trading-readiness claims, or
+trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
