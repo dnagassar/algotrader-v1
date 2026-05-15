@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 946-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 987-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8586,6 +8586,78 @@ Verification for this phase:
 - `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
 - `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
 - `python -m pytest` -> 964 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, benchmark comparison,
+backtesting engine, signal/evaluator behavior, broker/runtime behavior,
+portfolio mutation, order generation, ML/LLM usage, strategy validation, or
+trading behavior.
+
+## Phase 41 Synthetic Research Workflow Builder
+
+Phase 41 adds a thin deterministic workflow helper for building a complete
+metadata-only synthetic research result from a `ResearchFixtureManifest`,
+synthetic replay points, and an explicit as-of date. The workflow composes the
+existing replay snapshot builder with the existing research-result builder and
+does not add duplicate replay, summary, or result-construction logic.
+
+Files changed in this phase:
+
+- `src/algotrader/research/workflow.py`
+- `tests/unit/test_research_workflow.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `algotrader.research.workflow` adds
+`build_synthetic_research_workflow_result(...)`. The helper delegates snapshot
+construction to `build_synthetic_replay_snapshot(...)`, then delegates result
+construction and summary computation to `build_synthetic_research_result(...)`.
+It returns a `SyntheticResearchResult` and preserves manifest, observation, and
+available replay point identity where the existing builders preserve it.
+
+Workflow behavior: the helper accepts only metadata-only synthetic inputs,
+applies existing no-lookahead as-of filtering through the replay builder, uses
+available points only for return construction, allows empty input sequences
+where replay allows them, and returns valid zero-point or one-point results
+with empty returns and the existing summary semantics.
+
+Validation behavior: malformed manifests, malformed replay points, invalid
+as-of dates, duplicate observation dates, unordered observation dates, and
+invalid return-construction values are rejected by the existing validated
+builders. Plain `date` as-of values are required; `datetime`, bool, non-date
+values, and date subclasses are rejected through the delegated replay
+validation.
+
+Serialization behavior: no new serialization type was added.
+`SyntheticResearchResult.to_dict()` remains the serialization path. Nested
+manifest, snapshot, and summary serializers continue to provide deterministic
+JSON-compatible metadata, and Decimal values remain serialized as strings.
+
+Tests added in `tests/unit/test_research_workflow.py` cover successful
+workflow construction; returned result type; snapshot construction; summary
+computation; delegated-builder equivalence; no-lookahead as-of filtering;
+returns from available points only; empty, zero-available, and one-available
+point behavior; nested `to_dict()` serialization; Decimal-string
+serialization; forbidden serialized fields; malformed manifest rejection;
+malformed point rejection; invalid as-of date rejection; duplicate and
+unordered observation rejection through existing validation; invalid value
+rejection through return construction; non-mutation of manifests, point
+sequences, observations, values, result payloads, snapshots, and summaries; and
+AST guardrails against forbidden dependencies, I/O, network, broker/runtime,
+data-library, benchmark, strategy, signal/evaluator, portfolio, ML, LLM, and
+trading behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_research_workflow.py` -> 23 passed
+- `python -m pytest tests/unit/test_replay_result.py` -> 18 passed
+- `python -m pytest tests/unit/test_replay_metrics.py` -> 25 passed
+- `python -m pytest tests/unit/test_research_replay.py` -> 29 passed
+- `python -m pytest tests/unit/test_asof.py` -> 30 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 987 passed, 4 skipped
 
 Normal pytest remains offline and credential-free under the default network
 guard. This phase adds no real data, ingestion, benchmark comparison,

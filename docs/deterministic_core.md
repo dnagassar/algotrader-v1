@@ -2601,6 +2601,30 @@ behavior, signal/evaluator behavior, portfolio mutation, order generation, ML,
 LLM usage, validation claims, profitability claims, trading-readiness claims,
 or trading-path behavior.
 
+Phase 41 adds `algotrader.research.workflow` as a thin synthetic research
+workflow builder over the existing replay and result layers.
+`build_synthetic_research_workflow_result(...)` accepts a
+`ResearchFixtureManifest`, an iterable of `SyntheticReplayPoint` values, and an
+explicit plain `date` as-of value. It builds a `SyntheticReplaySnapshot` by
+delegating to `build_synthetic_replay_snapshot(...)`, then builds and returns a
+`SyntheticResearchResult` by delegating to
+`build_synthetic_research_result(...)`.
+
+The workflow helper intentionally owns no duplicate replay, summary, or result
+construction logic. Manifest validation, replay point validation, plain-date
+as-of validation, duplicate and unordered observation rejection, no-lookahead
+filtering, available-point return construction, zero/one-point behavior, and
+summary behavior all remain owned by the existing builders. Serialization still
+flows through `SyntheticResearchResult.to_dict()`, including nested manifest,
+snapshot, and summary serialization with Decimal values rendered as strings.
+
+This workflow is a metadata-only composition helper. It adds no file I/O, JSON
+file persistence, pandas, numpy, yfinance, vectorbt, QuantConnect, real data
+ingestion, network access, benchmark comparison, backtesting engine behavior,
+broker/runtime/scheduler behavior, signal/evaluator behavior, portfolio
+mutation, order generation, ML, LLM usage, strategy validation claims,
+profitability claims, trading-readiness claims, or trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
