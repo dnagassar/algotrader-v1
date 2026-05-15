@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 784-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 877-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8198,6 +8198,135 @@ Alpaca behavior, ML, LLM trading-path behavior, vectorbt, QuantConnect,
 `ValidatedResearchArtifact`, `ValidatedSignalDefinition`, production
 thresholds, profitability claims, validation claims, trading-readiness claims,
 or trading-path behavior.
+
+## Phase 35 Step 4 Implementation Consolidation Checkpoint
+
+Phase 35 Step 4 is a focused implementation checkpoint after the default
+pytest network kill-switch, synthetic return construction / as-of mechanics
+kernel, and `ResearchFixtureManifest` metadata contract. The review confirmed
+that the Phase 35 code is still small, deterministic, offline-safe,
+synthetic-only where it handles values, and outside the trading hot path.
+
+Network guard checkpoint: normal `python -m pytest` installs the socket guard
+by default and blocks `socket.socket` plus `socket.create_connection` unless
+`--allow-network` or `ALGO_TRADER_ALLOW_NETWORK_TESTS=1` is explicitly used.
+Those escape hatches remain explicit and reserved for gated integration tests.
+The current normal test suite remains offline and credential-free; no real
+network calls were found in Phase 35 tests.
+
+Return-construction checkpoint: `algotrader.research.return_construction`
+remains synthetic-only and mechanical. It uses strict `Decimal` inputs for
+simple and close-to-close arithmetic returns, strict plain `date` inputs for
+lagged observation/action-date examples, rejects malformed values and dates,
+and returns immutable tuples where expected. It contains no strategy,
+moving-average, evaluator, backtest, broker, portfolio, real-data,
+adjusted-close, total-return, dividend, benchmark, cash, cost, or trading-path
+logic.
+
+Fixture manifest checkpoint: `ResearchFixtureManifest` remains a frozen,
+slotted, metadata/provenance-only contract. It records fixture identity, kind,
+source name/type, optional dates, field names, checksum, normal-pytest
+eligibility, redistribution safety, limitations, and non-claims. It does not
+approve a source, data set, ETF universe, benchmark, cash proxy, local
+snapshot, third-party raw data, validation result, or trading use. Local-only
+and third-party/local-snapshot source categories cannot be normal-pytest
+eligible, and no data files or fixtures were added.
+
+Dependency boundary checkpoint: the research package still imports only
+standard-library helpers, core validation, and project validation errors. No
+`pandas`, `numpy`, `yfinance`, `requests`, `vectorbt`, QuantConnect, broker,
+network, runtime, portfolio, risk, screener, signal, execution, persistence,
+database, ML, or LLM dependency entered the Phase 35 research modules. One
+small test-guard gap was found and fixed: the package-level research
+dependency guard now explicitly forbids common data-library, QuantConnect,
+broker-alias, ML, and LLM import prefixes in addition to the existing
+trading-path and network prefixes.
+
+Architecture-fit checkpoint: Phase 35 supports the future research pipeline by
+adding offline enforcement, tiny synthetic mechanics, and metadata-only
+provenance vocabulary. It does not enter the signal, order, execution,
+portfolio, broker, scheduler/runtime, notebook, ingestion, or backtest path.
+
+Recommended next implementation phases, ranked by safety and usefulness:
+
+1. Synthetic as-of examples / clock contract tests. This is the smallest useful
+   next step because it can connect the existing synthetic lag mechanics to
+   deterministic clock/as-of expectations without real data, sources,
+   strategies, evaluators, backtests, or trading behavior.
+2. Manifest serialization/deserialization for metadata only. This would make
+   provenance records easier to pass through future fixture tooling while
+   staying data-free if it is limited to pure metadata dictionaries and avoids
+   file I/O, data loading, source approval, and fixture materialization.
+
+Verification for this checkpoint:
+
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 33 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_default_pytest_network_guard.py` -> 6 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 847 passed, 4 skipped
+
+Explicit non-goals remain in force: no real market data, vendor/public data
+files, source approval, ETF universe approval, benchmark approval, cash-proxy
+approval, data acquisition, data download, data ingestion, network calls,
+credentials, notebooks, scripts, backtests, strategy implementation,
+signal/evaluator implementation, broker behavior, OMS/runtime/scheduler/
+persistence behavior, portfolio mutation, ledger or reconciliation behavior,
+Alpaca behavior, ML, LLM trading-path behavior, vectorbt, QuantConnect,
+`ValidatedResearchArtifact`, `ValidatedSignalDefinition`, production
+thresholds, profitability claims, validation claims, trading-readiness claims,
+or trading-path behavior.
+
+## Phase 36 Synthetic As-Of Replay Kernel
+
+Phase 36 adds the smallest deterministic synthetic-only as-of replay kernel for
+future research replay and no-lookahead enforcement. The new
+`src/algotrader/research/asof.py` module exposes `AsofObservation`,
+`iter_asof_available(...)`, and `next_available_asof_date(...)`.
+
+Files changed in this phase:
+
+- `src/algotrader/research/asof.py`
+- `tests/unit/test_asof.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `AsofObservation` is a frozen slotted dataclass with
+only `observation_date` and `available_after` plain `date` fields.
+`iter_asof_available(...)` returns an immutable tuple of observations whose
+`available_after` is on or before the caller-provided as-of date while
+preserving original input order. `next_available_asof_date(...)` returns the
+earliest availability date from a non-empty synthetic observation sequence.
+
+Validation behavior: the kernel rejects `datetime`, bool, date subclasses, and
+non-date values where plain dates are required; availability dates before
+observation dates; malformed observation sequence inputs; non-`AsofObservation`
+items; duplicate observation dates; unordered observation-date sequences;
+non-date as-of values; and empty sequences when asking for the next available
+as-of date.
+
+Tests added in `tests/unit/test_asof.py` cover frozen/slotted field shape,
+plain-date enforcement, availability-before-observation rejection,
+no-lookahead filtering, original-order preservation, immutable tuple outputs,
+empty filter results, duplicate rejection, chronological ordering enforcement,
+malformed input rejection, empty-sequence rejection for next availability,
+deterministic replay snapshots, earliest-availability selection, and AST
+guardrails against trading-path, vendor, network, data-library, broker,
+runtime, portfolio, signal, evaluator, ML, LLM, vectorbt, and QuantConnect
+leakage.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_asof.py` -> 30 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 877 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no backtesting engine, broker behavior, runtime
+scheduling, portfolio mutation, signal evaluator logic, order generation,
+real market data, data ingestion, vendor access, ML/LLM usage, network access,
+source approval, validation claims, profitability claims, trading-readiness
+claims, or trading-path behavior.
 
 ## Next Recommended Steps
 

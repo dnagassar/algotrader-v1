@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `847` tests are passing, with `4` skipped paper-integration tests by default.
+- `877` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -22,6 +22,11 @@ state.
   fixture metadata and provenance for synthetic, derived, and local-only
   research fixtures without approving any source, data, universe, benchmark,
   cash proxy, validation result, profitability claim, or trading use.
+- Phase 36 adds a deterministic synthetic-only as-of replay kernel. It records
+  plain observation and availability dates, filters by availability as of a
+  caller-provided plain date, preserves original ordering, and rejects malformed,
+  duplicate, or unordered synthetic observation sequences without introducing
+  backtesting, broker, runtime, portfolio, signal, or real-data behavior.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2461,6 +2466,24 @@ evaluators, portfolio mutation, order generation, broker behavior, runtime
 behavior, notebooks, scripts, `ValidatedResearchArtifact`,
 `ValidatedSignalDefinition`, profitability claims, validation claims,
 production thresholds, or trading-readiness claims.
+
+Phase 36 adds the synthetic-only as-of replay kernel in
+`algotrader.research.asof`. `AsofObservation` is a frozen slotted dataclass with
+only `observation_date` and `available_after` plain `date` fields.
+`iter_asof_available` returns an immutable tuple of observations whose
+`available_after` date is on or before the requested as-of date while preserving
+the input order, and `next_available_asof_date` returns the earliest
+availability date from a non-empty observation sequence.
+
+The as-of kernel validates plain `date` values only, rejects `datetime`, bool,
+date subclasses, non-date values, malformed observation objects, duplicate
+observation dates, unordered observation-date sequences, availability dates
+before observation dates, non-date as-of values, and empty sequences where the
+next available date is requested. It stays offline-safe and deterministic; it
+does not add pandas, numpy, vectorbt, QuantConnect, broker/runtime/scheduler
+logic, portfolio mutation, backtesting, signal evaluator logic, real-data
+ingestion, ML, LLM usage, network access, source approval, validation claims,
+or trading-path behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
