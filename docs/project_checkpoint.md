@@ -8932,6 +8932,15 @@ Safe next tasks include:
   service, production signal/evaluator, portfolio engine, ML/LLM runtime,
   strategy validation, profitability claim, or trading behavior; normal pytest
   remains offline and credential-free with mocked unit payloads only
+- Phase 50 adds local-only environment setup hygiene: `.env` and `.env.*`
+  remain ignored while `.env.example` is tracked with placeholders only, and
+  `scripts/dev/load_env.ps1` can load a repo-root `.env` into a local
+  PowerShell process without printing values. Local usage is manual: copy the
+  example to `.env`, fill values only in that ignored file, and run
+  `. .\scripts\dev\load_env.ps1` from a PowerShell session that needs those
+  process environment variables. This adds no automatic runtime dotenv
+  loading, dependencies, network calls, broker/trading behavior, production
+  credential flow, or weakened pytest network/credential gates
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

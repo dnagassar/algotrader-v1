@@ -10,4 +10,10 @@ dist/
 *.egg-info/
 src/algotrader.egg-info/
 
+# Local research data
 .data/
+
+# Local secrets
+.env
+.env.*
+!.env.example
