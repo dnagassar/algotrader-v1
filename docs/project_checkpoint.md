@@ -8734,6 +8734,51 @@ backtesting engine, signal/evaluator behavior, broker/runtime behavior,
 portfolio mutation, order generation, ML/LLM runtime usage, strategy
 validation, or trading behavior.
 
+## Phase 43 Research Intake + Synthetic Workflow Consolidation
+
+Phase 43 adds a small consolidation checkpoint confirming that the external
+advisory intake path and the deterministic synthetic local workflow path remain
+separate metadata-only research routes that can coexist without crossing into
+strategy approval, profitability, benchmark, order, runtime, portfolio, signal,
+backtest, real-data, ML, LLM, or trading behavior.
+
+Files changed in this phase:
+
+- `tests/unit/test_research_intake_workflow_boundary.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Boundary behavior confirmed: `ExternalResearchIntake` remains advisory-only and
+is not a `SyntheticResearchResult`; `SyntheticResearchResult` is not an
+`ExternalResearchIntake`; external intake rejects strategy approval,
+profitability, benchmark-comparison, order-instruction, position-sizing, and
+trading-readiness claims; and synthetic workflow output serializes only
+snapshot/summary metadata without approval, profitability, or trading fields.
+
+Tests added in `tests/unit/test_research_intake_workflow_boundary.py` cover
+external advisory source types, mutual contract separation, coexistence in one
+research package, metadata-only synthetic output fields, and AST guardrails for
+the external intake plus synthetic manifest/as-of/replay/summary/result/workflow
+path. The guardrails reject broker/runtime/scheduler/portfolio/signal/evaluator/
+backtest/real-data imports, pandas, numpy, yfinance, vectorbt, QuantConnect,
+network clients, ML libraries, LLM runtimes, I/O calls, network calls, vendor
+downloads, and trading/order calls.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_research_intake_workflow_boundary.py` -> 21 passed
+- `python -m pytest tests/unit/test_external_intake.py` -> 58 passed
+- `python -m pytest tests/unit/test_research_workflow.py` -> 23 passed
+- `python -m pytest tests/unit/test_replay_result.py` -> 18 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 1066 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, benchmark comparison,
+backtesting engine, signal/evaluator behavior, broker/runtime behavior,
+portfolio mutation, order generation, ML/LLM runtime usage, strategy
+validation, profitability claim, or trading behavior.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -8829,6 +8874,11 @@ Safe next tasks include:
   `ExternalResearchIntake` only as metadata and must still avoid raw data,
   ingestion, benchmark comparison, backtesting, evaluator logic, production
   dependencies, strategy approval, and trading-path behavior
+- Phase 43 confirms that `ExternalResearchIntake` and the deterministic
+  synthetic workflow result path coexist as separate metadata-only research
+  routes, with external advisory inputs kept distinct from synthetic local
+  replay results and both paths kept outside runtime, vendor, backtest,
+  evaluator, portfolio, order, ML/LLM, and trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

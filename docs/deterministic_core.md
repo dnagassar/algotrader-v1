@@ -2653,6 +2653,24 @@ signal/evaluator behavior, portfolio mutation, order generation, ML, LLM usage,
 strategy validation claims, profitability claims, trading-readiness claims, or
 trading-path behavior.
 
+Phase 43 confirms the research package now has two separate metadata-only
+paths: an advisory external intake path for QuantConnect, vectorbt, notebooks,
+Perplexity, Claude/Gemini, papers, and manual research, and a deterministic
+synthetic local workflow path built from `ResearchFixtureManifest`,
+`AsofObservation`, `SyntheticReplayPoint`, `SyntheticReplaySnapshot`,
+`SyntheticReplaySummary`, `SyntheticResearchResult`, and
+`build_synthetic_research_workflow_result(...)`.
+
+These paths can coexist, but they remain intentionally distinct:
+`ExternalResearchIntake` is not a `SyntheticResearchResult`, and
+`SyntheticResearchResult` is not an `ExternalResearchIntake`. Neither path adds
+file I/O, JSON file persistence, pandas, numpy, yfinance, vectorbt dependency,
+QuantConnect dependency, real data ingestion, network access, benchmark
+comparison, backtesting engine behavior, broker/runtime/scheduler behavior,
+signal/evaluator behavior, portfolio mutation, order generation, ML, LLM
+runtime usage, strategy validation claims, profitability claims,
+trading-readiness claims, or trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
