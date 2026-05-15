@@ -2794,6 +2794,30 @@ signal/evaluator behavior, order generation, ML, LLM runtime usage, strategy
 validation claims, profitability claims, trading-readiness claims, or
 trading-path behavior.
 
+Phase 49 adds `scripts/research/fetch_alpaca_daily_snapshot.py` as an
+explicitly gated local research utility for fetching daily OHLCV bars from the
+Alpaca Market Data historical stock bars endpoint into ignored CSV snapshots
+under `.data/research_snapshots/`. It requires explicit `--allow-network`,
+explicit start and end dates, explicit output path, environment-only
+credentials, default output-directory gating, and `--overwrite` before
+replacing an existing CSV.
+
+The fetcher writes exactly the `HistoricalPriceSnapshot` columns `date`,
+`open`, `high`, `low`, `close`, `adjusted_close`, and `volume`; validates
+malformed responses, missing OHLCV fields, duplicate or unordered dates,
+non-positive prices, and negative volume; and computes a local CSV SHA-256. If
+the API payload does not provide a separate adjusted close field, the script
+writes `adjusted_close = close` and reports that adjustment-policy limitation
+without claiming total-return accuracy.
+
+This utility is a gated local snapshot convenience only. It adds no `src`
+ingestion pipeline, pandas, numpy, yfinance, vectorbt, QuantConnect,
+`alpaca-py` import, broker/trading API call, account/position/order/fill
+access, order submission, scheduler/runtime service, production signal
+evaluator, portfolio engine, ML/LLM runtime usage, strategy validation claim,
+profitability claim, or trading behavior. Normal pytest remains offline and
+credential-free, and unit tests use synthetic mocked payloads only.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -8919,6 +8919,19 @@ Safe next tasks include:
   broker/runtime behavior, portfolio engine behavior beyond the existing local
   equity curve, order generation, ML/LLM runtime usage, strategy validation,
   profitability claims, and trading behavior out of scope
+- Phase 49 adds an explicitly gated Alpaca Market Data daily snapshot fetcher
+  under `scripts/research/`. The path requires `--allow-network`, explicit
+  start/end dates, explicit output path, environment-only credentials, ignored
+  `.data/research_snapshots/` output by default, `--overwrite` before
+  replacement, strict OHLCV/date/volume response validation, and a local
+  SHA-256 report. It writes only the existing snapshot-loader CSV columns and
+  labels the `adjusted_close = close` fallback as an adjustment-policy
+  limitation without claiming total-return accuracy. It adds no `src`
+  ingestion pipeline, `alpaca-py`, broker/trading endpoint call,
+  account/position/order/fill access, order submission, scheduler/runtime
+  service, production signal/evaluator, portfolio engine, ML/LLM runtime,
+  strategy validation, profitability claim, or trading behavior; normal pytest
+  remains offline and credential-free with mocked unit payloads only
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
