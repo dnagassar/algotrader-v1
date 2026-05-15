@@ -8879,6 +8879,13 @@ Safe next tasks include:
   routes, with external advisory inputs kept distinct from synthetic local
   replay results and both paths kept outside runtime, vendor, backtest,
   evaluator, portfolio, order, ML/LLM, and trading behavior
+- Phase 44 adds a deterministic local historical price snapshot loader for
+  ignored CSV files such as `.data/research_snapshots/`; it validates local
+  daily OHLCV rows and deterministic fingerprints only, while keeping raw data
+  out of git and avoiding network access, vendor dependencies, ingestion
+  pipelines, benchmark comparison, backtesting, signal/evaluator behavior,
+  broker/runtime behavior, portfolio mutation, order generation, ML/LLM
+  runtime usage, strategy validation, and trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

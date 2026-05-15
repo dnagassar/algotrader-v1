@@ -2671,6 +2671,29 @@ signal/evaluator behavior, portfolio mutation, order generation, ML, LLM
 runtime usage, strategy validation claims, profitability claims,
 trading-readiness claims, or trading-path behavior.
 
+Phase 44 adds `algotrader.research.price_snapshot` as a deterministic local
+CSV loader for daily historical price snapshots. `HistoricalPriceBar` and
+`HistoricalPriceSnapshot` are frozen slotted dataclasses that normalize symbols,
+require plain dates, preserve Decimal prices, reject malformed OHLC,
+non-positive prices, bool volume values, symbol mismatches, duplicate dates,
+unordered dates, and empty snapshots, and store bars as immutable tuples.
+
+`load_historical_price_snapshot_csv(...)` reads exactly the supplied local CSV
+path using stdlib `csv`, requires the columns `date`, `open`, `high`, `low`,
+`close`, `adjusted_close`, and `volume`, allows an optional matching `symbol`
+column, rejects unsupported extra columns, and performs no discovery or writes.
+`price_snapshot_fingerprint(...)` produces a deterministic sha256 hex digest
+from normalized primitive snapshot content without including file paths.
+
+This utility is only a local snapshot loader and validator. Raw market data
+remains out of git, with `.data/` reserved for ignored local snapshots such as
+`.data/research_snapshots/`. It adds no pandas, numpy, yfinance, vectorbt,
+QuantConnect, vendor SDK, API call, network access, ingestion pipeline,
+benchmark comparison, backtesting engine, broker/runtime/scheduler behavior,
+signal/evaluator behavior, portfolio mutation, order generation, ML, LLM
+runtime usage, strategy validation claims, profitability claims,
+trading-readiness claims, or trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
