@@ -8521,6 +8521,78 @@ guard. This phase adds no real data, ingestion, benchmark comparison,
 backtesting engine, signal/evaluator behavior, broker/runtime behavior,
 portfolio mutation, order generation, ML/LLM usage, or trading behavior.
 
+## Phase 40 Synthetic Research Result Package
+
+Phase 40 adds a tiny deterministic result package for existing synthetic replay
+snapshots and their descriptive summary metrics. The package is metadata-only:
+it combines already-built snapshot metadata with a computed summary and does
+not add benchmark comparison, strategy validation, signal/evaluator behavior,
+backtesting, broker/runtime behavior, portfolio mutation, order generation,
+real data handling, ML, LLM, or trading behavior.
+
+Files changed in this phase:
+
+- `src/algotrader/research/replay_result.py`
+- `tests/unit/test_replay_result.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `algotrader.research.replay_result` adds the frozen,
+slotted `SyntheticResearchResult` dataclass plus
+`build_synthetic_research_result(...)`. The helper requires a
+`SyntheticReplaySnapshot`, computes a `SyntheticReplaySummary` via
+`summarize_synthetic_replay_snapshot(...)`, and preserves the original
+snapshot object identity.
+
+Result behavior: a synthetic research result contains exactly the original
+snapshot and its descriptive summary. Direct construction with a valid snapshot
+and summary is supported, and the dataclass is immutable and slotted. The
+builder and dataclass do not mutate the snapshot, available points, manifest,
+returns tuple, or summary.
+
+Serialization behavior: `SyntheticResearchResult.to_dict()` returns
+JSON-compatible primitive metadata only, with deterministic key ordering where
+practical. The payload contains exactly nested `snapshot.to_dict()` and
+`summary.to_dict()` output. Snapshot and summary Decimal values remain
+string-serialized through those existing nested serializers. The serialized
+payload contains no raw data files, credentials, broker/account/order/fill
+fields, runtime state, benchmark comparison, strategy approval, profitability
+claim, or trading-readiness claim.
+
+Validation behavior: `build_synthetic_research_result(...)` rejects malformed
+snapshots before summarizing. Direct dataclass construction rejects malformed
+snapshots and malformed summaries, ensuring `snapshot` is a
+`SyntheticReplaySnapshot` and `summary` is a `SyntheticReplaySummary`.
+
+Tests added in `tests/unit/test_replay_result.py` cover successful result
+construction from a snapshot; summary computation from the snapshot; snapshot
+identity preservation; direct construction with valid snapshot and summary;
+malformed snapshot rejection; malformed summary rejection; immutability;
+non-mutation of snapshot, points, manifest, returns, and summary; deterministic
+`to_dict()` shape; nested snapshot serialization; nested summary serialization;
+Decimal-string serialization through nested serializers; absence of strategy,
+profitability, backtest, approval, broker/runtime, portfolio, order, credential,
+and trading fields in serialized output; and AST guardrails against forbidden
+dependencies, I/O, network, broker/runtime, data-library, benchmark, strategy,
+signal/evaluator, portfolio, ML, LLM, and trading behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_replay_result.py` -> 18 passed
+- `python -m pytest tests/unit/test_replay_metrics.py` -> 25 passed
+- `python -m pytest tests/unit/test_research_replay.py` -> 29 passed
+- `python -m pytest tests/unit/test_asof.py` -> 30 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 964 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, benchmark comparison,
+backtesting engine, signal/evaluator behavior, broker/runtime behavior,
+portfolio mutation, order generation, ML/LLM usage, strategy validation, or
+trading behavior.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.

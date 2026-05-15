@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `946` tests are passing, with `4` skipped paper-integration tests by default.
+- `964` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -47,6 +47,13 @@ state.
   validation, backtesting, signal/evaluator behavior, broker/runtime behavior,
   portfolio mutation, order generation, real data handling, ML, LLM, or trading
   behavior.
+- Phase 40 adds a tiny metadata-only synthetic research result package. It
+  combines an existing `SyntheticReplaySnapshot` with its computed
+  `SyntheticReplaySummary`, preserves snapshot identity, and serializes only
+  nested primitive metadata without adding real data ingestion, benchmark
+  comparison, backtesting, signal/evaluator behavior, broker/runtime behavior,
+  portfolio mutation, order generation, ML, LLM, strategy validation, or
+  trading behavior.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2569,6 +2576,29 @@ source approval, trading-readiness, or production readiness. It adds no file
 I/O, JSON file persistence, pandas, numpy, yfinance, vectorbt, QuantConnect,
 real data ingestion, network access, broker/runtime/scheduler behavior,
 signal/evaluator behavior, portfolio mutation, order generation, ML, LLM usage,
+or trading-path behavior.
+
+Phase 40 adds `algotrader.research.replay_result` as a tiny metadata-only
+result package over the existing synthetic replay snapshot and summary layers.
+`SyntheticResearchResult` is a frozen slotted dataclass containing exactly a
+`SyntheticReplaySnapshot` and a `SyntheticReplaySummary`.
+`build_synthetic_research_result(...)` requires a `SyntheticReplaySnapshot`,
+computes the summary with `summarize_synthetic_replay_snapshot(...)`, and
+preserves the original snapshot object identity.
+
+`SyntheticResearchResult.to_dict()` emits deterministic JSON-compatible
+metadata containing only `snapshot.to_dict()` and `summary.to_dict()`. Nested
+Decimal serialization remains delegated to the existing serializers, so values
+and returns remain strings. Direct construction rejects malformed snapshot and
+summary objects, preserves immutability, and does not mutate the snapshot,
+points, manifest, returns, or summary.
+
+This result package is not a backtest result, benchmark result, strategy
+result, signal-validation artifact, runtime artifact, or trading artifact. It
+adds no file I/O, JSON file persistence, pandas, numpy, yfinance, vectorbt,
+QuantConnect, real data ingestion, network access, broker/runtime/scheduler
+behavior, signal/evaluator behavior, portfolio mutation, order generation, ML,
+LLM usage, validation claims, profitability claims, trading-readiness claims,
 or trading-path behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
