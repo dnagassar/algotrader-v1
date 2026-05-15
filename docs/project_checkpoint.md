@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 877-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 892-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8327,6 +8327,64 @@ scheduling, portfolio mutation, signal evaluator logic, order generation,
 real market data, data ingestion, vendor access, ML/LLM usage, network access,
 source approval, validation claims, profitability claims, trading-readiness
 claims, or trading-path behavior.
+
+## Phase 37 Fixture Manifest Serialization Contract
+
+Phase 37 adds deterministic metadata-only serialization and deserialization for
+`ResearchFixtureManifest` so fixture provenance can be saved, reviewed, and
+reloaded later without introducing real data ingestion, file I/O, source
+approval, or trading-path behavior.
+
+Files changed in this phase:
+
+- `src/algotrader/research/fixture_manifest.py`
+- `tests/unit/test_fixture_manifest.py`
+- `tests/unit/test_dependency_direction.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `ResearchFixtureManifest.to_dict()` now returns a
+deterministic JSON-compatible dictionary containing exactly the existing
+manifest metadata fields. Optional plain `date` values serialize as
+`YYYY-MM-DD` strings or `None`, and tuple fields serialize as lists.
+`ResearchFixtureManifest.from_dict(...)` restores those dictionaries by parsing
+strict ISO calendar dates, restoring list fields as immutable tuples, rejecting
+unknown or missing fields, and then constructing the frozen manifest so all
+existing validation still runs.
+
+Validation behavior: deserialization rejects non-dict payloads, unknown fields,
+missing required fields, malformed date strings, non-string date payloads,
+non-list tuple-field payloads, bad date ranges, unsafe normal-pytest eligibility
+for local-only, third-party, or local-snapshot raw fixture categories, and all
+pre-existing malformed manifest values. Round-tripping preserves manifest
+equality, tuple immutability, and the original manifest is not mutated by
+serialized payload list changes.
+
+Tests added in `tests/unit/test_fixture_manifest.py` cover deterministic
+serialized shape and key order, successful round-trip equality, ISO date
+serialization and restoration, tuple-to-list serialization and tuple
+restoration, immutability after deserialization, serialized-list non-sharing,
+unknown-field rejection, missing-field rejection, malformed-date rejection,
+existing validation preservation, unsafe normal-pytest eligibility rejection,
+and the existing AST guardrails against file I/O, network calls, vendor imports,
+broker/runtime, backtesting, signal/evaluator, portfolio, ML, LLM, and trading
+behavior. The dependency-direction guardrail also keeps the research package
+free of network, vendor, pandas, numpy, vectorbt, QuantConnect, broker/runtime,
+portfolio, signal, and ML/LLM imports.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 892 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no JSON file persistence, file reads or writes, raw data
+loading, real market data, data ingestion, vendor access, source approval,
+pandas, numpy, yfinance, vectorbt, QuantConnect, broker behavior, runtime
+scheduling, portfolio mutation, signal evaluator logic, backtesting engine,
+order generation, ML/LLM usage, validation claims, profitability claims,
+trading-readiness claims, or trading-path behavior.
 
 ## Next Recommended Steps
 

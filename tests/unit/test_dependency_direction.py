@@ -56,7 +56,13 @@ EXECUTION_BYPASS_FORBIDDEN_PREFIXES = (
 )
 
 RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES = (
+    "aiohttp",
+    "algotrader.broker",
+    "algotrader.brokers",
     "algotrader.execution",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
     "algotrader.orchestration",
     "algotrader.portfolio",
     "algotrader.risk",
@@ -69,15 +75,23 @@ RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES = (
     "alpaca",
     "alpaca_trade_api",
     "anthropic",
+    "database",
     "duckdb",
     "httpx",
     "langchain",
     "langgraph",
+    "llm",
+    "numpy",
     "openai",
+    "pandas",
+    "QuantConnect",
+    "quantconnect",
     "requests",
     "socket",
     "sqlmodel",
     "urllib",
+    "vectorbt",
+    "yfinance",
 )
 
 ORCHESTRATION_BOUNDARY_MODULES = (

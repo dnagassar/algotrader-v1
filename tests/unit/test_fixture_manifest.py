@@ -251,6 +251,172 @@ def test_tuple_inputs_are_copied_and_stored_as_immutable_tuples() -> None:
         item.fields[0] = "changed"
 
 
+def test_to_dict_returns_deterministic_json_compatible_metadata_shape() -> None:
+    item = manifest(retrieval_date=date(2026, 5, 14))
+
+    payload = item.to_dict()
+
+    assert tuple(payload) == (
+        "fixture_id",
+        "fixture_kind",
+        "description",
+        "source_name",
+        "source_type",
+        "retrieval_date",
+        "data_start",
+        "data_end",
+        "fields",
+        "checksum",
+        "normal_pytest_eligible",
+        "redistribution_safe",
+        "limitations",
+        "non_claims",
+    )
+    assert payload == {
+        "fixture_id": "synthetic-close-fixture-001",
+        "fixture_kind": "synthetic",
+        "description": "Tiny deterministic synthetic close-value example.",
+        "source_name": "project synthetic fixture",
+        "source_type": "synthetic",
+        "retrieval_date": "2026-05-14",
+        "data_start": "2026-01-01",
+        "data_end": "2026-01-03",
+        "fields": ["observation_date", "synthetic_close"],
+        "checksum": "sha256:synthetic-close-fixture-001",
+        "normal_pytest_eligible": True,
+        "redistribution_safe": True,
+        "limitations": ["synthetic values only"],
+        "non_claims": ["does not validate any trading result"],
+    }
+
+
+def test_from_dict_restores_manifest_dates_tuples_and_equality() -> None:
+    item = manifest(retrieval_date=date(2026, 5, 14))
+    payload = item.to_dict()
+
+    reloaded = ResearchFixtureManifest.from_dict(payload)
+
+    assert reloaded == item
+    assert reloaded.retrieval_date == date(2026, 5, 14)
+    assert reloaded.data_start == date(2026, 1, 1)
+    assert reloaded.data_end == date(2026, 1, 3)
+    assert reloaded.fields == ("observation_date", "synthetic_close")
+    assert reloaded.limitations == ("synthetic values only",)
+    assert reloaded.non_claims == ("does not validate any trading result",)
+
+
+def test_from_dict_preserves_tuple_immutability_after_deserialization() -> None:
+    item = ResearchFixtureManifest.from_dict(manifest().to_dict())
+
+    assert isinstance(item.fields, tuple)
+    assert isinstance(item.limitations, tuple)
+    assert isinstance(item.non_claims, tuple)
+    with pytest.raises(TypeError):
+        item.fields[0] = "changed"
+
+
+def test_to_dict_does_not_share_mutable_lists_with_original_manifest() -> None:
+    item = manifest()
+    payload = item.to_dict()
+
+    payload["fields"].append("late_field")
+    payload["limitations"].append("late limitation")
+    payload["non_claims"].append("late non-claim")
+
+    assert item.fields == ("observation_date", "synthetic_close")
+    assert item.limitations == ("synthetic values only",)
+    assert item.non_claims == ("does not validate any trading result",)
+
+
+def test_from_dict_does_not_share_mutable_lists_with_reloaded_manifest() -> None:
+    payload = manifest().to_dict()
+    item = ResearchFixtureManifest.from_dict(payload)
+
+    payload["fields"].append("late_field")
+    payload["limitations"].append("late limitation")
+    payload["non_claims"].append("late non-claim")
+
+    assert item.fields == ("observation_date", "synthetic_close")
+    assert item.limitations == ("synthetic values only",)
+    assert item.non_claims == ("does not validate any trading result",)
+
+
+def test_from_dict_rejects_unknown_fields() -> None:
+    payload = manifest().to_dict()
+    payload["download_url"] = "https://example.invalid/raw.csv"
+
+    with pytest.raises(ValidationError, match="unknown manifest field"):
+        ResearchFixtureManifest.from_dict(payload)
+
+
+def test_from_dict_rejects_missing_required_fields() -> None:
+    payload = manifest().to_dict()
+    del payload["checksum"]
+
+    with pytest.raises(ValidationError, match="missing manifest field"):
+        ResearchFixtureManifest.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "field_name,value",
+    (
+        ("retrieval_date", "2026-13-14"),
+        ("data_start", "20260101"),
+        ("data_end", date(2026, 1, 3)),
+    ),
+)
+def test_from_dict_rejects_malformed_date_payloads(
+    field_name: str,
+    value: object,
+) -> None:
+    payload = manifest().to_dict()
+    payload[field_name] = value
+
+    with pytest.raises(ValidationError, match=field_name):
+        ResearchFixtureManifest.from_dict(payload)
+
+
+def test_from_dict_preserves_existing_manifest_validation_rules() -> None:
+    payload = manifest().to_dict()
+    payload["data_end"] = "2025-12-31"
+
+    with pytest.raises(ValidationError, match="data_end"):
+        ResearchFixtureManifest.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    (
+        {
+            "fixture_kind": "local_only",
+            "source_type": "local_snapshot",
+        },
+        {
+            "fixture_kind": "derived",
+            "source_type": "third_party",
+        },
+        {
+            "fixture_kind": "derived",
+            "source_type": "local_snapshot",
+        },
+        {
+            "fixture_kind": "synthetic",
+            "source_type": "manual",
+        },
+    ),
+)
+def test_from_dict_rejects_unsafe_normal_pytest_eligible_payloads(
+    overrides: dict[str, object],
+) -> None:
+    payload = manifest(normal_pytest_eligible=False).to_dict()
+    payload["normal_pytest_eligible"] = True
+    for field_name, value in overrides.items():
+        payload[field_name] = value
+
+    with pytest.raises(ValidationError):
+        ResearchFixtureManifest.from_dict(payload)
+
+
 def test_manifest_has_exact_metadata_fields_only() -> None:
     field_names = tuple(field.name for field in fields(ResearchFixtureManifest))
 

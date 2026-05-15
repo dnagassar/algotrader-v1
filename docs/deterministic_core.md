@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `877` tests are passing, with `4` skipped paper-integration tests by default.
+- `892` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -27,6 +27,13 @@ state.
   caller-provided plain date, preserves original ordering, and rejects malformed,
   duplicate, or unordered synthetic observation sequences without introducing
   backtesting, broker, runtime, portfolio, signal, or real-data behavior.
+- Phase 37 adds metadata-only fixture manifest serialization. It round-trips
+  `ResearchFixtureManifest` through deterministic JSON-compatible dictionaries,
+  serializes plain dates as `YYYY-MM-DD` strings, restores tuple fields from
+  lists as immutable tuples, and strictly rejects unknown fields, missing
+  required fields, malformed dates, and unsafe normal-pytest eligibility without
+  adding file I/O, vendor dependencies, ingestion, backtesting, broker/runtime,
+  portfolio, signal/evaluator, or trading behavior.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2484,6 +2491,25 @@ does not add pandas, numpy, vectorbt, QuantConnect, broker/runtime/scheduler
 logic, portfolio mutation, backtesting, signal evaluator logic, real-data
 ingestion, ML, LLM usage, network access, source approval, validation claims,
 or trading-path behavior.
+
+Phase 37 adds metadata-only serialization helpers to
+`ResearchFixtureManifest`. `to_dict()` returns a deterministic
+JSON-compatible dictionary containing exactly the existing manifest metadata
+fields, with optional plain dates serialized as `YYYY-MM-DD` strings and tuple
+fields serialized as lists. `from_dict(...)` accepts only strict manifest
+metadata dictionaries, rejects unknown fields and missing required fields,
+parses only strict ISO calendar-date strings back to plain `date` values, and
+restores list fields as immutable tuples before running the existing manifest
+validation.
+
+The serialization contract preserves normal-pytest eligibility restrictions
+for local-only, third-party, and local-snapshot raw fixture categories. It does
+not add JSON file persistence, file reads or writes, raw data loading, vendor
+dependencies, real data ingestion, source approval, pandas, numpy, yfinance,
+vectorbt, QuantConnect, network access, credentials, broker/runtime/scheduler
+logic, backtesting, signal/evaluator behavior, portfolio mutation, order
+generation, ML, LLM usage, validation claims, profitability claims,
+trading-readiness claims, or trading-path behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

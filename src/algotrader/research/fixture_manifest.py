@@ -17,6 +17,24 @@ __all__ = [
 
 FIXTURE_KINDS = ("synthetic", "derived", "local_only")
 SOURCE_TYPES = ("synthetic", "manual", "third_party", "local_snapshot")
+_MANIFEST_FIELD_NAMES = (
+    "fixture_id",
+    "fixture_kind",
+    "description",
+    "source_name",
+    "source_type",
+    "retrieval_date",
+    "data_start",
+    "data_end",
+    "fields",
+    "checksum",
+    "normal_pytest_eligible",
+    "redistribution_safe",
+    "limitations",
+    "non_claims",
+)
+_DATE_FIELD_NAMES = frozenset(("retrieval_date", "data_start", "data_end"))
+_TUPLE_FIELD_NAMES = frozenset(("fields", "limitations", "non_claims"))
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,6 +55,41 @@ class ResearchFixtureManifest:
     redistribution_safe: bool
     limitations: tuple[str, ...]
     non_claims: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a deterministic JSON-compatible metadata representation."""
+        payload: dict[str, object] = {}
+
+        for field_name in _MANIFEST_FIELD_NAMES:
+            value = getattr(self, field_name)
+            if field_name in _DATE_FIELD_NAMES:
+                payload[field_name] = _serialize_optional_date(value)
+            elif field_name in _TUPLE_FIELD_NAMES:
+                payload[field_name] = list(value)
+            else:
+                payload[field_name] = value
+
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "ResearchFixtureManifest":
+        """Restore a manifest from strict JSON-compatible metadata."""
+        if not isinstance(payload, dict):
+            raise ValidationError("manifest payload must be a dict.")
+
+        _validate_manifest_payload_fields(payload)
+        values: dict[str, object] = {}
+
+        for field_name in _MANIFEST_FIELD_NAMES:
+            value = payload[field_name]
+            if field_name in _DATE_FIELD_NAMES:
+                values[field_name] = _deserialize_optional_date(value, field_name)
+            elif field_name in _TUPLE_FIELD_NAMES:
+                values[field_name] = _deserialize_string_list(value, field_name)
+            else:
+                values[field_name] = value
+
+        return cls(**values)
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -203,3 +256,55 @@ def _validate_normal_pytest_eligibility(
         raise ValidationError(
             "derived fixtures must use synthetic or manual sources for normal pytest."
         )
+
+
+def _serialize_optional_date(value: object) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not date:
+        raise ValidationError("manifest date fields must be plain dates.")
+    return value.isoformat()
+
+
+def _deserialize_optional_date(value: object, field_name: str) -> date | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ValidationError(f"{field_name} must be an ISO date string or None.")
+
+    try:
+        parsed = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValidationError(
+            f"{field_name} must be an ISO YYYY-MM-DD date string."
+        ) from exc
+
+    if parsed.isoformat() != value:
+        raise ValidationError(f"{field_name} must use YYYY-MM-DD date format.")
+    return parsed
+
+
+def _deserialize_string_list(value: object, field_name: str) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        raise ValidationError(f"{field_name} must be a list of strings.")
+    return tuple(value)
+
+
+def _validate_manifest_payload_fields(payload: dict[str, object]) -> None:
+    unknown_fields = tuple(
+        field_name
+        for field_name in payload
+        if field_name not in _MANIFEST_FIELD_NAMES
+    )
+    if unknown_fields:
+        unknown = ", ".join(str(field_name) for field_name in unknown_fields)
+        raise ValidationError(f"unknown manifest field(s): {unknown}.")
+
+    missing_fields = tuple(
+        field_name
+        for field_name in _MANIFEST_FIELD_NAMES
+        if field_name not in payload
+    )
+    if missing_fields:
+        missing = ", ".join(missing_fields)
+        raise ValidationError(f"missing manifest field(s): {missing}.")
