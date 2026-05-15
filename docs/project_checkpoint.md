@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 892-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 921-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8385,6 +8385,73 @@ pandas, numpy, yfinance, vectorbt, QuantConnect, broker behavior, runtime
 scheduling, portfolio mutation, signal evaluator logic, backtesting engine,
 order generation, ML/LLM usage, validation claims, profitability claims,
 trading-readiness claims, or trading-path behavior.
+
+## Phase 38 Synthetic Research Replay Package
+
+Phase 38 combines the existing synthetic research plumbing into one tiny
+metadata-only replay snapshot package. It is intentionally not a backtest
+engine and does not add strategy logic, evaluator logic, broker/runtime
+behavior, portfolio mutation, order generation, real data ingestion, external
+dependencies, ML, LLM, or trading behavior.
+
+Files changed in this phase:
+
+- `src/algotrader/research/replay.py`
+- `tests/unit/test_research_replay.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `algotrader.research.replay` adds frozen, slotted
+`SyntheticReplayPoint` and `SyntheticReplaySnapshot` metadata dataclasses plus
+`build_synthetic_replay_snapshot(...)`. A replay point pairs an existing
+`AsofObservation` with a synthetic `Decimal` value. A snapshot records the
+existing `ResearchFixtureManifest`, one plain as-of date, the available replay
+points, and close-to-close simple returns from the available values.
+
+Replay behavior: snapshot construction validates the manifest and points,
+delegates observation availability filtering to `iter_asof_available(...)`,
+preserves original chronological order and available point object identity, and
+delegates multi-point return construction to `close_to_close_returns(...)`.
+Zero or one available point is allowed and produces an empty returns tuple.
+
+Validation behavior: the package rejects malformed manifests, malformed point
+sequences, non-`AsofObservation` point observations, non-`Decimal` point values,
+`bool`, `datetime`, date subclass, and non-date as-of values, duplicate or
+unordered observation dates through the existing as-of validation, and
+available value sequences that violate the existing return-construction
+validation such as non-positive prior values.
+
+Serialization behavior: `SyntheticReplaySnapshot.to_dict()` returns
+JSON-compatible primitive metadata only. It includes `manifest.to_dict()`,
+serializes `asof_date`, `observation_date`, and `available_after` as
+`YYYY-MM-DD` strings, serializes point values and returns as strings, uses
+available point dictionaries with deterministic key ordering where practical,
+and adds no `from_dict()` in this phase.
+
+Tests added in `tests/unit/test_research_replay.py` cover successful snapshot
+construction, as-of/no-lookahead filtering, return construction from available
+values, zero/one available point behavior, immutable tuple outputs,
+deterministic serialization shape, manifest serialization inclusion,
+Decimal-string and ISO-date serialization, malformed manifest rejection,
+malformed point rejection, non-Decimal rejection, invalid as-of date rejection,
+duplicate/unordered observation-date rejection, input identity preservation,
+input sequence non-mutation, serialized-list non-sharing, and AST guardrails
+against forbidden dependencies, I/O, network, broker/runtime, data-library,
+strategy, signal/evaluator, portfolio, ML, LLM, and trading behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_research_replay.py` -> 29 passed
+- `python -m pytest tests/unit/test_asof.py` -> 30 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 921 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, backtesting engine,
+signal/evaluator behavior, broker/runtime behavior, portfolio mutation, order
+generation, ML/LLM usage, or trading behavior.
 
 ## Next Recommended Steps
 

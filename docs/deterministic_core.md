@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `892` tests are passing, with `4` skipped paper-integration tests by default.
+- `921` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -34,6 +34,12 @@ state.
   required fields, malformed dates, and unsafe normal-pytest eligibility without
   adding file I/O, vendor dependencies, ingestion, backtesting, broker/runtime,
   portfolio, signal/evaluator, or trading behavior.
+- Phase 38 adds a tiny metadata-only synthetic replay snapshot package. It
+  combines `ResearchFixtureManifest`, synthetic as-of availability filtering,
+  and synthetic close-to-close Decimal return construction into immutable
+  snapshot metadata without adding file I/O, persistence, real data, strategy
+  logic, evaluator logic, broker/runtime behavior, portfolio mutation, order
+  generation, backtesting, ML, LLM, or trading behavior.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2510,6 +2516,29 @@ vectorbt, QuantConnect, network access, credentials, broker/runtime/scheduler
 logic, backtesting, signal/evaluator behavior, portfolio mutation, order
 generation, ML, LLM usage, validation claims, profitability claims,
 trading-readiness claims, or trading-path behavior.
+
+Phase 38 adds `algotrader.research.replay` as a tiny deterministic synthetic
+replay snapshot package. `SyntheticReplayPoint` pairs one existing
+`AsofObservation` with one synthetic `Decimal` value. `SyntheticReplaySnapshot`
+records the manifest, as-of date, available points, and close-to-close returns
+as immutable metadata only.
+
+`build_synthetic_replay_snapshot(...)` validates the manifest, plain as-of
+date, and replay point sequence; delegates duplicate and unordered observation
+date rejection to the existing as-of kernel; filters by `available_after` with
+no lookahead; preserves the original chronological point order and available
+point object identity; and delegates multi-point return construction to
+`close_to_close_returns(...)`. Zero or one available point is allowed and yields
+an empty returns tuple. Snapshot serialization is dictionary-only metadata:
+manifest metadata, ISO `YYYY-MM-DD` dates, available point dictionaries, and
+Decimal values/returns as strings.
+
+This package does not add file I/O, JSON file persistence, pandas, numpy,
+yfinance, vectorbt, QuantConnect, real data ingestion, network access,
+backtesting, strategy logic, signal/evaluator behavior, broker/runtime/
+scheduler behavior, portfolio mutation, order generation, ML, LLM usage,
+validation claims, profitability claims, trading-readiness claims, or
+trading-path behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
