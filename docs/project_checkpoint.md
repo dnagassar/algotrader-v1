@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 921-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 946-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8452,6 +8452,74 @@ Normal pytest remains offline and credential-free under the default network
 guard. This phase adds no real data, ingestion, backtesting engine,
 signal/evaluator behavior, broker/runtime behavior, portfolio mutation, order
 generation, ML/LLM usage, or trading behavior.
+
+## Phase 39 Synthetic Replay Summary Metrics
+
+Phase 39 adds a tiny deterministic metrics layer for existing synthetic replay
+snapshots. The layer is descriptive only: it summarizes snapshot metadata and
+does not add benchmark comparison, strategy validation, signal/evaluator
+behavior, backtesting, broker/runtime behavior, portfolio mutation, order
+generation, real data handling, ML, LLM, or trading behavior.
+
+Files changed in this phase:
+
+- `src/algotrader/research/replay_metrics.py`
+- `tests/unit/test_replay_metrics.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `algotrader.research.replay_metrics` adds the frozen,
+slotted `SyntheticReplaySummary` dataclass plus
+`summarize_synthetic_replay_snapshot(...)`. The helper requires a
+`SyntheticReplaySnapshot` and reads only `snapshot.available_points` and
+`snapshot.returns`.
+
+Summary metric behavior: zero available points produce `point_count=0`,
+`return_count=0`, and `None` for starting value, ending value, cumulative
+simple return, min return, max return, and mean return. One available point
+reports the first/last value as both starting and ending values while leaving
+return-derived metrics as `None`. Snapshots with returns report return count,
+minimum return, maximum return, arithmetic mean return, and cumulative simple
+return as ending divided by starting, minus one.
+
+Serialization behavior: `SyntheticReplaySummary.to_dict()` returns
+JSON-compatible primitive metadata only, with deterministic key ordering where
+practical. Count fields remain integers, Decimal fields serialize as strings,
+and `None` remains `None`. The serialized payload contains no raw data, file
+contents, credentials, broker/account/order fields, runtime state, benchmark
+comparison, or strategy claims.
+
+Validation behavior: direct summary construction rejects malformed count
+fields, `bool` count values, negative counts, and non-Decimal/non-`None`
+metric fields. The summarizer rejects malformed snapshots and inconsistent
+snapshots that contain returns without available point values. The summary is
+frozen and slotted, and summarization does not mutate the snapshot, point
+tuple, return tuple, or contained points.
+
+Tests added in `tests/unit/test_replay_metrics.py` cover zero, one, and
+multiple available point summaries; return count; starting and ending values;
+cumulative simple return; min, max, and mean returns; Decimal precision
+preservation; deterministic `to_dict()` shape; Decimal-string serialization;
+`None` serialization; immutability; direct dataclass validation; malformed
+snapshot rejection; non-mutation of snapshots and points; and AST guardrails
+against forbidden dependencies, I/O, network, broker/runtime, data-library,
+benchmark, strategy, signal/evaluator, portfolio, ML, LLM, and trading
+behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_replay_metrics.py` -> 25 passed
+- `python -m pytest tests/unit/test_research_replay.py` -> 29 passed
+- `python -m pytest tests/unit/test_asof.py` -> 30 passed
+- `python -m pytest tests/unit/test_return_construction.py` -> 30 passed
+- `python -m pytest tests/unit/test_fixture_manifest.py` -> 48 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 946 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, benchmark comparison,
+backtesting engine, signal/evaluator behavior, broker/runtime behavior,
+portfolio mutation, order generation, ML/LLM usage, or trading behavior.
 
 ## Next Recommended Steps
 

@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `921` tests are passing, with `4` skipped paper-integration tests by default.
+- `946` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -40,6 +40,13 @@ state.
   snapshot metadata without adding file I/O, persistence, real data, strategy
   logic, evaluator logic, broker/runtime behavior, portfolio mutation, order
   generation, backtesting, ML, LLM, or trading behavior.
+- Phase 39 adds a tiny descriptive metrics layer for synthetic replay
+  snapshots. It summarizes point counts, return counts, starting and ending
+  values, cumulative simple return, and min/max/mean returns from existing
+  snapshot metadata only, without adding benchmark comparison, strategy
+  validation, backtesting, signal/evaluator behavior, broker/runtime behavior,
+  portfolio mutation, order generation, real data handling, ML, LLM, or trading
+  behavior.
 - A deterministic offline screener foundation ranks synthetic `Bar + Quote`
   inputs by ask momentum versus previous close, with optional deterministic
   `min_score` and `top_n` filters.
@@ -2539,6 +2546,30 @@ backtesting, strategy logic, signal/evaluator behavior, broker/runtime/
 scheduler behavior, portfolio mutation, order generation, ML, LLM usage,
 validation claims, profitability claims, trading-readiness claims, or
 trading-path behavior.
+
+Phase 39 adds `algotrader.research.replay_metrics` as a tiny descriptive
+summary layer over existing `SyntheticReplaySnapshot` outputs.
+`SyntheticReplaySummary` is a frozen slotted dataclass containing point and
+return counts, optional starting and ending values, optional cumulative simple
+return, and optional min/max/mean returns. `summarize_synthetic_replay_snapshot`
+requires a `SyntheticReplaySnapshot` and reads only `available_points` and
+`returns`.
+
+Empty snapshots produce zero counts and `None` value/return metrics. One-point
+snapshots report starting and ending values but no return-derived metrics.
+Snapshots with returns report return count, min return, max return, arithmetic
+mean return, and cumulative simple return as ending divided by starting, minus
+one. `SyntheticReplaySummary.to_dict()` emits JSON-compatible primitive
+metadata, preserving counts as integers, `None` as `None`, and Decimal values
+as strings.
+
+This summary layer is descriptive only. It does not imply strategy validity,
+profitability, research validation, backtest approval, benchmark comparison,
+source approval, trading-readiness, or production readiness. It adds no file
+I/O, JSON file persistence, pandas, numpy, yfinance, vectorbt, QuantConnect,
+real data ingestion, network access, broker/runtime/scheduler behavior,
+signal/evaluator behavior, portfolio mutation, order generation, ML, LLM usage,
+or trading-path behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
