@@ -8911,6 +8911,14 @@ Safe next tasks include:
   comparison, production signal/evaluator behavior, broker/runtime behavior,
   portfolio engine, order generation, ML/LLM runtime, strategy validation,
   profitability claim, or trading behavior
+- Phase 48 adds the first local SPY SMA-200 research-run script and markdown
+  log template. The path requires an explicit ignored CSV snapshot, records
+  only metadata, hashes, assumptions, rule text, aggregate metrics,
+  limitations, and an advisory verdict, and keeps raw data, network/API/vendor
+  access, benchmark comparison, production signal/evaluator behavior,
+  broker/runtime behavior, portfolio engine behavior beyond the existing local
+  equity curve, order generation, ML/LLM runtime usage, strategy validation,
+  profitability claims, and trading behavior out of scope
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

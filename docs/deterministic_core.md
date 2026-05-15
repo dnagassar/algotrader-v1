@@ -2767,6 +2767,33 @@ behavior, portfolio engine, order generation, ML, LLM runtime usage, strategy
 validation claims, profitability claims, trading-readiness claims, or
 trading-path behavior.
 
+Phase 48 adds `scripts/research/run_spy_sma200_research.py` as the first
+local-only SPY SMA-200 research-run path. It requires an explicit CSV path,
+accepts only optional local assumptions and provenance metadata, rejects CSV
+paths outside `.data/research_snapshots/` unless an override flag is supplied,
+computes a stdlib file sha256, builds a `LocalPriceSnapshotManifest`, builds
+SMA-200 daily exposures, runs the existing deterministic daily backtest, and
+renders a markdown report to stdout unless an explicit non-`.data/` output path
+is supplied.
+
+The report contains an advisory-only disclaimer, source name/type, CSV file
+name only, file sha256, snapshot fingerprint, date range, row count,
+adjustment policy, assumptions, the SMA-200 rule, aggregate descriptive
+metrics, limitations, and a non-approval verdict. It never writes raw CSV rows
+into the report and does not scan data directories or fetch data. The companion
+`research/log/` README and template make research logs advisory-only and require
+fingerprints/provenance before any local report is trusted.
+
+This runner is not a production strategy, signal evaluator, benchmark
+framework, broker/runtime system, portfolio engine beyond the existing local
+equity curve, order generator, validated strategy, recommendation, or trading
+workflow. It adds no raw committed market data, pandas, numpy, yfinance,
+vectorbt, QuantConnect, vendor SDK, API call, network access, automatic data
+discovery, benchmark comparison, broker/runtime/scheduler behavior, production
+signal/evaluator behavior, order generation, ML, LLM runtime usage, strategy
+validation claims, profitability claims, trading-readiness claims, or
+trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
