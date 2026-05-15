@@ -8893,6 +8893,14 @@ Safe next tasks include:
   connecting to vendor/data dependencies, or introducing ingestion, benchmark,
   backtest, signal/evaluator, broker/runtime, portfolio, order, ML/LLM,
   strategy validation, or trading behavior
+- Phase 46 adds a minimal deterministic daily backtest harness over already
+  loaded `HistoricalPriceSnapshot` data and precomputed `DailyExposure` flags,
+  producing a local Decimal equity curve, no-lookahead return application,
+  simple fee/slippage costs, basic descriptive metrics, and primitive
+  serialization while adding no real data, file I/O, network access,
+  ingestion pipeline, benchmark comparison, signal/evaluator behavior,
+  broker/runtime behavior, portfolio engine, order generation, ML/LLM runtime,
+  strategy validation, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -2717,6 +2717,32 @@ portfolio mutation, order generation, ML, LLM runtime usage, strategy
 validation claims, profitability claims, trading-readiness claims, or
 trading-path behavior.
 
+Phase 46 adds `algotrader.research.daily_backtest` as a tiny deterministic
+daily equity-curve utility over already-loaded `HistoricalPriceSnapshot` data
+and precomputed `DailyExposure` values. `DailyBacktestAssumptions`,
+`DailyExposure`, `DailyBacktestPoint`, and `DailyBacktestResult` are frozen
+slotted dataclasses with strict plain-date and Decimal validation, immutable
+point storage, exact snapshot/exposure date alignment, and deterministic
+derived metrics for starting equity, ending equity, total return, maximum
+drawdown, average exposure ratio, and turnover.
+
+`run_daily_backtest(...)` uses adjusted close prices only, gives the first bar
+an asset return of zero, applies prior-day exposure to today's asset return to
+avoid same-day lookahead, charges first-day and later exposure-change costs from
+caller-supplied fee/slippage basis points, and compounds a local equity curve
+from the supplied initial equity. `DailyBacktestResult.to_dict()` serializes
+dates as `YYYY-MM-DD`, Decimals as strings, assumptions as primitive metadata,
+points as primitive dictionaries, and derived metrics without file data,
+credentials, runtime state, order/fill fields, or profitability claims.
+
+This utility is not a strategy framework or trading engine. It adds no file I/O,
+CSV loading, JSON persistence, pandas, numpy, yfinance, vectorbt, QuantConnect,
+vendor SDK, API call, network access, ingestion pipeline, benchmark comparison,
+broker/runtime/scheduler behavior, signal/evaluator behavior, portfolio engine,
+portfolio mutation outside the local equity curve calculation, order
+generation, ML, LLM runtime usage, strategy validation claims, profitability
+claims, trading-readiness claims, or trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
