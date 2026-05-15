@@ -2625,6 +2625,34 @@ broker/runtime/scheduler behavior, signal/evaluator behavior, portfolio
 mutation, order generation, ML, LLM usage, strategy validation claims,
 profitability claims, trading-readiness claims, or trading-path behavior.
 
+Phase 42 adds `algotrader.research.external_intake` as a small metadata-only
+intake contract for external research outputs. `ExternalResearchIntake` is a
+frozen slotted dataclass that records source name and type, strategy name,
+summary, universe, timeframe, assumptions, limitations, evidence links, a plain
+`date` creation date, and an `advisory_only` flag that must be exactly `True`.
+Allowed source types are limited to QuantConnect, vectorbt, notebooks,
+Perplexity, Claude, Gemini, papers, manual notes, and other advisory sources.
+
+The intake contract stores tuple fields as immutable tuples, rejects empty
+strings, rejects unknown source types, requires plain `date` values instead of
+`datetime`, bool, non-date values, or date subclasses, and preserves strict
+advisory-only status. `to_dict()` emits deterministic JSON-compatible metadata
+with tuples serialized as lists and `created_at` serialized as `YYYY-MM-DD`.
+`from_dict(...)` accepts only strict metadata dictionaries, rejects unknown and
+missing fields, parses only strict ISO calendar dates, restores tuple fields,
+and reruns all validation.
+
+This intake object is not a validated research artifact, strategy validation,
+benchmark comparison, backtest result, signal input, evaluator input, broker
+instruction, portfolio instruction, order instruction, result-metric carrier,
+credential container, or runtime state. It adds no file I/O, JSON file
+persistence, pandas, numpy, yfinance, vectorbt dependency, QuantConnect
+dependency, real data ingestion, network access, benchmark comparison,
+backtesting engine behavior, broker/runtime/scheduler behavior,
+signal/evaluator behavior, portfolio mutation, order generation, ML, LLM usage,
+strategy validation claims, profitability claims, trading-readiness claims, or
+trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

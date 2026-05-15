@@ -8665,6 +8665,75 @@ backtesting engine, signal/evaluator behavior, broker/runtime behavior,
 portfolio mutation, order generation, ML/LLM usage, strategy validation, or
 trading behavior.
 
+## Phase 42 External Research Intake Workflow
+
+Phase 42 adds a small metadata-only intake contract for external research
+outputs so QuantConnect, vectorbt, notebooks, Perplexity, Claude/Gemini,
+papers, manual notes, and other exploratory sources can be recorded as
+advisory inputs without becoming trusted strategy validation, production
+dependencies, or trading-path behavior.
+
+Files changed in this phase:
+
+- `src/algotrader/research/external_intake.py`
+- `tests/unit/test_external_intake.py`
+- `docs/deterministic_core.md`
+- `docs/project_checkpoint.md`
+
+Implementation summary: `algotrader.research.external_intake` adds
+`ExternalResearchIntake`, a frozen slotted dataclass with exactly source name,
+source type, strategy name, summary, universe, timeframe, assumptions,
+limitations, evidence links, creation date, and `advisory_only` metadata. The
+module also exposes `EXTERNAL_RESEARCH_SOURCE_TYPES` for the allowed
+source-type vocabulary.
+
+Intake behavior: source types are limited to `quantconnect`, `vectorbt`,
+`notebook`, `perplexity`, `claude`, `gemini`, `paper`, `manual`, and `other`.
+All scalar strings are stripped and required to be non-empty. Universe,
+assumptions, limitations, and evidence links are copied into immutable tuples,
+and `advisory_only` must be exactly `True`.
+
+Serialization/deserialization behavior: `to_dict()` emits deterministic
+JSON-compatible primitive metadata only, with tuples serialized as lists and
+`created_at` serialized as `YYYY-MM-DD`. `from_dict(...)` rejects non-dict
+payloads, unknown fields, missing fields, malformed dates, non-list serialized
+tuple fields, unsafe advisory flags, and any payload that violates normal
+construction validation.
+
+Validation behavior: the contract rejects unknown source types, empty strings,
+single-string tuple payloads, malformed tuple entries, `datetime`, bool,
+non-date, and date-subclass creation dates, and non-advisory content such as
+result metrics, benchmark-comparison claims, broker/account/order/fill/runtime
+state, order instructions, position sizing, capital allocation, credentials,
+approval status, profitability claims, validation claims, and trading-readiness
+claims. It also rejects unknown payload fields such as broker/order identifiers
+instead of storing them.
+
+Tests added in `tests/unit/test_external_intake.py` cover valid construction;
+all allowed source types; unknown source-type rejection; `advisory_only`
+strictness; frozen/slotted behavior; tuple conversion, immutability, and
+non-mutation of input sequences; empty string rejection; malformed tuple-value
+rejection; plain `date` enforcement; deterministic `to_dict()` shape; from-dict
+round trip; ISO date serialization/restoration; non-dict payload rejection;
+unknown-field rejection; missing-field rejection; malformed-date rejection;
+payload list non-sharing; forbidden field/content guardrails; exact metadata
+field shape; absence of trading-path/result attributes; and AST guardrails
+against forbidden dependencies, I/O, network, broker/runtime, data-library,
+benchmark, signal/evaluator, portfolio, ML, LLM, result-metric, credential, and
+trading behavior.
+
+Verification for this phase:
+
+- `python -m pytest tests/unit/test_external_intake.py` -> 58 passed
+- `python -m pytest tests/unit/test_dependency_direction.py` -> 9 passed
+- `python -m pytest` -> 1045 passed, 4 skipped
+
+Normal pytest remains offline and credential-free under the default network
+guard. This phase adds no real data, ingestion, benchmark comparison,
+backtesting engine, signal/evaluator behavior, broker/runtime behavior,
+portfolio mutation, order generation, ML/LLM runtime usage, strategy
+validation, or trading behavior.
+
 ## Next Recommended Steps
 
 Keep avoiding real Alpaca SDK work until explicitly approved.
@@ -8755,6 +8824,11 @@ Safe next tasks include:
   and copied snippets exploratory only and outside normal pytest, production
   dependencies, validated artifacts, validated signal definitions, and
   trading-path behavior
+- Phase 42 now provides a code-level external research intake metadata
+  contract for those advisory outputs. Future external research notes can use
+  `ExternalResearchIntake` only as metadata and must still avoid raw data,
+  ingestion, benchmark comparison, backtesting, evaluator logic, production
+  dependencies, strategy approval, and trading-path behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
