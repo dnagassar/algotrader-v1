@@ -2694,6 +2694,29 @@ signal/evaluator behavior, portfolio mutation, order generation, ML, LLM
 runtime usage, strategy validation claims, profitability claims,
 trading-readiness claims, or trading-path behavior.
 
+Phase 45 adds `algotrader.research.price_snapshot_manifest` as a metadata-only
+manifest for pinned local historical price snapshots. `LocalPriceSnapshotManifest`
+records source name/type, normalized symbol, file name, file sha256, snapshot
+fingerprint, date range, row count, adjustment policy, creation date, strict
+local-only status, normal-pytest ineligibility, and limitations.
+
+`build_local_price_snapshot_manifest(...)` accepts an already validated
+`HistoricalPriceSnapshot`, derives symbol, start date, end date, row count, and
+the deterministic snapshot fingerprint, and combines them with caller-supplied
+provenance metadata. It does not read files, load CSVs, persist JSON, inspect
+local directories, include raw bar contents, include paths, or mutate snapshots
+or bars. `to_dict()` and `from_dict(...)` round-trip JSON-compatible primitive
+metadata with dates serialized as `YYYY-MM-DD` and limitations serialized as
+lists.
+
+This manifest is provenance metadata only. It adds no raw data, file I/O, JSON
+file persistence, pandas, numpy, yfinance, vectorbt, QuantConnect, vendor SDK,
+API call, network access, ingestion pipeline, benchmark comparison, backtesting
+engine, broker/runtime/scheduler behavior, signal/evaluator behavior,
+portfolio mutation, order generation, ML, LLM runtime usage, strategy
+validation claims, profitability claims, trading-readiness claims, or
+trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

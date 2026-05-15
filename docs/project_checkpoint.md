@@ -8886,6 +8886,13 @@ Safe next tasks include:
   pipelines, benchmark comparison, backtesting, signal/evaluator behavior,
   broker/runtime behavior, portfolio mutation, order generation, ML/LLM
   runtime usage, strategy validation, and trading behavior
+- Phase 45 adds a pinned local price snapshot manifest that records source
+  metadata, file hashes, snapshot fingerprints, date ranges, row counts,
+  adjustment policy, local-only status, normal-pytest ineligibility, and
+  limitations without reading files, committing raw data, adding persistence,
+  connecting to vendor/data dependencies, or introducing ingestion, benchmark,
+  backtest, signal/evaluator, broker/runtime, portfolio, order, ML/LLM,
+  strategy validation, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
