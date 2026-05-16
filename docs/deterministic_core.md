@@ -2823,6 +2823,17 @@ evaluator, portfolio engine, ML/LLM runtime usage, strategy validation claim,
 profitability claim, or trading behavior. Normal pytest remains offline and
 credential-free, and unit tests use synthetic mocked payloads only.
 
+Phase 45 - External SPY Price Parity Check adds
+`scripts/research/check_spy_price_parity.py` as a local-only advisory utility.
+It compares calendar-year close-price returns for overlapping years between an
+explicit local snapshot CSV and an explicit manually supplied reference CSV,
+reports local price return, reference price return, and basis-point
+differences, and optionally writes only the markdown report. It fetches
+nothing, commits no raw external data, adds no vendor abstraction, requires no
+`.data/` path in tests, constructs no total-return series, handles no dividends
+or corporate actions, validates no strategy, and makes no trading
+recommendation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

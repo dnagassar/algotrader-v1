@@ -8958,6 +8958,15 @@ Safe next tasks include:
   confirmed, JSON sidecars carry the same basis/provenance labels, and
   unsupported policies or unusable total-return adjusted-close values fail
   before report output
+- Phase 45 - External SPY Price Parity Check adds a local-only
+  `scripts/research/check_spy_price_parity.py` utility that compares
+  close-price calendar-year returns between an explicit local snapshot CSV and
+  an explicit manually supplied reference CSV, prints an advisory markdown
+  table with basis-point differences, optionally writes only that markdown
+  report, and adds no raw external data, automatic fetch, vendor abstraction,
+  normal-pytest network call, data-directory dependency, strategy validation,
+  total-return construction, dividend/corporate-action handling, or trading
+  recommendation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
