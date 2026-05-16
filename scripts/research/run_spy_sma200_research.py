@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import sys
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -18,14 +19,17 @@ if str(_SRC_PATH) not in sys.path:
 from algotrader.errors import ValidationError
 from algotrader.research.daily_backtest import (  # noqa: E402
     DailyBacktestAssumptions,
+    DailyExposure,
     DailyBacktestResult,
     run_daily_backtest,
 )
 from algotrader.research.price_snapshot import (  # noqa: E402
+    HistoricalPriceSnapshot,
     load_historical_price_snapshot_csv,
 )
 from algotrader.research.price_snapshot_manifest import (  # noqa: E402
     ADJUSTMENT_POLICY_ADJUSTED_CLOSE,
+    ADJUSTMENT_POLICY_TOTAL_RETURN,
     SOURCE_TYPE_MANUAL_DOWNLOAD,
     LocalPriceSnapshotManifest,
     build_local_price_snapshot_manifest,
@@ -56,10 +60,15 @@ _RULE_LINES = (
     "The trailing SMA is computed from the 200 adjusted_close values through the current bar.",
     "Backtest applies exposure to next day return through previous-exposure convention.",
 )
+_BASELINE_LINES = (
+    "Buy-and-hold baseline uses the same loaded local snapshot as the SMA-200 run.",
+    "Buy-and-hold exposure is 1 on every loaded bar.",
+    "The first bar has zero asset return under the daily backtest convention.",
+)
 _LIMITATION_LINES = (
     "Local snapshot only.",
     "Source not approved.",
-    "No benchmark comparison yet.",
+    "No external benchmark, second symbol, or second snapshot comparison.",
     "No parameter sweep.",
     "No transaction-cost realism unless assumptions are explicitly set.",
     "Not validated evidence.",
@@ -109,11 +118,30 @@ def run_spy_sma200_research(
         limitations=_LIMITATION_LINES,
     )
     exposures = build_sma_200_daily_exposures(snapshot)
+    buy_and_hold_exposures = _build_buy_and_hold_daily_exposures(snapshot)
     result = run_daily_backtest(snapshot, exposures, assumptions)
-    report = render_spy_sma200_report(manifest=manifest, result=result)
+    buy_and_hold_result = run_daily_backtest(
+        snapshot,
+        buy_and_hold_exposures,
+        assumptions,
+    )
+    report = render_spy_sma200_report(
+        manifest=manifest,
+        result=result,
+        buy_and_hold_result=buy_and_hold_result,
+    )
 
     if checked_output_path is not None:
         checked_output_path.write_text(report, encoding="utf-8")
+        json_output_path = _json_sidecar_path_value(checked_output_path)
+        json_output_path.write_text(
+            render_spy_sma200_report_json(
+                manifest=manifest,
+                result=result,
+                buy_and_hold_result=buy_and_hold_result,
+            ),
+            encoding="utf-8",
+        )
 
     return report
 
@@ -137,8 +165,10 @@ def render_spy_sma200_report(
     *,
     manifest: LocalPriceSnapshotManifest,
     result: DailyBacktestResult,
+    buy_and_hold_result: DailyBacktestResult,
 ) -> str:
     """Render a metadata-only markdown research report."""
+    return_metric_name = _return_metric_name(manifest)
     lines = [
         f"# {REPORT_TITLE}",
         "",
@@ -162,13 +192,22 @@ def render_spy_sma200_report(
         "## Rule",
         *[f"- {line}" for line in _RULE_LINES],
         "",
+        "## Baseline",
+        *[f"- {line}" for line in _BASELINE_LINES],
+        "",
         "## Metrics",
-        f"- Starting equity: {_decimal_text(result.starting_equity)}",
-        f"- Ending equity: {_decimal_text(result.ending_equity)}",
-        f"- Total return: {_decimal_text(result.total_return)}",
-        f"- Max drawdown: {_decimal_text(result.max_drawdown)}",
-        f"- Exposure ratio: {_decimal_text(result.exposure_ratio)}",
-        f"- Turnover: {_decimal_text(result.turnover)}",
+        f"- return_basis: {return_metric_name}",
+        f"- starting_equity: {_decimal_text(result.starting_equity)}",
+        f"- ending_equity_strategy: {_decimal_text(result.ending_equity)}",
+        f"- ending_equity_buy_and_hold: {_decimal_text(buy_and_hold_result.ending_equity)}",
+        f"- {return_metric_name}_strategy: {_decimal_text(result.total_return)}",
+        f"- {return_metric_name}_buy_and_hold: {_decimal_text(buy_and_hold_result.total_return)}",
+        f"- max_drawdown_strategy: {_decimal_text(result.max_drawdown)}",
+        f"- max_drawdown_buy_and_hold: {_decimal_text(buy_and_hold_result.max_drawdown)}",
+        f"- exposure_ratio_strategy: {_decimal_text(result.exposure_ratio)}",
+        f"- exposure_ratio_buy_and_hold: {_decimal_text(buy_and_hold_result.exposure_ratio)}",
+        f"- turnover_strategy: {_decimal_text(result.turnover)}",
+        f"- turnover_buy_and_hold: {_decimal_text(buy_and_hold_result.turnover)}",
         "",
         "## Limitations",
         *[f"- {line}" for line in _LIMITATION_LINES],
@@ -178,6 +217,21 @@ def render_spy_sma200_report(
         "",
     ]
     return "\n".join(lines)
+
+
+def render_spy_sma200_report_json(
+    *,
+    manifest: LocalPriceSnapshotManifest,
+    result: DailyBacktestResult,
+    buy_and_hold_result: DailyBacktestResult,
+) -> str:
+    """Render deterministic JSON sidecar text without raw bar data."""
+    payload = _report_payload(
+        manifest=manifest,
+        result=result,
+        buy_and_hold_result=buy_and_hold_result,
+    )
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -299,8 +353,82 @@ def _output_path_value(output_path: str | Path | None) -> Path | None:
     checked_path = Path(output_path).expanduser().resolve()
     if any(part == ".data" for part in checked_path.parts):
         raise ValidationError("output path must not point inside .data/.")
+    if checked_path.suffix.lower() == ".json":
+        raise ValidationError("output path must be the markdown report path, not .json.")
 
     return checked_path
+
+
+def _json_sidecar_path_value(output_path: Path) -> Path:
+    sidecar_path = output_path.with_suffix(".json")
+    if sidecar_path == output_path:
+        raise ValidationError("JSON sidecar path must be separate from markdown output.")
+
+    return sidecar_path
+
+
+def _build_buy_and_hold_daily_exposures(
+    snapshot: HistoricalPriceSnapshot,
+) -> tuple[DailyExposure, ...]:
+    return tuple(
+        DailyExposure(date=bar.date, exposure=Decimal("1")) for bar in snapshot.bars
+    )
+
+
+def _report_payload(
+    *,
+    manifest: LocalPriceSnapshotManifest,
+    result: DailyBacktestResult,
+    buy_and_hold_result: DailyBacktestResult,
+) -> dict[str, object]:
+    return_metric_name = _return_metric_name(manifest)
+    return {
+        "baseline": list(_BASELINE_LINES),
+        "disclaimer": _DISCLAIMER,
+        "limitations": list(_LIMITATION_LINES),
+        "metrics": _metrics_payload(
+            return_metric_name=return_metric_name,
+            result=result,
+            buy_and_hold_result=buy_and_hold_result,
+        ),
+        "provenance": manifest.to_dict(),
+        "report_title": REPORT_TITLE,
+        "return_basis": return_metric_name,
+        "rule": list(_RULE_LINES),
+        "verdict": _VERDICT,
+    }
+
+
+def _metrics_payload(
+    *,
+    return_metric_name: str,
+    result: DailyBacktestResult,
+    buy_and_hold_result: DailyBacktestResult,
+) -> dict[str, str]:
+    return {
+        "ending_equity_buy_and_hold": _decimal_text(buy_and_hold_result.ending_equity),
+        "ending_equity_strategy": _decimal_text(result.ending_equity),
+        "exposure_ratio_buy_and_hold": _decimal_text(
+            buy_and_hold_result.exposure_ratio
+        ),
+        "exposure_ratio_strategy": _decimal_text(result.exposure_ratio),
+        "max_drawdown_buy_and_hold": _decimal_text(buy_and_hold_result.max_drawdown),
+        "max_drawdown_strategy": _decimal_text(result.max_drawdown),
+        f"{return_metric_name}_buy_and_hold": _decimal_text(
+            buy_and_hold_result.total_return
+        ),
+        f"{return_metric_name}_strategy": _decimal_text(result.total_return),
+        "starting_equity": _decimal_text(result.starting_equity),
+        "turnover_buy_and_hold": _decimal_text(buy_and_hold_result.turnover),
+        "turnover_strategy": _decimal_text(result.turnover),
+    }
+
+
+def _return_metric_name(manifest: LocalPriceSnapshotManifest) -> str:
+    if manifest.adjustment_policy == ADJUSTMENT_POLICY_TOTAL_RETURN:
+        return "total_return"
+
+    return "price_return"
 
 
 def _decimal_value(value: Decimal | str, field_name: str) -> Decimal:

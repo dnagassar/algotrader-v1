@@ -318,6 +318,24 @@ def test_generated_exposures_feed_daily_backtest_with_previous_exposure_rule() -
     assert result.points[200].equity == Decimal("1100.0")
 
 
+def test_sma200_exposure_is_t_plus_1_not_t() -> None:
+    source_snapshot = snapshot_from_prices(
+        tuple(Decimal("100") for _ in range(199))
+        + (Decimal("201"), Decimal("202"))
+    )
+    exposures = build_sma_200_daily_exposures(source_snapshot)
+    result = run_daily_backtest(source_snapshot, exposures, assumptions())
+    crossing_index = 199
+    applied_sma_exposures = (Decimal("0"),) + tuple(
+        exposure.exposure for exposure in exposures[:-1]
+    )
+
+    assert applied_sma_exposures[crossing_index] == Decimal("0")
+    assert applied_sma_exposures[crossing_index + 1] == Decimal("1")
+    assert result.points[crossing_index].strategy_return_before_costs == Decimal("0")
+    assert result.points[crossing_index + 1].strategy_return_before_costs > Decimal("0")
+
+
 def test_module_imports_no_vendor_network_runtime_or_trading_path_modules() -> None:
     violations = [
         module

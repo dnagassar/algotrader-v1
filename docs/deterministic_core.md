@@ -2772,15 +2772,20 @@ local-only SPY SMA-200 research-run path. It requires an explicit CSV path,
 accepts only optional local assumptions and provenance metadata, rejects CSV
 paths outside `.data/research_snapshots/` unless an override flag is supplied,
 computes a stdlib file sha256, builds a `LocalPriceSnapshotManifest`, builds
-SMA-200 daily exposures, runs the existing deterministic daily backtest, and
-renders a markdown report to stdout unless an explicit non-`.data/` output path
-is supplied.
+SMA-200 daily exposures plus a same-snapshot all-one buy-and-hold baseline,
+runs the existing deterministic daily backtest for both paths, and renders a
+markdown report to stdout unless an explicit non-`.data/` output path is
+supplied. When a markdown output path is supplied, the runner also writes a
+sibling deterministic JSON sidecar with sorted keys and no raw bar data.
 
 The report contains an advisory-only disclaimer, source name/type, CSV file
 name only, file sha256, snapshot fingerprint, date range, row count,
-adjustment policy, assumptions, the SMA-200 rule, aggregate descriptive
-metrics, limitations, and a non-approval verdict. It never writes raw CSV rows
-into the report and does not scan data directories or fetch data. The companion
+adjustment policy, assumptions, the SMA-200 rule, the buy-and-hold convention,
+aggregate descriptive metrics, limitations, and a non-approval verdict. Return
+metrics are labeled as price-return unless the snapshot adjustment policy is
+explicitly `total_return`; the report presents numbers only and makes no
+strategy outperformance claim. It never writes raw CSV rows into the report or
+JSON sidecar and does not scan data directories or fetch data. The companion
 `research/log/` README and template make research logs advisory-only and require
 fingerprints/provenance before any local report is trusted.
 

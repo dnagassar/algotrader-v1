@@ -8913,12 +8913,16 @@ Safe next tasks include:
   profitability claim, or trading behavior
 - Phase 48 adds the first local SPY SMA-200 research-run script and markdown
   log template. The path requires an explicit ignored CSV snapshot, records
-  only metadata, hashes, assumptions, rule text, aggregate metrics,
-  limitations, and an advisory verdict, and keeps raw data, network/API/vendor
-  access, benchmark comparison, production signal/evaluator behavior,
-  broker/runtime behavior, portfolio engine behavior beyond the existing local
-  equity curve, order generation, ML/LLM runtime usage, strategy validation,
-  profitability claims, and trading behavior out of scope
+  only metadata, hashes, assumptions, rule text, aggregate SMA-200 and
+  same-snapshot buy-and-hold baseline metrics, limitations, and an advisory
+  verdict, emits a sibling deterministic JSON sidecar when a markdown output
+  path is supplied, labels returns as price-return unless the snapshot
+  adjustment policy is explicitly `total_return`, and keeps raw data,
+  network/API/vendor access, external benchmark comparison, production
+  signal/evaluator behavior, broker/runtime behavior, portfolio engine
+  behavior beyond the existing local equity curve, order generation, ML/LLM
+  runtime usage, strategy validation, profitability claims, and trading
+  behavior out of scope
 - Phase 49 adds an explicitly gated Alpaca Market Data daily snapshot fetcher
   under `scripts/research/`. The path requires `--allow-network`, explicit
   start/end dates, explicit output path, environment-only credentials, ignored
@@ -8941,6 +8945,13 @@ Safe next tasks include:
   process environment variables. This adds no automatic runtime dotenv
   loading, dependencies, network calls, broker/trading behavior, production
   credential flow, or weakened pytest network/credential gates
+- Phase 51 updates the gated Alpaca Market Data daily snapshot fetcher with an
+  explicit `--feed` option defaulting to `iex`, preserving `sip` and
+  `delayed_sip` as opt-in request feeds and adding metadata-only feed reporting.
+  HTTP 403 failures now return credential-redacted troubleshooting guidance for
+  invalid/stale keys, missing market-data permissions, unavailable selected
+  feeds, and trying `--feed iex` for basic access, while normal pytest remains
+  mocked, offline, and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

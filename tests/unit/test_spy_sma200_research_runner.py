@@ -1,6 +1,7 @@
 import ast
 import hashlib
 import importlib.util
+import json
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -221,14 +222,23 @@ def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
     assert "Exposure = 1 when adjusted_close > trailing 200-day SMA." in report
     assert "First 199 bars are exposure 0." in report
     assert "previous-exposure convention" in report
+    assert "Buy-and-hold baseline uses the same loaded local snapshot" in report
+    assert "Buy-and-hold exposure is 1 on every loaded bar." in report
+    assert "Total return:" not in report
 
     for metric in (
-        "Starting equity",
-        "Ending equity",
-        "Total return",
-        "Max drawdown",
-        "Exposure ratio",
-        "Turnover",
+        "return_basis",
+        "starting_equity",
+        "ending_equity_strategy",
+        "ending_equity_buy_and_hold",
+        "price_return_strategy",
+        "price_return_buy_and_hold",
+        "max_drawdown_strategy",
+        "max_drawdown_buy_and_hold",
+        "exposure_ratio_strategy",
+        "exposure_ratio_buy_and_hold",
+        "turnover_strategy",
+        "turnover_buy_and_hold",
     ):
         assert f"- {metric}: " in report
 
@@ -261,6 +271,26 @@ def test_custom_assumptions_and_metadata_are_reflected_in_report(tmp_path: Path)
     assert "- Source name: local_test_snapshot" in report
     assert "- Source type: synthetic_test" in report
     assert "- Adjustment policy: raw" in report
+    assert "- return_basis: price_return" in report
+    assert "- price_return_strategy: " in report
+    assert "- total_return_strategy: " not in report
+
+
+def test_total_return_label_is_used_only_for_total_return_policy(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+
+    report = runner.run_spy_sma200_research(
+        csv_path,
+        adjustment_policy="total_return",
+        repo_root=tmp_path,
+    )
+
+    assert "- Adjustment policy: total_return" in report
+    assert "- return_basis: total_return" in report
+    assert "- total_return_strategy: " in report
+    assert "- total_return_buy_and_hold: " in report
+    assert "- price_return_strategy: " not in report
 
 
 def test_missing_csv_path_is_rejected(tmp_path: Path) -> None:
@@ -290,11 +320,14 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = snapshot_path(tmp_path)
     output_path = tmp_path / "spy_sma200_report.md"
+    json_output_path = tmp_path / "spy_sma200_report.json"
     implicit_output_path = tmp_path / "implicit_report.md"
+    implicit_json_output_path = tmp_path / "implicit_report.json"
 
     report = runner.run_spy_sma200_research(csv_path, repo_root=tmp_path)
 
     assert not implicit_output_path.exists()
+    assert not implicit_json_output_path.exists()
 
     written_report = runner.run_spy_sma200_research(
         csv_path,
@@ -304,6 +337,103 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
 
     assert output_path.read_text(encoding="utf-8") == written_report
     assert written_report == report
+    sidecar = json.loads(json_output_path.read_text(encoding="utf-8"))
+    assert sidecar["report_title"] == "SPY SMA-200 Local Research Run"
+    assert sidecar["return_basis"] == "price_return"
+    assert sidecar["provenance"]["file_name"] == "SPY_daily.csv"
+    assert sidecar["provenance"]["file_sha256"] == hashlib.sha256(
+        csv_path.read_bytes()
+    ).hexdigest()
+    assert sidecar["metrics"]["price_return_strategy"]
+    assert sidecar["metrics"]["price_return_buy_and_hold"]
+    assert sidecar["metrics"]["max_drawdown_strategy"]
+    assert sidecar["metrics"]["max_drawdown_buy_and_hold"]
+    assert sidecar["metrics"]["exposure_ratio_strategy"]
+    assert sidecar["metrics"]["exposure_ratio_buy_and_hold"] == "1"
+    assert sidecar["metrics"]["turnover_strategy"]
+    assert sidecar["metrics"]["turnover_buy_and_hold"] == "1"
+    assert "points" not in sidecar
+    assert RAW_FIRST_ROW not in json_output_path.read_text(encoding="utf-8")
+    assert "900001" not in json_output_path.read_text(encoding="utf-8")
+
+
+def test_output_path_json_suffix_is_rejected(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+
+    with pytest.raises(ValidationError, match="markdown report path"):
+        runner.run_spy_sma200_research(
+            csv_path,
+            output_path=tmp_path / "spy_sma200_report.json",
+            repo_root=tmp_path,
+        )
+
+
+def test_buy_and_hold_exposure_ratio_is_one(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        rows=3,
+    )
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    result = runner.run_daily_backtest(
+        snapshot,
+        runner._build_buy_and_hold_daily_exposures(snapshot),
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("1000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+
+    assert result.exposure_ratio == Decimal("1")
+
+
+def test_buy_and_hold_price_return_matches_last_over_first_minus_one_within_tolerance(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        rows=3,
+    )
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    result = runner.run_daily_backtest(
+        snapshot,
+        runner._build_buy_and_hold_daily_exposures(snapshot),
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("1000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+    expected_return = (
+        snapshot.bars[-1].adjusted_close / snapshot.bars[0].adjusted_close
+    ) - Decimal("1")
+
+    assert abs(result.total_return - expected_return) <= Decimal("0.0000000001")
+
+
+def test_buy_and_hold_max_drawdown_is_zero_on_monotonically_increasing_series(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        rows=3,
+    )
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    result = runner.run_daily_backtest(
+        snapshot,
+        runner._build_buy_and_hold_daily_exposures(snapshot),
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("1000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+
+    assert result.max_drawdown == Decimal("0")
 
 
 def test_main_renders_report_to_stdout_by_default(
@@ -370,7 +500,7 @@ def test_runner_ast_guardrails_against_network_vendor_runtime_and_discovery() ->
     assert call_violations == []
 
 
-def test_runner_has_only_explicit_markdown_output_write() -> None:
+def test_runner_has_only_explicit_report_and_sidecar_output_writes() -> None:
     write_text_calls = [
         node
         for node in ast.walk(_tree())
@@ -378,8 +508,9 @@ def test_runner_has_only_explicit_markdown_output_write() -> None:
     ]
     source = MODULE_PATH.read_text(encoding="utf-8")
 
-    assert len(write_text_calls) == 1
+    assert len(write_text_calls) == 2
     assert "if checked_output_path is not None:\n        checked_output_path.write_text" in source
+    assert "json_output_path.write_text" in source
 
 
 def _snapshot_fingerprint_from(report: str) -> str:
