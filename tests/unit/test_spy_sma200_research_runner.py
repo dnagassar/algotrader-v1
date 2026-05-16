@@ -159,6 +159,7 @@ def write_synthetic_spy_csv(
     *,
     symbol: str = "SPY",
     rows: int = 205,
+    blank_adjusted_close: bool = False,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     start = date(2025, 1, 1)
@@ -170,6 +171,7 @@ def write_synthetic_spy_csv(
         high = price + Decimal("1.00")
         low = price - Decimal("1.00")
         volume = 900001 + index
+        adjusted_close = "" if blank_adjusted_close else f"{price:.2f}"
         lines.append(
             ",".join(
                 (
@@ -179,7 +181,7 @@ def write_synthetic_spy_csv(
                     f"{high:.2f}",
                     f"{low:.2f}",
                     f"{price:.2f}",
-                    f"{price:.2f}",
+                    adjusted_close,
                     str(volume),
                 )
             )
@@ -213,13 +215,16 @@ def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
     assert "- CSV file: SPY_daily.csv" in report
     assert "- Date range: 2025-01-01 to 2025-07-24" in report
     assert "- Row count: 205" in report
-    assert "- Adjustment policy: adjusted_close" in report
+    assert "- Adjustment policy: unknown" in report
+    assert "- Return basis: price_return" in report
+    assert "- Adjusted close available: false" in report
+    assert "- Adjusted close source: close_price_fallback" in report
     assert "- Source name: manual_local_snapshot" in report
     assert "- Source type: manual_download" in report
     assert "- Initial equity: 10000" in report
     assert "- Fee bps: 0" in report
     assert "- Slippage bps: 0" in report
-    assert "Exposure = 1 when adjusted_close > trailing 200-day SMA." in report
+    assert "Exposure = 1 when the selected close series > trailing 200-day SMA." in report
     assert "First 199 bars are exposure 0." in report
     assert "previous-exposure convention" in report
     assert "Buy-and-hold baseline uses the same loaded local snapshot" in report
@@ -271,6 +276,8 @@ def test_custom_assumptions_and_metadata_are_reflected_in_report(tmp_path: Path)
     assert "- Source name: local_test_snapshot" in report
     assert "- Source type: synthetic_test" in report
     assert "- Adjustment policy: raw" in report
+    assert "- Adjusted close available: false" in report
+    assert "- Adjusted close source: close_price_fallback" in report
     assert "- return_basis: price_return" in report
     assert "- price_return_strategy: " in report
     assert "- total_return_strategy: " not in report
@@ -287,10 +294,101 @@ def test_total_return_label_is_used_only_for_total_return_policy(tmp_path: Path)
     )
 
     assert "- Adjustment policy: total_return" in report
+    assert "- Return basis: total_return" in report
+    assert "- Adjusted close available: true" in report
+    assert "- Adjusted close source: true_adjusted_close" in report
     assert "- return_basis: total_return" in report
     assert "- total_return_strategy: " in report
     assert "- total_return_buy_and_hold: " in report
     assert "- price_return_strategy: " not in report
+
+
+def test_unknown_adjustment_policy_reports_price_return_not_total_return(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+
+    report = runner.run_spy_sma200_research(
+        csv_path,
+        adjustment_policy="unknown",
+        repo_root=tmp_path,
+    )
+
+    assert "- Adjustment policy: unknown" in report
+    assert "- Return basis: price_return" in report
+    assert "- Adjusted close available: false" in report
+    assert "- Adjusted close source: close_price_fallback" in report
+    assert "- return_basis: price_return" in report
+    assert "- price_return_strategy: " in report
+    assert "- price_return_buy_and_hold: " in report
+    assert "total_return" not in report
+
+
+def test_unknown_adjustment_policy_json_sidecar_reports_price_return_basis(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    output_path = tmp_path / "spy_sma200_report.md"
+    json_output_path = tmp_path / "spy_sma200_report.json"
+
+    runner.run_spy_sma200_research(
+        csv_path,
+        adjustment_policy="unknown",
+        output_path=output_path,
+        repo_root=tmp_path,
+    )
+
+    sidecar = json.loads(json_output_path.read_text(encoding="utf-8"))
+    assert sidecar["adjustment_policy"] == "unknown"
+    assert sidecar["return_basis"] == "price_return"
+    assert sidecar["adjusted_close_available"] is False
+    assert sidecar["adjusted_close_source"] == "close_price_fallback"
+    assert sidecar["provenance"]["adjustment_policy"] == "unknown"
+    assert "price_return_strategy" in sidecar["metrics"]
+    assert "price_return_buy_and_hold" in sidecar["metrics"]
+    assert "total_return_strategy" not in sidecar["metrics"]
+    assert "total_return_buy_and_hold" not in sidecar["metrics"]
+
+
+def test_total_return_policy_requires_usable_adjusted_close(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        blank_adjusted_close=True,
+    )
+    output_path = tmp_path / "spy_sma200_report.md"
+
+    with pytest.raises(ValidationError, match="adjusted_close"):
+        runner.run_spy_sma200_research(
+            csv_path,
+            adjustment_policy="total_return",
+            output_path=output_path,
+            repo_root=tmp_path,
+        )
+
+    assert not output_path.exists()
+    assert not output_path.with_suffix(".json").exists()
+
+
+def test_invalid_adjustment_policy_is_rejected_before_report_output(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    output_path = tmp_path / "spy_sma200_report.md"
+
+    with pytest.raises(ValidationError, match="adjustment_policy"):
+        runner.run_spy_sma200_research(
+            csv_path,
+            adjustment_policy="split_adjusted",
+            output_path=output_path,
+            repo_root=tmp_path,
+        )
+
+    assert not output_path.exists()
+    assert not output_path.with_suffix(".json").exists()
 
 
 def test_missing_csv_path_is_rejected(tmp_path: Path) -> None:
@@ -339,8 +437,12 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     assert written_report == report
     sidecar = json.loads(json_output_path.read_text(encoding="utf-8"))
     assert sidecar["report_title"] == "SPY SMA-200 Local Research Run"
+    assert sidecar["adjustment_policy"] == "unknown"
     assert sidecar["return_basis"] == "price_return"
+    assert sidecar["adjusted_close_available"] is False
+    assert sidecar["adjusted_close_source"] == "close_price_fallback"
     assert sidecar["provenance"]["file_name"] == "SPY_daily.csv"
+    assert sidecar["provenance"]["adjustment_policy"] == "unknown"
     assert sidecar["provenance"]["file_sha256"] == hashlib.sha256(
         csv_path.read_bytes()
     ).hexdigest()

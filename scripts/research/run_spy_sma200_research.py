@@ -28,8 +28,11 @@ from algotrader.research.price_snapshot import (  # noqa: E402
     load_historical_price_snapshot_csv,
 )
 from algotrader.research.price_snapshot_manifest import (  # noqa: E402
+    ADJUSTMENT_POLICIES,
     ADJUSTMENT_POLICY_ADJUSTED_CLOSE,
+    ADJUSTMENT_POLICY_RAW,
     ADJUSTMENT_POLICY_TOTAL_RETURN,
+    ADJUSTMENT_POLICY_UNKNOWN,
     SOURCE_TYPE_MANUAL_DOWNLOAD,
     LocalPriceSnapshotManifest,
     build_local_price_snapshot_manifest,
@@ -42,11 +45,15 @@ DEFAULT_FEE_BPS = Decimal("0")
 DEFAULT_SLIPPAGE_BPS = Decimal("0")
 DEFAULT_SOURCE_NAME = "manual_local_snapshot"
 DEFAULT_SOURCE_TYPE = SOURCE_TYPE_MANUAL_DOWNLOAD
-DEFAULT_ADJUSTMENT_POLICY = ADJUSTMENT_POLICY_ADJUSTED_CLOSE
+DEFAULT_ADJUSTMENT_POLICY = ADJUSTMENT_POLICY_UNKNOWN
 REPORT_TITLE = "SPY SMA-200 Local Research Run"
 _SNAPSHOT_SYMBOL = "SPY"
 _DATA_DIR = Path(".data") / "research_snapshots"
 _HASH_CHUNK_SIZE = 1024 * 1024
+_RETURN_BASIS_PRICE_RETURN = "price_return"
+_RETURN_BASIS_TOTAL_RETURN = "total_return"
+_ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK = "close_price_fallback"
+_ADJUSTED_CLOSE_SOURCE_TRUE_ADJUSTED = "true_adjusted_close"
 
 _DISCLAIMER = (
     "Advisory only: this local report is not validated evidence, not approved, "
@@ -54,10 +61,10 @@ _DISCLAIMER = (
     "signal/evaluator behavior or a trading workflow."
 )
 _RULE_LINES = (
-    "Exposure = 1 when adjusted_close > trailing 200-day SMA.",
+    "Exposure = 1 when the selected close series > trailing 200-day SMA.",
     "Exposure = 0 otherwise.",
     "First 199 bars are exposure 0.",
-    "The trailing SMA is computed from the 200 adjusted_close values through the current bar.",
+    "The trailing SMA is computed from the 200 selected close values through the current bar.",
     "Backtest applies exposure to next day return through previous-exposure convention.",
 )
 _BASELINE_LINES = (
@@ -99,6 +106,7 @@ def run_spy_sma200_research(
         allow_outside_data_dir=allow_outside_data_dir,
     )
     checked_output_path = _output_path_value(output_path)
+    checked_adjustment_policy = _adjustment_policy_value(adjustment_policy)
     assumptions = DailyBacktestAssumptions(
         initial_equity=_decimal_value(initial_equity, "initial_equity"),
         fee_bps=_decimal_value(fee_bps, "fee_bps"),
@@ -106,6 +114,7 @@ def run_spy_sma200_research(
     )
 
     snapshot = load_historical_price_snapshot_csv(checked_csv_path, _SNAPSHOT_SYMBOL)
+    _validate_adjustment_policy_snapshot(snapshot, checked_adjustment_policy)
     file_sha256 = compute_file_sha256(checked_csv_path)
     manifest = build_local_price_snapshot_manifest(
         snapshot,
@@ -113,7 +122,7 @@ def run_spy_sma200_research(
         source_type=source_type,
         file_name=checked_csv_path.name,
         file_sha256=file_sha256,
-        adjustment_policy=adjustment_policy,
+        adjustment_policy=checked_adjustment_policy,
         created_at=snapshot.bars[-1].date,
         limitations=_LIMITATION_LINES,
     )
@@ -169,6 +178,8 @@ def render_spy_sma200_report(
 ) -> str:
     """Render a metadata-only markdown research report."""
     return_metric_name = _return_metric_name(manifest)
+    adjusted_close_available = _adjusted_close_available(manifest)
+    adjusted_close_source = _adjusted_close_source(manifest)
     lines = [
         f"# {REPORT_TITLE}",
         "",
@@ -183,6 +194,9 @@ def render_spy_sma200_report(
         f"- Date range: {manifest.start_date.isoformat()} to {manifest.end_date.isoformat()}",
         f"- Row count: {manifest.row_count}",
         f"- Adjustment policy: {manifest.adjustment_policy}",
+        f"- Return basis: {return_metric_name}",
+        f"- Adjusted close available: {str(adjusted_close_available).lower()}",
+        f"- Adjusted close source: {adjusted_close_source}",
         "",
         "## Assumptions",
         f"- Initial equity: {_decimal_text(result.assumptions.initial_equity)}",
@@ -383,6 +397,9 @@ def _report_payload(
 ) -> dict[str, object]:
     return_metric_name = _return_metric_name(manifest)
     return {
+        "adjusted_close_available": _adjusted_close_available(manifest),
+        "adjusted_close_source": _adjusted_close_source(manifest),
+        "adjustment_policy": manifest.adjustment_policy,
         "baseline": list(_BASELINE_LINES),
         "disclaimer": _DISCLAIMER,
         "limitations": list(_LIMITATION_LINES),
@@ -426,9 +443,56 @@ def _metrics_payload(
 
 def _return_metric_name(manifest: LocalPriceSnapshotManifest) -> str:
     if manifest.adjustment_policy == ADJUSTMENT_POLICY_TOTAL_RETURN:
-        return "total_return"
+        return _RETURN_BASIS_TOTAL_RETURN
 
-    return "price_return"
+    return _RETURN_BASIS_PRICE_RETURN
+
+
+def _adjusted_close_available(manifest: LocalPriceSnapshotManifest) -> bool:
+    return manifest.adjustment_policy in (
+        ADJUSTMENT_POLICY_ADJUSTED_CLOSE,
+        ADJUSTMENT_POLICY_TOTAL_RETURN,
+    )
+
+
+def _adjusted_close_source(manifest: LocalPriceSnapshotManifest) -> str:
+    if manifest.adjustment_policy in (
+        ADJUSTMENT_POLICY_RAW,
+        ADJUSTMENT_POLICY_UNKNOWN,
+    ):
+        return _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
+
+    return _ADJUSTED_CLOSE_SOURCE_TRUE_ADJUSTED
+
+
+def _adjustment_policy_value(value: str) -> str:
+    allowed = ", ".join(ADJUSTMENT_POLICIES)
+    if not isinstance(value, str):
+        raise ValidationError(f"adjustment_policy must be one of: {allowed}.")
+
+    normalized = value.strip().lower()
+    if normalized not in ADJUSTMENT_POLICIES:
+        raise ValidationError(f"adjustment_policy must be one of: {allowed}.")
+
+    return normalized
+
+
+def _validate_adjustment_policy_snapshot(
+    snapshot: HistoricalPriceSnapshot,
+    adjustment_policy: str,
+) -> None:
+    if adjustment_policy != ADJUSTMENT_POLICY_TOTAL_RETURN:
+        return
+
+    for bar in snapshot.bars:
+        if (
+            not isinstance(bar.adjusted_close, Decimal)
+            or not bar.adjusted_close.is_finite()
+            or bar.adjusted_close <= 0
+        ):
+            raise ValidationError(
+                "adjustment_policy=total_return requires usable adjusted_close values."
+            )
 
 
 def _decimal_value(value: Decimal | str, field_name: str) -> Decimal:

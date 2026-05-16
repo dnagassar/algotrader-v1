@@ -29,6 +29,10 @@ _TIMEFRAME = "1Day"
 _ADJUSTMENT = "all"
 _DEFAULT_FEED = "iex"
 _ALLOWED_FEEDS = (_DEFAULT_FEED, "sip", "delayed_sip")
+_ADJUSTMENT_POLICY_UNKNOWN = "unknown"
+_RETURN_BASIS_PRICE_RETURN = "price_return"
+_ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK = "close_price_fallback"
+_ADJUSTED_CLOSE_SOURCE_UNCONFIRMED_VENDOR_FIELD = "unconfirmed_vendor_field"
 _CSV_COLUMNS = (
     "date",
     "open",
@@ -81,6 +85,7 @@ class SnapshotCsvRow:
     close: Decimal
     adjusted_close: Decimal
     volume: int
+    adjusted_close_source: str = _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
 
     def as_csv_dict(self) -> dict[str, str]:
         return {
@@ -103,6 +108,10 @@ class SnapshotFetchResult:
     output_path: Path
     row_count: int
     file_sha256: str
+    adjustment_policy: str = _ADJUSTMENT_POLICY_UNKNOWN
+    return_basis: str = _RETURN_BASIS_PRICE_RETURN
+    adjusted_close_available: bool = False
+    adjusted_close_source: str = _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
     adjustment_policy_limitation: str = _ADJUSTMENT_LIMITATION
 
 
@@ -327,6 +336,7 @@ def fetch_alpaca_daily_snapshot(
     )
 
     write_csv_rows(checked_output_path, rows)
+    adjusted_close_source = _snapshot_adjusted_close_source(rows)
     return SnapshotFetchResult(
         symbol=checked_symbol,
         start_date=checked_start,
@@ -335,6 +345,7 @@ def fetch_alpaca_daily_snapshot(
         output_path=checked_output_path,
         row_count=len(rows),
         file_sha256=compute_output_sha256(checked_output_path),
+        adjusted_close_source=adjusted_close_source,
     )
 
 
@@ -349,6 +360,10 @@ def render_fetch_report(result: SnapshotFetchResult) -> str:
             f"Rows written: {result.row_count}",
             f"Output CSV: {result.output_path}",
             f"File SHA-256: {result.file_sha256}",
+            f"Adjustment policy: {result.adjustment_policy}",
+            f"Return basis: {result.return_basis}",
+            f"Adjusted close available: {str(result.adjusted_close_available).lower()}",
+            f"Adjusted close source: {result.adjusted_close_source}",
             result.adjustment_policy_limitation,
             "",
         )
@@ -493,7 +508,11 @@ def _row_from_bar(bar: object, index: int) -> SnapshotCsvRow:
     high_price = _price_value(_required_bar_value(bar, ("h", "high"), index, "high"), f"bar {index} high")
     low_price = _price_value(_required_bar_value(bar, ("l", "low"), index, "low"), f"bar {index} low")
     close_price = _price_value(_required_bar_value(bar, ("c", "close"), index, "close"), f"bar {index} close")
-    adjusted_close = _optional_adjusted_close_value(bar, close_price, index)
+    adjusted_close, adjusted_close_source = _optional_adjusted_close_value(
+        bar,
+        close_price,
+        index,
+    )
     volume = _volume_value(_required_bar_value(bar, ("v", "volume"), index, "volume"), f"bar {index} volume")
     row = SnapshotCsvRow(
         date=_bar_date_value(_required_bar_value(bar, ("t", "date"), index, "date"), f"bar {index} date"),
@@ -503,6 +522,7 @@ def _row_from_bar(bar: object, index: int) -> SnapshotCsvRow:
         close=close_price,
         adjusted_close=adjusted_close,
         volume=volume,
+        adjusted_close_source=adjusted_close_source,
     )
     _validate_ohlc_relationships(row, index)
     return row
@@ -526,12 +546,25 @@ def _optional_adjusted_close_value(
     bar: Mapping[object, object],
     close_price: Decimal,
     index: int,
-) -> Decimal:
+) -> tuple[Decimal, str]:
     for name in ("adjusted_close", "adjustedClose", "adj_close", "ac"):
         if name in bar:
-            return _price_value(bar[name], f"bar {index} adjusted_close")
+            return (
+                _price_value(bar[name], f"bar {index} adjusted_close"),
+                _ADJUSTED_CLOSE_SOURCE_UNCONFIRMED_VENDOR_FIELD,
+            )
 
-    return close_price
+    return close_price, _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
+
+
+def _snapshot_adjusted_close_source(rows: Sequence[SnapshotCsvRow]) -> str:
+    if any(
+        row.adjusted_close_source == _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
+        for row in rows
+    ):
+        return _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK
+
+    return _ADJUSTED_CLOSE_SOURCE_UNCONFIRMED_VENDOR_FIELD
 
 
 def _validate_row_dates(rows: tuple[SnapshotCsvRow, ...]) -> None:

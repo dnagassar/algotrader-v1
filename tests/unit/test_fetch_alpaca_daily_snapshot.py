@@ -365,6 +365,10 @@ def test_mocked_alpaca_response_writes_required_csv_columns_and_rows(
     assert result.symbol == "SPY"
     assert result.feed == "iex"
     assert result.row_count == 2
+    assert result.adjustment_policy == "unknown"
+    assert result.return_basis == "price_return"
+    assert result.adjusted_close_available is False
+    assert result.adjusted_close_source == "close_price_fallback"
     assert result.file_sha256 == hashlib.sha256(output_path.read_bytes()).hexdigest()
     assert request.full_url.startswith("https://data.alpaca.markets/v2/stocks/SPY/bars?")
     assert query["feed"] == ["iex"]
@@ -397,6 +401,35 @@ def test_custom_feed_is_used_for_snapshot_request_and_result(tmp_path: Path) -> 
 
     assert result.feed == "sip"
     assert query["feed"] == ["sip"]
+
+
+def test_missing_adjusted_close_is_reported_as_price_close_fallback(
+    tmp_path: Path,
+) -> None:
+    fetcher = load_fetcher()
+    output_path = tmp_path / SNAPSHOT_DIR / "SPY_daily.csv"
+
+    result = fetcher.fetch_alpaca_daily_snapshot(
+        symbol="SPY",
+        start_date="2026-01-02",
+        end_date="2026-01-02",
+        output_path=output_path,
+        allow_network=True,
+        env=VALID_ENV,
+        repo_root=tmp_path,
+        opener=opener_for({"bars": [daily_bar()], "next_page_token": None}),
+    )
+    report = fetcher.render_fetch_report(result)
+
+    assert output_path.read_text(encoding="utf-8").splitlines() == [
+        CSV_HEADER,
+        "2026-01-02,100.00,101.50,99.75,100.25,100.25,123456",
+    ]
+    assert "Adjustment policy: unknown" in report
+    assert "Return basis: price_return" in report
+    assert "Adjusted close available: false" in report
+    assert "Adjusted close source: close_price_fallback" in report
+    assert "total_return" not in report
 
 
 def test_stdout_report_includes_feed_without_real_network(
@@ -433,6 +466,10 @@ def test_stdout_report_includes_feed_without_real_network(
 
     assert exit_code == 0
     assert "Feed: delayed_sip" in captured.out
+    assert "Adjustment policy: unknown" in captured.out
+    assert "Return basis: price_return" in captured.out
+    assert "Adjusted close available: false" in captured.out
+    assert "Adjusted close source: close_price_fallback" in captured.out
     assert RAW_KEY_ID not in captured.out
     assert RAW_SECRET_KEY not in captured.out
     assert captured.err == ""

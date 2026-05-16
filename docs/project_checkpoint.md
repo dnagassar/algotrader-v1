@@ -8952,6 +8952,12 @@ Safe next tasks include:
   invalid/stale keys, missing market-data permissions, unavailable selected
   feeds, and trying `--feed iex` for basic access, while normal pytest remains
   mocked, offline, and credential-free
+- Phase 44B makes local research adjustment semantics explicit: unknown
+  adjustment snapshots default to price-return reporting, `adjusted_close` is
+  labeled as a close-price fallback when true adjusted semantics are not
+  confirmed, JSON sidecars carry the same basis/provenance labels, and
+  unsupported policies or unusable total-return adjusted-close values fail
+  before report output
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
