@@ -27,6 +27,8 @@ _STOCK_BARS_PATH_TEMPLATE = "/v2/stocks/{symbol}/bars"
 _DEFAULT_LIMIT = 10000
 _TIMEFRAME = "1Day"
 _ADJUSTMENT = "all"
+_DEFAULT_FEED = "iex"
+_ALLOWED_FEEDS = (_DEFAULT_FEED, "sip", "delayed_sip")
 _CSV_COLUMNS = (
     "date",
     "open",
@@ -97,6 +99,7 @@ class SnapshotFetchResult:
     symbol: str
     start_date: date
     end_date: date
+    feed: str
     output_path: Path
     row_count: int
     file_sha256: str
@@ -114,6 +117,7 @@ def build_request_url(
     page_token: str | None = None,
     base_url: str = _MARKET_DATA_BASE_URL,
     limit: int = _DEFAULT_LIMIT,
+    feed: str = _DEFAULT_FEED,
 ) -> str:
     """Build the Alpaca Market Data historical stock bars request URL."""
     checked_symbol = _symbol_value(symbol)
@@ -121,12 +125,14 @@ def build_request_url(
     checked_end = _date_value(end_date, "end")
     _validate_date_range(checked_start, checked_end)
     checked_limit = _positive_int(limit, "limit")
+    checked_feed = _feed_value(feed)
 
     query_items: list[tuple[str, str]] = [
         ("timeframe", _TIMEFRAME),
         ("start", checked_start.isoformat()),
         ("end", checked_end.isoformat()),
         ("adjustment", _ADJUSTMENT),
+        ("feed", checked_feed),
         ("limit", str(checked_limit)),
     ]
     if page_token is not None:
@@ -241,6 +247,7 @@ def fetch_alpaca_daily_bars(
     *,
     opener: UrlOpen | None = None,
     timeout: int = 30,
+    feed: str = _DEFAULT_FEED,
 ) -> tuple[SnapshotCsvRow, ...]:
     """Fetch daily bars from the Alpaca Market Data historical stock bars endpoint."""
     if not isinstance(credentials, AlpacaCredentials):
@@ -250,6 +257,7 @@ def fetch_alpaca_daily_bars(
     checked_start = _date_value(start_date, "start")
     checked_end = _date_value(end_date, "end")
     _validate_date_range(checked_start, checked_end)
+    checked_feed = _feed_value(feed)
 
     bar_items: list[object] = []
     page_token: str | None = None
@@ -260,6 +268,7 @@ def fetch_alpaca_daily_bars(
             checked_start,
             checked_end,
             page_token=page_token,
+            feed=checked_feed,
         )
         payload = _request_json(url, credentials, opener=opener, timeout=timeout)
         page_bars = _bars_from_payload(payload)
@@ -284,6 +293,7 @@ def fetch_alpaca_daily_snapshot(
     allow_network: bool = False,
     allow_outside_data_dir: bool = False,
     overwrite: bool = False,
+    feed: str = _DEFAULT_FEED,
     env: Mapping[str, str] | None = None,
     repo_root: str | Path | None = None,
     opener: UrlOpen | None = None,
@@ -299,6 +309,7 @@ def fetch_alpaca_daily_snapshot(
     checked_start = _date_value(start_date, "start")
     checked_end = _date_value(end_date, "end")
     _validate_date_range(checked_start, checked_end)
+    checked_feed = _feed_value(feed)
     credentials = read_credentials_from_env(env)
     checked_output_path = validate_output_path(
         output_path,
@@ -312,6 +323,7 @@ def fetch_alpaca_daily_snapshot(
         checked_end,
         credentials,
         opener=opener,
+        feed=checked_feed,
     )
 
     write_csv_rows(checked_output_path, rows)
@@ -319,6 +331,7 @@ def fetch_alpaca_daily_snapshot(
         symbol=checked_symbol,
         start_date=checked_start,
         end_date=checked_end,
+        feed=checked_feed,
         output_path=checked_output_path,
         row_count=len(rows),
         file_sha256=compute_output_sha256(checked_output_path),
@@ -332,6 +345,7 @@ def render_fetch_report(result: SnapshotFetchResult) -> str:
             "Alpaca daily snapshot fetched.",
             f"Symbol: {result.symbol}",
             f"Requested date range: {result.start_date.isoformat()} to {result.end_date.isoformat()}",
+            f"Feed: {result.feed}",
             f"Rows written: {result.row_count}",
             f"Output CSV: {result.output_path}",
             f"File SHA-256: {result.file_sha256}",
@@ -369,6 +383,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit output CSV path. Default safety requires .data/research_snapshots/.",
     )
     parser.add_argument(
+        "--feed",
+        choices=_ALLOWED_FEEDS,
+        default=_DEFAULT_FEED,
+        help="Alpaca Market Data feed to request. Default: iex.",
+    )
+    parser.add_argument(
         "--allow-network",
         action="store_true",
         help="Required to make the Alpaca Market Data request.",
@@ -398,6 +418,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_network=args.allow_network,
             allow_outside_data_dir=args.allow_outside_data_dir,
             overwrite=args.overwrite,
+            feed=args.feed,
         )
     except SnapshotFetchError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -425,10 +446,7 @@ def _request_json(
         with open_url(request, timeout=timeout) as response:
             raw_payload = response.read()
     except urllib.error.HTTPError as exc:
-        raise SnapshotFetchError(
-            "Alpaca Market Data request failed with HTTP status "
-            f"{exc.code}."
-        ) from None
+        raise SnapshotFetchError(_http_error_message(exc.code)) from None
     except urllib.error.URLError:
         raise SnapshotFetchError(
             "Alpaca Market Data request failed before a response was received."
@@ -638,6 +656,17 @@ def _positive_int(value: int, field_name: str) -> int:
     return value
 
 
+def _feed_value(value: str) -> str:
+    if not isinstance(value, str):
+        raise SnapshotFetchError(_invalid_feed_message())
+
+    normalized = value.strip().lower()
+    if normalized not in _ALLOWED_FEEDS:
+        raise SnapshotFetchError(_invalid_feed_message())
+
+    return normalized
+
+
 def _page_token_value(value: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise SnapshotFetchError("page_token must be a non-empty string.")
@@ -667,6 +696,23 @@ def _is_relative_to(path: Path, parent: Path) -> bool:
 
 def _decimal_csv_text(value: Decimal) -> str:
     return format(value, "f")
+
+
+def _http_error_message(status_code: int) -> str:
+    message = f"Alpaca Market Data request failed with HTTP status {status_code}."
+    if status_code == 403:
+        return (
+            f"{message} Credentials may be invalid or stale, the key may not "
+            "have market-data permissions, or the selected feed may not be "
+            "available for the account. Try --feed iex for basic access."
+        )
+
+    return message
+
+
+def _invalid_feed_message() -> str:
+    allowed = ", ".join(_ALLOWED_FEEDS)
+    return f"feed must be one of: {allowed}."
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import urllib.error
 import urllib.parse
 from pathlib import Path
 from types import ModuleType
@@ -215,9 +216,69 @@ def test_request_url_construction_uses_market_data_stock_bars_endpoint() -> None
         "start": ["2026-01-02"],
         "end": ["2026-01-31"],
         "adjustment": ["all"],
+        "feed": ["iex"],
         "limit": ["10000"],
         "page_token": ["abc123"],
     }
+
+
+@pytest.mark.parametrize("feed", ("sip", "delayed_sip"))
+def test_custom_feed_is_accepted_and_included_in_request_url(feed: str) -> None:
+    fetcher = load_fetcher()
+
+    url = fetcher.build_request_url(
+        "SPY",
+        "2026-01-02",
+        "2026-01-31",
+        feed=feed,
+    )
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+
+    assert query["feed"] == [feed]
+
+
+def test_invalid_feed_is_rejected() -> None:
+    fetcher = load_fetcher()
+
+    with pytest.raises(fetcher.SnapshotFetchError, match="feed must be one of"):
+        fetcher.build_request_url(
+            "SPY",
+            "2026-01-02",
+            "2026-01-31",
+            feed="basic",
+        )
+
+    with pytest.raises(SystemExit):
+        fetcher.build_parser().parse_args(
+            (
+                "--start",
+                "2026-01-02",
+                "--end",
+                "2026-01-31",
+                "--output",
+                "SPY_daily.csv",
+                "--feed",
+                "basic",
+            )
+        )
+
+
+def test_invalid_feed_is_rejected_before_request_execution() -> None:
+    fetcher = load_fetcher()
+    credentials = fetcher.read_credentials_from_env(VALID_ENV)
+    requests: list[object] = []
+
+    with pytest.raises(fetcher.SnapshotFetchError, match="feed must be one of"):
+        fetcher.fetch_alpaca_daily_bars(
+            "SPY",
+            "2026-01-02",
+            "2026-01-31",
+            credentials,
+            feed="basic",
+            opener=opener_for({"bars": [daily_bar()]}, requests),
+        )
+
+    assert requests == []
 
 
 def test_output_path_must_be_under_research_snapshots_by_default(
@@ -299,11 +360,14 @@ def test_mocked_alpaca_response_writes_required_csv_columns_and_rows(
     )
     lines = output_path.read_text(encoding="utf-8").splitlines()
     request = requests[0]
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
 
     assert result.symbol == "SPY"
+    assert result.feed == "iex"
     assert result.row_count == 2
     assert result.file_sha256 == hashlib.sha256(output_path.read_bytes()).hexdigest()
     assert request.full_url.startswith("https://data.alpaca.markets/v2/stocks/SPY/bars?")
+    assert query["feed"] == ["iex"]
     assert request.get_header("Apca-api-key-id") == RAW_KEY_ID
     assert request.get_header("Apca-api-secret-key") == RAW_SECRET_KEY
     assert lines == [
@@ -311,6 +375,68 @@ def test_mocked_alpaca_response_writes_required_csv_columns_and_rows(
         "2026-01-02,100.00,101.50,99.75,100.25,100.25,123456",
         "2026-01-03,101.00,103.00,100.50,102.25,101.75,234567",
     ]
+
+
+def test_custom_feed_is_used_for_snapshot_request_and_result(tmp_path: Path) -> None:
+    fetcher = load_fetcher()
+    output_path = tmp_path / SNAPSHOT_DIR / "SPY_daily.csv"
+    requests: list[object] = []
+
+    result = fetcher.fetch_alpaca_daily_snapshot(
+        symbol="SPY",
+        start_date="2026-01-02",
+        end_date="2026-01-02",
+        output_path=output_path,
+        allow_network=True,
+        feed="sip",
+        env=VALID_ENV,
+        repo_root=tmp_path,
+        opener=opener_for({"bars": [daily_bar()], "next_page_token": None}, requests),
+    )
+    query = urllib.parse.parse_qs(urllib.parse.urlparse(requests[0].full_url).query)
+
+    assert result.feed == "sip"
+    assert query["feed"] == ["sip"]
+
+
+def test_stdout_report_includes_feed_without_real_network(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fetcher = load_fetcher()
+    output_path = tmp_path / SNAPSHOT_DIR / "SPY_daily.csv"
+    requests: list[object] = []
+    monkeypatch.setenv("ALPACA_API_KEY_ID", RAW_KEY_ID)
+    monkeypatch.setenv("ALPACA_API_SECRET_KEY", RAW_SECRET_KEY)
+    monkeypatch.setattr(
+        fetcher.urllib.request,
+        "urlopen",
+        opener_for({"bars": [daily_bar()], "next_page_token": None}, requests),
+    )
+
+    exit_code = fetcher.main(
+        (
+            "--allow-network",
+            "--allow-outside-data-dir",
+            "--start",
+            "2026-01-02",
+            "--end",
+            "2026-01-02",
+            "--output",
+            str(output_path),
+            "--feed",
+            "delayed_sip",
+        )
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert "Feed: delayed_sip" in captured.out
+    assert RAW_KEY_ID not in captured.out
+    assert RAW_SECRET_KEY not in captured.out
+    assert captured.err == ""
+    assert len(requests) == 1
 
 
 def test_output_csv_header_is_exact(tmp_path: Path) -> None:
@@ -452,6 +578,43 @@ def test_no_raw_credentials_appear_in_errors(tmp_path: Path) -> None:
 
     assert RAW_KEY_ID not in str(exc_info.value)
     assert RAW_SECRET_KEY not in str(exc_info.value)
+
+
+def test_http_403_error_mentions_safe_feed_troubleshooting_without_credentials(
+    tmp_path: Path,
+) -> None:
+    fetcher = load_fetcher()
+
+    def failing_opener(request: object, timeout: int) -> FakeResponse:
+        raise urllib.error.HTTPError(
+            url="https://data.alpaca.markets/v2/stocks/SPY/bars",
+            code=403,
+            msg=f"Forbidden for {RAW_SECRET_KEY}",
+            hdrs={},
+            fp=None,
+        )
+
+    with pytest.raises(fetcher.SnapshotFetchError) as exc_info:
+        fetcher.fetch_alpaca_daily_snapshot(
+            symbol="SPY",
+            start_date="2026-01-02",
+            end_date="2026-01-03",
+            output_path=tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+            allow_network=True,
+            feed="sip",
+            env=VALID_ENV,
+            repo_root=tmp_path,
+            opener=failing_opener,
+        )
+
+    message = str(exc_info.value)
+    assert "HTTP status 403" in message
+    assert "Credentials may be invalid or stale" in message
+    assert "market-data permissions" in message
+    assert "selected feed may not be available for the account" in message
+    assert "Try --feed iex for basic access" in message
+    assert RAW_KEY_ID not in message
+    assert RAW_SECRET_KEY not in message
 
 
 def test_fetcher_ast_guardrails_against_forbidden_imports_and_calls() -> None:
