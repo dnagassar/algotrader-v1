@@ -9046,6 +9046,23 @@ Safe next tasks include:
   recommendation, broker/order/fill/execution/OMS, account/position/portfolio
   behavior, runtime, scheduler, network call, trading behavior, or capital-layer
   mutation
+- Phase 51 - Synthetic Advisory Operating Brief Example Fixture adds
+  `tests.fixtures.advisory_operating_brief` as a canonical local-only synthetic
+  example for future advisory operating-brief tests and documentation. The
+  fixture builds one deterministic `OperatingBrief`, derives its
+  `OperatingBriefBoardSummary`, and pins literal expected Markdown for both
+  renderers. It covers all five advisory labels, uncertainty, failure modes,
+  research questions, limitations, non-claims, blocked/paper/live-probe/live
+  strategy and risk metadata, constructor-gated live authorization, and a
+  watchlist candidate whose source label remains authoritative despite more
+  permissive strategy/risk metadata. The focused tests pin deterministic
+  serialization, primitive JSON-compatible output, exact Markdown, source
+  immutability, safety terms, and AST dependency guardrails. This adds no AI
+  brief generation, market-data ingestion, candidate generation, strategy
+  scoring, ranking, recommendation logic, dashboard code, persistence,
+  broker/order/fill/execution/OMS, account/position/portfolio behavior,
+  runtime, scheduler, LLM/API call, network call, market-data provider access,
+  trading behavior, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

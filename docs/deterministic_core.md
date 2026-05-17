@@ -2934,6 +2934,31 @@ account/position/portfolio behavior, runtime/scheduler behavior, candidate
 discovery, scoring, ranking, recommendation, trading behavior, or
 capital-layer mutation.
 
+Phase 51 - Synthetic Advisory Operating Brief Example Fixture adds
+`tests.fixtures.advisory_operating_brief` as the canonical local-only synthetic
+example for the advisory operating-brief layer. The fixture exposes builders for
+one deterministic `OperatingBrief` and its derived `OperatingBriefBoardSummary`,
+plus pinned literal Markdown snapshots for both renderers. The example covers
+all five `AdvisoryLabel` values, fixed date `2026-01-15`, uncertainty, failure
+modes, next research questions, limitations, non-claims, blocked strategy/risk
+metadata, paper metadata, live-probe metadata, live-authorized metadata, and a
+watchlist candidate whose strategy/risk metadata is intentionally more
+permissive than the advisory label.
+
+The fixture tests pin deterministic construction, serialization, summary
+derivation, exact Markdown rendering, label grouping, constructor gates,
+primitive JSON-compatible output, source immutability, and AST guardrails that
+exclude file I/O, clocks, network/http, broker/execution/portfolio/runtime,
+LLM, market-data provider, notebook, persistence, random, and subprocess
+dependencies.
+
+This phase adds no AI brief generation, market-data ingestion, candidate
+generation, strategy scoring, ranking, recommendation logic, dashboard code,
+persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, market-data provider access, strategy validation claim, trading
+recommendation, or capital-layer mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
