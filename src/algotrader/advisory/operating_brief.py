@@ -19,7 +19,11 @@ __all__ = [
 
 
 class AdvisoryLabel(StrEnum):
-    """Advisory-only label for a candidate dossier."""
+    """Advisory-only label for a candidate dossier.
+
+    `live_authorized` is metadata only; it never grants authority to execute,
+    allocate, submit, size, or mutate portfolio state.
+    """
 
     RESEARCH_ONLY = "research_only"
     WATCHLIST_ONLY = "watchlist_only"

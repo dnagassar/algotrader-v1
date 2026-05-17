@@ -3149,6 +3149,24 @@ order/fill/execution/OMS behavior, account/position/portfolio behavior,
 runtime/scheduler behavior, LLM/API call, network call, trading behavior, or
 capital-layer mutation.
 
+Phase 58 - Advisory Pipeline Review Hardening adds focused regression
+guardrails in response to the external advisory pipeline review. The new tests
+pin governance-to-advisory import direction, advisory dataclass field-name
+safety, hash-seed-independent `to_dict()` and Markdown renderer output,
+compact JSON round-trip determinism for `OperatingBrief` and
+`OperatingBriefBoardSummary`, reverse-direction rejection for elevated dossier
+labels with lower prepared strategy/risk support, and the existing positive
+asymmetry where non-actionable labels remain authoritative despite more
+permissive support metadata.
+
+This phase changes no validation behavior and adds no advisory feature,
+production snapshot-to-brief assembler, OperatingBrief generation service,
+candidate discovery, label inference, adapter, renderer, assembly behavior,
+market-data ingestion, strategy scoring, ranking, recommendation logic,
+dashboard code, persistence, broker/order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, trading behavior, or capital-layer mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -9185,6 +9185,21 @@ Safe next tasks include:
   ranking, recommendation logic, dashboard, persistence,
   broker/order/fill/account/position/portfolio behavior, runtime, scheduler,
   LLM/API call, network call, trading behavior, or capital-layer mutation
+- Phase 58 - Advisory Pipeline Review Hardening adds review-response
+  regression guardrails only. Tests now pin governance-to-advisory import
+  direction, advisory dataclass field-name safety, hash-seed determinism for
+  `OperatingBrief.to_dict()`, `OperatingBriefBoardSummary.to_dict()`, and both
+  Markdown renderers, compact JSON round-trip determinism for brief and board
+  summary payloads, reverse-direction rejection when elevated dossier labels
+  lack matching prepared strategy/risk support, and continued non-actionable
+  label authority despite permissive support metadata. A docstring clarifies
+  that `live_authorized` is advisory metadata only. This changes no validation
+  behavior and adds no production snapshot-to-brief assembler, OperatingBrief
+  generation service, candidate discovery, label inference, adapter, renderer,
+  assembly behavior, market-data ingestion, scoring, ranking, recommendation
+  logic, dashboard, persistence, broker/order/fill/account/position/portfolio
+  behavior, runtime, scheduler, LLM/API call, network call, trading behavior,
+  or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
