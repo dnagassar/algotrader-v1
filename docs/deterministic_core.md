@@ -2882,6 +2882,24 @@ scheduler/runtime behavior, LLM/API call, network call, market-data provider
 access, strategy validation claim, trading recommendation, or capital-layer
 mutation.
 
+Phase 48 - Advisory Operating Brief Board Summary adds
+`algotrader.advisory.operating_brief_summary.build_operating_brief_board_summary`
+as a deterministic metadata-only board layer for an already constructed
+`OperatingBrief`. The summary accepts only an `OperatingBrief`, preserves the
+source as-of date and source ordering, groups candidate ids by advisory label,
+emits counts for every label including empty groups, surfaces existing strategy
+and risk blocking reasons, live-authorization metadata, uncertainty, failure
+modes, limitations, and advisory-only non-claims, and serializes to primitive
+JSON-compatible dictionaries with dates as `YYYY-MM-DD` strings.
+
+This phase adds no AI brief generation, prompt layer, market-data ingestion,
+candidate generation, strategy scoring, ranking, recommendation logic,
+dashboard code, persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, signal/evaluator behavior,
+scheduler/runtime behavior, LLM/API call, network call, market-data provider
+access, strategy validation claim, trading recommendation, or capital-layer
+mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

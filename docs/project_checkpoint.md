@@ -9005,6 +9005,21 @@ Safe next tasks include:
   account/position/portfolio behavior, signal/evaluator behavior, runtime,
   scheduler, LLM/API call, network call, strategy validation claim, trading
   recommendation, or capital-layer mutation
+- Phase 48 - Advisory Operating Brief Board Summary adds
+  `build_operating_brief_board_summary(...)` for already constructed
+  `OperatingBrief` instances. It derives immutable display metadata with the
+  as-of date, source-order candidate ids grouped by advisory label, counts for
+  every label including empty groups, paper/live-probe/live-authorized board
+  ids, live-authorization source status, existing strategy and risk blockers,
+  uncertainty, failure modes, source limitations, and advisory-only non-claims.
+  The summary serializes to deterministic primitive JSON-compatible
+  dictionaries and leaves source objects unchanged. This adds no AI brief
+  generation, prompt layer, market-data ingestion, candidate generation,
+  strategy scoring, ranking, recommendation logic, dashboard code,
+  persistence, broker access, order/fill/execution/OMS,
+  account/position/portfolio behavior, signal/evaluator behavior, runtime,
+  scheduler, LLM/API call, network call, strategy validation claim, trading
+  recommendation, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
