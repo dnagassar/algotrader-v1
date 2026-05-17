@@ -9126,6 +9126,27 @@ Safe next tasks include:
   persistence, broker/order/fill/account/position/portfolio behavior, runtime,
   scheduler, LLM/API call, network call, trading behavior, or capital-layer
   mutation
+- Phase 55 - Candidate Snapshot to Research Candidate Dossier Adapter adds
+  `algotrader.advisory.candidate_dossier_adapter` as a pure deterministic
+  bridge from already-validated `CandidateDossierSnapshot` metadata into the
+  existing `ResearchCandidateDossier` contract. The adapter accepts only
+  candidate dossier snapshots, rejects other inputs with `ValidationError`,
+  and uses the existing dossier constructor as the validation boundary. It
+  preserves only fields supported by the current dossier: candidate id, title,
+  summary, the exact proposed advisory label, uncertainty factors, failure
+  modes, next questions, and limitations, with tuple ordering unchanged. It
+  does not infer, upgrade, downgrade, or rewrite labels; source ids, source and
+  label metadata, strategy/mandate refs, universe/evidence refs, and
+  non-claims remain unsupported by the current dossier contract and are not
+  invented in the output. Focused tests cover research/watchlist/elevated-label
+  conversion, constructor usage, deterministic repeated conversion and
+  primitive serialization, source immutability, snapshot-enforced elevated
+  label restrictions, safety surface, and AST guardrails. This adds no
+  `OperatingBrief` assembly, strategy/risk status construction, governance
+  import in the adapter, candidate discovery, AI generation, market-data
+  ingestion, scoring, ranking, recommendation logic, dashboard, persistence,
+  broker/order/fill/account/position/portfolio behavior, runtime, scheduler,
+  LLM/API call, network call, trading behavior, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

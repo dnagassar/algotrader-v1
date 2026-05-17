@@ -3052,6 +3052,39 @@ broker access, order/fill/execution/OMS behavior, account/position/portfolio
 behavior, runtime/scheduler behavior, LLM/API call, network call, market-data
 provider access, trading behavior, or capital-layer mutation.
 
+Phase 55 - Candidate Snapshot to Research Candidate Dossier Adapter adds
+`algotrader.advisory.candidate_dossier_adapter` as a pure deterministic bridge
+from already-validated `CandidateDossierSnapshot` metadata into the existing
+`ResearchCandidateDossier` advisory contract. The adapter accepts only
+candidate dossier snapshots, rejects other inputs with `ValidationError`, and
+uses the existing dossier constructor as the validation boundary.
+
+The conversion preserves only fields the current dossier contract supports:
+candidate id, title, summary, the exact proposed advisory label, uncertainty
+factors, failure modes, next questions, and limitations, with tuple ordering
+unchanged. Source ids, label rationale/source metadata, strategy refs, mandate
+refs, universe refs, evidence refs, and non-claims remain on the source
+snapshot because the current dossier contract has no matching fields. The
+adapter does not infer, upgrade, downgrade, or rewrite advisory labels and does
+not mutate the source snapshot.
+
+Focused tests pin research/watchlist/paper/live-probe/live-authorized
+conversion, exact label preservation, constructor usage, deterministic repeated
+conversion and serialization, primitive JSON-compatible output, source
+non-mutation, supported-field-only projection, elevated-label source
+restrictions remaining enforced by snapshot construction, and AST guardrails
+excluding governance imports, status/brief assembly, file I/O, clocks, network,
+broker/execution/portfolio/runtime, LLM, market-data provider, notebook,
+persistence, random, and subprocess dependencies.
+
+This phase adds no `OperatingBrief` assembly, strategy/risk status construction,
+governance import in the adapter, AI brief generation, market-data ingestion,
+candidate discovery, strategy scoring, ranking, recommendation logic,
+dashboard code, persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, market-data provider access, trading behavior, or capital-layer
+mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
