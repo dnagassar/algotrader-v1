@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1384` tests are passing, with `4` skipped paper-integration tests by default.
+- `1401` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -2864,6 +2864,23 @@ alternate constructor, persistence, broker access, order/fill/execution/OMS
 behavior, account/position/portfolio behavior, scheduler/runtime behavior,
 LLM/API call, network call, market-data provider access, strategy validation
 claim, trading recommendation, or capital-layer mutation.
+
+Phase 47 - Deterministic Advisory Operating Brief Markdown Renderer adds
+`algotrader.advisory.operating_brief_markdown.render_operating_brief_markdown`
+as a deterministic display surface for an already constructed
+`OperatingBrief`. The renderer accepts only an `OperatingBrief`, formats the
+existing primitive advisory metadata into stable Markdown, preserves dossier,
+strategy eligibility, and risk authority ordering, includes the as-of date,
+explicit advisory-only language, uncertainty, failure modes, blocking reasons,
+limitations, and deterministic non-claims, and ends with a final newline.
+
+This phase adds no AI brief generation, prompt layer, market-data ingestion,
+candidate discovery, strategy scoring, recommendation logic, dashboard code,
+persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, signal/evaluator behavior,
+scheduler/runtime behavior, LLM/API call, network call, market-data provider
+access, strategy validation claim, trading recommendation, or capital-layer
+mutation.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

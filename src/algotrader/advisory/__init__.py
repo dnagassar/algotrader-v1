@@ -7,6 +7,9 @@ from algotrader.advisory.operating_brief import (
     RiskAuthorityStatus,
     StrategyEligibilityStatus,
 )
+from algotrader.advisory.operating_brief_markdown import (
+    render_operating_brief_markdown,
+)
 
 __all__ = [
     "AdvisoryLabel",
@@ -14,4 +17,5 @@ __all__ = [
     "ResearchCandidateDossier",
     "RiskAuthorityStatus",
     "StrategyEligibilityStatus",
+    "render_operating_brief_markdown",
 ]

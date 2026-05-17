@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1384-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1401-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8992,6 +8992,19 @@ Safe next tasks include:
   account/position/portfolio behavior, runtime, scheduler, LLM/API call,
   network call, strategy validation claim, trading recommendation, or
   capital-layer mutation
+- Phase 47 - Deterministic Advisory Operating Brief Markdown Renderer adds
+  `render_operating_brief_markdown(...)` for already constructed
+  `OperatingBrief` instances. It formats existing advisory metadata into a
+  stable Markdown snapshot with the as-of date, advisory-only disclaimer,
+  candidate dossiers, strategy eligibility, risk authority, uncertainty,
+  failure modes, blocking reasons, limitations, and deterministic non-claims
+  while preserving source ordering and leaving source objects unchanged. This
+  adds no AI brief generation, prompt layer, market-data ingestion, candidate
+  discovery, strategy scoring, recommendation logic, dashboard code,
+  persistence, broker access, order/fill/execution/OMS,
+  account/position/portfolio behavior, signal/evaluator behavior, runtime,
+  scheduler, LLM/API call, network call, strategy validation claim, trading
+  recommendation, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
