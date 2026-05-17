@@ -2900,6 +2900,25 @@ scheduler/runtime behavior, LLM/API call, network call, market-data provider
 access, strategy validation claim, trading recommendation, or capital-layer
 mutation.
 
+Phase 49 - Advisory Board Summary Markdown Renderer adds
+`algotrader.advisory.operating_brief_summary_markdown.render_operating_brief_board_summary_markdown`
+as a deterministic display surface for an already constructed
+`OperatingBriefBoardSummary`. The renderer accepts only a board summary, formats
+the source as-of date, advisory-only disclaimer, counts for every advisory
+label, grouped candidate ids, research queue, watchlist, paper-eligible ids,
+live-probe-eligible ids, live-authorized source metadata, strategy and risk
+blockers, uncertainty, failure modes, limitations, source summary non-claims,
+and fixed board non-claims into stable Markdown, preserves source ordering, and
+ends with a final newline.
+
+This phase adds no AI brief generation, prompt layer, market-data ingestion,
+candidate generation, strategy scoring, ranking, recommendation logic,
+dashboard code, persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, signal/evaluator behavior,
+scheduler/runtime behavior, LLM/API call, network call, market-data provider
+access, strategy validation claim, trading recommendation, or capital-layer
+mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
