@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1373-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1384-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8979,6 +8979,18 @@ Safe next tasks include:
   market-data path, strategy scorer, evaluator, dashboard, broker access,
   order/fill/execution/OMS/account/position/portfolio behavior, runtime,
   scheduler, persistence, strategy validation claim, trading recommendation, or
+  capital-layer mutation
+- Phase 46 - Advisory Operating Brief Serialization / Display Snapshot adds
+  deterministic `to_dict()` methods for the existing advisory contracts. The
+  serializers emit primitive JSON-compatible dictionaries only, convert advisory
+  labels to strings, tuple fields to lists, nested advisory objects through
+  their own deterministic dictionaries, and operating brief dates to ISO
+  `YYYY-MM-DD` strings while preserving dossier/status ordering and leaving
+  source objects unchanged. This adds no markdown generator, dashboard, AI
+  prompt layer, brief generator, market-data path, strategy scoring, evaluator,
+  alternate constructor, persistence, broker access, order/fill/execution/OMS,
+  account/position/portfolio behavior, runtime, scheduler, LLM/API call,
+  network call, strategy validation claim, trading recommendation, or
   capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit

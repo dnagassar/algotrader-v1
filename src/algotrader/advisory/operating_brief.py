@@ -41,6 +41,19 @@ class ResearchCandidateDossier:
     next_questions: tuple[str, ...]
     limitations: tuple[str, ...]
 
+    def to_dict(self) -> dict[str, object]:
+        """Return deterministic primitive advisory metadata."""
+        return {
+            "candidate_id": self.candidate_id,
+            "title": self.title,
+            "summary": self.summary,
+            "advisory_label": self.advisory_label.value,
+            "uncertainty_factors": list(self.uncertainty_factors),
+            "failure_modes": list(self.failure_modes),
+            "next_questions": list(self.next_questions),
+            "limitations": list(self.limitations),
+        }
+
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
@@ -97,6 +110,21 @@ class StrategyEligibilityStatus:
     live_authorized: bool
     blocking_reasons: tuple[str, ...]
     limitations: tuple[str, ...]
+
+    def to_dict(self) -> dict[str, object]:
+        """Return deterministic primitive strategy eligibility metadata."""
+        return {
+            "candidate_id": self.candidate_id,
+            "mandate_id": self.mandate_id,
+            "mandate_approved": self.mandate_approved,
+            "evidence_approved": self.evidence_approved,
+            "evidence_refs": list(self.evidence_refs),
+            "paper_eligible": self.paper_eligible,
+            "live_probe_eligible": self.live_probe_eligible,
+            "live_authorized": self.live_authorized,
+            "blocking_reasons": list(self.blocking_reasons),
+            "limitations": list(self.limitations),
+        }
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -164,6 +192,18 @@ class RiskAuthorityStatus:
     blocking_reasons: tuple[str, ...]
     limitations: tuple[str, ...]
 
+    def to_dict(self) -> dict[str, object]:
+        """Return deterministic primitive risk authority metadata."""
+        return {
+            "candidate_id": self.candidate_id,
+            "authority_id": self.authority_id,
+            "paper_allowed": self.paper_allowed,
+            "live_probe_allowed": self.live_probe_allowed,
+            "live_authorized": self.live_authorized,
+            "blocking_reasons": list(self.blocking_reasons),
+            "limitations": list(self.limitations),
+        }
+
     def __post_init__(self) -> None:
         object.__setattr__(
             self,
@@ -214,6 +254,20 @@ class OperatingBrief:
     risk_statuses: tuple[RiskAuthorityStatus, ...]
     limitations: tuple[str, ...]
     advisory_only: bool = True
+
+    def to_dict(self) -> dict[str, object]:
+        """Return deterministic primitive operating brief metadata."""
+        return {
+            "brief_id": self.brief_id,
+            "as_of_date": _serialize_plain_date(self.as_of_date),
+            "dossiers": [dossier.to_dict() for dossier in self.dossiers],
+            "strategy_statuses": [
+                status.to_dict() for status in self.strategy_statuses
+            ],
+            "risk_statuses": [status.to_dict() for status in self.risk_statuses],
+            "limitations": list(self.limitations),
+            "advisory_only": self.advisory_only,
+        }
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -317,6 +371,12 @@ def _plain_date(value: object, field_name: str) -> date:
     if type(value) is not date:
         raise ValidationError(f"{field_name} must be a date.")
     return value
+
+
+def _serialize_plain_date(value: object) -> str:
+    if type(value) is not date:
+        raise ValidationError("as_of_date must be a date.")
+    return value.isoformat()
 
 
 def _required_true(value: object, field_name: str) -> bool:

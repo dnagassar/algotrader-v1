@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1373` tests are passing, with `4` skipped paper-integration tests by default.
+- `1384` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -2848,6 +2848,22 @@ summary engine, strategy scorer, research evaluator, dashboard, broker access,
 order/fill/execution/OMS/account/position/portfolio behavior, scheduler/runtime
 behavior, persistence, real data, network calls, strategy validation claim,
 trading recommendation, or mutation of capital-layer state.
+
+Phase 46 - Advisory Operating Brief Serialization / Display Snapshot adds
+deterministic `to_dict()` methods for the advisory dossier, strategy
+eligibility, risk authority, and operating brief contracts. Serialization emits
+plain dictionaries with JSON-compatible primitive values only: advisory labels
+become strings, tuple fields become lists, nested advisory objects serialize
+through their own primitive dictionaries, and operating brief dates serialize as
+ISO `YYYY-MM-DD` strings. Repeated calls preserve deterministic ordering and do
+not mutate source objects.
+
+This phase adds no markdown report generation, dashboard code, AI prompt layer,
+brief generator, market-data summary, strategy scoring, research evaluator,
+alternate constructor, persistence, broker access, order/fill/execution/OMS
+behavior, account/position/portfolio behavior, scheduler/runtime behavior,
+LLM/API call, network call, market-data provider access, strategy validation
+claim, trading recommendation, or capital-layer mutation.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
