@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1401` tests are passing, with `4` skipped paper-integration tests by default.
+- `1511` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -2958,6 +2958,33 @@ persistence, broker access, order/fill/execution/OMS behavior,
 account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, market-data provider access, strategy validation claim, trading
 recommendation, or capital-layer mutation.
+
+Phase 52 - Governance Status Snapshot Contracts adds
+`algotrader.governance.status_snapshot` as a deterministic, metadata-only
+source-contract layer for future advisory inputs. `StrategyMandateSnapshot`
+captures strategy-side mandate, evidence, paper, live-probe, live-authorization,
+validated artifact, requirement, blocker, limitation, uncertainty,
+failure-mode, and non-claim metadata. `RiskAuthoritySnapshot` captures
+risk-side paper, live-probe, live, kill-switch, policy, constraint, requirement,
+blocker, limitation, uncertainty, failure-mode, and non-claim metadata.
+
+Both snapshots are immutable, slotted dataclasses that accept only explicit
+plain-date inputs, normalize sequence fields to immutable tuples, reject
+malformed identifiers and string entries, enforce deterministic paper/probe/live
+authority dependencies, and serialize to primitive JSON-compatible dictionaries
+with dates as `YYYY-MM-DD` and tuple fields as lists. Focused tests pin
+constructor gates, repeated deterministic serialization, source non-mutation,
+safety field absence, and AST guardrails that exclude advisory imports, file
+I/O, clocks, network/http, broker/execution/portfolio/runtime, LLM,
+market-data provider, notebook, persistence, random, and subprocess
+dependencies.
+
+This phase defines source snapshots only. It adds no advisory adapter, AI brief
+generation, market-data ingestion, candidate generation, strategy scoring,
+ranking, recommendation logic, dashboard code, persistence, broker access,
+order/fill/execution/OMS behavior, account/position/portfolio behavior,
+runtime/scheduler behavior, LLM/API call, network call, market-data provider
+access, strategy validation claim, trading behavior, or capital-layer mutation.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

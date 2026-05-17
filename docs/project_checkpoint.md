@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1401-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1511-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9063,6 +9063,24 @@ Safe next tasks include:
   broker/order/fill/execution/OMS, account/position/portfolio behavior,
   runtime, scheduler, LLM/API call, network call, market-data provider access,
   trading behavior, or capital-layer mutation
+- Phase 52 - Governance Status Snapshot Contracts adds
+  `algotrader.governance.status_snapshot` as a deterministic, metadata-only
+  source-contract layer for future advisory inputs. `StrategyMandateSnapshot`
+  records strategy mandate, evidence, paper, live-probe, live-authorization,
+  validated artifact, requirement, blocker, limitation, uncertainty,
+  failure-mode, and non-claim metadata. `RiskAuthoritySnapshot` records
+  risk-side paper, live-probe, live, kill-switch, policy, constraint,
+  requirement, blocker, limitation, uncertainty, failure-mode, and non-claim
+  metadata. Both contracts are frozen/slotted, accept only explicit plain
+  dates, normalize sequence fields to tuples, serialize to primitive
+  JSON-compatible dictionaries, enforce deterministic paper/probe/live gates,
+  and are covered by focused construction, serialization, source immutability,
+  safety surface, and AST dependency guardrail tests. This adds no advisory
+  adapter, AI brief generation, market-data ingestion, candidate discovery,
+  strategy scoring, ranking, recommendation logic, dashboard code,
+  persistence, broker/order/fill/execution/OMS, account/position/portfolio
+  behavior, runtime, scheduler, LLM/API call, network call, market-data
+  provider access, trading behavior, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
