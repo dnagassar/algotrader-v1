@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1511-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1549-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9081,6 +9081,28 @@ Safe next tasks include:
   persistence, broker/order/fill/execution/OMS, account/position/portfolio
   behavior, runtime, scheduler, LLM/API call, network call, market-data
   provider access, trading behavior, or capital-layer mutation
+- Phase 53 - Governance Snapshot to Advisory Status Adapter adds
+  `algotrader.advisory.governance_status_adapter` as a tiny deterministic
+  downstream adapter from the Phase 52 governance snapshots into the existing
+  advisory status contracts. The strategy adapter accepts an explicit
+  candidate id and maps `StrategyMandateSnapshot` into
+  `StrategyEligibilityStatus` through the existing advisory constructor. The
+  risk adapter accepts an explicit candidate id and maps `RiskAuthoritySnapshot`
+  into `RiskAuthorityStatus` through the existing advisory constructor. The
+  adapter preserves only supported advisory fields, carries evidence refs from
+  validated research and signal definition ids, does not infer candidate
+  identity from strategy/mandate/authority ids, does not upgrade authority
+  beyond snapshot booleans, and lets existing advisory validation reject
+  inconsistent conversions. Focused tests cover type safety, candidate-id
+  validation, constructor usage, tuple ordering, deterministic conversion and
+  serialization, source non-mutation, safety surface, and dependency direction.
+  This adds no full `OperatingBrief` assembly, `ResearchCandidateDossier`
+  construction, `AdvisoryLabel` inference, AI brief generation, market-data
+  ingestion, candidate discovery, strategy scoring, ranking, recommendation
+  logic, dashboard code, persistence, broker/order/fill/execution/OMS,
+  account/position/portfolio behavior, runtime, scheduler, LLM/API call,
+  network call, market-data provider access, trading behavior, or capital-layer
+  mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

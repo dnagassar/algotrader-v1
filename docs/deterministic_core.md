@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1511` tests are passing, with `4` skipped paper-integration tests by default.
+- `1549` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -2985,6 +2985,36 @@ ranking, recommendation logic, dashboard code, persistence, broker access,
 order/fill/execution/OMS behavior, account/position/portfolio behavior,
 runtime/scheduler behavior, LLM/API call, network call, market-data provider
 access, strategy validation claim, trading behavior, or capital-layer mutation.
+
+Phase 53 - Governance Snapshot to Advisory Status Adapter adds
+`algotrader.advisory.governance_status_adapter` as a tiny deterministic
+downstream adapter from Phase 52 governance snapshots into the existing advisory
+status contracts. `strategy_mandate_snapshot_to_strategy_eligibility_status(...)`
+accepts an explicit candidate id and converts `StrategyMandateSnapshot` into
+`StrategyEligibilityStatus` through the existing advisory constructor.
+`risk_authority_snapshot_to_risk_authority_status(...)` accepts an explicit
+candidate id and converts `RiskAuthoritySnapshot` into `RiskAuthorityStatus`
+through the existing advisory constructor.
+
+The adapter preserves only fields supported by the existing advisory status
+types: candidate ids supplied by the caller, mandate/authority ids, approval and
+authority booleans, evidence refs from validated research and signal definition
+ids, blockers, and limitations. It does not infer candidate identity from
+strategy, mandate, or authority ids, does not upgrade authority beyond the
+snapshot booleans, and lets existing advisory status validation reject
+unsupported or inconsistent conversions. Focused tests pin type safety,
+candidate-id validation, constructor usage, tuple ordering, repeated
+deterministic conversion and serialization, source non-mutation, safety field
+absence, and dependency-direction guardrails that keep governance independent
+from advisory.
+
+This phase adds no full `OperatingBrief` assembly, `ResearchCandidateDossier`
+construction, `AdvisoryLabel` inference, AI brief generation, market-data
+ingestion, candidate generation, strategy scoring, ranking, recommendation
+logic, dashboard code, persistence, broker access, order/fill/execution/OMS
+behavior, account/position/portfolio behavior, runtime/scheduler behavior,
+LLM/API call, network call, market-data provider access, trading behavior, or
+capital-layer mutation.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
