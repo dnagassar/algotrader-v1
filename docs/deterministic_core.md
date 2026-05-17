@@ -3016,6 +3016,42 @@ behavior, account/position/portfolio behavior, runtime/scheduler behavior,
 LLM/API call, network call, market-data provider access, trading behavior, or
 capital-layer mutation.
 
+Phase 54 - Advisory Candidate Dossier Source Snapshot adds
+`algotrader.advisory.candidate_snapshot.CandidateDossierSnapshot` as a
+deterministic, metadata-only upstream source contract for future
+`ResearchCandidateDossier` adaptation. The snapshot records candidate source
+identity, source refs, proposed advisory label, label source and rationale,
+strategy/mandate refs, universe/evidence refs, uncertainty, failure modes,
+next questions, limitations, and non-claims without assembling an
+`OperatingBrief`.
+
+The contract is frozen and slotted, accepts only explicit plain dates,
+normalizes sequence fields to immutable tuples, validates source type and label
+source allowlists, serializes to primitive JSON-compatible dictionaries with
+dates as `YYYY-MM-DD`, labels as strings, and tuple fields as lists, and leaves
+source objects unchanged. Label authority is constructor-gated:
+`research_only` and `watchlist_only` may be proposed by any allowed label
+source, while `paper_eligible`, `live_probe_eligible`, and `live_authorized`
+require deterministic/reviewed label sources. `live_authorized` additionally
+requires strategy id, mandate id, evidence refs, and explicit non-claims;
+`live_probe_eligible` requires strategy id, mandate id, and explicit
+non-claims; `paper_eligible` requires strategy id and explicit non-claims.
+
+Focused tests pin valid and invalid label-source combinations, plain-date and
+string validation, tuple normalization, deterministic primitive serialization,
+source non-mutation, non-claim safety, absence of scoring/ranking/discovery and
+trading-runtime fields, and AST guardrails excluding governance imports, file
+I/O, clocks, network/http, broker/execution/portfolio/runtime, LLM,
+market-data provider, notebook, persistence, random, and subprocess
+dependencies.
+
+This phase adds no full `OperatingBrief` assembly, `ResearchCandidateDossier`
+construction, candidate discovery, AI brief generation, market-data ingestion,
+strategy scoring, ranking, recommendation logic, dashboard code, persistence,
+broker access, order/fill/execution/OMS behavior, account/position/portfolio
+behavior, runtime/scheduler behavior, LLM/API call, network call, market-data
+provider access, trading behavior, or capital-layer mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -1,5 +1,6 @@
 """Advisory-only metadata contracts."""
 
+from algotrader.advisory.candidate_snapshot import CandidateDossierSnapshot
 from algotrader.advisory.operating_brief import (
     AdvisoryLabel,
     OperatingBrief,
@@ -24,6 +25,7 @@ from algotrader.advisory.governance_status_adapter import (
 
 __all__ = [
     "AdvisoryLabel",
+    "CandidateDossierSnapshot",
     "OperatingBrief",
     "OperatingBriefBoardSummary",
     "ResearchCandidateDossier",

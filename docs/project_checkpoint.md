@@ -9103,6 +9103,29 @@ Safe next tasks include:
   account/position/portfolio behavior, runtime, scheduler, LLM/API call,
   network call, market-data provider access, trading behavior, or capital-layer
   mutation
+- Phase 54 - Advisory Candidate Dossier Source Snapshot adds
+  `algotrader.advisory.candidate_snapshot.CandidateDossierSnapshot` as a
+  deterministic metadata-only upstream source contract for future
+  `ResearchCandidateDossier` adaptation. It records candidate source metadata,
+  source refs, proposed advisory label, label source/rationale,
+  strategy/mandate refs, universe/evidence refs, uncertainty, failure modes,
+  next questions, limitations, and non-claims. The contract is frozen/slotted,
+  accepts only explicit plain dates, normalizes sequences to tuples, serializes
+  to primitive JSON-compatible dictionaries, validates source type and label
+  source allowlists, and gates elevated labels to deterministic/reviewed
+  sources. `live_authorized` requires strategy id, mandate id, evidence refs,
+  and explicit non-claims; `live_probe_eligible` requires strategy id, mandate
+  id, and explicit non-claims; `paper_eligible` requires strategy id and
+  explicit non-claims. Focused tests cover construction, validation,
+  serialization, source immutability, safety terms, and AST guardrails keeping
+  the module independent from governance, broker/execution/portfolio/runtime,
+  LLM/network/market-data, persistence, notebooks, file I/O, clocks, random,
+  and subprocess dependencies. This adds no `OperatingBrief` assembly,
+  `ResearchCandidateDossier` construction, candidate discovery, AI generation,
+  market-data ingestion, scoring, ranking, recommendation logic, dashboard,
+  persistence, broker/order/fill/account/position/portfolio behavior, runtime,
+  scheduler, LLM/API call, network call, trading behavior, or capital-layer
+  mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
