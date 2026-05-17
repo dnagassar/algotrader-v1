@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `964` tests are passing, with `4` skipped paper-integration tests by default.
+- `1373` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -2833,6 +2833,21 @@ nothing, commits no raw external data, adds no vendor abstraction, requires no
 `.data/` path in tests, constructs no total-return series, handles no dividends
 or corporate actions, validates no strategy, and makes no trading
 recommendation.
+
+Phase 45 - AI Operating Brief / Candidate Dossier Foundation adds
+`algotrader.advisory.operating_brief` as a deterministic, metadata-only
+contract layer for future AI operating briefs and candidate dossiers. It defines
+immutable advisory labels, research candidate dossiers, strategy eligibility
+metadata, risk authority metadata, and operating brief bundles that normalize
+sequence inputs to tuples, reject malformed identifiers and non-string
+uncertainty/failure-mode entries, and require explicit strategy and risk support
+before paper, live-probe, or live-authorized labels can appear in a brief.
+
+This phase adds no brief generator, AI prompt layer, LLM/API call, market-data
+summary engine, strategy scorer, research evaluator, dashboard, broker access,
+order/fill/execution/OMS/account/position/portfolio behavior, scheduler/runtime
+behavior, persistence, real data, network calls, strategy validation claim,
+trading recommendation, or mutation of capital-layer state.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

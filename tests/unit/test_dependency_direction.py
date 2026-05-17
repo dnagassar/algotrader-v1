@@ -94,6 +94,46 @@ RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES = (
     "yfinance",
 )
 
+ADVISORY_BOUNDARY_FORBIDDEN_PREFIXES = (
+    "aiohttp",
+    "algotrader.broker",
+    "algotrader.brokers",
+    "algotrader.execution",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "algotrader.orchestration",
+    "algotrader.persistence",
+    "algotrader.portfolio",
+    "algotrader.risk",
+    "algotrader.runtime",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.signals",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "database",
+    "duckdb",
+    "httpx",
+    "ipynb",
+    "langchain",
+    "langgraph",
+    "llm",
+    "notebook",
+    "numpy",
+    "openai",
+    "pandas",
+    "QuantConnect",
+    "quantconnect",
+    "requests",
+    "socket",
+    "sqlmodel",
+    "urllib",
+    "vectorbt",
+    "yfinance",
+)
+
 ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.screener_signal_flow",
     "algotrader.orchestration.signal_risk_flow",
@@ -157,6 +197,16 @@ def test_research_contracts_do_not_import_trading_path_or_runtime_layers() -> No
         source="algotrader.research.*",
         paths=_package_files("algotrader.research"),
         forbidden_prefixes=RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES,
+    )
+
+    assert _dependency_violations(rule) == []
+
+
+def test_advisory_contracts_do_not_import_trading_runtime_or_ai_layers() -> None:
+    rule = DependencyRule(
+        source="algotrader.advisory.*",
+        paths=_package_files("algotrader.advisory"),
+        forbidden_prefixes=ADVISORY_BOUNDARY_FORBIDDEN_PREFIXES,
     )
 
     assert _dependency_violations(rule) == []

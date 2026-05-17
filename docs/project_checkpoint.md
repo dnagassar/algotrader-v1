@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 987-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1373-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -8967,6 +8967,19 @@ Safe next tasks include:
   normal-pytest network call, data-directory dependency, strategy validation,
   total-return construction, dividend/corporate-action handling, or trading
   recommendation
+- Phase 45 - AI Operating Brief / Candidate Dossier Foundation adds the
+  `algotrader.advisory.operating_brief` metadata contracts for future advisory
+  briefs: immutable candidate dossiers with explicit uncertainty and failure
+  modes, strategy eligibility status, risk authority status, and operating
+  brief bundles. The contracts normalize sequence inputs to tuples, reject
+  malformed identifiers and non-string advisory entries, keep research/watchlist
+  labels safe without actionability, and require explicit strategy and risk
+  support before paper, live-probe, or live-authorized labels can be represented
+  in a brief. This adds no generator, AI prompt layer, LLM/API call,
+  market-data path, strategy scorer, evaluator, dashboard, broker access,
+  order/fill/execution/OMS/account/position/portfolio behavior, runtime,
+  scheduler, persistence, strategy validation claim, trading recommendation, or
+  capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
