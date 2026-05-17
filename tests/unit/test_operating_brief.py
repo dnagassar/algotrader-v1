@@ -907,6 +907,20 @@ def test_operating_brief_to_dict_serializes_nested_objects_and_ordering() -> Non
     assert item.to_dict() == payload
 
 
+def test_operating_brief_to_dict_is_deterministic_across_repeated_calls() -> None:
+    candidate = dossier(advisory_label=AdvisoryLabel.PAPER_ELIGIBLE)
+    item = brief(
+        dossiers=(candidate,),
+        strategy_statuses=(paper_strategy_status(),),
+        risk_statuses=(paper_risk_status(),),
+    )
+
+    first_payload = item.to_dict()
+    second_payload = item.to_dict()
+
+    assert first_payload == second_payload
+
+
 def test_operating_brief_to_dict_does_not_mutate_nested_objects() -> None:
     candidate = dossier(advisory_label=AdvisoryLabel.PAPER_ELIGIBLE)
     strategy = paper_strategy_status()
@@ -988,6 +1002,7 @@ def test_serialized_operating_brief_contains_no_trading_runtime_or_action_keys()
 
     _assert_no_forbidden_serialized_keys(payload)
     for forbidden_key in (
+        "candidate_discovery",
         "evaluation",
         "evaluations",
         "fill",
@@ -997,7 +1012,11 @@ def test_serialized_operating_brief_contains_no_trading_runtime_or_action_keys()
         "position",
         "positions",
         "portfolio_mutation",
+        "rank",
+        "ranking",
         "recommendation",
+        "score",
+        "scoring",
         "signal",
         "signals",
         "runtime_action",

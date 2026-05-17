@@ -331,6 +331,15 @@ def board_brief() -> OperatingBrief:
     )
 
 
+def board_summary(**overrides: object) -> OperatingBriefBoardSummary:
+    source = build_operating_brief_board_summary(brief())
+    values: dict[str, object] = {
+        field.name: getattr(source, field.name) for field in fields(source)
+    }
+    values.update(overrides)
+    return OperatingBriefBoardSummary(**values)
+
+
 def test_builder_accepts_only_operating_brief_and_returns_frozen_slotted_summary() -> None:
     with pytest.raises(ValidationError, match="OperatingBrief"):
         build_operating_brief_board_summary({"brief_id": "not-a-brief"})
@@ -383,6 +392,13 @@ def test_builder_preserves_ordering_and_does_not_mutate_source_objects() -> None
     )
 
 
+def test_direct_summary_rejects_negative_candidate_counts() -> None:
+    with pytest.raises(ValidationError, match="non-negative"):
+        board_summary(
+            candidate_counts_by_label=((AdvisoryLabel.RESEARCH_ONLY, -1),),
+        )
+
+
 def test_label_grouping_counts_and_empty_groups_are_deterministic() -> None:
     summary = build_operating_brief_board_summary(board_brief())
     payload = summary.to_dict()
@@ -429,6 +445,45 @@ def test_label_grouping_counts_and_empty_groups_are_deterministic() -> None:
     assert minimal_payload["candidate_counts_by_label"] == {
         "research_only": 1,
         "watchlist_only": 0,
+        "paper_eligible": 0,
+        "live_probe_eligible": 0,
+        "live_authorized": 0,
+    }
+
+
+def test_candidate_counts_by_label_include_all_labels_for_subset_brief() -> None:
+    item = brief(
+        dossiers=(
+            dossier(
+                candidate_id="candidate-watchlist",
+                advisory_label=AdvisoryLabel.WATCHLIST_ONLY,
+            ),
+            dossier(candidate_id="candidate-research"),
+        ),
+        strategy_statuses=(),
+        risk_statuses=(),
+    )
+
+    summary = build_operating_brief_board_summary(item)
+    payload_counts = summary.to_dict()["candidate_counts_by_label"]
+
+    assert summary.candidate_counts_by_label == (
+        (AdvisoryLabel.RESEARCH_ONLY, 1),
+        (AdvisoryLabel.WATCHLIST_ONLY, 1),
+        (AdvisoryLabel.PAPER_ELIGIBLE, 0),
+        (AdvisoryLabel.LIVE_PROBE_ELIGIBLE, 0),
+        (AdvisoryLabel.LIVE_AUTHORIZED, 0),
+    )
+    assert tuple(payload_counts) == (
+        "research_only",
+        "watchlist_only",
+        "paper_eligible",
+        "live_probe_eligible",
+        "live_authorized",
+    )
+    assert payload_counts == {
+        "research_only": 1,
+        "watchlist_only": 1,
         "paper_eligible": 0,
         "live_probe_eligible": 0,
         "live_authorized": 0,
@@ -532,6 +587,20 @@ def test_to_dict_returns_deterministic_json_compatible_primitives() -> None:
     assert " at 0x" not in str(first_payload)
 
 
+def test_advisory_dataclass_reprs_do_not_expose_memory_addresses() -> None:
+    item = brief()
+    summary = build_operating_brief_board_summary(item)
+
+    for value in (
+        item.dossiers[0],
+        item.strategy_statuses[0],
+        item.risk_statuses[0],
+        item,
+        summary,
+    ):
+        assert " at 0x" not in repr(value)
+
+
 def test_to_dict_lists_do_not_mutate_summary_tuples() -> None:
     summary = build_operating_brief_board_summary(brief())
     payload = summary.to_dict()
@@ -557,11 +626,61 @@ def test_summary_output_contains_no_trading_behavior_or_selection_fields() -> No
         "allocation",
         "target_weight",
         "broker_order",
+        "candidate_discovery",
+        "rank",
         "ranking",
+        "score",
         "scoring",
         "recommendation",
     ):
         assert forbidden_key not in _all_serialized_keys(payload)
+
+
+def test_non_actionable_label_remains_authoritative_with_live_authority_statuses() -> None:
+    candidate = dossier(
+        candidate_id="candidate-watchlist-live-status",
+        advisory_label=AdvisoryLabel.WATCHLIST_ONLY,
+    )
+
+    item = brief(
+        dossiers=(candidate,),
+        strategy_statuses=(
+            live_strategy_status(candidate_id="candidate-watchlist-live-status"),
+        ),
+        risk_statuses=(
+            live_risk_status(candidate_id="candidate-watchlist-live-status"),
+        ),
+    )
+    summary = build_operating_brief_board_summary(item)
+    payload = summary.to_dict()
+
+    assert isinstance(item, OperatingBrief)
+    assert item.dossiers[0].advisory_label == AdvisoryLabel.WATCHLIST_ONLY
+    assert item.dossiers[0].advisory_label != AdvisoryLabel.LIVE_AUTHORIZED
+    assert summary.watchlist_candidate_ids == ("candidate-watchlist-live-status",)
+    assert summary.live_authorized_candidate_ids == ()
+    assert summary.candidate_ids_by_label == (
+        (AdvisoryLabel.RESEARCH_ONLY, ()),
+        (AdvisoryLabel.WATCHLIST_ONLY, ("candidate-watchlist-live-status",)),
+        (AdvisoryLabel.PAPER_ELIGIBLE, ()),
+        (AdvisoryLabel.LIVE_PROBE_ELIGIBLE, ()),
+        (AdvisoryLabel.LIVE_AUTHORIZED, ()),
+    )
+    assert payload["candidate_ids_by_label"]["watchlist_only"] == [
+        "candidate-watchlist-live-status"
+    ]
+    assert payload["candidate_ids_by_label"]["live_authorized"] == []
+    assert payload["live_authorization_statuses"] == [
+        {
+            "candidate_id": "candidate-watchlist-live-status",
+            "advisory_label": "watchlist_only",
+            "strategy_status_present": True,
+            "strategy_live_authorized": True,
+            "risk_status_present": True,
+            "risk_live_authorized": True,
+            "label_live_authorized": False,
+        }
+    ]
 
 
 def test_live_authorization_status_is_source_metadata_only() -> None:

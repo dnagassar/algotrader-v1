@@ -257,6 +257,50 @@ def board_summary() -> OperatingBriefBoardSummary:
     )
 
 
+def watchlist_summary_with_live_authority_statuses() -> OperatingBriefBoardSummary:
+    return OperatingBriefBoardSummary(
+        as_of_date=date(2026, 5, 17),
+        candidate_ids_by_label=(
+            (AdvisoryLabel.RESEARCH_ONLY, ()),
+            (AdvisoryLabel.WATCHLIST_ONLY, ("candidate-watchlist-live-status",)),
+            (AdvisoryLabel.PAPER_ELIGIBLE, ()),
+            (AdvisoryLabel.LIVE_PROBE_ELIGIBLE, ()),
+            (AdvisoryLabel.LIVE_AUTHORIZED, ()),
+        ),
+        candidate_counts_by_label=(
+            (AdvisoryLabel.RESEARCH_ONLY, 0),
+            (AdvisoryLabel.WATCHLIST_ONLY, 1),
+            (AdvisoryLabel.PAPER_ELIGIBLE, 0),
+            (AdvisoryLabel.LIVE_PROBE_ELIGIBLE, 0),
+            (AdvisoryLabel.LIVE_AUTHORIZED, 0),
+        ),
+        research_queue_candidate_ids=(),
+        watchlist_candidate_ids=("candidate-watchlist-live-status",),
+        paper_eligible_candidate_ids=(),
+        live_probe_eligible_candidate_ids=(),
+        live_authorized_candidate_ids=(),
+        live_authorization_statuses=(
+            (
+                "candidate-watchlist-live-status",
+                AdvisoryLabel.WATCHLIST_ONLY,
+                True,
+                True,
+                True,
+                True,
+                False,
+            ),
+        ),
+        strategy_blockers=(),
+        risk_blockers=(),
+        uncertainty_summaries=(),
+        failure_mode_summaries=(),
+        brief_limitations=("Advisory metadata only.",),
+        candidate_limitations=(),
+        strategy_limitations=(),
+        risk_limitations=(),
+    )
+
+
 def test_renderer_accepts_only_operating_brief_board_summary() -> None:
     with pytest.raises(ValidationError, match="OperatingBriefBoardSummary"):
         render_operating_brief_board_summary_markdown({"summary": "not-a-summary"})
@@ -309,6 +353,33 @@ def test_renderer_includes_grouped_candidate_ids_by_exact_labels() -> None:
     assert "- candidate-paper" in rendered
     assert "- candidate-probe" in rendered
     assert "- candidate-live" in rendered
+
+
+def test_renderer_keeps_watchlist_candidate_out_of_live_authorized_group() -> None:
+    rendered = render_operating_brief_board_summary_markdown(
+        watchlist_summary_with_live_authority_statuses()
+    )
+
+    watchlist_group = rendered.split(
+        "### Watchlist Only (watchlist_only)\n\n",
+        maxsplit=1,
+    )[1].split("### Paper Eligible (paper_eligible)", maxsplit=1)[0]
+    live_authorized_group = rendered.split(
+        "### Live Authorized (live_authorized)\n\n",
+        maxsplit=1,
+    )[1].split("## Research Queue", maxsplit=1)[0]
+
+    assert "- candidate-watchlist-live-status" in watchlist_group
+    assert "candidate-watchlist-live-status" not in live_authorized_group
+    assert "## Watchlist\n\n- candidate-watchlist-live-status" in rendered
+    assert "### Board IDs\n\n- None recorded." in rendered
+    assert (
+        "- candidate-watchlist-live-status: advisory_label=watchlist_only; "
+        "strategy_status_present=true; strategy_live_authorized=true; "
+        "risk_status_present=true; risk_live_authorized=true; "
+        "label_live_authorized=false"
+        in rendered
+    )
 
 
 def test_renderer_includes_board_ids_for_paper_probe_and_live_metadata() -> None:
@@ -412,9 +483,11 @@ def test_renderer_preserves_summary_ordering() -> None:
 def test_renderer_is_deterministic_across_repeated_calls() -> None:
     summary = board_summary()
 
-    assert render_operating_brief_board_summary_markdown(
-        summary
-    ) == render_operating_brief_board_summary_markdown(summary)
+    first_rendered = render_operating_brief_board_summary_markdown(summary)
+    second_rendered = render_operating_brief_board_summary_markdown(summary)
+
+    assert first_rendered == second_rendered
+    assert first_rendered.encode("utf-8") == second_rendered.encode("utf-8")
 
 
 def test_renderer_does_not_mutate_source_summary() -> None:

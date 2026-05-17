@@ -364,9 +364,11 @@ def test_renderer_preserves_dossier_strategy_and_risk_ordering() -> None:
 def test_renderer_is_deterministic_across_repeated_calls() -> None:
     item = brief()
 
-    assert render_operating_brief_markdown(item) == render_operating_brief_markdown(
-        item
-    )
+    first_rendered = render_operating_brief_markdown(item)
+    second_rendered = render_operating_brief_markdown(item)
+
+    assert first_rendered == second_rendered
+    assert first_rendered.encode("utf-8") == second_rendered.encode("utf-8")
 
 
 def test_renderer_does_not_mutate_source_or_nested_objects() -> None:

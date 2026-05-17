@@ -2919,6 +2919,21 @@ scheduler/runtime behavior, LLM/API call, network call, market-data provider
 access, strategy validation claim, trading recommendation, or capital-layer
 mutation.
 
+Phase 50 - Advisory Layer Review Hardening adds focused regression coverage for
+the advisory operating-brief layer after external review. The tests pin complete
+board-summary label counts, deterministic repeated `to_dict()` and Markdown
+rendering, non-actionable label authority when strategy and risk statuses are
+fully live-authorized, dataclass repr safety, and advisory safety boundaries.
+Direct `OperatingBriefBoardSummary` construction now rejects negative
+`candidate_counts_by_label` values while preserving builder-generated behavior.
+
+This phase adds no new advisory features, strategy mandate integration,
+synthetic fixtures, dashboard code, persistence, AI/LLM generation,
+market-data ingestion, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, candidate
+discovery, scoring, ranking, recommendation, trading behavior, or
+capital-layer mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

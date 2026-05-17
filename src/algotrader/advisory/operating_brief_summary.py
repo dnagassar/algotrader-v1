@@ -450,6 +450,13 @@ def _int_value(value: object, field_name: str) -> int:
     return value
 
 
+def _non_negative_int_value(value: object, field_name: str) -> int:
+    count = _int_value(value, field_name)
+    if count < 0:
+        raise ValidationError(f"{field_name} must be non-negative.")
+    return count
+
+
 def _label_groups(
     values: Iterable[tuple[AdvisoryLabel, Iterable[str]]],
 ) -> tuple[tuple[AdvisoryLabel, tuple[str, ...]], ...]:
@@ -483,7 +490,10 @@ def _label_counts(
         counts.append(
             (
                 _advisory_label(label, f"candidate_counts_by_label[{index}][0]"),
-                _int_value(count, f"candidate_counts_by_label[{index}][1]"),
+                _non_negative_int_value(
+                    count,
+                    f"candidate_counts_by_label[{index}][1]",
+                ),
             )
         )
     return tuple(counts)

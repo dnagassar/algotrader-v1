@@ -9034,6 +9034,18 @@ Safe next tasks include:
   broker access, order/fill/execution/OMS, account/position/portfolio behavior,
   signal/evaluator behavior, runtime, scheduler, LLM/API call, network call,
   strategy validation claim, trading recommendation, or capital-layer mutation
+- Phase 50 - Advisory Layer Review Hardening adds review-response regression
+  tests for advisory board count completeness, repeated serialization and
+  Markdown byte stability, non-actionable label authority despite live-authorized
+  strategy/risk source statuses, dataclass repr safety, and safety-boundary
+  terms. Direct `OperatingBriefBoardSummary` construction now rejects negative
+  `candidate_counts_by_label` values without changing builder-generated
+  summaries. This adds no new advisory feature, strategy mandate integration,
+  synthetic fixtures, dashboard display adapter, AI/LLM generation,
+  market-data ingestion, persistence, candidate discovery, scoring, ranking,
+  recommendation, broker/order/fill/execution/OMS, account/position/portfolio
+  behavior, runtime, scheduler, network call, trading behavior, or capital-layer
+  mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
