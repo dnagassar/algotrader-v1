@@ -11,6 +11,9 @@ from algotrader.advisory.operating_brief import (
     RiskAuthorityStatus,
     StrategyEligibilityStatus,
 )
+from algotrader.advisory.operating_brief_assembly import (
+    assemble_operating_brief_from_parts,
+)
 from algotrader.advisory.operating_brief_markdown import (
     render_operating_brief_markdown,
 )
@@ -34,6 +37,7 @@ __all__ = [
     "ResearchCandidateDossier",
     "RiskAuthorityStatus",
     "StrategyEligibilityStatus",
+    "assemble_operating_brief_from_parts",
     "build_operating_brief_board_summary",
     "candidate_snapshot_to_research_candidate_dossier",
     "risk_authority_snapshot_to_risk_authority_status",

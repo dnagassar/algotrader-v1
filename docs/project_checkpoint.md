@@ -9147,6 +9147,26 @@ Safe next tasks include:
   ingestion, scoring, ranking, recommendation logic, dashboard, persistence,
   broker/order/fill/account/position/portfolio behavior, runtime, scheduler,
   LLM/API call, network call, trading behavior, or capital-layer mutation
+- Phase 56 - Advisory Operating Brief Assembly from Prepared Parts adds
+  `algotrader.advisory.operating_brief_assembly` as a pure deterministic
+  assembler for already-built advisory objects. It accepts an explicit plain
+  `date`, prepared `ResearchCandidateDossier` objects, prepared
+  `StrategyEligibilityStatus` objects, and prepared `RiskAuthorityStatus`
+  objects; normalizes iterables to tuples; preserves ordering; rejects empty
+  dossier inputs, duplicate candidate ids, orphan statuses, and mismatched
+  exposed `as_of_date` values; requires matching prepared statuses for
+  elevated labels; and calls the existing `OperatingBrief` constructor as the
+  final validation boundary. It does not consume snapshots, call adapters,
+  infer labels, create dossiers/statuses, discover candidates, or upgrade
+  research/watchlist labels from permissive statuses. Focused tests cover
+  successful assembly, constructor usage, deterministic equality, type and
+  candidate-id validation, elevated-label gating, non-actionable label
+  authority, serialization/rendering/summary compatibility, safety surface,
+  and AST guardrails. This adds no snapshot-to-brief assembly, AI generation,
+  market-data ingestion, scoring, ranking, recommendation logic, dashboard,
+  persistence, broker/order/fill/account/position/portfolio behavior, runtime,
+  scheduler, LLM/API call, network call, trading behavior, or capital-layer
+  mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

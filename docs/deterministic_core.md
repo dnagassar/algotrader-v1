@@ -3085,6 +3085,42 @@ account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, market-data provider access, trading behavior, or capital-layer
 mutation.
 
+Phase 56 - Advisory Operating Brief Assembly from Prepared Parts adds
+`algotrader.advisory.operating_brief_assembly` as a pure deterministic
+assembler for already-constructed advisory parts. The public
+`assemble_operating_brief_from_parts(...)` function accepts an explicit plain
+`date`, `ResearchCandidateDossier` objects, `StrategyEligibilityStatus`
+objects, and `RiskAuthorityStatus` objects, normalizes the input iterables to
+tuples, preserves source ordering, rejects empty dossier collections, duplicate
+candidate ids, orphan strategy/risk statuses, and mismatched exposed
+`as_of_date` values, then calls the existing `OperatingBrief` constructor as
+the final validation boundary.
+
+The assembler does not consume candidate or governance snapshots, does not call
+candidate/governance adapters, and does not infer, upgrade, downgrade, or
+rewrite advisory labels. Elevated dossier labels require matching prepared
+strategy and risk status objects, while final actionable-label support remains
+constructor-gated by `OperatingBrief`. Research-only and watchlist-only
+dossiers may be assembled without statuses, and permissive statuses do not
+change the dossier label or board grouping.
+
+Focused tests cover successful assembly, constructor usage, frozen/slotted
+output, tuple normalization, ordering, source non-mutation, deterministic
+repeated calls, type validation, candidate-id validation, elevated-label gates,
+non-actionable label authority, optional as-of consistency, primitive
+serialization, Markdown rendering, board summary compatibility, safety surface,
+and AST guardrails excluding snapshots, adapters, governance, broker/execution/
+portfolio/runtime, LLM/network/market-data, persistence, notebooks, file I/O,
+clocks, random, and subprocess dependencies.
+
+This phase adds no snapshot-to-brief assembly, candidate dossier construction,
+strategy/risk status construction, candidate discovery, AI brief generation,
+market-data ingestion, strategy scoring, ranking, recommendation logic,
+dashboard code, persistence, broker access, order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, market-data provider access, trading behavior, or capital-layer
+mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
