@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1549-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1681-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9167,6 +9167,24 @@ Safe next tasks include:
   persistence, broker/order/fill/account/position/portfolio behavior, runtime,
   scheduler, LLM/API call, network call, trading behavior, or capital-layer
   mutation
+- Phase 57 - Synthetic Advisory Pipeline Fixture adds
+  `tests.fixtures.advisory_pipeline` as a deterministic test-only fixture that
+  explicitly composes the existing advisory pieces: candidate snapshots to
+  `ResearchCandidateDossier`, governance snapshots to prepared strategy/risk
+  statuses with explicit candidate ids, prepared parts to `OperatingBrief`, and
+  the existing board summary plus Markdown renderers to pinned literal output.
+  The fixture uses only synthetic identifiers/prose, fixed date `2026-01-16`,
+  all five advisory labels, research-only without strategy/risk support,
+  watchlist-only with more permissive optional support, and one valid
+  live-authorized path with matching prepared support. Focused tests cover
+  deterministic construction, source non-mutation, label preservation,
+  ordering, elevated-label gates, non-actionable label authority, primitive
+  serialization, exact Markdown rendering, safety content, and AST guardrails.
+  This adds no production snapshot-to-brief assembler, production pipeline
+  function, AI generation, market-data ingestion, candidate discovery, scoring,
+  ranking, recommendation logic, dashboard, persistence,
+  broker/order/fill/account/position/portfolio behavior, runtime, scheduler,
+  LLM/API call, network call, trading behavior, or capital-layer mutation
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

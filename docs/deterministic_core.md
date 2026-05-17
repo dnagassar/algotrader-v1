@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1549` tests are passing, with `4` skipped paper-integration tests by default.
+- `1681` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3120,6 +3120,34 @@ dashboard code, persistence, broker access, order/fill/execution/OMS behavior,
 account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, market-data provider access, trading behavior, or capital-layer
 mutation.
+
+Phase 57 - Synthetic Advisory Pipeline Fixture adds
+`tests.fixtures.advisory_pipeline` as a deterministic test-only end-to-end
+fixture proving the existing advisory pieces compose when called explicitly:
+candidate snapshots adapt into `ResearchCandidateDossier` objects, governance
+snapshots adapt into prepared strategy/risk statuses with explicit candidate
+ids, prepared parts assemble into an `OperatingBrief`, and the existing board
+summary and Markdown renderers produce pinned literal output.
+
+The fixture uses only synthetic identifiers and prose, fixed date `2026-01-16`,
+all five `AdvisoryLabel` values, research-only without strategy/risk support,
+watchlist-only with intentionally permissive optional support, and a
+constructor-gated live-authorized path with matching strategy and risk support.
+Focused tests pin deterministic builders, source non-mutation, exact label
+preservation, prepared-part ordering, elevated-label support gates,
+non-actionable label authority, primitive serialization, exact Markdown output,
+safety content, and AST guardrails excluding file I/O, clocks, environment/Git
+inspection, network/http, broker/execution/portfolio/runtime/scheduler, LLM,
+market-data provider, notebook, persistence, random, and subprocess
+dependencies.
+
+This phase adds no production snapshot-to-brief assembler, production pipeline
+function, OperatingBrief generation service, adapter authority inference, AI
+brief generation, market-data ingestion, candidate discovery, strategy scoring,
+ranking, recommendation logic, dashboard code, persistence, broker access,
+order/fill/execution/OMS behavior, account/position/portfolio behavior,
+runtime/scheduler behavior, LLM/API call, network call, trading behavior, or
+capital-layer mutation.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
