@@ -3242,6 +3242,35 @@ target-weight behavior, runtime/scheduler behavior, LLM/API call, network call,
 scoring, ranking, recommendation, candidate-discovery behavior, paper/live
 behavior, trading authority, or trading behavior.
 
+Phase 62 - Synthetic Moving-Average Research Mechanics Kernel adds a small
+offline-safe `algotrader.research.moving_average` mechanics contract for
+synthetic research/backtesting experiments. It defines frozen/slotted metadata
+dataclasses for dated positive `Decimal` inputs and per-row moving-average
+observations, plus a pure trailing simple moving-average builder that accepts
+ordered iterable inputs, returns immutable tuples, preserves input ordering,
+uses only prior/current observations, marks the first `window - 1` rows as
+unavailable, and treats equality to the moving average as not above.
+
+The kernel rejects datetime values, non-date values, bools, non-Decimal values,
+non-positive values, empty inputs, duplicate dates, unordered dates, malformed
+entries, and malformed windows. Tests pin window 1 and window 200 synthetic
+behavior, Decimal-only arithmetic, repeated-call determinism, no input mutation,
+future-value no-lookahead behavior, and AST guardrails excluding broker/
+execution/portfolio/runtime, network/http/socket, LLM/API, market-data provider,
+notebook/vectorbt, persistence, random, subprocess, filesystem, pandas/numpy,
+scoring, ranking, recommendation, candidate-discovery, order/fill/account/
+position/portfolio/allocation/target-weight, signal/evaluator, and trading
+behavior.
+
+This phase does not refactor or extend the SPY SMA-200 runner. It adds no
+strategy validation, approved signal, source or universe approval, benchmark,
+real market data, broad ETF implementation, market-data ingestion, advisory
+integration, dashboard, AI brief generation, paper/live behavior, broker/order/
+fill/execution/OMS behavior, account/position/portfolio behavior,
+runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
+recommendation, candidate-discovery behavior, trading authority, or trading
+behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

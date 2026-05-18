@@ -9262,6 +9262,25 @@ Safe next tasks include:
   runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
   recommendation, candidate-discovery behavior, paper/live behavior, trading
   authority, or trading behavior
+- Phase 62 - Synthetic Moving-Average Research Mechanics Kernel adds a small
+  reusable `algotrader.research.moving_average` contract for synthetic-only
+  offline mechanics. It introduces frozen/slotted metadata dataclasses for
+  dated positive `Decimal` values and per-row moving-average observations, plus
+  a pure trailing simple moving-average builder that normalizes iterable inputs
+  to immutable tuple output, preserves ordering, rejects malformed dates,
+  values, windows, duplicate dates, unordered dates, empty input, and malformed
+  entries, computes only from prior/current observations, marks the first
+  `window - 1` rows unavailable, and treats equality as not above. Focused
+  tests pin window 1, window 200 synthetic input, Decimal arithmetic,
+  repeated-call determinism, no input mutation, no-lookahead future-value
+  behavior, and AST/field guardrails excluding broker/order/fill/execution/
+  portfolio/runtime/LLM/network/market-data/notebook/vectorbt/persistence/
+  filesystem/pandas/numpy/scoring/ranking/recommendation/candidate-discovery/
+  signal/evaluator/trading behavior. This does not modify the SPY runner and
+  adds no strategy validation, approved signal, source/universe/benchmark
+  approval, real data, broad ETF implementation, advisory integration,
+  dashboard, AI brief generation, paper/live behavior, trading authority, or
+  trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
