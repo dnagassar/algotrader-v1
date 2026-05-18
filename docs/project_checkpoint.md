@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1699-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1915-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9329,6 +9329,35 @@ Safe next tasks include:
   execution plans, validate a strategy, define a signal, add advisory
   integration, source approval, real data, broad ETF implementation, paper/live
   behavior, trading authority, or trading behavior
+- Phase 65 - Synthetic Cumulative Exposure Return Path Kernel adds a small
+  reusable `algotrader.research.cumulative_returns` contract for synthetic-only
+  offline cumulative return metadata from already-built
+  `ExposureReturnObservation` rows. It introduces a frozen/slotted
+  `CumulativeReturnObservation` dataclass and a pure
+  `build_cumulative_return_path` builder that normalizes iterable input to
+  immutable tuple output, preserves ordering, rejects empty input, malformed
+  entries, duplicate dates, unordered dates, malformed return fields,
+  non-Decimal cumulative values, and bypassed malformed exposure-return rows,
+  and uses Decimal-only cumulative return arithmetic. The first row remains a
+  zero cumulative baseline while preserving source return availability and
+  return fields. Later available rows compound asset cumulative return from
+  `asset_return` and exposure cumulative return from `exposure_return`;
+  unavailable rows preserve prior cumulative values without inventing returns.
+  Focused tests pin direct validation, flat and two-return paths,
+  previous-exposure breakout mechanics, no-lookahead future changes, Decimal
+  preservation, repeated-call determinism, source non-mutation, immutable
+  output, and AST/field guardrails excluding broker/order/fill/execution/
+  portfolio/runtime/LLM/network/market-data/notebook/vectorbt/persistence/
+  filesystem/pandas/numpy/equity/PnL/Sharpe/CAGR/drawdown/alpha/beta/
+  benchmark/scoring/ranking/recommendation/candidate-discovery/signal/
+  evaluator/trading behavior. This does not modify the SPY runner, compute
+  equity curves, starting capital, PnL, Sharpe, CAGR, drawdown, volatility,
+  alpha, beta, benchmark comparisons, win rate, performance scores, costs,
+  slippage, fees, benchmarks, portfolio accounting, allocation, target weights,
+  position sizing, orders, fills, signals, execution plans, validate a strategy,
+  define a signal, add advisory integration, source approval, real data, broad
+  ETF implementation, paper/live behavior, trading authority, or trading
+  behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

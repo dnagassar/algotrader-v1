@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1699` tests are passing, with `4` skipped paper-integration tests by default.
+- `1915` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3326,6 +3326,38 @@ paper/live behavior, broker/order/fill/execution/OMS behavior,
 account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, scoring, ranking, recommendation, candidate-discovery behavior,
 trading authority, or trading behavior.
+
+Phase 65 - Synthetic Cumulative Exposure Return Path Kernel adds
+`algotrader.research.cumulative_returns` as a small offline-safe research
+metadata layer over already-built `ExposureReturnObservation` rows. It defines
+a frozen/slotted `CumulativeReturnObservation` contract and a pure
+`build_cumulative_return_path` builder that normalizes iterable input to an
+immutable tuple, preserves ordering, rejects empty input, malformed entries,
+duplicate dates, unordered dates, malformed return fields, non-Decimal
+cumulative values, and bypassed malformed exposure-return rows, and uses
+Decimal-only cumulative return arithmetic.
+
+The kernel treats the first row as a cumulative baseline with zero asset and
+exposure cumulative returns while preserving the source row's return
+availability and return fields. Later available rows compound asset cumulative
+return from `asset_return` and exposure cumulative return from
+`exposure_return`; unavailable rows preserve prior cumulative values without
+inventing returns. Tests pin direct observation validation, tuple immutability,
+flat and two-return paths, previous-exposure breakout mechanics, no-lookahead
+future changes, Decimal preservation, repeated-call determinism, source
+non-mutation, and AST/field guardrails.
+
+This phase does not compute equity curves, starting capital, PnL, Sharpe,
+CAGR, drawdown, volatility, alpha, beta, benchmark comparisons, win rate,
+performance scores, costs, slippage, fees, portfolio accounting, allocation,
+target weights, position sizing, orders, fills, signals, execution plans,
+strategy validation, source approval, real data ingestion, broad ETF
+implementation, advisory integration, market-data ingestion, dashboard, AI
+brief generation, paper/live behavior, broker/order/fill/execution/OMS
+behavior, account/position/portfolio behavior, runtime/scheduler behavior,
+LLM/API call, network call, scoring, ranking, recommendation,
+candidate-discovery behavior, trading authority, or trading behavior. It does
+not refactor or extend the SPY SMA-200 runner.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
