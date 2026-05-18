@@ -9281,6 +9281,29 @@ Safe next tasks include:
   approval, real data, broad ETF implementation, advisory integration,
   dashboard, AI brief generation, paper/live behavior, trading authority, or
   trading behavior
+- Phase 63 - Synthetic Moving-Average Exposure State Kernel adds a small
+  reusable `algotrader.research.moving_average_exposure` contract for
+  synthetic-only offline exposure metadata. It introduces a frozen/slotted
+  `MovingAverageExposureState` dataclass and a pure
+  `build_previous_exposure_states` builder over already-built
+  `MovingAverageObservation` rows. The builder normalizes iterable input to
+  immutable tuple output, preserves ordering, rejects empty input, malformed
+  entries, duplicate dates, unordered dates, and mixed windows, and uses a
+  previous-row convention where the first `current_exposure` is zero, each
+  row's `next_exposure` comes only from the current observation, and the next
+  row's `current_exposure` reflects the prior row's `next_exposure`.
+  Unavailable moving averages, equality, below-average rows, and missing
+  above-average metadata all produce zero `next_exposure`; above-average rows
+  produce one. Focused tests pin direct validation, previous-exposure
+  mechanics, no-lookahead behavior, repeated-call determinism, source
+  non-mutation, immutable output, and AST/field guardrails excluding broker/
+  order/fill/execution/portfolio/runtime/LLM/network/market-data/notebook/
+  vectorbt/persistence/filesystem/pandas/numpy/scoring/ranking/recommendation/
+  candidate-discovery/signal/evaluator/trading behavior. This does not modify
+  the SPY runner, compute returns, validate a strategy, define a signal, add
+  source approval, real data, broad ETF implementation, advisory integration,
+  dashboard, AI brief generation, paper/live behavior, trading authority, or
+  trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

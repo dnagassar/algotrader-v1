@@ -3271,6 +3271,32 @@ runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
 recommendation, candidate-discovery behavior, trading authority, or trading
 behavior.
 
+Phase 63 - Synthetic Moving-Average Exposure State Kernel adds
+`algotrader.research.moving_average_exposure` as a small offline-safe research
+metadata layer over already-built `MovingAverageObservation` rows. It defines a
+frozen/slotted `MovingAverageExposureState` contract and a pure
+`build_previous_exposure_states` function that normalizes iterable observation
+inputs to immutable tuples, rejects empty input, malformed entries, duplicate
+dates, unordered dates, and mixed windows, and preserves input ordering.
+
+The exposure-state kernel uses a previous-row convention: the first
+`current_exposure` is zero, each row's `next_exposure` is derived only from the
+current moving-average observation, and the following row's `current_exposure`
+reflects that prior `next_exposure`. Unavailable moving averages, equality to
+the moving average, below-average rows, and missing above-average metadata all
+produce zero `next_exposure`; above-average rows produce one `next_exposure`.
+Tests pin direct state validation, no-lookahead behavior, repeated-call
+determinism, input non-mutation, immutable output, and AST/field guardrails.
+
+This phase does not compute returns and does not refactor or extend the SPY
+SMA-200 runner. It adds no strategy validation, signal definition, evaluator,
+source approval, real data, broad ETF implementation, advisory expansion,
+dashboard, AI brief generation, paper/live behavior, broker/order/fill/
+execution/OMS behavior, account/position/portfolio/allocation/target-weight
+behavior, runtime/scheduler behavior, LLM/API call, network call,
+market-data ingestion, scoring, ranking, recommendation,
+candidate-discovery behavior, trading authority, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
