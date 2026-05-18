@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1681-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 1699-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9200,6 +9200,30 @@ Safe next tasks include:
   logic, dashboard, persistence, broker/order/fill/account/position/portfolio
   behavior, runtime, scheduler, LLM/API call, network call, trading behavior,
   or capital-layer mutation
+- Phase 59 - SPY SMA-200 Research Runner Mechanics Hardening returns to the
+  existing local-only research runner without promoting any strategy. The
+  runner report now includes deterministic SMA mechanics metadata in Markdown
+  and JSON: the fixed 200-observation window, minimum observations, fully
+  formed SMA observation count, insufficient-observation status, and
+  same-close metadata with previous-exposure backtest timing. It also emits
+  explicit non-claims for advisory/research-only use, not validated evidence,
+  no trading recommendation, no approved signal, no live or paper trading
+  authority, and no broker/order/fill/account/position/portfolio/allocation/
+  target-weight behavior. Focused tests use only synthetic tmp CSV fixtures,
+  not `.data/` or real SPY data, and pin input validation, insufficient-data
+  reporting, no-lookahead SMA mechanics, adjustment/return-basis honesty,
+  byte-identical Markdown/JSON output, JSON payload field safety, and AST
+  guardrails excluding broker/execution/portfolio/runtime, network/http/socket,
+  LLM/API, market-data provider, notebook/vectorbt, persistence, random,
+  subprocess, environment, scoring, ranking, recommendation,
+  candidate-discovery, order/fill, and portfolio behavior. This changes report
+  metadata only and adds no advisory expansion, source or data approval, real
+  market data, strategy validation, profitability claim, signal definition,
+  evaluator behavior, trading recommendation, live/paper trading authority,
+  broker/order/fill/execution/OMS behavior, account/position/portfolio
+  behavior, runtime/scheduler behavior, LLM/API call, network call,
+  market-data ingestion, scoring, ranking, recommendation, or
+  candidate-discovery behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

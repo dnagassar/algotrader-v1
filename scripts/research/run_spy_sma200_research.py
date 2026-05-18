@@ -54,13 +54,15 @@ _RETURN_BASIS_PRICE_RETURN = "price_return"
 _RETURN_BASIS_TOTAL_RETURN = "total_return"
 _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK = "close_price_fallback"
 _ADJUSTED_CLOSE_SOURCE_TRUE_ADJUSTED = "true_adjusted_close"
+_SMA_200_WINDOW = 200
 
 _DISCLAIMER = (
-    "Advisory only: this local report is not validated evidence, not approved, "
-    "and not a trading recommendation. It must not be used as production "
-    "signal/evaluator behavior or a trading workflow."
+    "Advisory/research only: this local report is not validated evidence, "
+    "not an approved signal, not live or paper trading authority, and not a "
+    "trading recommendation."
 )
 _RULE_LINES = (
+    "SMA window: 200 selected close observations.",
     "Exposure = 1 when the selected close series > trailing 200-day SMA.",
     "Exposure = 0 otherwise.",
     "First 199 bars are exposure 0.",
@@ -81,6 +83,16 @@ _LIMITATION_LINES = (
     "Not validated evidence.",
     "Not a trading recommendation.",
     "Not production signal/evaluator behavior.",
+    "No dividend, corporate-action, or total-return claim is made unless explicitly supported.",
+)
+_NON_CLAIM_LINES = (
+    "Advisory/research only.",
+    "Not validated evidence.",
+    "Not a trading recommendation.",
+    "Not an approved signal.",
+    "Not live or paper trading authority.",
+    "No broker, order, fill, account, position, portfolio, allocation, or target-weight behavior.",
+    "No executable signals, execution plans, portfolio updates, or trading actions are created.",
 )
 _VERDICT = "Advisory only / not validated / not approved."
 
@@ -206,6 +218,13 @@ def render_spy_sma200_report(
         "## Rule",
         *[f"- {line}" for line in _RULE_LINES],
         "",
+        "## SMA Mechanics",
+        f"- sma_window: {_SMA_200_WINDOW}",
+        f"- minimum_observations: {_SMA_200_WINDOW}",
+        f"- fully_formed_sma_observations: {_fully_formed_sma_observations(manifest)}",
+        f"- insufficient_observations: {str(_sma_insufficient_observations(manifest)).lower()}",
+        "- timing: same-close observation metadata with previous-exposure backtest convention",
+        "",
         "## Baseline",
         *[f"- {line}" for line in _BASELINE_LINES],
         "",
@@ -225,6 +244,9 @@ def render_spy_sma200_report(
         "",
         "## Limitations",
         *[f"- {line}" for line in _LIMITATION_LINES],
+        "",
+        "## Non-Claims",
+        *[f"- {line}" for line in _NON_CLAIM_LINES],
         "",
         "## Verdict",
         f"- {_VERDICT}",
@@ -408,10 +430,12 @@ def _report_payload(
             result=result,
             buy_and_hold_result=buy_and_hold_result,
         ),
+        "non_claims": list(_NON_CLAIM_LINES),
         "provenance": manifest.to_dict(),
         "report_title": REPORT_TITLE,
         "return_basis": return_metric_name,
         "rule": list(_RULE_LINES),
+        "sma_mechanics": _sma_mechanics_payload(manifest),
         "verdict": _VERDICT,
     }
 
@@ -446,6 +470,24 @@ def _return_metric_name(manifest: LocalPriceSnapshotManifest) -> str:
         return _RETURN_BASIS_TOTAL_RETURN
 
     return _RETURN_BASIS_PRICE_RETURN
+
+
+def _sma_mechanics_payload(manifest: LocalPriceSnapshotManifest) -> dict[str, object]:
+    return {
+        "fully_formed_sma_observations": _fully_formed_sma_observations(manifest),
+        "insufficient_observations": _sma_insufficient_observations(manifest),
+        "minimum_observations": _SMA_200_WINDOW,
+        "sma_window": _SMA_200_WINDOW,
+        "timing": "same-close observation metadata with previous-exposure backtest convention",
+    }
+
+
+def _fully_formed_sma_observations(manifest: LocalPriceSnapshotManifest) -> int:
+    return max(manifest.row_count - (_SMA_200_WINDOW - 1), 0)
+
+
+def _sma_insufficient_observations(manifest: LocalPriceSnapshotManifest) -> bool:
+    return manifest.row_count < _SMA_200_WINDOW
 
 
 def _adjusted_close_available(manifest: LocalPriceSnapshotManifest) -> bool:

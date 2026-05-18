@@ -13,8 +13,20 @@ from algotrader.errors import ValidationError
 
 
 MODULE_PATH = Path("scripts/research/run_spy_sma200_research.py")
-SNAPSHOT_DIR = Path(".data") / "research_snapshots"
 RAW_FIRST_ROW = "SPY,2025-01-01,100.00,101.00,99.00,100.00,100.00,900001"
+_CSV_COLUMNS = ("symbol", "date", "open", "high", "low", "close", "adjusted_close", "volume")
+_FORBIDDEN_PAYLOAD_KEY_PARTS = (
+    "account",
+    "allocation",
+    "candidate",
+    "fill",
+    "order",
+    "position",
+    "rank",
+    "recommendation",
+    "score",
+    "target_weight",
+)
 
 _FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
@@ -41,14 +53,20 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "langchain",
     "langgraph",
     "llm",
+    "notebook",
     "numpy",
     "openai",
+    "os",
     "pandas",
     "QuantConnect",
     "quantconnect",
+    "random",
     "requests",
     "socket",
     "sqlmodel",
+    "sqlite3",
+    "sqlalchemy",
+    "subprocess",
     "urllib",
     "vectorbt",
     "yfinance",
@@ -72,6 +90,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "connect",
     "create_order",
     "download",
+    "environ",
     "fill",
     "fit",
     "glob",
@@ -82,11 +101,19 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "order",
     "pandas",
     "predict",
+    "Popen",
+    "position",
+    "random",
+    "rank",
+    "recommendation",
     "request",
     "requests",
     "rglob",
     "scheduler",
+    "score",
+    "seed",
     "socket",
+    "subprocess",
     "submit_order",
     "vectorbt",
     "walk",
@@ -160,39 +187,56 @@ def write_synthetic_spy_csv(
     symbol: str = "SPY",
     rows: int = 205,
     blank_adjusted_close: bool = False,
+    price_step: Decimal = Decimal("0.10"),
+    close_overrides: dict[int, Decimal] | None = None,
+    date_overrides: dict[int, str] | None = None,
+    row_overrides: dict[int, dict[str, str]] | None = None,
 ) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     start = date(2025, 1, 1)
-    lines = ["symbol,date,open,high,low,close,adjusted_close,volume"]
+    close_overrides = close_overrides or {}
+    date_overrides = date_overrides or {}
+    row_overrides = row_overrides or {}
+    lines = [",".join(_CSV_COLUMNS)]
 
     for index in range(rows):
         current_date = start + timedelta(days=index)
-        price = Decimal("100.00") + (Decimal(index) / Decimal("10"))
+        price = close_overrides.get(
+            index,
+            Decimal("100.00") + (Decimal(index) * price_step),
+        )
         high = price + Decimal("1.00")
         low = price - Decimal("1.00")
         volume = 900001 + index
         adjusted_close = "" if blank_adjusted_close else f"{price:.2f}"
-        lines.append(
-            ",".join(
-                (
-                    symbol,
-                    current_date.isoformat(),
-                    f"{price:.2f}",
-                    f"{high:.2f}",
-                    f"{low:.2f}",
-                    f"{price:.2f}",
-                    adjusted_close,
-                    str(volume),
-                )
-            )
-        )
+        row = {
+            "symbol": symbol,
+            "date": date_overrides.get(index, current_date.isoformat()),
+            "open": f"{price:.2f}",
+            "high": f"{high:.2f}",
+            "low": f"{low:.2f}",
+            "close": f"{price:.2f}",
+            "adjusted_close": adjusted_close,
+            "volume": str(volume),
+        }
+        row.update(row_overrides.get(index, {}))
+        lines.append(",".join(row[column] for column in _CSV_COLUMNS))
 
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
 
 
 def snapshot_path(tmp_path: Path) -> Path:
-    return write_synthetic_spy_csv(tmp_path / SNAPSHOT_DIR / "SPY_daily.csv")
+    return write_synthetic_spy_csv(tmp_path / "SPY_daily.csv")
+
+
+def run_synthetic_research(
+    runner: ModuleType,
+    csv_path: Path,
+    **kwargs: object,
+) -> str:
+    kwargs.setdefault("allow_outside_data_dir", True)
+    return runner.run_spy_sma200_research(csv_path, **kwargs)
 
 
 def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
@@ -202,13 +246,15 @@ def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
     csv_path = snapshot_path(tmp_path)
     expected_sha256 = hashlib.sha256(csv_path.read_bytes()).hexdigest()
 
-    report = runner.run_spy_sma200_research(csv_path, repo_root=tmp_path)
+    report = run_synthetic_research(runner, csv_path, repo_root=tmp_path)
 
     assert report.startswith("# SPY SMA-200 Local Research Run\n")
-    assert "Advisory only:" in report
+    assert "Advisory/research only:" in report
     assert "not validated evidence" in report
-    assert "not approved" in report
+    assert "not an approved signal" in report
     assert "not a trading recommendation" in report
+    assert "not live or paper trading authority" in report
+    assert "No broker, order, fill, account, position, portfolio" in report
     assert f"- File SHA-256: {expected_sha256}" in report
     assert "- Snapshot fingerprint: " in report
     assert _snapshot_fingerprint_from(report)
@@ -224,9 +270,14 @@ def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
     assert "- Initial equity: 10000" in report
     assert "- Fee bps: 0" in report
     assert "- Slippage bps: 0" in report
+    assert "SMA window: 200 selected close observations." in report
     assert "Exposure = 1 when the selected close series > trailing 200-day SMA." in report
     assert "First 199 bars are exposure 0." in report
     assert "previous-exposure convention" in report
+    assert "- sma_window: 200" in report
+    assert "- minimum_observations: 200" in report
+    assert "- fully_formed_sma_observations: 6" in report
+    assert "- insufficient_observations: false" in report
     assert "Buy-and-hold baseline uses the same loaded local snapshot" in report
     assert "Buy-and-hold exposure is 1 on every loaded bar." in report
     assert "Total return:" not in report
@@ -253,13 +304,15 @@ def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
     assert str(csv_path.parent) not in report
     if csv_path.drive:
         assert csv_path.drive not in report
+    _assert_markdown_non_claims(report)
 
 
 def test_custom_assumptions_and_metadata_are_reflected_in_report(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = snapshot_path(tmp_path)
 
-    report = runner.run_spy_sma200_research(
+    report = run_synthetic_research(
+        runner,
         csv_path,
         initial_equity=Decimal("25000.50"),
         fee_bps=Decimal("1.25"),
@@ -287,7 +340,8 @@ def test_total_return_label_is_used_only_for_total_return_policy(tmp_path: Path)
     runner = load_runner()
     csv_path = snapshot_path(tmp_path)
 
-    report = runner.run_spy_sma200_research(
+    report = run_synthetic_research(
+        runner,
         csv_path,
         adjustment_policy="total_return",
         repo_root=tmp_path,
@@ -309,7 +363,8 @@ def test_unknown_adjustment_policy_reports_price_return_not_total_return(
     runner = load_runner()
     csv_path = snapshot_path(tmp_path)
 
-    report = runner.run_spy_sma200_research(
+    report = run_synthetic_research(
+        runner,
         csv_path,
         adjustment_policy="unknown",
         repo_root=tmp_path,
@@ -333,7 +388,8 @@ def test_unknown_adjustment_policy_json_sidecar_reports_price_return_basis(
     output_path = tmp_path / "spy_sma200_report.md"
     json_output_path = tmp_path / "spy_sma200_report.json"
 
-    runner.run_spy_sma200_research(
+    run_synthetic_research(
+        runner,
         csv_path,
         adjustment_policy="unknown",
         output_path=output_path,
@@ -346,6 +402,15 @@ def test_unknown_adjustment_policy_json_sidecar_reports_price_return_basis(
     assert sidecar["adjusted_close_available"] is False
     assert sidecar["adjusted_close_source"] == "close_price_fallback"
     assert sidecar["provenance"]["adjustment_policy"] == "unknown"
+    assert sidecar["sma_mechanics"] == {
+        "fully_formed_sma_observations": 6,
+        "insufficient_observations": False,
+        "minimum_observations": 200,
+        "sma_window": 200,
+        "timing": "same-close observation metadata with previous-exposure backtest convention",
+    }
+    _assert_json_non_claims(sidecar)
+    _assert_no_forbidden_payload_keys(sidecar)
     assert "price_return_strategy" in sidecar["metrics"]
     assert "price_return_buy_and_hold" in sidecar["metrics"]
     assert "total_return_strategy" not in sidecar["metrics"]
@@ -355,7 +420,7 @@ def test_unknown_adjustment_policy_json_sidecar_reports_price_return_basis(
 def test_total_return_policy_requires_usable_adjusted_close(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
-        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        tmp_path / "SPY_daily.csv",
         blank_adjusted_close=True,
     )
     output_path = tmp_path / "spy_sma200_report.md"
@@ -364,6 +429,7 @@ def test_total_return_policy_requires_usable_adjusted_close(tmp_path: Path) -> N
         runner.run_spy_sma200_research(
             csv_path,
             adjustment_policy="total_return",
+            allow_outside_data_dir=True,
             output_path=output_path,
             repo_root=tmp_path,
         )
@@ -383,6 +449,7 @@ def test_invalid_adjustment_policy_is_rejected_before_report_output(
         runner.run_spy_sma200_research(
             csv_path,
             adjustment_policy="split_adjusted",
+            allow_outside_data_dir=True,
             output_path=output_path,
             repo_root=tmp_path,
         )
@@ -406,12 +473,47 @@ def test_non_spy_symbol_csv_is_rejected_when_symbol_column_exists(
 ) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
-        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        tmp_path / "SPY_daily.csv",
         symbol="QQQ",
     )
 
     with pytest.raises(ValidationError, match="symbol"):
-        runner.run_spy_sma200_research(csv_path, repo_root=tmp_path)
+        runner.run_spy_sma200_research(
+            csv_path,
+            allow_outside_data_dir=True,
+            repo_root=tmp_path,
+        )
+
+
+@pytest.mark.parametrize(
+    ("date_overrides", "row_overrides", "match"),
+    (
+        ({10: "2025-01-10"}, {}, "duplicate dates"),
+        ({10: "2024-12-31"}, {}, "strictly increasing"),
+        ({1: "2025/01/02"}, {}, "ISO date"),
+        ({}, {1: {"close": ""}}, "close.*Decimal string"),
+        ({}, {1: {"close": "not-a-number"}}, "close.*Decimal string"),
+    ),
+)
+def test_synthetic_csv_validation_rejects_bad_dates_and_close_values(
+    tmp_path: Path,
+    date_overrides: dict[int, str],
+    row_overrides: dict[int, dict[str, str]],
+    match: str,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_daily.csv",
+        date_overrides=date_overrides,
+        row_overrides=row_overrides,
+    )
+
+    with pytest.raises(ValidationError, match=match):
+        runner.run_spy_sma200_research(
+            csv_path,
+            allow_outside_data_dir=True,
+            repo_root=tmp_path,
+        )
 
 
 def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
@@ -422,12 +524,13 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     implicit_output_path = tmp_path / "implicit_report.md"
     implicit_json_output_path = tmp_path / "implicit_report.json"
 
-    report = runner.run_spy_sma200_research(csv_path, repo_root=tmp_path)
+    report = run_synthetic_research(runner, csv_path, repo_root=tmp_path)
 
     assert not implicit_output_path.exists()
     assert not implicit_json_output_path.exists()
 
-    written_report = runner.run_spy_sma200_research(
+    written_report = run_synthetic_research(
+        runner,
         csv_path,
         output_path=output_path,
         repo_root=tmp_path,
@@ -446,6 +549,8 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     assert sidecar["provenance"]["file_sha256"] == hashlib.sha256(
         csv_path.read_bytes()
     ).hexdigest()
+    assert sidecar["non_claims"]
+    assert sidecar["sma_mechanics"]["sma_window"] == 200
     assert sidecar["metrics"]["price_return_strategy"]
     assert sidecar["metrics"]["price_return_buy_and_hold"]
     assert sidecar["metrics"]["max_drawdown_strategy"]
@@ -459,6 +564,56 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     assert "900001" not in json_output_path.read_text(encoding="utf-8")
 
 
+def test_repeated_synthetic_runs_are_byte_identical(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    first_output_path = tmp_path / "first_report.md"
+    second_output_path = tmp_path / "second_report.md"
+
+    first_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=first_output_path,
+        repo_root=tmp_path,
+    )
+    second_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=second_output_path,
+        repo_root=tmp_path,
+    )
+
+    assert first_report == second_report
+    assert first_output_path.read_bytes() == second_output_path.read_bytes()
+    assert (
+        first_output_path.with_suffix(".json").read_bytes()
+        == second_output_path.with_suffix(".json").read_bytes()
+    )
+
+
+def test_insufficient_sma200_observations_are_reported_without_rejection(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(tmp_path / "SPY_daily.csv", rows=199)
+    output_path = tmp_path / "spy_sma200_report.md"
+
+    report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=output_path,
+        repo_root=tmp_path,
+    )
+    sidecar = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+
+    assert "- Row count: 199" in report
+    assert "- fully_formed_sma_observations: 0" in report
+    assert "- insufficient_observations: true" in report
+    assert sidecar["sma_mechanics"]["fully_formed_sma_observations"] == 0
+    assert sidecar["sma_mechanics"]["insufficient_observations"] is True
+    assert sidecar["metrics"]["exposure_ratio_strategy"] == "0"
+
+
 def test_output_path_json_suffix_is_rejected(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = snapshot_path(tmp_path)
@@ -466,6 +621,7 @@ def test_output_path_json_suffix_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(ValidationError, match="markdown report path"):
         runner.run_spy_sma200_research(
             csv_path,
+            allow_outside_data_dir=True,
             output_path=tmp_path / "spy_sma200_report.json",
             repo_root=tmp_path,
         )
@@ -474,7 +630,7 @@ def test_output_path_json_suffix_is_rejected(tmp_path: Path) -> None:
 def test_buy_and_hold_exposure_ratio_is_one(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
-        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        tmp_path / "SPY_daily.csv",
         rows=3,
     )
     snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
@@ -496,7 +652,7 @@ def test_buy_and_hold_price_return_matches_last_over_first_minus_one_within_tole
 ) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
-        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        tmp_path / "SPY_daily.csv",
         rows=3,
     )
     snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
@@ -521,7 +677,7 @@ def test_buy_and_hold_max_drawdown_is_zero_on_monotonically_increasing_series(
 ) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
-        tmp_path / SNAPSHOT_DIR / "SPY_daily.csv",
+        tmp_path / "SPY_daily.csv",
         rows=3,
     )
     snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
@@ -538,6 +694,44 @@ def test_buy_and_hold_max_drawdown_is_zero_on_monotonically_increasing_series(
     assert result.max_drawdown == Decimal("0")
 
 
+def test_sma200_uses_same_close_metadata_without_future_leakage(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    base_csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_daily_base.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={200: Decimal("300.00"), 201: Decimal("50.00")},
+    )
+    revised_future_csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_daily_revised_future.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={200: Decimal("300.00"), 201: Decimal("1000.00")},
+    )
+    base_snapshot = runner.load_historical_price_snapshot_csv(base_csv_path, "SPY")
+    revised_future_snapshot = runner.load_historical_price_snapshot_csv(
+        revised_future_csv_path,
+        "SPY",
+    )
+
+    base_exposures = runner.build_sma_200_daily_exposures(base_snapshot)
+    revised_future_exposures = runner.build_sma_200_daily_exposures(
+        revised_future_snapshot
+    )
+
+    assert [exposure.exposure for exposure in base_exposures[:199]] == [
+        Decimal("0")
+    ] * 199
+    assert base_exposures[198].date == date(2025, 7, 18)
+    assert base_exposures[199].date == date(2025, 7, 19)
+    assert base_exposures[199].exposure == Decimal("0")
+    assert base_exposures[200].date == date(2025, 7, 20)
+    assert base_exposures[200].exposure == Decimal("1")
+    assert base_exposures[:201] == revised_future_exposures[:201]
+
+
 def test_main_renders_report_to_stdout_by_default(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -547,24 +741,12 @@ def test_main_renders_report_to_stdout_by_default(
     csv_path = snapshot_path(tmp_path)
     monkeypatch.setattr(runner, "_REPO_ROOT", tmp_path)
 
-    exit_code = runner.main((str(csv_path),))
+    exit_code = runner.main((str(csv_path), "--allow-outside-data-dir"))
     captured = capsys.readouterr()
 
     assert exit_code == 0
     assert captured.out.startswith("# SPY SMA-200 Local Research Run\n")
     assert captured.err == ""
-
-
-def test_output_path_under_data_dir_is_rejected(tmp_path: Path) -> None:
-    runner = load_runner()
-    csv_path = snapshot_path(tmp_path)
-
-    with pytest.raises(ValidationError, match="output path"):
-        runner.run_spy_sma200_research(
-            csv_path,
-            output_path=tmp_path / ".data" / "report.md",
-            repo_root=tmp_path,
-        )
 
 
 def test_data_path_outside_snapshot_dir_requires_override(tmp_path: Path) -> None:
@@ -613,6 +795,46 @@ def test_runner_has_only_explicit_report_and_sidecar_output_writes() -> None:
     assert len(write_text_calls) == 2
     assert "if checked_output_path is not None:\n        checked_output_path.write_text" in source
     assert "json_output_path.write_text" in source
+
+
+def _assert_markdown_non_claims(report: str) -> None:
+    for line in (
+        "Advisory/research only.",
+        "Not validated evidence.",
+        "Not a trading recommendation.",
+        "Not an approved signal.",
+        "Not live or paper trading authority.",
+        "No broker, order, fill, account, position, portfolio, allocation, or target-weight behavior.",
+        "No executable signals, execution plans, portfolio updates, or trading actions are created.",
+    ):
+        assert f"- {line}" in report
+
+
+def _assert_json_non_claims(sidecar: dict[str, object]) -> None:
+    assert sidecar["disclaimer"].startswith("Advisory/research only:")
+    assert sidecar["non_claims"] == [
+        "Advisory/research only.",
+        "Not validated evidence.",
+        "Not a trading recommendation.",
+        "Not an approved signal.",
+        "Not live or paper trading authority.",
+        "No broker, order, fill, account, position, portfolio, allocation, or target-weight behavior.",
+        "No executable signals, execution plans, portfolio updates, or trading actions are created.",
+    ]
+
+
+def _assert_no_forbidden_payload_keys(payload: object) -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            normalized_key = str(key).lower().replace("-", "_")
+            assert not any(
+                forbidden in normalized_key
+                for forbidden in _FORBIDDEN_PAYLOAD_KEY_PARTS
+            )
+            _assert_no_forbidden_payload_keys(value)
+    elif isinstance(payload, list):
+        for value in payload:
+            _assert_no_forbidden_payload_keys(value)
 
 
 def _snapshot_fingerprint_from(report: str) -> str:

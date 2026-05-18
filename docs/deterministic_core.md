@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1681` tests are passing, with `4` skipped paper-integration tests by default.
+- `1699` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3166,6 +3166,36 @@ market-data ingestion, strategy scoring, ranking, recommendation logic,
 dashboard code, persistence, broker/order/fill/execution/OMS behavior,
 account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, trading behavior, or capital-layer mutation.
+
+Phase 59 - SPY SMA-200 Research Runner Mechanics Hardening returns the work to
+the existing local-only research runner without promoting any strategy. The
+runner report now emits explicit SMA mechanics metadata in Markdown and JSON:
+the fixed 200-observation window, minimum observations, fully formed SMA
+observation count, insufficient-observation status, and same-close metadata
+with previous-exposure backtest timing. It also emits explicit non-claims for
+advisory/research-only use, not validated evidence, no trading recommendation,
+no approved signal, no live or paper trading authority, and no broker/order/
+fill/account/position/portfolio/allocation/target-weight behavior.
+
+Focused tests now use deterministic synthetic CSVs under `tmp_path` without
+`.data/`, real SPY data, network, credentials, vendors, environment reads, or
+market-data providers. They pin duplicate, unordered, malformed-date, missing
+close, and non-numeric close rejection through the existing loader contract;
+reporting rather than rejection for insufficient SMA-200 observations; exact
+date handling; no-lookahead SMA behavior; deterministic Markdown/JSON bytes
+across repeated runs; adjustment-policy and return-basis honesty; JSON payload
+field safety; and AST guardrails excluding broker/execution/portfolio/runtime,
+network/http/socket, LLM/API, market-data provider, notebook/vectorbt,
+persistence, random, subprocess, environment, scoring, ranking,
+recommendation, candidate-discovery, order/fill, and portfolio behavior.
+
+This phase changes report metadata only. It adds no advisory expansion, source
+or data approval, real market data, strategy validation, profitability claim,
+signal definition, evaluator behavior, trading recommendation, live/paper
+trading authority, broker/order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, market-data ingestion, scoring, ranking, recommendation, or
+candidate-discovery behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
