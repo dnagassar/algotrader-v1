@@ -314,6 +314,209 @@ def run_synthetic_research(
     return runner.run_spy_sma200_research(csv_path, **kwargs)
 
 
+def test_flat_synthetic_series_metrics_are_zero_and_byte_stable(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_flat_daily.csv",
+        rows=205,
+        price_step=Decimal("0"),
+    )
+    first_output_path = tmp_path / "flat_spy_sma200_report.md"
+    first_json_output_path = tmp_path / "flat_spy_sma200_report.json"
+    second_output_path = tmp_path / "flat_spy_sma200_report_rerun.md"
+    second_json_output_path = tmp_path / "flat_spy_sma200_report_rerun.json"
+    fixed_kwargs = {
+        "initial_equity": Decimal("10000"),
+        "fee_bps": Decimal("0"),
+        "slippage_bps": Decimal("0"),
+        "source_name": "synthetic_flat_metric_contract",
+        "source_type": "synthetic_test",
+        "adjustment_policy": "unknown",
+        "repo_root": tmp_path,
+    }
+
+    first_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=first_output_path,
+        json_output_path=first_json_output_path,
+        **fixed_kwargs,
+    )
+    second_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=second_output_path,
+        json_output_path=second_json_output_path,
+        **fixed_kwargs,
+    )
+    first_json_text = first_json_output_path.read_text(encoding="utf-8")
+    sidecar = json.loads(first_json_text)
+
+    assert first_report == second_report
+    assert first_output_path.read_bytes() == second_output_path.read_bytes()
+    assert first_json_output_path.read_bytes() == second_json_output_path.read_bytes()
+    assert sidecar["sma_mechanics"] == {
+        "fully_formed_sma_observations": 6,
+        "insufficient_observations": False,
+        "minimum_observations": 200,
+        "sma_window": 200,
+        "timing": "same-close observation metadata with previous-exposure backtest convention",
+    }
+    assert sidecar["metrics"] == {
+        "ending_equity_buy_and_hold": "10000",
+        "ending_equity_strategy": "10000",
+        "exposure_ratio_buy_and_hold": "1",
+        "exposure_ratio_strategy": "0",
+        "max_drawdown_buy_and_hold": "0",
+        "max_drawdown_strategy": "0",
+        "price_return_buy_and_hold": "0",
+        "price_return_strategy": "0",
+        "starting_equity": "10000",
+        "turnover_buy_and_hold": "1",
+        "turnover_strategy": "0",
+    }
+    assert "- insufficient_observations: false" in first_report
+    assert "- price_return_strategy: 0" in first_report
+    assert "- price_return_buy_and_hold: 0" in first_report
+    assert "- exposure_ratio_strategy: 0" in first_report
+    assert "- turnover_strategy: 0" in first_report
+    _assert_unknown_price_return_metric_contract(first_report, sidecar)
+    _assert_markdown_non_claims(first_report)
+    _assert_json_non_claims(sidecar)
+    _assert_no_forbidden_payload_keys(sidecar)
+    _assert_stable_output_excludes_paths_and_raw_rows(
+        first_report,
+        first_json_text,
+        (
+            csv_path,
+            csv_path.parent,
+            first_output_path,
+            first_json_output_path,
+            second_output_path,
+            second_json_output_path,
+        ),
+    )
+
+
+def test_controlled_breakout_metrics_use_previous_exposure_convention(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_breakout_daily.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={
+            200: Decimal("300.00"),
+            201: Decimal("330.00"),
+        },
+    )
+    revised_future_csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_breakout_revised_future_daily.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={
+            200: Decimal("300.00"),
+            201: Decimal("900.00"),
+        },
+    )
+    output_path = tmp_path / "breakout_spy_sma200_report.md"
+    json_output_path = tmp_path / "breakout_spy_sma200_report.json"
+
+    report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=output_path,
+        json_output_path=json_output_path,
+        initial_equity=Decimal("10000"),
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        source_name="synthetic_breakout_metric_contract",
+        source_type="synthetic_test",
+        adjustment_policy="unknown",
+        repo_root=tmp_path,
+    )
+    json_text = json_output_path.read_text(encoding="utf-8")
+    sidecar = json.loads(json_text)
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    revised_future_snapshot = runner.load_historical_price_snapshot_csv(
+        revised_future_csv_path,
+        "SPY",
+    )
+    exposures = runner.build_sma_200_daily_exposures(snapshot)
+    revised_future_exposures = runner.build_sma_200_daily_exposures(
+        revised_future_snapshot
+    )
+    result = runner.run_daily_backtest(
+        snapshot,
+        exposures,
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("10000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+
+    assert sidecar["sma_mechanics"] == {
+        "fully_formed_sma_observations": 3,
+        "insufficient_observations": False,
+        "minimum_observations": 200,
+        "sma_window": 200,
+        "timing": "same-close observation metadata with previous-exposure backtest convention",
+    }
+    assert sidecar["metrics"] == {
+        "ending_equity_buy_and_hold": "33000.0",
+        "ending_equity_strategy": "11000.0",
+        "exposure_ratio_buy_and_hold": "1",
+        "exposure_ratio_strategy": "0.009900990099009900990099009901",
+        "max_drawdown_buy_and_hold": "0",
+        "max_drawdown_strategy": "0",
+        "price_return_buy_and_hold": "2.3",
+        "price_return_strategy": "0.1",
+        "starting_equity": "10000",
+        "turnover_buy_and_hold": "1",
+        "turnover_strategy": "1",
+    }
+    assert "- price_return_strategy: 0.1" in report
+    assert "- price_return_buy_and_hold: 2.3" in report
+    assert "- exposure_ratio_strategy: 0.009900990099009900990099009901" in report
+    assert [exposure.exposure for exposure in exposures[198:202]] == [
+        Decimal("0"),
+        Decimal("0"),
+        Decimal("1"),
+        Decimal("1"),
+    ]
+    assert exposures[:201] == revised_future_exposures[:201]
+    assert result.points[200].date == date(2025, 7, 20)
+    assert result.points[200].exposure == Decimal("1")
+    assert result.points[200].asset_return == Decimal("2")
+    assert result.points[200].strategy_return_before_costs == Decimal("0")
+    assert result.points[200].strategy_return_after_costs == Decimal("0")
+    assert result.points[200].equity == Decimal("10000")
+    assert result.points[201].date == date(2025, 7, 21)
+    assert result.points[201].asset_return == Decimal("0.1")
+    assert result.points[201].strategy_return_before_costs == Decimal("0.1")
+    assert result.points[201].strategy_return_after_costs == Decimal("0.1")
+    assert result.points[201].equity == Decimal("11000.0")
+    _assert_unknown_price_return_metric_contract(report, sidecar)
+    _assert_markdown_non_claims(report)
+    _assert_json_non_claims(sidecar)
+    _assert_no_forbidden_payload_keys(sidecar)
+    _assert_stable_output_excludes_paths_and_raw_rows(
+        report,
+        json_text,
+        (
+            csv_path,
+            csv_path.parent,
+            output_path,
+            json_output_path,
+            revised_future_csv_path,
+        ),
+    )
+
+
 def test_canonical_synthetic_output_contract_snapshot_is_stable(
     tmp_path: Path,
 ) -> None:
@@ -1059,6 +1262,62 @@ def _assert_no_forbidden_payload_keys(payload: object) -> None:
     elif isinstance(payload, list):
         for value in payload:
             _assert_no_forbidden_payload_keys(value)
+
+
+def _assert_unknown_price_return_metric_contract(
+    report: str,
+    sidecar: dict[str, object],
+) -> None:
+    metrics = sidecar["metrics"]
+    provenance = sidecar["provenance"]
+    limitations = sidecar["limitations"]
+    assert isinstance(metrics, dict)
+    assert isinstance(provenance, dict)
+    assert isinstance(limitations, list)
+    assert sidecar["adjustment_policy"] == "unknown"
+    assert sidecar["return_basis"] == "price_return"
+    assert sidecar["adjusted_close_available"] is False
+    assert sidecar["adjusted_close_source"] == "close_price_fallback"
+    assert provenance["adjustment_policy"] == "unknown"
+    assert set(metrics) == _CANONICAL_METRIC_KEYS
+    assert "price_return_strategy" in metrics
+    assert "price_return_buy_and_hold" in metrics
+    assert all("total_return" not in key for key in metrics)
+    assert "- Adjustment policy: unknown" in report
+    assert "- Return basis: price_return" in report
+    assert "- return_basis: price_return" in report
+    assert "- price_return_strategy: " in report
+    assert "- price_return_buy_and_hold: " in report
+    assert "- total_return_strategy: " not in report
+    assert "- total_return_buy_and_hold: " not in report
+    assert (
+        "No dividend, corporate-action, or total-return claim is made unless explicitly supported."
+        in report
+    )
+    assert (
+        "No dividend, corporate-action, or total-return claim is made unless explicitly supported."
+        in limitations
+    )
+
+
+def _assert_stable_output_excludes_paths_and_raw_rows(
+    report: str,
+    json_text: str,
+    paths: tuple[Path, ...],
+) -> None:
+    for path in paths:
+        assert str(path) not in report
+        assert str(path) not in json_text
+        if path.drive:
+            assert path.drive not in report
+            assert path.drive not in json_text
+
+    assert RAW_FIRST_ROW not in report
+    assert RAW_FIRST_ROW not in json_text
+    assert "900001" not in report
+    assert "900001" not in json_text
+    assert "output_path" not in json_text
+    assert "json_output_path" not in json_text
 
 
 def _snapshot_fingerprint_from(report: str) -> str:

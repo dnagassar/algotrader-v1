@@ -9243,6 +9243,25 @@ Safe next tasks include:
   behavior, runtime/scheduler behavior, LLM/API call, network call, scoring,
   ranking, recommendation, candidate-discovery behavior, paper/live behavior,
   trading authority, or trading behavior
+- Phase 61 - SPY SMA-200 Synthetic Metric Semantics Contract pins exact metric
+  semantics for the local research runner on deterministic synthetic CSVs only.
+  Tests now cover a 205-row flat series where the SMA fully forms,
+  insufficient observations are false, close never exceeds the trailing SMA,
+  strategy exposure and turnover remain zero, strategy and buy-and-hold price
+  returns remain zero, buy-and-hold exposure remains one, unknown adjustment
+  stays `price_return`, and repeated Markdown/JSON outputs are byte-identical
+  without raw rows or local paths. A controlled breakout series proves that the
+  first close above the SMA changes exposure under the existing same-close rule
+  but earns no same-bar strategy profit under the previous-exposure backtest
+  convention; only the following bar reflects prior exposure, and revised
+  future closes do not alter earlier exposure. This changes no runner behavior
+  or validation behavior and adds no profitability validation, strategy
+  approval, signal definition, advisory expansion, source or data approval,
+  real market data, market-data ingestion, broker/order/fill/execution/OMS
+  behavior, account/position/portfolio/allocation/target-weight behavior,
+  runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
+  recommendation, candidate-discovery behavior, paper/live behavior, trading
+  authority, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
