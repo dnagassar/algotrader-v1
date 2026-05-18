@@ -30,6 +30,7 @@ _DEFAULT_NON_CLAIMS = (
     "not an approved signal",
     "not paper/live trading authority",
     "no broker/order/fill/portfolio/runtime behavior",
+    "exposure is a 0/1 research indicator and not allocation, target weight, position size, or portfolio instruction",
 )
 
 

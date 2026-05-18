@@ -381,6 +381,20 @@ def test_observation_rejects_malformed_return_field_combinations(
         )
 
 
+def test_cumulative_fields_allow_minus_one_or_below_but_simple_returns_do_not() -> None:
+    observation = cumulative_return_observation(
+        asset_return=Decimal("-0.5"),
+        exposure_return=Decimal("-0.5"),
+        asset_cumulative_return=Decimal("-1"),
+        exposure_cumulative_return=Decimal("-1.25"),
+    )
+
+    assert observation.asset_cumulative_return == Decimal("-1")
+    assert observation.exposure_cumulative_return == Decimal("-1.25")
+    with pytest.raises(ValidationError, match="asset_return"):
+        cumulative_return_observation(asset_return=Decimal("-1"))
+
+
 @pytest.mark.parametrize(
     "field_name",
     ("asset_cumulative_return", "exposure_cumulative_return"),
@@ -593,6 +607,26 @@ def test_return_unavailable_rows_preserve_prior_cumulative_values() -> None:
     assert result[2].asset_cumulative_return == result[1].asset_cumulative_return
     assert result[2].exposure_cumulative_return == (
         result[1].exposure_cumulative_return
+    )
+
+
+def test_cumulative_reason_string_contract_is_pinned() -> None:
+    result = build_cumulative_return_path(
+        (
+            baseline_exposure_return(0),
+            exposure_return_observation(1, asset_return=Decimal("0.10")),
+            exposure_return_observation(
+                2,
+                return_available=False,
+                reason="return_unavailable",
+            ),
+        )
+    )
+
+    assert tuple(row.reason for row in result) == (
+        "initial_cumulative_return_baseline",
+        "return_compounded",
+        "return_unavailable_cumulative_return_preserved",
     )
 
 

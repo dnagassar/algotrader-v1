@@ -9414,6 +9414,29 @@ Safe next tasks include:
   final cumulative path values and counts, validate a strategy, define a
   signal, add advisory integration, source approval, real data, broad ETF
   implementation, paper/live behavior, trading authority, or trading behavior
+- Phase 68 - Synthetic Moving-Average Replay JSON Contract Fixture freezes the
+  existing Phase 67 `MovingAverageReplayPackage.to_dict()` output by content
+  with two committed compact JSON fixtures:
+  `tests/fixtures/moving_average_replay_contract_flat.json` and
+  `tests/fixtures/moving_average_replay_contract_breakout.json`. The flat
+  fixture uses only deterministic positive Decimal values and locks zero final
+  asset and exposure cumulative returns. The breakout fixture uses only
+  synthetic values that form an SMA, break above it, and prove previous-row
+  exposure behavior through later rows. Contract tests byte-compare compact
+  insertion-order JSON, round-trip fixture bytes through `json.loads`/
+  `json.dumps`, assert primitive-only serialized values, and reject object
+  repr artifacts. Review-hardening tests now pin direct
+  `MovingAverageObservation` construction validation, strict below-SMA exit
+  behavior, equality-after-true exposure reset behavior, exact current reason
+  strings, Decimal-context stability for the exact fixture path, and the
+  cumulative-return/simple-return validation asymmetry. Replay and summary
+  non-claims explicitly state that exposure is a `0/1` research indicator and
+  not allocation, target weight, position size, or a portfolio instruction.
+  This does not modify the SPY runner, add strategy validation, define a
+  signal, add performance metrics, use real data, add broker/order/fill/
+  portfolio/runtime/LLM/network/market-data behavior, or add scoring, ranking,
+  recommendation, candidate-discovery, advisory, paper/live, or trading
+  behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

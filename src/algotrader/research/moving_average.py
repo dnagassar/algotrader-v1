@@ -90,6 +90,10 @@ class MovingAverageObservation:
                 "is_above_moving_average",
             ),
         )
+        if self.is_above_moving_average != (self.value > self.moving_average):
+            raise ValidationError(
+                "is_above_moving_average must match value greater than moving_average."
+            )
 
 
 def build_simple_moving_average_observations(

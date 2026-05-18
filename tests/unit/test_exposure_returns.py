@@ -582,6 +582,47 @@ def test_previous_exposure_breakout_does_not_create_same_row_return_exposure() -
     assert result[3].exposure_return == Decimal("0.1")
 
 
+def test_exposure_return_reason_string_contract_follows_exposure_state_reasons() -> None:
+    values = value_series(("10", "10", "20", "40", "20"))
+    moving_average_observations = build_simple_moving_average_observations(
+        values,
+        window=3,
+    )
+    states = build_previous_exposure_states(moving_average_observations)
+
+    result = build_exposure_applied_returns(values, states)
+
+    assert tuple(row.reason for row in result) == tuple(
+        state.reason for state in states
+    )
+    assert result[0].reason == "moving_average_unavailable"
+    assert result[2].reason == "above_moving_average"
+    assert result[4].reason == "not_above_moving_average"
+
+
+def test_exit_cycle_applies_prior_exposure_on_strictly_below_row() -> None:
+    values = value_series(("10", "10", "20", "40", "20", "20"))
+    moving_average_observations = build_simple_moving_average_observations(
+        values,
+        window=3,
+    )
+    states = build_previous_exposure_states(moving_average_observations)
+
+    result = build_exposure_applied_returns(values, states)
+
+    assert moving_average_observations[2].is_above_moving_average is True
+    assert states[2].next_exposure == 1
+    assert moving_average_observations[4].is_above_moving_average is False
+    assert states[4].current_exposure == 1
+    assert states[4].next_exposure == 0
+    assert result[4].current_exposure == 1
+    assert result[4].asset_return == Decimal("-0.5")
+    assert result[4].exposure_return == Decimal("-0.5")
+    assert states[5].current_exposure == 0
+    assert result[5].current_exposure == 0
+    assert result[5].exposure_return == Decimal("0")
+
+
 def test_changing_future_value_does_not_change_earlier_exposure_applied_returns() -> None:
     base_values = value_series(("10", "10", "30", "33", "5"))
     revised_values = value_series(("10", "10", "30", "33", "500"))

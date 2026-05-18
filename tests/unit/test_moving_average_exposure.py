@@ -387,6 +387,33 @@ def test_previous_exposure_mechanics_are_pinned() -> None:
     assert result[6].reason == "not_above_moving_average"
 
 
+def test_exposure_reason_string_contract_is_pinned() -> None:
+    result = build_previous_exposure_states(
+        observations_from_values(("10", "10", "20", "15"), window=3)
+    )
+
+    assert tuple(state.reason for state in result) == (
+        "moving_average_unavailable",
+        "moving_average_unavailable",
+        "above_moving_average",
+        "not_above_moving_average",
+    )
+
+
+def test_equality_after_true_cascades_next_exposure_to_zero() -> None:
+    source = observations_from_values(("10", "10", "20", "15", "15"), window=3)
+
+    result = build_previous_exposure_states(source)
+
+    assert source[2].is_above_moving_average is True
+    assert result[2].next_exposure == 1
+    assert source[3].value == source[3].moving_average
+    assert source[3].is_above_moving_average is False
+    assert result[3].current_exposure == 1
+    assert result[3].next_exposure == 0
+    assert result[4].current_exposure == 0
+
+
 def test_flat_series_produces_all_zero_exposures() -> None:
     result = build_previous_exposure_states(
         observations_from_values(("10", "10", "10", "10", "10"), window=3)

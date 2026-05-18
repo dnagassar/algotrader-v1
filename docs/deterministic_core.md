@@ -3423,6 +3423,30 @@ runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
 recommendation, candidate-discovery behavior, trading authority, or trading
 behavior. It does not refactor or extend the SPY SMA-200 runner.
 
+Phase 68 - Synthetic Moving-Average Replay JSON Contract Fixture freezes the
+Phase 67 `MovingAverageReplayPackage.to_dict()` output by content with two
+committed synthetic compact JSON fixtures:
+`tests/fixtures/moving_average_replay_contract_flat.json` and
+`tests/fixtures/moving_average_replay_contract_breakout.json`. The flat fixture
+uses only a deterministic positive Decimal series and locks zero final asset and
+exposure cumulative returns. The breakout fixture uses only synthetic values
+that form an SMA, break above it, and then prove previous-row exposure behavior
+through a later row. Both fixtures use fixed replay ids, fixed `2026-01-17`
+as-of metadata, primitive JSON-compatible values, compact insertion-order
+serialization, research-only limitations, and non-claims.
+
+Phase 68 also adds focused review-hardening coverage for direct
+`MovingAverageObservation` construction, exact current reason strings, strict
+below-SMA exit mechanics, equality-after-true exposure reset mechanics, Decimal
+context stability for the exact fixture path, and cumulative-return validation
+asymmetry. The replay non-claims now explicitly state that exposure is a `0/1`
+research indicator and not allocation, target weight, position size, or a
+portfolio instruction. This phase does not add strategy validation, signal
+definition, performance evaluation, broad ETF implementation, SPY runner
+refactoring, real data, broker/order/fill/portfolio/runtime behavior, network
+or LLM calls, scoring, ranking, recommendation, or candidate-discovery
+behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

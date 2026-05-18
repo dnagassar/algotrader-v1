@@ -50,6 +50,11 @@ _REQUIRED_NON_CLAIMS = (
     "no broker/order/fill/portfolio/runtime behavior",
 )
 
+_DEFAULT_NON_CLAIMS = (
+    *_REQUIRED_NON_CLAIMS,
+    "exposure is a 0/1 research indicator and not allocation, target weight, position size, or portfolio instruction",
+)
+
 _T = TypeVar("_T")
 
 
@@ -67,7 +72,7 @@ class MovingAverageReplayPackage:
     cumulative_path: tuple[CumulativeReturnObservation, ...]
     summary: CumulativeReturnPathSummary
     limitations: tuple[str, ...] = _DEFAULT_LIMITATIONS
-    non_claims: tuple[str, ...] = _REQUIRED_NON_CLAIMS
+    non_claims: tuple[str, ...] = _DEFAULT_NON_CLAIMS
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "replay_id", _replay_id_value(self.replay_id))
@@ -191,7 +196,7 @@ def build_moving_average_replay_package(
         cumulative_path=cumulative_path,
         summary=summary,
         limitations=_DEFAULT_LIMITATIONS,
-        non_claims=_REQUIRED_NON_CLAIMS,
+        non_claims=_DEFAULT_NON_CLAIMS,
     )
 
 

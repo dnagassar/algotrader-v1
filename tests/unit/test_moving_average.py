@@ -180,6 +180,19 @@ def series(values: tuple[str, ...]) -> tuple[MovingAverageInput, ...]:
     )
 
 
+def moving_average_observation(**overrides: object) -> MovingAverageObservation:
+    values = {
+        "observation_date": date(2025, 1, 3),
+        "value": Decimal("10"),
+        "window": 3,
+        "moving_average": Decimal("9"),
+        "moving_average_available": True,
+        "is_above_moving_average": True,
+    }
+    values.update(overrides)
+    return MovingAverageObservation(**values)
+
+
 def test_valid_input_accepts_plain_date_and_decimal() -> None:
     observation = MovingAverageInput(
         observation_date=date(2025, 1, 1),
@@ -215,6 +228,90 @@ def test_input_rejects_non_decimal_and_bool_values(bad_value: object) -> None:
 def test_input_rejects_zero_and_negative_values(bad_value: Decimal) -> None:
     with pytest.raises(ValidationError, match="greater than zero"):
         MovingAverageInput(date(2025, 1, 1), bad_value)
+
+
+def test_observation_accepts_direct_equality_as_not_above() -> None:
+    observation = moving_average_observation(
+        value=Decimal("10"),
+        moving_average=Decimal("10"),
+        is_above_moving_average=False,
+    )
+
+    assert observation.value == observation.moving_average
+    assert observation.is_above_moving_average is False
+
+
+def test_observation_rejects_available_false_with_moving_average_present() -> None:
+    with pytest.raises(ValidationError, match="moving_average_available"):
+        moving_average_observation(moving_average_available=False)
+
+
+def test_observation_rejects_available_true_with_moving_average_missing() -> None:
+    with pytest.raises(ValidationError, match="moving_average_available"):
+        moving_average_observation(moving_average=None)
+
+
+def test_observation_rejects_is_above_when_moving_average_missing() -> None:
+    with pytest.raises(ValidationError, match="is_above_moving_average"):
+        moving_average_observation(
+            moving_average=None,
+            moving_average_available=False,
+            is_above_moving_average=False,
+        )
+
+
+def test_observation_rejects_missing_is_above_when_moving_average_present() -> None:
+    with pytest.raises(ValidationError, match="is_above_moving_average"):
+        moving_average_observation(is_above_moving_average=None)
+
+
+@pytest.mark.parametrize(
+    ("value", "moving_average", "is_above_moving_average"),
+    (
+        (Decimal("10"), Decimal("11"), True),
+        (Decimal("10"), Decimal("10"), True),
+        (Decimal("10"), Decimal("9"), False),
+    ),
+)
+def test_observation_rejects_is_above_that_does_not_match_values(
+    value: Decimal,
+    moving_average: Decimal,
+    is_above_moving_average: bool,
+) -> None:
+    with pytest.raises(ValidationError, match="is_above_moving_average"):
+        moving_average_observation(
+            value=value,
+            moving_average=moving_average,
+            is_above_moving_average=is_above_moving_average,
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_date",
+    (datetime(2025, 1, 3), "2025-01-03", True),
+)
+def test_observation_rejects_malformed_direct_dates(bad_date: object) -> None:
+    with pytest.raises(ValidationError, match="plain date"):
+        moving_average_observation(observation_date=bad_date)
+
+
+@pytest.mark.parametrize("bad_window", (0, -1, True, "3", Decimal("3")))
+def test_observation_rejects_malformed_direct_windows(bad_window: object) -> None:
+    with pytest.raises(ValidationError, match="window"):
+        moving_average_observation(window=bad_window)
+
+
+@pytest.mark.parametrize("field_name", ("value", "moving_average"))
+@pytest.mark.parametrize(
+    "bad_value",
+    ("10", 10, 10.0, True, Decimal("0"), Decimal("-1"), Decimal("NaN")),
+)
+def test_observation_rejects_malformed_direct_decimal_fields(
+    field_name: str,
+    bad_value: object,
+) -> None:
+    with pytest.raises(ValidationError, match=field_name):
+        moving_average_observation(**{field_name: bad_value})
 
 
 def test_dataclasses_are_frozen_and_slotted() -> None:
