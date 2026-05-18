@@ -520,6 +520,7 @@ def _report_payload(
         "adjusted_close_available": _adjusted_close_available(manifest),
         "adjusted_close_source": _adjusted_close_source(manifest),
         "adjustment_policy": manifest.adjustment_policy,
+        "assumptions": _assumptions_payload(result),
         "baseline": list(_BASELINE_LINES),
         "disclaimer": _DISCLAIMER,
         "limitations": list(_LIMITATION_LINES),
@@ -535,6 +536,14 @@ def _report_payload(
         "rule": list(_RULE_LINES),
         "sma_mechanics": _sma_mechanics_payload(manifest),
         "verdict": _VERDICT,
+    }
+
+
+def _assumptions_payload(result: DailyBacktestResult) -> dict[str, str]:
+    return {
+        "fee_bps": _decimal_text(result.assumptions.fee_bps),
+        "initial_equity": _decimal_text(result.assumptions.initial_equity),
+        "slippage_bps": _decimal_text(result.assumptions.slippage_bps),
     }
 
 

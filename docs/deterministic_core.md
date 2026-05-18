@@ -3498,6 +3498,43 @@ target-weight/runtime behavior, call network/LLM/market-data providers, add
 scoring, ranking, recommendation, candidate-discovery behavior, or add
 paper/live/trading behavior.
 
+Phase 71 - SPY Runner Generic Replay Integration Guardrails adds focused
+regression coverage around the Phase 70 integration. The tests now prove the
+SPY exposure builder calls the generic moving-average replay package with
+snapshot adjusted-close `MovingAverageInput` values and `window=200`, then
+converts replay `next_exposure` states back to `DailyExposure`. They also pin
+that nonzero fee/slippage metrics remain owned by the runner's
+`run_daily_backtest` path rather than the generic no-cost replay summary.
+
+The canonical synthetic report guardrails now pin the JSON assumptions payload,
+top-level sidecar key set, explicit and default JSON sidecar behavior, absence
+of raw generic replay payloads or runtime/dataclass repr leaks, unknown
+adjustment / `price_return` honesty, research-only non-claims, safety-field
+absence, and AST import boundaries for only the allowed local research modules.
+This phase adds no generic kernel changes, advisory expansion, strategy
+validation, source approval, real data, broker/order/fill/portfolio/runtime/
+LLM/network/market-data behavior, scoring, ranking, recommendation,
+candidate-discovery, paper/live, or trading behavior.
+
+Phase 72 - Research Scope Candidate Snapshot Contracts adds metadata-only
+candidate contracts for future broad ETF / moving-average research planning.
+`algotrader.research.research_scope` now defines frozen/slotted candidate
+dataclasses for data sources, universes, benchmarks, and cash proxies, plus an
+optional `ResearchScopeSnapshot` that bundles one or more of each candidate
+type. Each contract is candidate-only, rejects `approval_state="approved"`,
+normalizes sequence metadata to tuples, requires explicit non-approval
+non-claims, and serializes deterministically to primitive JSON-compatible
+dictionaries with dates as `YYYY-MM-DD` strings.
+
+This phase adds no source approval, universe approval, benchmark approval, cash
+proxy approval, methodology approval, parameter approval, data acquisition
+path, strategy validation, signal approval, evaluator, backtest, broad ETF
+implementation, real data ingestion, SPY runner change, generic
+moving-average kernel change, advisory expansion, governance expansion,
+broker/order/fill/portfolio/runtime behavior, LLM/API call, network call,
+market-data call, scoring, ranking, recommendation, candidate-discovery
+behavior, paper/live behavior, trading authority, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

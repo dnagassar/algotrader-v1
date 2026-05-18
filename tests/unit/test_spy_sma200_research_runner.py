@@ -2,10 +2,11 @@ import ast
 import hashlib
 import importlib.util
 import json
+import re
 from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import pytest
 
@@ -47,18 +48,28 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "alpaca",
     "alpaca_trade_api",
     "anthropic",
+    "ccxt",
     "database",
     "duckdb",
+    "finnhub",
+    "ftplib",
+    "http",
     "httpx",
+    "ib_insync",
     "langchain",
     "langgraph",
     "llm",
+    "nasdaqdatalink",
     "notebook",
     "numpy",
+    "openbb",
     "openai",
     "os",
     "pandas",
+    "pandas_datareader",
+    "polygon",
     "QuantConnect",
+    "quandl",
     "quantconnect",
     "random",
     "requests",
@@ -67,8 +78,11 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "sqlite3",
     "sqlalchemy",
     "subprocess",
+    "tiingo",
     "urllib",
     "vectorbt",
+    "websocket",
+    "websockets",
     "yfinance",
 )
 
@@ -90,6 +104,7 @@ _FORBIDDEN_REFERENCE_NAMES = {
     "connect",
     "create_order",
     "download",
+    "env",
     "environ",
     "fill",
     "fit",
@@ -170,10 +185,34 @@ _FORBIDDEN_CALL_SUFFIXES = (
     ".urlopen",
     ".walk",
 )
+_ALLOWED_RUNNER_IMPORTS = {
+    "__future__",
+    "argparse",
+    "hashlib",
+    "json",
+    "sys",
+    "decimal",
+    "pathlib",
+    "typing",
+    "algotrader.errors",
+    "algotrader.research.daily_backtest",
+    "algotrader.research.moving_average",
+    "algotrader.research.moving_average_replay",
+    "algotrader.research.price_snapshot",
+    "algotrader.research.price_snapshot_manifest",
+}
+_REQUIRED_REPLAY_IMPORT_NAMES = {
+    "algotrader.research.moving_average": {"MovingAverageInput"},
+    "algotrader.research.moving_average_replay": {
+        "MovingAverageReplayPackage",
+        "build_moving_average_replay_package",
+    },
+}
 _CANONICAL_SIDECAR_TOP_LEVEL_KEYS = {
     "adjusted_close_available",
     "adjusted_close_source",
     "adjustment_policy",
+    "assumptions",
     "baseline",
     "disclaimer",
     "limitations",
@@ -244,6 +283,28 @@ _FORBIDDEN_OUTPUT_CONTRACT_PHRASES = (
     "submit_order",
     "target_weight",
     "validated signal",
+)
+_FORBIDDEN_GENERIC_REPLAY_PAYLOAD_KEYS = {
+    "as_of_date",
+    "exposure_returns",
+    "exposure_states",
+    "inputs",
+    "moving_average_observations",
+    "replay_id",
+    "summary",
+    "window",
+}
+_FORBIDDEN_RUNTIME_REPR_FRAGMENTS = (
+    "DailyBacktestResult",
+    "DailyExposure",
+    "Decimal(",
+    "HistoricalPriceSnapshot",
+    "LocalPriceSnapshotManifest",
+    "MovingAverageInput",
+    "MovingAverageReplayPackage",
+    "SimpleNamespace",
+    "namespace(",
+    "object at 0x",
 )
 
 
@@ -564,6 +625,80 @@ def test_sma200_exposures_are_derived_from_generic_replay_package(
     )
 
 
+def test_sma200_exposure_builder_uses_generic_replay_package_mechanics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_adjusted_close_inputs.csv",
+        rows=4,
+        row_overrides={
+            0: {"adjusted_close": "91.00"},
+            1: {"adjusted_close": "92.00"},
+            2: {"adjusted_close": "93.00"},
+            3: {"adjusted_close": "94.00"},
+        },
+    )
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    calls: list[dict[str, object]] = []
+
+    def fake_build_moving_average_replay_package(**kwargs: object) -> object:
+        inputs = tuple(kwargs["inputs"])
+        calls.append(
+            {
+                "as_of_date": kwargs["as_of_date"],
+                "input_pairs": tuple(
+                    (item.observation_date, item.value) for item in inputs
+                ),
+                "window": kwargs["window"],
+            }
+        )
+
+        return SimpleNamespace(
+            exposure_states=tuple(
+                SimpleNamespace(
+                    observation_date=item.observation_date,
+                    next_exposure=index % 2,
+                )
+                for index, item in enumerate(inputs)
+            ),
+        )
+
+    monkeypatch.setattr(
+        runner,
+        "build_moving_average_replay_package",
+        fake_build_moving_average_replay_package,
+    )
+
+    exposures = runner.build_sma_200_daily_exposures(snapshot)
+
+    assert calls == [
+        {
+            "as_of_date": date(2025, 1, 4),
+            "input_pairs": (
+                (date(2025, 1, 1), Decimal("91.00")),
+                (date(2025, 1, 2), Decimal("92.00")),
+                (date(2025, 1, 3), Decimal("93.00")),
+                (date(2025, 1, 4), Decimal("94.00")),
+            ),
+            "window": 200,
+        }
+    ]
+    assert [exposure.date for exposure in exposures] == [
+        date(2025, 1, 1),
+        date(2025, 1, 2),
+        date(2025, 1, 3),
+        date(2025, 1, 4),
+    ]
+    assert [exposure.exposure for exposure in exposures] == [
+        Decimal("0"),
+        Decimal("1"),
+        Decimal("0"),
+        Decimal("1"),
+    ]
+
+
 def test_nonzero_cost_metrics_remain_runner_specific_after_replay_integration(
     tmp_path: Path,
 ) -> None:
@@ -603,10 +738,20 @@ def test_nonzero_cost_metrics_remain_runner_specific_after_replay_integration(
             slippage_bps=Decimal("0"),
         ),
     )
+    no_cost_generic_ending_equity = Decimal("10000") * (
+        Decimal("1") + package.summary.final_exposure_cumulative_return
+    )
 
     assert "- Fee bps: 100" in report
+    assert sidecar["assumptions"] == {
+        "fee_bps": "100",
+        "initial_equity": "10000",
+        "slippage_bps": "0",
+    }
     assert Decimal(sidecar["metrics"]["price_return_strategy"]) == result.total_return
+    assert Decimal(sidecar["metrics"]["ending_equity_strategy"]) == result.ending_equity
     assert result.total_return != package.summary.final_exposure_cumulative_return
+    assert result.ending_equity != no_cost_generic_ending_equity
     assert package.summary.final_exposure_cumulative_return == Decimal("0.1")
     _assert_unknown_price_return_metric_contract(report, sidecar)
 
@@ -683,6 +828,11 @@ def test_canonical_synthetic_output_contract_snapshot_is_stable(
     assert sidecar["sma_mechanics"] == _CANONICAL_SMA_MECHANICS
     assert sidecar["report_title"] == "SPY SMA-200 Local Research Run"
     assert sidecar["adjustment_policy"] == "unknown"
+    assert sidecar["assumptions"] == {
+        "fee_bps": "0",
+        "initial_equity": "10000",
+        "slippage_bps": "0",
+    }
     assert sidecar["return_basis"] == "price_return"
     assert sidecar["adjusted_close_available"] is False
     assert sidecar["adjusted_close_source"] == "close_price_fallback"
@@ -693,6 +843,8 @@ def test_canonical_synthetic_output_contract_snapshot_is_stable(
     _assert_markdown_non_claims(first_report)
     _assert_json_non_claims(sidecar)
     _assert_no_forbidden_payload_keys(sidecar)
+    _assert_no_generic_replay_payload(sidecar)
+    _assert_no_runtime_repr_leaks(first_report, first_json_text)
     for phrase in _FORBIDDEN_OUTPUT_CONTRACT_PHRASES:
         assert phrase not in first_report.lower()
         assert phrase not in first_json_text.lower()
@@ -876,6 +1028,11 @@ def test_unknown_adjustment_policy_json_sidecar_reports_price_return_basis(
 
     sidecar = json.loads(json_output_path.read_text(encoding="utf-8"))
     assert sidecar["adjustment_policy"] == "unknown"
+    assert sidecar["assumptions"] == {
+        "fee_bps": "0",
+        "initial_equity": "10000",
+        "slippage_bps": "0",
+    }
     assert sidecar["return_basis"] == "price_return"
     assert sidecar["adjusted_close_available"] is False
     assert sidecar["adjusted_close_source"] == "close_price_fallback"
@@ -1027,6 +1184,11 @@ def test_output_writing_is_explicit_only(tmp_path: Path) -> None:
     assert sidecar["provenance"]["file_sha256"] == hashlib.sha256(
         csv_path.read_bytes()
     ).hexdigest()
+    assert sidecar["assumptions"] == {
+        "fee_bps": "0",
+        "initial_equity": "10000",
+        "slippage_bps": "0",
+    }
     assert sidecar["non_claims"]
     assert sidecar["sma_mechanics"]["sma_window"] == 200
     assert sidecar["metrics"]["price_return_strategy"]
@@ -1280,9 +1442,10 @@ def test_data_path_outside_snapshot_dir_requires_override(tmp_path: Path) -> Non
 
 
 def test_runner_ast_guardrails_against_network_vendor_runtime_and_discovery() -> None:
+    imports = _import_references()
     import_violations = [
         module
-        for module in _import_references()
+        for module in imports
         if _matches_forbidden_prefix(module, _FORBIDDEN_IMPORT_PREFIXES)
     ]
     call_violations = [
@@ -1291,7 +1454,11 @@ def test_runner_ast_guardrails_against_network_vendor_runtime_and_discovery() ->
         if name in _FORBIDDEN_CALL_NAMES
         or any(name.endswith(suffix) for suffix in _FORBIDDEN_CALL_SUFFIXES)
     ]
+    imported_names = _imported_names_by_module()
 
+    assert imports <= _ALLOWED_RUNNER_IMPORTS
+    for module, names in _REQUIRED_REPLAY_IMPORT_NAMES.items():
+        assert names <= imported_names[module]
     assert import_violations == []
     assert _referenced_names().isdisjoint(_FORBIDDEN_REFERENCE_NAMES)
     assert call_violations == []
@@ -1356,6 +1523,24 @@ def _assert_no_forbidden_payload_keys(payload: object) -> None:
     elif isinstance(payload, list):
         for value in payload:
             _assert_no_forbidden_payload_keys(value)
+
+
+def _assert_no_generic_replay_payload(payload: object) -> None:
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            assert str(key) not in _FORBIDDEN_GENERIC_REPLAY_PAYLOAD_KEYS
+            _assert_no_generic_replay_payload(value)
+    elif isinstance(payload, list):
+        for value in payload:
+            _assert_no_generic_replay_payload(value)
+
+
+def _assert_no_runtime_repr_leaks(markdown_text: str, json_text: str) -> None:
+    combined_text = f"{markdown_text}\n{json_text}"
+
+    for fragment in _FORBIDDEN_RUNTIME_REPR_FRAGMENTS:
+        assert fragment not in combined_text
+    assert re.search(r"\bat 0x[0-9a-fA-F]+\b", combined_text) is None
 
 
 def _assert_unknown_price_return_metric_contract(
@@ -1440,6 +1625,18 @@ def _import_references() -> set[str]:
             imports.add(node.module)
 
     return imports
+
+
+def _imported_names_by_module() -> dict[str, set[str]]:
+    imported_names: dict[str, set[str]] = {}
+
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.ImportFrom) and node.module:
+            imported_names.setdefault(node.module, set()).update(
+                alias.name for alias in node.names
+            )
+
+    return imported_names
 
 
 def _matches_forbidden_prefix(module: str, forbidden_prefixes: tuple[str, ...]) -> bool:

@@ -9477,6 +9477,42 @@ Safe next tasks include:
   allocation/target-weight/runtime/LLM/network/market-data behavior, or add
   scoring, ranking, recommendation, candidate-discovery, paper/live, or trading
   behavior
+- Phase 71 - SPY Runner Generic Replay Integration Guardrails adds focused
+  regression coverage around the Phase 70 integration. Tests now prove the SPY
+  exposure builder calls the generic moving-average replay package with
+  adjusted-close `MovingAverageInput` values and `window=200`, then converts
+  replay `next_exposure` states back into `DailyExposure`. Nonzero fee/slippage
+  coverage pins that runner-specific `run_daily_backtest` metrics are not
+  replaced by generic no-cost replay summary values. The canonical synthetic
+  report path pins the JSON assumptions payload, sidecar top-level keys,
+  explicit and default JSON sidecar behavior, absence of raw generic replay
+  payloads and runtime/dataclass repr leaks, unknown-adjustment `price_return`
+  honesty, research-only non-claims, safety-field absence, and AST import
+  boundaries for the allowed local research modules. This adds no generic
+  kernel changes, advisory expansion, strategy validation, source approval, real
+  data, broker/order/fill/portfolio/runtime/LLM/network/market-data behavior,
+  scoring, ranking, recommendation, candidate-discovery, paper/live, or trading
+  behavior
+- Phase 72 - Research Scope Candidate Snapshot Contracts adds a small
+  metadata-only `algotrader.research.research_scope` module for future broad
+  ETF / moving-average research planning. It defines frozen/slotted candidate
+  dataclasses for data sources, universes, benchmarks, and cash proxies, plus
+  an optional `ResearchScopeSnapshot` bundling one or more of each candidate
+  type. The contracts reject `approval_state="approved"`, normalize sequence
+  fields to tuples, reject malformed strings and malformed candidate entries,
+  reject duplicate ids inside each snapshot candidate group, require explicit
+  non-approval non-claims, and emit deterministic primitive dictionaries with
+  dates as `YYYY-MM-DD` strings. Focused tests cover construction, tuple
+  normalization, allowed-value validation, plain-date enforcement, duplicate
+  detection, primitive JSON serialization, byte-identical compact JSON
+  round-tripping, no real ticker requirement, safety field absence, and AST
+  guardrails. This adds no SPY runner changes, generic moving-average kernel
+  changes, advisory expansion, governance expansion, source/universe/benchmark/
+  cash proxy approval, methodology approval, parameter approval, data
+  acquisition path, strategy validation, signal/evaluator behavior, backtest,
+  broad ETF implementation, real data ingestion, broker/order/fill/portfolio/
+  runtime/LLM/network/market-data behavior, scoring, ranking, recommendation,
+  candidate-discovery, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
