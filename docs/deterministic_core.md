@@ -3197,6 +3197,31 @@ account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
 network call, market-data ingestion, scoring, ranking, recommendation, or
 candidate-discovery behavior.
 
+Phase 60 - SPY SMA-200 Synthetic Output Contract Snapshot adds a canonical
+synthetic regression test for the local research runner output contract. The
+test builds a deterministic `tmp_path` CSV, runs the runner with explicit
+synthetic input, explicit Markdown output, an explicit custom JSON sidecar path,
+fixed local assumptions, and `allow_outside_data_dir=True`, then pins the
+Markdown contract sections, JSON top-level keys, exact SMA mechanics payload,
+unknown-adjustment/price-return honesty, non-claims, forbidden payload-field
+safety, raw-row/path exclusion, and byte-identical Markdown/JSON output across
+repeated runs.
+
+To support that explicit sidecar contract, the runner now accepts an optional
+`json_output_path`/`--json-output` value while preserving the existing default
+sibling `.json` sidecar behavior when only a Markdown output path is supplied.
+The validation remains local-only: JSON output still requires a Markdown output
+path, must use a `.json` suffix, must stay outside `.data/`, and must be
+separate from the Markdown report.
+
+This phase adds no profitability validation, strategy approval, signal
+definition, advisory expansion, source or data approval, real market data,
+market-data ingestion, broker/order/fill/execution/OMS behavior,
+account/position/portfolio/allocation/target-weight behavior, runtime/scheduler
+behavior, LLM/API call, network call, scoring, ranking, recommendation,
+candidate-discovery behavior, paper/live behavior, trading authority, or
+trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

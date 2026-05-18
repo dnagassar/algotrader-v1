@@ -170,6 +170,81 @@ _FORBIDDEN_CALL_SUFFIXES = (
     ".urlopen",
     ".walk",
 )
+_CANONICAL_SIDECAR_TOP_LEVEL_KEYS = {
+    "adjusted_close_available",
+    "adjusted_close_source",
+    "adjustment_policy",
+    "baseline",
+    "disclaimer",
+    "limitations",
+    "metrics",
+    "non_claims",
+    "provenance",
+    "report_title",
+    "return_basis",
+    "rule",
+    "sma_mechanics",
+    "verdict",
+}
+_CANONICAL_METRIC_KEYS = {
+    "ending_equity_buy_and_hold",
+    "ending_equity_strategy",
+    "exposure_ratio_buy_and_hold",
+    "exposure_ratio_strategy",
+    "max_drawdown_buy_and_hold",
+    "max_drawdown_strategy",
+    "price_return_buy_and_hold",
+    "price_return_strategy",
+    "starting_equity",
+    "turnover_buy_and_hold",
+    "turnover_strategy",
+}
+_CANONICAL_REPORT_LINES_IN_ORDER = (
+    "# SPY SMA-200 Local Research Run",
+    "Advisory/research only:",
+    "## Data Source",
+    "- Adjustment policy: unknown",
+    "- Return basis: price_return",
+    "## Assumptions",
+    "## Rule",
+    "## SMA Mechanics",
+    "## Baseline",
+    "## Metrics",
+    "## Limitations",
+    "## Non-Claims",
+    "## Verdict",
+)
+_CANONICAL_SMA_MECHANICS = {
+    "fully_formed_sma_observations": 6,
+    "insufficient_observations": False,
+    "minimum_observations": 200,
+    "sma_window": 200,
+    "timing": "same-close observation metadata with previous-exposure backtest convention",
+}
+_FORBIDDEN_OUTPUT_CONTRACT_PHRASES = (
+    "account_id",
+    "allocation_pct",
+    "approved signal definition",
+    "broker_id",
+    "candidate discovery",
+    "create_order",
+    "execution_intent",
+    "execution_plan",
+    "fill_id",
+    "live trading enabled",
+    "order_id",
+    "paper trading enabled",
+    "portfolio_id",
+    "position_id",
+    "ranking model",
+    "recommendation_score",
+    "score:",
+    "scoring model",
+    "signal approval",
+    "submit_order",
+    "target_weight",
+    "validated signal",
+)
 
 
 def load_runner() -> ModuleType:
@@ -237,6 +312,112 @@ def run_synthetic_research(
 ) -> str:
     kwargs.setdefault("allow_outside_data_dir", True)
     return runner.run_spy_sma200_research(csv_path, **kwargs)
+
+
+def test_canonical_synthetic_output_contract_snapshot_is_stable(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    expected_sha256 = hashlib.sha256(csv_path.read_bytes()).hexdigest()
+    first_output_path = tmp_path / "canonical_spy_sma200_report.md"
+    first_json_output_path = tmp_path / "canonical_spy_sma200_contract.json"
+    second_output_path = tmp_path / "canonical_spy_sma200_report_rerun.md"
+    second_json_output_path = tmp_path / "canonical_spy_sma200_contract_rerun.json"
+    fixed_kwargs = {
+        "initial_equity": Decimal("10000"),
+        "fee_bps": Decimal("0"),
+        "slippage_bps": Decimal("0"),
+        "source_name": "synthetic_contract_snapshot",
+        "source_type": "synthetic_test",
+        "adjustment_policy": "unknown",
+        "repo_root": tmp_path,
+    }
+
+    first_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=first_output_path,
+        json_output_path=first_json_output_path,
+        **fixed_kwargs,
+    )
+    second_report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=second_output_path,
+        json_output_path=second_json_output_path,
+        **fixed_kwargs,
+    )
+    first_json_text = first_json_output_path.read_text(encoding="utf-8")
+    sidecar = json.loads(first_json_text)
+
+    assert first_report == second_report
+    assert first_output_path.read_text(encoding="utf-8") == first_report
+    assert first_output_path.read_bytes() == second_output_path.read_bytes()
+    assert first_json_output_path.read_bytes() == second_json_output_path.read_bytes()
+    assert not first_output_path.with_suffix(".json").exists()
+    assert not second_output_path.with_suffix(".json").exists()
+
+    _assert_lines_in_order(first_report, _CANONICAL_REPORT_LINES_IN_ORDER)
+    assert "- Source name: synthetic_contract_snapshot" in first_report
+    assert "- Source type: synthetic_test" in first_report
+    assert "- CSV file: SPY_daily.csv" in first_report
+    assert f"- File SHA-256: {expected_sha256}" in first_report
+    assert "- Snapshot fingerprint: " in first_report
+    assert "- Date range: 2025-01-01 to 2025-07-24" in first_report
+    assert "- Row count: 205" in first_report
+    assert "- Adjusted close available: false" in first_report
+    assert "- Adjusted close source: close_price_fallback" in first_report
+    assert "- Initial equity: 10000" in first_report
+    assert "- Fee bps: 0" in first_report
+    assert "- Slippage bps: 0" in first_report
+    assert "- sma_window: 200" in first_report
+    assert "- minimum_observations: 200" in first_report
+    assert "- fully_formed_sma_observations: 6" in first_report
+    assert "- insufficient_observations: false" in first_report
+    assert "- timing: same-close observation metadata with previous-exposure backtest convention" in first_report
+    assert "- return_basis: price_return" in first_report
+    assert "- price_return_strategy: " in first_report
+    assert "- price_return_buy_and_hold: " in first_report
+    assert "total_return" not in first_report
+
+    assert set(sidecar) == _CANONICAL_SIDECAR_TOP_LEVEL_KEYS
+    assert set(sidecar["metrics"]) == _CANONICAL_METRIC_KEYS
+    assert sidecar["sma_mechanics"] == _CANONICAL_SMA_MECHANICS
+    assert sidecar["report_title"] == "SPY SMA-200 Local Research Run"
+    assert sidecar["adjustment_policy"] == "unknown"
+    assert sidecar["return_basis"] == "price_return"
+    assert sidecar["adjusted_close_available"] is False
+    assert sidecar["adjusted_close_source"] == "close_price_fallback"
+    assert sidecar["provenance"]["file_name"] == "SPY_daily.csv"
+    assert sidecar["provenance"]["file_sha256"] == expected_sha256
+    assert sidecar["provenance"]["adjustment_policy"] == "unknown"
+
+    _assert_markdown_non_claims(first_report)
+    _assert_json_non_claims(sidecar)
+    _assert_no_forbidden_payload_keys(sidecar)
+    for phrase in _FORBIDDEN_OUTPUT_CONTRACT_PHRASES:
+        assert phrase not in first_report.lower()
+        assert phrase not in first_json_text.lower()
+    for path in (
+        csv_path,
+        csv_path.parent,
+        first_output_path,
+        first_json_output_path,
+        second_output_path,
+        second_json_output_path,
+    ):
+        assert str(path) not in first_report
+        assert str(path) not in first_json_text
+    if csv_path.drive:
+        assert csv_path.drive not in first_report
+        assert csv_path.drive not in first_json_text
+    assert RAW_FIRST_ROW not in first_report
+    assert RAW_FIRST_ROW not in first_json_text
+    assert "900001" not in first_report
+    assert "900001" not in first_json_text
+    assert "output_path" not in first_json_text
+    assert "json_output_path" not in first_json_text
 
 
 def test_runner_renders_metadata_only_report_from_synthetic_spy_csv(
@@ -627,6 +808,41 @@ def test_output_path_json_suffix_is_rejected(tmp_path: Path) -> None:
         )
 
 
+def test_explicit_json_output_path_requires_markdown_output(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    json_output_path = tmp_path / "spy_sma200_report.json"
+
+    with pytest.raises(ValidationError, match="requires a markdown output path"):
+        runner.run_spy_sma200_research(
+            csv_path,
+            allow_outside_data_dir=True,
+            json_output_path=json_output_path,
+            repo_root=tmp_path,
+        )
+
+    assert not json_output_path.exists()
+
+
+def test_explicit_json_output_path_must_use_json_suffix(tmp_path: Path) -> None:
+    runner = load_runner()
+    csv_path = snapshot_path(tmp_path)
+    output_path = tmp_path / "spy_sma200_report.md"
+    json_output_path = tmp_path / "spy_sma200_report.txt"
+
+    with pytest.raises(ValidationError, match=r"\.json suffix"):
+        runner.run_spy_sma200_research(
+            csv_path,
+            allow_outside_data_dir=True,
+            output_path=output_path,
+            json_output_path=json_output_path,
+            repo_root=tmp_path,
+        )
+
+    assert not output_path.exists()
+    assert not json_output_path.exists()
+
+
 def test_buy_and_hold_exposure_ratio_is_one(tmp_path: Path) -> None:
     runner = load_runner()
     csv_path = write_synthetic_spy_csv(
@@ -795,6 +1011,14 @@ def test_runner_has_only_explicit_report_and_sidecar_output_writes() -> None:
     assert len(write_text_calls) == 2
     assert "if checked_output_path is not None:\n        checked_output_path.write_text" in source
     assert "json_output_path.write_text" in source
+
+
+def _assert_lines_in_order(text: str, expected_lines: tuple[str, ...]) -> None:
+    start = 0
+    for expected_line in expected_lines:
+        index = text.find(expected_line, start)
+        assert index >= start
+        start = index + len(expected_line)
 
 
 def _assert_markdown_non_claims(report: str) -> None:

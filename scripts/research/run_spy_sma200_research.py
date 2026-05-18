@@ -108,6 +108,7 @@ def run_spy_sma200_research(
     adjustment_policy: str = DEFAULT_ADJUSTMENT_POLICY,
     allow_outside_data_dir: bool = False,
     output_path: str | Path | None = None,
+    json_output_path: str | Path | None = None,
     repo_root: str | Path | None = None,
 ) -> str:
     """Run the local SPY SMA-200 research path and return markdown text."""
@@ -118,6 +119,10 @@ def run_spy_sma200_research(
         allow_outside_data_dir=allow_outside_data_dir,
     )
     checked_output_path = _output_path_value(output_path)
+    checked_json_output_path = _json_output_path_value(
+        json_output_path,
+        checked_output_path,
+    )
     checked_adjustment_policy = _adjustment_policy_value(adjustment_policy)
     assumptions = DailyBacktestAssumptions(
         initial_equity=_decimal_value(initial_equity, "initial_equity"),
@@ -154,8 +159,8 @@ def run_spy_sma200_research(
 
     if checked_output_path is not None:
         checked_output_path.write_text(report, encoding="utf-8")
-        json_output_path = _json_sidecar_path_value(checked_output_path)
-        json_output_path.write_text(
+        assert checked_json_output_path is not None
+        checked_json_output_path.write_text(
             render_spy_sma200_report_json(
                 manifest=manifest,
                 result=result,
@@ -315,6 +320,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional markdown output path. Stdout is used when omitted.",
     )
+    parser.add_argument(
+        "--json-output",
+        default=None,
+        help="Optional explicit JSON sidecar output path. Defaults to --output with .json suffix.",
+    )
     return parser
 
 
@@ -332,6 +342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             adjustment_policy=args.adjustment_policy,
             allow_outside_data_dir=args.allow_outside_data_dir,
             output_path=args.output,
+            json_output_path=args.json_output,
         )
     except ValidationError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -391,6 +402,32 @@ def _output_path_value(output_path: str | Path | None) -> Path | None:
         raise ValidationError("output path must not point inside .data/.")
     if checked_path.suffix.lower() == ".json":
         raise ValidationError("output path must be the markdown report path, not .json.")
+
+    return checked_path
+
+
+def _json_output_path_value(
+    json_output_path: str | Path | None,
+    output_path: Path | None,
+) -> Path | None:
+    if json_output_path is None:
+        if output_path is None:
+            return None
+        return _json_sidecar_path_value(output_path)
+    if output_path is None:
+        raise ValidationError("JSON output path requires a markdown output path.")
+    if isinstance(json_output_path, str) and not json_output_path.strip():
+        raise ValidationError("JSON output path is required when provided.")
+    if not isinstance(json_output_path, (str, Path)):
+        raise ValidationError("JSON output path must be a local path.")
+
+    checked_path = Path(json_output_path).expanduser().resolve()
+    if any(part == ".data" for part in checked_path.parts):
+        raise ValidationError("JSON output path must not point inside .data/.")
+    if checked_path.suffix.lower() != ".json":
+        raise ValidationError("JSON output path must use a .json suffix.")
+    if checked_path == output_path:
+        raise ValidationError("JSON sidecar path must be separate from markdown output.")
 
     return checked_path
 
