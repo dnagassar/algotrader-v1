@@ -9513,6 +9513,27 @@ Safe next tasks include:
   broad ETF implementation, real data ingestion, broker/order/fill/portfolio/
   runtime/LLM/network/market-data behavior, scoring, ranking, recommendation,
   candidate-discovery, paper/live, or trading behavior
+- Phase 73 - Synthetic Broad ETF Research Scope Fixture adds a deterministic
+  test/documentation fixture in `tests.fixtures.research_scope` using the Phase
+  72 candidate contracts. It builds one synthetic broad ETF-style
+  `ResearchScopeSnapshot` as of `2026-01-18`, with one synthetic source
+  candidate, one `broad_etf_candidate` universe containing only synthetic asset
+  ids, one synthetic benchmark candidate, one synthetic cash proxy candidate,
+  explicit blockers, limitations, required follow-up, and the required
+  research-scope non-claims. The fixture also pins the expected primitive
+  dictionary and compact JSON payload. Focused tests cover construction,
+  nested candidate types, non-approved approval states, exact serialization,
+  JSON round-tripping, repeated determinism, no real ETF tickers, no raw market
+  data, no URLs, credentials, or real vendor/source identifiers, no runtime or
+  selection fields, no affirmative approval/authority claims, and AST
+  guardrails excluding broker/execution/portfolio/runtime/network/LLM/
+  market-data/dataframe/random/file-I/O dependencies. This adds no source,
+  universe, benchmark, cash proxy, methodology, parameter, or data acquisition
+  approval; no strategy validation, signal/evaluator behavior, backtest, broad
+  ETF strategy implementation, real data ingestion, SPY runner change, generic
+  moving-average kernel change, advisory/governance expansion, broker/order/
+  fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
+  recommendation, candidate-discovery, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

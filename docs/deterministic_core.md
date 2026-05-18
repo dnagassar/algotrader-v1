@@ -3535,6 +3535,34 @@ broker/order/fill/portfolio/runtime behavior, LLM/API call, network call,
 market-data call, scoring, ranking, recommendation, candidate-discovery
 behavior, paper/live behavior, trading authority, or trading behavior.
 
+Phase 73 - Synthetic Broad ETF Research Scope Fixture adds a deterministic
+test/documentation fixture built from the Phase 72 research-scope candidate
+contracts. `tests.fixtures.research_scope` now constructs one synthetic broad
+ETF-style `ResearchScopeSnapshot` with one synthetic source candidate, one
+`broad_etf_candidate` universe, one synthetic benchmark candidate, and one
+synthetic cash proxy candidate. The fixture uses a fixed plain date
+(`2026-01-18`), synthetic ids only, the four synthetic asset ids documented in
+the test fixture, explicit blockers, limitations, required follow-up, and the
+required research-scope non-claims. It also pins the expected primitive
+dictionary and compact JSON representation for regression tests.
+
+The fixture tests cover construction, nested candidate contract types,
+candidate-only approval states, exact primitive serialization, byte-identical
+compact JSON round-tripping, repeated construction determinism, absence of real
+ETF tickers, raw market data, URLs, credentials, and vendor/source identifiers,
+safety-field absence, no scoring/ranking/recommendation/candidate-discovery
+fields, no affirmative approval or authority claims, and AST guardrails that
+keep the fixture free of broker/execution/portfolio/runtime/network/LLM/
+market-data/dataframe/random/file-I/O dependencies. This phase adds no source
+approval, universe approval, benchmark approval, cash proxy approval,
+methodology approval, parameter approval, data acquisition path, strategy
+validation, signal approval, evaluator, backtest, broad ETF strategy
+implementation, real data ingestion, SPY runner change, generic moving-average
+kernel change, advisory expansion, governance expansion, broker/order/fill/
+portfolio/runtime behavior, LLM/API call, network call, market-data call,
+scoring, ranking, recommendation, candidate-discovery behavior, paper/live
+behavior, trading authority, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
