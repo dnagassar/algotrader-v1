@@ -27,6 +27,11 @@ from algotrader.research.price_snapshot import (  # noqa: E402
     HistoricalPriceSnapshot,
     load_historical_price_snapshot_csv,
 )
+from algotrader.research.moving_average import MovingAverageInput  # noqa: E402
+from algotrader.research.moving_average_replay import (  # noqa: E402
+    MovingAverageReplayPackage,
+    build_moving_average_replay_package,
+)
 from algotrader.research.price_snapshot_manifest import (  # noqa: E402
     ADJUSTMENT_POLICIES,
     ADJUSTMENT_POLICY_ADJUSTED_CLOSE,
@@ -37,7 +42,6 @@ from algotrader.research.price_snapshot_manifest import (  # noqa: E402
     LocalPriceSnapshotManifest,
     build_local_price_snapshot_manifest,
 )
-from algotrader.research.sma_exposure import build_sma_200_daily_exposures  # noqa: E402
 
 
 DEFAULT_INITIAL_EQUITY = Decimal("10000")
@@ -55,6 +59,7 @@ _RETURN_BASIS_TOTAL_RETURN = "total_return"
 _ADJUSTED_CLOSE_SOURCE_CLOSE_PRICE_FALLBACK = "close_price_fallback"
 _ADJUSTED_CLOSE_SOURCE_TRUE_ADJUSTED = "true_adjusted_close"
 _SMA_200_WINDOW = 200
+_SPY_SMA200_REPLAY_ID = "spy-sma200-local-research"
 
 _DISCLAIMER = (
     "Advisory/research only: this local report is not validated evidence, "
@@ -143,7 +148,8 @@ def run_spy_sma200_research(
         created_at=snapshot.bars[-1].date,
         limitations=_LIMITATION_LINES,
     )
-    exposures = build_sma_200_daily_exposures(snapshot)
+    replay_package = _build_spy_sma200_replay_package(snapshot)
+    exposures = _daily_exposures_from_replay_package(replay_package)
     buy_and_hold_exposures = _build_buy_and_hold_daily_exposures(snapshot)
     result = run_daily_backtest(snapshot, exposures, assumptions)
     buy_and_hold_result = run_daily_backtest(
@@ -438,6 +444,61 @@ def _json_sidecar_path_value(output_path: Path) -> Path:
         raise ValidationError("JSON sidecar path must be separate from markdown output.")
 
     return sidecar_path
+
+
+def build_sma_200_daily_exposures(
+    snapshot: HistoricalPriceSnapshot,
+) -> tuple[DailyExposure, ...]:
+    replay_package = _build_spy_sma200_replay_package(snapshot)
+
+    return _daily_exposures_from_replay_package(replay_package)
+
+
+def _build_spy_sma200_replay_package(
+    snapshot: HistoricalPriceSnapshot,
+) -> MovingAverageReplayPackage:
+    checked_snapshot = _snapshot_value(snapshot)
+    inputs = _moving_average_inputs_from_snapshot(checked_snapshot)
+
+    return build_moving_average_replay_package(
+        replay_id=_SPY_SMA200_REPLAY_ID,
+        as_of_date=checked_snapshot.bars[-1].date,
+        inputs=inputs,
+        window=_SMA_200_WINDOW,
+    )
+
+
+def _moving_average_inputs_from_snapshot(
+    snapshot: HistoricalPriceSnapshot,
+) -> tuple[MovingAverageInput, ...]:
+    return tuple(
+        MovingAverageInput(
+            observation_date=bar.date,
+            value=bar.adjusted_close,
+        )
+        for bar in snapshot.bars
+    )
+
+
+def _daily_exposures_from_replay_package(
+    replay_package: MovingAverageReplayPackage,
+) -> tuple[DailyExposure, ...]:
+    return tuple(
+        DailyExposure(
+            date=state.observation_date,
+            exposure=Decimal(state.next_exposure),
+        )
+        for state in replay_package.exposure_states
+    )
+
+
+def _snapshot_value(value: HistoricalPriceSnapshot) -> HistoricalPriceSnapshot:
+    if not isinstance(value, HistoricalPriceSnapshot):
+        raise ValidationError("snapshot must be a HistoricalPriceSnapshot.")
+    if not value.bars:
+        raise ValidationError("snapshot bars must contain HistoricalPriceBar values.")
+
+    return value
 
 
 def _build_buy_and_hold_daily_exposures(

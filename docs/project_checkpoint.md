@@ -9457,6 +9457,26 @@ Safe next tasks include:
   ingest real data, read `.data/`, add broker/order/fill/portfolio/runtime/
   LLM/network/market-data behavior, or add scoring, ranking, recommendation,
   candidate-discovery, advisory, paper/live, or trading behavior
+- Phase 70 - SPY SMA-200 Runner Generic Replay Integration Probe performs a
+  narrow output-preserving refactor of the local SPY runner. The runner now
+  builds a `MovingAverageReplayPackage` from loaded snapshot adjusted-close
+  values via `MovingAverageInput` and
+  `build_moving_average_replay_package(..., window=200)`, then converts replay
+  `next_exposure` states back into the existing `DailyExposure` shape. Public
+  Markdown and JSON sidecar keys remain unchanged, unknown adjustment remains
+  `unknown` / `price_return`, explicit JSON sidecar behavior remains unchanged,
+  and synthetic `tmp_path` coverage keeps normal pytest offline and free of
+  `.data/` or real market-data dependencies. The existing `run_daily_backtest`
+  path still owns the runner-specific output metric envelope and fee/slippage
+  behavior because the generic replay package intentionally does not model
+  costs, max drawdown, exposure ratio, turnover, or ending-equity presentation.
+  This does not change generic research kernels, validate a strategy, define a
+  signal, add a backtesting engine, add cost/slippage support to the generic
+  kernel, add performance metrics, ingest real data, read `.data/`, add
+  advisory integration, add broker/order/fill/account/position/portfolio/
+  allocation/target-weight/runtime/LLM/network/market-data behavior, or add
+  scoring, ranking, recommendation, candidate-discovery, paper/live, or trading
+  behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

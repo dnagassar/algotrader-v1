@@ -517,6 +517,100 @@ def test_controlled_breakout_metrics_use_previous_exposure_convention(
     )
 
 
+def test_sma200_exposures_are_derived_from_generic_replay_package(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_breakout_daily.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={
+            200: Decimal("300.00"),
+            201: Decimal("330.00"),
+        },
+    )
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    package = runner._build_spy_sma200_replay_package(snapshot)
+    exposures = runner.build_sma_200_daily_exposures(snapshot)
+    result = runner.run_daily_backtest(
+        snapshot,
+        exposures,
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("10000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+    buy_and_hold_result = runner.run_daily_backtest(
+        snapshot,
+        runner._build_buy_and_hold_daily_exposures(snapshot),
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("10000"),
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+
+    assert [exposure.date for exposure in exposures] == [
+        state.observation_date for state in package.exposure_states
+    ]
+    assert [int(exposure.exposure) for exposure in exposures] == [
+        state.next_exposure for state in package.exposure_states
+    ]
+    assert package.summary.final_exposure_cumulative_return == result.total_return
+    assert package.summary.final_asset_cumulative_return == (
+        buy_and_hold_result.total_return
+    )
+
+
+def test_nonzero_cost_metrics_remain_runner_specific_after_replay_integration(
+    tmp_path: Path,
+) -> None:
+    runner = load_runner()
+    csv_path = write_synthetic_spy_csv(
+        tmp_path / "SPY_breakout_daily.csv",
+        rows=202,
+        price_step=Decimal("0"),
+        close_overrides={
+            200: Decimal("300.00"),
+            201: Decimal("330.00"),
+        },
+    )
+    output_path = tmp_path / "breakout_cost_report.md"
+
+    report = run_synthetic_research(
+        runner,
+        csv_path,
+        output_path=output_path,
+        initial_equity=Decimal("10000"),
+        fee_bps=Decimal("100"),
+        slippage_bps=Decimal("0"),
+        source_name="synthetic_breakout_cost_boundary",
+        source_type="synthetic_test",
+        adjustment_policy="unknown",
+        repo_root=tmp_path,
+    )
+    sidecar = json.loads(output_path.with_suffix(".json").read_text(encoding="utf-8"))
+    snapshot = runner.load_historical_price_snapshot_csv(csv_path, "SPY")
+    package = runner._build_spy_sma200_replay_package(snapshot)
+    result = runner.run_daily_backtest(
+        snapshot,
+        runner.build_sma_200_daily_exposures(snapshot),
+        runner.DailyBacktestAssumptions(
+            initial_equity=Decimal("10000"),
+            fee_bps=Decimal("100"),
+            slippage_bps=Decimal("0"),
+        ),
+    )
+
+    assert "- Fee bps: 100" in report
+    assert Decimal(sidecar["metrics"]["price_return_strategy"]) == result.total_return
+    assert result.total_return != package.summary.final_exposure_cumulative_return
+    assert package.summary.final_exposure_cumulative_return == Decimal("0.1")
+    _assert_unknown_price_return_metric_contract(report, sidecar)
+
+
 def test_canonical_synthetic_output_contract_snapshot_is_stable(
     tmp_path: Path,
 ) -> None:

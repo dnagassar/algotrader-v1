@@ -3472,6 +3472,32 @@ runtime behavior, call network/LLM/market-data providers, add scoring, ranking,
 recommendation, candidate-discovery behavior, or add paper/live/trading
 behavior.
 
+Phase 70 - SPY SMA-200 Runner Generic Replay Integration Probe performs a
+narrow output-preserving runner refactor. The local SPY SMA-200 runner now
+builds a `MovingAverageReplayPackage` from the loaded snapshot's selected
+adjusted-close values using `MovingAverageInput` and
+`build_moving_average_replay_package(..., window=200)`. The runner converts the
+package's `next_exposure` states back into the existing `DailyExposure` shape,
+so its SMA observation, previous-exposure state, exposure-applied return, and
+no-cost cumulative-return mechanics are backed by the generic replay chain.
+
+The public Markdown report and JSON sidecar contracts remain unchanged. The
+runner still uses `run_daily_backtest` for the existing output metric envelope,
+including starting/ending equity, max drawdown, exposure ratio, turnover, and
+fee/slippage-adjusted custom-assumption behavior that the generic replay
+package intentionally does not model. Unknown adjustment policy remains
+`unknown` and `price_return`, default sibling `.json` sidecar behavior remains
+explicit-output-only, and synthetic `tmp_path` tests continue to avoid `.data/`
+and real market data.
+
+Phase 70 does not change generic research kernels, validate a strategy, define
+a signal, add a backtesting engine, add cost/slippage support to the generic
+kernel, add performance metrics, ingest real data, read `.data/`, add advisory
+integration, add broker/order/fill/account/position/portfolio/allocation/
+target-weight/runtime behavior, call network/LLM/market-data providers, add
+scoring, ranking, recommendation, candidate-discovery behavior, or add
+paper/live/trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
