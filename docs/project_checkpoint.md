@@ -9437,6 +9437,26 @@ Safe next tasks include:
   portfolio/runtime/LLM/network/market-data behavior, or add scoring, ranking,
   recommendation, candidate-discovery, advisory, paper/live, or trading
   behavior
+- Phase 69 - SPY Runner / Moving-Average Replay Synthetic Parity Probe adds
+  tests-only parity coverage between the existing local SPY SMA-200 research
+  runner and the generic `MovingAverageReplayPackage` mechanics. The new tests
+  use deterministic synthetic CSV files under `tmp_path`, run the SPY runner
+  with explicit synthetic input, Markdown output, JSON output,
+  `allow_outside_data_dir=True`, and unknown adjustment policy, and build the
+  generic replay package from the same CSV close values with `window=200`.
+  Coverage spans a flat 205-row series, a controlled breakout series, and an
+  insufficient-observation series. It compares stable mechanics fields: SMA
+  window behavior, fully formed SMA counts, previous-exposure/no-same-row
+  return behavior, exposure-applied returns, final asset/exposure cumulative
+  returns where the runner exposes equivalent metrics, deterministic repeated
+  output, research-only non-claims, forbidden-field absence, external-source
+  marker absence, and the normal offline, credential-free pytest boundary. This
+  does not refactor the SPY runner, adapt it to the generic kernel, change
+  generic research kernels, validate a strategy, define a signal, add a
+  backtesting engine, add broad ETF implementation, add performance metrics,
+  ingest real data, read `.data/`, add broker/order/fill/portfolio/runtime/
+  LLM/network/market-data behavior, or add scoring, ranking, recommendation,
+  candidate-discovery, advisory, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
