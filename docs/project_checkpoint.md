@@ -9358,6 +9358,35 @@ Safe next tasks include:
   define a signal, add advisory integration, source approval, real data, broad
   ETF implementation, paper/live behavior, trading authority, or trading
   behavior
+- Phase 66 - Synthetic Cumulative Return Path Summary adds a small reusable
+  `algotrader.research.cumulative_return_summary` contract for deterministic
+  research-only summaries over already-built `CumulativeReturnObservation`
+  rows. It introduces a frozen/slotted `CumulativeReturnPathSummary` dataclass
+  and pure `summarize_cumulative_return_path` builder that normalizes iterable
+  input, preserves source ordering for first/last/final-row semantics, rejects
+  empty input, non-cumulative-return entries, duplicate dates, unordered dates,
+  and malformed direct construction, and copies the last row's asset and
+  exposure cumulative return values without recomputing the path. The summary
+  records only observation dates, total and available/unavailable row counts,
+  final asset and exposure cumulative returns, a has-available-returns flag,
+  and research-only limitations/non-claims. Its deterministic `to_dict()`
+  emits dates as `YYYY-MM-DD`, Decimals as strings, tuples as lists, and
+  counts/booleans as primitives. Focused tests pin constructor validation,
+  iterable normalization, source non-mutation, flat and mixed path summaries,
+  full synthetic moving-average to cumulative-path integration, previous-
+  exposure/no-same-row visibility through the final exposure cumulative value,
+  JSON round-tripping, and AST/field guardrails excluding broker/order/fill/
+  execution/portfolio/runtime/LLM/network/market-data/notebook/vectorbt/
+  persistence/filesystem/pandas/numpy/equity/PnL/Sharpe/CAGR/drawdown/alpha/
+  beta/benchmark/scoring/ranking/recommendation/candidate-discovery/signal/
+  evaluator/trading behavior. This does not modify the SPY runner, compute
+  Sharpe, CAGR, drawdown, volatility, alpha, beta, benchmark comparisons, win
+  rate, performance scores, equity curves, starting capital, PnL, costs,
+  slippage, fees, benchmark returns, portfolio accounting, allocation, target
+  weights, position sizing, orders, fills, signals, execution plans,
+  optimization metrics, validate a strategy, define a signal, add advisory
+  integration, source approval, real data, broad ETF implementation, paper/live
+  behavior, trading authority, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

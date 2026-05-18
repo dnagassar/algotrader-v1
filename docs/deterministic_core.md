@@ -3359,6 +3359,38 @@ LLM/API call, network call, scoring, ranking, recommendation,
 candidate-discovery behavior, trading authority, or trading behavior. It does
 not refactor or extend the SPY SMA-200 runner.
 
+Phase 66 - Synthetic Cumulative Return Path Summary adds
+`algotrader.research.cumulative_return_summary` as a small deterministic
+research-only metadata layer over already-built `CumulativeReturnObservation`
+rows. It defines a frozen/slotted `CumulativeReturnPathSummary` contract and a
+pure `summarize_cumulative_return_path` builder that normalizes iterable input,
+preserves source ordering for first/last/final-row semantics, rejects empty
+input, non-cumulative-return entries, duplicate dates, unordered dates, and
+malformed direct construction, and copies the last row's asset and exposure
+cumulative return values without recomputing the path.
+
+The summary records only first and last observation dates, total rows,
+available and unavailable return counts, final asset and exposure cumulative
+returns, whether any return rows were available, and research-only limitations
+and non-claims. Its deterministic `to_dict()` serializes dates as `YYYY-MM-DD`,
+Decimals as strings, tuples as lists, and counts/booleans as primitive values.
+Tests pin constructor validation, iterable normalization, source non-mutation,
+flat and mixed path summaries, full synthetic moving-average to cumulative-path
+integration, previous-exposure/no-same-row visibility through the final
+exposure cumulative value, JSON round-tripping, and AST/field guardrails.
+
+This phase does not compute Sharpe, CAGR, drawdown, volatility, alpha, beta,
+benchmark comparisons, win rate, performance scores, equity curves, starting
+capital, PnL, costs, slippage, fees, benchmark returns, portfolio accounting,
+allocation, target weights, position sizing, orders, fills, signals, execution
+plans, optimization metrics, strategy validation, source approval, real data
+ingestion, broad ETF implementation, advisory integration, market-data
+ingestion, dashboard, AI brief generation, paper/live behavior,
+broker/order/fill/execution/OMS behavior, account/position/portfolio behavior,
+runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
+recommendation, candidate-discovery behavior, trading authority, or trading
+behavior. It does not refactor or extend the SPY SMA-200 runner.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
