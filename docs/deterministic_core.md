@@ -3297,6 +3297,36 @@ behavior, runtime/scheduler behavior, LLM/API call, network call,
 market-data ingestion, scoring, ranking, recommendation,
 candidate-discovery behavior, trading authority, or trading behavior.
 
+Phase 64 - Synthetic Exposure-Applied Return Kernel adds
+`algotrader.research.exposure_returns` as a small offline-safe research
+metadata layer over ordered `MovingAverageInput` values and
+`MovingAverageExposureState` rows. It defines a frozen/slotted
+`ExposureReturnObservation` contract and a pure
+`build_exposure_applied_returns` builder that normalizes iterable inputs to
+immutable tuples, preserves ordering, rejects empty inputs, malformed entries,
+length mismatches, date mismatches, duplicate dates, and unordered dates, and
+uses Decimal-only close-to-close simple returns.
+
+The kernel marks the first row return unavailable and applies each later row's
+`current_exposure` to that row's asset return using previous-exposure
+semantics. Zero current exposure produces zero exposure return, one current
+exposure preserves the asset return, and a same-row breakout cannot create
+same-row exposure-applied return. Tests pin direct observation validation,
+return mechanics, Decimal preservation, declining-value returns, no-lookahead
+future changes, repeated-call determinism, source non-mutation, immutable
+output, and AST/field guardrails.
+
+This phase does not compute cumulative returns, equity curves, performance
+metrics, costs, slippage, fees, benchmarks, portfolio accounting, allocation,
+target weights, position sizing, orders, fills, signals, execution plans, or
+strategy validation. It does not refactor or extend the SPY SMA-200 runner and
+adds no advisory expansion, source approval, real data, broad ETF
+implementation, market-data ingestion, dashboard, AI brief generation,
+paper/live behavior, broker/order/fill/execution/OMS behavior,
+account/position/portfolio behavior, runtime/scheduler behavior, LLM/API call,
+network call, scoring, ranking, recommendation, candidate-discovery behavior,
+trading authority, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

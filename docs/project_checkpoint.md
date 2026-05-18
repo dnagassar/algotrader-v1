@@ -9304,6 +9304,31 @@ Safe next tasks include:
   source approval, real data, broad ETF implementation, advisory integration,
   dashboard, AI brief generation, paper/live behavior, trading authority, or
   trading behavior
+- Phase 64 - Synthetic Exposure-Applied Return Kernel adds a small reusable
+  `algotrader.research.exposure_returns` contract for synthetic-only offline
+  return metadata. It introduces a frozen/slotted
+  `ExposureReturnObservation` dataclass and a pure
+  `build_exposure_applied_returns` builder over ordered `MovingAverageInput`
+  values and `MovingAverageExposureState` rows. The builder normalizes
+  iterable inputs to immutable tuple output, preserves ordering, rejects empty
+  inputs, malformed entries, length mismatches, date mismatches, duplicate
+  dates, and unordered dates, marks the first row return unavailable, and uses
+  Decimal-only close-to-close simple returns. Later rows apply the row's
+  `current_exposure`, so zero exposure produces zero exposure return, one
+  exposure preserves the asset return, and a same-row breakout cannot create
+  same-row exposure-applied return. Focused tests pin direct validation,
+  previous-exposure mechanics, Decimal preservation, negative asset returns,
+  no-lookahead future changes, repeated-call determinism, source non-mutation,
+  immutable output, and AST/field guardrails excluding broker/order/fill/
+  execution/portfolio/runtime/LLM/network/market-data/notebook/vectorbt/
+  persistence/filesystem/pandas/numpy/scoring/ranking/recommendation/
+  candidate-discovery/signal/evaluator/trading behavior. This does not modify
+  the SPY runner, compute cumulative returns, equity curves, performance
+  metrics, costs, slippage, fees, benchmarks, portfolio accounting,
+  allocation, target weights, position sizing, orders, fills, signals,
+  execution plans, validate a strategy, define a signal, add advisory
+  integration, source approval, real data, broad ETF implementation, paper/live
+  behavior, trading authority, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
