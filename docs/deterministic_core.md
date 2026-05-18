@@ -3391,6 +3391,38 @@ runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
 recommendation, candidate-discovery behavior, trading authority, or trading
 behavior. It does not refactor or extend the SPY SMA-200 runner.
 
+Phase 67 - Synthetic Moving-Average Replay Package adds
+`algotrader.research.moving_average_replay` as a small deterministic
+research-only package over the already-built synthetic mechanics chain:
+`MovingAverageInput`, `MovingAverageObservation`,
+`MovingAverageExposureState`, `ExposureReturnObservation`,
+`CumulativeReturnObservation`, and `CumulativeReturnPathSummary`. It defines a
+frozen/slotted `MovingAverageReplayPackage` contract and a pure
+`build_moving_average_replay_package` builder that composes the existing
+moving-average, previous-exposure, exposure-return, cumulative-return, and
+summary kernels in order.
+
+The package records replay id, plain as-of date, moving-average window,
+immutable tuple outputs for each mechanics stage, the cumulative path summary,
+and replay-level research limitations and non-claims. Direct construction
+validates sequence types, matching lengths, matching ordered dates, matching
+windows, summary/path consistency, and exact agreement with the existing
+kernels. Its deterministic `to_dict()` serializes dates as `YYYY-MM-DD`,
+Decimals as strings, tuples as lists, and nested mechanics rows as explicit
+primitive dictionaries without object reprs or non-deterministic ordering.
+
+This phase does not compute Sharpe, CAGR, drawdown, volatility, alpha, beta,
+benchmark comparisons, win rate, performance scores, equity curves, starting
+capital, PnL, costs, slippage, fees, benchmark returns, portfolio accounting,
+allocation, target weights, position sizing, orders, fills, signals, execution
+plans, optimization metrics, strategy validation, source approval, real data
+ingestion, broad ETF implementation, advisory integration, market-data
+ingestion, dashboard, AI brief generation, paper/live behavior,
+broker/order/fill/execution/OMS behavior, account/position/portfolio behavior,
+runtime/scheduler behavior, LLM/API call, network call, scoring, ranking,
+recommendation, candidate-discovery behavior, trading authority, or trading
+behavior. It does not refactor or extend the SPY SMA-200 runner.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

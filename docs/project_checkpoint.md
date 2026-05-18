@@ -9387,6 +9387,33 @@ Safe next tasks include:
   optimization metrics, validate a strategy, define a signal, add advisory
   integration, source approval, real data, broad ETF implementation, paper/live
   behavior, trading authority, or trading behavior
+- Phase 67 - Synthetic Moving-Average Replay Package adds a small reusable
+  `algotrader.research.moving_average_replay` contract for deterministic
+  research-only replay packaging over the existing synthetic mechanics chain:
+  `MovingAverageInput`, `MovingAverageObservation`,
+  `MovingAverageExposureState`, `ExposureReturnObservation`,
+  `CumulativeReturnObservation`, and `CumulativeReturnPathSummary`. It
+  introduces a frozen/slotted `MovingAverageReplayPackage` dataclass and pure
+  `build_moving_average_replay_package` builder that composes the existing
+  moving-average, previous-exposure, exposure-return, cumulative-return, and
+  summary kernels in order. The package records replay id, plain as-of date,
+  moving-average window, immutable tuple outputs for every mechanics stage, the
+  summary, and replay-level limitations/non-claims. Direct construction
+  validates sequence types, matching lengths, matching ordered dates, matching
+  windows, summary/path consistency, required non-claims, and exact agreement
+  with the existing kernels. Its deterministic `to_dict()` emits dates as
+  `YYYY-MM-DD`, Decimals as strings, tuples as lists, and nested mechanics rows
+  as primitive dictionaries. Focused tests pin constructor validation, kernel
+  call ordering, source non-mutation, repeated-call equality, flat and breakout
+  paths, JSON round-tripping, no-lookahead behavior, and AST/field guardrails
+  excluding broker/order/fill/execution/portfolio/runtime/LLM/network/
+  market-data/notebook/vectorbt/persistence/filesystem/pandas/numpy/equity/
+  PnL/Sharpe/CAGR/drawdown/alpha/beta/benchmark/scoring/ranking/
+  recommendation/candidate-discovery/signal/evaluator/trading behavior. This
+  does not modify the SPY runner, compute performance metrics beyond summary
+  final cumulative path values and counts, validate a strategy, define a
+  signal, add advisory integration, source approval, real data, broad ETF
+  implementation, paper/live behavior, trading authority, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
