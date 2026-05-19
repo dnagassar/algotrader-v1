@@ -9580,6 +9580,27 @@ Safe next tasks include:
   moving-average kernel change, advisory/governance expansion, broker/order/
   fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
   recommendation, candidate-discovery, paper/live, or trading behavior
+- Phase 76 - Synthetic Broad ETF Research Planning Package Fixture adds a
+  deterministic test/documentation package fixture in
+  `tests.fixtures.research_planning` using the Phase 73 synthetic research
+  scope fixture and Phase 75 synthetic methodology scope fixture. It returns a
+  primitive dictionary as of `2026-01-20` with a fixed synthetic planning
+  package id, embedded primitive research-scope and methodology-scope payloads,
+  limitations, and explicit non-claims. Focused tests cover construction,
+  fixed dates, methodology linked-scope reference to the synthetic research
+  scope id, non-approved candidate states, required non-claims, exact compact
+  JSON serialization, byte-identical JSON round-tripping, primitive-only
+  payload safety, no real ETF tickers, no raw market data, no URLs,
+  credentials, vendor/source identifiers, or account ids, no runtime or
+  selection fields, no affirmative approval/authority claims, and AST
+  guardrails excluding broker/execution/portfolio/runtime/network/LLM/
+  market-data/dataframe/random/file-I/O dependencies. This adds no source,
+  universe, benchmark, cash proxy, methodology, parameter, or data acquisition
+  approval; no strategy validation, signal/evaluator behavior, broad ETF
+  strategy implementation, real data ingestion, SPY runner change, generic
+  moving-average kernel change, advisory/governance expansion, broker/order/
+  fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
+  recommendation, candidate-discovery, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
