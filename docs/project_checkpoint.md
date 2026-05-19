@@ -9534,6 +9534,28 @@ Safe next tasks include:
   moving-average kernel change, advisory/governance expansion, broker/order/
   fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
   recommendation, candidate-discovery, paper/live, or trading behavior
+- Phase 74 - Research Methodology / Parameter Candidate Snapshot Contracts adds
+  a small metadata-only `algotrader.research.research_methodology` module for
+  future broad ETF / moving-average research planning. It defines frozen/slotted
+  candidate dataclasses for methodologies and parameter sets, plus an optional
+  `ResearchMethodologyScopeSnapshot` bundling one or more of each candidate
+  type. The contracts reject `approval_state="approved"`, normalize sequence
+  fields to tuples, validate allowed candidate type and policy strings, reject
+  malformed strings and malformed candidate entries, require positive unique
+  moving-average window metadata, reject duplicate ids and orphan parameter-set
+  methodology references, require explicit non-approval non-claims, and emit
+  deterministic primitive dictionaries with dates as `YYYY-MM-DD` strings.
+  Focused tests cover construction, tuple normalization, allowed-value
+  validation, plain-date enforcement, duplicate detection, methodology linkage,
+  primitive JSON serialization, byte-identical compact JSON round-tripping, no
+  real ticker requirement, safety field absence, no approval/authority claims,
+  and AST guardrails. This adds no SPY runner changes, generic moving-average
+  kernel changes, advisory expansion, governance expansion, methodology
+  approval, parameter approval, source/universe/benchmark/cash proxy approval,
+  data acquisition path, strategy validation, signal/evaluator behavior,
+  backtest, broad ETF implementation, real data ingestion, broker/order/fill/
+  portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
+  recommendation, candidate-discovery, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

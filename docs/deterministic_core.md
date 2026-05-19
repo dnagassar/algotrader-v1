@@ -3563,6 +3563,28 @@ portfolio/runtime behavior, LLM/API call, network call, market-data call,
 scoring, ranking, recommendation, candidate-discovery behavior, paper/live
 behavior, trading authority, or trading behavior.
 
+Phase 74 - Research Methodology / Parameter Candidate Snapshot Contracts adds
+metadata-only candidate contracts for future broad ETF / moving-average
+research planning. `algotrader.research.research_methodology` now defines
+frozen/slotted dataclasses for methodology candidates, parameter-set
+candidates, and an optional `ResearchMethodologyScopeSnapshot` that bundles
+those candidates. The contracts reject `approval_state="approved"`, normalize
+sequence metadata to tuples, validate the allowed candidate type and policy
+strings, require positive unique moving-average window metadata, reject
+orphaned parameter-set methodology references, require explicit non-approval
+non-claims, and serialize deterministically to primitive JSON-compatible
+dictionaries with dates as `YYYY-MM-DD` strings.
+
+This phase adds no methodology approval, parameter approval, source approval,
+universe approval, benchmark approval, cash proxy approval, trading rule,
+signal approval, evaluator approval, strategy validation, data source,
+universe, benchmark, cash proxy, backtest, broad ETF strategy implementation,
+real data ingestion, SPY runner change, generic moving-average kernel change,
+advisory expansion, governance expansion, broker/order/fill/portfolio/runtime
+behavior, LLM/API call, network call, market-data call, scoring, ranking,
+recommendation, candidate-discovery behavior, paper/live behavior, trading
+authority, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
