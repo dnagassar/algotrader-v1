@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2311-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2330-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9640,6 +9640,19 @@ Safe next tasks include:
   runtime/LLM/network/market-data/scoring/ranking/recommendation/
   candidate-discovery/signal/evaluator/trading behavior. Normal pytest remains
   offline and credential-free
+- Phase 79 - Synthetic Planning Replay Report Shape adds
+  `tests.fixtures.research_planning_replay_report` and
+  `tests/unit/test_research_planning_replay_report_fixture.py` as a primitive
+  synthetic-only report/result fixture around the Phase 78 planning replay
+  consumer. It summarizes only synthetic scope ids, `linked_scope_ids`,
+  metadata-only `evidence_refs`, methodology non-claims, non-approved planning
+  states, the selected synthetic moving-average window, and existing replay
+  package shape metadata. It remains fixture-level and non-validating: it does
+  not approve any source, universe, benchmark, cash proxy, methodology,
+  parameter, or evidence; does not add replay metrics; does not add signal,
+  evaluator, or trading behavior; and does not add broker/order/fill/portfolio/
+  runtime/LLM/network/market-data behavior. Normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

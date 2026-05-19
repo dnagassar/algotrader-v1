@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2311` tests are passing, with `4` skipped paper-integration tests by default.
+- `2330` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3692,6 +3692,20 @@ absence of real data/tickers/vendor names/URLs/credentials/market-data paths,
 and no broker/order/fill/portfolio/runtime/LLM/network/market-data/scoring/
 ranking/recommendation/candidate-discovery behavior. Normal pytest remains
 offline and credential-free.
+
+Phase 79 - Synthetic Planning Replay Report Shape adds
+`tests.fixtures.research_planning_replay_report` as a primitive synthetic-only
+report/result fixture around the Phase 78 planning replay consumer. The report
+summarizes only synthetic research scope id, methodology scope id,
+`linked_scope_ids`, metadata-only `evidence_refs`, methodology non-claims,
+non-approved planning states, the selected synthetic moving-average window,
+and existing replay package shape metadata.
+
+The report is fixture-level and non-validating. It does not approve any source,
+universe, benchmark, cash proxy, methodology, parameter, or evidence; does not
+add replay metrics; does not add signal/evaluator/trading behavior; and does
+not add broker/order/fill/portfolio/runtime/LLM/network/market-data behavior.
+Normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
