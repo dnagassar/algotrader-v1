@@ -9556,6 +9556,30 @@ Safe next tasks include:
   backtest, broad ETF implementation, real data ingestion, broker/order/fill/
   portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
   recommendation, candidate-discovery, paper/live, or trading behavior
+- Phase 75 - Synthetic Broad ETF Methodology Scope Fixture adds a deterministic
+  test/documentation fixture in `tests.fixtures.research_methodology` using the
+  Phase 74 methodology and parameter candidate contracts. It builds one
+  candidate-only `ResearchMethodologyScopeSnapshot` as of `2026-01-19`, with
+  one `moving_average_trend_candidate` methodology candidate, one
+  `single_window_candidate` parameter-set candidate containing only the
+  synthetic 200-window metadata value, and a link to the Phase 73 synthetic
+  broad ETF research-scope fixture by synthetic scope id only. The fixture
+  includes explicit blockers, limitations, required follow-up, required
+  methodology non-claims, and pinned primitive dictionary and compact JSON
+  payloads. Focused tests cover construction, nested candidate types,
+  non-approved approval states, methodology-to-parameter linkage,
+  synthetic-scope id linkage, exact serialization, JSON round-tripping,
+  repeated determinism, no real ETF tickers, no raw market data, no URLs,
+  credentials, or real vendor/source identifiers, no runtime or selection
+  fields, no affirmative approval/authority claims, and AST guardrails
+  excluding broker/execution/portfolio/runtime/network/LLM/market-data/
+  dataframe/random/file-I/O dependencies. This adds no methodology, parameter,
+  source, universe, benchmark, cash proxy, or data acquisition approval; no
+  trading rule, strategy validation, signal/evaluator behavior, backtest, broad
+  ETF strategy implementation, real data ingestion, SPY runner change, generic
+  moving-average kernel change, advisory/governance expansion, broker/order/
+  fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
+  recommendation, candidate-discovery, paper/live, or trading behavior
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
