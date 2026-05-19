@@ -3669,6 +3669,30 @@ broker/order/fill/portfolio/runtime behavior, LLM/API call, network call,
 market-data call, scoring, ranking, recommendation, candidate-discovery
 behavior, paper/live behavior, trading authority, or trading behavior.
 
+Phase 78 - Synthetic Planning Fixture Replay Consumer adds
+`tests.fixtures.research_planning_replay` as a tiny synthetic-only consumer of
+the Phase 76 primitive planning package. The fixture preserves the full
+planning package as copied metadata, extracts only synthetic ids,
+`linked_scope_ids`, `evidence_refs`, and the single candidate moving-average
+window, then builds an existing `MovingAverageReplayPackage` through the
+public `build_moving_average_replay_package(...)` path with deterministic
+synthetic observations. The output is a primitive dictionary that contains the
+planning metadata copy, consumed metadata, replay package `to_dict()` payload,
+limitations, and explicit non-claims.
+
+This proves planning fixture shape usability only. It does not promote the
+planning package to a production contract, validate a strategy, approve any
+source/universe/benchmark/cash proxy/methodology/parameter/evidence, infer
+evidence validation from `evidence_refs`, infer trading readiness from replay
+output, or add signal/evaluator/trading behavior. Tests pin deterministic
+primitive JSON behavior, allowed planning states only, `not evidence approval`,
+paired synthetic `linked_scope_ids`, non-mutation of planning and replay
+objects, existing replay shape preservation, absence of new replay metrics,
+absence of real data/tickers/vendor names/URLs/credentials/market-data paths,
+and no broker/order/fill/portfolio/runtime/LLM/network/market-data/scoring/
+ranking/recommendation/candidate-discovery behavior. Normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

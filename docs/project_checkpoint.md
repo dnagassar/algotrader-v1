@@ -9620,6 +9620,26 @@ Safe next tasks include:
   moving-average kernel change, advisory/governance expansion, broker/order/
   fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
   recommendation, candidate-discovery, paper/live, or trading behavior
+- Phase 78 - Synthetic Planning Fixture Replay Consumer adds
+  `tests.fixtures.research_planning_replay` and
+  `tests/unit/test_research_planning_replay_fixture.py` as a synthetic-only
+  fixture consumer for the Phase 76 primitive planning package. It copies the
+  planning metadata, consumes only synthetic ids, `linked_scope_ids`,
+  `evidence_refs`, and the single candidate moving-average window, then builds
+  an existing moving-average replay package through the public replay builder
+  using deterministic synthetic observations. The output remains a primitive
+  dict and proves fixture shape usability only. It is not a production planning
+  package contract, strategy validation artifact, source/universe/benchmark/
+  cash proxy/methodology/parameter/evidence approval, evidence validation,
+  trading-readiness claim, signal definition, evaluator, or trading path.
+  Focused tests cover deterministic primitive JSON behavior, candidate/blocked/
+  deferred approval-state limits, `not evidence approval`, paired synthetic
+  linked-scope ids, planning/replay non-mutation, existing replay shape
+  preservation, no new replay metrics, no real data, ETF tickers, vendor names,
+  URLs, credentials, or market-data paths, and no broker/order/fill/portfolio/
+  runtime/LLM/network/market-data/scoring/ranking/recommendation/
+  candidate-discovery/signal/evaluator/trading behavior. Normal pytest remains
+  offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
