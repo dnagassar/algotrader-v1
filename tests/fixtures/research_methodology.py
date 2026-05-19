@@ -27,6 +27,7 @@ _PARAMETER_SET_ID = "synthetic_broad_etf_single_window_parameter_set_candidate"
 _NON_CLAIMS = (
     "not methodology approval",
     "not parameter approval",
+    "not evidence approval",
     "not strategy validation",
     "not signal approval",
     "not evaluator approval",
@@ -259,9 +260,9 @@ _EXPECTED_SYNTHETIC_BROAD_ETF_METHODOLOGY_SCOPE_JSON = (
     '"required_follow_up":["Complete methodology evidence and as-of protocol review '
     'before research use."],'
     '"non_claims":["not methodology approval","not parameter approval",'
-    '"not strategy validation","not signal approval","not evaluator approval",'
-    '"not trading authority","no broker/order/fill/portfolio/runtime behavior",'
-    '"no real data ingestion",'
+    '"not evidence approval","not strategy validation","not signal approval",'
+    '"not evaluator approval","not trading authority",'
+    '"no broker/order/fill/portfolio/runtime behavior","no real data ingestion",'
     '"no source/universe/benchmark/cash proxy approval"]}],'
     '"parameter_set_candidates":[{"parameter_set_id":'
     '"synthetic_broad_etf_single_window_parameter_set_candidate",'
@@ -281,9 +282,9 @@ _EXPECTED_SYNTHETIC_BROAD_ETF_METHODOLOGY_SCOPE_JSON = (
     '"required_follow_up":["Review parameter evidence and sensitivity plan before '
     'research use."],'
     '"non_claims":["not methodology approval","not parameter approval",'
-    '"not strategy validation","not signal approval","not evaluator approval",'
-    '"not trading authority","no broker/order/fill/portfolio/runtime behavior",'
-    '"no real data ingestion",'
+    '"not evidence approval","not strategy validation","not signal approval",'
+    '"not evaluator approval","not trading authority",'
+    '"no broker/order/fill/portfolio/runtime behavior","no real data ingestion",'
     '"no source/universe/benchmark/cash proxy approval"]}],'
     '"blockers":["Methodology and parameter reviews are incomplete.",'
     '"Linked research scope is referenced by synthetic id only."],'
@@ -292,8 +293,8 @@ _EXPECTED_SYNTHETIC_BROAD_ETF_METHODOLOGY_SCOPE_JSON = (
     '"required_follow_up":["Complete methodology, parameter, and scope reviews before '
     'research use."],'
     '"non_claims":["not methodology approval","not parameter approval",'
-    '"not strategy validation","not signal approval","not evaluator approval",'
-    '"not trading authority","no broker/order/fill/portfolio/runtime behavior",'
-    '"no real data ingestion",'
+    '"not evidence approval","not strategy validation","not signal approval",'
+    '"not evaluator approval","not trading authority",'
+    '"no broker/order/fill/portfolio/runtime behavior","no real data ingestion",'
     '"no source/universe/benchmark/cash proxy approval"]}'
 )

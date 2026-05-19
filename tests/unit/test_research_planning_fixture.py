@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 from types import ModuleType
 
+import pytest
+
 from tests.fixtures.research_methodology import (
     build_synthetic_broad_etf_methodology_scope,
     expected_synthetic_broad_etf_methodology_scope_json,
@@ -32,6 +34,7 @@ _REQUIRED_NON_CLAIMS = {
     "not cash proxy approval",
     "not methodology approval",
     "not parameter approval",
+    "not evidence approval",
     "not strategy validation",
     "not signal approval",
     "not evaluator approval",
@@ -266,6 +269,22 @@ def test_combined_fixture_construction_uses_existing_synthetic_scopes() -> None:
     assert package["research_scope"]["approval_state"] == "candidate_only"
     assert package["methodology_scope"]["approval_state"] == "candidate_only"
     assert research_scope.scope_id in methodology["linked_scope_ids"]
+    _assert_methodology_scope_links_research_scope(package)
+
+
+def test_combined_fixture_linked_scope_assertion_fails_loudly_for_mismatch() -> None:
+    package = build_synthetic_broad_etf_research_planning_package()
+    methodology_scope = dict(package["methodology_scope"])
+    methodology_candidates = list(methodology_scope["methodology_candidates"])
+    methodology = dict(methodology_candidates[0])
+    methodology["linked_scope_ids"] = ["synthetic_unpaired_scope_candidate"]
+    methodology_candidates[0] = methodology
+    methodology_scope["methodology_candidates"] = methodology_candidates
+    broken_package = dict(package)
+    broken_package["methodology_scope"] = methodology_scope
+
+    with pytest.raises(AssertionError, match="linked_scope_ids"):
+        _assert_methodology_scope_links_research_scope(broken_package)
 
 
 def test_combined_fixture_keeps_all_embedded_candidates_non_approved() -> None:
@@ -286,6 +305,7 @@ def test_combined_fixture_keeps_all_embedded_candidates_non_approved() -> None:
         "cash proxy approval",
         "methodology approval",
         "parameter approval",
+        "evidence approval",
         "strategy validation",
         "signal approval",
         "evaluator approval",
@@ -405,6 +425,23 @@ def _approval_states(value: object) -> tuple[str, ...]:
             states.extend(_approval_states(item))
 
     return tuple(states)
+
+
+def _assert_methodology_scope_links_research_scope(
+    package: dict[str, object],
+) -> None:
+    research_scope = package["research_scope"]
+    methodology_scope = package["methodology_scope"]
+    assert isinstance(research_scope, dict)
+    assert isinstance(methodology_scope, dict)
+    research_scope_id = research_scope["scope_id"]
+
+    for methodology in methodology_scope["methodology_candidates"]:
+        assert isinstance(methodology, dict)
+        linked_scope_ids = methodology["linked_scope_ids"]
+        assert research_scope_id in linked_scope_ids, (
+            "linked_scope_ids must reference the paired research scope id"
+        )
 
 
 def _assert_json_payload_safe(value: object) -> None:

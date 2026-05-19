@@ -34,6 +34,7 @@ _NON_CLAIMS = (
     "not cash proxy approval",
     "not methodology approval",
     "not parameter approval",
+    "not evidence approval",
     "not strategy validation",
     "not signal approval",
     "not evaluator approval",
@@ -76,7 +77,7 @@ _EXPECTED_SYNTHETIC_BROAD_ETF_RESEARCH_PLANNING_PACKAGE_JSON = (
     'operational instructions, or reviewed authority."],"non_claims":['
     '"not source approval","not universe approval","not benchmark approval",'
     '"not cash proxy approval","not methodology approval","not parameter approval",'
-    '"not strategy validation","not signal approval","not evaluator approval",'
-    '"not trading authority","no broker/order/fill/portfolio/runtime behavior",'
-    '"no real data ingestion"]}'
+    '"not evidence approval","not strategy validation","not signal approval",'
+    '"not evaluator approval","not trading authority",'
+    '"no broker/order/fill/portfolio/runtime behavior","no real data ingestion"]}'
 )

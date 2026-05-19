@@ -5,9 +5,18 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import date
-from typing import TypeVar
 
-from algotrader.errors import ValidationError
+from algotrader.research._planning_validation import (
+    allowed_string as _allowed_string,
+    candidate_tuple as _candidate_tuple,
+    date_to_iso as _date_to_iso,
+    plain_date as _plain_date,
+    required_non_claims as _validate_required_non_claims,
+    required_string as _required_string,
+    string_tuple as _string_tuple,
+    unique_required_string_tuple as _unique_required_string_tuple,
+    validate_unique_candidate_ids as _validate_unique_candidate_ids,
+)
 
 __all__ = [
     "APPROVAL_STATES",
@@ -64,8 +73,6 @@ REQUIRED_RESEARCH_SCOPE_NON_CLAIMS = (
     "no broker/order/fill/portfolio/runtime behavior",
     "no real data ingestion",
 )
-
-_T = TypeVar("_T")
 
 
 @dataclass(frozen=True, slots=True)
@@ -559,7 +566,7 @@ class ResearchScopeSnapshot:
 
         return {
             "scope_id": self.scope_id,
-            "as_of_date": self.as_of_date.isoformat(),
+            "as_of_date": _date_to_iso(self.as_of_date),
             "approval_state": self.approval_state,
             "source_candidates": [
                 candidate.to_dict() for candidate in self.source_candidates
@@ -580,124 +587,9 @@ class ResearchScopeSnapshot:
         }
 
 
-def _required_string(value: str, field_name: str) -> str:
-    if type(value) is not str:
-        raise ValidationError(f"{field_name} must be a non-empty string.")
-
-    normalized = value.strip()
-    if not normalized:
-        raise ValidationError(f"{field_name} must be a non-empty string.")
-
-    return normalized
-
-
-def _allowed_string(
-    value: str,
-    field_name: str,
-    allowed_values: tuple[str, ...],
-) -> str:
-    normalized = _required_string(value, field_name)
-    if normalized not in allowed_values:
-        allowed = ", ".join(allowed_values)
-        raise ValidationError(f"{field_name} must be one of: {allowed}.")
-
-    return normalized
-
-
-def _plain_date(value: date, field_name: str) -> date:
-    if type(value) is not date:
-        raise ValidationError(f"{field_name} must be a plain date.")
-
-    return value
-
-
-def _string_tuple(values: Iterable[str], field_name: str) -> tuple[str, ...]:
-    if isinstance(values, str):
-        raise ValidationError(f"{field_name} must be an iterable of strings.")
-
-    try:
-        items = tuple(values)
-    except TypeError as exc:
-        raise ValidationError(f"{field_name} must be an iterable of strings.") from exc
-
-    return tuple(
-        _required_string(value, f"{field_name}[{index}]")
-        for index, value in enumerate(items)
-    )
-
-
-def _required_string_tuple(values: Iterable[str], field_name: str) -> tuple[str, ...]:
-    items = _string_tuple(values, field_name)
-    if not items:
-        raise ValidationError(f"{field_name} must contain at least one string.")
-
-    return items
-
-
-def _unique_required_string_tuple(
-    values: Iterable[str],
-    field_name: str,
-) -> tuple[str, ...]:
-    items = _required_string_tuple(values, field_name)
-    if len(frozenset(items)) != len(items):
-        raise ValidationError(f"{field_name} must not contain duplicates.")
-
-    return items
-
-
 def _required_non_claims(values: Iterable[str]) -> tuple[str, ...]:
-    items = _required_string_tuple(values, "non_claims")
-    missing = tuple(
-        claim for claim in REQUIRED_RESEARCH_SCOPE_NON_CLAIMS if claim not in items
+    return _validate_required_non_claims(
+        values,
+        REQUIRED_RESEARCH_SCOPE_NON_CLAIMS,
+        "non_claims must include required research scope non-claims.",
     )
-    if missing:
-        raise ValidationError("non_claims must include required research scope non-claims.")
-
-    return items
-
-
-def _candidate_tuple(
-    values: Iterable[_T],
-    field_name: str,
-    expected_type: type[_T],
-) -> tuple[_T, ...]:
-    if isinstance(values, str):
-        raise ValidationError(
-            f"{field_name} must be an iterable of {expected_type.__name__} values."
-        )
-
-    try:
-        items = tuple(values)
-    except TypeError as exc:
-        raise ValidationError(
-            f"{field_name} must be an iterable of {expected_type.__name__} values."
-        ) from exc
-
-    if not items:
-        raise ValidationError(f"{field_name} must contain at least one candidate.")
-
-    for item in items:
-        if not isinstance(item, expected_type):
-            raise ValidationError(
-                f"{field_name} must contain {expected_type.__name__} values."
-            )
-
-    return items
-
-
-def _validate_unique_candidate_ids(
-    candidates: Iterable[object],
-    field_name: str,
-    id_field_name: str,
-) -> None:
-    ids: list[str] = []
-    for candidate in candidates:
-        try:
-            candidate_id = getattr(candidate, id_field_name)
-        except AttributeError as exc:
-            raise ValidationError(f"{field_name} contains malformed candidates.") from exc
-
-        ids.append(_required_string(candidate_id, id_field_name))
-
-    if len(frozenset(ids)) != len(ids):
-        raise ValidationError(f"{field_name} must not contain duplicate ids.")

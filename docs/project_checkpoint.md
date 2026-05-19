@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 1915-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2311-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9596,6 +9596,25 @@ Safe next tasks include:
   guardrails excluding broker/execution/portfolio/runtime/network/LLM/
   market-data/dataframe/random/file-I/O dependencies. This adds no source,
   universe, benchmark, cash proxy, methodology, parameter, or data acquisition
+  approval; no strategy validation, signal/evaluator behavior, broad ETF
+  strategy implementation, real data ingestion, SPY runner change, generic
+  moving-average kernel change, advisory/governance expansion, broker/order/
+  fill/portfolio/runtime/LLM/network/market-data behavior, scoring, ranking,
+  recommendation, candidate-discovery, paper/live, or trading behavior
+- Phase 77 - Research Planning Review Hardening consolidates duplicated
+  research-planning validators into internal
+  `algotrader.research._planning_validation` helpers while preserving the
+  public scope and methodology contract surfaces. Methodology non-claims now
+  explicitly include `not evidence approval`, with the synthetic methodology
+  and planning fixture compact JSON updated only for that added non-claim.
+  Focused tests add allowed-state completeness for candidate-only, blocked,
+  and deferred states across scope and methodology contracts; rejection of
+  `approved`, ` approved `, and `Approved`; parameter/methodology linkage
+  ordering regression coverage; local primitive planning-package linked-scope
+  mismatch failure coverage; a return/returns substring guard around
+  `return_construction_policy`; and AST guardrails for the new internal helper.
+  The planning package remains a primitive dictionary only. This adds no
+  source, universe, benchmark, cash proxy, methodology, parameter, or evidence
   approval; no strategy validation, signal/evaluator behavior, broad ETF
   strategy implementation, real data ingestion, SPY runner change, generic
   moving-average kernel change, advisory/governance expansion, broker/order/

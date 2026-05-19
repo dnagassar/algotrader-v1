@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `1915` tests are passing, with `4` skipped paper-integration tests by default.
+- `2311` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3643,6 +3643,31 @@ advisory expansion, governance expansion, broker/order/fill/portfolio/runtime
 behavior, LLM/API call, network call, market-data call, scoring, ranking,
 recommendation, candidate-discovery behavior, paper/live behavior, trading
 authority, or trading behavior.
+
+Phase 77 - Research Planning Review Hardening consolidates duplicated internal
+research-planning validators into `algotrader.research._planning_validation`
+while preserving the existing public scope and methodology contracts. The
+scope and methodology modules now share required-string, allowed-string,
+plain-date, string-tuple, candidate-tuple, duplicate-id, non-claim, and
+deterministic date serialization helpers. Methodology-side non-claims now also
+require `not evidence approval`, and the synthetic methodology and planning
+fixtures pin that added non-claim in their compact JSON outputs.
+
+The hardening tests add concise allowed-state coverage for all research scope
+and methodology planning contracts, rejection coverage for `approved`,
+` approved `, and `Approved`, a parameter/methodology linkage ordering
+regression, a local primitive-package linked-scope assertion that fails loudly
+for mismatched synthetic scope ids, a return/returns substring guard around
+`return_construction_policy`, and AST guardrails for the new internal helper.
+The planning package remains a primitive dictionary only. This phase adds no
+source approval, universe approval, benchmark approval, cash proxy approval,
+methodology approval, parameter approval, evidence approval, strategy
+validation, signal/evaluator behavior, source ingestion path, broad ETF
+strategy implementation, real data ingestion, SPY runner change, generic
+moving-average kernel change, advisory expansion, governance expansion,
+broker/order/fill/portfolio/runtime behavior, LLM/API call, network call,
+market-data call, scoring, ranking, recommendation, candidate-discovery
+behavior, paper/live behavior, trading authority, or trading behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

@@ -1,4 +1,5 @@
 import ast
+from collections.abc import Callable
 import json
 from dataclasses import FrozenInstanceError, fields, is_dataclass
 from datetime import date, datetime
@@ -282,6 +283,45 @@ def test_contracts_are_frozen_and_slotted(contract: type[object]) -> None:
     assert not hasattr(instance, "__dict__")
     with pytest.raises(FrozenInstanceError):
         instance.approval_state = "blocked"
+
+
+@pytest.mark.parametrize(
+    "factory",
+    (
+        valid_source_candidate,
+        valid_universe_candidate,
+        valid_benchmark_candidate,
+        valid_cash_proxy_candidate,
+        valid_scope_snapshot,
+    ),
+)
+@pytest.mark.parametrize("approval_state", APPROVAL_STATES)
+def test_scope_contracts_construct_allowed_approval_states(
+    factory: Callable[..., object],
+    approval_state: str,
+) -> None:
+    candidate = factory(approval_state=approval_state)
+
+    assert candidate.approval_state == approval_state  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "factory",
+    (
+        valid_source_candidate,
+        valid_universe_candidate,
+        valid_benchmark_candidate,
+        valid_cash_proxy_candidate,
+        valid_scope_snapshot,
+    ),
+)
+@pytest.mark.parametrize("approval_state", ("approved", " approved ", "Approved"))
+def test_scope_contracts_reject_approval_like_states(
+    factory: Callable[..., object],
+    approval_state: str,
+) -> None:
+    with pytest.raises(ValidationError, match="approval_state"):
+        factory(approval_state=approval_state)
 
 
 def test_data_source_candidate_accepts_valid_construction_and_normalizes_tuples() -> None:

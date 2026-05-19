@@ -318,6 +318,30 @@ def test_fixture_output_contains_no_runtime_selection_or_approval_claim_surface(
     _assert_no_affirmative_approval_claims(lowered_json)
 
 
+def test_return_construction_policy_key_does_not_hide_real_returns_content() -> None:
+    payload = build_synthetic_broad_etf_methodology_scope().to_dict()
+    methodology = payload["methodology_candidates"][0]
+    compact_json = json.dumps(payload, separators=(",", ":")).lower()
+
+    assert methodology["return_construction_policy"] == (
+        "synthetic convention placeholder with no calculation selected"
+    )
+    assert "return_construction_policy" in compact_json
+
+    scrubbed_json = compact_json.replace("return_construction_policy", "")
+    for forbidden_phrase in (
+        "real return",
+        "real returns",
+        "daily return",
+        "return series",
+        "price series",
+        "market data",
+        "performance result",
+        "performance results",
+    ):
+        assert forbidden_phrase not in scrubbed_json
+
+
 def test_fixture_module_has_only_allowed_imports_and_no_io_network_clock_calls() -> None:
     imports = _import_references()
     imported_datetime_names = {
@@ -450,6 +474,7 @@ def _assert_no_affirmative_approval_claims(lowered_json: str) -> None:
     for phrase in (
         "methodology approval",
         "parameter approval",
+        "evidence approval",
         "source approval",
         "universe approval",
         "benchmark approval",

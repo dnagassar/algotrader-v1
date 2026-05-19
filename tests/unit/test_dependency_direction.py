@@ -246,6 +246,28 @@ def test_research_contracts_do_not_import_trading_path_or_runtime_layers() -> No
     assert _dependency_violations(rule) == []
 
 
+def test_research_planning_validation_helper_has_no_runtime_io_or_network_calls() -> None:
+    path = _module_path("algotrader.research._planning_validation")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    import_violations = [
+        f"{import_reference.path}:{import_reference.line}: "
+        f"planning validation helper must not import {import_reference.module}"
+        for import_reference in _import_references(path)
+        if _matches_forbidden_prefix(
+            import_reference.module,
+            RESEARCH_BOUNDARY_FORBIDDEN_PREFIXES,
+        )
+    ]
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert import_violations == []
+    assert call_names.isdisjoint(RESEARCH_PLANNING_VALIDATION_FORBIDDEN_CALLS)
+
+
 def test_advisory_contracts_do_not_import_trading_runtime_or_ai_layers() -> None:
     rule = DependencyRule(
         source="algotrader.advisory.*",
@@ -671,6 +693,39 @@ SIGNAL_EVALUATION_INPUT_FORBIDDEN_CALLS = {
     "uuid.uuid4",
     "uuid4",
     "write",
+}
+
+RESEARCH_PLANNING_VALIDATION_FORBIDDEN_CALLS = {
+    "__import__",
+    "connect",
+    "create_order",
+    "date.today",
+    "datetime.now",
+    "datetime.utcnow",
+    "download",
+    "eval",
+    "exec",
+    "get",
+    "getenv",
+    "import_module",
+    "open",
+    "os.environ.get",
+    "os.getenv",
+    "post",
+    "random",
+    "random.random",
+    "read",
+    "read_csv",
+    "request",
+    "rglob",
+    "socket.socket",
+    "submit_order",
+    "time.monotonic",
+    "time.time",
+    "to_sql",
+    "urlopen",
+    "write",
+    "write_text",
 }
 
 SIGNAL_EVALUATION_INPUT_FORBIDDEN_NAMES = {

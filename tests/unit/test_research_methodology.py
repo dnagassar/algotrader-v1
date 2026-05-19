@@ -1,4 +1,5 @@
 import ast
+from collections.abc import Callable
 import json
 from dataclasses import FrozenInstanceError, fields, is_dataclass
 from datetime import date, datetime
@@ -162,6 +163,41 @@ def test_enum_like_constants_match_phase_74_allowlists() -> None:
         "other",
     )
     assert COST_ASSUMPTION_POLICIES == COST_POLICIES
+
+
+@pytest.mark.parametrize(
+    "factory",
+    (
+        valid_methodology_candidate,
+        valid_parameter_set_candidate,
+        valid_methodology_scope_snapshot,
+    ),
+)
+@pytest.mark.parametrize("approval_state", APPROVAL_STATES)
+def test_methodology_contracts_construct_allowed_approval_states(
+    factory: Callable[..., object],
+    approval_state: str,
+) -> None:
+    candidate = factory(approval_state=approval_state)
+
+    assert candidate.approval_state == approval_state  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    "factory",
+    (
+        valid_methodology_candidate,
+        valid_parameter_set_candidate,
+        valid_methodology_scope_snapshot,
+    ),
+)
+@pytest.mark.parametrize("approval_state", ("approved", " approved ", "Approved"))
+def test_methodology_contracts_reject_approval_like_states(
+    factory: Callable[..., object],
+    approval_state: str,
+) -> None:
+    with pytest.raises(ValidationError, match="approval_state"):
+        factory(approval_state=approval_state)
 
 
 def test_methodology_candidate_accepts_valid_construction_and_normalizes_tuples() -> None:
@@ -491,6 +527,16 @@ def test_methodology_scope_snapshot_rejects_parameter_set_without_matching_metho
         )
 
 
+def test_methodology_scope_snapshot_validates_methodologies_before_links() -> None:
+    parameter_set = valid_parameter_set_candidate(methodology_id="missing-methodology")
+
+    with pytest.raises(ValidationError, match="methodology_candidates"):
+        valid_methodology_scope_snapshot(
+            methodology_candidates=(),
+            parameter_set_candidates=(parameter_set,),
+        )
+
+
 @pytest.mark.parametrize(
     ("field_name", "bad_value"),
     (
@@ -612,6 +658,7 @@ def test_non_claims_are_explicitly_non_approving_and_non_trading() -> None:
         assert claim in compact
     assert "methodology approval" in compact
     assert "parameter approval" in compact
+    assert "evidence approval" in compact
     assert "strategy validation" in compact
     assert "signal approval" in compact
     assert "evaluator approval" in compact
