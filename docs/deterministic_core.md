@@ -3755,6 +3755,13 @@ production code or tests changed, no real data was added, no manifest-to-
 planning bridge was added, and normal pytest remains offline and
 credential-free.
 
+Phase 89 - Broad ETF Universe / Inception / Survivorship Boundary adds a
+docs-only boundary for future broad ETF universe membership, inception
+eligibility, survivorship and delisting risks, identifier questions,
+no-lookahead universe rules, and minimum future approval gates. No universe or
+ETF tickers were approved, no production code or tests changed, no real data
+was added, and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
