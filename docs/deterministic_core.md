@@ -3746,6 +3746,15 @@ deterministically in normal pytest. No production code changed, no real data or
 local snapshot files were added, and the fixture remains metadata-only and
 non-approving. Normal pytest remains offline and credential-free.
 
+Phase 88 - Local Snapshot Return-Basis / As-Of Boundary adds a docs-only
+interpretation boundary for future local snapshot metadata. It defines date
+semantics, adjustment-policy interpretation, return-basis interpretation,
+no-lookahead/as-of risks, future approval gates, and the relationship to the
+metadata-only `LocalSnapshotManifest`. No source or data was approved, no
+production code or tests changed, no real data was added, no manifest-to-
+planning bridge was added, and normal pytest remains offline and
+credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
