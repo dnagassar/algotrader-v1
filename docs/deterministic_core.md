@@ -3837,6 +3837,20 @@ strategy validation, or trading use was approved; no production code or tests
 changed; no real data was added; no FRED API calls or downloads occurred; and
 normal pytest remains offline and credential-free.
 
+Phase 99 - FRED TB3MS/TB6MS Primary Verification Normalization adds a
+docs-only normalization of externally produced primary-verification output for
+`TB3MS` and `TB6MS` as advisory material only. It records reportedly found
+FRED series pages, FRED data/table pages, ALFRED pages, H.15 source/release
+context, units, frequency, seasonal adjustment, observation-start metadata,
+last-updated metadata, vintage notes, rights/terms caveats, point-in-time
+questions, missing/stale questions, and discount-basis conversion questions.
+Both series remain `candidate_for_later_series_review`. No FRED series, cash
+proxy, benchmark, rate source, source, data, universe, methodology, parameter,
+evidence, return-construction, no-lookahead, cost/friction, liquidity,
+strategy validation, or trading use was approved; no production code or tests
+changed; no real data was added; no FRED API calls or downloads occurred; and
+normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
