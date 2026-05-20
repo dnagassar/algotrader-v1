@@ -9753,6 +9753,13 @@ Safe next tasks include:
   cost/friction, liquidity, strategy validation, or trading use was approved;
   no production code or tests changed; no real data was added; and normal
   pytest remains offline and credential-free
+- Phase 97 - FRED Candidate Series Intake Plan adds a docs-only intake plan
+  for future review of possible FRED benchmark/cash/rate candidate series. It
+  defines candidate series roles, required per-series evidence, intake labels,
+  allowed candidate statuses, review questions, a placeholder starter intake
+  table, and future approval gates. No FRED series or cash proxy was approved,
+  no production code or tests changed, no real data was added, and normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
