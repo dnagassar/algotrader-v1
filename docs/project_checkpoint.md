@@ -9726,6 +9726,14 @@ Safe next tasks include:
   non-claims. No source or data was approved, no production code or tests
   changed, no real data was added, and normal pytest remains offline and
   credential-free
+- Phase 94 - Broad ETF Source Evidence Normalization adds a docs-only
+  normalization of externally discovered broad ETF source-discovery output as
+  advisory intake material under the Phase 93 framework. It records candidate
+  source paths, separates primary-source needs from secondary/scout
+  observations, routes strongest and weaker later-review candidates, and
+  records unresolved primary-source questions. No source or data was approved,
+  no production code or tests changed, no real data was added, and normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

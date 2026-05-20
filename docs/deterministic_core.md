@@ -3785,6 +3785,14 @@ approval outcomes, a starter intake table, and explicit non-claims. No source
 or data was approved, no production code or tests changed, no real data was
 added, and normal pytest remains offline and credential-free.
 
+Phase 94 - Broad ETF Source Evidence Normalization adds a docs-only
+normalization of externally discovered broad ETF source-discovery output as
+advisory intake material under the Phase 93 framework. It records candidate
+source paths, separates primary-source needs from secondary/scout observations,
+routes stronger and weaker later-review candidates, and records unresolved
+questions. No source or data was approved, no production code or tests changed,
+no real data was added, and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
