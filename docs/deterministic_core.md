@@ -3762,6 +3762,14 @@ no-lookahead universe rules, and minimum future approval gates. No universe or
 ETF tickers were approved, no production code or tests changed, no real data
 was added, and normal pytest remains offline and credential-free.
 
+Phase 90 - Broad ETF Benchmark / Cash Timing Boundary adds a docs-only
+boundary for future benchmark and cash-proxy interpretation. It defines
+benchmark roles, benchmark return-basis requirements, cash proxy roles, cash
+timing/publication risks, benchmark/cash no-lookahead rules, and future
+approval gates. No benchmark or cash proxy was approved, no production code or
+tests changed, no real data was added, and normal pytest remains offline and
+credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
