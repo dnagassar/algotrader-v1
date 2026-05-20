@@ -3715,6 +3715,16 @@ metadata-only evidence non-claims, and real ticker/vendor/path/credential
 exclusion. No production code changed, no fixture output semantics changed,
 and normal pytest remains offline and credential-free.
 
+Phase 83 - Broad ETF Data Source Policy / Local Snapshot Readiness Boundary
+adds a documentation-only readiness boundary for future broad ETF source paths
+and local snapshots. It defines candidate source-path categories, local
+snapshot metadata requirements, adjustment/return-basis questions,
+no-lookahead/as-of implications, repository/storage constraints, minimum
+future implementation gates, and explicit non-claims. No source, data,
+universe, benchmark, cash proxy, methodology, parameter, evidence, strategy
+validation, or trading use was approved; no real data was added; no production
+code or tests changed; and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
