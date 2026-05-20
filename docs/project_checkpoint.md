@@ -9743,6 +9743,16 @@ Safe next tasks include:
   return-construction, no-lookahead, cost/friction, liquidity, strategy
   validation, or trading use was approved; no production code or tests changed;
   no real data was added; and normal pytest remains offline and credential-free
+- Phase 96 - FRED Benchmark / Cash Rate Normalization Readiness adds a
+  docs-only readiness boundary for reviewing FRED as a future benchmark/cash/
+  rate source candidate only. It captures candidate use cases, Phase 95
+  advisory official-doc findings, unresolved FRED questions, no-lookahead
+  risks, future review gates, allowed next steps, and explicit non-claims. No
+  FRED series, cash proxy, benchmark, rate source, source, data, universe,
+  methodology, parameter, evidence, return-construction, no-lookahead,
+  cost/friction, liquidity, strategy validation, or trading use was approved;
+  no production code or tests changed; no real data was added; and normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
