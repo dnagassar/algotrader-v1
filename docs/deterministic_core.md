@@ -3770,6 +3770,13 @@ approval gates. No benchmark or cash proxy was approved, no production code or
 tests changed, no real data was added, and normal pytest remains offline and
 credential-free.
 
+Phase 91 - Broad ETF Cost / Friction Assumptions Boundary adds a docs-only
+boundary for future transaction-cost, spread, slippage, liquidity, turnover,
+rebalance, expense-ratio, tax, and implementation-friction assumptions. No
+cost model or liquidity rule was approved, no production code or tests
+changed, no real data was added, and normal pytest remains offline and
+credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
