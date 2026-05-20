@@ -9684,6 +9684,13 @@ Safe next tasks include:
   portfolio/runtime/LLM/network/market-data/scoring/ranking/recommendation/
   candidate-discovery/signal/evaluator/rendering/trading behavior was added;
   and normal pytest remains offline and credential-free
+- Phase 86 - Synthetic Local Snapshot Manifest Fixture adds
+  `tests.fixtures.local_snapshot_manifest` as a tiny synthetic-only consumer
+  proving `LocalSnapshotManifest` can be constructed, serialized, and
+  round-tripped deterministically in normal pytest. No production code changed,
+  no real data or local snapshot files were added, and the fixture remains
+  metadata-only and non-approving. Normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
