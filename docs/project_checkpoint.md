@@ -9653,6 +9653,13 @@ Safe next tasks include:
   evaluator, or trading behavior; and does not add broker/order/fill/portfolio/
   runtime/LLM/network/market-data behavior. Normal pytest remains offline and
   credential-free
+- Phase 81 - Research Planning Fixture Guardrail Consolidation keeps the
+  Phase 72-79 synthetic planning/replay/report fixture chain test-only while
+  consolidating repeated guardrail assertions into shared test helpers for
+  non-approved planning states, primitive JSON shape, negative-term screening,
+  metadata-only evidence non-claims, and real ticker/vendor/path/credential
+  exclusion. No production code changed, no fixture output semantics changed,
+  and normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

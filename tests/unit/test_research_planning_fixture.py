@@ -1,14 +1,25 @@
 import ast
-from dataclasses import is_dataclass
-from datetime import date, datetime
-from decimal import Decimal
 import json
 from pathlib import Path
 import re
-from types import ModuleType
 
 import pytest
 
+from tests.helpers.research_planning_guardrails import (
+    FORBIDDEN_RAW_MARKET_FIELD_NAMES,
+    FORBIDDEN_RUNTIME_FIELD_NAMES,
+    FORBIDDEN_SELECTION_FIELD_NAMES,
+    REJECTED_PLANNING_STATE_EXAMPLES,
+    all_serialized_keys,
+    approval_states,
+    assert_json_payload_uses_only_primitives,
+    assert_no_forbidden_terms,
+    assert_no_real_etf_tickers,
+    assert_no_real_vendor_or_source_identifiers,
+    assert_planning_states_are_non_approved,
+    assert_required_non_claims_present,
+    scrub_negative_assertions,
+)
 from tests.fixtures.research_methodology import (
     build_synthetic_broad_etf_methodology_scope,
     expected_synthetic_broad_etf_methodology_scope_json,
@@ -25,8 +36,6 @@ from tests.fixtures.research_scope import (
 
 MODULE_PATH = Path("tests/fixtures/research_planning.py")
 
-_ALLOWED_APPROVAL_STATES = {"candidate_only", "blocked", "deferred"}
-
 _REQUIRED_NON_CLAIMS = {
     "not source approval",
     "not universe approval",
@@ -41,91 +50,6 @@ _REQUIRED_NON_CLAIMS = {
     "not trading authority",
     "no broker/order/fill/portfolio/runtime behavior",
     "no real data ingestion",
-}
-
-_REAL_ETF_TICKERS = (
-    "SPY",
-    "QQQ",
-    "IWM",
-    "DIA",
-    "VTI",
-    "EFA",
-    "EEM",
-    "TLT",
-    "GLD",
-    "AGG",
-    "BND",
-    "VNQ",
-    "XLF",
-    "XLK",
-    "XLE",
-    "IVV",
-    "VOO",
-)
-
-_REAL_VENDOR_OR_SOURCE_IDENTIFIERS = (
-    "alpaca",
-    "alphavantage",
-    "alpha_vantage",
-    "bloomberg",
-    "eodhd",
-    "factset",
-    "fmp",
-    "iex",
-    "intrinio",
-    "morningstar",
-    "nasdaq",
-    "polygon",
-    "quandl",
-    "refinitiv",
-    "stooq",
-    "tiingo",
-    "yahoo",
-    "yfinance",
-)
-
-_FORBIDDEN_RUNTIME_FIELD_NAMES = {
-    "account",
-    "account_id",
-    "allocation",
-    "broker",
-    "credential",
-    "credentials",
-    "execution",
-    "fill",
-    "order",
-    "portfolio",
-    "position",
-    "runtime",
-    "scheduler",
-    "target_weight",
-}
-
-_FORBIDDEN_SELECTION_FIELD_NAMES = {
-    "candidate_discovery",
-    "candidate_discovery_fields",
-    "rank",
-    "ranking",
-    "recommendation",
-    "recommendations",
-    "score",
-    "scoring",
-}
-
-_FORBIDDEN_RAW_MARKET_FIELD_NAMES = {
-    "adjusted_close",
-    "adj_close",
-    "close",
-    "dividend",
-    "high",
-    "low",
-    "ohlc",
-    "ohlcv",
-    "open",
-    "price",
-    "prices",
-    "split",
-    "volume",
 }
 
 _FORBIDDEN_CONTENT_TERMS = (
@@ -237,9 +161,6 @@ _FORBIDDEN_CALL_NAMES = {
     "write_text",
 }
 
-_OBJECT_REPR_PATTERN = re.compile(r"<[^>]+ at 0x[0-9a-fA-F]+>")
-_MEMORY_ADDRESS_PATTERN = re.compile(r"\b0x[0-9a-fA-F]{6,}\b")
-
 
 def test_combined_fixture_construction_uses_existing_synthetic_scopes() -> None:
     package = build_synthetic_broad_etf_research_planning_package()
@@ -289,14 +210,20 @@ def test_combined_fixture_linked_scope_assertion_fails_loudly_for_mismatch() -> 
 
 def test_combined_fixture_keeps_all_embedded_candidates_non_approved() -> None:
     package = build_synthetic_broad_etf_research_planning_package()
-    approval_states = tuple(_approval_states(package))
+    planning_states = approval_states(package)
 
-    assert set(approval_states) <= _ALLOWED_APPROVAL_STATES
-    assert "approved" not in approval_states
-    assert set(package["non_claims"]) >= _REQUIRED_NON_CLAIMS
+    assert_planning_states_are_non_approved(
+        planning_states,
+        context="planning package embedded approval states",
+    )
+    assert_required_non_claims_present(
+        package["non_claims"],
+        _REQUIRED_NON_CLAIMS,
+        context="planning package non_claims",
+    )
 
     compact_json = json.dumps(package, separators=(",", ":"))
-    scrubbed_json = _scrub_non_claims(compact_json.lower(), package)
+    scrubbed_json = scrub_negative_assertions(compact_json.lower(), package)
 
     for phrase in (
         "source approval",
@@ -315,6 +242,15 @@ def test_combined_fixture_keeps_all_embedded_candidates_non_approved() -> None:
         assert phrase not in scrubbed_json
 
 
+def test_combined_fixture_allowed_state_guardrail_rejects_approval_labels() -> None:
+    for approval_state in REJECTED_PLANNING_STATE_EXAMPLES:
+        with pytest.raises(AssertionError, match="approval"):
+            assert_planning_states_are_non_approved(
+                (approval_state,),
+                context="planning approval state",
+            )
+
+
 def test_combined_fixture_serialization_is_primitive_and_byte_stable() -> None:
     package = build_synthetic_broad_etf_research_planning_package()
     compact_json = json.dumps(package, separators=(",", ":"))
@@ -328,7 +264,10 @@ def test_combined_fixture_serialization_is_primitive_and_byte_stable() -> None:
     assert json.dumps(package["methodology_scope"], separators=(",", ":")) == (
         expected_synthetic_broad_etf_methodology_scope_json()
     )
-    _assert_json_payload_safe(package)
+    assert_json_payload_uses_only_primitives(
+        package,
+        context="planning package payload",
+    )
     assert " at 0x" not in compact_json
     assert "Research" not in compact_json
     assert "Decimal(" not in compact_json
@@ -337,35 +276,44 @@ def test_combined_fixture_serialization_is_primitive_and_byte_stable() -> None:
 
 def test_combined_fixture_contains_no_real_data_or_trading_surface() -> None:
     package = build_synthetic_broad_etf_research_planning_package()
-    keys = _all_serialized_keys(package)
+    keys = all_serialized_keys(package)
     compact_json = json.dumps(package, separators=(",", ":"))
     lowered_json = compact_json.lower()
-    scrubbed_json = _scrub_non_claims(lowered_json, package)
+    scrubbed_json = scrub_negative_assertions(lowered_json, package)
 
-    assert keys.isdisjoint(_FORBIDDEN_RUNTIME_FIELD_NAMES)
-    assert keys.isdisjoint(_FORBIDDEN_SELECTION_FIELD_NAMES)
-    assert keys.isdisjoint(_FORBIDDEN_RAW_MARKET_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_RUNTIME_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_SELECTION_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_RAW_MARKET_FIELD_NAMES)
     assert '"approval_state":"approved"' not in lowered_json
     assert '"approval_state":"candidate_only"' in lowered_json
     assert "$" not in compact_json
     assert "://" not in compact_json
     assert not re.search(r"\b\d+\.\d+\b", compact_json)
 
-    for forbidden_term in _FORBIDDEN_CONTENT_TERMS:
-        assert forbidden_term not in lowered_json
-    for forbidden_term in (
-        "adjusted close",
-        "daily return",
-        "market data",
-        "ohlc",
-        "return series",
-        "real data ingestion",
-        "volume",
-    ):
-        assert forbidden_term not in scrubbed_json
+    assert_no_forbidden_terms(
+        lowered_json,
+        _FORBIDDEN_CONTENT_TERMS,
+        context="planning package JSON",
+    )
+    assert_no_forbidden_terms(
+        scrubbed_json,
+        (
+            "adjusted close",
+            "daily return",
+            "market data",
+            "ohlc",
+            "return series",
+            "real data ingestion",
+            "volume",
+        ),
+        context="planning package scrubbed JSON",
+    )
 
-    _assert_no_real_etf_tickers(compact_json)
-    _assert_no_real_vendor_or_source_identifiers(compact_json)
+    assert_no_real_etf_tickers(compact_json, context="planning package JSON")
+    assert_no_real_vendor_or_source_identifiers(
+        compact_json,
+        context="planning package JSON",
+    )
 
 
 def test_fixture_module_has_only_allowed_dependencies_and_no_runtime_calls() -> None:
@@ -411,22 +359,6 @@ def test_fixture_module_has_only_allowed_dependencies_and_no_runtime_calls() -> 
     assert _call_names().isdisjoint(_FORBIDDEN_CALL_NAMES)
 
 
-def _approval_states(value: object) -> tuple[str, ...]:
-    states: list[str] = []
-
-    if isinstance(value, dict):
-        approval_state = value.get("approval_state")
-        if isinstance(approval_state, str):
-            states.append(approval_state)
-        for item in value.values():
-            states.extend(_approval_states(item))
-    elif isinstance(value, list):
-        for item in value:
-            states.extend(_approval_states(item))
-
-    return tuple(states)
-
-
 def _assert_methodology_scope_links_research_scope(
     package: dict[str, object],
 ) -> None:
@@ -440,92 +372,8 @@ def _assert_methodology_scope_links_research_scope(
         assert isinstance(methodology, dict)
         linked_scope_ids = methodology["linked_scope_ids"]
         assert research_scope_id in linked_scope_ids, (
-            "linked_scope_ids must reference the paired research scope id"
+                "linked_scope_ids must reference the paired research scope id"
         )
-
-
-def _assert_json_payload_safe(value: object) -> None:
-    assert not is_dataclass(value)
-    assert not isinstance(value, tuple)
-    assert not isinstance(value, set)
-    assert not isinstance(value, Decimal)
-    assert not isinstance(value, (date, datetime))
-    assert not callable(value)
-    assert not isinstance(value, ModuleType)
-
-    if value is None or type(value) in (str, bool, int, float):
-        if type(value) is str:
-            assert not _OBJECT_REPR_PATTERN.search(value)
-            assert not _MEMORY_ADDRESS_PATTERN.search(value)
-        return
-
-    if type(value) is list:
-        for item in value:
-            _assert_json_payload_safe(item)
-        return
-
-    if type(value) is dict:
-        for key, item in value.items():
-            assert type(key) is str
-            assert not _OBJECT_REPR_PATTERN.search(key)
-            assert not _MEMORY_ADDRESS_PATTERN.search(key)
-            _assert_json_payload_safe(item)
-        return
-
-    raise AssertionError(f"non-primitive serialized value: {type(value)!r}")
-
-
-def _all_serialized_keys(value: object) -> set[str]:
-    if isinstance(value, dict):
-        keys = {str(key) for key in value}
-        for item in value.values():
-            keys.update(_all_serialized_keys(item))
-        return keys
-
-    if isinstance(value, list):
-        keys: set[str] = set()
-        for item in value:
-            keys.update(_all_serialized_keys(item))
-        return keys
-
-    return set()
-
-
-def _all_non_claims(value: object) -> tuple[str, ...]:
-    claims: list[str] = []
-
-    if isinstance(value, dict):
-        non_claims = value.get("non_claims")
-        if isinstance(non_claims, list):
-            claims.extend(item for item in non_claims if isinstance(item, str))
-        for item in value.values():
-            claims.extend(_all_non_claims(item))
-    elif isinstance(value, list):
-        for item in value:
-            claims.extend(_all_non_claims(item))
-
-    return tuple(claims)
-
-
-def _scrub_non_claims(lowered_json: str, payload: dict[str, object]) -> str:
-    scrubbed = lowered_json
-    for non_claim in sorted(_all_non_claims(payload), key=len, reverse=True):
-        scrubbed = scrubbed.replace(non_claim.lower(), "")
-    return scrubbed
-
-
-def _assert_no_real_etf_tickers(serialized: str) -> None:
-    for ticker in _REAL_ETF_TICKERS:
-        assert not re.search(
-            rf"(?<![A-Z0-9_]){re.escape(ticker)}(?![A-Z0-9_])",
-            serialized,
-        )
-
-
-def _assert_no_real_vendor_or_source_identifiers(serialized: str) -> None:
-    lowered = serialized.lower()
-    for identifier in _REAL_VENDOR_OR_SOURCE_IDENTIFIERS:
-        assert identifier not in lowered
 
 
 def _tree() -> ast.AST:

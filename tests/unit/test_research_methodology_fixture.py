@@ -1,11 +1,8 @@
 import ast
-from dataclasses import is_dataclass
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date
 import json
 from pathlib import Path
 import re
-from types import ModuleType
 
 from algotrader.research.research_methodology import (
     REQUIRED_RESEARCH_METHODOLOGY_NON_CLAIMS,
@@ -19,96 +16,21 @@ from tests.fixtures.research_methodology import (
     expected_synthetic_broad_etf_methodology_scope_json,
 )
 from tests.fixtures.research_scope import build_synthetic_broad_etf_research_scope
+from tests.helpers.research_planning_guardrails import (
+    FORBIDDEN_RAW_MARKET_FIELD_NAMES,
+    FORBIDDEN_RUNTIME_FIELD_NAMES,
+    FORBIDDEN_SELECTION_FIELD_NAMES,
+    all_serialized_keys,
+    assert_json_payload_uses_only_primitives,
+    assert_no_forbidden_terms,
+    assert_no_raw_market_data_surface,
+    assert_no_real_etf_tickers,
+    assert_no_real_vendor_or_source_identifiers,
+    assert_planning_states_are_non_approved,
+)
 
 
 MODULE_PATH = Path("tests/fixtures/research_methodology.py")
-
-_ALLOWED_APPROVAL_STATES = {"candidate_only", "blocked", "deferred"}
-
-_REAL_ETF_TICKERS = (
-    "SPY",
-    "QQQ",
-    "IWM",
-    "DIA",
-    "VTI",
-    "EFA",
-    "EEM",
-    "TLT",
-    "GLD",
-    "AGG",
-    "BND",
-    "VNQ",
-    "XLF",
-    "XLK",
-    "XLE",
-    "IVV",
-    "VOO",
-)
-
-_REAL_VENDOR_OR_SOURCE_IDENTIFIERS = (
-    "alpaca",
-    "alphavantage",
-    "alpha_vantage",
-    "bloomberg",
-    "eodhd",
-    "factset",
-    "fmp",
-    "iex",
-    "intrinio",
-    "morningstar",
-    "nasdaq",
-    "polygon",
-    "quandl",
-    "refinitiv",
-    "stooq",
-    "tiingo",
-    "yahoo",
-    "yfinance",
-)
-
-_FORBIDDEN_RUNTIME_FIELD_NAMES = {
-    "account",
-    "account_id",
-    "allocation",
-    "broker",
-    "credential",
-    "credentials",
-    "execution",
-    "fill",
-    "order",
-    "portfolio",
-    "position",
-    "runtime",
-    "scheduler",
-    "target_weight",
-}
-
-_FORBIDDEN_SELECTION_FIELD_NAMES = {
-    "candidate_discovery",
-    "candidate_discovery_fields",
-    "rank",
-    "ranking",
-    "recommendation",
-    "recommendations",
-    "score",
-    "scoring",
-}
-
-_FORBIDDEN_RAW_MARKET_FIELD_NAMES = {
-    "adjusted_close",
-    "adj_close",
-    "close",
-    "dividend",
-    "high",
-    "low",
-    "ohlc",
-    "ohlcv",
-    "open",
-    "price",
-    "prices",
-    "split",
-    "volume",
-}
 
 _FORBIDDEN_CONTENT_TERMS = (
     "account_id",
@@ -218,9 +140,6 @@ _FORBIDDEN_CALL_NAMES = {
     "write_text",
 }
 
-_OBJECT_REPR_PATTERN = re.compile(r"<[^>]+ at 0x[0-9a-fA-F]+>")
-_MEMORY_ADDRESS_PATTERN = re.compile(r"\b0x[0-9a-fA-F]{6,}\b")
-
 
 def test_fixture_construction_returns_expected_candidate_contracts() -> None:
     scope = build_synthetic_broad_etf_methodology_scope()
@@ -241,9 +160,10 @@ def test_fixture_construction_returns_expected_candidate_contracts() -> None:
     assert parameter_set.methodology_id == methodology.methodology_id
     assert methodology.linked_scope_ids == (linked_research_scope.scope_id,)
 
-    approval_states = _approval_states(scope)
-    assert set(approval_states) <= _ALLOWED_APPROVAL_STATES
-    assert "approved" not in approval_states
+    assert_planning_states_are_non_approved(
+        _approval_states(scope),
+        context="research methodology fixture approval states",
+    )
 
     for item in _scope_and_candidates(scope):
         assert item.blockers
@@ -252,9 +172,16 @@ def test_fixture_construction_returns_expected_candidate_contracts() -> None:
         assert item.non_claims == REQUIRED_RESEARCH_METHODOLOGY_NON_CLAIMS
 
     serialized = json.dumps(scope.to_dict(), separators=(",", ":"))
-    _assert_no_real_etf_tickers(serialized)
-    _assert_no_real_vendor_or_source_identifiers(serialized)
-    _assert_no_raw_market_data(scope.to_dict(), serialized)
+    assert_no_real_etf_tickers(serialized, context="research methodology fixture JSON")
+    assert_no_real_vendor_or_source_identifiers(
+        serialized,
+        context="research methodology fixture JSON",
+    )
+    assert_no_raw_market_data_surface(
+        scope.to_dict(),
+        serialized,
+        context="research methodology fixture JSON",
+    )
 
 
 def test_fixture_serialization_matches_expected_primitives_and_compact_json() -> None:
@@ -266,7 +193,10 @@ def test_fixture_serialization_matches_expected_primitives_and_compact_json() ->
     assert payload == expected_synthetic_broad_etf_methodology_scope_dict()
     assert compact_json == expected_synthetic_broad_etf_methodology_scope_json()
     assert round_tripped == compact_json
-    _assert_json_payload_safe(payload)
+    assert_json_payload_uses_only_primitives(
+        payload,
+        context="research methodology fixture payload",
+    )
     assert " at 0x" not in compact_json
     assert "Research" not in compact_json
     assert "Decimal(" not in compact_json
@@ -298,23 +228,32 @@ def test_fixture_construction_and_serialization_are_deterministic() -> None:
 
 def test_fixture_output_contains_no_runtime_selection_or_approval_claim_surface() -> None:
     payload = build_synthetic_broad_etf_methodology_scope().to_dict()
-    keys = _all_serialized_keys(payload)
+    keys = all_serialized_keys(payload)
     compact_json = json.dumps(payload, separators=(",", ":"))
     lowered_json = compact_json.lower()
 
-    assert keys.isdisjoint(_FORBIDDEN_RUNTIME_FIELD_NAMES)
-    assert keys.isdisjoint(_FORBIDDEN_SELECTION_FIELD_NAMES)
-    assert keys.isdisjoint(_FORBIDDEN_RAW_MARKET_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_RUNTIME_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_SELECTION_FIELD_NAMES)
+    assert keys.isdisjoint(FORBIDDEN_RAW_MARKET_FIELD_NAMES)
     assert '"approval_state":"approved"' not in lowered_json
     assert '"approval_state":"candidate_only"' in lowered_json
     assert "$" not in compact_json
     assert "://" not in compact_json
     assert not re.search(r"\b\d+\.\d+\b", compact_json)
-    for forbidden_term in _FORBIDDEN_CONTENT_TERMS:
-        assert forbidden_term not in lowered_json
+    assert_no_forbidden_terms(
+        lowered_json,
+        _FORBIDDEN_CONTENT_TERMS,
+        context="research methodology fixture JSON",
+    )
 
-    _assert_no_real_etf_tickers(compact_json)
-    _assert_no_real_vendor_or_source_identifiers(compact_json)
+    assert_no_real_etf_tickers(
+        compact_json,
+        context="research methodology fixture JSON",
+    )
+    assert_no_real_vendor_or_source_identifiers(
+        compact_json,
+        context="research methodology fixture JSON",
+    )
     _assert_no_affirmative_approval_claims(lowered_json)
 
 
@@ -392,78 +331,6 @@ def _scope_and_candidates(
         *scope.methodology_candidates,
         *scope.parameter_set_candidates,
     )
-
-
-def _assert_json_payload_safe(value: object) -> None:
-    assert not is_dataclass(value)
-    assert not isinstance(value, tuple)
-    assert not isinstance(value, set)
-    assert not isinstance(value, Decimal)
-    assert not isinstance(value, (date, datetime))
-    assert not callable(value)
-    assert not isinstance(value, ModuleType)
-
-    if value is None or type(value) in (str, bool, int, float):
-        if type(value) is str:
-            assert not _OBJECT_REPR_PATTERN.search(value)
-            assert not _MEMORY_ADDRESS_PATTERN.search(value)
-        return
-
-    if type(value) is list:
-        for item in value:
-            _assert_json_payload_safe(item)
-        return
-
-    if type(value) is dict:
-        for key, item in value.items():
-            assert type(key) is str
-            assert not _OBJECT_REPR_PATTERN.search(key)
-            assert not _MEMORY_ADDRESS_PATTERN.search(key)
-            _assert_json_payload_safe(item)
-        return
-
-    raise AssertionError(f"non-primitive serialized value: {type(value)!r}")
-
-
-def _all_serialized_keys(value: object) -> set[str]:
-    if isinstance(value, dict):
-        keys = {str(key) for key in value}
-        for item in value.values():
-            keys.update(_all_serialized_keys(item))
-        return keys
-
-    if isinstance(value, list):
-        keys: set[str] = set()
-        for item in value:
-            keys.update(_all_serialized_keys(item))
-        return keys
-
-    return set()
-
-
-def _assert_no_real_etf_tickers(serialized: str) -> None:
-    for ticker in _REAL_ETF_TICKERS:
-        assert not re.search(
-            rf"(?<![A-Z0-9_]){re.escape(ticker)}(?![A-Z0-9_])",
-            serialized,
-        )
-
-
-def _assert_no_real_vendor_or_source_identifiers(serialized: str) -> None:
-    lowered = serialized.lower()
-    for identifier in _REAL_VENDOR_OR_SOURCE_IDENTIFIERS:
-        assert identifier not in lowered
-
-
-def _assert_no_raw_market_data(payload: dict[str, object], serialized: str) -> None:
-    assert _all_serialized_keys(payload).isdisjoint(_FORBIDDEN_RAW_MARKET_FIELD_NAMES)
-    lowered = serialized.lower()
-    assert "adjusted close" not in lowered
-    assert "daily return" not in lowered
-    assert "return series" not in lowered
-    assert "ohlc" not in lowered
-    assert "volume" not in lowered
-    assert "$" not in serialized
 
 
 def _assert_no_affirmative_approval_claims(lowered_json: str) -> None:

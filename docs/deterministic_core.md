@@ -3707,6 +3707,14 @@ add replay metrics; does not add signal/evaluator/trading behavior; and does
 not add broker/order/fill/portfolio/runtime/LLM/network/market-data behavior.
 Normal pytest remains offline and credential-free.
 
+Phase 81 - Research Planning Fixture Guardrail Consolidation keeps the Phase
+72-79 synthetic planning/replay/report fixture chain test-only while reducing
+duplicated guardrail assertions. Shared test helpers now cover non-approved
+planning-state checks, primitive JSON shape checks, negative-term screening,
+metadata-only evidence non-claims, and real ticker/vendor/path/credential
+exclusion. No production code changed, no fixture output semantics changed,
+and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
