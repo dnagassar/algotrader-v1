@@ -9760,6 +9760,21 @@ Safe next tasks include:
   table, and future approval gates. No FRED series or cash proxy was approved,
   no production code or tests changed, no real data was added, and normal
   pytest remains offline and credential-free
+- Phase 98 - FRED Candidate Series Discovery Normalization adds a docs-only
+  normalization of externally produced FRED candidate series discovery output
+  as advisory intake material under the Phase 97 framework. It records
+  candidate series such as TB3MS, TB6MS, EFFR, OBFR, the SOFR family,
+  FEDFUNDS, UNRATE, and generic non-official guide/blog references; separates
+  reported official source observations from secondary/scout observations;
+  routes strongest, context-only, and rejected-for-now candidates; records
+  unresolved primary source, ALFRED/vintage, timing, rights, conversion, and
+  normal-pytest questions; and recommends a later-review order. No FRED
+  series, cash proxy, benchmark, rate source, source, data, universe,
+  methodology, parameter, evidence, return-construction, no-lookahead,
+  cost/friction, liquidity, strategy validation, or trading use was approved;
+  no production code or tests changed; no real data was added; no FRED API
+  calls or downloads occurred; and normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
