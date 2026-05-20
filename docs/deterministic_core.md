@@ -3793,6 +3793,16 @@ routes stronger and weaker later-review candidates, and records unresolved
 questions. No source or data was approved, no production code or tests changed,
 no real data was added, and normal pytest remains offline and credential-free.
 
+Phase 95 - Broad ETF Primary Source Verification Normalization adds a
+docs-only normalization of external primary-source verification output for
+Stooq, Alpha Vantage, and FRED as advisory material only. It records reported
+official docs and terms status, unresolved rights and methodology questions,
+candidate confidence, and later-review ordering. No source, data, vendor,
+benchmark, cash proxy, universe, methodology, parameter, evidence,
+return-construction, no-lookahead, cost/friction, liquidity, strategy
+validation, or trading use was approved; no production code or tests changed;
+no real data was added; and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
