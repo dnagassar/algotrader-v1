@@ -9718,6 +9718,14 @@ Safe next tasks include:
   cost model or liquidity rule was approved, no production code or tests
   changed, no real data was added, and normal pytest remains offline and
   credential-free
+- Phase 93 - Broad ETF Source Evidence Intake Plan adds a docs-only intake
+  plan for future review of candidate broad ETF source paths before any local
+  snapshot use. It defines candidate source-path categories, required source
+  evidence, source-review questions, intake evidence labels, allowed review
+  outcomes, forbidden approval outcomes, a starter intake table, and explicit
+  non-claims. No source or data was approved, no production code or tests
+  changed, no real data was added, and normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

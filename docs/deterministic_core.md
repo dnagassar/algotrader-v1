@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2467` tests are passing, with `4` skipped paper-integration tests by default.
+- `2479` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3776,6 +3776,14 @@ rebalance, expense-ratio, tax, and implementation-friction assumptions. No
 cost model or liquidity rule was approved, no production code or tests
 changed, no real data was added, and normal pytest remains offline and
 credential-free.
+
+Phase 93 - Broad ETF Source Evidence Intake Plan adds a docs-only intake plan
+for future review of candidate broad ETF source paths before any local
+snapshot use. It defines candidate source-path categories, required evidence,
+source-review questions, evidence labels, allowed review outcomes, forbidden
+approval outcomes, a starter intake table, and explicit non-claims. No source
+or data was approved, no production code or tests changed, no real data was
+added, and normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
