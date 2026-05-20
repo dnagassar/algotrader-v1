@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2330` tests are passing, with `4` skipped paper-integration tests by default.
+- `2467` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -3724,6 +3724,20 @@ future implementation gates, and explicit non-claims. No source, data,
 universe, benchmark, cash proxy, methodology, parameter, evidence, strategy
 validation, or trading use was approved; no real data was added; no production
 code or tests changed; and normal pytest remains offline and credential-free.
+
+Phase 84 - Local Snapshot Manifest Metadata Contract adds a tiny deterministic
+metadata-only `LocalSnapshotManifest` for describing future local research
+snapshots without reading files, hashing files, checking paths, ingesting data,
+or making local snapshots normal-pytest inputs. The contract validates plain
+dates, observation date ordering, conservative source/adjustment/return-basis
+allowlists, lowercase SHA-256 checksum shape, immutable tuple metadata,
+required non-claims, and `normal_pytest_eligible=False`; it serializes to and
+from deterministic primitive dictionaries. No source, data, universe,
+benchmark, cash proxy, methodology, parameter, evidence, strategy validation,
+or trading use was approved; no real data or ETF tickers were added; no
+broker/order/fill/portfolio/runtime/LLM/network/market-data/scoring/ranking/
+recommendation/candidate-discovery/signal/evaluator/rendering/trading behavior
+was added; and normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2330-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2467-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9670,6 +9670,20 @@ Safe next tasks include:
   validation, or trading use was approved; no real data was added; no
   production code or tests changed; and normal pytest remains offline and
   credential-free
+- Phase 84 - Local Snapshot Manifest Metadata Contract adds a tiny
+  deterministic metadata-only `LocalSnapshotManifest` for describing future
+  local research snapshots without reading files, hashing files, checking
+  paths, ingesting data, or making local snapshots normal-pytest inputs. The
+  contract validates plain dates, observation date ordering, conservative
+  source/adjustment/return-basis allowlists, lowercase SHA-256 checksum shape,
+  immutable tuple metadata, required non-claims, and
+  `normal_pytest_eligible=False`; it serializes to and from deterministic
+  primitive dictionaries. No source, data, universe, benchmark, cash proxy,
+  methodology, parameter, evidence, strategy validation, or trading use was
+  approved; no real data or ETF tickers were added; no broker/order/fill/
+  portfolio/runtime/LLM/network/market-data/scoring/ranking/recommendation/
+  candidate-discovery/signal/evaluator/rendering/trading behavior was added;
+  and normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
