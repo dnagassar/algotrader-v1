@@ -3993,6 +3993,18 @@ planning is premature. No source or data was approved; no production code or
 tests changed; no real data was added; no API calls or downloads occurred; and
 normal pytest remains offline and credential-free.
 
+Phase 112 - Polygon Candidate Schema / Interface Planning Boundary adds a
+docs-only, candidate-only planning boundary for possible future
+Polygon/Massive data normalization. It identifies candidate surfaces such as
+aggregates, grouped daily aggregates, trades, quotes, reference tickers,
+ticker details, ticker events, splits, dividends, flat files, ETF profile
+surfaces, and possible calendar/session data; records metadata questions,
+cross-surface risks, future implementation gates, and a future synthetic-only
+fixture boundary; and keeps Polygon/Massive unresolved and non-approved. No
+production code or tests changed; no fixtures changed; no real data was added;
+no API calls or downloads occurred; no source, data, endpoint, or flat-file
+approval was added; and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
