@@ -9898,6 +9898,21 @@ Safe next tasks include:
   validation, or trading use was approved; no production code or tests changed;
   no real data was added; no API calls or downloads occurred; and normal
   pytest remains offline and credential-free
+- Phase 110 - Polygon Deep Public Docs Normalization adds a docs-only
+  normalization of deeper externally provided Polygon/Massive public-doc
+  verification output as advisory material only. It records stronger reported
+  public-doc findings around Market Data Terms, individual-use terms,
+  redistribution limits, flat-file research/backtesting workflow docs,
+  unadjusted flat files, REST adjusted aggregates, reference tickers, active
+  as-of and delisted ticker lookup leads, ticker events, ETF profile surfaces,
+  and corporate actions while preserving unresolved storage/legal,
+  point-in-time, ETF lifecycle, survivorship, adjustment, timestamp, and
+  calendar gaps. Polygon/Massive remains unresolved and non-approved, is the
+  technically strongest ETF price-source candidate reviewed so far, and may
+  support only future candidate-only schema/interface normalization around
+  documented shapes. No source or data was approved; no production code or
+  tests changed; no real data was added; no API calls or downloads occurred;
+  and normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
