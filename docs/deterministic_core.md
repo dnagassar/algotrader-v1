@@ -3907,6 +3907,20 @@ liquidity, strategy validation, or trading use was approved; no production
 code or tests changed; no real data was added; no Alpha Vantage API calls or
 downloads occurred; and normal pytest remains offline and credential-free.
 
+Phase 106 - Stooq Public Docs Gap Normalization adds a docs-only normalization
+of externally produced Stooq public-doc gap review output as advisory material
+only. It records reported public CSV and bulk ASCII or Metastock-style download
+surfaces, listed asset categories including ETF and U.S. ETF categories,
+OHLCV-style availability, archive generation timestamps, third-party provider
+references, adjustment UI controls, unresolved terms and storage questions,
+unresolved schema/source-quality questions, unresolved adjustment and
+point-in-time questions, and an unresolved candidate disposition. Stooq remains
+unresolved. No Stooq source, data, download path, universe, benchmark, cash
+proxy, methodology, parameter, evidence, return-construction, no-lookahead,
+cost/friction, liquidity, strategy validation, or trading use was approved; no
+production code or tests changed; no real data was added; no Stooq downloads
+occurred; and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
