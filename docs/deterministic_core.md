@@ -3949,6 +3949,21 @@ cost/friction, liquidity, strategy validation, or trading use was approved; no
 production code or tests changed; no real data was added; no API calls or
 downloads occurred; and normal pytest remains offline and credential-free.
 
+Phase 109 - ETF Source Candidate Comparison Checkpoint adds a docs-only
+routing comparison of Alpha Vantage, Stooq, and Polygon/Massive after their
+advisory source and public-doc reviews. It records that all candidates remain
+unresolved and non-approved, compares technical surface, documentation,
+terms/storage, adjustment/return-basis, point-in-time/revision,
+survivorship/lifecycle, operational fit, blockers, disposition, and allowed
+next steps, and recommends Polygon/Massive support/legal questions as the
+smallest useful outreach path while keeping Nasdaq Data Link as a reasonable
+external source-review alternative. No Alpha Vantage, Stooq, Polygon, Massive,
+source, data, endpoint, download path, flat file, universe, benchmark, cash
+proxy, methodology, parameter, evidence, return-construction, no-lookahead,
+cost/friction, liquidity, strategy validation, or trading use was approved; no
+production code or tests changed; no real data was added; no API calls or
+downloads occurred; and normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
