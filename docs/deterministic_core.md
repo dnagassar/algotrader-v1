@@ -3921,6 +3921,18 @@ cost/friction, liquidity, strategy validation, or trading use was approved; no
 production code or tests changed; no real data was added; no Stooq downloads
 occurred; and normal pytest remains offline and credential-free.
 
+Phase 107 - ETF Source Review Routing Checkpoint adds a docs-only routing
+record after Alpha Vantage, Stooq, and Antigravity review. It records that
+Alpha Vantage and Stooq remain unresolved, that the Antigravity review was
+advisory and read-only, and that the project will not automatically redirect
+to FRED unless a concrete ALFRED or point-in-time need emerges. No Alpha
+Vantage, Stooq, FRED, source, data, endpoint, download path, universe,
+benchmark, cash proxy, methodology, parameter, evidence, return-construction,
+no-lookahead, cost/friction, liquidity, strategy validation, or trading use was
+approved; no production code or tests changed; no real data was added; no API
+calls or downloads occurred; and normal pytest remains offline and
+credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
