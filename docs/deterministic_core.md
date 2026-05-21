@@ -3851,6 +3851,20 @@ strategy validation, or trading use was approved; no production code or tests
 changed; no real data was added; no FRED API calls or downloads occurred; and
 normal pytest remains offline and credential-free.
 
+Phase 101 - H.15 Discount-Basis Formula Normalization adds a docs-only
+normalization of externally produced H.15 Treasury bill discount-basis formula
+and convention discovery output as advisory methodology evidence only. It
+records the reported TreasuryDirect bill pricing formula, 360-day year and
+actual-days-to-maturity convention, H.15/FRED secondary-market discount-basis
+classification for `TB3MS` and `TB6MS`, monthly-average and FRED
+transformation uncertainties, daily quote construction uncertainties,
+conversion/compounding risks, point-in-time and no-lookahead risks, official
+source categories found, and a later-review recommendation. No formula
+implementation was added, no conversion method was approved, no FRED series or
+cash proxy was approved, no production code or tests changed, no real data was
+added, no FRED API calls or downloads occurred, and normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
