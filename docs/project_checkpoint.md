@@ -9867,6 +9867,22 @@ Safe next tasks include:
   was approved; no production code or tests changed; no real data was added;
   no API calls or downloads occurred; and normal pytest remains offline and
   credential-free
+- Phase 108 - Polygon Public Docs Gap Normalization adds a docs-only
+  normalization of externally provided Polygon/Massive public-doc and
+  public-source verification output as advisory material only. It records
+  reported public documentation for aggregates, grouped daily aggregates,
+  trades, quotes, splits, dividends, reference tickers, ticker events, flat
+  files, API-key requirements, plan/pricing structure, split-adjusted
+  aggregates, and Market Data Terms non-redistribution language; unresolved
+  license/storage, ETF/source-quality, adjustment, and point-in-time
+  questions; comparison to Alpha Vantage and Stooq; and an unresolved
+  candidate disposition. Polygon/Massive remains unresolved and non-approved.
+  No Polygon, Massive, source, data, endpoint, flat-file path, universe,
+  benchmark, cash proxy, methodology, parameter, evidence,
+  return-construction, no-lookahead, cost/friction, liquidity, strategy
+  validation, or trading use was approved; no production code or tests changed;
+  no real data was added; no API calls or downloads occurred; and normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
