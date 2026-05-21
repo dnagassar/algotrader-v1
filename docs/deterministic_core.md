@@ -3980,6 +3980,19 @@ documented shapes. No source or data was approved; no production code or tests
 changed; no real data was added; no API calls or downloads occurred; and
 normal pytest remains offline and credential-free.
 
+Phase 111 - Polygon Schema / Legal Routing Checkpoint adds a docs-only routing
+decision after the deeper Polygon/Massive public-doc review. It records that
+Alpha Vantage, Stooq, Polygon/Massive, and Nasdaq Data Link remain unresolved
+and non-approved; that Polygon/Massive remains the strongest technical ETF
+price-source candidate reviewed so far; and that the preferred next route is
+candidate-only Polygon/Massive schema/interface normalization planning only if
+it remains metadata-only and synthetic-only. Terms/legal review remains
+required before any real Polygon/Massive data use, and Nasdaq Data Link
+primary-source review remains the preferred alternative if schema/interface
+planning is premature. No source or data was approved; no production code or
+tests changed; no real data was added; no API calls or downloads occurred; and
+normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
