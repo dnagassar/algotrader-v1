@@ -10224,6 +10224,28 @@ Safe next tasks include:
   network call, credential, approval status, validation claim, trading
   readiness, recommendation, action, or production-contract approval; normal
   pytest remains offline and credential-free
+- Phase 135 - Synthetic Candidate Research Brief Item Fixture adds only a tiny
+  deterministic test fixture for `CandidateResearchBriefItem`. It composes the
+  Phase 133 synthetic candidate dossier fixture with the Phase 134 brief item
+  builder, exposing `build_synthetic_candidate_research_brief_item()` and
+  `expected_synthetic_candidate_research_brief_item_dict()`. The expected
+  payload matches `CandidateResearchBriefItem.to_dict()` exactly. Tests verify
+  the fixed `candidate_research_result` item type, advisory `candidate_only`
+  status, deterministic non-actionable headline and summary points,
+  carried-forward limitations and non-claims, required non-claim coverage, the
+  Phase 123 fingerprint
+  `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`, and the
+  Phase 127 manifest fixture-id and `sha256:{package.fingerprint}` checksum
+  convention. It self-audits the fixture module for forbidden imports, calls,
+  and real-world literals, and repeated construction stays deterministic
+  without mutating source objects or primitive payloads. It adds no production
+  behavior, `src/` changes, runner, ingestion path, file I/O, persistence,
+  market-bar production contract, strategy, signal, evaluator, benchmark or
+  cash proxy logic, broker/runtime behavior, scheduler behavior, portfolio
+  mutation, allocation behavior, order generation, live/paper trading, real
+  data, dependency, network call, credential, approval status, validation claim,
+  trading readiness, recommendation, action, or production-contract approval;
+  normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
