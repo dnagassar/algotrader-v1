@@ -10107,6 +10107,22 @@ Safe next tasks include:
   generation, live/paper trading, real data, dependency, network call,
   credential, timestamp, environment lookup, local path, or production-contract
   approval; normal pytest remains offline and credential-free
+- Phase 129 - Synthetic Return Input Result Fixture adds a tiny deterministic
+  test fixture that builds `SyntheticResearchResult` support through the
+  existing Phase 121 synthetic return-input snapshot fixture, the Phase 125
+  verified package builder, and the Phase 128 package-to-result adapter. It
+  exposes `build_synthetic_return_input_research_result()` and
+  `expected_synthetic_return_input_research_result_dict()`, with expected
+  primitive output delegated to stable `SyntheticResearchResult.to_dict()`
+  serialization. Provenance keeps the Phase 127 convention: the package
+  snapshot id becomes manifest `fixture_id`, and manifest `checksum` is
+  `sha256:{package.fingerprint}`. It does not compute returns from prices,
+  infer missing values, add metrics manually, mutate the source snapshot,
+  package, replay snapshot, or result, or introduce benchmarks, cash returns,
+  costs, positions, signals, orders, trades, strategy state, broker/runtime
+  state, portfolio state, ingestion, file I/O, persistence, runner behavior,
+  real data, network access, credentials, dependencies, or production-contract
+  approval; normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
