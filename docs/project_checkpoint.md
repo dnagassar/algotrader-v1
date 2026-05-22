@@ -10008,6 +10008,20 @@ Safe next tasks include:
   market-bar production contract, real data, vendor SDK, dependency, network
   call, credential, or file I/O behavior; normal pytest remains offline and
   credential-free
+- Phase 123 - Research Return Input Snapshot Fingerprint adds one tiny
+  deterministic SHA-256 helper for `ResearchReturnInputSnapshot`. It validates
+  through the Phase 122 consistency checker, hashes only the snapshot's existing
+  primitive `to_dict()` payload using sorted-key compact JSON, and returns a
+  lowercase hex digest. Repeated calls, round-tripped snapshots, and unchanged
+  synthetic fixture content produce the same digest; different valid synthetic
+  content changes it. This is provenance support only and adds no data access,
+  source approval, endpoint approval, universe approval, benchmark or cash proxy
+  approval, methodology approval, evidence approval, signal, evaluator,
+  strategy, broker, runtime, persistence, portfolio mutation, order generation,
+  live/paper trading, trading readiness, production market-bar contract, real
+  data, vendor SDK, dependency, network call, credential, timestamp, local path,
+  environment lookup, or file I/O behavior; normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
