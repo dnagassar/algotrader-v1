@@ -4053,6 +4053,19 @@ approval, return-construction approval, no-lookahead approval, strategy
 approval or validation, trading readiness, or a market-bar production contract.
 Normal pytest remains offline and credential-free.
 
+Phase 121 - Synthetic Research Return Input Snapshot Fixture adds one tiny
+deterministic fixture for the Phase 120 `ResearchReturnInputSnapshot`
+contract. The fixture builds a reusable synthetic-only, candidate-only
+snapshot and pins its primitive `to_dict()` representation for future tests.
+It hard-codes artificial prepared observation dates, Decimal close values,
+Decimal close-to-close returns, metadata, flags, and non-claims without
+computing returns or adding production research, ingestion, market-bar,
+strategy, evaluator, signal, benchmark, broker, runtime, persistence, or
+trading behavior. No source, data, endpoint, universe, benchmark, cash proxy,
+methodology, evidence, return-construction, no-lookahead, strategy-validation,
+trading-readiness, or production-contract approval was added. Normal pytest
+remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
