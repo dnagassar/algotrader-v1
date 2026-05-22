@@ -4216,6 +4216,34 @@ production-contract approval. It does not certify source, methodology,
 no-lookahead status, strategy validity, trading readiness, or downstream use.
 Normal pytest remains offline and credential-free.
 
+Phase 131 - Return Input Research Chain Regression Guard adds a test-only
+end-to-end regression guard for the existing Phase 120-130 return-input support
+chain. The guard composes the Phase 121 synthetic
+`ResearchReturnInputSnapshot` fixture, Phase 122 consistency validation, the
+Phase 123 fingerprint helper pinned to
+`07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`,
+Phase 125 package construction, Phase 126 package deserialization, Phase 127
+replay adaptation, Phase 128 result adaptation, the Phase 129 result fixture,
+and the Phase 130 provenance verifier. It verifies that consistency validation
+returns the original snapshot object, package construction preserves snapshot
+identity, package primitive round trips preserve fingerprint and snapshot
+equality, replay adaptation preserves prepared observation order and stored
+returns, result fixture output matches adapter output, provenance verification
+returns the original result object, and the Phase 127 manifest convention still
+uses the package snapshot id as `fixture_id` and `sha256:{package.fingerprint}`
+as `checksum`. Repeated construction is deterministic, copied primitive payload
+mutation fails existing validation/fingerprint/package/provenance checks, and
+the test module self-audits for forbidden imports, calls, literal real-world
+content, and disallowed payload fields. This phase adds no production behavior,
+src changes, runner, ingestion path, file I/O, persistence, market-bar
+production contract, strategy, signal, evaluator, benchmark or cash proxy
+logic, broker/runtime behavior, scheduler behavior, portfolio mutation, order
+generation, live/paper trading, real data, dependency, network call, credential,
+source approval, data approval, endpoint approval, universe approval,
+methodology approval, evidence approval, return-construction approval,
+no-lookahead approval, strategy validation, trading readiness, or
+production-contract approval. Normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

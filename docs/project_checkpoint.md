@@ -10139,6 +10139,29 @@ Safe next tasks include:
   certify source, methodology, no-lookahead status, strategy validity, trading
   readiness, or downstream use; normal pytest remains offline and
   credential-free
+- Phase 131 - Return Input Research Chain Regression Guard adds a test-only
+  end-to-end regression guard over the existing Phase 120-130 return-input
+  support chain. It composes the Phase 121 synthetic snapshot fixture, Phase
+  122 consistency validation, the Phase 123 fingerprint helper pinned to
+  `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`,
+  Phase 125 package construction, Phase 126 package deserialization, Phase 127
+  replay adaptation, Phase 128 result adaptation, the Phase 129 result fixture,
+  and the Phase 130 provenance verifier. The guard verifies original snapshot
+  identity on consistency validation, package snapshot identity preservation,
+  package primitive round-trip fingerprint and snapshot equality, replay
+  observation order and stored return preservation, result fixture and adapter
+  equality, provenance verifier object identity on success, the Phase 127
+  `fixture_id` and `sha256:{package.fingerprint}` checksum convention, repeated
+  construction determinism, copied primitive mutation rejection, absence of
+  disallowed payload fields, and a self-audit of the new test module for
+  forbidden imports, calls, and literal real-world content. It adds no
+  production behavior, src changes, runner, ingestion path, file I/O,
+  persistence, market-bar production contract, strategy, signal, evaluator,
+  benchmark or cash proxy logic, broker/runtime behavior, scheduler behavior,
+  portfolio mutation, order generation, live/paper trading, real data,
+  dependency, network call, credential, approval, validation claim, trading
+  readiness, or production-contract approval; normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
