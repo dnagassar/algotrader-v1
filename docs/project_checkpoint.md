@@ -9946,6 +9946,16 @@ Safe next tasks include:
   proxy, evidence, return-construction, no-lookahead, strategy-validation, or
   trading approval was added; and normal pytest remains offline and
   credential-free
+- Phase 115 - Polygon/Massive Legal/PIT Source Decision Gate adds a docs-only
+  routing decision gate after the Polygon/Massive schema/interface boundary
+  and synthetic reference ticker fixture. It records current evidence,
+  legal/storage blockers, point-in-time/source-quality blockers, conservative
+  decision rules, and a recommended pause on additional Polygon/Massive
+  synthetic fixtures that involve prices, corporate actions, flat files, or
+  return semantics. All sources remain unresolved; no source or data was
+  approved; no production code or tests changed; no real data was added; no
+  API calls or downloads occurred; and normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
