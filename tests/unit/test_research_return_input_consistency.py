@@ -251,6 +251,17 @@ def test_mismatched_stored_returns_are_rejected() -> None:
         validate_research_return_input_snapshot_consistency(mismatched)
 
 
+def test_from_dict_accepts_shape_valid_arithmetic_inconsistent_snapshot_before_check() -> None:
+    payload = build_synthetic_research_return_input_snapshot().to_dict()
+    payload["close_values"][1] = "10.6000"
+
+    snapshot = ResearchReturnInputSnapshot.from_dict(payload)
+
+    assert snapshot.close_values[1] == Decimal("10.6000")
+    with pytest.raises(ValidationError, match="close_to_close_returns"):
+        validate_research_return_input_snapshot_consistency(snapshot)
+
+
 def test_reversed_return_values_are_rejected_by_consistency_function() -> None:
     snapshot = build_synthetic_research_return_input_snapshot()
     reversed_returns = replace(

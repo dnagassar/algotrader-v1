@@ -47,7 +47,12 @@ _REQUIRED_NON_CLAIMS = frozenset(
 
 @dataclass(frozen=True, slots=True)
 class ResearchReturnInputSnapshot:
-    """Metadata snapshot for deterministic, already prepared return inputs."""
+    """Metadata snapshot for deterministic, already prepared return inputs.
+
+    Required string fields are stripped before storage, serialization, and
+    fingerprinting. Snapshot construction validates metadata shape only;
+    arithmetic consistency is checked by the separate consistency helper.
+    """
 
     snapshot_id: str
     symbol: str
@@ -81,7 +86,12 @@ class ResearchReturnInputSnapshot:
 
     @classmethod
     def from_dict(cls, payload: object) -> "ResearchReturnInputSnapshot":
-        """Restore a snapshot from strict JSON-compatible metadata."""
+        """Restore a snapshot from strict JSON-compatible metadata.
+
+        This validates the serialization/schema shape and normalized field
+        values only. It intentionally does not perform arithmetic consistency
+        validation between prepared close values and stored returns.
+        """
         if not isinstance(payload, dict):
             raise ValidationError("research return input payload must be a dict.")
 

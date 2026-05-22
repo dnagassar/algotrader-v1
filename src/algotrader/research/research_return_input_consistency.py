@@ -14,7 +14,11 @@ __all__ = [
 def validate_research_return_input_snapshot_consistency(
     snapshot: ResearchReturnInputSnapshot,
 ) -> ResearchReturnInputSnapshot:
-    """Validate that stored returns match prepared close values exactly."""
+    """Validate exact arithmetic consistency for an already-prepared snapshot.
+
+    The check introduces no rounding, tolerance, inference, or approval; it
+    only compares stored returns against the existing return mechanics.
+    """
 
     if not isinstance(snapshot, ResearchReturnInputSnapshot):
         raise ValidationError("snapshot must be a ResearchReturnInputSnapshot.")

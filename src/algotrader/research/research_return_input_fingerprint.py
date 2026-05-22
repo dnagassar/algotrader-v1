@@ -16,7 +16,11 @@ __all__ = [
 def research_return_input_snapshot_fingerprint(
     snapshot: ResearchReturnInputSnapshot,
 ) -> str:
-    """Return the stable SHA-256 digest for a consistent snapshot."""
+    """Return a deterministic content hash for a candidate-only snapshot.
+
+    The digest does not certify source, methodology, data, strategy, or
+    downstream use.
+    """
 
     validate_research_return_input_snapshot_consistency(snapshot)
     payload = snapshot.to_dict()

@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2570-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2610-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -10022,6 +10022,24 @@ Safe next tasks include:
   data, vendor SDK, dependency, network call, credential, timestamp, local path,
   environment lookup, or file I/O behavior; normal pytest remains offline and
   credential-free
+- Phase 124 - Research Return Input Fingerprint / Serialization Hardening
+  clarifies the existing Phase 120-123 contracts and adds focused tests only.
+  `ResearchReturnInputSnapshot.from_dict()` is documented as
+  serialization/schema shape validation only, with no arithmetic consistency
+  check. The consistency helper is documented as an exact arithmetic check over
+  already-prepared snapshots with no rounding, tolerance, inference, or
+  approval, and it still returns the original snapshot object on success. The
+  fingerprint helper is documented as a deterministic content hash for
+  candidate-only snapshots only; it does not certify source, methodology, data,
+  strategy, or downstream use. Tests now pin digest stability through
+  `to_dict()`/`from_dict()` round trips, primitive payload mutation behavior,
+  shape-valid arithmetic inconsistency acceptance by `from_dict()`,
+  consistency/fingerprint rejection of inconsistent snapshots, and the existing
+  Phase 121 fixture digest. No production behavior, ingestion, runner,
+  market-bar, strategy, evaluator, signal, broker/runtime, persistence,
+  portfolio mutation, order generation, trading behavior, real data,
+  dependency, network call, credential, or file I/O behavior was added; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

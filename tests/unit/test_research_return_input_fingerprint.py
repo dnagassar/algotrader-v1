@@ -212,6 +212,40 @@ def test_round_tripped_snapshot_produces_same_digest() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "field_name,index,mutated_value,expected",
+    (
+        ("observation_dates", 0, "2099-01-02", "digest_changes"),
+        ("close_values", 1, "10.6000", "fingerprint_rejects"),
+        ("close_to_close_returns", 0, "0.0501", "fingerprint_rejects"),
+        ("non_claims", 0, "not altered source approval", "from_dict_rejects"),
+    ),
+)
+def test_mutating_one_primitive_payload_value_changes_digest_or_fails_validation(
+    field_name: str,
+    index: int,
+    mutated_value: str,
+    expected: str,
+) -> None:
+    snapshot = build_synthetic_research_return_input_snapshot()
+    original_digest = research_return_input_snapshot_fingerprint(snapshot)
+    payload = snapshot.to_dict()
+    payload[field_name][index] = mutated_value
+
+    if expected == "from_dict_rejects":
+        with pytest.raises(ValidationError):
+            ResearchReturnInputSnapshot.from_dict(payload)
+        return
+
+    mutated_snapshot = ResearchReturnInputSnapshot.from_dict(payload)
+    if expected == "fingerprint_rejects":
+        with pytest.raises(ValidationError, match="close_to_close_returns"):
+            research_return_input_snapshot_fingerprint(mutated_snapshot)
+        return
+
+    assert research_return_input_snapshot_fingerprint(mutated_snapshot) != original_digest
+
+
 def test_different_valid_synthetic_snapshot_content_changes_digest() -> None:
     snapshot = build_synthetic_research_return_input_snapshot()
     variant = replace(
@@ -231,6 +265,15 @@ def test_inconsistent_snapshot_is_rejected_by_consistency_checker() -> None:
         snapshot,
         close_to_close_returns=(Decimal("0.05"), Decimal("-0.049")),
     )
+
+    with pytest.raises(ValidationError, match="close_to_close_returns"):
+        research_return_input_snapshot_fingerprint(inconsistent)
+
+
+def test_shape_valid_arithmetic_inconsistent_snapshot_is_rejected_before_hashing() -> None:
+    payload = build_synthetic_research_return_input_snapshot().to_dict()
+    payload["close_values"][1] = "10.6000"
+    inconsistent = ResearchReturnInputSnapshot.from_dict(payload)
 
     with pytest.raises(ValidationError, match="close_to_close_returns"):
         research_return_input_snapshot_fingerprint(inconsistent)
