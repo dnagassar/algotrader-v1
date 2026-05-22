@@ -10503,6 +10503,27 @@ Safe next tasks include:
   methodology approval, evidence approval, validation claim, trading readiness,
   recommendation, ranking/scoring, or production-contract approval; normal
   pytest remains offline and credential-free
+- Phase 146 - Advisory Operating Brief Rendered Text Regression Guard adds a
+  test-only exact rendered-text pin in
+  `tests/unit/test_advisory_operating_brief_renderer_regression.py` using the
+  Phase 143 synthetic advisory operating brief fixture and Phase 145 renderer.
+  It compares the full deterministic line tuple, proves repeated renders are
+  byte-for-byte identical, checks fixed advisory type/status values, preserves
+  nested candidate brief/section/item sequence, carries through the Phase 123
+  digest and Phase 127/141 manifest fixture/checksum convention, confirms
+  limitations and non-claims remain visible, proves copied text and copied
+  primitive payload edits do not mutate the source operating brief, and keeps
+  import/call/literal guardrails in the test module. It adds no `src/` changes,
+  production behavior, parser, `from_text`, markdown writer, CLI, dashboard,
+  notebook, persistence, file I/O, local snapshot loading, scheduler, runtime
+  behavior, LLM/agent behavior, ingestion, market-bar production contract,
+  strategy, signal, evaluator, benchmark or cash proxy logic, backtesting
+  engine, broker/runtime behavior, portfolio mutation, allocation behavior,
+  order generation, live/paper trading, real data, dependency, network call,
+  credential, source approval, endpoint approval, universe approval,
+  methodology approval, evidence approval, validation claim, trading readiness,
+  recommendation, ranking/scoring, or production-contract approval; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
