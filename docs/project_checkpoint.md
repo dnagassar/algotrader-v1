@@ -10040,6 +10040,20 @@ Safe next tasks include:
   portfolio mutation, order generation, trading behavior, real data,
   dependency, network call, credential, or file I/O behavior was added; normal
   pytest remains offline and credential-free
+- Phase 125 - Verified Research Return Input Package adds a tiny deterministic
+  `ResearchReturnInputPackage` contract that binds a
+  `ResearchReturnInputSnapshot` to its verified Phase 123 fingerprint after
+  Phase 122 consistency validation. The builder preserves the original snapshot
+  object, returns an immutable package, and exposes only a primitive
+  deterministic `to_dict()` wrapper over the existing snapshot serialization and
+  fingerprint. Direct construction validates the snapshot type, lowercase
+  SHA-256 fingerprint shape, arithmetic consistency, and fingerprint match.
+  This is provenance and plumbing only; it adds no research runner, ingestion
+  path, market-bar production contract, strategy, signal, evaluator, benchmark
+  or cash proxy logic, backtest, broker/runtime behavior, persistence,
+  scheduler behavior, portfolio mutation, order generation, live/paper trading,
+  trading readiness, real data, dependency, network call, credential, or file
+  I/O behavior; normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
