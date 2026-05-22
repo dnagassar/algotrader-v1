@@ -4030,6 +4030,12 @@ input shape. No production code changed; no real data was added; no API calls
 or downloads occurred; no source or data approval was added; and normal pytest
 remains offline and credential-free.
 
+Phase 117 - Source-Agnostic Synthetic Market Bar Sequence Fixture adds one
+tiny source-agnostic synthetic market-bar sequence fixture using the Phase 116
+bar shape. No production code changed; no real data was added; no API calls or
+downloads occurred; no source or data approval was added; and normal pytest
+remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

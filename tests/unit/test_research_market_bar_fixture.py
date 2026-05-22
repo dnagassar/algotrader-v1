@@ -8,8 +8,11 @@ from pathlib import Path
 
 from tests.fixtures.research_market_bar import (
     build_synthetic_research_market_bar,
+    build_synthetic_research_market_bar_sequence,
     expected_synthetic_research_market_bar_dict,
     expected_synthetic_research_market_bar_json,
+    expected_synthetic_research_market_bar_sequence_dict,
+    expected_synthetic_research_market_bar_sequence_json,
 )
 
 
@@ -28,6 +31,16 @@ _EXPECTED_FIELDS = (
     "adjustment_policy",
     "return_basis",
     "source_category",
+    "synthetic_only",
+    "candidate_only",
+    "non_claims",
+)
+
+_EXPECTED_SEQUENCE_FIELDS = (
+    "sequence_id",
+    "symbol",
+    "bar_count",
+    "bars",
     "synthetic_only",
     "candidate_only",
     "non_claims",
@@ -254,8 +267,28 @@ def test_fixture_output_is_deterministic_across_repeated_calls() -> None:
     assert first["non_claims"] is not second["non_claims"]
 
 
+def test_sequence_fixture_output_is_deterministic_across_repeated_calls() -> None:
+    first = build_synthetic_research_market_bar_sequence()
+    second = build_synthetic_research_market_bar_sequence()
+
+    assert first == second
+    assert first is not second
+    assert first == expected_synthetic_research_market_bar_sequence_dict()
+    assert tuple(first) == _EXPECTED_SEQUENCE_FIELDS
+    assert first["bars"] is not second["bars"]
+    assert first["bars"][0] is not second["bars"][0]
+    assert first["non_claims"] is not second["non_claims"]
+    assert first["bars"][0]["non_claims"] is not second["bars"][0]["non_claims"]
+
+
 def test_fixture_dict_output_is_primitive_only() -> None:
     payload = build_synthetic_research_market_bar()
+
+    _assert_primitive_only(payload)
+
+
+def test_sequence_fixture_dict_output_is_primitive_only() -> None:
+    payload = build_synthetic_research_market_bar_sequence()
 
     _assert_primitive_only(payload)
 
@@ -270,17 +303,53 @@ def test_fixture_json_serialization_is_byte_stable() -> None:
     assert json.loads(first.decode("utf-8")) == expected_synthetic_research_market_bar_dict()
 
 
+def test_sequence_fixture_json_serialization_is_byte_stable() -> None:
+    first = _compact_json_bytes(build_synthetic_research_market_bar_sequence())
+    second = _compact_json_bytes(build_synthetic_research_market_bar_sequence())
+    expected = expected_synthetic_research_market_bar_sequence_json().encode("utf-8")
+
+    assert first == second
+    assert first == expected
+    assert (
+        json.loads(first.decode("utf-8"))
+        == expected_synthetic_research_market_bar_sequence_dict()
+    )
+
+
+def test_sequence_bars_are_ordered_unique_and_share_one_synthetic_symbol() -> None:
+    payload = build_synthetic_research_market_bar_sequence()
+    bars = payload["bars"]
+    observation_dates = [bar["observation_date"] for bar in bars]
+    symbols = {bar["symbol"] for bar in bars}
+
+    assert payload["bar_count"] == 3
+    assert len(bars) == payload["bar_count"]
+    assert observation_dates == sorted(observation_dates)
+    assert len(observation_dates) == len(set(observation_dates))
+    assert symbols == {payload["symbol"]}
+    assert symbols == {"SYNBARSEQ001"}
+    assert all(tuple(bar) == _EXPECTED_FIELDS for bar in bars)
+
+
 def test_fixture_uses_only_fake_symbol_values_and_no_real_tickers() -> None:
     payload = build_synthetic_research_market_bar()
-    serialized = expected_synthetic_research_market_bar_json().upper()
+    sequence = build_synthetic_research_market_bar_sequence()
+    serialized = (
+        expected_synthetic_research_market_bar_json()
+        + expected_synthetic_research_market_bar_sequence_json()
+    ).upper()
 
     assert payload["symbol"] == "SYNBAR001"
+    assert sequence["symbol"] == "SYNBARSEQ001"
     for ticker in _REAL_TICKERS:
         assert re.search(rf"(?<![A-Z0-9]){ticker}(?![A-Z0-9])", serialized) is None
 
 
 def test_fixture_contains_no_vendor_names_credentials_urls_or_data_paths() -> None:
-    serialized = expected_synthetic_research_market_bar_json()
+    serialized = (
+        expected_synthetic_research_market_bar_json()
+        + expected_synthetic_research_market_bar_sequence_json()
+    )
     lowered = serialized.lower()
 
     for term in _REAL_VENDOR_OR_PROVIDER_TERMS:
@@ -292,40 +361,68 @@ def test_fixture_contains_no_vendor_names_credentials_urls_or_data_paths() -> No
 
 
 def test_fixture_has_candidate_and_synthetic_flags_without_approval_state() -> None:
-    payload = build_synthetic_research_market_bar()
+    payloads = (
+        build_synthetic_research_market_bar(),
+        build_synthetic_research_market_bar_sequence(),
+    )
 
-    assert payload["synthetic_only"] is True
-    assert payload["candidate_only"] is True
-    for key in _APPROVAL_STATE_KEYS:
-        assert key not in payload
-    assert "approved" not in expected_synthetic_research_market_bar_json().lower()
+    for payload in payloads:
+        assert payload["synthetic_only"] is True
+        assert payload["candidate_only"] is True
+        for key in _APPROVAL_STATE_KEYS:
+            assert key not in _flatten_dict_keys(payload)
+    assert (
+        "approved"
+        not in (
+            expected_synthetic_research_market_bar_json()
+            + expected_synthetic_research_market_bar_sequence_json()
+        ).lower()
+    )
 
 
 def test_fixture_has_no_signal_evaluator_portfolio_or_trading_fields() -> None:
-    payload = build_synthetic_research_market_bar()
+    payloads = (
+        build_synthetic_research_market_bar(),
+        build_synthetic_research_market_bar_sequence(),
+    )
 
-    for key in payload:
-        lowered = key.lower()
-        assert all(term not in lowered for term in _FORBIDDEN_TRADING_FIELD_TERMS)
+    for payload in payloads:
+        for key in _flatten_dict_keys(payload):
+            lowered = key.lower()
+            assert all(term not in lowered for term in _FORBIDDEN_TRADING_FIELD_TERMS)
 
 
 def test_fixture_includes_required_non_claims_and_no_extra_claims() -> None:
-    payload = build_synthetic_research_market_bar()
-    non_claims = payload["non_claims"]
+    payloads = (
+        build_synthetic_research_market_bar(),
+        build_synthetic_research_market_bar_sequence(),
+    )
 
-    assert isinstance(non_claims, list)
-    assert set(non_claims) == _REQUIRED_NON_CLAIMS
-    assert all(claim.startswith("not ") for claim in non_claims)
+    for payload in payloads:
+        non_claims = payload["non_claims"]
+        assert isinstance(non_claims, list)
+        assert set(non_claims) == _REQUIRED_NON_CLAIMS
+        assert all(claim.startswith("not ") for claim in non_claims)
+
+    for bar in build_synthetic_research_market_bar_sequence()["bars"]:
+        non_claims = bar["non_claims"]
+        assert isinstance(non_claims, list)
+        assert set(non_claims) == _REQUIRED_NON_CLAIMS
+        assert all(claim.startswith("not ") for claim in non_claims)
 
 
 def test_fixture_approval_validation_and_trading_terms_are_negative_non_claims() -> None:
-    payload = build_synthetic_research_market_bar()
+    payloads = (
+        build_synthetic_research_market_bar(),
+        build_synthetic_research_market_bar_sequence(),
+    )
 
-    for field_name, value in _flatten_string_values(payload):
-        lowered = value.lower()
-        if any(term in lowered for term in _APPROVAL_VALIDATION_TRADING_TERMS):
-            assert field_name == "non_claims"
-            assert lowered.startswith("not ")
+    for payload in payloads:
+        for field_name, value in _flatten_string_values(payload):
+            lowered = value.lower()
+            if any(term in lowered for term in _APPROVAL_VALIDATION_TRADING_TERMS):
+                assert field_name == "non_claims"
+                assert lowered.startswith("not ")
 
 
 def test_fixture_does_not_mutate_across_repeated_calls() -> None:
@@ -338,6 +435,22 @@ def test_fixture_does_not_mutate_across_repeated_calls() -> None:
     assert second == expected_synthetic_research_market_bar_dict()
     assert second["symbol"] == "SYNBAR001"
     assert "changed" not in second["non_claims"]
+
+
+def test_sequence_fixture_does_not_mutate_across_repeated_calls() -> None:
+    first = build_synthetic_research_market_bar_sequence()
+    first["symbol"] = "CHANGED"
+    first["bars"][0]["symbol"] = "CHANGED"
+    first["bars"][0]["non_claims"].append("changed")
+    first["non_claims"].append("changed")
+
+    second = build_synthetic_research_market_bar_sequence()
+
+    assert second == expected_synthetic_research_market_bar_sequence_dict()
+    assert second["symbol"] == "SYNBARSEQ001"
+    assert second["bars"][0]["symbol"] == "SYNBARSEQ001"
+    assert "changed" not in second["non_claims"]
+    assert "changed" not in second["bars"][0]["non_claims"]
 
 
 def test_fixture_file_has_no_vendor_network_runtime_file_or_llm_imports() -> None:
@@ -398,6 +511,23 @@ def _flatten_string_values(value: object, field_name: str = "") -> tuple[tuple[s
 
     if isinstance(value, str):
         return ((field_name, value),)
+
+    return ()
+
+
+def _flatten_dict_keys(value: object) -> tuple[str, ...]:
+    if isinstance(value, dict):
+        keys: list[str] = []
+        for key, item in value.items():
+            keys.append(str(key))
+            keys.extend(_flatten_dict_keys(item))
+        return tuple(keys)
+
+    if isinstance(value, list):
+        keys = []
+        for item in value:
+            keys.extend(_flatten_dict_keys(item))
+        return tuple(keys)
 
     return ()
 
