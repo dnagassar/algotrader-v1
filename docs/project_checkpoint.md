@@ -10069,6 +10069,26 @@ Safe next tasks include:
   mutation, order generation, live/paper trading, trading readiness, real data,
   dependency, network call, credential, timestamp, environment lookup, local
   path, or file I/O behavior; normal pytest remains offline and credential-free
+- Phase 127 - Verified Return Input Package Replay Adapter adds one narrow
+  deterministic adapter from `ResearchReturnInputPackage` into the existing
+  `SyntheticReplaySnapshot` metadata contract. It requires an already valid
+  package, copies only prepared observation dates, prepared close values, and
+  stored close-to-close `Decimal` returns into replay metadata, and avoids the
+  existing replay builder because that builder recomputes returns from values.
+  The existing snapshot contract has no dedicated package provenance field, so
+  the adapted manifest carries the package snapshot id as `fixture_id` and the
+  package fingerprint as `checksum`; manifest limitations record that required
+  `available_after` values mirror observation dates as candidate metadata only.
+  This is deterministic metadata plumbing only and adds no research runner,
+  ingestion path, file I/O, persistence, market-bar production contract,
+  strategy, signal, evaluator, benchmark or cash proxy logic, broker/runtime
+  behavior, scheduler behavior, portfolio mutation, order generation,
+  live/paper trading, trading readiness, real data, dependency, network call,
+  credential, timestamp, environment lookup, local path, source approval, data
+  approval, endpoint approval, universe approval, methodology approval,
+  evidence approval, return-construction approval, no-lookahead approval,
+  strategy validation, or production-contract approval; normal pytest remains
+  offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
