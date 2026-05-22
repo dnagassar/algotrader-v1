@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2706` tests are passing, with `4` skipped paper-integration tests by default.
+- `3001` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -4492,6 +4492,32 @@ live/paper trading, real data, dependency, network call, credential,
 approval status, validation claim, trading readiness, recommendation, action,
 ranking/scoring, or production-contract approval. Normal pytest remains
 offline and credential-free.
+
+Phase 142 - Advisory Operating Brief Container adds only the frozen/slotted,
+metadata-only `AdvisoryOperatingBrief` in
+`src/algotrader/research/advisory_operating_brief.py` with focused unit
+coverage in `tests/unit/test_advisory_operating_brief.py`. The container groups
+existing `CandidateResearchBrief` objects for future operating-brief display
+surfaces, fixes `operating_brief_type` to `advisory_operating_brief`, fixes
+status to advisory `candidate_only`, preserves candidate brief object identity
+and caller-provided sequence exactly, rejects empty inputs, non-brief inputs,
+duplicate brief identities, forbidden brief types, approval-like statuses, and
+malformed title, limitations, or non-claims. The builder carries candidate
+brief limitations and non-claims forward without adding approval semantics, and
+`to_dict()` emits only deterministic primitive metadata: operating brief type,
+status, title, candidate brief count, nested candidate brief payloads,
+limitations, and non-claims. Tests prove determinism, primitive serialization,
+input non-mutation, package digest visibility, Phase 127/141 provenance
+visibility, no package `__init__` re-export, and source-level import/call/text
+guardrails. This phase adds no `from_dict()`, LLM/agent behavior, ingestion,
+persistence, file I/O, local snapshot loading, scheduler, CLI, runtime
+behavior, market-bar production contract, strategy, signal, evaluator,
+benchmark or cash proxy logic, backtesting engine, broker/runtime behavior,
+portfolio mutation, allocation behavior, order generation, live/paper trading,
+real data, dependency, network call, credential, source approval, data
+approval, methodology approval, evidence approval, strategy validation,
+trading readiness, recommendation, ranking/scoring, or production-contract
+approval. Normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

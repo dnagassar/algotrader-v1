@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2706-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 3001-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -10401,6 +10401,32 @@ Safe next tasks include:
   credential, approval status, validation claim, trading readiness,
   recommendation, action, ranking/scoring, or production-contract approval;
   normal pytest remains offline and credential-free
+- Phase 142 - Advisory Operating Brief Container adds only the frozen/slotted,
+  metadata-only `AdvisoryOperatingBrief` in
+  `src/algotrader/research/advisory_operating_brief.py` with focused coverage
+  in `tests/unit/test_advisory_operating_brief.py`. It groups existing
+  `CandidateResearchBrief` objects for future operating-brief display surfaces,
+  fixes `operating_brief_type` to `advisory_operating_brief`, fixes status to
+  advisory `candidate_only`, preserves candidate brief object identity and
+  caller-provided sequence exactly, rejects empty inputs, non-brief inputs,
+  duplicate brief identities, forbidden brief types, approval-like statuses,
+  and malformed title, limitations, or non-claims. The builder carries
+  candidate brief limitations and non-claims forward without adding approval
+  semantics, and `to_dict()` emits only deterministic primitive metadata:
+  operating brief type, status, title, candidate brief count, nested candidate
+  brief payloads, limitations, and non-claims. Tests prove determinism,
+  primitive serialization, input non-mutation, Phase 123 digest visibility,
+  Phase 127/141 provenance visibility, no package `__init__` re-export, and
+  source-level import/call/text guardrails. It adds no `from_dict()`, LLM/agent
+  behavior, ingestion, persistence, file I/O, local snapshot loading,
+  scheduler, CLI, runtime behavior, market-bar production contract, strategy,
+  signal, evaluator, benchmark or cash proxy logic, backtesting engine,
+  broker/runtime behavior, portfolio mutation, allocation behavior, order
+  generation, live/paper trading, real data, dependency, network call,
+  credential, source approval, data approval, methodology approval, evidence
+  approval, strategy validation, trading readiness, recommendation,
+  ranking/scoring, or production-contract approval; normal pytest remains
+  offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
