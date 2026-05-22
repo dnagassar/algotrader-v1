@@ -4573,6 +4573,30 @@ universe approval, methodology approval, evidence approval, validation claim,
 trading readiness, recommendation, ranking/scoring, or production-contract
 approval. Normal pytest remains offline and credential-free.
 
+Phase 145 - Advisory Operating Brief Text Renderer adds one narrow display-only
+helper in `src/algotrader/research/advisory_operating_brief_renderer.py` and
+focused coverage in
+`tests/unit/test_advisory_operating_brief_renderer.py`. The renderer requires an
+existing `AdvisoryOperatingBrief`, reads only its deterministic `to_dict()`
+payload, and emits stable plain text with fixed headings. It preserves the
+existing candidate brief, section, and item sequence exactly; includes fixed
+advisory type/status metadata, limitations, and non-claims; and carries through
+the Phase 123 digest plus the Phase 127/141 manifest convention fields when
+they are visible in nested payloads. Tests prove fixture acceptance, invalid
+input rejection, repeated-render determinism, sequence preservation,
+non-mutation, source-level import/call/text guardrails, no package `__init__`
+re-export, and that the renderer output uses only existing operating brief
+data. This phase adds no parser, `from_text`, markdown writer, CLI, dashboard,
+notebook, persistence, file I/O, local snapshot loading, scheduler, runtime
+behavior, LLM/agent behavior, ingestion, market-bar production contract,
+strategy, signal, evaluator, benchmark or cash proxy logic, backtesting engine,
+broker/runtime behavior, portfolio mutation, allocation behavior, order
+generation, live/paper trading, real data, dependency, network call,
+credential, source approval, endpoint approval, universe approval, methodology
+approval, evidence approval, validation claim, trading readiness,
+recommendation, ranking/scoring, or production-contract approval. Normal pytest
+remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

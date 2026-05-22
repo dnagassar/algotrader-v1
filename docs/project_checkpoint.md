@@ -10480,6 +10480,29 @@ Safe next tasks include:
   validation claim, trading readiness, recommendation, ranking/scoring, or
   production-contract approval; normal pytest remains offline and
   credential-free
+- Phase 145 - Advisory Operating Brief Text Renderer adds one narrow
+  display-only helper in
+  `src/algotrader/research/advisory_operating_brief_renderer.py` and focused
+  coverage in `tests/unit/test_advisory_operating_brief_renderer.py`. It
+  requires an existing `AdvisoryOperatingBrief`, reads only its deterministic
+  `to_dict()` payload, emits stable plain text with fixed headings, and
+  preserves the existing candidate brief, section, and item sequence exactly.
+  The rendered text includes fixed advisory type/status metadata, limitations,
+  non-claims, the Phase 123 digest, and the Phase 127/141 manifest convention
+  fields when those values are visible in nested payloads. Tests prove fixture
+  acceptance, invalid input rejection, repeated-render determinism, sequence
+  preservation, non-mutation, source-level import/call/text guardrails, no
+  package `__init__` re-export, and output based only on existing operating
+  brief data. It adds no parser, `from_text`, markdown writer, CLI, dashboard,
+  notebook, persistence, file I/O, local snapshot loading, scheduler, runtime
+  behavior, LLM/agent behavior, ingestion, market-bar production contract,
+  strategy, signal, evaluator, benchmark or cash proxy logic, backtesting
+  engine, broker/runtime behavior, portfolio mutation, allocation behavior,
+  order generation, live/paper trading, real data, dependency, network call,
+  credential, source approval, endpoint approval, universe approval,
+  methodology approval, evidence approval, validation claim, trading readiness,
+  recommendation, ranking/scoring, or production-contract approval; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
