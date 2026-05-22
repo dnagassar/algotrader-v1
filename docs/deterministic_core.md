@@ -4337,6 +4337,30 @@ real data, dependency, network call, credential, approval status, validation
 claim, trading readiness, recommendation, action, or production-contract
 approval. Normal pytest remains offline and credential-free.
 
+Phase 136 - Candidate Research Brief Section adds a frozen/slotted
+`CandidateResearchBriefSection` plus
+`build_candidate_research_brief_section()`. The section is fixed to
+`candidate_research_results` with advisory `candidate_only` status and the
+deterministic title `Candidate research results metadata`. The builder accepts
+existing `CandidateResearchBriefItem` objects, normalizes them to an immutable
+tuple, preserves object identity and caller-provided sequence exactly, rejects
+empty or non-item payloads, and rejects duplicate item identities. Section
+limitations and non-claims are deterministic metadata only, carry item
+guardrails forward, and require the existing advisory non-claims to remain
+present. `to_dict()` emits only primitive deterministic metadata: section type,
+status, title, item count, item payloads, limitations, and non-claims; no
+`from_dict()` is added. Tests cover direct construction validation,
+serialization determinism, mutation resistance, required non-claim coverage,
+forbidden field absence, and module-level import/call/text audits. The phase
+does not re-export the section from package `__init__` and adds no LLM/agent,
+runner, ingestion, file I/O, persistence, market-bar production contract,
+strategy, signal, evaluator, benchmark or cash proxy logic, broker/runtime
+behavior, scheduler behavior, portfolio mutation, allocation behavior, order
+generation, live/paper trading, real data, dependency, network call,
+credential, approval status, validation claim, trading readiness,
+recommendation, action, or production-contract approval. Normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
