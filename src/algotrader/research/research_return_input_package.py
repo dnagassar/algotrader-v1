@@ -19,6 +19,7 @@ __all__ = [
 ]
 
 _LOWERCASE_SHA256_HEX_CHARS = frozenset("0123456789abcdef")
+_PACKAGE_FIELD_NAMES = ("snapshot", "fingerprint")
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +45,22 @@ class ResearchReturnInputPackage:
             "snapshot": self.snapshot.to_dict(),
             "fingerprint": self.fingerprint,
         }
+
+    @classmethod
+    def from_dict(cls, payload: object) -> "ResearchReturnInputPackage":
+        """Restore a verified package from its primitive representation."""
+
+        if not isinstance(payload, dict):
+            raise ValidationError(
+                "research return input package payload must be a dict."
+            )
+
+        _validate_package_payload_fields(payload)
+        snapshot = ResearchReturnInputSnapshot.from_dict(payload["snapshot"])
+        fingerprint = payload["fingerprint"]
+        _validate_fingerprint_shape(fingerprint)
+
+        return cls(snapshot=snapshot, fingerprint=fingerprint)
 
 
 def build_research_return_input_package(
@@ -75,4 +92,24 @@ def _validate_fingerprint_shape(fingerprint: object) -> None:
     if any(character not in _LOWERCASE_SHA256_HEX_CHARS for character in fingerprint):
         raise ValidationError(
             "fingerprint must be a 64-character lowercase SHA-256 hex string."
+        )
+
+
+def _validate_package_payload_fields(payload: dict[object, object]) -> None:
+    unknown_fields = tuple(
+        field_name for field_name in payload if field_name not in _PACKAGE_FIELD_NAMES
+    )
+    if unknown_fields:
+        unknown = ", ".join(str(field_name) for field_name in unknown_fields)
+        raise ValidationError(
+            f"unknown research return input package field(s): {unknown}."
+        )
+
+    missing_fields = tuple(
+        field_name for field_name in _PACKAGE_FIELD_NAMES if field_name not in payload
+    )
+    if missing_fields:
+        missing = ", ".join(missing_fields)
+        raise ValidationError(
+            f"missing research return input package field(s): {missing}."
         )

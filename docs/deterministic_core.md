@@ -4129,6 +4129,22 @@ order generation, live/paper trading, trading readiness, real data, dependency,
 network call, credential, or file I/O behavior. Normal pytest remains offline
 and credential-free.
 
+Phase 126 - Verified Research Return Input Package Deserialization adds narrow
+deterministic `ResearchReturnInputPackage.from_dict()` plumbing for primitive
+package payloads shaped only as `snapshot` plus `fingerprint`. The deserializer
+rejects non-dicts, missing or unknown package fields, malformed nested snapshot
+payloads, malformed lowercase SHA-256 fingerprint values, fingerprint mismatches,
+and arithmetic-inconsistent reconstructed snapshots. Rebuilds always go through
+`ResearchReturnInputSnapshot.from_dict()` and then the existing package
+validation path, preserving current builder behavior and the existing
+`to_dict()` output shape. This is provenance and serialization plumbing only; it
+adds no research runner, ingestion path, market-bar production contract,
+strategy, signal, evaluator, benchmark or cash proxy logic, backtest,
+broker/runtime behavior, persistence, scheduler behavior, portfolio mutation,
+order generation, live/paper trading, trading readiness, real data, dependency,
+network call, credential, timestamp, environment lookup, local path, or file I/O
+behavior. Normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

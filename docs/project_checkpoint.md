@@ -10054,6 +10054,21 @@ Safe next tasks include:
   scheduler behavior, portfolio mutation, order generation, live/paper trading,
   trading readiness, real data, dependency, network call, credential, or file
   I/O behavior; normal pytest remains offline and credential-free
+- Phase 126 - Verified Research Return Input Package Deserialization adds
+  narrow deterministic `ResearchReturnInputPackage.from_dict()` plumbing for
+  primitive package payloads shaped only as `snapshot` plus `fingerprint`. It
+  reconstructs the nested snapshot through
+  `ResearchReturnInputSnapshot.from_dict()` and then uses the existing package
+  validation path, rejecting non-dicts, missing or unknown package fields,
+  malformed nested snapshots, malformed lowercase SHA-256 fingerprint values,
+  fingerprint mismatches, and arithmetic-inconsistent reconstructed snapshots.
+  This preserves current builder behavior and the existing `to_dict()` output
+  shape, and adds no research runner, ingestion path, market-bar production
+  contract, strategy, signal, evaluator, benchmark or cash proxy logic,
+  backtest, broker/runtime behavior, persistence, scheduler behavior, portfolio
+  mutation, order generation, live/paper trading, trading readiness, real data,
+  dependency, network call, credential, timestamp, environment lookup, local
+  path, or file I/O behavior; normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

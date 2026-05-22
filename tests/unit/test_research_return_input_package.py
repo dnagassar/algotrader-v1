@@ -301,6 +301,122 @@ def test_to_dict_is_primitive_only_and_deterministic() -> None:
     assert _is_primitive_payload(first)
 
 
+def test_from_dict_round_trips_package_payload() -> None:
+    snapshot = build_synthetic_research_return_input_snapshot()
+    package = build_research_return_input_package(snapshot)
+
+    round_tripped = ResearchReturnInputPackage.from_dict(package.to_dict())
+
+    assert isinstance(round_tripped, ResearchReturnInputPackage)
+    assert round_tripped.fingerprint == package.fingerprint
+    assert round_tripped.snapshot == snapshot
+
+
+@pytest.mark.parametrize("payload", (None, [], (), "", object()))
+def test_from_dict_rejects_non_dict_payloads(payload: object) -> None:
+    with pytest.raises(ValidationError, match="package payload must be a dict"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {},
+        {"snapshot": {}},
+        {"fingerprint": _SYNTHETIC_FIXTURE_DIGEST},
+    ),
+)
+def test_from_dict_rejects_missing_keys(payload: object) -> None:
+    with pytest.raises(ValidationError, match="missing research return input package"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+def test_from_dict_rejects_unknown_keys() -> None:
+    package = build_research_return_input_package(
+        build_synthetic_research_return_input_snapshot()
+    )
+    payload = package.to_dict()
+    payload["extra"] = "unused"
+
+    with pytest.raises(ValidationError, match="unknown research return input package"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+def test_from_dict_rejects_malformed_nested_snapshot_payloads() -> None:
+    package = build_research_return_input_package(
+        build_synthetic_research_return_input_snapshot()
+    )
+    payload = package.to_dict()
+    payload["snapshot"] = {"snapshot_id": "only"}
+
+    with pytest.raises(ValidationError, match="missing research return input"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+@pytest.mark.parametrize(
+    "fingerprint",
+    (
+        "",
+        "0" * 63,
+        "0" * 65,
+        "G" + ("0" * 63),
+        "A" + ("0" * 63),
+        object(),
+    ),
+)
+def test_from_dict_rejects_malformed_fingerprint_values(
+    fingerprint: object,
+) -> None:
+    package = build_research_return_input_package(
+        build_synthetic_research_return_input_snapshot()
+    )
+    payload = package.to_dict()
+    payload["fingerprint"] = fingerprint
+
+    with pytest.raises(ValidationError, match="64-character lowercase"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+def test_from_dict_rejects_mismatched_fingerprint() -> None:
+    package = build_research_return_input_package(
+        build_synthetic_research_return_input_snapshot()
+    )
+    payload = package.to_dict()
+    payload["fingerprint"] = "0" * 64
+
+    with pytest.raises(ValidationError, match="match snapshot"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+def test_from_dict_rejects_arithmetic_inconsistent_snapshot_payloads() -> None:
+    package = build_research_return_input_package(
+        build_synthetic_research_return_input_snapshot()
+    )
+    payload = package.to_dict()
+    snapshot_payload = dict(payload["snapshot"])
+    returns = list(snapshot_payload["close_to_close_returns"])
+    returns[0] = "0" if returns[0] != "0" else "1"
+    snapshot_payload["close_to_close_returns"] = returns
+    payload["snapshot"] = snapshot_payload
+
+    with pytest.raises(ValidationError, match="close_to_close_returns"):
+        ResearchReturnInputPackage.from_dict(payload)
+
+
+def test_from_dict_does_not_mutate_payload_or_snapshot() -> None:
+    snapshot = build_synthetic_research_return_input_snapshot()
+    snapshot_before = snapshot.to_dict()
+    package = build_research_return_input_package(snapshot)
+    payload = package.to_dict()
+    payload_before = package.to_dict()
+
+    round_tripped = ResearchReturnInputPackage.from_dict(payload)
+
+    assert round_tripped.snapshot == snapshot
+    assert payload == payload_before
+    assert snapshot.to_dict() == snapshot_before
+
+
 def test_packaging_does_not_mutate_snapshot() -> None:
     snapshot = build_synthetic_research_return_input_snapshot()
     before = snapshot.to_dict()
