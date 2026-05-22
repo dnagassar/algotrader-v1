@@ -10203,6 +10203,27 @@ Safe next tasks include:
   trading, real data, dependency, network call, credential, approval,
   validation claim, trading readiness, or production-contract approval; normal
   pytest remains offline and credential-free
+- Phase 134 - Candidate Research Brief Item adds a frozen/slotted,
+  metadata-only `CandidateResearchBriefItem` plus builder for deriving advisory
+  display metadata from an existing `CandidateResearchResultDossier`. It
+  preserves dossier object identity, fixes `item_type` to
+  `candidate_research_result`, fixes status to `candidate_only`, derives a
+  deterministic headline and summary points from dossier/package/result
+  metadata only, and carries forward dossier limitations and non-claims. Direct
+  construction validates the dossier type, fixed item type, fixed status,
+  non-empty headline, immutable non-empty summary points, immutable non-empty
+  limitations, immutable non-empty non-claims, and preservation of the dossier's
+  required non-claims. `to_dict()` emits only deterministic primitive metadata
+  for item type, status, headline, summary points, package fingerprint, package
+  snapshot id, result manifest fixture id, result manifest checksum,
+  limitations, and non-claims. It adds no `from_dict()`, package re-export,
+  runner, ingestion path, file I/O, persistence, market-bar production
+  contract, strategy, signal, evaluator, benchmark or cash proxy logic,
+  broker/runtime behavior, scheduler behavior, portfolio mutation, allocation
+  behavior, order generation, live/paper trading, real data, dependency,
+  network call, credential, approval status, validation claim, trading
+  readiness, recommendation, action, or production-contract approval; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

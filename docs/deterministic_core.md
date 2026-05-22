@@ -4291,6 +4291,28 @@ return-construction approval, no-lookahead approval, strategy validation,
 trading readiness, or production-contract approval. Normal pytest remains
 offline and credential-free.
 
+Phase 134 - Candidate Research Brief Item adds a tiny deterministic,
+metadata-only `CandidateResearchBriefItem` plus builder for deriving advisory
+display metadata from an existing `CandidateResearchResultDossier`. The brief
+item preserves dossier object identity, fixes `item_type` to
+`candidate_research_result`, fixes status to `candidate_only`, derives a
+deterministic headline and summary points only from dossier/package/result
+metadata, and carries forward dossier limitations and non-claims. Direct
+construction validates the dossier type, fixed item type, fixed status,
+non-empty headline, immutable non-empty summary points, immutable non-empty
+limitations, immutable non-empty non-claims, and preservation of the dossier's
+required non-claims. `to_dict()` emits only deterministic primitive metadata:
+item type, status, headline, summary points, package fingerprint, package
+snapshot id, result manifest fixture id, result manifest checksum, limitations,
+and non-claims. This phase adds no `from_dict()`, package re-export, runner,
+ingestion path, file I/O, persistence, market-bar production contract,
+strategy, signal, evaluator, benchmark or cash proxy logic, broker/runtime
+behavior, scheduler behavior, portfolio mutation, allocation behavior, order
+generation, live/paper trading, real data, dependency, network call,
+credential, approval status, validation claim, trading readiness,
+recommendation, action, or production-contract approval. Normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
