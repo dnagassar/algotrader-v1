@@ -9993,6 +9993,21 @@ Safe next tasks include:
   return-construction, no-lookahead, strategy-validation, trading-readiness, or
   production-contract approval was added; and normal pytest remains offline and
   credential-free
+- Phase 122 - Research Return Input Snapshot Consistency Checker adds one tiny
+  deterministic internal checker for `ResearchReturnInputSnapshot`. It
+  requires a snapshot instance, recomputes exact Decimal close-to-close returns
+  from prepared close values, compares them against stored returns without
+  tolerance, rounding, quantization, annualization, or inferred values, and
+  returns the original object unchanged on success. Mismatched, malformed, or
+  non-snapshot inputs raise the project validation error. It is only an
+  arithmetic consistency aid for already prepared synthetic/candidate snapshots
+  and adds no data access, source approval, endpoint approval, universe
+  approval, benchmark or cash proxy approval, methodology approval, evidence
+  approval, strategy, evaluator, signal, broker, runtime, persistence,
+  portfolio mutation, order generation, live/paper trading, trading readiness,
+  market-bar production contract, real data, vendor SDK, dependency, network
+  call, credential, or file I/O behavior; normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
