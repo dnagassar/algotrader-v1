@@ -8,7 +8,12 @@ from pathlib import Path
 
 from tests.fixtures.research_market_bar import (
     build_synthetic_research_market_bar,
+    build_synthetic_research_market_bar_close_to_close_returns,
+    build_synthetic_research_market_bar_close_values,
     build_synthetic_research_market_bar_sequence,
+    expected_synthetic_research_market_bar_close_to_close_returns_dict,
+    expected_synthetic_research_market_bar_close_to_close_returns_json,
+    expected_synthetic_research_market_bar_close_values,
     expected_synthetic_research_market_bar_dict,
     expected_synthetic_research_market_bar_json,
     expected_synthetic_research_market_bar_sequence_dict,
@@ -44,6 +49,27 @@ _EXPECTED_SEQUENCE_FIELDS = (
     "synthetic_only",
     "candidate_only",
     "non_claims",
+)
+
+_EXPECTED_RETURN_CONSUMER_FIELDS = (
+    "sequence_id",
+    "symbol",
+    "bar_count",
+    "close_values",
+    "return_count",
+    "close_to_close_returns",
+    "return_basis",
+    "synthetic_only",
+    "candidate_only",
+    "non_claims",
+)
+
+_EXPECTED_RETURN_ROW_FIELDS = (
+    "observation_date",
+    "previous_observation_date",
+    "previous_close",
+    "close",
+    "simple_return",
 )
 
 _REQUIRED_NON_CLAIMS = {
@@ -155,6 +181,17 @@ _FORBIDDEN_TRADING_FIELD_TERMS = (
     "trading",
 )
 
+_FORBIDDEN_METRIC_FIELD_TERMS = (
+    "alpha",
+    "beta",
+    "cagr",
+    "drawdown",
+    "rank",
+    "recommend",
+    "score",
+    "sharpe",
+)
+
 _APPROVAL_VALIDATION_TRADING_TERMS = (
     "approval",
     "approved",
@@ -166,11 +203,28 @@ _APPROVAL_VALIDATION_TRADING_TERMS = (
     "validation",
 )
 
-_ALLOWED_IMPORTS = {"__future__"}
+_ALLOWED_IMPORTS = {
+    "__future__",
+    "algotrader.research.return_construction",
+    "decimal",
+}
 
 _FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
-    "algotrader",
+    "algotrader.broker",
+    "algotrader.brokers",
+    "algotrader.execution",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "algotrader.orchestration",
+    "algotrader.persistence",
+    "algotrader.portfolio",
+    "algotrader.risk",
+    "algotrader.runtime",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.signals",
     "alpaca",
     "alpaca_trade_api",
     "anthropic",
@@ -281,6 +335,35 @@ def test_sequence_fixture_output_is_deterministic_across_repeated_calls() -> Non
     assert first["bars"][0]["non_claims"] is not second["bars"][0]["non_claims"]
 
 
+def test_sequence_close_values_are_extracted_deterministically() -> None:
+    first = build_synthetic_research_market_bar_close_values()
+    second = build_synthetic_research_market_bar_close_values()
+    sequence = build_synthetic_research_market_bar_sequence()
+
+    assert first == second
+    assert first is not second
+    assert first == expected_synthetic_research_market_bar_close_values()
+    assert first == [bar["close"] for bar in sequence["bars"]]
+
+
+def test_close_to_close_return_consumer_is_deterministic_across_repeated_calls() -> None:
+    first = build_synthetic_research_market_bar_close_to_close_returns()
+    second = build_synthetic_research_market_bar_close_to_close_returns()
+
+    assert first == second
+    assert first is not second
+    assert first == expected_synthetic_research_market_bar_close_to_close_returns_dict()
+    assert tuple(first) == _EXPECTED_RETURN_CONSUMER_FIELDS
+    assert first["close_values"] is not second["close_values"]
+    assert first["close_to_close_returns"] is not second["close_to_close_returns"]
+    assert first["close_to_close_returns"][0] is not second["close_to_close_returns"][0]
+    assert first["non_claims"] is not second["non_claims"]
+    assert all(
+        tuple(return_row) == _EXPECTED_RETURN_ROW_FIELDS
+        for return_row in first["close_to_close_returns"]
+    )
+
+
 def test_fixture_dict_output_is_primitive_only() -> None:
     payload = build_synthetic_research_market_bar()
 
@@ -289,6 +372,12 @@ def test_fixture_dict_output_is_primitive_only() -> None:
 
 def test_sequence_fixture_dict_output_is_primitive_only() -> None:
     payload = build_synthetic_research_market_bar_sequence()
+
+    _assert_primitive_only(payload)
+
+
+def test_close_to_close_return_consumer_output_is_primitive_only() -> None:
+    payload = build_synthetic_research_market_bar_close_to_close_returns()
 
     _assert_primitive_only(payload)
 
@@ -316,6 +405,25 @@ def test_sequence_fixture_json_serialization_is_byte_stable() -> None:
     )
 
 
+def test_close_to_close_return_consumer_json_serialization_is_byte_stable() -> None:
+    first = _compact_json_bytes(
+        build_synthetic_research_market_bar_close_to_close_returns()
+    )
+    second = _compact_json_bytes(
+        build_synthetic_research_market_bar_close_to_close_returns()
+    )
+    expected = expected_synthetic_research_market_bar_close_to_close_returns_json().encode(
+        "utf-8"
+    )
+
+    assert first == second
+    assert first == expected
+    assert (
+        json.loads(first.decode("utf-8"))
+        == expected_synthetic_research_market_bar_close_to_close_returns_dict()
+    )
+
+
 def test_sequence_bars_are_ordered_unique_and_share_one_synthetic_symbol() -> None:
     payload = build_synthetic_research_market_bar_sequence()
     bars = payload["bars"]
@@ -331,25 +439,33 @@ def test_sequence_bars_are_ordered_unique_and_share_one_synthetic_symbol() -> No
     assert all(tuple(bar) == _EXPECTED_FIELDS for bar in bars)
 
 
+def test_close_to_close_return_count_matches_bar_count_minus_one() -> None:
+    payload = build_synthetic_research_market_bar_close_to_close_returns()
+    sequence = build_synthetic_research_market_bar_sequence()
+
+    assert payload["bar_count"] == len(payload["close_values"])
+    assert payload["return_count"] == payload["bar_count"] - 1
+    assert len(payload["close_to_close_returns"]) == payload["return_count"]
+    assert [row["observation_date"] for row in payload["close_to_close_returns"]] == [
+        bar["observation_date"] for bar in sequence["bars"][1:]
+    ]
+
+
 def test_fixture_uses_only_fake_symbol_values_and_no_real_tickers() -> None:
     payload = build_synthetic_research_market_bar()
     sequence = build_synthetic_research_market_bar_sequence()
-    serialized = (
-        expected_synthetic_research_market_bar_json()
-        + expected_synthetic_research_market_bar_sequence_json()
-    ).upper()
+    returns = build_synthetic_research_market_bar_close_to_close_returns()
+    serialized = _all_expected_fixture_json().upper()
 
     assert payload["symbol"] == "SYNBAR001"
     assert sequence["symbol"] == "SYNBARSEQ001"
+    assert returns["symbol"] == "SYNBARSEQ001"
     for ticker in _REAL_TICKERS:
         assert re.search(rf"(?<![A-Z0-9]){ticker}(?![A-Z0-9])", serialized) is None
 
 
 def test_fixture_contains_no_vendor_names_credentials_urls_or_data_paths() -> None:
-    serialized = (
-        expected_synthetic_research_market_bar_json()
-        + expected_synthetic_research_market_bar_sequence_json()
-    )
+    serialized = _all_expected_fixture_json()
     lowered = serialized.lower()
 
     for term in _REAL_VENDOR_OR_PROVIDER_TERMS:
@@ -364,6 +480,7 @@ def test_fixture_has_candidate_and_synthetic_flags_without_approval_state() -> N
     payloads = (
         build_synthetic_research_market_bar(),
         build_synthetic_research_market_bar_sequence(),
+        build_synthetic_research_market_bar_close_to_close_returns(),
     )
 
     for payload in payloads:
@@ -373,10 +490,7 @@ def test_fixture_has_candidate_and_synthetic_flags_without_approval_state() -> N
             assert key not in _flatten_dict_keys(payload)
     assert (
         "approved"
-        not in (
-            expected_synthetic_research_market_bar_json()
-            + expected_synthetic_research_market_bar_sequence_json()
-        ).lower()
+        not in _all_expected_fixture_json().lower()
     )
 
 
@@ -384,6 +498,7 @@ def test_fixture_has_no_signal_evaluator_portfolio_or_trading_fields() -> None:
     payloads = (
         build_synthetic_research_market_bar(),
         build_synthetic_research_market_bar_sequence(),
+        build_synthetic_research_market_bar_close_to_close_returns(),
     )
 
     for payload in payloads:
@@ -392,10 +507,24 @@ def test_fixture_has_no_signal_evaluator_portfolio_or_trading_fields() -> None:
             assert all(term not in lowered for term in _FORBIDDEN_TRADING_FIELD_TERMS)
 
 
+def test_fixture_has_no_metric_ranking_recommendation_fields() -> None:
+    payloads = (
+        build_synthetic_research_market_bar(),
+        build_synthetic_research_market_bar_sequence(),
+        build_synthetic_research_market_bar_close_to_close_returns(),
+    )
+
+    for payload in payloads:
+        for key in _flatten_dict_keys(payload):
+            lowered = key.lower()
+            assert all(term not in lowered for term in _FORBIDDEN_METRIC_FIELD_TERMS)
+
+
 def test_fixture_includes_required_non_claims_and_no_extra_claims() -> None:
     payloads = (
         build_synthetic_research_market_bar(),
         build_synthetic_research_market_bar_sequence(),
+        build_synthetic_research_market_bar_close_to_close_returns(),
     )
 
     for payload in payloads:
@@ -415,6 +544,7 @@ def test_fixture_approval_validation_and_trading_terms_are_negative_non_claims()
     payloads = (
         build_synthetic_research_market_bar(),
         build_synthetic_research_market_bar_sequence(),
+        build_synthetic_research_market_bar_close_to_close_returns(),
     )
 
     for payload in payloads:
@@ -453,10 +583,27 @@ def test_sequence_fixture_does_not_mutate_across_repeated_calls() -> None:
     assert "changed" not in second["bars"][0]["non_claims"]
 
 
+def test_close_to_close_return_consumer_does_not_mutate_sequence_fixture() -> None:
+    sequence_before = build_synthetic_research_market_bar_sequence()
+    first = build_synthetic_research_market_bar_close_to_close_returns()
+    first["close_values"][0] = 999.0
+    first["close_to_close_returns"][0]["simple_return"] = "changed"
+    first["non_claims"].append("changed")
+
+    sequence_after = build_synthetic_research_market_bar_sequence()
+    second = build_synthetic_research_market_bar_close_to_close_returns()
+
+    assert sequence_before == expected_synthetic_research_market_bar_sequence_dict()
+    assert sequence_after == sequence_before
+    assert second == expected_synthetic_research_market_bar_close_to_close_returns_dict()
+    assert "changed" not in second["non_claims"]
+    assert second["close_to_close_returns"][0]["simple_return"] != "changed"
+
+
 def test_fixture_file_has_no_vendor_network_runtime_file_or_llm_imports() -> None:
     imports = _import_references()
 
-    assert imports <= _ALLOWED_IMPORTS
+    assert imports == _ALLOWED_IMPORTS
     assert [
         module
         for module in imports
@@ -471,6 +618,14 @@ def test_fixture_file_has_no_file_network_production_or_trading_calls() -> None:
 
 def _compact_json_bytes(payload: dict[str, object]) -> bytes:
     return json.dumps(payload, ensure_ascii=True, separators=(",", ":")).encode("utf-8")
+
+
+def _all_expected_fixture_json() -> str:
+    return (
+        expected_synthetic_research_market_bar_json()
+        + expected_synthetic_research_market_bar_sequence_json()
+        + expected_synthetic_research_market_bar_close_to_close_returns_json()
+    )
 
 
 def _assert_primitive_only(value: object) -> None:

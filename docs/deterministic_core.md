@@ -4036,6 +4036,13 @@ bar shape. No production code changed; no real data was added; no API calls or
 downloads occurred; no source or data approval was added; and normal pytest
 remains offline and credential-free.
 
+Phase 118 - Synthetic Market Bar Sequence Return Input Consumer adds a tiny
+source-agnostic synthetic market-bar sequence return-input consumer in tests
+and fixtures only. It extracts synthetic close values and feeds existing
+close-to-close return-construction mechanics without adding production code,
+real data, API calls, downloads, or source, data, or return-construction
+approval. Normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
