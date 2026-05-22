@@ -10089,6 +10089,24 @@ Safe next tasks include:
   evidence approval, return-construction approval, no-lookahead approval,
   strategy validation, or production-contract approval; normal pytest remains
   offline and credential-free
+- Phase 128 - Verified Return Input Package Research Result Adapter adds one
+  narrow deterministic adapter from `ResearchReturnInputPackage` into the
+  existing `SyntheticResearchResult` contract. It reuses the Phase 127
+  package-to-replay adapter first, preserving the package-derived replay
+  manifest provenance convention where the snapshot id is the manifest
+  `fixture_id` and the package fingerprint is the manifest `checksum`, then
+  delegates summary and metric construction to the existing synthetic result
+  builder. It adds no manual metrics, does not recompute returns from prices,
+  does not infer missing values, and introduces no benchmarks, cash returns,
+  costs, positions, signals, orders, trades, strategy state, or portfolio state.
+  This remains synthetic candidate-only plumbing and does not approve source,
+  methodology, no-lookahead status, strategy validity, trading readiness, or
+  downstream use. It adds no research runner, ingestion path, file I/O,
+  persistence, market-bar production contract, evaluator behavior,
+  broker/runtime behavior, scheduler behavior, portfolio mutation, order
+  generation, live/paper trading, real data, dependency, network call,
+  credential, timestamp, environment lookup, local path, or production-contract
+  approval; normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
