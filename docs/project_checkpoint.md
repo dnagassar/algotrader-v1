@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2467-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2570-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -9972,6 +9972,15 @@ Safe next tasks include:
   close-to-close return-construction mechanics without adding production code,
   real data, API calls, downloads, or source, data, or return-construction
   approval. Normal pytest remains offline and credential-free
+- Phase 120 - Source-Agnostic Research Return Input Snapshot Contract adds the
+  small frozen, slotted `ResearchReturnInputSnapshot` metadata contract for
+  already prepared observation dates, close values, and close-to-close returns.
+  It is source-agnostic, synthetic-only, candidate-only, immutable, and
+  deterministically serializes plain dates and Decimal values without adding
+  real data, API calls, downloads, file reads, ingestion, persistence, source
+  or data approval, return-construction approval, no-lookahead approval,
+  strategy approval or validation, trading readiness, or a market-bar
+  production contract. Normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

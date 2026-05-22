@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2479` tests are passing, with `4` skipped paper-integration tests by default.
+- `2570` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -4042,6 +4042,16 @@ and fixtures only. It extracts synthetic close values and feeds existing
 close-to-close return-construction mechanics without adding production code,
 real data, API calls, downloads, or source, data, or return-construction
 approval. Normal pytest remains offline and credential-free.
+
+Phase 120 - Source-Agnostic Research Return Input Snapshot Contract adds the
+small frozen, slotted `ResearchReturnInputSnapshot` metadata contract for
+already prepared observation dates, close values, and close-to-close returns.
+It is source-agnostic, synthetic-only, candidate-only, immutable, and
+deterministically serializes plain dates and Decimal values without adding real
+data, API calls, downloads, file reads, ingestion, persistence, source or data
+approval, return-construction approval, no-lookahead approval, strategy
+approval or validation, trading readiness, or a market-bar production contract.
+Normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
