@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `2610` tests are passing, with `4` skipped paper-integration tests by default.
+- `2706` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -4198,6 +4198,22 @@ package, replay snapshot, or result, or introduce benchmarks, cash returns,
 costs, positions, signals, orders, trades, strategy state, broker/runtime state,
 portfolio state, ingestion, file I/O, persistence, runner behavior, real data,
 network access, credentials, dependencies, or production-contract approval.
+Normal pytest remains offline and credential-free.
+
+Phase 130 - Return Input Research Result Provenance Verifier adds one narrow
+deterministic verifier for confirming that an existing `SyntheticResearchResult`
+matches a specific `ResearchReturnInputPackage` under the Phase 127 provenance
+convention. The verifier requires the package and result contract types, checks
+only that manifest `fixture_id` equals the package snapshot id and manifest
+`checksum` equals `sha256:{package.fingerprint}`, and returns the original
+result object unchanged on success. Mismatched or malformed inputs raise the
+project validation error. It does not rebuild results, recompute returns, infer
+missing values, mutate the package or result, introduce benchmarks, cash
+returns, costs, positions, orders, trades, signals, strategy state,
+broker/runtime fields, portfolio state, ingestion, file I/O, persistence,
+runner behavior, real data, network access, credentials, dependencies, or
+production-contract approval. It does not certify source, methodology,
+no-lookahead status, strategy validity, trading readiness, or downstream use.
 Normal pytest remains offline and credential-free.
 
 Execution-boundary work should remain pure and synthetic unless explicitly

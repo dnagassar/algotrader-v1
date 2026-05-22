@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 2610-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 2706-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -10123,6 +10123,22 @@ Safe next tasks include:
   state, portfolio state, ingestion, file I/O, persistence, runner behavior,
   real data, network access, credentials, dependencies, or production-contract
   approval; normal pytest remains offline and credential-free
+- Phase 130 - Return Input Research Result Provenance Verifier adds one narrow
+  deterministic verifier for confirming that an existing
+  `SyntheticResearchResult` matches a specific `ResearchReturnInputPackage`
+  under the Phase 127 provenance convention. It requires the package and result
+  contract types, checks only that manifest `fixture_id` equals the package
+  snapshot id and manifest `checksum` equals `sha256:{package.fingerprint}`,
+  and returns the original result object unchanged on success. Mismatched or
+  malformed inputs raise the project validation error. It does not rebuild
+  results, recompute returns, infer missing values, mutate the package or
+  result, introduce benchmarks, cash returns, costs, positions, orders, trades,
+  signals, strategy state, broker/runtime fields, portfolio state, ingestion,
+  file I/O, persistence, runner behavior, real data, network access,
+  credentials, dependencies, or production-contract approval. It does not
+  certify source, methodology, no-lookahead status, strategy validity, trading
+  readiness, or downstream use; normal pytest remains offline and
+  credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
