@@ -10427,6 +10427,35 @@ Safe next tasks include:
   approval, strategy validation, trading readiness, recommendation,
   ranking/scoring, or production-contract approval; normal pytest remains
   offline and credential-free
+- Phase 143 - Synthetic Advisory Operating Brief Fixture replaces the older
+  broad test fixture in `tests/fixtures/advisory_operating_brief.py` with a
+  tiny deterministic fixture for the Phase 142 `AdvisoryOperatingBrief`
+  surface and adds focused coverage in
+  `tests/unit/test_advisory_operating_brief_fixture.py`. It builds only through
+  the Phase 139 synthetic candidate research brief fixture and Phase 142
+  `build_advisory_operating_brief()` builder, preserves candidate brief object
+  identity and input sequence where applicable, and exposes
+  `build_synthetic_advisory_operating_brief()` plus
+  `expected_synthetic_advisory_operating_brief_dict()`. The expected payload is
+  exactly `AdvisoryOperatingBrief.to_dict()`, including the fixed
+  `advisory_operating_brief` type, advisory `candidate_only` status,
+  deterministic non-actionable title, nested candidate brief/section/item
+  advisory values, carried-forward limitations and non-claims, Phase 123 digest
+  `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`, and the
+  Phase 127/141 manifest convention that the fixture id comes from the package
+  snapshot id and the checksum is `sha256:{package.fingerprint}`. Tests prove
+  repeated-call determinism, primitive serialization copy isolation,
+  source-object non-mutation, absence of forbidden payload/object fields, and
+  fixture-module import/call/text guardrails. It adds no `src/` changes,
+  LLM/agent behavior, ingestion, persistence, runner, file I/O, local snapshot
+  loading, CLI, scheduler, runtime behavior, market-bar production contract,
+  strategy, signal, evaluator, benchmark or cash proxy logic, backtesting
+  engine, broker/runtime behavior, portfolio mutation, allocation behavior,
+  order generation, live/paper trading, real data, dependency, network call,
+  credential, source approval, endpoint approval, universe approval,
+  methodology approval, evidence approval, validation claim, trading readiness,
+  recommendation, ranking/scoring, or production-contract approval; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

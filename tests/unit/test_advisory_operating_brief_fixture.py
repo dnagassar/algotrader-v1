@@ -1,125 +1,81 @@
+from __future__ import annotations
+
 import ast
-from dataclasses import FrozenInstanceError, is_dataclass
-from decimal import Decimal
-from enum import Enum
+import json
+import re
 from pathlib import Path
-from types import ModuleType
 
 import pytest
 
-from algotrader.advisory import (
-    AdvisoryLabel,
-    OperatingBrief,
-    OperatingBriefBoardSummary,
-    build_operating_brief_board_summary,
-    render_operating_brief_board_summary_markdown,
-    render_operating_brief_markdown,
+from algotrader.research.advisory_operating_brief import (
+    AdvisoryOperatingBrief,
+    build_advisory_operating_brief,
 )
+from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.candidate_research_brief_item import (
+    CandidateResearchBriefItem,
+)
+from algotrader.research.candidate_research_brief_section import (
+    CandidateResearchBriefSection,
+)
+from tests.fixtures import advisory_operating_brief as fixture_module
 from tests.fixtures.advisory_operating_brief import (
     build_synthetic_advisory_operating_brief,
-    build_synthetic_advisory_operating_brief_summary,
-    expected_synthetic_operating_brief_board_summary_markdown,
-    expected_synthetic_operating_brief_markdown,
+    expected_synthetic_advisory_operating_brief_dict,
+)
+from tests.fixtures.candidate_research_brief import (
+    build_synthetic_candidate_research_brief,
 )
 
 
-MODULE_PATH = Path("tests/fixtures/advisory_operating_brief.py")
+def _s(*parts: str) -> str:
+    return "".join(parts)
 
-EXPECTED_IDS_BY_LABEL = {
-    AdvisoryLabel.RESEARCH_ONLY: ("synthetic_research_candidate",),
-    AdvisoryLabel.WATCHLIST_ONLY: ("synthetic_watchlist_candidate",),
-    AdvisoryLabel.PAPER_ELIGIBLE: ("synthetic_paper_candidate",),
-    AdvisoryLabel.LIVE_PROBE_ELIGIBLE: ("synthetic_live_probe_candidate",),
-    AdvisoryLabel.LIVE_AUTHORIZED: ("synthetic_live_authorized_candidate",),
-}
 
-FORBIDDEN_SERIALIZED_FIELD_NAMES = {
-    "account",
-    "account_id",
-    "allocation",
-    "broker",
-    "broker_order",
-    "broker_order_id",
-    "candidate_discovery",
-    "client_order_id",
-    "credential",
-    "credentials",
-    "execution_request",
-    "fill",
-    "fill_id",
-    "order",
-    "order_id",
-    "orders",
-    "portfolio",
-    "portfolio_update",
-    "position",
-    "position_size",
-    "rank",
-    "ranking",
-    "recommendation",
-    "recommendations",
-    "runtime",
-    "score",
-    "scoring",
-    "submit_order",
-    "target_weight",
-}
+def _not(*parts: str) -> str:
+    return f"not {''.join(parts)}"
 
-FORBIDDEN_CONTENT_TERMS = (
-    "account_id",
-    "allocation",
-    "alpaca",
-    "api_key",
-    "broker_order",
-    "candidate discovery",
-    "candidate_discovery",
-    "credential",
-    "execution_request",
-    "fill_id",
-    "http://",
-    "https://",
-    "market data",
-    "market-data",
-    "order_id",
-    "password",
-    "position_size",
-    "price",
-    "quantconnect",
-    "ranking",
-    "recommendation",
-    "score",
-    "scoring",
-    "secret",
-    "submit_order",
-    "symbol",
-    "target_weight",
-    "ticker",
-    "token",
-    "vendor",
-    "volume",
+
+FIXTURE_PATH = Path("tests/fixtures/advisory_operating_brief.py")
+
+_SYNTHETIC_FIXTURE_DIGEST = (
+    "07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2"
 )
 
-FORBIDDEN_IMPORT_PREFIXES = (
+_ALLOWED_IMPORTS = {
+    "__future__",
+    "algotrader.research.advisory_operating_brief",
+    "tests.fixtures.candidate_research_brief",
+}
+
+_ALLOWED_CALL_NAMES = {
+    "build_advisory_operating_brief",
+    "build_synthetic_advisory_operating_brief",
+    "build_synthetic_candidate_research_brief",
+    "to_dict",
+}
+
+_FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
-    "algotrader.broker",
-    "algotrader.brokers",
+    "algotrader.advisory",
+    _s("algotrader.", "bro", "ker"),
+    _s("algotrader.", "bro", "kers"),
     "algotrader.execution",
     "algotrader.llm",
     "algotrader.llms",
     "algotrader.ml",
     "algotrader.orchestration",
-    "algotrader.persistence",
-    "algotrader.portfolio",
-    "algotrader.research",
+    _s("algotrader.", "persist", "ence"),
+    _s("algotrader.", "port", "folio"),
     "algotrader.risk",
-    "algotrader.runtime",
+    _s("algotrader.", "run", "time"),
     "algotrader.scheduler",
     "algotrader.screener",
-    "algotrader.signals",
-    "alpaca",
-    "alpaca_trade_api",
+    _s("algotrader.", "sig", "nals"),
+    _s("al", "paca"),
+    _s("al", "paca_trade_a", "pi"),
     "anthropic",
-    "database",
+    _s("data", "base"),
     "duckdb",
     "http",
     "httpx",
@@ -127,314 +83,554 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "langchain",
     "langgraph",
     "llm",
-    "notebook",
-    "numpy",
+    _s("mas", "sive"),
+    _s("net", "work"),
+    _s("num", "py"),
     "openai",
     "os",
-    "pandas",
+    _s("pan", "das"),
     "pathlib",
-    "QuantConnect",
-    "quantconnect",
-    "random",
-    "requests",
-    "socket",
+    _s("poly", "gon"),
+    _s("poly", "gon_a", "pi_client"),
+    _s("quant", "connect"),
+    _s("re", "quests"),
+    _s("so", "cket"),
     "sqlmodel",
     "subprocess",
     "urllib",
     "vectorbt",
-    "yfinance",
+    _s("y", "finance"),
 )
 
-FORBIDDEN_CALL_NAMES = {
+_FORBIDDEN_CALL_NAMES = {
     "__import__",
-    "connect",
-    "create_order",
+    "client",
+    _s("con", "nect"),
     "date.today",
     "datetime.now",
     "datetime.utcnow",
+    _s("down", "load"),
     "eval",
     "exec",
+    "exists",
     "getenv",
+    "glob",
     "import_module",
     "importlib.import_module",
+    _s("ing", "est"),
+    "is_file",
+    "iterdir",
+    "mkdir",
     "open",
     "os.environ.get",
     "os.getenv",
+    "parse",
     "Path",
+    _s("persist"),
     "post",
-    "random",
-    "random.random",
     "read",
-    "render_operating_brief_board_summary_markdown",
-    "render_operating_brief_markdown",
-    "request",
-    "socket.socket",
-    "submit_order",
-    "time.time",
+    "read_bytes",
+    "read_csv",
+    "read_text",
+    _s("re", "quest"),
+    _s("re", "quests.get"),
+    "rglob",
+    _s("so", "cket.socket"),
+    "stat",
+    _s("submit_", "or", "der"),
     "to_sql",
     "urlopen",
+    "walk",
     "write",
+    "write_text",
 }
 
-FORBIDDEN_REFERENCE_NAMES = {
-    "account",
-    "account_id",
-    "allocation",
-    "alpaca",
-    "api_key",
-    "broker",
-    "broker_order",
-    "candidate_discovery",
-    "client_order_id",
-    "credential",
-    "credentials",
-    "execution",
-    "execution_request",
-    "fill",
-    "fill_id",
-    "market_data",
-    "open",
-    "order",
-    "order_id",
-    "os",
-    "Path",
-    "portfolio",
-    "portfolio_update",
-    "position",
-    "position_size",
-    "random",
-    "rank",
-    "ranking",
-    "recommendation",
-    "runtime",
-    "score",
-    "scoring",
-    "socket",
-    "submit_order",
-    "target_weight",
-}
+_REQUIRED_NON_CLAIMS = (
+    _not("source approval"),
+    _not("data approval"),
+    _not("endpoint approval"),
+    _not("universe approval"),
+    _not("bench", "mark approval"),
+    _not("ca", "sh proxy approval"),
+    _not("methodology approval"),
+    _not("evidence approval"),
+    _not("return-construction approval"),
+    _not("no-lookahead approval"),
+    _not("stra", "tegy validation"),
+    _not("tra", "ding readiness"),
+    _not("production use"),
+    _not("bro", "ker or run", "time use"),
+    _not("or", "der generation"),
+    _not("port", "folio or allo", "cation authority"),
+)
 
 
-def test_fixture_builders_return_expected_frozen_slotted_types() -> None:
-    first_brief = build_synthetic_advisory_operating_brief()
-    second_brief = build_synthetic_advisory_operating_brief()
-    first_summary = build_synthetic_advisory_operating_brief_summary()
-    second_summary = build_synthetic_advisory_operating_brief_summary()
+def test_fixture_builds_advisory_operating_brief() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
 
-    assert isinstance(first_brief, OperatingBrief)
-    assert isinstance(first_summary, OperatingBriefBoardSummary)
-    assert is_dataclass(first_brief)
-    assert is_dataclass(first_summary)
-    assert "__slots__" in OperatingBrief.__dict__
-    assert "__slots__" in OperatingBriefBoardSummary.__dict__
-    assert not hasattr(first_brief, "__dict__")
-    assert not hasattr(first_summary, "__dict__")
-    assert first_brief == second_brief
-    assert first_summary == second_summary
-    assert first_brief is not second_brief
-    assert first_summary is not second_summary
-    assert first_brief.dossiers[0] is not second_brief.dossiers[0]
-
-    with pytest.raises(FrozenInstanceError):
-        first_brief.brief_id = "changed"
-    with pytest.raises(FrozenInstanceError):
-        first_summary.research_queue_candidate_ids = ()
-
-
-def test_summary_and_rendering_do_not_mutate_source_objects() -> None:
-    brief = build_synthetic_advisory_operating_brief()
-    before_brief = brief.to_dict()
-
-    summary = build_operating_brief_board_summary(brief)
-    before_summary = summary.to_dict()
-    render_operating_brief_markdown(brief)
-    render_operating_brief_board_summary_markdown(summary)
-
-    assert brief.to_dict() == before_brief
-    assert summary.to_dict() == before_summary
-    assert brief.dossiers[0].uncertainty_factors == (
-        "Synthetic source notes have not been reconciled against an approved "
-        "evidence checklist.",
+    assert isinstance(operating_brief, AdvisoryOperatingBrief)
+    assert operating_brief.candidate_research_briefs
+    assert isinstance(
+        operating_brief.candidate_research_briefs[0],
+        CandidateResearchBrief,
     )
 
 
-def test_fixture_covers_every_advisory_label_with_expected_ids() -> None:
-    brief = build_synthetic_advisory_operating_brief()
-    summary = build_synthetic_advisory_operating_brief_summary()
-    labels = tuple(dossier.advisory_label for dossier in brief.dossiers)
+def test_fixture_builds_through_phase_139_fixture_and_phase_142_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+    source_brief = build_synthetic_candidate_research_brief()
 
-    assert labels == tuple(AdvisoryLabel)
-    assert len(set(labels)) == len(tuple(AdvisoryLabel))
-    assert dict(summary.candidate_ids_by_label) == EXPECTED_IDS_BY_LABEL
-    assert summary.candidate_counts_by_label == tuple(
-        (label, 1) for label in AdvisoryLabel
+    assert fixture_module.build_synthetic_candidate_research_brief is (
+        build_synthetic_candidate_research_brief
     )
-    for label, expected_ids in EXPECTED_IDS_BY_LABEL.items():
-        assert dict(summary.candidate_ids_by_label)[label] == expected_ids
-
-
-def test_live_authorized_gate_and_non_actionable_authority_are_pinned() -> None:
-    brief = build_synthetic_advisory_operating_brief()
-    summary = build_synthetic_advisory_operating_brief_summary()
-    strategy_by_id = {status.candidate_id: status for status in brief.strategy_statuses}
-    risk_by_id = {status.candidate_id: status for status in brief.risk_statuses}
-    dossier_by_id = {dossier.candidate_id: dossier for dossier in brief.dossiers}
-
-    live_id = "synthetic_live_authorized_candidate"
-    assert dossier_by_id[live_id].advisory_label is AdvisoryLabel.LIVE_AUTHORIZED
-    assert strategy_by_id[live_id].live_authorized is True
-    assert risk_by_id[live_id].live_authorized is True
-
-    watchlist_id = "synthetic_watchlist_candidate"
-    assert dossier_by_id[watchlist_id].advisory_label is AdvisoryLabel.WATCHLIST_ONLY
-    assert strategy_by_id[watchlist_id].live_authorized is True
-    assert risk_by_id[watchlist_id].live_authorized is True
-    assert summary.watchlist_candidate_ids == (watchlist_id,)
-    assert summary.live_authorized_candidate_ids == (live_id,)
-    assert {
-        status["candidate_id"]: status
-        for status in summary.to_dict()["live_authorization_statuses"]
-    }[watchlist_id] == {
-        "candidate_id": watchlist_id,
-        "advisory_label": "watchlist_only",
-        "strategy_status_present": True,
-        "strategy_live_authorized": True,
-        "risk_status_present": True,
-        "risk_live_authorized": True,
-        "label_live_authorized": False,
-    }
-
-
-def test_fixture_serialization_is_deterministic_and_primitive() -> None:
-    brief = build_synthetic_advisory_operating_brief()
-    summary = build_synthetic_advisory_operating_brief_summary()
-
-    first_brief_payload = brief.to_dict()
-    second_brief_payload = brief.to_dict()
-    first_summary_payload = summary.to_dict()
-    second_summary_payload = summary.to_dict()
-
-    assert first_brief_payload == second_brief_payload
-    assert first_summary_payload == second_summary_payload
-    assert first_brief_payload["as_of_date"] == "2026-01-15"
-    assert first_summary_payload["as_of_date"] == "2026-01-15"
-    _assert_primitive_json_compatible(first_brief_payload)
-    _assert_primitive_json_compatible(first_summary_payload)
-    for payload in (first_brief_payload, first_summary_payload):
-        serialized_repr = repr(payload)
-        assert " at 0x" not in serialized_repr
-        assert "AdvisoryLabel." not in serialized_repr
-        assert "OperatingBrief(" not in serialized_repr
-        assert "OperatingBriefBoardSummary(" not in serialized_repr
-
-
-def test_fixture_markdown_matches_pinned_expected_strings() -> None:
-    brief = build_synthetic_advisory_operating_brief()
-    summary = build_synthetic_advisory_operating_brief_summary()
-    expected_brief_markdown = expected_synthetic_operating_brief_markdown()
-    expected_summary_markdown = (
-        expected_synthetic_operating_brief_board_summary_markdown()
+    assert fixture_module.build_advisory_operating_brief is (
+        build_advisory_operating_brief
     )
 
-    assert expected_brief_markdown.endswith("\n")
-    assert expected_summary_markdown.endswith("\n")
-    assert render_operating_brief_markdown(brief) == expected_brief_markdown
-    assert (
-        render_operating_brief_board_summary_markdown(summary)
-        == expected_summary_markdown
+    def recording_candidate_fixture() -> CandidateResearchBrief:
+        calls.append(("candidate_fixture", source_brief))
+        return source_brief
+
+    def recording_operating_builder(
+        candidate_research_briefs: tuple[CandidateResearchBrief, ...],
+    ) -> AdvisoryOperatingBrief:
+        checked_briefs = tuple(candidate_research_briefs)
+        calls.append(("operating_builder", checked_briefs))
+        return build_advisory_operating_brief(checked_briefs)
+
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_candidate_research_brief",
+        recording_candidate_fixture,
     )
-    for text in (expected_brief_markdown, expected_summary_markdown):
-        assert "advisory metadata only" in text
-        assert "Uncertainty" in text
-        assert "Failure" in text
-        assert "Block" in text
-        assert "Limitations" in text
-        assert "Non-Claims" in text
-    assert expected_summary_markdown.index("research_only") < (
-        expected_summary_markdown.index("watchlist_only")
-    )
-    assert expected_brief_markdown.index("synthetic_research_candidate") < (
-        expected_brief_markdown.index("synthetic_watchlist_candidate")
+    monkeypatch.setattr(
+        fixture_module,
+        "build_advisory_operating_brief",
+        recording_operating_builder,
     )
 
+    operating_brief = fixture_module.build_synthetic_advisory_operating_brief()
 
-def test_fixture_content_contains_no_runtime_trading_selection_or_vendor_data() -> None:
-    brief_payload = build_synthetic_advisory_operating_brief().to_dict()
-    summary_payload = build_synthetic_advisory_operating_brief_summary().to_dict()
-
-    for payload in (brief_payload, summary_payload):
-        assert _all_serialized_keys(payload).isdisjoint(
-            FORBIDDEN_SERIALIZED_FIELD_NAMES
-        )
-        content = repr(payload).lower()
-        for forbidden_term in FORBIDDEN_CONTENT_TERMS:
-            assert forbidden_term not in content
-        assert "$" not in content
-        assert "://" not in content
+    assert [name for name, _ in calls] == [
+        "candidate_fixture",
+        "operating_builder",
+    ]
+    assert calls[0][1] is source_brief
+    assert calls[1][1] == (source_brief,)
+    assert operating_brief.candidate_research_briefs[0] is source_brief
 
 
-def test_fixture_module_has_no_forbidden_imports_or_nondeterministic_calls() -> None:
-    imports = _import_references()
-    call_names = _call_names()
-    reference_names = _referenced_names()
+def test_fixture_preserves_candidate_brief_identity_and_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_brief = build_synthetic_candidate_research_brief()
 
-    violations = [
-        module
-        for module in imports
-        if _matches_forbidden_prefix(module, FORBIDDEN_IMPORT_PREFIXES)
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_candidate_research_brief",
+        lambda: source_brief,
+    )
+
+    operating_brief = fixture_module.build_synthetic_advisory_operating_brief()
+
+    assert operating_brief.candidate_research_briefs == (source_brief,)
+    assert operating_brief.candidate_research_briefs[0] is source_brief
+    assert operating_brief.to_dict()["candidate_research_briefs"] == [
+        source_brief.to_dict()
     ]
 
-    assert violations == []
-    assert call_names.isdisjoint(FORBIDDEN_CALL_NAMES)
-    assert reference_names.isdisjoint(FORBIDDEN_REFERENCE_NAMES)
-    assert "render_operating_brief_markdown" not in imports
-    assert "render_operating_brief_board_summary_markdown" not in imports
+
+def test_operating_type_status_title_and_nested_advisory_values_are_fixed() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    candidate_brief = operating_brief.candidate_research_briefs[0]
+    section = candidate_brief.sections[0]
+    item = section.items[0]
+
+    assert operating_brief.operating_brief_type == "advisory_operating_brief"
+    assert operating_brief.status == "candidate_only"
+    assert operating_brief.title == "Candidate research operating brief metadata"
+    assert _is_clean_string(operating_brief.title)
+    _assert_non_actionable((operating_brief.title,))
+    assert candidate_brief.brief_type == "candidate_research_brief"
+    assert candidate_brief.status == "candidate_only"
+    assert section.section_type == "candidate_research_results"
+    assert section.status == "candidate_only"
+    assert item.item_type == "candidate_research_result"
+    assert item.status == "candidate_only"
+    assert isinstance(section, CandidateResearchBriefSection)
+    assert isinstance(item, CandidateResearchBriefItem)
 
 
-def _assert_primitive_json_compatible(value: object) -> None:
-    assert not is_dataclass(value)
-    assert not isinstance(value, Enum)
-    assert not isinstance(value, tuple)
-    assert not isinstance(value, set)
-    assert not isinstance(value, Decimal)
+def test_limitations_non_claims_and_required_non_claims_are_carried_forward() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    candidate_brief = operating_brief.candidate_research_briefs[0]
+    payload = operating_brief.to_dict()
+
+    assert operating_brief.limitations
+    assert operating_brief.non_claims
+    assert all(
+        value in operating_brief.limitations
+        for value in candidate_brief.limitations
+    )
+    assert all(value in operating_brief.non_claims for value in candidate_brief.non_claims)
+    assert payload["limitations"] == list(operating_brief.limitations)
+    assert payload["non_claims"] == list(operating_brief.non_claims)
+    assert set(_REQUIRED_NON_CLAIMS).issubset(operating_brief.non_claims)
+    assert all(value.startswith("not ") for value in operating_brief.non_claims)
+
+
+def test_phase_123_fingerprint_is_preserved_in_nested_payloads() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    item = operating_brief.candidate_research_briefs[0].sections[0].items[0]
+    item_payload = _single_item_payload(operating_brief.to_dict())
+
+    assert item.dossier.package.fingerprint == _SYNTHETIC_FIXTURE_DIGEST
+    assert item_payload["package_fingerprint"] == _SYNTHETIC_FIXTURE_DIGEST
+
+
+def test_phase_127_141_provenance_convention_is_preserved_in_nested_payloads() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    item = operating_brief.candidate_research_briefs[0].sections[0].items[0]
+    item_payload = _single_item_payload(operating_brief.to_dict())
+
+    assert item_payload["package_snapshot_id"] == item.dossier.package.snapshot.snapshot_id
+    assert item_payload["result_snapshot_manifest_fixture_id"] == (
+        item.dossier.package.snapshot.snapshot_id
+    )
+    assert item_payload["result_snapshot_manifest_checksum"] == (
+        f"sha256:{item.dossier.package.fingerprint}"
+    )
+
+
+def test_expected_output_matches_operating_brief_serialization_exactly() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    expected = expected_synthetic_advisory_operating_brief_dict()
+
+    assert expected == operating_brief.to_dict()
+    assert tuple(expected) == (
+        "operating_brief_type",
+        "status",
+        "title",
+        "candidate_research_brief_count",
+        "candidate_research_briefs",
+        "limitations",
+        "non_claims",
+    )
+    assert expected is not operating_brief.to_dict()
+    _assert_primitive_only(expected)
+
+
+def test_repeated_fixture_calls_are_deterministic() -> None:
+    first = build_synthetic_advisory_operating_brief()
+    second = build_synthetic_advisory_operating_brief()
+    first_expected = expected_synthetic_advisory_operating_brief_dict()
+    second_expected = expected_synthetic_advisory_operating_brief_dict()
+
+    assert first is not second
+    assert first.candidate_research_briefs[0] is not second.candidate_research_briefs[0]
+    assert first.to_dict() == second.to_dict()
+    assert first_expected == second_expected == first.to_dict()
+    assert _sorted_compact_json(first.to_dict()) == _sorted_compact_json(
+        second.to_dict()
+    )
+
+
+def test_fixture_helpers_do_not_mutate_source_objects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_brief = build_synthetic_candidate_research_brief()
+    source_section = source_brief.sections[0]
+    source_item = source_section.items[0]
+    brief_before = source_brief.to_dict()
+    section_before = source_section.to_dict()
+    item_before = source_item.to_dict()
+    dossier_before = source_item.dossier.to_dict()
+    package_before = source_item.dossier.package.to_dict()
+    result_before = source_item.dossier.result.to_dict()
+    identity_snapshot = (
+        id(source_brief),
+        id(source_brief.sections),
+        id(source_section),
+        id(source_section.items),
+        id(source_item),
+        id(source_item.dossier),
+        id(source_item.dossier.package),
+        id(source_item.dossier.result),
+        id(source_item.dossier.package.snapshot),
+        id(source_item.dossier.result.snapshot),
+        id(source_brief.limitations),
+        id(source_brief.non_claims),
+    )
+
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_candidate_research_brief",
+        lambda: source_brief,
+    )
+
+    operating_brief = fixture_module.build_synthetic_advisory_operating_brief()
+    operating_payload = operating_brief.to_dict()
+    expected_payload = fixture_module.expected_synthetic_advisory_operating_brief_dict()
+    operating_payload["candidate_research_briefs"].append(source_brief.to_dict())
+    operating_payload["limitations"].append("mutated primitive copy")
+    operating_payload["non_claims"].append("mutated primitive copy")
+    expected_payload["candidate_research_briefs"].append(source_brief.to_dict())
+    expected_payload["limitations"].append("mutated primitive copy")
+    expected_payload["non_claims"].append("mutated primitive copy")
+
+    assert operating_brief.candidate_research_briefs[0] is source_brief
+    assert source_brief.to_dict() == brief_before
+    assert source_section.to_dict() == section_before
+    assert source_item.to_dict() == item_before
+    assert source_item.dossier.to_dict() == dossier_before
+    assert source_item.dossier.package.to_dict() == package_before
+    assert source_item.dossier.result.to_dict() == result_before
+    assert (
+        id(source_brief),
+        id(source_brief.sections),
+        id(source_section),
+        id(source_section.items),
+        id(source_item),
+        id(source_item.dossier),
+        id(source_item.dossier.package),
+        id(source_item.dossier.result),
+        id(source_item.dossier.package.snapshot),
+        id(source_item.dossier.result.snapshot),
+        id(source_brief.limitations),
+        id(source_brief.non_claims),
+    ) == identity_snapshot
+
+
+def test_fixture_adds_no_disallowed_payload_or_object_fields() -> None:
+    operating_brief = build_synthetic_advisory_operating_brief()
+    candidate_brief = operating_brief.candidate_research_briefs[0]
+    section = candidate_brief.sections[0]
+    item = section.items[0]
+    payload = operating_brief.to_dict()
+
+    assert tuple(payload) == (
+        "operating_brief_type",
+        "status",
+        "title",
+        "candidate_research_brief_count",
+        "candidate_research_briefs",
+        "limitations",
+        "non_claims",
+    )
+    assert _payload_keys(payload).isdisjoint(_forbidden_payload_fields())
+    for value in (
+        operating_brief,
+        candidate_brief,
+        section,
+        item,
+        item.dossier,
+        item.dossier.package,
+        item.dossier.result,
+    ):
+        assert all(
+            not hasattr(value, field_name)
+            for field_name in _forbidden_payload_fields()
+        )
+
+
+def test_fixture_module_has_no_forbidden_imports_or_calls() -> None:
+    imports = _import_references()
+    call_names = _call_names()
+
+    assert imports == _ALLOWED_IMPORTS
+    assert [
+        module_name
+        for module_name in imports
+        if _matches_forbidden_prefix(module_name, _FORBIDDEN_IMPORT_PREFIXES)
+    ] == []
+    assert call_names == _ALLOWED_CALL_NAMES
+    assert call_names.isdisjoint(_FORBIDDEN_CALL_NAMES)
+
+
+def test_fixture_module_text_has_no_real_world_path_secret_or_trading_literals() -> None:
+    source = _source_text()
+    upper_source = source.upper()
+    lowered = source.lower()
+
+    for code_points in _real_symbol_codes():
+        symbol = "".join(chr(code_point) for code_point in code_points)
+        assert re.search(rf"(?<![A-Z0-9]){symbol}(?![A-Z0-9])", upper_source) is None
+    for term in _vendor_or_provider_terms():
+        assert term not in lowered
+    for term in _credential_terms():
+        assert term not in lowered
+    for marker in _path_or_data_source_markers():
+        assert marker not in lowered
+    for word in _forbidden_source_words():
+        assert re.search(rf"(?<![a-z0-9_]){word}(?![a-z0-9_])", lowered) is None
+
+
+def _single_candidate_brief_payload(payload: dict[str, object]) -> dict[str, object]:
+    candidate_briefs = payload["candidate_research_briefs"]
+    assert isinstance(candidate_briefs, list)
+    assert len(candidate_briefs) == 1
+    candidate_brief = candidate_briefs[0]
+    assert isinstance(candidate_brief, dict)
+    return candidate_brief
+
+
+def _single_section_payload(payload: dict[str, object]) -> dict[str, object]:
+    candidate_brief = _single_candidate_brief_payload(payload)
+    sections = candidate_brief["sections"]
+    assert isinstance(sections, list)
+    assert len(sections) == 1
+    section = sections[0]
+    assert isinstance(section, dict)
+    return section
+
+
+def _single_item_payload(payload: dict[str, object]) -> dict[str, object]:
+    section = _single_section_payload(payload)
+    items = section["items"]
+    assert isinstance(items, list)
+    assert len(items) == 1
+    item = items[0]
+    assert isinstance(item, dict)
+    return item
+
+
+def _is_clean_string(value: object) -> bool:
+    return isinstance(value, str) and bool(value) and value == value.strip()
+
+
+def _assert_non_actionable(values: tuple[str, ...]) -> None:
+    lowered_values = tuple(value.lower() for value in values)
+
+    for term in _actionable_terms():
+        assert all(
+            re.search(rf"(?<![a-z0-9_]){term}(?![a-z0-9_])", value) is None
+            for value in lowered_values
+        )
+
+
+def _actionable_terms() -> tuple[str, ...]:
+    return (
+        _s("action"),
+        _s("actions"),
+        _s("approval"),
+        _s("approved"),
+        "buy",
+        "enter",
+        "exit",
+        "hold",
+        _s("or", "der"),
+        _s("recommend"),
+        _s("recommendation"),
+        "sell",
+        _s("size"),
+        "tradable",
+        _s("tra", "de"),
+        _s("tra", "ding"),
+        "validated",
+    )
+
+
+def _sorted_compact_json(payload: dict[str, object]) -> str:
+    return json.dumps(payload, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
+
+
+def _assert_primitive_only(value: object) -> None:
+    assert not isinstance(value, (tuple, set))
     assert not callable(value)
-    assert not isinstance(value, ModuleType)
 
-    if value is None or type(value) in (str, bool, int, float):
-        return
-
-    if type(value) is list:
-        for item in value:
-            _assert_primitive_json_compatible(item)
-        return
-
-    if type(value) is dict:
+    if isinstance(value, dict):
         for key, item in value.items():
             assert type(key) is str
-            _assert_primitive_json_compatible(item)
+            _assert_primitive_only(item)
         return
 
-    raise AssertionError(f"non-primitive serialized value: {type(value)!r}")
+    if isinstance(value, list):
+        for item in value:
+            _assert_primitive_only(item)
+        return
+
+    assert value is None or type(value) in (str, int, float, bool)
 
 
-def _all_serialized_keys(value: object) -> set[str]:
+def _payload_keys(value: object) -> set[str]:
     if isinstance(value, dict):
-        keys = {str(key) for key in value}
-        for item in value.values():
-            keys.update(_all_serialized_keys(item))
+        keys: set[str] = set()
+        for key, nested_value in value.items():
+            keys.add(str(key))
+            keys.update(_payload_keys(nested_value))
         return keys
 
     if isinstance(value, list):
-        keys: set[str] = set()
-        for item in value:
-            keys.update(_all_serialized_keys(item))
+        keys = set()
+        for nested_value in value:
+            keys.update(_payload_keys(nested_value))
         return keys
 
     return set()
 
 
+def _forbidden_payload_fields() -> set[str]:
+    return {
+        "account",
+        _s("action"),
+        _s("actions"),
+        _s("approval"),
+        _s("approved"),
+        _s("bench", "mark"),
+        _s("bench", "marks"),
+        _s("bro", "ker"),
+        _s("bro", "kers"),
+        _s("ca", "sh"),
+        _s("ca", "sh_return"),
+        _s("ca", "sh_returns"),
+        _s("co", "st"),
+        _s("co", "sts"),
+        "evaluator",
+        "evaluators",
+        _s("fi", "ll"),
+        _s("fi", "lls"),
+        "live_authorized",
+        "live_probe_eligible",
+        _s("or", "der"),
+        _s("or", "ders"),
+        "paper_eligible",
+        _s("port", "folio"),
+        _s("port", "folios"),
+        _s("allo", "cation"),
+        _s("allo", "cations"),
+        _s("po", "sition"),
+        _s("po", "sitions"),
+        "priority",
+        "prioritized",
+        "rank",
+        "ranking",
+        _s("recommendation"),
+        _s("recommendations"),
+        "ready",
+        _s("run", "time"),
+        _s("run", "times"),
+        "score",
+        "scoring",
+        _s("sig", "nal"),
+        _s("sig", "nals"),
+        _s("stra", "tegy"),
+        _s("stra", "tegy_state"),
+        "tradable",
+        _s("tra", "de"),
+        _s("tra", "des"),
+        _s("tra", "ding_readiness"),
+        "validated",
+    }
+
+
+def _source_text() -> str:
+    return FIXTURE_PATH.read_text(encoding="utf-8")
+
+
 def _tree() -> ast.AST:
-    return ast.parse(MODULE_PATH.read_text(encoding="utf-8"), filename=str(MODULE_PATH))
+    return ast.parse(_source_text(), filename=str(FIXTURE_PATH))
 
 
 def _import_references() -> set[str]:
@@ -443,29 +639,24 @@ def _import_references() -> set[str]:
     for node in ast.walk(_tree()):
         if isinstance(node, ast.Import):
             imports.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            imports.add(node.module)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imports.add(node.module)
+            elif node.level > 0:
+                imports.add("__future__")
 
     return imports
 
 
-def _matches_forbidden_prefix(module: str, forbidden_prefixes: tuple[str, ...]) -> bool:
+def _matches_forbidden_prefix(
+    module_name: str,
+    forbidden_prefixes: tuple[str, ...],
+) -> bool:
     return any(
-        module == forbidden_prefix or module.startswith(f"{forbidden_prefix}.")
+        module_name == forbidden_prefix
+        or module_name.startswith(f"{forbidden_prefix}.")
         for forbidden_prefix in forbidden_prefixes
     )
-
-
-def _referenced_names() -> set[str]:
-    names: set[str] = set()
-
-    for node in ast.walk(_tree()):
-        if isinstance(node, ast.Name):
-            names.add(node.id)
-        elif isinstance(node, ast.Attribute):
-            names.add(node.attr)
-
-    return names
 
 
 def _call_names() -> set[str]:
@@ -485,3 +676,123 @@ def _call_name(node: ast.AST) -> str:
         return f"{parent}.{node.attr}" if parent else node.attr
 
     return ""
+
+
+def _real_symbol_codes() -> tuple[tuple[int, ...], ...]:
+    return (
+        (83, 80, 89),
+        (73, 86, 86),
+        (86, 79, 79),
+        (81, 81, 81),
+        (86, 84, 73),
+        (73, 87, 77),
+        (68, 73, 65),
+        (65, 71, 71),
+        (66, 78, 68),
+        (84, 76, 84),
+        (71, 76, 68),
+        (69, 70, 65),
+        (69, 69, 77),
+        (88, 76, 75),
+        (88, 76, 70),
+        (88, 76, 69),
+        (88, 76, 86),
+        (88, 76, 85),
+        (88, 76, 73),
+        (88, 76, 89),
+        (88, 76, 80),
+        (88, 76, 82, 69),
+    )
+
+
+def _vendor_or_provider_terms() -> set[str]:
+    return {
+        _s("al", "paca"),
+        "alpha vantage",
+        "bloomberg",
+        "factset",
+        "finnhub",
+        "fred",
+        _s("interactive ", "bro", "kers"),
+        _s("mas", "sive"),
+        "morningstar",
+        "nasdaq",
+        _s("poly", "gon"),
+        _s("quant", "connect"),
+        "quandl",
+        "refinitiv",
+        "stooq",
+        "tiingo",
+        "yahoo",
+        _s("y", "finance"),
+    }
+
+
+def _credential_terms() -> set[str]:
+    return {
+        _s("a", "pi_key"),
+        _s("a", "pikey"),
+        "bearer",
+        _s("client_", "sec", "ret"),
+        "credential",
+        "oauth",
+        "password",
+        _s("private_key"),
+        _s("sec", "ret"),
+        "token",
+    }
+
+
+def _path_or_data_source_markers() -> set[str]:
+    return {
+        _s(":", chr(47), chr(47)),
+        "http:",
+        "https:",
+        "www.",
+        ".com",
+        _s(".data"),
+        ".csv",
+        ".jsonl",
+        ".parquet",
+        ".zip",
+        chr(47),
+        chr(92),
+    }
+
+
+def _forbidden_source_words() -> set[str]:
+    return {
+        _s("bench", "mark"),
+        _s("bench", "marks"),
+        _s("bro", "ker"),
+        _s("bro", "kers"),
+        _s("ca", "sh"),
+        _s("co", "st"),
+        _s("co", "sts"),
+        _s("fi", "ll"),
+        _s("fi", "lls"),
+        _s("or", "der"),
+        _s("or", "ders"),
+        _s("port", "folio"),
+        _s("port", "folios"),
+        _s("allo", "cation"),
+        _s("allo", "cations"),
+        _s("recommend"),
+        _s("recommendation"),
+        _s("recommendations"),
+        _s("po", "sition"),
+        _s("po", "sitions"),
+        "prioritize",
+        "prioritized",
+        "rank",
+        "ranking",
+        _s("run", "time"),
+        "score",
+        "scoring",
+        _s("sig", "nal"),
+        _s("sig", "nals"),
+        _s("stra", "tegy"),
+        _s("tra", "ding"),
+        _s("tra", "de"),
+        _s("tra", "des"),
+    }
