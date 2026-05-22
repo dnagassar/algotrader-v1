@@ -10294,6 +10294,37 @@ Safe next tasks include:
   credential, approval status, validation claim, trading readiness,
   recommendation, action, ranking/scoring, or production-contract approval;
   normal pytest remains offline and credential-free
+- Phase 138 - Candidate Research Brief Container adds only a tiny
+  deterministic, metadata-only `CandidateResearchBrief` in
+  `src/algotrader/research/candidate_research_brief.py` with focused coverage
+  in `tests/unit/test_candidate_research_brief.py`. It groups existing
+  `CandidateResearchBriefSection` objects for future operating-brief and
+  research-queue surfaces without changing section, item, dossier, package,
+  result, snapshot, or manifest behavior. `build_candidate_research_brief()`
+  requires at least one section, normalizes input to an immutable tuple,
+  preserves section object identity and input order exactly, rejects duplicate
+  section identities, fixes `brief_type` to `candidate_research_brief`, fixes
+  `status` to `candidate_only`, and carries deterministic limitations plus
+  required advisory non-claims forward. Direct construction validates the fixed
+  brief type and status, non-empty title, non-empty immutable section tuple,
+  non-empty immutable limitations and non-claims, section limitation/non-claim
+  carry-forward, and required non-claim coverage. `to_dict()` emits only
+  primitive deterministic metadata: brief type, status, title, section count,
+  section payloads, limitations, and non-claims; no `from_dict()` is added.
+  Tests verify determinism, identity/order preservation, no mutation,
+  primitive-only serialization, constructor rejection paths, forbidden
+  import/call absence, real-world literal absence, and absence of benchmark,
+  cost, cash return, position, order, trade, signal, strategy, broker/runtime,
+  portfolio/allocation, approval, recommendation, ranking/scoring, or
+  trading-readiness fields. This phase adds no LLM/agent behavior, runner,
+  ingestion, file I/O, persistence, database behavior, scheduler, runtime,
+  notebook behavior, external-tool behavior, market-bar production contract,
+  strategy behavior, signal behavior, evaluator behavior, benchmark or cash
+  proxy logic, broker/runtime behavior, portfolio mutation, allocation
+  behavior, order generation, live/paper trading, real data, dependency,
+  network call, credential, approval status, validation claim, trading
+  readiness, recommendation, action, ranking/scoring, or production-contract
+  approval; normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
