@@ -4441,6 +4441,35 @@ credential, approval status, validation claim, trading readiness,
 recommendation, action, ranking/scoring, or production-contract approval.
 Normal pytest remains offline and credential-free.
 
+Phase 140 - Candidate Research Brief Chain Regression Guard adds only a
+test-only end-to-end regression guard in
+`tests/unit/test_candidate_research_brief_chain_regression.py`. The guard
+composes the existing Phase 132 `CandidateResearchResultDossier`, Phase 133
+synthetic dossier fixture, Phase 134 brief item, Phase 135 brief item fixture,
+Phase 136 brief section, Phase 137 brief section fixture, Phase 138 brief
+container, and Phase 139 brief fixture, then proves the synthetic candidate
+research result dossier reaches the final brief dict without drift. Tests pin
+the Phase 123 fingerprint
+`07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`, preserve
+the Phase 127 manifest fixture-id and `sha256:{package.fingerprint}` checksum
+convention, verify fixed `candidate_research_brief`,
+`candidate_research_results`, `candidate_research_result`, and `candidate_only`
+advisory values, and confirm limitations plus required non-claims remain
+present at dossier, item, section, and brief levels. The regression guard also
+checks fixture determinism, builder identity/order preservation, repeated
+full-chain determinism, primitive payload copy isolation, absence of forbidden
+advisory/trading/runtime fields, and absence of forbidden imports, calls,
+real-world literals, paths, credentials, dependencies, and provider markers in
+the new test module. This phase adds no production behavior, `src/` changes,
+LLM/agent behavior, runner, ingestion path, file I/O, persistence, market-bar
+production contract, strategy, signal, evaluator, benchmark or cash proxy
+logic, broker/runtime behavior, scheduler behavior, portfolio mutation,
+allocation behavior, order generation, live/paper trading, real data,
+dependency, network call, credential, approval status, validation claim,
+trading readiness, recommendation, action, ranking/scoring, or
+production-contract approval. Normal pytest remains offline and
+credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
