@@ -10162,6 +10162,26 @@ Safe next tasks include:
   dependency, network call, credential, approval, validation claim, trading
   readiness, or production-contract approval; normal pytest remains offline and
   credential-free
+- Phase 132 - Candidate Research Result Dossier adds a frozen/slotted,
+  metadata-only `CandidateResearchResultDossier` and builder that wrap an
+  existing `ResearchReturnInputPackage` and matching `SyntheticResearchResult`
+  only after the Phase 130 provenance verifier accepts the pair. It preserves
+  package and result object identity, fixes status to advisory `candidate_only`,
+  validates immutable non-empty limitations, and requires non-claims covering no
+  source approval, data approval, endpoint approval, universe approval,
+  benchmark approval, cash proxy approval, methodology approval, evidence
+  approval, return-construction approval, no-lookahead approval, strategy
+  validation, trading readiness, production use, broker/runtime use, order
+  generation, or portfolio/allocation authority. `to_dict()` emits only
+  deterministic primitive metadata for the package fingerprint, package
+  snapshot id, result manifest fixture id, result manifest checksum, status,
+  limitations, and non-claims. It adds no `from_dict()`, runner, ingestion path,
+  file I/O, persistence, market-bar production contract, strategy, signal,
+  evaluator, benchmark or cash proxy logic, broker/runtime behavior, scheduler
+  behavior, portfolio mutation, allocation behavior, order generation,
+  live/paper trading, real data, dependency, network call, credential, approval
+  status, validation claim, trading readiness, or production-contract approval;
+  normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

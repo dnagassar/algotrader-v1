@@ -4244,6 +4244,28 @@ methodology approval, evidence approval, return-construction approval,
 no-lookahead approval, strategy validation, trading readiness, or
 production-contract approval. Normal pytest remains offline and credential-free.
 
+Phase 132 - Candidate Research Result Dossier adds a tiny deterministic
+metadata-only `CandidateResearchResultDossier` plus builder for wrapping an
+existing `ResearchReturnInputPackage` and matching `SyntheticResearchResult`
+after the Phase 130 provenance verifier accepts the pair. Construction
+preserves the original package and result object identities, requires the fixed
+advisory `candidate_only` status, and validates immutable non-empty limitations
+and required non-claims. Those non-claims explicitly state that the dossier is
+not source approval, data approval, endpoint approval, universe approval,
+benchmark approval, cash proxy approval, methodology approval, evidence
+approval, return-construction approval, no-lookahead approval, strategy
+validation, trading readiness, production use, broker/runtime use, order
+generation, or portfolio/allocation authority. `to_dict()` emits only
+deterministic primitive metadata: package fingerprint, package snapshot id,
+result manifest fixture id, result manifest checksum, status, limitations, and
+non-claims. This phase adds no `from_dict()`, runner, ingestion path, file I/O,
+persistence, market-bar production contract, strategy, signal, evaluator,
+benchmark or cash proxy logic, broker/runtime behavior, scheduler behavior,
+portfolio mutation, allocation behavior, order generation, live/paper trading,
+real data, dependency, network call, credential, approval status, validation
+claim, trading readiness, or production-contract approval. Normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
