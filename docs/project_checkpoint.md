@@ -10182,6 +10182,27 @@ Safe next tasks include:
   live/paper trading, real data, dependency, network call, credential, approval
   status, validation claim, trading readiness, or production-contract approval;
   normal pytest remains offline and credential-free
+- Phase 133 - Synthetic Candidate Research Result Dossier Fixture adds only a
+  tiny deterministic test fixture for `CandidateResearchResultDossier`. It
+  composes the Phase 121 synthetic return-input snapshot fixture, Phase 125
+  package builder, Phase 128 result adapter, and Phase 132 dossier builder,
+  exposing `build_synthetic_candidate_research_result_dossier()` and
+  `expected_synthetic_candidate_research_result_dossier_dict()`. The expected
+  payload matches `CandidateResearchResultDossier.to_dict()` exactly. Tests pin
+  the Phase 123 fingerprint
+  `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`,
+  preserve the Phase 127 manifest fixture-id and
+  `sha256:{package.fingerprint}` checksum convention, verify advisory
+  `candidate_only` status plus deterministic limitations and non-claims, check
+  object identity preservation where applicable, and self-audit the fixture
+  module for forbidden imports, calls, and real-world literals. It adds no
+  production behavior, `src/` changes, runner, ingestion path, file I/O,
+  persistence, market-bar production contract, strategy, signal, evaluator,
+  benchmark or cash proxy logic, broker/runtime behavior, scheduler behavior,
+  portfolio mutation, allocation behavior, order generation, live/paper
+  trading, real data, dependency, network call, credential, approval,
+  validation claim, trading readiness, or production-contract approval; normal
+  pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
