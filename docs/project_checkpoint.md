@@ -10379,6 +10379,28 @@ Safe next tasks include:
   claim, trading readiness, recommendation, action, ranking/scoring, or
   production-contract approval; normal pytest remains offline and
   credential-free
+- Phase 141 - Research Return Input Provenance Contract adds only the frozen
+  `ResearchReturnInputProvenance` value object plus focused tests. The
+  contract explicitly encodes the Phase 127 convention that
+  `manifest.fixture_id == package.snapshot.snapshot_id` and
+  `manifest.checksum == sha256:{package.fingerprint}` while preserving the
+  existing manifest fields and all public payload shapes. The Phase 127
+  replay adapter now uses the provenance builder internally when assigning
+  those same manifest values, and the Phase 130 result provenance verifier
+  now uses the same contract internally while preserving its public signature
+  and return object behavior. Tests cover builder output,
+  direct-construction validation, immutability, package/provenance matching,
+  mismatch rejection, adapter manifest output, result verifier identity
+  preservation, regression-chain payload stability, no mutation, and
+  source-audit checks for forbidden imports, calls, literals, dependencies,
+  paths, credentials, and runtime or trading concepts. It adds no ingestion,
+  persistence, runner, operating brief, LLM/agent behavior, market-bar
+  production contract, strategy, signal, evaluator, benchmark or cash proxy
+  logic, broker/runtime behavior, portfolio mutation, allocation behavior,
+  order generation, live/paper trading, real data, dependency, network call,
+  credential, approval status, validation claim, trading readiness,
+  recommendation, action, ranking/scoring, or production-contract approval;
+  normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

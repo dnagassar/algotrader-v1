@@ -33,6 +33,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.errors",
     "algotrader.research.replay_result",
     "algotrader.research.research_return_input_package",
+    "algotrader.research.research_return_input_provenance",
 }
 
 _FORBIDDEN_IMPORT_PREFIXES = (

@@ -29,6 +29,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.research.fixture_manifest",
     "algotrader.research.replay",
     "algotrader.research.research_return_input_package",
+    "algotrader.research.research_return_input_provenance",
 }
 
 _FORBIDDEN_IMPORT_PREFIXES = (

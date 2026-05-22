@@ -7,6 +7,9 @@ from algotrader.research.asof import AsofObservation
 from algotrader.research.fixture_manifest import ResearchFixtureManifest
 from algotrader.research.replay import SyntheticReplayPoint, SyntheticReplaySnapshot
 from algotrader.research.research_return_input_package import ResearchReturnInputPackage
+from algotrader.research.research_return_input_provenance import (
+    build_research_return_input_provenance,
+)
 
 __all__ = [
     "build_synthetic_replay_snapshot_from_return_input_package",
@@ -56,8 +59,9 @@ def _package(value: ResearchReturnInputPackage) -> ResearchReturnInputPackage:
 
 def _manifest(package: ResearchReturnInputPackage) -> ResearchFixtureManifest:
     source_snapshot = package.snapshot
+    provenance = build_research_return_input_provenance(package)
     return ResearchFixtureManifest(
-        fixture_id=source_snapshot.snapshot_id,
+        fixture_id=provenance.manifest_fixture_id,
         fixture_kind="derived",
         description="Synthetic replay snapshot adapted from return input package.",
         source_name="return input package",
@@ -70,7 +74,7 @@ def _manifest(package: ResearchReturnInputPackage) -> ResearchFixtureManifest:
             "prepared_close_value",
             "prepared_close_to_close_return",
         ),
-        checksum=f"sha256:{package.fingerprint}",
+        checksum=provenance.manifest_checksum,
         normal_pytest_eligible=True,
         redistribution_safe=True,
         limitations=(
