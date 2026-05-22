@@ -4549,6 +4549,30 @@ approval, evidence approval, validation claim, trading readiness,
 recommendation, ranking/scoring, or production-contract approval. Normal pytest
 remains offline and credential-free.
 
+Phase 144 - Advisory Operating Brief Chain Regression Guard adds only focused
+unit coverage in
+`tests/unit/test_advisory_operating_brief_chain_regression.py`. The guard proves
+the Phase 139 synthetic candidate research brief fixture can pass through the
+Phase 142 `AdvisoryOperatingBrief` contract and the Phase 143 synthetic
+advisory operating brief fixture without payload drift. It pins the Phase 123
+digest `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`,
+verifies the Phase 127/141 manifest convention remains visible in the final
+operating brief dict, checks fixed advisory type/status values through the
+operating brief, candidate brief, section, item, and dossier chain, and proves
+carried-forward limitations and non-claims remain present. Tests also cover
+repeated full-chain determinism, object identity and sequence preservation where
+applicable, primitive payload copy isolation, absence of forbidden advisory or
+trading payload fields, and source-level import/call/text guardrails for the new
+test module. This phase adds no `src/` changes, production behavior, LLM/agent
+behavior, ingestion, persistence, runner, file I/O, local snapshot loading, CLI,
+scheduler, runtime behavior, market-bar production contract, strategy, signal,
+evaluator, benchmark or cash proxy logic, broker/runtime behavior, portfolio
+mutation, allocation behavior, order generation, live/paper trading, real data,
+dependency, network call, credential, source approval, endpoint approval,
+universe approval, methodology approval, evidence approval, validation claim,
+trading readiness, recommendation, ranking/scoring, or production-contract
+approval. Normal pytest remains offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
