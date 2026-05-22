@@ -10270,6 +10270,30 @@ Safe next tasks include:
   validation claim, trading readiness, recommendation, action, or
   production-contract approval; normal pytest remains offline and
   credential-free
+- Phase 137 - Synthetic Candidate Research Brief Section Fixture adds only a
+  tiny deterministic test fixture for `CandidateResearchBriefSection`. It
+  composes the Phase 135 synthetic candidate research brief item fixture with
+  the Phase 136 section builder, exposing
+  `build_synthetic_candidate_research_brief_section()` and
+  `expected_synthetic_candidate_research_brief_section_dict()`. The expected
+  payload matches `CandidateResearchBriefSection.to_dict()` exactly. Tests
+  verify the fixed `candidate_research_results` section type, advisory
+  `candidate_only` status, deterministic non-actionable title,
+  carried-forward limitations and non-claims, required non-claim coverage,
+  preserved item identity and ordering, the Phase 123 fingerprint
+  `07bc8b37a15dfefb2d8d80c130ac12a15783b2e7af1acd0e2a885afe0d3585e2`, and
+  the Phase 127 manifest fixture-id and `sha256:{package.fingerprint}`
+  checksum convention inside the section dict. The fixture self-audits for
+  forbidden imports, calls, and real-world literals, and repeated construction
+  stays deterministic without mutating source objects or primitive payloads.
+  It adds no production behavior, `src/` changes, LLM/agent behavior, runner,
+  ingestion path, file I/O, persistence, market-bar production contract,
+  strategy, signal, evaluator, benchmark or cash proxy logic, broker/runtime
+  behavior, scheduler behavior, portfolio mutation, allocation behavior,
+  order generation, live/paper trading, real data, dependency, network call,
+  credential, approval status, validation claim, trading readiness,
+  recommendation, action, ranking/scoring, or production-contract approval;
+  normal pytest remains offline and credential-free
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
