@@ -11065,6 +11065,30 @@ Safe next tasks include:
   production-code, dependency, or content bundle renderer/export/CLI behavior
   changes. Normal pytest remains offline, credential-free, deterministic, and
   safe
+- Phase 169 - Advisory Risk Authority Status Contract adds
+  `src/algotrader/research/risk_authority_status.py` and
+  `tests/unit/test_risk_authority_status.py`. It defines the frozen, slotted
+  `RiskAuthorityStatus` dataclass and pure
+  `build_risk_authority_status(...)` builder with fixed metadata
+  `authority_type="risk_authority_status"`, `status="candidate_only"`,
+  `authority="advisory_only"`, and `capital_authority=False`. Only
+  `not_authorized`, `blocked`, and `research_only` are valid authority states.
+  The contract stores only primitive advisory metadata, converts tuple/list
+  inputs to immutable tuples, copies caller collections, and serializes through
+  deterministic primitive `to_dict()` output with compact JSON pins. Required
+  non-claims explicitly state that this is not risk approval, not allocation
+  authority, not order authority, not paper readiness, not live readiness, not
+  broker authority, not portfolio mutation authority, not capital authority,
+  and not trading authority. Tests reject empty or malformed strings and
+  collections, unknown states, and paper/live/authorized/trading-ready/
+  allocation/order/broker/account/portfolio authority-like states. AST and
+  literal guardrails prove the module adds no actionable trading-authority
+  fields and no risk engine behavior, strategy/signal/evaluator behavior,
+  backtesting behavior, broker/runtime behavior, order generation, allocation,
+  portfolio mutation, reconciliation mutation, scheduler behavior, dashboard
+  behavior, CLI behavior, file I/O, persistence, network/socket access,
+  credentials, vendor APIs, LLM/agent behavior, notebooks, or dependencies;
+  normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

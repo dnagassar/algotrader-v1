@@ -5209,6 +5209,35 @@ text and JSON pins remain unchanged. No `src/` production code or content
 bundle renderer/export/CLI behavior changed. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 169 - Advisory Risk Authority Status Contract adds
+`src/algotrader/research/risk_authority_status.py` and focused coverage in
+`tests/unit/test_risk_authority_status.py`. The contract defines the frozen,
+slotted `RiskAuthorityStatus` dataclass and pure
+`build_risk_authority_status(...)` builder for deterministic metadata-only
+advisory risk-capital authority status. Fixed metadata is pinned to
+`authority_type="risk_authority_status"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`; the only allowed
+states are `not_authorized`, `blocked`, and `research_only`.
+
+The Phase 169 tests prove tuple/list input copying, immutable tuple storage,
+source input non-mutation, exact primitive `to_dict()` output, compact JSON
+determinism, repeated construction determinism, frozen/slots behavior,
+non-empty string validation, malformed collection rejection, unknown-state
+rejection, and explicit rejection of paper/live/authorized/trading-ready/
+allocation/order-capable/broker/account/portfolio authority-like states. The
+required non-claims state that the contract is not risk approval, not
+allocation authority, not order authority, not paper readiness, not live
+readiness, not broker authority, not portfolio mutation authority, not capital
+authority, and not trading authority. AST and literal guardrails prove the
+module adds no actionable authority fields and no risk engine behavior,
+strategy/signal/evaluator behavior, backtesting behavior, broker/runtime
+behavior, order generation, allocation, portfolio mutation, reconciliation
+mutation, scheduler behavior, dashboard behavior, CLI behavior, file I/O,
+persistence, network/socket access, credentials, vendor APIs, LLM/agent
+behavior, notebooks, new dependencies, paper readiness, live readiness, or
+trading authority. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
