@@ -10990,6 +10990,34 @@ Safe next tasks include:
   brief renderer/export/CLI behavior, and content bundle renderer behavior
   remain unchanged; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 166 - Advisory Operating Brief Content Bundle Export Regression Guard
+  adds
+  `tests/unit/test_advisory_operating_brief_content_bundle_export_regression.py`
+  as a test-only guard for the Phase 165 in-memory export contract. It uses the
+  Phase 162 synthetic content bundle fixture, exports through
+  `export_advisory_operating_brief_content_bundle(...)`, pins the exact compact
+  JSON export text, pins the exact rendered line tuple, derives the expected
+  primitive payload from the pinned JSON, verifies JSON round-tripping, and
+  verifies rendered text equality with
+  `render_advisory_operating_brief_content_bundle_text(bundle)`. The guard also
+  proves repeated exports are byte-for-byte deterministic, exported payload
+  mutation is isolated from the source bundle and later exports, and source
+  bundle `to_dict()` remains unchanged before and after export. It pins fixed
+  advisory metadata (`bundle_type`, `status`, `authority`, and
+  `capital_authority`), verifies candidate research and strategy eligibility
+  branches remain present and ordered, verifies limitations and non-claims are
+  present, and checks approval/readiness/recommendation/allocation/order/
+  trading-authority language appears only as explicit non-claims/cautions from
+  source metadata. Self-inspection guardrails prove the test itself adds no
+  forbidden file I/O, paths, CLI behavior, persistence, runtime/scheduler
+  behavior, network/socket access, credentials, vendor APIs, notebooks,
+  LLM/agent behavior, broker/runtime behavior, strategy/signal/evaluator
+  behavior, backtesting behavior, ranking/scoring, recommendations, allocation
+  authority, orders, portfolio mutation, trading readiness, source approval,
+  methodology approval, validation approval, trading authority, production-code
+  changes, new dependencies, or existing `AdvisoryOperatingBrief`
+  renderer/export/CLI chain behavior; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

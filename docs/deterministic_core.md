@@ -5128,6 +5128,37 @@ Existing `AdvisoryOperatingBrief`, advisory operating brief renderer/export/CLI
 behavior, and content bundle renderer behavior remain unchanged, and normal
 pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 166 - Advisory Operating Brief Content Bundle Export Regression Guard adds
+`tests/unit/test_advisory_operating_brief_content_bundle_export_regression.py`
+as a test-only guard for the Phase 165 in-memory export contract. The guard
+uses the Phase 162 synthetic content bundle fixture, calls
+`export_advisory_operating_brief_content_bundle(...)`, pins the exact compact
+JSON export text, pins the exact rendered line tuple, derives the expected
+primitive payload from the pinned JSON, verifies `json_text` round-trips back to
+the payload, and verifies `rendered_text` exactly matches
+`render_advisory_operating_brief_content_bundle_text(bundle)`.
+
+The Phase 166 guard also proves repeated exports are byte-for-byte
+deterministic, exported payload mutation does not mutate the source bundle or
+later exports, and the source bundle `to_dict()` payload remains unchanged
+before and after export. It pins fixed advisory metadata (`bundle_type`,
+`status`, `authority`, and `capital_authority`), verifies candidate research and
+strategy eligibility branches remain present and ordered, verifies limitations
+and non-claims remain present, and checks approval/readiness/recommendation/
+allocation/order/trading-authority language appears only as explicit
+non-claims/cautions sourced from bundle metadata. Self-inspection guardrails
+prove the regression test itself imports and calls only the content-bundle
+fixture/export/renderer path plus standard-library inspection helpers, with no
+file I/O, paths, CLI behavior, persistence, runtime/scheduler behavior,
+network/socket access, credentials, vendor APIs, notebooks, LLM/agent behavior,
+broker/runtime behavior, strategy/signal/evaluator behavior, backtesting
+behavior, ranking/scoring, recommendations, allocation authority, orders,
+portfolio mutation, trading readiness, source approval, methodology approval,
+validation approval, trading authority, production-code changes, new
+dependencies, or existing `AdvisoryOperatingBrief` renderer/export/CLI chain
+behavior. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
