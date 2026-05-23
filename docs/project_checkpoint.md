@@ -10880,6 +10880,33 @@ Safe next tasks include:
   behavior, file I/O, persistence, network/socket access, credentials, vendor
   APIs, LLM/agent behavior, notebooks, or new dependencies; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 162 - Synthetic Advisory Operating Brief Content Bundle Fixture adds
+  `tests/fixtures/advisory_operating_brief_content_bundle.py` and focused
+  coverage in
+  `tests/unit/test_advisory_operating_brief_content_bundle_fixture.py`. It
+  composes the existing synthetic `CandidateResearchBrief` fixture, the Phase
+  160 `build_synthetic_strategy_eligibility_brief()` fixture, and the Phase
+  161 `build_advisory_operating_brief_content_bundle(...)` helper, so the
+  synthetic bundle remains validation-backed and does not bypass the contract.
+  The expected helper nests the existing expected synthetic candidate research
+  brief dictionary and the exact Phase 160
+  `expected_synthetic_strategy_eligibility_brief_dict()` payload, then pins
+  `bundle_type`, `candidate_only` status, `advisory_only` authority,
+  `capital_authority=False`, title, summary, counts, tuple/list serialization,
+  exact dictionaries, compact JSON bytes, and fresh carried-forward
+  limitations and non-claims. Tests prove it builds an
+  `AdvisoryOperatingBriefContentBundle` containing exactly one
+  `CandidateResearchBrief` and one `StrategyEligibilityBrief`, does not mutate
+  source briefs, does not share mutable helper payload state, and adds no
+  forbidden broker/order/allocation/trading-authority fields, imports, calls,
+  or literals. It changes no `src/` files and adds no CLI behavior, file I/O,
+  persistence, dashboard behavior, runtime/scheduler behavior, network/socket
+  access, credentials, vendor APIs, notebooks, LLM/agent behavior,
+  broker/runtime behavior, strategy/signal/evaluator behavior, backtesting
+  behavior, ranking/scoring, recommendations, allocation authority, orders,
+  portfolio mutation, trading readiness, source approval, methodology
+  approval, validation approval, trading authority, or dependency; normal
+  pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

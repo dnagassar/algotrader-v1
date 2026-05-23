@@ -5006,6 +5006,39 @@ persistence, network/socket, credential, vendor API, LLM/agent, notebook, or
 new dependency behavior. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 162 - Synthetic Advisory Operating Brief Content Bundle Fixture adds
+`tests/fixtures/advisory_operating_brief_content_bundle.py` and focused
+coverage in
+`tests/unit/test_advisory_operating_brief_content_bundle_fixture.py`. The
+fixture builds one deterministic `AdvisoryOperatingBriefContentBundle` by
+composing the existing synthetic `CandidateResearchBrief` fixture, the Phase
+160 `build_synthetic_strategy_eligibility_brief()` fixture, and the Phase 161
+`build_advisory_operating_brief_content_bundle(...)` helper, so contract
+validation remains in the construction path. Its expected dictionary helper
+nests the existing expected synthetic candidate research brief dictionary and
+the exact Phase 160 `expected_synthetic_strategy_eligibility_brief_dict()`
+payload, pins `bundle_type=advisory_operating_brief_content_bundle`,
+`status=candidate_only`, `authority=advisory_only`,
+`capital_authority=False`, title, summary, counts, tuple-to-list
+serialization, and fresh carried-forward limitation/non-claim lists.
+
+The Phase 162 tests prove the fixture builds an
+`AdvisoryOperatingBriefContentBundle` containing exactly one
+`CandidateResearchBrief` and one `StrategyEligibilityBrief`, emits the exact
+expected primitive dictionary and compact JSON bytes across repeated
+construction, carries forward limitations and non-claims from both nested
+brief families without shared mutable payload state, and does not mutate source
+briefs. AST and literal guardrails prove the fixture added no forbidden broker,
+order, allocation, trading-authority, account, portfolio, paper/live readiness,
+approval, recommendation, runtime, scheduler, dashboard, file I/O,
+persistence, network/socket, credential, vendor API, notebook, LLM/agent,
+strategy/signal/evaluator, backtesting, ranking/scoring, portfolio mutation,
+source approval, methodology approval, validation approval, trading authority,
+or dependency behavior. This phase changes no `src/` files, does not modify
+the existing `AdvisoryOperatingBrief` behavior, renderer, export helper, or
+CLI behavior, and normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
