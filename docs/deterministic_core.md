@@ -5497,6 +5497,38 @@ paper-readiness, live-readiness, capital, or trading-authority behavior
 changed. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 178 - Synthetic Advisory Operating Brief Content Bundle With Risk
+Fixture extends `tests/fixtures/advisory_operating_brief_content_bundle.py`
+with additive risk-inclusive fixture helpers for future renderer, export, and
+CLI composition tests. The existing Phase 162
+`build_synthetic_advisory_operating_brief_content_bundle()` and
+`expected_synthetic_advisory_operating_brief_content_bundle_dict()` outputs
+remain unchanged. The new helper composes the existing synthetic
+`CandidateResearchBrief`, the Phase 160 synthetic `StrategyEligibilityBrief`,
+the Phase 176 synthetic `RiskAuthorityBrief`, and the Phase 177
+`build_advisory_operating_brief_content_bundle(...)` builder, preserving
+validation instead of constructing payloads directly.
+
+The Phase 178 expected helper pins fixed advisory metadata at
+`bundle_type="advisory_operating_brief_content_bundle"`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`; pins deterministic advisory-only title and summary
+text; carries limitations and non-claims forward from candidate research,
+strategy eligibility, and risk authority branches; and pins the nested Phase
+176 risk authority dictionary exactly. Focused tests verify exact primitive
+dictionary output, compact JSON bytes, nested candidate, strategy, and risk
+payload equality, tuple storage/list serialization, repeated construction
+determinism, fresh expected-helper mutable list state, source brief
+non-mutation, old Phase 162 fixture compatibility, and AST/literal guardrails.
+No `src/` production code, existing `AdvisoryOperatingBrief` behavior,
+renderer/export/CLI behavior, risk engine behavior, strategy/signal/evaluator
+behavior, backtesting behavior, broker/runtime behavior, scheduler behavior,
+dashboard behavior, file I/O, persistence, network/socket access, credentials,
+vendor APIs, notebooks, LLM/agent behavior, dependencies, recommendation,
+allocation, order, portfolio mutation, paper-readiness, live-readiness,
+capital, or trading-authority behavior changed. Normal pytest remains
+offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
