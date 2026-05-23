@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `3001` tests are passing, with `4` skipped paper-integration tests by default.
+- `3738` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -5433,6 +5433,35 @@ scheduler behavior, dashboard behavior, CLI behavior, file I/O, persistence,
 network/socket access, credentials, vendor APIs, LLM/agent behavior,
 notebooks, or dependencies changed. Normal pytest remains offline,
 credential-free, deterministic, and safe.
+
+Phase 176 - Synthetic Risk Authority Brief Fixture adds
+`tests/fixtures/risk_authority_brief.py` and focused coverage in
+`tests/unit/test_risk_authority_brief_fixture.py`. The fixture composes the
+Phase 174 `build_synthetic_risk_authority_brief_section()` fixture with the
+Phase 175 `build_risk_authority_brief(...)` builder, so validation is
+preserved and the nested section remains the deterministic Phase 174
+`RiskAuthorityBriefSection`. The expected helper composes from
+`expected_synthetic_risk_authority_brief_section_dict()`, pins the nested
+section dictionary exactly, returns fresh primitive list state, and keeps fixed
+metadata at `brief_type="risk_authority_brief"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`.
+
+The Phase 176 fixture pins deterministic advisory-only title and summary text,
+copies limitations and non-claims forward from the Phase 174 section, and keeps
+non-claims denying risk approval, allocation authority, order authority, paper
+readiness, live readiness, broker authority, portfolio mutation authority,
+capital authority, and trading authority. Tests pin exact dictionary output,
+nested Phase 174 section equality, compact JSON bytes, tuple storage/list
+serialization, repeated construction determinism, expected-helper freshness,
+source section non-mutation, and AST/literal guardrails proving no forbidden
+broker, order, allocation, portfolio, or trading-authority fixture fields,
+imports, or calls were added. No `src/` production code, CLI behavior, risk
+engine behavior, strategy execution behavior, signal/evaluator behavior,
+backtesting behavior, broker/runtime behavior, order generation, allocation,
+portfolio mutation, reconciliation mutation, scheduler behavior, dashboard
+behavior, file I/O, persistence, network/socket access, credentials, vendor
+APIs, LLM/agent behavior, notebooks, or dependencies changed. Normal pytest
+remains offline, credential-free, deterministic, and safe.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

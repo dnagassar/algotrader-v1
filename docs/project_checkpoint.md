@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 3001-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 3738-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -11259,6 +11259,33 @@ Safe next tasks include:
   persistence, network/socket access, credentials, vendor APIs, LLM/agent
   behavior, notebooks, or dependencies changed; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 176 - Synthetic Risk Authority Brief Fixture adds
+  `tests/fixtures/risk_authority_brief.py` and
+  `tests/unit/test_risk_authority_brief_fixture.py`. The fixture composes the
+  Phase 174 `build_synthetic_risk_authority_brief_section()` fixture with the
+  Phase 175 `build_risk_authority_brief(...)` builder, preserving validation
+  and keeping the nested section as the deterministic Phase 174
+  `RiskAuthorityBriefSection`. The expected helper composes from
+  `expected_synthetic_risk_authority_brief_section_dict()`, pins the nested
+  section dictionary exactly, returns fresh primitive list state, and keeps
+  fixed metadata at `brief_type="risk_authority_brief"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. Title and summary text remain deterministic and
+  advisory-only; limitations and non-claims are carried forward; and
+  non-claims deny risk approval, allocation authority, order authority, paper
+  readiness, live readiness, broker authority, portfolio mutation authority,
+  capital authority, and trading authority. Tests pin exact dictionary output,
+  nested Phase 174 section equality, compact JSON bytes, tuple storage/list
+  serialization, repeated construction determinism, expected-helper freshness,
+  source section non-mutation, and AST/literal guardrails proving no forbidden
+  broker, order, allocation, portfolio, trading-authority fields, imports, or
+  calls were added. No `src/` production code, CLI behavior, risk engine
+  behavior, strategy execution behavior, signal/evaluator behavior,
+  backtesting behavior, broker/runtime behavior, order generation, allocation,
+  portfolio mutation, reconciliation mutation, scheduler behavior, dashboard
+  behavior, file I/O, persistence, network/socket access, credentials, vendor
+  APIs, LLM/agent behavior, notebooks, or dependencies changed; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
