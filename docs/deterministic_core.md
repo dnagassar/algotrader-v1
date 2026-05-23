@@ -5039,6 +5039,40 @@ the existing `AdvisoryOperatingBrief` behavior, renderer, export helper, or
 CLI behavior, and normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 163 - Advisory Operating Brief Content Bundle Text Renderer adds
+`src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+and focused coverage in
+`tests/unit/test_advisory_operating_brief_content_bundle_renderer.py`. The
+renderer exposes the pure
+`render_advisory_operating_brief_content_bundle_text(...)` function, requires
+an exact `AdvisoryOperatingBriefContentBundle`, rejects non-bundle and
+bundle-like inputs, and renders only the primitive payload returned by
+`bundle.to_dict()`. It uses fixed headings and fixed line sequencing for the
+bundle metadata, title, summary, candidate research brief branch, strategy
+eligibility branch, carried-forward limitations, and carried-forward
+non-claims. Candidate research briefs, sections, and items retain source
+sequence while showing titles, headline/summary points, package fingerprint,
+snapshot id, and result manifest references. Strategy eligibility briefs,
+sections, and items retain source sequence while showing title, summary,
+eligibility state, reasons, evidence refs, blockers, required next steps,
+limitations, non-claims, and source status metadata.
+
+The Phase 163 tests pin the full Phase 162 synthetic rendered text, prove
+byte-for-byte deterministic repeated rendering, preserve branch sequence for
+both candidate research and strategy eligibility payloads, prove fixed
+advisory metadata is present, represent the Phase 160 strategy eligibility
+payload and existing candidate research payload, and verify rendering does
+not mutate the source bundle. AST and literal guardrails prove the renderer
+adds no forbidden broker, order, allocation, trading-authority, account,
+portfolio, paper/live readiness, approval, recommendation, runtime,
+scheduler, dashboard, CLI, file I/O, persistence, network/socket, credential,
+vendor API, notebook, LLM/agent, ML, pandas, numpy, vectorbt, QuantConnect,
+strategy/signal/evaluator, backtesting, ranking/scoring, portfolio mutation,
+source approval, methodology approval, validation approval, or dependency
+behavior. This phase does not modify the existing `AdvisoryOperatingBrief`
+behavior, renderer, export helper, or CLI behavior, and normal pytest remains
+offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

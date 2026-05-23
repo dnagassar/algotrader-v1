@@ -10907,6 +10907,36 @@ Safe next tasks include:
   portfolio mutation, trading readiness, source approval, methodology
   approval, validation approval, trading authority, or dependency; normal
   pytest remains offline, credential-free, deterministic, and safe
+- Phase 163 - Advisory Operating Brief Content Bundle Text Renderer adds
+  `src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+  and focused coverage in
+  `tests/unit/test_advisory_operating_brief_content_bundle_renderer.py`. The
+  renderer exposes the pure
+  `render_advisory_operating_brief_content_bundle_text(...)` function,
+  requires an exact `AdvisoryOperatingBriefContentBundle`, rejects non-bundle
+  and bundle-like inputs, and renders only the primitive `bundle.to_dict()`
+  payload. Its fixed headings and fixed line sequencing include bundle
+  metadata, title, summary, candidate research brief content, strategy
+  eligibility brief content, carried-forward limitations, and carried-forward
+  non-claims while preserving source branch order. The pinned synthetic output
+  represents existing candidate research payload content plus the Phase 160
+  strategy eligibility payload, including eligibility state, reasons, evidence
+  refs, blockers, required next steps, limitations, non-claims, and source
+  status metadata. Tests prove byte-for-byte deterministic repeated rendering,
+  source bundle immutability, fixed advisory metadata, branch order
+  preservation, and rejection of non-bundle or malformed bundle-like inputs.
+  AST and literal guardrails prove the renderer adds no forbidden
+  broker/order/allocation/trading-authority fields, imports, calls, or
+  literals, and no CLI behavior, file I/O, persistence, dashboard behavior,
+  runtime/scheduler behavior, network/socket access, credentials, vendor APIs,
+  notebooks, LLM/agent behavior, ML behavior, pandas/numpy/vectorbt/
+  QuantConnect dependency behavior, broker/runtime behavior,
+  strategy/signal/evaluator behavior, backtesting behavior, ranking/scoring,
+  recommendations, allocation authority, orders, portfolio mutation, trading
+  readiness, source approval, methodology approval, validation approval, or
+  trading authority. Existing `AdvisoryOperatingBrief`, renderer, export, and
+  CLI behavior remain unchanged, and normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
