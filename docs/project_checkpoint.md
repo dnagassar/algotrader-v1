@@ -10681,6 +10681,31 @@ Safe next tasks include:
   benchmark/methodology/validation approval, paper readiness, live readiness,
   trading recommendation, trading authority, or dependency; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 154 - Synthetic Strategy Eligibility Status Fixture adds
+  `tests/fixtures/strategy_eligibility_status.py` and focused coverage in
+  `tests/unit/test_strategy_eligibility_status_fixture.py`. It builds one
+  deterministic synthetic `research_only` `StrategyEligibilityStatus` through
+  the Phase 153 public `build_strategy_eligibility_status(...)` helper and
+  provides an exact expected primitive dictionary helper for future advisory
+  operating brief composition tests. The fixture pins stable synthetic
+  strategy id/name, reasons, limitations, negative non-claims, evidence refs,
+  blockers, and required next steps; verifies primitive list serialization
+  from tuple fields; proves repeated construction is dict-identical and compact
+  JSON byte-identical; and returns fresh helper lists so primitive payload
+  mutation cannot affect fixture source collections. Its non-claims state that
+  it is not validation, not paper readiness, not live readiness, not a trading
+  recommendation, not allocation authority, not order authority, not
+  profitability evidence, not approval, and not capital authority. Guardrails
+  pin allowed imports/calls and prove no broker/order/allocation/trading
+  authority fields, states, or runtime paths were added. It changes no `src/`
+  files and adds no CLI behavior, file I/O, persistence, dashboard behavior,
+  runtime/scheduler behavior, network/socket access, credentials, vendor APIs,
+  notebooks, LLM/agent behavior, broker/runtime behavior,
+  strategy/signal/evaluator behavior, backtesting behavior, ranking/scoring,
+  recommendations, allocation authority, orders, portfolio mutation, trading
+  readiness, source approval, methodology approval, validation approval,
+  trading authority, or dependency; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -4783,6 +4783,34 @@ benchmark approval, methodology approval, validation approval, paper readiness,
 live readiness, trading recommendation, trading authority, or dependency.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 154 - Synthetic Strategy Eligibility Status Fixture adds
+`tests/fixtures/strategy_eligibility_status.py` and focused coverage in
+`tests/unit/test_strategy_eligibility_status_fixture.py`. The fixture builds a
+single deterministic synthetic `research_only` `StrategyEligibilityStatus`
+through the Phase 153 public `build_strategy_eligibility_status(...)` helper and
+provides an exact expected primitive dictionary helper for later advisory
+operating brief components. The pinned metadata includes stable synthetic
+strategy id/name, reasons, limitations, negative non-claims, evidence refs,
+blockers, and required next steps; `to_dict()` remains primitive-only with
+tuple fields serialized as lists, repeated construction produces identical
+dictionaries and compact JSON bytes, and helper payloads return fresh lists so
+callers cannot mutate fixture source collections.
+
+The fixture explicitly remains research-only and advisory-only. Its non-claims
+state that it is not validation, not paper readiness, not live readiness, not a
+trading recommendation, not allocation authority, not order authority, not
+profitability evidence, not approval, and not capital authority. Guardrail tests
+pin the allowed imports/calls and prove no broker/order/allocation/trading
+authority fields, states, or runtime paths were added. This phase changes no
+`src/` files and adds no CLI behavior, file I/O, persistence, dashboard
+behavior, runtime/scheduler behavior, network/socket access, credentials,
+vendor APIs, notebooks, LLM/agent behavior, broker/runtime behavior,
+strategy/signal/evaluator behavior, backtesting behavior, ranking/scoring,
+recommendations, allocation authority, orders, portfolio mutation, trading
+readiness, source approval, methodology approval, validation approval, or
+trading authority. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
