@@ -4758,6 +4758,31 @@ readiness, source approval, methodology approval, validation approval, or
 trading authority. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 153 - Advisory Strategy Eligibility Status Contract adds
+`src/algotrader/research/strategy_eligibility_status.py` with focused coverage
+in `tests/unit/test_strategy_eligibility_status.py`. The contract is a frozen,
+slotted, metadata-only `StrategyEligibilityStatus` plus
+`build_strategy_eligibility_status(...)` for describing a strategy candidate's
+current advisory eligibility state. It pins `eligibility_type` to
+`strategy_eligibility_status`, `authority` to `advisory_only`, and
+`capital_authority` to `False`; permits only `research_only`,
+`watchlist_only`, and `blocked`; and rejects paper, live, authorized,
+trading-ready, approval-like, or trading-action state values. Required string
+and tuple/list metadata is validated strictly, bools are rejected where strings
+are expected, list inputs are copied into immutable tuples, and `to_dict()`
+emits deterministic primitive dictionaries with tuple fields serialized as
+lists. Required non-claims explicitly state that the contract is not
+validation, not paper readiness, not live readiness, not a trading
+recommendation, not allocation authority, and not order authority. The phase
+adds no strategy execution behavior, signal/evaluator behavior, backtesting,
+broker/runtime behavior, order generation, allocation, portfolio mutation,
+reconciliation mutation, scheduler behavior, dashboard behavior, CLI behavior,
+file I/O, persistence, network/socket access, credentials, vendor API,
+LLM/agent behavior, notebook behavior, source approval, universe approval,
+benchmark approval, methodology approval, validation approval, paper readiness,
+live readiness, trading recommendation, trading authority, or dependency.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

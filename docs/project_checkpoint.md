@@ -10658,6 +10658,29 @@ Safe next tasks include:
   approval, methodology approval, validation approval, trading authority, or
   dependency; normal pytest remains offline, credential-free, deterministic,
   and safe
+- Phase 153 - Advisory Strategy Eligibility Status Contract adds
+  `src/algotrader/research/strategy_eligibility_status.py` and focused
+  coverage in `tests/unit/test_strategy_eligibility_status.py`. It defines a
+  frozen, slotted, metadata-only `StrategyEligibilityStatus` plus
+  `build_strategy_eligibility_status(...)` for a strategy candidate's current
+  advisory eligibility state, pins `eligibility_type` to
+  `strategy_eligibility_status`, `authority` to `advisory_only`, and
+  `capital_authority` to `False`, and permits only `research_only`,
+  `watchlist_only`, and `blocked`. It rejects paper, live, authorized,
+  trading-ready, approval-like, and trading-action states; validates required
+  non-empty strings and tuple/list metadata; rejects bools where strings are
+  expected; copies source collections into immutable tuples; emits exact
+  primitive deterministic dictionaries from `to_dict()`; and requires explicit
+  non-claims that it is not validation, not paper readiness, not live
+  readiness, not a trading recommendation, not allocation authority, and not
+  order authority. It adds no strategy execution behavior, signal/evaluator
+  behavior, backtesting, broker/runtime behavior, order generation, allocation,
+  portfolio mutation, reconciliation mutation, scheduler behavior, dashboard
+  behavior, CLI behavior, file I/O, persistence, network/socket access,
+  credentials, vendor API, LLM/agent behavior, notebooks, source/universe/
+  benchmark/methodology/validation approval, paper readiness, live readiness,
+  trading recommendation, trading authority, or dependency; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
