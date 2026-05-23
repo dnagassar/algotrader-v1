@@ -10806,6 +10806,28 @@ Safe next tasks include:
   readiness, source approval, methodology approval, validation approval,
   trading authority, or dependency; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 159 - Advisory Strategy Eligibility Brief Container adds
+  `src/algotrader/research/strategy_eligibility_brief.py` and focused coverage
+  in `tests/unit/test_strategy_eligibility_brief.py`. It defines a frozen,
+  slotted, metadata-only `StrategyEligibilityBrief` plus
+  `build_strategy_eligibility_brief(...)`, requires at least one exact
+  `StrategyEligibilityBriefSection`, rejects non-sections, malformed
+  section-like objects, empty collections, and duplicate section identities,
+  converts section collections to immutable tuples, and preserves source
+  section identity and input sequence. Fixed metadata is pinned to
+  `brief_type=strategy_eligibility_brief`, `status=candidate_only`,
+  `authority=advisory_only`, and `capital_authority=False`. Tests pin the
+  deterministic advisory-only title and summary, exact primitive `to_dict()`
+  output, compact JSON, nested Phase 158 expected section dictionary, repeated
+  construction determinism, carried-forward limitations and non-claims with
+  exact duplicate strings removed, and source section immutability. Guardrails
+  prove no forbidden paper/live/approved/trading-ready states, broker/order/
+  allocation/trading-authority fields, imports, calls, literals, file I/O,
+  persistence, network/socket access, credentials, vendor APIs, dashboard,
+  scheduler/runtime, ML, LLM/agent, pandas, numpy, vectorbt, QuantConnect,
+  strategy execution, signal/evaluator, backtesting, portfolio mutation, or
+  new dependency behavior were added; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
