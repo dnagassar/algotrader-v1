@@ -4666,6 +4666,31 @@ approval, validation claim, trading readiness, recommendation,
 ranking/scoring, or production-contract approval. Normal pytest remains
 offline and credential-free.
 
+Phase 149 - Advisory Operating Brief CLI Preview adds a tiny developer preview
+subcommand, `algotrader advisory-operating-brief-preview`, plus the narrow
+production-safe synthetic preview builder in
+`src/algotrader/research/advisory_operating_brief_cli.py`. The command builds
+the same synthetic advisory operating brief payload as the Phase 143 fixture
+without importing `tests.fixtures` from production code, exports it through the
+Phase 147 in-memory helper, and writes only the selected export view to stdout:
+rendered text by default or compact JSON with `--format json`. Focused tests in
+`tests/unit/test_advisory_operating_brief_cli.py` prove parser registration,
+Phase 143 fixture equivalence, byte-for-byte deterministic text and JSON
+output, no file/path arguments, no file I/O, no environment reads, no network
+access, no broker/runtime/vendor/LLM imports during preview invocation, fixed
+type/status visibility, Phase 123 digest visibility, Phase 127/141 provenance
+visibility, limitations and non-claims visibility, no extra decision language,
+source-object non-mutation, and source-level import/call/literal guardrails.
+The preview remains synthetic, offline, credential-free, and advisory only; it
+adds no file output, input path, config/env loading, current time/date, random
+value, real data loading, ingestion, persistence, scheduler/runtime behavior,
+dashboard behavior, notebook behavior, external-tool behavior, LLM/agent
+behavior, broker/runtime behavior, strategy/signal/evaluator behavior,
+recommendation, ranking/scoring, allocation, order generation, source approval,
+endpoint approval, universe approval, methodology approval, evidence approval,
+validation claim, trading readiness, live/paper trading, or production-contract
+approval.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -6,16 +6,15 @@ import argparse
 from collections.abc import Sequence
 import sys
 
-from .config import PROFILE_NAMES, load_config
-from .logging_setup import configure_logging, get_logger
-from .orchestration.scenarios import SCENARIO_NAMES
+_PROFILE_NAMES = ("dev", "paper", "live")
+_PREVIEW_FORMATS = ("text", "json")
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="algotrader")
     parser.add_argument(
         "--profile",
-        choices=PROFILE_NAMES,
+        choices=_PROFILE_NAMES,
         default=None,
         help="Runtime profile to load. Defaults to ALGOTRADER_PROFILE or dev.",
     )
@@ -41,19 +40,41 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List available deterministic demo scenarios.",
     )
+    preview_parser = subparsers.add_parser(
+        "advisory-operating-brief-preview",
+        help="Print the synthetic advisory operating brief preview.",
+    )
+    preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
+    argv_items = tuple(sys.argv[1:] if argv is None else argv)
+    preview_output_format = _preview_output_format(argv_items)
+    if preview_output_format is not None:
+        return _run_advisory_operating_brief_preview(preview_output_format)
 
-    config = load_config(profile=args.profile)
+    parser = build_parser()
+    args = parser.parse_args(argv_items)
+
+    command = args.command or "config"
+
+    if command == "advisory-operating-brief-preview":
+        return _run_advisory_operating_brief_preview(args.output_format)
+
+    config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
+    from .logging_setup import configure_logging, get_logger
+
     configure_logging(log_level=log_level)
 
     logger = get_logger(__name__)
-    command = args.command or "config"
 
     if command == "config":
         logger.info(
@@ -82,13 +103,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _list_demo_core_scenarios() -> None:
+    from .orchestration.scenarios import SCENARIO_NAMES
+
     print("Available deterministic core scenarios")
     for scenario_name in SCENARIO_NAMES:
         print(f"- {scenario_name}")
 
 
 def _run_demo_core(scenario_name: str) -> int:
-    from .orchestration.scenarios import run_scenario
+    from .orchestration.scenarios import SCENARIO_NAMES, run_scenario
 
     if scenario_name not in SCENARIO_NAMES:
         expected = ", ".join(SCENARIO_NAMES)
@@ -144,3 +167,52 @@ def _fill_summary(result) -> str:
     if result.execution is None:
         return "not_applicable"
     return "filled" if result.execution.fill is not None else "none"
+
+
+def _run_advisory_operating_brief_preview(output_format: str) -> int:
+    from .research.advisory_operating_brief_cli import (
+        render_advisory_operating_brief_preview,
+    )
+
+    print(render_advisory_operating_brief_preview(output_format), end="")
+    return 0
+
+
+def _load_runtime_config(profile: str | None):
+    from .config import load_config
+
+    return load_config(profile=profile)
+
+
+def _preview_output_format(argv: tuple[str, ...]) -> str | None:
+    if "advisory-operating-brief-preview" not in argv:
+        return None
+
+    command_index = argv.index("advisory-operating-brief-preview")
+    if not _only_ignored_runtime_options(argv[:command_index]):
+        return None
+
+    preview_args = argv[command_index + 1 :]
+    if preview_args == ():
+        return "text"
+    if (
+        len(preview_args) == 2
+        and preview_args[0] == "--format"
+        and preview_args[1] in _PREVIEW_FORMATS
+    ):
+        return preview_args[1]
+    return None
+
+
+def _only_ignored_runtime_options(argv: tuple[str, ...]) -> bool:
+    index = 0
+    while index < len(argv):
+        argument = argv[index]
+        if argument in ("--profile", "--log-level"):
+            index += 2
+        elif argument.startswith("--profile=") or argument.startswith("--log-level="):
+            index += 1
+        else:
+            return False
+
+    return index == len(argv)
