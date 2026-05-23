@@ -10781,6 +10781,31 @@ Safe next tasks include:
   strategy execution, signal/evaluator, backtesting, portfolio mutation, or
   new dependency behavior were added; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 158 - Synthetic Strategy Eligibility Brief Section Fixture adds
+  `tests/fixtures/strategy_eligibility_brief_section.py` and focused coverage
+  in `tests/unit/test_strategy_eligibility_brief_section_fixture.py`. It
+  composes the Phase 156
+  `build_synthetic_strategy_eligibility_brief_item()` fixture through the
+  Phase 157 public `build_strategy_eligibility_brief_section(...)` helper, so
+  the synthetic section remains validation-backed and item-derived. The
+  expected helper returns the exact primitive brief section payload with the
+  exact Phase 156 expected item dictionary nested in `items`, plus fresh
+  section-level limitation and non-claim lists. Tests prove it builds a
+  `StrategyEligibilityBriefSection` containing the Phase 156
+  `StrategyEligibilityBriefItem`, pins `section_type`, `candidate_only`
+  status, `advisory_only` authority, `capital_authority=False`, title,
+  summary, tuple/list serialization, exact dictionaries, compact JSON bytes,
+  carried-forward limitations and non-claims, source object immutability, and
+  fresh helper payloads. Guardrails prove no forbidden broker/order/allocation/
+  trading-authority fields, imports, calls, or literals were added. It changes
+  no `src/` files and adds no CLI behavior, file I/O, persistence, dashboard
+  behavior, runtime/scheduler behavior, network/socket access, credentials,
+  vendor APIs, notebooks, LLM/agent behavior, broker/runtime behavior,
+  strategy/signal/evaluator behavior, backtesting behavior, ranking/scoring,
+  recommendations, allocation authority, orders, portfolio mutation, trading
+  readiness, source approval, methodology approval, validation approval,
+  trading authority, or dependency; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
