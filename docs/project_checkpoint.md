@@ -10636,6 +10636,28 @@ Safe next tasks include:
   portfolio/allocation mutation, order generation, ranking/scoring,
   recommendation, approval, real data, ingestion, vendor API, credential, or
   dependency
+- Phase 152 - Advisory Operating Brief Review Checklist Regression Guard adds
+  a test-only exact-output pin in
+  `tests/unit/test_advisory_operating_brief_review_regression.py` for the
+  Phase 151 checklist contract. It builds the checklist only from the existing
+  synthetic Phase 147/150 in-memory export chain, pins the exact deterministic
+  `to_dict()` payload, separately pins source export candidate/advisory
+  metadata, limitations, non-claims, the Phase 123 fingerprint, and the Phase
+  127/141 provenance convention, proves repeated construction is dict-equal and
+  byte-identical, proves tuple fields serialize to primitive lists, and proves
+  checklist construction does not mutate the source export payload or text
+  views. Injected capital-authority metadata remains checklist findings only,
+  and test-module import/call/literal guardrails prevent accidental broker,
+  order, allocation, approval, or trading-authority language outside explicit
+  forbidden findings and negative non-claims. It changes no `src/` files and
+  adds no CLI behavior, file I/O, persistence, dashboard behavior,
+  runtime/scheduler behavior, network/socket access, credentials, vendor API
+  access, notebooks, LLM/agent behavior, broker/runtime behavior,
+  strategy/signal/evaluator behavior, ranking/scoring, recommendations,
+  allocation authority, orders, portfolio mutation, trading readiness, source
+  approval, methodology approval, validation approval, trading authority, or
+  dependency; normal pytest remains offline, credential-free, deterministic,
+  and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
