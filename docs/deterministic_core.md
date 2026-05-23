@@ -5073,6 +5073,32 @@ behavior. This phase does not modify the existing `AdvisoryOperatingBrief`
 behavior, renderer, export helper, or CLI behavior, and normal pytest remains
 offline, credential-free, deterministic, and safe.
 
+Phase 164 - Advisory Operating Brief Content Bundle Renderer Regression Guard
+adds the test-only
+`tests/unit/test_advisory_operating_brief_content_bundle_renderer_regression.py`
+guard for the Phase 163 content bundle text renderer. The guard uses the Phase
+162 synthetic content bundle fixture, calls only
+`render_advisory_operating_brief_content_bundle_text(...)`, and pins the exact
+rendered line tuple plus repeated byte-for-byte rendering. It verifies fixed
+bundle metadata, candidate research branch content, strategy eligibility branch
+content, carried-forward limitations, carried-forward non-claims, advisory-only
+authority markers, and preserved candidate/strategy branch order. It also
+proves `bundle.to_dict()` is unchanged before and after rendering.
+
+The Phase 164 guard confirms rendered authority-sensitive terms appear only as
+explicit source metadata non-claims or cautions, with no approval,
+recommendation, paper readiness, live readiness, allocation authority, order
+authority, trading authority, or actionable readiness fields introduced. Its
+AST guard keeps the regression test itself test-only and isolated from the
+existing `AdvisoryOperatingBrief` renderer/export/CLI chain, and excludes
+forbidden broker, order, allocation, trading-authority, account, portfolio,
+paper/live readiness, runtime, scheduler, dashboard, file I/O, persistence,
+network/socket, credential, vendor API, notebook, LLM/agent, strategy/signal/
+evaluator, backtesting, ranking/scoring, source approval, methodology approval,
+validation approval, and dependency behavior. This phase changes no `src/`
+files, adds no CLI behavior, and normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

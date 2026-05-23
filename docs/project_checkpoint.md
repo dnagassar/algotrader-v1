@@ -10937,6 +10937,31 @@ Safe next tasks include:
   trading authority. Existing `AdvisoryOperatingBrief`, renderer, export, and
   CLI behavior remain unchanged, and normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 164 - Advisory Operating Brief Content Bundle Renderer Regression Guard
+  adds the test-only
+  `tests/unit/test_advisory_operating_brief_content_bundle_renderer_regression.py`
+  guard for the Phase 163 content bundle text renderer. It uses the Phase 162
+  synthetic content bundle fixture, calls only
+  `render_advisory_operating_brief_content_bundle_text(...)`, pins the exact
+  rendered line tuple, proves repeated rendering is byte-for-byte identical,
+  and verifies fixed bundle metadata, candidate research branch content,
+  strategy eligibility branch content, limitations, non-claims, advisory-only
+  authority markers, and preserved candidate/strategy branch order. It also
+  proves the source bundle `to_dict()` payload is unchanged before and after
+  rendering. Authority-sensitive rendered terms are allowed only as explicit
+  source metadata non-claims or cautions, with no approval, recommendation,
+  paper readiness, live readiness, allocation authority, order authority,
+  trading authority, actionable readiness fields, or old
+  `AdvisoryOperatingBrief` renderer/export/CLI chain behavior introduced. The
+  test's AST guard keeps the regression file test-only and free of forbidden
+  dependency imports or calls. This phase changes no `src/` files and adds no
+  CLI behavior, file I/O, persistence, dashboard behavior, runtime/scheduler
+  behavior, network/socket access, credentials, vendor APIs, notebooks,
+  LLM/agent behavior, broker/runtime behavior, strategy/signal/evaluator
+  behavior, backtesting behavior, ranking/scoring, recommendations, allocation
+  authority, orders, portfolio mutation, trading readiness, source approval,
+  methodology approval, validation approval, trading authority, or dependency;
+  normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
