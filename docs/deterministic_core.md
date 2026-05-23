@@ -4838,6 +4838,34 @@ execution, signal/evaluator, backtesting, allocation, order generation,
 portfolio mutation, approval, readiness, or capital-authority behavior was
 added. Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 156 - Synthetic Strategy Eligibility Brief Item Fixture adds
+`tests/fixtures/strategy_eligibility_brief_item.py` and focused coverage in
+`tests/unit/test_strategy_eligibility_brief_item_fixture.py`. The fixture builds
+a deterministic synthetic `StrategyEligibilityBriefItem` by composing the Phase
+154 `build_synthetic_strategy_eligibility_status()` fixture through the Phase
+155 public `build_strategy_eligibility_brief_item(...)` helper, preserving
+validation and source status identity. Its expected dictionary helper composes
+fresh primitive top-level lists while nesting the exact Phase 154 expected
+status dictionary payload, pins `item_type` to
+`strategy_eligibility_brief_item`, `status` to `candidate_only`, `authority` to
+`advisory_only`, `capital_authority` to `False`, and pins deterministic
+advisory-only headline and summary text.
+
+The Phase 156 tests prove the fixture builds a `StrategyEligibilityBriefItem`
+with a `StrategyEligibilityStatus` source, emits the exact expected primitive
+dictionary and compact JSON bytes across repeated construction, serializes tuple
+fields as lists, carries forward limitations and negative non-claims, and
+returns fresh helper lists so payload mutation cannot affect source objects or
+later helper calls. Guardrails prove the fixture added no forbidden broker,
+order, allocation, trading-authority, account, portfolio, paper/live readiness,
+approval, recommendation, capital authority, runtime, scheduler, dashboard,
+file I/O, persistence, network/socket, credential, vendor API, notebook,
+LLM/agent, strategy/signal/evaluator, backtesting, ranking/scoring, order,
+portfolio mutation, trading readiness, source approval, methodology approval,
+validation approval, or dependency behavior. This phase changes no `src/`
+files, and normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

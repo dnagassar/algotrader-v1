@@ -10735,6 +10735,29 @@ Safe next tasks include:
   methodology/validation approval, paper readiness, live readiness, trading
   recommendation, trading authority, or dependency; normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 156 - Synthetic Strategy Eligibility Brief Item Fixture adds
+  `tests/fixtures/strategy_eligibility_brief_item.py` and focused coverage in
+  `tests/unit/test_strategy_eligibility_brief_item_fixture.py`. It composes the
+  Phase 154 `build_synthetic_strategy_eligibility_status()` fixture through the
+  Phase 155 public `build_strategy_eligibility_brief_item(...)` helper so the
+  synthetic brief item remains validation-backed and source-status-derived.
+  The expected helper returns the exact primitive brief item payload with fresh
+  top-level lists and the exact Phase 154 expected status dictionary nested as
+  `source_status`. Tests prove it builds a `StrategyEligibilityBriefItem` with
+  a `StrategyEligibilityStatus` source, pins `item_type`, `candidate_only`
+  status, `advisory_only` authority, `capital_authority=False`, headline,
+  summary, tuple/list serialization, exact dictionaries, compact JSON bytes,
+  carried-forward limitations and non-claims, source object immutability, and
+  fresh helper payloads. Guardrails prove no forbidden broker/order/allocation/
+  trading-authority fields, imports, calls, or literals were added. It changes
+  no `src/` files and adds no CLI behavior, file I/O, persistence, dashboard
+  behavior, runtime/scheduler behavior, network/socket access, credentials,
+  vendor APIs, notebooks, LLM/agent behavior, broker/runtime behavior,
+  strategy/signal/evaluator behavior, backtesting behavior, ranking/scoring,
+  recommendations, allocation authority, orders, portfolio mutation, trading
+  readiness, source approval, methodology approval, validation approval,
+  trading authority, or dependency; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
