@@ -4866,6 +4866,31 @@ validation approval, or dependency behavior. This phase changes no `src/`
 files, and normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 157 - Advisory Strategy Eligibility Brief Section adds
+`src/algotrader/research/strategy_eligibility_brief_section.py` with focused
+coverage in `tests/unit/test_strategy_eligibility_brief_section.py`. The
+contract defines a frozen, slotted, metadata-only
+`StrategyEligibilityBriefSection` plus
+`build_strategy_eligibility_brief_section(...)`, requires at least one exact
+`StrategyEligibilityBriefItem`, rejects malformed item-like objects and
+duplicate item identities, converts item collections to immutable tuples, and
+preserves source item identity and input sequence. Fixed metadata is pinned to
+`section_type=strategy_eligibility_brief_section`, `status=candidate_only`,
+`authority=advisory_only`, and `capital_authority=False`.
+
+The Phase 157 section derives only deterministic advisory title and summary
+text from source item metadata, nests item `to_dict()` payloads in the original
+sequence, carries forward limitations and non-claims with exact duplicate
+strings removed, and emits primitive-only dictionaries plus pinned compact
+JSON across repeated construction. Tests prove the Phase 156 synthetic item
+fixture composes into the section without mutating the source item and that
+paper/live/approved/trading-ready states remain impossible through section
+metadata. AST and literal guardrails prove the module imports no forbidden
+network, vendor, broker, runtime, scheduler, dashboard, persistence, file I/O,
+ML, LLM/agent, pandas, numpy, vectorbt, QuantConnect, signal/evaluator,
+backtesting, allocation, order, account, portfolio, or new dependency behavior.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
