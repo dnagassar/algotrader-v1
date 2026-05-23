@@ -4714,6 +4714,27 @@ no-lookahead claim, trading readiness, recommendation, ranking/scoring, or
 production-contract approval. Normal pytest remains offline, deterministic,
 and credential-free.
 
+Phase 151 - Advisory Operating Brief Review Checklist Contract adds
+`src/algotrader/research/advisory_operating_brief_review.py` and focused
+coverage in `tests/unit/test_advisory_operating_brief_review.py`. The contract
+accepts only an existing Phase 147/150 in-memory advisory operating brief
+export, validates malformed export objects strictly, and returns a frozen,
+slotted, metadata-only `AdvisoryOperatingBriefReviewChecklist` with fixed
+`review_type` and `candidate_only` status. The checklist records deterministic
+booleans for candidate-only status, advisory-only type shape, limitations,
+non-claims, the Phase 123 fingerprint, and Phase 127/141 provenance
+convention; it also records any blocked capital-authority field or language
+paths as findings only. Serialization is primitive-only and deterministic via
+`to_dict()`, tuple fields remain immutable, repeated construction produces
+identical dictionaries, and the source export payload is not mutated. This
+phase adds no CLI behavior, file I/O, local snapshot loading, persistence,
+database behavior, dashboard behavior, scheduler/runtime behavior, notebook
+behavior, external-tool behavior, LLM/agent behavior, broker/runtime behavior,
+strategy/signal/evaluator behavior, benchmark or cash logic,
+portfolio/allocation mutation, order generation, ranking/scoring,
+recommendation, approval, real data, ingestion, vendor API, credential, or
+dependency.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
