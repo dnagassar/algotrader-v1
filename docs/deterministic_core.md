@@ -5329,6 +5329,43 @@ persistence, network/socket access, credentials, vendor APIs, LLM/agent
 behavior, notebooks, or dependencies changed. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 173 - Advisory Risk Authority Brief Section adds
+`src/algotrader/research/risk_authority_brief_section.py` and focused coverage
+in `tests/unit/test_risk_authority_brief_section.py`. The contract defines the
+frozen, slotted `RiskAuthorityBriefSection` dataclass and pure
+`build_risk_authority_brief_section(...)` builder for deterministic
+metadata-only advisory grouping of one or more exact `RiskAuthorityBriefItem`
+objects. It preserves source item object identity and caller ordering, converts
+item collections to immutable tuples, rejects empty collections, rejects
+malformed item-like objects, rejects subclass instances, and rejects duplicate
+item identities.
+
+The Phase 173 section pins fixed metadata to
+`section_type="risk_authority_brief_section"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`. It derives
+advisory-only title and summary text from item metadata, carries forward item
+limitations and non-claims in deterministic first-seen order with exact
+duplicates removed, includes nested item `to_dict()` payloads in original
+order, and returns primitive-only deterministic `to_dict()` output with tuple
+fields serialized as lists. Tests pin exact section dictionary output, compact
+JSON output, nested Phase 172 fixture item equality, repeated construction
+determinism, source item non-mutation, direct constructor rejection when
+section metadata diverges from source items, absence of `from_dict()`, and
+AST/literal guardrails proving no actionable authority fields or forbidden
+imports/calls were added. The title and summary do not express approval,
+recommendation, paper readiness, live readiness, allocation language, order
+language, broker authority, portfolio mutation authority, capital authority,
+or trading authority. The section does not create risk approval, paper
+readiness, live readiness, recommendation, allocation authority, order
+authority, broker authority, portfolio mutation authority, capital authority,
+or trading authority. No risk engine behavior, strategy execution behavior,
+signal/evaluator behavior, backtesting behavior, broker/runtime behavior,
+order generation, allocation, portfolio mutation, reconciliation mutation,
+scheduler behavior, dashboard behavior, CLI behavior, file I/O, persistence,
+network/socket access, credentials, vendor APIs, LLM/agent behavior,
+notebooks, or dependencies changed. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

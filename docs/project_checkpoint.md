@@ -11172,6 +11172,36 @@ Safe next tasks include:
   network/socket access, credentials, vendor APIs, LLM/agent behavior,
   notebooks, or dependencies changed; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 173 - Advisory Risk Authority Brief Section adds
+  `src/algotrader/research/risk_authority_brief_section.py` and
+  `tests/unit/test_risk_authority_brief_section.py`. The contract defines the
+  frozen, slotted `RiskAuthorityBriefSection` dataclass and pure
+  `build_risk_authority_brief_section(...)` builder for deterministic
+  metadata-only grouping of one or more exact `RiskAuthorityBriefItem` objects.
+  It preserves source item object identity and input ordering, converts item
+  collections to immutable tuples, rejects empty collections, malformed
+  item-like objects, subclass instances, and duplicate item identities, and
+  pins fixed metadata to `section_type="risk_authority_brief_section"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. Title and summary text are derived from item
+  metadata and remain advisory-only; limitations and non-claims are carried
+  forward in deterministic first-seen order with exact duplicates removed; and
+  nested item `to_dict()` payloads are included in original order. Tests pin
+  exact primitive dictionary output, compact JSON bytes, nested Phase 172 item
+  equality, repeated construction determinism, source item non-mutation,
+  direct constructor rejection when section metadata diverges from items,
+  absence of `from_dict()`, and AST/literal guardrails proving no actionable
+  authority fields, forbidden imports, forbidden calls, or runtime behavior
+  were added. The section does not create risk approval, recommendation, paper
+  readiness, live readiness, allocation authority, order authority, broker
+  authority, portfolio mutation authority, capital authority, or trading
+  authority. No risk engine behavior, strategy execution behavior,
+  signal/evaluator behavior, backtesting behavior, broker/runtime behavior,
+  order generation, allocation, portfolio mutation, reconciliation mutation,
+  scheduler behavior, dashboard behavior, CLI behavior, file I/O, persistence,
+  network/socket access, credentials, vendor APIs, LLM/agent behavior,
+  notebooks, or dependencies changed; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
