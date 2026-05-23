@@ -4644,6 +4644,28 @@ universe approval, methodology approval, evidence approval, validation claim,
 trading readiness, recommendation, ranking/scoring, or production-contract
 approval. Normal pytest remains offline and credential-free.
 
+Phase 148 - Advisory Operating Brief Export Regression Guard adds a test-only
+exact-output pin in
+`tests/unit/test_advisory_operating_brief_export_regression.py` using the Phase
+143 synthetic advisory operating brief fixture and the Phase 147 in-memory
+export helper. The guard pins the compact JSON string, rendered line tuple,
+payload key shape, repeated byte-for-byte export determinism, JSON round-trip
+equality to the primitive payload, renderer equivalence to the Phase 145
+renderer, exported-payload copy isolation from source objects, Phase 123 digest
+visibility, Phase 127/141 provenance convention visibility, fixed advisory
+type/status values, limitations, non-claims, and test-module
+import/call/literal guardrails. This phase changes no `src/` files and adds no
+production behavior, file I/O, parser, deserializer, CLI, dashboard, notebook,
+persistence, local snapshot loading, scheduler, runtime behavior, LLM/agent
+behavior, ingestion, market-bar production contract, strategy, signal,
+evaluator, benchmark or cash proxy logic, backtesting engine, broker/runtime
+behavior, portfolio mutation, allocation behavior, order generation,
+live/paper trading, real data, dependency, network call, credential, source
+approval, endpoint approval, universe approval, methodology approval, evidence
+approval, validation claim, trading readiness, recommendation,
+ranking/scoring, or production-contract approval. Normal pytest remains
+offline and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
