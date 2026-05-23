@@ -11114,6 +11114,35 @@ Safe next tasks include:
   behavior, file I/O, persistence, network/socket access, credentials, vendor
   APIs, LLM/agent behavior, notebooks, or dependencies changed; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 171 - Advisory Risk Authority Brief Item adds
+  `src/algotrader/research/risk_authority_brief_item.py` and
+  `tests/unit/test_risk_authority_brief_item.py`. The contract defines the
+  frozen, slotted `RiskAuthorityBriefItem` dataclass and pure
+  `build_risk_authority_brief_item(...)` builder for deterministic
+  advisory-only composition around an existing exact `RiskAuthorityStatus`.
+  The item preserves source status object identity, rejects non-status inputs,
+  malformed status-like objects, and subclass instances, and pins fixed
+  metadata to `item_type="risk_authority_brief_item"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. It carries forward authority state, reasons,
+  blockers, required next steps, limitations, non-claims, evidence refs, and
+  related strategy ids; adds deterministic advisory-only headline/summary
+  text; and includes the nested source status `to_dict()` payload. Tests pin
+  exact primitive dictionary output, compact JSON output, tuple storage/list
+  serialization, repeated construction determinism, nested Phase 170 fixture
+  payload equality, source status non-mutation, direct constructor rejection
+  when carried metadata diverges from the source, absence of `from_dict()`, and
+  AST/literal guardrails proving no actionable authority fields or forbidden
+  imports/calls were added. The item does not create risk approval,
+  recommendation, paper readiness, live readiness, allocation authority, order
+  authority, broker authority, portfolio mutation authority, capital authority,
+  or trading authority. No risk engine behavior, strategy execution behavior,
+  signal/evaluator behavior, backtesting behavior, broker/runtime behavior,
+  order generation, allocation, portfolio mutation, reconciliation mutation,
+  scheduler behavior, dashboard behavior, CLI behavior, file I/O, persistence,
+  network/socket access, credentials, vendor APIs, LLM/agent behavior,
+  notebooks, or dependencies changed; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

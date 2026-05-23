@@ -5266,6 +5266,37 @@ persistence, network/socket access, credentials, vendor APIs, LLM/agent
 behavior, notebooks, or dependencies changed. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 171 - Advisory Risk Authority Brief Item adds
+`src/algotrader/research/risk_authority_brief_item.py` and focused coverage in
+`tests/unit/test_risk_authority_brief_item.py`. The contract defines the frozen,
+slotted `RiskAuthorityBriefItem` dataclass and pure
+`build_risk_authority_brief_item(...)` builder for deterministic advisory-only
+composition around an existing exact `RiskAuthorityStatus`. The item preserves
+source status object identity, requires exact `RiskAuthorityStatus` inputs, and
+rejects malformed status-like objects and subclass instances.
+
+The Phase 171 item pins fixed metadata to
+`item_type="risk_authority_brief_item"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`; carries forward
+authority state, reasons, blockers, required next steps, limitations,
+non-claims, evidence refs, and related strategy ids; adds deterministic
+headline and summary text; and includes the nested source status `to_dict()`
+payload. Tests pin exact primitive `to_dict()` output, compact JSON output,
+tuple storage/list serialization, repeated construction determinism, nested
+Phase 170 fixture payload equality, source status non-mutation, direct
+constructor rejection when carried metadata diverges from the source, absence
+of `from_dict()`, and AST/literal guardrails proving no actionable authority
+fields or forbidden imports/calls were added. The headline and summary remain
+advisory-only and do not express approval, recommendation, readiness,
+allocation, order, broker, portfolio mutation, capital, or trading authority.
+No risk engine behavior, strategy execution behavior, signal/evaluator
+behavior, backtesting behavior, broker/runtime behavior, order generation,
+allocation, portfolio mutation, reconciliation mutation, scheduler behavior,
+dashboard behavior, CLI behavior, file I/O, persistence, network/socket access,
+credentials, vendor APIs, LLM/agent behavior, notebooks, or dependencies
+changed. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
