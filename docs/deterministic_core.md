@@ -4691,6 +4691,29 @@ endpoint approval, universe approval, methodology approval, evidence approval,
 validation claim, trading readiness, live/paper trading, or production-contract
 approval.
 
+Phase 150 - Advisory Operating Brief CLI Preview Regression Guard adds a
+test-only exact-output pin in
+`tests/unit/test_advisory_operating_brief_cli_regression.py` for the synthetic
+developer preview command. The guard invokes the existing CLI entrypoint,
+proves default stdout equals the Phase 145 renderer pin, proves
+`--format json` stdout equals the Phase 147 compact JSON pin, parses the JSON
+back to the expected primitive export payload, checks repeated CLI invocations
+are byte-for-byte deterministic, and verifies fixed advisory type/status
+values, the Phase 123 digest, Phase 127/141 provenance fields, limitations,
+non-claims, parser-surface boundaries, no mutation of the synthetic brief
+object, no added decision language outside the payload, and test-module
+import/call/literal guardrails. This phase changes no `src/` files and adds no
+production behavior, file I/O, path argument, file output, local snapshot
+loading, persistence, database behavior, scheduler/runtime behavior, dashboard
+behavior, notebook behavior, external-tool behavior, LLM/agent behavior,
+broker/runtime behavior, strategy/signal/evaluator behavior, benchmark or cash
+logic, portfolio/allocation mutation, order generation, real data, ingestion,
+vendor API, credential, dependency, source approval, endpoint approval,
+universe approval, methodology approval, evidence approval, validation claim,
+no-lookahead claim, trading readiness, recommendation, ranking/scoring, or
+production-contract approval. Normal pytest remains offline, deterministic,
+and credential-free.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
