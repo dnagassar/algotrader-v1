@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from algotrader.errors import ValidationError
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.risk_authority_brief import RiskAuthorityBrief
 from algotrader.research.strategy_eligibility_brief import StrategyEligibilityBrief
 
 __all__ = [
@@ -17,6 +18,7 @@ __all__ = [
 _BUNDLE_TYPE = "advisory_operating_brief_content_bundle"
 _CANDIDATE_BRIEF_TYPE = "candidate_research_brief"
 _STRATEGY_ELIGIBILITY_BRIEF_TYPE = "strategy_eligibility_brief"
+_RISK_AUTHORITY_BRIEF_TYPE = "risk_authority_brief"
 _STATUS = "candidate_only"
 _AUTHORITY = "advisory_only"
 _CAPITAL_AUTHORITY = False
@@ -37,6 +39,7 @@ class AdvisoryOperatingBriefContentBundle:
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...]
     limitations: tuple[str, ...]
     non_claims: tuple[str, ...]
+    risk_authority_briefs: tuple[RiskAuthorityBrief, ...] = ()
 
     def __post_init__(self) -> None:
         candidate_briefs = _candidate_research_briefs_tuple(
@@ -45,19 +48,26 @@ class AdvisoryOperatingBriefContentBundle:
         eligibility_briefs = _strategy_eligibility_briefs_tuple(
             self.strategy_eligibility_briefs
         )
-        _validate_non_empty_bundle(candidate_briefs, eligibility_briefs)
-        _validate_unique_brief_identities(candidate_briefs, eligibility_briefs)
+        risk_briefs = _risk_authority_briefs_tuple(self.risk_authority_briefs)
+        _validate_non_empty_bundle(candidate_briefs, eligibility_briefs, risk_briefs)
+        _validate_unique_brief_identities(
+            candidate_briefs,
+            eligibility_briefs,
+            risk_briefs,
+        )
 
         limitations = _required_string_tuple(self.limitations, "limitations")
         non_claims = _required_string_tuple(self.non_claims, "non_claims")
         expected_limitations = _combined_brief_values(
             candidate_briefs,
             eligibility_briefs,
+            risk_briefs,
             "limitations",
         )
         expected_non_claims = _combined_brief_values(
             candidate_briefs,
             eligibility_briefs,
+            risk_briefs,
             "non_claims",
         )
 
@@ -71,7 +81,7 @@ class AdvisoryOperatingBriefContentBundle:
         _validate_matches(
             "summary",
             _required_string(self.summary, "summary"),
-            _summary(candidate_briefs, eligibility_briefs),
+            _summary(candidate_briefs, eligibility_briefs, risk_briefs),
         )
         _validate_matches("limitations", limitations, expected_limitations)
         _validate_matches("non_claims", non_claims, expected_non_claims)
@@ -80,11 +90,12 @@ class AdvisoryOperatingBriefContentBundle:
         object.__setattr__(self, "strategy_eligibility_briefs", eligibility_briefs)
         object.__setattr__(self, "limitations", limitations)
         object.__setattr__(self, "non_claims", non_claims)
+        object.__setattr__(self, "risk_authority_briefs", risk_briefs)
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic primitive-only bundle metadata."""
 
-        return {
+        payload: dict[str, object] = {
             "bundle_type": self.bundle_type,
             "status": self.status,
             "authority": self.authority,
@@ -95,20 +106,30 @@ class AdvisoryOperatingBriefContentBundle:
             "strategy_eligibility_brief_count": len(
                 self.strategy_eligibility_briefs
             ),
-            "candidate_research_briefs": [
-                brief.to_dict() for brief in self.candidate_research_briefs
-            ],
-            "strategy_eligibility_briefs": [
-                brief.to_dict() for brief in self.strategy_eligibility_briefs
-            ],
-            "limitations": list(self.limitations),
-            "non_claims": list(self.non_claims),
         }
+        if self.risk_authority_briefs:
+            payload["risk_authority_brief_count"] = len(self.risk_authority_briefs)
+
+        payload["candidate_research_briefs"] = [
+            brief.to_dict() for brief in self.candidate_research_briefs
+        ]
+        payload["strategy_eligibility_briefs"] = [
+            brief.to_dict() for brief in self.strategy_eligibility_briefs
+        ]
+        if self.risk_authority_briefs:
+            payload["risk_authority_briefs"] = [
+                brief.to_dict() for brief in self.risk_authority_briefs
+            ]
+
+        payload["limitations"] = list(self.limitations)
+        payload["non_claims"] = list(self.non_claims)
+        return payload
 
 
 def build_advisory_operating_brief_content_bundle(
     candidate_research_briefs: Iterable[CandidateResearchBrief] = (),
     strategy_eligibility_briefs: Iterable[StrategyEligibilityBrief] = (),
+    risk_authority_briefs: Iterable[RiskAuthorityBrief] = (),
 ) -> AdvisoryOperatingBriefContentBundle:
     """Build a deterministic advisory-only content bundle from existing briefs."""
 
@@ -116,8 +137,13 @@ def build_advisory_operating_brief_content_bundle(
     eligibility_briefs = _strategy_eligibility_briefs_tuple(
         strategy_eligibility_briefs
     )
-    _validate_non_empty_bundle(candidate_briefs, eligibility_briefs)
-    _validate_unique_brief_identities(candidate_briefs, eligibility_briefs)
+    risk_briefs = _risk_authority_briefs_tuple(risk_authority_briefs)
+    _validate_non_empty_bundle(candidate_briefs, eligibility_briefs, risk_briefs)
+    _validate_unique_brief_identities(
+        candidate_briefs,
+        eligibility_briefs,
+        risk_briefs,
+    )
 
     return AdvisoryOperatingBriefContentBundle(
         bundle_type=_BUNDLE_TYPE,
@@ -125,19 +151,22 @@ def build_advisory_operating_brief_content_bundle(
         authority=_AUTHORITY,
         capital_authority=_CAPITAL_AUTHORITY,
         title=_title(),
-        summary=_summary(candidate_briefs, eligibility_briefs),
+        summary=_summary(candidate_briefs, eligibility_briefs, risk_briefs),
         candidate_research_briefs=candidate_briefs,
         strategy_eligibility_briefs=eligibility_briefs,
         limitations=_combined_brief_values(
             candidate_briefs,
             eligibility_briefs,
+            risk_briefs,
             "limitations",
         ),
         non_claims=_combined_brief_values(
             candidate_briefs,
             eligibility_briefs,
+            risk_briefs,
             "non_claims",
         ),
+        risk_authority_briefs=risk_briefs,
     )
 
 
@@ -148,22 +177,31 @@ def _title() -> str:
 def _summary(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
+    risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
 ) -> str:
     limitations = _combined_brief_values(
         candidate_research_briefs,
         strategy_eligibility_briefs,
+        risk_authority_briefs,
         "limitations",
     )
     non_claims = _combined_brief_values(
         candidate_research_briefs,
         strategy_eligibility_briefs,
+        risk_authority_briefs,
         "non_claims",
+    )
+    risk_clause = (
+        f"{len(risk_authority_briefs)} risk authority brief(s), "
+        if risk_authority_briefs
+        else ""
     )
     return (
         "Advisory content bundle contains "
         f"{len(candidate_research_briefs)} candidate research brief(s), "
         f"{len(strategy_eligibility_briefs)} strategy eligibility brief(s), "
-        f"{len(limitations)} limitation(s), and {len(non_claims)} non-claim(s)."
+        f"{risk_clause}{len(limitations)} limitation(s), and "
+        f"{len(non_claims)} non-claim(s)."
     )
 
 
@@ -237,11 +275,54 @@ def _strategy_eligibility_briefs_tuple(
     return briefs
 
 
+def _risk_authority_briefs_tuple(
+    values: Iterable[RiskAuthorityBrief],
+) -> tuple[RiskAuthorityBrief, ...]:
+    try:
+        briefs = tuple(values)
+    except TypeError as exc:
+        raise ValidationError(
+            "risk_authority_briefs must be an iterable of RiskAuthorityBrief."
+        ) from exc
+
+    for index, brief in enumerate(briefs):
+        if type(brief) is not RiskAuthorityBrief:
+            raise ValidationError(
+                f"risk_authority_briefs[{index}] must be a RiskAuthorityBrief."
+            )
+        if brief.brief_type != _RISK_AUTHORITY_BRIEF_TYPE:
+            raise ValidationError(
+                f"risk_authority_briefs[{index}] brief_type must be exactly "
+                "risk_authority_brief."
+            )
+        if brief.status != _STATUS:
+            raise ValidationError(
+                f"risk_authority_briefs[{index}] status must be exactly "
+                "candidate_only."
+            )
+        if brief.authority != _AUTHORITY:
+            raise ValidationError(
+                f"risk_authority_briefs[{index}] authority must be exactly "
+                "advisory_only."
+            )
+        if brief.capital_authority is not _CAPITAL_AUTHORITY:
+            raise ValidationError(
+                f"risk_authority_briefs[{index}] capital_authority must be False."
+            )
+
+    return briefs
+
+
 def _validate_non_empty_bundle(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
+    risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
 ) -> None:
-    if not candidate_research_briefs and not strategy_eligibility_briefs:
+    if (
+        not candidate_research_briefs
+        and not strategy_eligibility_briefs
+        and not risk_authority_briefs
+    ):
         raise ValidationError(
             "content bundle must contain at least one supported brief."
         )
@@ -250,9 +331,14 @@ def _validate_non_empty_bundle(
 def _validate_unique_brief_identities(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
+    risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
 ) -> None:
     seen_identities: set[int] = set()
-    for brief in (*candidate_research_briefs, *strategy_eligibility_briefs):
+    for brief in (
+        *candidate_research_briefs,
+        *strategy_eligibility_briefs,
+        *risk_authority_briefs,
+    ):
         brief_identity = id(brief)
         if brief_identity in seen_identities:
             raise ValidationError(
@@ -264,11 +350,16 @@ def _validate_unique_brief_identities(
 def _combined_brief_values(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
+    risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     field_name: str,
 ) -> tuple[str, ...]:
     values: list[str] = []
     seen: set[str] = set()
-    for brief in (*candidate_research_briefs, *strategy_eligibility_briefs):
+    for brief in (
+        *candidate_research_briefs,
+        *strategy_eligibility_briefs,
+        *risk_authority_briefs,
+    ):
         for value in getattr(brief, field_name):
             if value in seen:
                 continue

@@ -11286,6 +11286,38 @@ Safe next tasks include:
   behavior, file I/O, persistence, network/socket access, credentials, vendor
   APIs, LLM/agent behavior, notebooks, or dependencies changed; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 177 - Advisory Operating Brief Content Bundle Risk Authority Branch
+  extends `AdvisoryOperatingBriefContentBundle` in
+  `src/algotrader/research/advisory_operating_brief_content_bundle.py` with an
+  optional exact `RiskAuthorityBrief` family alongside existing candidate
+  research and strategy eligibility families. The contract remains
+  metadata-only: candidate and strategy behavior stays backward-compatible,
+  any one or two families may be empty, at least one total brief is required,
+  all collections are stored as immutable tuples, object identity and
+  per-family input ordering are preserved, and duplicate object identities are
+  rejected across supported collections. The risk branch rejects non-risk
+  inputs, malformed risk-authority-like objects, and subclass instances.
+  Fixed bundle metadata remains
+  `bundle_type="advisory_operating_brief_content_bundle"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. Limitations and non-claims now carry forward from
+  candidate research, strategy eligibility, and risk authority branches in
+  deterministic first-seen order with exact duplicates removed. `to_dict()`
+  stays primitive-only and deterministic; risk authority counts and nested risk
+  authority brief payloads are emitted only when risk authority briefs are
+  present, preserving existing serialized output for the prior synthetic
+  candidate-plus-strategy fixture and leaving renderer/export/CLI regression
+  behavior unchanged. Tests pin risk-only and all-family synthetic cases,
+  nested Phase 176 risk brief equality, compact JSON, repeated construction
+  determinism, source brief non-mutation, fixed metadata, and AST/literal
+  guardrails. No existing `AdvisoryOperatingBrief` behavior, renderer/export/
+  CLI behavior, risk engine behavior, strategy/signal/evaluator behavior,
+  backtesting behavior, broker/runtime behavior, scheduler behavior, dashboard
+  behavior, file I/O, persistence, network/socket access, credentials, vendor
+  APIs, notebooks, LLM/agent behavior, dependencies, recommendation,
+  allocation, order, portfolio mutation, paper-readiness, live-readiness,
+  capital, or trading-authority behavior changed; normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -5463,6 +5463,40 @@ behavior, file I/O, persistence, network/socket access, credentials, vendor
 APIs, LLM/agent behavior, notebooks, or dependencies changed. Normal pytest
 remains offline, credential-free, deterministic, and safe.
 
+Phase 177 - Advisory Operating Brief Content Bundle Risk Authority Branch
+extends `AdvisoryOperatingBriefContentBundle` in
+`src/algotrader/research/advisory_operating_brief_content_bundle.py` so the
+metadata-only content bundle can optionally group exact `RiskAuthorityBrief`
+objects beside existing `CandidateResearchBrief` and
+`StrategyEligibilityBrief` families. The builder keeps candidate and strategy
+behavior backward-compatible, allows any one or two families to be empty while
+requiring at least one total brief, preserves object identity and per-family
+input ordering, converts all collections to immutable tuples, and rejects
+malformed risk-authority-like objects, subclass instances, non-risk brief
+inputs in the risk branch, and duplicate object identities across the supported
+collections.
+
+The Phase 177 bundle keeps fixed metadata unchanged at
+`bundle_type="advisory_operating_brief_content_bundle"`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`. It carries limitations and non-claims forward from
+candidate research, strategy eligibility, and risk authority branches in
+deterministic first-seen order with exact duplicates removed. `to_dict()`
+remains primitive-only and deterministic; risk authority brief counts and
+nested risk authority brief payloads are emitted only when risk authority
+briefs are present, preserving existing serialized output for the prior
+synthetic candidate-plus-strategy fixture. Tests pin risk-only and
+candidate-plus-strategy-plus-risk construction, nested Phase 176 fixture
+payload equality, compact JSON output, repeated construction determinism,
+source brief non-mutation, exact metadata values, and AST/literal guardrails.
+No renderer, export, CLI, legacy `AdvisoryOperatingBrief`, risk engine,
+strategy/signal/evaluator, backtesting, broker/runtime, scheduler, dashboard,
+file I/O, persistence, network/socket, credentials, vendor API, LLM/agent,
+notebook, dependency, recommendation, allocation, order, portfolio mutation,
+paper-readiness, live-readiness, capital, or trading-authority behavior
+changed. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
