@@ -1,0 +1,958 @@
+from __future__ import annotations
+
+import ast
+import json
+import re
+from dataclasses import FrozenInstanceError, fields
+from pathlib import Path
+
+import pytest
+
+from algotrader.errors import ValidationError
+from algotrader.research.advisory_operating_brief_content_bundle import (
+    AdvisoryOperatingBriefContentBundle,
+    build_advisory_operating_brief_content_bundle,
+)
+from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.strategy_eligibility_brief import (
+    StrategyEligibilityBrief,
+    build_strategy_eligibility_brief,
+)
+from algotrader.research.strategy_eligibility_brief_item import (
+    build_strategy_eligibility_brief_item,
+)
+from algotrader.research.strategy_eligibility_brief_section import (
+    build_strategy_eligibility_brief_section,
+)
+from algotrader.research.strategy_eligibility_status import (
+    build_strategy_eligibility_status,
+)
+from tests.fixtures.candidate_research_brief import (
+    build_synthetic_candidate_research_brief,
+    expected_synthetic_candidate_research_brief_dict,
+)
+from tests.fixtures.strategy_eligibility_brief import (
+    build_synthetic_strategy_eligibility_brief,
+    expected_synthetic_strategy_eligibility_brief_dict,
+)
+
+
+def _s(*parts: str) -> str:
+    return "".join(parts)
+
+
+def _combined_expected_values(
+    first: dict[str, object],
+    second: dict[str, object],
+    field_name: str,
+) -> tuple[str, ...]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for payload in (first, second):
+        for value in payload[field_name]:
+            assert isinstance(value, str)
+            if value in seen:
+                continue
+            values.append(value)
+            seen.add(value)
+
+    return tuple(values)
+
+
+MODULE_PATH = Path(
+    "src/algotrader/research/advisory_operating_brief_content_bundle.py"
+)
+_EXPECTED_CANDIDATE_BRIEF_DICT = expected_synthetic_candidate_research_brief_dict()
+_EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT = (
+    expected_synthetic_strategy_eligibility_brief_dict()
+)
+_EXPECTED_LIMITATIONS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    "limitations",
+)
+_EXPECTED_NON_CLAIMS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    "non_claims",
+)
+_EXPECTED_COMBINED_BUNDLE_DICT = {
+    "bundle_type": "advisory_operating_brief_content_bundle",
+    "status": "candidate_only",
+    "authority": "advisory_only",
+    "capital_authority": False,
+    "title": "Advisory operating brief content bundle metadata",
+    "summary": (
+        "Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 12 limitation(s), and 25 non-claim(s)."
+    ),
+    "candidate_research_brief_count": 1,
+    "strategy_eligibility_brief_count": 1,
+    "candidate_research_briefs": [_EXPECTED_CANDIDATE_BRIEF_DICT],
+    "strategy_eligibility_briefs": [_EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT],
+    "limitations": list(_EXPECTED_LIMITATIONS),
+    "non_claims": list(_EXPECTED_NON_CLAIMS),
+}
+_EXPECTED_COMPACT_JSON = json.dumps(
+    _EXPECTED_COMBINED_BUNDLE_DICT,
+    ensure_ascii=True,
+    separators=(",", ":"),
+)
+_FORBIDDEN_TEXT_TOKENS = (
+    "recommend",
+    "recommendation",
+    "approval",
+    "approved",
+    "paper",
+    "live",
+    "ready",
+    "readiness",
+    "buy",
+    "sell",
+    "hold",
+    _s("allo", "cation"),
+    _s("or", "der"),
+    _s("tra", "ding"),
+)
+_ALLOWED_IMPORTS = {
+    "__future__",
+    "collections.abc",
+    "dataclasses",
+    "algotrader.errors",
+    "algotrader.research.candidate_research_brief",
+    "algotrader.research.strategy_eligibility_brief",
+}
+_FORBIDDEN_IMPORT_PREFIXES = (
+    "aiohttp",
+    _s("algotrader.", "bro", "ker"),
+    _s("algotrader.", "bro", "kers"),
+    "algotrader.execution",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "algotrader.orchestration",
+    _s("algotrader.", "persist", "ence"),
+    _s("algotrader.", "port", "folio"),
+    "algotrader.risk",
+    _s("algotrader.", "run", "time"),
+    "algotrader.scheduler",
+    "algotrader.screener",
+    _s("algotrader.", "sig", "nals"),
+    _s("al", "paca"),
+    _s("al", "paca_trade_a", "pi"),
+    "anthropic",
+    "duckdb",
+    "httpx",
+    "langchain",
+    "langgraph",
+    "llm",
+    _s("mas", "sive"),
+    _s("net", "work"),
+    _s("num", "py"),
+    "openai",
+    "os",
+    _s("pan", "das"),
+    _s("poly", "gon"),
+    _s("poly", "gon_a", "pi_client"),
+    _s("quant", "connect"),
+    _s("re", "quests"),
+    _s("so", "cket"),
+    "sqlmodel",
+    "tensorflow",
+    "torch",
+    "urllib",
+    "vectorbt",
+    "xgboost",
+    _s("y", "finance"),
+)
+_FORBIDDEN_CALL_NAMES = {
+    "__import__",
+    "Path",
+    _s("cli", "ent"),
+    _s("con", "nect"),
+    "date.today",
+    "datetime.now",
+    "datetime.utcnow",
+    _s("down", "load"),
+    "eval",
+    "exec",
+    "exists",
+    "from_file",
+    "getenv",
+    "glob",
+    _s("import_module"),
+    _s("ing", "est"),
+    "is_file",
+    "iterdir",
+    "load",
+    "loads",
+    "mkdir",
+    _s("op", "en"),
+    "os.environ.get",
+    "os.getenv",
+    "post",
+    "print",
+    _s("re", "ad"),
+    "read_bytes",
+    "read_csv",
+    "read_text",
+    _s("re", "quest"),
+    _s("re", "quests.get"),
+    "rglob",
+    "save",
+    _s("so", "cket.socket"),
+    "stat",
+    _s("sub", "mit_", "or", "der"),
+    "to_file",
+    "to_sql",
+    "urlopen",
+    "walk",
+    _s("wri", "te"),
+    "write_text",
+}
+_FORBIDDEN_AUTHORITY_FIELDS = {
+    "account",
+    "accounts",
+    "approved",
+    _s("bro", "ker"),
+    _s("bro", "kers"),
+    "buy",
+    "sell",
+    "hold",
+    "live_authorized",
+    "live_probe_eligible",
+    _s("or", "der"),
+    _s("or", "ders"),
+    "paper_eligible",
+    _s("port", "folio"),
+    _s("port", "folios"),
+    _s("allo", "cation"),
+    _s("allo", "cations"),
+    _s("allo", "cation_authority"),
+    _s("or", "der_authority"),
+    _s("tra", "ding_authority"),
+    "trading_ready",
+}
+_FORBIDDEN_EXACT_LITERALS = {
+    "account",
+    "accounts",
+    "approved",
+    "buy",
+    "sell",
+    "hold",
+    "live_authorized",
+    "live_probe_eligible",
+    "paper_eligible",
+    _s("tra", "ding_authority"),
+    "trading_ready",
+}
+_FORBIDDEN_SOURCE_TOKENS = (
+    "paper_eligible",
+    "live_probe_eligible",
+    "live_authorized",
+    "trading_ready",
+    "approved",
+    "buy",
+    "sell",
+    "hold",
+    _s("allo", "cation"),
+    _s("or", "der"),
+    _s("bro", "ker"),
+    "account",
+    _s("port", "folio"),
+    _s("tra", "ding_authority"),
+)
+
+
+def test_valid_construction_with_synthetic_candidate_research_brief() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[candidate_brief],
+        strategy_eligibility_briefs=[],
+    )
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert bundle.candidate_research_briefs == (candidate_brief,)
+    assert bundle.candidate_research_briefs[0] is candidate_brief
+    assert bundle.strategy_eligibility_briefs == ()
+    assert bundle.to_dict()["candidate_research_briefs"][0] == (
+        expected_synthetic_candidate_research_brief_dict()
+    )
+
+
+def test_valid_construction_with_phase_160_strategy_eligibility_brief() -> None:
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        strategy_eligibility_briefs=[eligibility_brief],
+    )
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert bundle.candidate_research_briefs == ()
+    assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
+    assert bundle.strategy_eligibility_briefs[0] is eligibility_brief
+    assert bundle.to_dict()["strategy_eligibility_briefs"][0] == (
+        expected_synthetic_strategy_eligibility_brief_dict()
+    )
+
+
+def test_valid_construction_with_both_families_populated() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[candidate_brief],
+        strategy_eligibility_briefs=[eligibility_brief],
+    )
+
+    assert bundle.candidate_research_briefs == (candidate_brief,)
+    assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
+    assert bundle.to_dict() == _EXPECTED_COMBINED_BUNDLE_DICT
+
+
+def test_empty_candidate_family_is_allowed_when_eligibility_family_is_non_empty() -> (
+    None
+):
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(),
+        strategy_eligibility_briefs=(eligibility_brief,),
+    )
+
+    assert bundle.candidate_research_briefs == ()
+    assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
+    assert bundle.to_dict()["candidate_research_brief_count"] == 0
+    assert bundle.to_dict()["strategy_eligibility_brief_count"] == 1
+
+
+def test_empty_eligibility_family_is_allowed_when_candidate_family_is_non_empty() -> (
+    None
+):
+    candidate_brief = build_synthetic_candidate_research_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(),
+    )
+
+    assert bundle.candidate_research_briefs == (candidate_brief,)
+    assert bundle.strategy_eligibility_briefs == ()
+    assert bundle.to_dict()["candidate_research_brief_count"] == 1
+    assert bundle.to_dict()["strategy_eligibility_brief_count"] == 0
+
+
+def test_both_families_empty_is_rejected() -> None:
+    with pytest.raises(ValidationError, match="at least one supported brief"):
+        build_advisory_operating_brief_content_bundle()
+
+    payload = _valid_constructor_payload()
+    payload["candidate_research_briefs"] = ()
+    payload["strategy_eligibility_briefs"] = ()
+    with pytest.raises(ValidationError, match="at least one supported brief"):
+        AdvisoryOperatingBriefContentBundle(**payload)
+
+
+def test_candidate_family_identity_and_order_are_preserved() -> None:
+    first = _candidate_brief_variant("First candidate research bundle metadata")
+    second = _candidate_brief_variant("Second candidate research bundle metadata")
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[second, first],
+    )
+    payload = bundle.to_dict()
+
+    assert bundle.candidate_research_briefs == (second, first)
+    assert bundle.candidate_research_briefs[0] is second
+    assert bundle.candidate_research_briefs[1] is first
+    assert payload["candidate_research_briefs"] == [
+        second.to_dict(),
+        first.to_dict(),
+    ]
+
+
+def test_strategy_eligibility_family_identity_and_order_are_preserved() -> None:
+    first = build_synthetic_strategy_eligibility_brief()
+    second = _second_strategy_eligibility_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        strategy_eligibility_briefs=[second, first],
+    )
+    payload = bundle.to_dict()
+
+    assert bundle.strategy_eligibility_briefs == (second, first)
+    assert bundle.strategy_eligibility_briefs[0] is second
+    assert bundle.strategy_eligibility_briefs[1] is first
+    assert payload["strategy_eligibility_briefs"] == [
+        second.to_dict(),
+        first.to_dict(),
+    ]
+
+
+def test_brief_collections_are_converted_to_immutable_tuples() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    payload = _valid_constructor_payload(candidate_brief, eligibility_brief)
+    payload["candidate_research_briefs"] = [candidate_brief]
+    payload["strategy_eligibility_briefs"] = [eligibility_brief]
+
+    bundle = AdvisoryOperatingBriefContentBundle(**payload)
+
+    assert isinstance(bundle.candidate_research_briefs, tuple)
+    assert isinstance(bundle.strategy_eligibility_briefs, tuple)
+    assert bundle.candidate_research_briefs == (candidate_brief,)
+    assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
+
+
+def test_duplicate_object_identities_are_rejected() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+
+    with pytest.raises(ValidationError, match="duplicate brief identities"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[candidate_brief, candidate_brief],
+        )
+
+    with pytest.raises(ValidationError, match="duplicate brief identities"):
+        build_advisory_operating_brief_content_bundle(
+            strategy_eligibility_briefs=[eligibility_brief, eligibility_brief],
+        )
+
+
+def test_duplicate_guard_uses_both_supported_collections() -> None:
+    function = _function_def("_validate_unique_brief_identities")
+    loaded_names = {
+        node.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    }
+
+    assert "candidate_research_briefs" in loaded_names
+    assert "strategy_eligibility_briefs" in loaded_names
+    assert "seen_identities" in loaded_names
+
+
+def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
+    class CandidateBriefLike:
+        brief_type = "candidate_research_brief"
+        status = "candidate_only"
+        title = "Candidate research brief metadata"
+        limitations = ("synthetic metadata only",)
+        non_claims = ("not synthetic claim",)
+
+        def to_dict(self) -> dict[str, object]:
+            return {"brief_type": self.brief_type}
+
+    class StrategyEligibilityBriefLike:
+        brief_type = "strategy_eligibility_brief"
+        status = "candidate_only"
+        authority = "advisory_only"
+        capital_authority = False
+        title = "Strategy eligibility brief metadata"
+        summary = "Advisory brief contains synthetic metadata."
+        limitations = ("synthetic metadata only",)
+        non_claims = ("not synthetic claim",)
+
+        def to_dict(self) -> dict[str, object]:
+            return {"brief_type": self.brief_type}
+
+    with pytest.raises(ValidationError, match="CandidateResearchBrief"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[object()],
+        )
+
+    with pytest.raises(ValidationError, match="CandidateResearchBrief"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[CandidateBriefLike()],
+        )
+
+    with pytest.raises(ValidationError, match="StrategyEligibilityBrief"):
+        build_advisory_operating_brief_content_bundle(
+            strategy_eligibility_briefs=[object()],
+        )
+
+    with pytest.raises(ValidationError, match="StrategyEligibilityBrief"):
+        build_advisory_operating_brief_content_bundle(
+            strategy_eligibility_briefs=[StrategyEligibilityBriefLike()],
+        )
+
+    with pytest.raises(ValidationError, match="iterable"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=object(),  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(ValidationError, match="iterable"):
+        build_advisory_operating_brief_content_bundle(
+            strategy_eligibility_briefs=object(),  # type: ignore[arg-type]
+        )
+
+
+def test_fixed_bundle_metadata_values_are_pinned() -> None:
+    bundle = _combined_bundle()
+    payload = bundle.to_dict()
+
+    assert bundle.bundle_type == "advisory_operating_brief_content_bundle"
+    assert bundle.status == "candidate_only"
+    assert bundle.authority == "advisory_only"
+    assert bundle.capital_authority is False
+    assert payload["bundle_type"] == "advisory_operating_brief_content_bundle"
+    assert payload["status"] == "candidate_only"
+    assert payload["authority"] == "advisory_only"
+    assert payload["capital_authority"] is False
+
+    for field_name, value in (
+        ("bundle_type", "advisory_operating_brief"),
+        ("status", "research_only"),
+        ("authority", "capital_authority"),
+        ("capital_authority", True),
+    ):
+        constructor_payload = _valid_constructor_payload()
+        constructor_payload[field_name] = value
+        with pytest.raises(ValidationError, match=field_name):
+            AdvisoryOperatingBriefContentBundle(**constructor_payload)
+
+
+def test_title_and_summary_are_deterministic_and_advisory_only() -> None:
+    first = _combined_bundle()
+    second = _combined_bundle()
+
+    assert first.title == second.title == _EXPECTED_COMBINED_BUNDLE_DICT["title"]
+    assert first.summary == second.summary == _EXPECTED_COMBINED_BUNDLE_DICT["summary"]
+    for text in (first.title, first.summary):
+        lowered = text.lower()
+        for token in _FORBIDDEN_TEXT_TOKENS:
+            assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", lowered) is None
+
+    for field_name, value in (
+        ("title", "Candidate metadata"),
+        ("summary", "Candidate metadata"),
+    ):
+        constructor_payload = _valid_constructor_payload()
+        constructor_payload[field_name] = value
+        with pytest.raises(ValidationError, match=field_name):
+            AdvisoryOperatingBriefContentBundle(**constructor_payload)
+
+
+def test_to_dict_exact_output_and_compact_json_are_pinned_for_combined_case() -> None:
+    bundle = _combined_bundle()
+    payload = bundle.to_dict()
+    compact_json = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+    assert payload == _EXPECTED_COMBINED_BUNDLE_DICT
+    assert tuple(payload) == tuple(_EXPECTED_COMBINED_BUNDLE_DICT)
+    assert compact_json == _EXPECTED_COMPACT_JSON
+    assert json.loads(compact_json) == payload
+    _assert_primitive_only(payload)
+
+    payload["candidate_research_briefs"][0]["limitations"].append(
+        "mutated primitive copy"
+    )
+    payload["strategy_eligibility_briefs"][0]["non_claims"].append(
+        "not mutated primitive copy"
+    )
+    payload["limitations"].append("mutated primitive copy")
+    payload["non_claims"].append("not mutated primitive copy")
+
+    assert bundle.to_dict() == _EXPECTED_COMBINED_BUNDLE_DICT
+
+
+def test_repeated_construction_is_deterministic() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+
+    first = build_advisory_operating_brief_content_bundle(
+        [candidate_brief],
+        [eligibility_brief],
+    )
+    second = build_advisory_operating_brief_content_bundle(
+        [candidate_brief],
+        [eligibility_brief],
+    )
+    third = _combined_bundle()
+    first_payload = first.to_dict()
+    second_payload = second.to_dict()
+    first_json = json.dumps(first_payload, ensure_ascii=True, separators=(",", ":"))
+    second_json = json.dumps(second_payload, ensure_ascii=True, separators=(",", ":"))
+
+    assert first is not second
+    assert first.candidate_research_briefs[0] is second.candidate_research_briefs[0]
+    assert first.strategy_eligibility_briefs[0] is (
+        second.strategy_eligibility_briefs[0]
+    )
+    assert first_payload == second_payload == third.to_dict()
+    assert first_json == second_json == _EXPECTED_COMPACT_JSON
+
+
+def test_source_briefs_are_not_mutated() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    candidate_before = candidate_brief.to_dict()
+    eligibility_before = eligibility_brief.to_dict()
+    identity_snapshot = (
+        id(candidate_brief),
+        id(candidate_brief.sections),
+        id(candidate_brief.limitations),
+        id(candidate_brief.non_claims),
+        id(eligibility_brief),
+        id(eligibility_brief.sections),
+        id(eligibility_brief.limitations),
+        id(eligibility_brief.non_claims),
+    )
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        [candidate_brief],
+        [eligibility_brief],
+    )
+    payload = bundle.to_dict()
+
+    payload["candidate_research_briefs"][0]["sections"][0]["limitations"].append(
+        "mutated primitive copy"
+    )
+    payload["strategy_eligibility_briefs"][0]["sections"][0]["items"][0][
+        "source_status"
+    ]["non_claims"].append("not mutated primitive copy")
+    payload["limitations"].append("mutated primitive copy")
+
+    assert candidate_brief.to_dict() == candidate_before
+    assert eligibility_brief.to_dict() == eligibility_before
+    assert (
+        id(candidate_brief),
+        id(candidate_brief.sections),
+        id(candidate_brief.limitations),
+        id(candidate_brief.non_claims),
+        id(eligibility_brief),
+        id(eligibility_brief.sections),
+        id(eligibility_brief.limitations),
+        id(eligibility_brief.non_claims),
+    ) == identity_snapshot
+    assert bundle.candidate_research_briefs[0] is candidate_brief
+    assert bundle.strategy_eligibility_briefs[0] is eligibility_brief
+
+
+def test_nested_strategy_eligibility_brief_dictionary_matches_phase_160_helper() -> (
+    None
+):
+    bundle = _combined_bundle()
+
+    assert bundle.to_dict()["strategy_eligibility_briefs"][0] == (
+        expected_synthetic_strategy_eligibility_brief_dict()
+    )
+
+
+def test_nested_candidate_research_brief_dictionary_matches_existing_helper() -> None:
+    bundle = _combined_bundle()
+
+    assert bundle.to_dict()["candidate_research_briefs"][0] == (
+        expected_synthetic_candidate_research_brief_dict()
+    )
+
+
+def test_limitations_and_non_claims_are_carried_forward_in_order() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    bundle = build_advisory_operating_brief_content_bundle(
+        [candidate_brief],
+        [eligibility_brief],
+    )
+
+    assert bundle.limitations == _EXPECTED_LIMITATIONS
+    assert bundle.non_claims == _EXPECTED_NON_CLAIMS
+    assert all(value in bundle.limitations for value in candidate_brief.limitations)
+    assert all(value in bundle.limitations for value in eligibility_brief.limitations)
+    assert all(value in bundle.non_claims for value in candidate_brief.non_claims)
+    assert all(value in bundle.non_claims for value in eligibility_brief.non_claims)
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value"),
+    (
+        ("status", "paper_eligible"),
+        ("status", "live_probe_eligible"),
+        ("status", "live_authorized"),
+        ("status", "trading_ready"),
+        ("status", "approved"),
+        ("title", "paper_eligible"),
+        ("title", "live_probe_eligible"),
+        ("title", "live_authorized"),
+        ("title", "trading_ready"),
+        ("title", "approved"),
+        ("summary", "paper_eligible"),
+        ("summary", "live_probe_eligible"),
+        ("summary", "live_authorized"),
+        ("summary", "trading_ready"),
+        ("summary", "approved"),
+    ),
+)
+def test_paper_live_approved_and_trading_ready_states_remain_impossible(
+    field_name: str,
+    value: str,
+) -> None:
+    constructor_payload = _valid_constructor_payload()
+    constructor_payload[field_name] = value
+
+    with pytest.raises(ValidationError, match=field_name):
+        AdvisoryOperatingBriefContentBundle(**constructor_payload)
+
+
+def test_bundle_is_frozen_slotted_and_has_no_from_dict() -> None:
+    bundle = _combined_bundle()
+
+    assert hasattr(AdvisoryOperatingBriefContentBundle, "__slots__")
+    assert not hasattr(bundle, "__dict__")
+    assert not hasattr(AdvisoryOperatingBriefContentBundle, "from_dict")
+    assert "from_dict" not in _function_names()
+    with pytest.raises(FrozenInstanceError):
+        bundle.summary = "changed"
+
+
+def test_no_actionable_trading_authority_fields_are_exposed() -> None:
+    bundle = _combined_bundle()
+    payload = bundle.to_dict()
+    field_names = {field.name for field in fields(AdvisoryOperatingBriefContentBundle)}
+    ast_fields = _bundle_ast_fields()
+    ast_dict_keys = _to_dict_string_keys()
+    top_level_payload_keys = set(payload)
+
+    assert tuple(field.name for field in fields(AdvisoryOperatingBriefContentBundle)) == (
+        "bundle_type",
+        "status",
+        "authority",
+        "capital_authority",
+        "title",
+        "summary",
+        "candidate_research_briefs",
+        "strategy_eligibility_briefs",
+        "limitations",
+        "non_claims",
+    )
+    assert tuple(payload) == tuple(_EXPECTED_COMBINED_BUNDLE_DICT)
+    assert field_names.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    assert ast_fields.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    assert ast_dict_keys.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    assert top_level_payload_keys.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    assert all(
+        not hasattr(bundle, field_name)
+        for field_name in _FORBIDDEN_AUTHORITY_FIELDS
+    )
+    assert bundle.status == "candidate_only"
+    assert bundle.authority == "advisory_only"
+    assert bundle.capital_authority is False
+
+
+def test_module_imports_no_forbidden_vendor_network_runtime_or_trading_modules() -> (
+    None
+):
+    imports = _import_references()
+
+    assert imports == _ALLOWED_IMPORTS
+    assert [
+        module_name
+        for module_name in imports
+        if _matches_forbidden_prefix(module_name, _FORBIDDEN_IMPORT_PREFIXES)
+    ] == []
+
+
+def test_module_makes_no_io_network_persistence_runtime_or_trading_calls() -> None:
+    assert _call_names().isdisjoint(_FORBIDDEN_CALL_NAMES)
+
+
+def test_module_literals_do_not_add_actionable_authority_states() -> None:
+    literals = _string_literals()
+    lowered_source = _source_text().lower()
+
+    assert literals.isdisjoint(_FORBIDDEN_EXACT_LITERALS)
+    for token in _FORBIDDEN_SOURCE_TOKENS:
+        assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", lowered_source) is None
+
+
+def _combined_bundle() -> AdvisoryOperatingBriefContentBundle:
+    return build_advisory_operating_brief_content_bundle(
+        [build_synthetic_candidate_research_brief()],
+        [build_synthetic_strategy_eligibility_brief()],
+    )
+
+
+def _valid_constructor_payload(
+    candidate_brief: CandidateResearchBrief | None = None,
+    eligibility_brief: StrategyEligibilityBrief | None = None,
+) -> dict[str, object]:
+    source_candidate = candidate_brief or build_synthetic_candidate_research_brief()
+    source_eligibility = eligibility_brief or build_synthetic_strategy_eligibility_brief()
+    bundle = build_advisory_operating_brief_content_bundle(
+        [source_candidate],
+        [source_eligibility],
+    )
+    return {
+        "bundle_type": bundle.bundle_type,
+        "status": bundle.status,
+        "authority": bundle.authority,
+        "capital_authority": bundle.capital_authority,
+        "title": bundle.title,
+        "summary": bundle.summary,
+        "candidate_research_briefs": bundle.candidate_research_briefs,
+        "strategy_eligibility_briefs": bundle.strategy_eligibility_briefs,
+        "limitations": bundle.limitations,
+        "non_claims": bundle.non_claims,
+    }
+
+
+def _candidate_brief_variant(title: str) -> CandidateResearchBrief:
+    brief = build_synthetic_candidate_research_brief()
+    return CandidateResearchBrief(
+        brief_type=brief.brief_type,
+        status=brief.status,
+        title=title,
+        sections=brief.sections,
+        limitations=brief.limitations,
+        non_claims=brief.non_claims,
+    )
+
+
+def _second_strategy_eligibility_brief() -> StrategyEligibilityBrief:
+    status = build_strategy_eligibility_status(
+        strategy_id="synthetic-strategy-eligibility-bundle-002",
+        strategy_name="Secondary synthetic bundle strategy metadata",
+        eligibility_state="watchlist_only",
+        reasons=("secondary strategy metadata is scoped to advisory display",),
+        limitations=("synthetic metadata only", "secondary bundle metadata only"),
+        non_claims=(
+            "not validation",
+            "not paper readiness",
+            "not live readiness",
+            _s("not a tra", "ding recommendation"),
+            _s("not allo", "cation authority"),
+            _s("not or", "der authority"),
+            "not secondary bundle metadata claim",
+        ),
+        evidence_refs=("synthetic-bundle-evidence-ref-002",),
+        required_next_steps=("complete secondary metadata review before any claim",),
+    )
+    item = build_strategy_eligibility_brief_item(status)
+    section = build_strategy_eligibility_brief_section((item,))
+    return build_strategy_eligibility_brief((section,))
+
+
+def _assert_primitive_only(value: object) -> None:
+    assert not isinstance(value, (tuple, set))
+    assert not callable(value)
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            assert type(key) is str
+            _assert_primitive_only(item)
+        return
+
+    if isinstance(value, list):
+        for item in value:
+            _assert_primitive_only(item)
+        return
+
+    assert value is None or type(value) in (str, int, float, bool)
+
+
+def _source_text() -> str:
+    return MODULE_PATH.read_text(encoding="utf-8")
+
+
+def _tree() -> ast.AST:
+    return ast.parse(_source_text(), filename=str(MODULE_PATH))
+
+
+def _import_references() -> set[str]:
+    imports: set[str] = set()
+
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.module:
+                imports.add(node.module)
+            elif node.level > 0:
+                imports.add("__future__")
+
+    return imports
+
+
+def _matches_forbidden_prefix(
+    module_name: str,
+    forbidden_prefixes: tuple[str, ...],
+) -> bool:
+    return any(
+        module_name == forbidden_prefix
+        or module_name.startswith(f"{forbidden_prefix}.")
+        for forbidden_prefix in forbidden_prefixes
+    )
+
+
+def _call_names() -> set[str]:
+    return {
+        _call_name(node.func)
+        for node in ast.walk(_tree())
+        if isinstance(node, ast.Call)
+    }
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+
+    return ""
+
+
+def _bundle_ast_fields() -> set[str]:
+    for node in ast.walk(_tree()):
+        if (
+            isinstance(node, ast.ClassDef)
+            and node.name == "AdvisoryOperatingBriefContentBundle"
+        ):
+            return {
+                statement.target.id
+                for statement in node.body
+                if isinstance(statement, ast.AnnAssign)
+                and isinstance(statement.target, ast.Name)
+            }
+
+    raise AssertionError("AdvisoryOperatingBriefContentBundle class was not found.")
+
+
+def _to_dict_string_keys() -> set[str]:
+    keys: set[str] = set()
+
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.FunctionDef) and node.name == "to_dict":
+            for nested in ast.walk(node):
+                if isinstance(nested, ast.Dict):
+                    for key in nested.keys:
+                        if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                            keys.add(key.value)
+
+    return keys
+
+
+def _function_names() -> set[str]:
+    return {
+        node.name
+        for node in ast.walk(_tree())
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
+def _function_def(name: str) -> ast.FunctionDef:
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+
+    raise AssertionError(f"{name} function was not found.")
+
+
+def _string_literals() -> set[str]:
+    return {
+        node.value
+        for node in ast.walk(_tree())
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+    }

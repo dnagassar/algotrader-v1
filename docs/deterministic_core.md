@@ -4973,6 +4973,39 @@ approval, trading authority, or dependency behavior. This phase changes no
 `src/` files, and normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 161 - Advisory Operating Brief Content Bundle Contract adds
+`src/algotrader/research/advisory_operating_brief_content_bundle.py` with
+focused coverage in `tests/unit/test_advisory_operating_brief_content_bundle.py`.
+The contract defines a frozen, slotted, metadata-only
+`AdvisoryOperatingBriefContentBundle` plus
+`build_advisory_operating_brief_content_bundle(...)` for grouping existing
+`CandidateResearchBrief` and `StrategyEligibilityBrief` objects ahead of later
+operating brief composition. It requires at least one total source brief while
+allowing either supported family to be empty, rejects non-brief and malformed
+brief-like inputs, converts source collections to immutable tuples, preserves
+source object identity and input sequence within each family, and rejects
+duplicate brief identities through one shared identity guard.
+
+The Phase 161 bundle pins `bundle_type` to
+`advisory_operating_brief_content_bundle`, `status` to `candidate_only`,
+`authority` to `advisory_only`, and `capital_authority=False`. It derives only
+advisory title and summary metadata from source brief counts and carried-forward
+metadata, nests source `to_dict()` payloads in the original family order,
+carries forward limitations and non-claims with exact duplicate strings
+removed, and emits primitive-only deterministic dictionaries plus pinned
+compact JSON for the combined synthetic candidate/strategy case. Tests prove
+the Phase 160 strategy eligibility expected dictionary and the existing
+candidate research expected dictionary are nested exactly, repeated
+construction is deterministic, source briefs are not mutated, and paper/live/
+approved/trading-ready states remain impossible through bundle metadata. This
+phase does not modify the existing `AdvisoryOperatingBrief` contract, renderer,
+export helper, or CLI behavior, and adds no strategy execution, signal/
+evaluator, backtesting, broker/runtime, order generation, allocation,
+portfolio mutation, reconciliation mutation, scheduler, dashboard, file I/O,
+persistence, network/socket, credential, vendor API, LLM/agent, notebook, or
+new dependency behavior. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

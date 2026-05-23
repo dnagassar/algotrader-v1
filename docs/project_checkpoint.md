@@ -10852,6 +10852,34 @@ Safe next tasks include:
   readiness, source approval, methodology approval, validation approval,
   trading authority, or dependency; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 161 - Advisory Operating Brief Content Bundle Contract adds
+  `src/algotrader/research/advisory_operating_brief_content_bundle.py` and
+  focused coverage in
+  `tests/unit/test_advisory_operating_brief_content_bundle.py`. It defines a
+  frozen, slotted, metadata-only `AdvisoryOperatingBriefContentBundle` plus
+  `build_advisory_operating_brief_content_bundle(...)` for grouping existing
+  `CandidateResearchBrief` and `StrategyEligibilityBrief` objects for later
+  operating brief composition without changing the current
+  `AdvisoryOperatingBrief`, renderer, export, or CLI behavior. The bundle
+  requires at least one total source brief, allows either family to be empty,
+  rejects non-brief and malformed brief-like inputs, converts source
+  collections to immutable tuples, preserves source object identity and input
+  sequence within each family, and rejects duplicate identities through one
+  shared identity guard. It pins `bundle_type`, `candidate_only` status,
+  `advisory_only` authority, and `capital_authority=False`, derives only
+  advisory title/summary metadata, carries forward limitations and non-claims
+  with exact duplicate strings removed, and serializes nested source
+  `to_dict()` payloads in deterministic primitive dictionaries. Tests pin the
+  combined synthetic dictionary and compact JSON, exact nested Phase 160
+  strategy eligibility expected dictionary, exact nested candidate research
+  expected dictionary, repeated determinism, source immutability, impossible
+  paper/live/approved/trading-ready states, and AST/literal guardrails. It adds
+  no strategy execution, signal/evaluator behavior, backtesting behavior,
+  broker/runtime behavior, order generation, allocation, portfolio mutation,
+  reconciliation mutation, scheduler behavior, dashboard behavior, CLI
+  behavior, file I/O, persistence, network/socket access, credentials, vendor
+  APIs, LLM/agent behavior, notebooks, or new dependencies; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
