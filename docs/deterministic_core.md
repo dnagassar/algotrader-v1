@@ -4811,6 +4811,33 @@ readiness, source approval, methodology approval, validation approval, or
 trading authority. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 155 - Advisory Strategy Eligibility Brief Item adds
+`src/algotrader/research/strategy_eligibility_brief_item.py` with focused
+coverage in `tests/unit/test_strategy_eligibility_brief_item.py`. The contract
+is a frozen, slotted, metadata-only `StrategyEligibilityBriefItem` plus
+`build_strategy_eligibility_brief_item(...)`, and it requires an exact
+`StrategyEligibilityStatus` source object while preserving that object's
+identity. It pins `item_type` to `strategy_eligibility_brief_item`, `status` to
+`candidate_only`, `authority` to `advisory_only`, and `capital_authority` to
+`False`; carries forward strategy id/name, eligibility state, reasons,
+limitations, non-claims, evidence refs, blockers, and required next steps; and
+adds deterministic advisory-only `headline` and `summary` text from safe source
+metadata counts.
+
+`to_dict()` emits deterministic primitive-only metadata with tuple fields
+serialized as lists and includes the nested source status `to_dict()` payload.
+Tests pin exact fixture-derived dictionaries and compact JSON, prove repeated
+construction is identical, prove source status objects are not mutated, reject
+non-status and malformed status-like objects, reject direct constructor metadata
+that diverges from the source, and guard against adding paper/live/approved or
+trading-ready states through the item. AST guardrails pin allowed imports/calls,
+prove there is no `from_dict()`, and prove no broker, order, allocation,
+portfolio, runtime, scheduler, dashboard, persistence, network/socket, vendor,
+ML, LLM, pandas, numpy, vectorbt, QuantConnect, file I/O, CLI, strategy
+execution, signal/evaluator, backtesting, allocation, order generation,
+portfolio mutation, approval, readiness, or capital-authority behavior was
+added. Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

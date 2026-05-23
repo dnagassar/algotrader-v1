@@ -10706,6 +10706,35 @@ Safe next tasks include:
   readiness, source approval, methodology approval, validation approval,
   trading authority, or dependency; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 155 - Advisory Strategy Eligibility Brief Item adds
+  `src/algotrader/research/strategy_eligibility_brief_item.py` and focused
+  coverage in `tests/unit/test_strategy_eligibility_brief_item.py`. It defines
+  a frozen, slotted, metadata-only `StrategyEligibilityBriefItem` plus
+  `build_strategy_eligibility_brief_item(...)`, requires an exact
+  `StrategyEligibilityStatus` source object, preserves source object identity,
+  pins `item_type` to `strategy_eligibility_brief_item`, `status` to
+  `candidate_only`, `authority` to `advisory_only`, and `capital_authority` to
+  `False`, and carries forward strategy id/name, eligibility state, reasons,
+  limitations, non-claims, evidence refs, blockers, and required next steps.
+  Its deterministic `headline` and `summary` are generated from safe source
+  metadata counts and remain advisory-only. `to_dict()` emits primitive-only
+  metadata with tuple fields serialized as lists and includes the nested source
+  status `to_dict()` payload. Tests pin exact Phase 154 fixture-derived
+  dictionaries and compact JSON; prove repeated construction is deterministic;
+  prove source status objects are not mutated; reject non-status and malformed
+  status-like objects; reject direct constructor metadata that diverges from the
+  source; and prove paper/live/approved and trading-ready states remain
+  impossible through this item. AST guardrails prove no `from_dict()`, no
+  forbidden runtime/vendor/network/file/dependency imports or calls, and no
+  actionable broker/order/allocation/portfolio/trading authority fields were
+  added. It adds no strategy execution behavior, signal/evaluator behavior,
+  backtesting, broker/runtime behavior, order generation, allocation, portfolio
+  mutation, reconciliation mutation, scheduler behavior, dashboard behavior,
+  CLI behavior, file I/O, persistence, network/socket access, credentials,
+  vendor API, LLM/agent behavior, notebooks, source/universe/benchmark/
+  methodology/validation approval, paper readiness, live readiness, trading
+  recommendation, trading authority, or dependency; normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
