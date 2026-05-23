@@ -5099,6 +5099,35 @@ validation approval, and dependency behavior. This phase changes no `src/`
 files, adds no CLI behavior, and normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 165 - Advisory Operating Brief Content Bundle Export Contract adds
+`src/algotrader/research/advisory_operating_brief_content_bundle_export.py`
+with focused coverage in
+`tests/unit/test_advisory_operating_brief_content_bundle_export.py`. The export
+module defines the frozen, slotted
+`AdvisoryOperatingBriefContentBundleExport` dataclass and the pure
+`export_advisory_operating_brief_content_bundle(...)` builder. The builder
+requires an exact `AdvisoryOperatingBriefContentBundle`, rejects non-bundle,
+malformed bundle-like, and subclass inputs, and returns only three in-memory
+views: the primitive `bundle.to_dict()` payload, compact sorted JSON text using
+`separators=(",", ":")`, and
+`render_advisory_operating_brief_content_bundle_text(bundle)` output.
+
+The Phase 165 tests use the Phase 162 synthetic content bundle fixture, pin the
+exact payload and compact JSON text, match rendered text to the Phase 163
+renderer, prove JSON round-tripping, byte-for-byte repeated export
+determinism, source bundle `to_dict()` stability, and payload mutation
+isolation from caller-side primitive payload edits. AST and literal guardrails
+prove the module adds no file I/O, paths, CLI behavior, dashboard behavior,
+persistence, runtime/scheduler behavior, network/socket access, credentials,
+vendor APIs, notebooks, LLM/agent behavior, ML, pandas, numpy, vectorbt,
+QuantConnect, broker/runtime behavior, strategy/signal/evaluator behavior,
+backtesting behavior, ranking/scoring, recommendations, allocation authority,
+orders, portfolio mutation, trading readiness, source approval, methodology
+approval, validation approval, trading authority, or new dependency behavior.
+Existing `AdvisoryOperatingBrief`, advisory operating brief renderer/export/CLI
+behavior, and content bundle renderer behavior remain unchanged, and normal
+pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
