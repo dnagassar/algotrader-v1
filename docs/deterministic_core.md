@@ -5185,6 +5185,30 @@ approval, trading authority, or new dependency behavior. Existing
 chains, and content bundle renderer/export behavior remain unchanged. Normal
 pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 168 - Advisory Operating Brief Content Bundle CLI Regression Guard adds
+`tests/unit/test_advisory_operating_brief_content_bundle_cli_regression.py` as
+a test-only guard for the Phase 167 preview command. The guard invokes
+`main([...])`, pins default text stdout, `--format text` stdout, and
+`--format json` stdout exactly against the Phase 165 export pins for the Phase
+162 synthetic content bundle, verifies default text equals explicit text,
+verifies JSON round-trips exactly to the expected primitive payload, and proves
+repeated text and JSON invocations remain byte-for-byte deterministic.
+
+The Phase 168 guard verifies candidate research and strategy eligibility
+branches are both present, fixed advisory/candidate-only metadata remains
+present, limitations and non-claims remain present, and approval/readiness/
+recommendation/allocation/order/trading-authority language remains confined to
+explicit caution metadata. It also proves the command exposes no file, path,
+source, vendor, broker, or runtime options; the content bundle preview module
+imports no tests or fixtures and adds no forbidden file I/O, persistence,
+network/socket, credential, vendor, broker, runtime/scheduler, dashboard,
+notebook, LLM/agent, strategy/signal/evaluator, backtesting, ranking/scoring,
+recommendation, allocation, order, portfolio mutation, readiness, approval, or
+trading-authority behavior; and existing `advisory-operating-brief-preview`
+text and JSON pins remain unchanged. No `src/` production code or content
+bundle renderer/export/CLI behavior changed. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

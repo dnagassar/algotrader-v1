@@ -11043,6 +11043,28 @@ Safe next tasks include:
   validation approval, trading authority, actionable paper/live/approved/
   trading-ready authority fields, or dependency behavior. Normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 168 - Advisory Operating Brief Content Bundle CLI Regression Guard adds
+  `tests/unit/test_advisory_operating_brief_content_bundle_cli_regression.py`
+  as a test-only guard for the Phase 167 preview command. It invokes the
+  command through the existing `main([...])` pattern; pins default text stdout,
+  `--format text` stdout, and `--format json` stdout exactly against the Phase
+  165 export pins for the Phase 162 synthetic content bundle; verifies default
+  text equals explicit text; verifies JSON round-trips exactly to the expected
+  primitive payload; and proves repeated text and JSON invocations are
+  byte-for-byte deterministic. The guard verifies candidate research and
+  strategy eligibility branches, advisory/candidate-only metadata, limitations,
+  and non-claims remain present; verifies approval/readiness/recommendation/
+  allocation/order/trading-authority language remains confined to explicit
+  caution metadata; verifies no file/path/source/vendor/broker/runtime options
+  are exposed; confirms existing `advisory-operating-brief-preview` text and
+  JSON pins remain unchanged; and self-inspects the guard plus production
+  preview module for no forbidden file I/O, persistence, network/socket,
+  credential, vendor, broker, runtime/scheduler, dashboard, notebook, LLM/agent,
+  strategy/signal/evaluator, backtesting, ranking/scoring, recommendation,
+  allocation, order, portfolio mutation, readiness, approval, trading-authority,
+  production-code, dependency, or content bundle renderer/export/CLI behavior
+  changes. Normal pytest remains offline, credential-free, deterministic, and
+  safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
