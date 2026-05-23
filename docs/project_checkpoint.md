@@ -11018,6 +11018,31 @@ Safe next tasks include:
   changes, new dependencies, or existing `AdvisoryOperatingBrief`
   renderer/export/CLI chain behavior; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 167 - Advisory Operating Brief Content Bundle CLI Preview adds
+  `src/algotrader/research/advisory_operating_brief_content_bundle_cli.py`,
+  wires `algotrader advisory-operating-brief-content-bundle-preview` in
+  `src/algotrader/cli.py`, and adds
+  `tests/unit/test_advisory_operating_brief_content_bundle_cli.py`. The command
+  builds a production-safe synthetic `AdvisoryOperatingBriefContentBundle`
+  using only public builders, matches the Phase 162 synthetic content bundle
+  fixture payload exactly, and exports through the Phase 165
+  `export_advisory_operating_brief_content_bundle(...)` contract. It supports
+  only default text output, `--format text`, and `--format json`; text stdout
+  is exactly `export.rendered_text`; JSON stdout is exactly compact
+  `export.json_text`; repeated text and JSON invocations are byte-for-byte
+  deterministic; and JSON round-trips to the expected primitive payload. Tests
+  also prove the command exposes no file/path/source/vendor/broker/runtime
+  options, production preview code imports no `tests` or `tests.fixtures`, the
+  existing `advisory-operating-brief-preview` command remains unchanged, and
+  AST/literal guardrails add no forbidden file I/O, persistence,
+  runtime/scheduler behavior, dashboard behavior, network/socket access,
+  credentials, vendor APIs, notebooks, LLM/agent behavior, broker/runtime
+  behavior, strategy/signal/evaluator behavior, backtesting behavior,
+  ranking/scoring, recommendations, allocation authority, orders, portfolio
+  mutation, trading readiness, source approval, methodology approval,
+  validation approval, trading authority, actionable paper/live/approved/
+  trading-ready authority fields, or dependency behavior. Normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

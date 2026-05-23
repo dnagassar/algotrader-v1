@@ -51,6 +51,17 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Preview output format.",
     )
+    content_bundle_preview_parser = subparsers.add_parser(
+        "advisory-operating-brief-content-bundle-preview",
+        help="Print the synthetic advisory operating brief content bundle preview.",
+    )
+    content_bundle_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
     return parser
 
 
@@ -59,6 +70,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     preview_output_format = _preview_output_format(argv_items)
     if preview_output_format is not None:
         return _run_advisory_operating_brief_preview(preview_output_format)
+    content_bundle_preview_output_format = (
+        _content_bundle_preview_output_format(argv_items)
+    )
+    if content_bundle_preview_output_format is not None:
+        return _run_advisory_operating_brief_content_bundle_preview(
+            content_bundle_preview_output_format
+        )
 
     parser = build_parser()
     args = parser.parse_args(argv_items)
@@ -67,6 +85,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if command == "advisory-operating-brief-preview":
         return _run_advisory_operating_brief_preview(args.output_format)
+    if command == "advisory-operating-brief-content-bundle-preview":
+        return _run_advisory_operating_brief_content_bundle_preview(
+            args.output_format
+        )
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -178,6 +200,20 @@ def _run_advisory_operating_brief_preview(output_format: str) -> int:
     return 0
 
 
+def _run_advisory_operating_brief_content_bundle_preview(
+    output_format: str,
+) -> int:
+    from .research.advisory_operating_brief_content_bundle_cli import (
+        render_advisory_operating_brief_content_bundle_preview,
+    )
+
+    print(
+        render_advisory_operating_brief_content_bundle_preview(output_format),
+        end="",
+    )
+    return 0
+
+
 def _load_runtime_config(profile: str | None):
     from .config import load_config
 
@@ -185,10 +221,27 @@ def _load_runtime_config(profile: str | None):
 
 
 def _preview_output_format(argv: tuple[str, ...]) -> str | None:
-    if "advisory-operating-brief-preview" not in argv:
+    return _preview_command_output_format(
+        argv,
+        "advisory-operating-brief-preview",
+    )
+
+
+def _content_bundle_preview_output_format(argv: tuple[str, ...]) -> str | None:
+    return _preview_command_output_format(
+        argv,
+        "advisory-operating-brief-content-bundle-preview",
+    )
+
+
+def _preview_command_output_format(
+    argv: tuple[str, ...],
+    command: str,
+) -> str | None:
+    if command not in argv:
         return None
 
-    command_index = argv.index("advisory-operating-brief-preview")
+    command_index = argv.index(command)
     if not _only_ignored_runtime_options(argv[:command_index]):
         return None
 
