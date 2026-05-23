@@ -4945,6 +4945,34 @@ signal/evaluator, backtesting, allocation, order, account, portfolio, or new
 dependency behavior. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 160 - Synthetic Strategy Eligibility Brief Fixture adds
+`tests/fixtures/strategy_eligibility_brief.py` and focused coverage in
+`tests/unit/test_strategy_eligibility_brief_fixture.py`. The fixture builds a
+deterministic `StrategyEligibilityBrief` by composing the Phase 158
+`build_synthetic_strategy_eligibility_brief_section()` fixture through the
+Phase 159 public `build_strategy_eligibility_brief(...)` helper, so validation
+is not bypassed. Its expected dictionary helper returns the exact primitive
+brief payload with the exact Phase 158 expected section dictionary nested in
+`sections`, fresh top-level limitation and non-claim lists, and pinned
+`brief_type=strategy_eligibility_brief`, `status=candidate_only`,
+`authority=advisory_only`, `capital_authority=False`, title, and summary.
+
+The Phase 160 tests prove the fixture builds a `StrategyEligibilityBrief`
+containing a Phase 158 `StrategyEligibilityBriefSection`, emits exact expected
+primitive dictionaries and compact JSON bytes across repeated construction,
+serializes tuple fields as lists, carries forward limitations and negative
+non-claims from the nested section, and returns fresh helper payloads so
+payload mutation cannot affect source objects or later helper calls. Guardrails
+prove the fixture added no forbidden broker, order, allocation,
+trading-authority, account, portfolio, paper/live readiness, approval,
+recommendation, capital authority, runtime, scheduler, dashboard, file I/O,
+persistence, network/socket, credential, vendor API, notebook, LLM/agent,
+strategy/signal/evaluator, backtesting, ranking/scoring, order, portfolio
+mutation, trading readiness, source approval, methodology approval, validation
+approval, trading authority, or dependency behavior. This phase changes no
+`src/` files, and normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
