@@ -11089,6 +11089,31 @@ Safe next tasks include:
   behavior, CLI behavior, file I/O, persistence, network/socket access,
   credentials, vendor APIs, LLM/agent behavior, notebooks, or dependencies;
   normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 170 - Synthetic Risk Authority Status Fixture adds
+  `tests/fixtures/risk_authority_status.py` and
+  `tests/unit/test_risk_authority_status_fixture.py`. The fixture uses the
+  Phase 169 public `build_risk_authority_status(...)` builder to produce a
+  deterministic `RiskAuthorityStatus` with `authority_state="not_authorized"`.
+  Fixed advisory metadata remains pinned to
+  `authority_type="risk_authority_status"`, `status="candidate_only"`,
+  `authority="advisory_only"`, and `capital_authority=False`. The payload
+  includes only synthetic reasons, blockers, required next steps, limitations,
+  non-claims, evidence refs, and related strategy ids. Non-claims explicitly
+  deny risk approval, allocation authority, order authority, paper readiness,
+  live readiness, broker authority, portfolio mutation authority, capital
+  authority, trading authority, trading recommendation, order placement,
+  broker access, and portfolio mutation. Tests pin exact primitive dictionary
+  output, compact JSON bytes, tuple storage/list serialization, repeated
+  construction determinism, fresh expected-helper list state, source collection
+  non-mutation, public-builder usage, and AST/literal guardrails proving no
+  forbidden broker/order/allocation/portfolio/trading-authority fixture fields
+  or imports were added. No `src/` production code, CLI behavior, risk engine
+  behavior, strategy execution behavior, signal/evaluator behavior,
+  backtesting behavior, broker/runtime behavior, order generation, allocation,
+  portfolio mutation, reconciliation mutation, scheduler behavior, dashboard
+  behavior, file I/O, persistence, network/socket access, credentials, vendor
+  APIs, LLM/agent behavior, notebooks, or dependencies changed; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -5238,6 +5238,34 @@ behavior, notebooks, new dependencies, paper readiness, live readiness, or
 trading authority. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 170 - Synthetic Risk Authority Status Fixture adds
+`tests/fixtures/risk_authority_status.py` and focused coverage in
+`tests/unit/test_risk_authority_status_fixture.py`. The fixture uses the Phase
+169 public `build_risk_authority_status(...)` builder to create a deterministic
+`RiskAuthorityStatus` with `authority_state="not_authorized"` and fixed
+advisory metadata pinned to `authority_type="risk_authority_status"`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`.
+
+The Phase 170 fixture exposes only primitive synthetic metadata: reasons,
+blockers, required next steps, limitations, non-claims, evidence references,
+and related strategy ids. Its non-claims explicitly deny risk approval,
+allocation authority, order authority, paper readiness, live readiness, broker
+authority, portfolio mutation authority, capital authority, trading authority,
+trading recommendation, order placement, broker access, and portfolio
+mutation. Tests pin exact `to_dict()` output, compact JSON bytes, tuple
+storage/list serialization, repeated construction determinism, fresh expected
+payload list state, source collection non-mutation, use of the Phase 169 public
+builder, and AST/literal guardrails proving no forbidden broker, order,
+allocation, portfolio, or trading-authority fixture fields or imports were
+added. No `src/` production code, CLI behavior, risk engine behavior, strategy
+execution behavior, signal/evaluator behavior, backtesting behavior,
+broker/runtime behavior, order generation, allocation, portfolio mutation,
+reconciliation mutation, scheduler behavior, dashboard behavior, file I/O,
+persistence, network/socket access, credentials, vendor APIs, LLM/agent
+behavior, notebooks, or dependencies changed. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
