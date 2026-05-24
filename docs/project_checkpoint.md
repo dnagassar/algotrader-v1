@@ -11763,6 +11763,35 @@ Safe next tasks include:
   package synthetic builder, package CLI, content bundle, renderer, export, and
   existing CLI behavior are unchanged; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 196 - Synthetic SMA Research Observation Fixture adds
+  `tests/fixtures/sma_research_observation.py` and
+  `tests/unit/test_sma_research_observation_fixture.py` as a tests-only layer
+  over the Phase 195 SMA observation contract. The fixture exposes
+  deterministic synthetic broad ETF SMA-like price points for
+  `symbol="SYNTH_ETF"`, `as_of="2026-01-20"`, and `window=3`, exact expected
+  primitive dictionaries for price points, the primary above-SMA observation,
+  and an insufficient-history observation. The primary fixture pins one
+  ignored future sample, three eligible samples, `latest_close="110.00"`,
+  `sma_value="100.00"`, `distance_from_sma="10.00"`,
+  `distance_from_sma_pct="0.1"`, and `position_vs_sma="above"`. The
+  insufficient-history fixture has fewer eligible samples than the window,
+  preserves `latest_close="101.00"`, emits
+  `position_vs_sma="insufficient_history"`, and leaves SMA and distance fields
+  as `None`. Tests prove exact Phase 195 production types, `.to_dict()` parity,
+  fresh mutable primitive expected dict copies, repeated deterministic
+  construction, deterministic compact JSON bytes, pinned future-sample counts,
+  fixed advisory metadata, required limitations and non-claims, absence of
+  paper/live/approved/trading-ready/actionable authority states, and
+  AST/import/call/source guardrails against broker/account/order/fill/
+  allocation/portfolio mutation behavior, file I/O, persistence,
+  network/socket access, vendor APIs, credentials, runtime/scheduler/dashboard
+  behavior, notebooks, ML, LLM/agent behavior, ranking/scoring,
+  recommendations, approval/readiness/trading authority language outside
+  explicit non-claims, and `from_dict()`. No `src` files, advisory operating
+  brief package, package synthetic builder, package CLI, content bundle,
+  renderer, export, existing CLI behavior, real data ingestion, evaluator,
+  backtesting, strategy execution, or dependencies changed; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
