@@ -11585,6 +11585,33 @@ Safe next tasks include:
   mutation, risk approval, paper/live readiness, capital authority, and
   trading authority behavior are unchanged; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 189 - Synthetic Advisory Operating Brief Package Fixture adds the
+  test-only `tests/fixtures/advisory_operating_brief_package.py` helper pair
+  and `tests/unit/test_advisory_operating_brief_package_fixture.py`. The
+  builder composes the existing research-queue-inclusive synthetic content
+  bundle through `build_advisory_operating_brief_package(...)` with fixed
+  metadata:
+  `package_id="advisory-operating-brief-package:synthetic:2026-01-20"`,
+  `title="Synthetic advisory operating brief package"`, advisory-only
+  synthetic package summary text, and `as_of="2026-01-20"`. The expected dict
+  helper returns the exact `to_dict()` payload as fresh mutable primitive
+  copies. Tests prove repeated construction and compact JSON bytes are
+  deterministic; nested `content_bundle` equals the expected candidate,
+  strategy, risk, and research queue bundle; nested
+  `content_bundle_export.payload`, `json_text`, and `rendered_text` match the
+  existing export and renderer behavior; source content bundle identity is
+  preserved; fixed metadata, carried limitations, carried non-claims, and
+  absence of `from_dict()` are pinned; and fixture AST/import/call/literal
+  guardrails exclude file I/O, persistence, network/socket, credential, vendor
+  API, broker/account/order/fill/allocation/portfolio mutation, runtime,
+  scheduler/dashboard, notebook, ML, LLM/agent, ranking/scoring,
+  approval/readiness/trading authority, and actionable behavior. No `src/`,
+  existing `AdvisoryOperatingBrief`, content bundle, renderer, export, CLI,
+  package production, source/data approval, methodology approval,
+  strategy/signal/evaluator, backtesting, recommendation, allocation/order/
+  portfolio mutation, risk approval, paper/live readiness, capital authority,
+  or trading authority behavior changed; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -5807,6 +5807,36 @@ recommendations, allocation/order/portfolio mutation, risk approval,
 paper/live readiness, capital authority, trading authority, or dependencies.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 189 - Synthetic Advisory Operating Brief Package Fixture adds
+`tests/fixtures/advisory_operating_brief_package.py` and
+`tests/unit/test_advisory_operating_brief_package_fixture.py` as test-only
+coverage for the Phase 188 package contract. The fixture composes the existing
+research-queue-inclusive synthetic content bundle through
+`build_advisory_operating_brief_package(...)` with fixed metadata:
+`package_id="advisory-operating-brief-package:synthetic:2026-01-20"`,
+`title="Synthetic advisory operating brief package"`, an advisory-only
+synthetic package summary, and `as_of="2026-01-20"`.
+
+The Phase 189 tests prove the fixture returns an exact
+`AdvisoryOperatingBriefPackage`, the expected dictionary helper matches
+`to_dict()` exactly while returning fresh mutable primitive copies, repeated
+construction and compact JSON bytes are deterministic, the nested
+`content_bundle` equals the research-queue-inclusive expected bundle, the
+nested export payload/json/rendered text matches existing content bundle export
+and renderer behavior, source content bundle identity is preserved, fixed
+metadata is pinned, limitations and non-claims carry forward, no `from_dict()`
+exists, and positive paper/live/approved/trading-ready/actionable authority
+states are absent except explicit negative advisory cautions. No `src/`,
+existing `AdvisoryOperatingBrief`, content bundle, renderer, export, CLI,
+package production, file I/O, persistence, network/socket access, credentials,
+vendor APIs, broker/runtime behavior, scheduler/dashboard behavior, notebooks,
+ML, LLM/agent behavior, source/data approval, methodology approval,
+strategy/signal/evaluator behavior, backtesting, ranking/scoring,
+recommendations, allocation/order/portfolio mutation, risk approval,
+paper/live readiness, capital authority, trading authority, or dependencies
+changed. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
