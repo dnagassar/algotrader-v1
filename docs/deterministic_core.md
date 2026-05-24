@@ -5558,6 +5558,31 @@ recommendation, allocation, order, portfolio mutation, paper-readiness,
 live-readiness, capital, and trading-authority behavior remain unchanged.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 180 - Advisory Operating Brief Content Bundle Export Risk-Branch
+Regression Guard adds
+`tests/unit/test_advisory_operating_brief_content_bundle_export_with_risk_regression.py`
+as test-only coverage for the existing in-memory content bundle export path
+after the Phase 179 renderer update. The guard composes the Phase 178
+risk-inclusive synthetic bundle, compares the export payload to
+`expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict()`,
+pins compact sorted JSON, checks JSON round-trip behavior, and verifies that
+rendered export text matches
+`render_advisory_operating_brief_content_bundle_text(...)`.
+
+The Phase 180 guard also proves repeated exports are byte-for-byte
+deterministic, the risk authority count and nested risk metadata remain
+present, candidate research and strategy eligibility branches stay before the
+risk authority branch, limitations and non-claims are preserved, and the
+source bundle is not mutated by export or exported-payload edits. It adds
+self-inspection guardrails for the new test file and does not modify `src/`
+production code, `AdvisoryOperatingBrief`, content bundle construction,
+renderer, export, CLI, broker/runtime, scheduler/dashboard, file I/O,
+persistence, network/socket, credentials, vendor APIs, notebooks, ML,
+LLM/agent, strategy/signal/evaluator, backtesting, allocation/order/portfolio
+mutation, risk approval, paper/live readiness, capital, or trading-authority
+behavior. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
