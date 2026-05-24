@@ -11635,6 +11635,32 @@ Safe next tasks include:
   `AdvisoryOperatingBrief`, package, package fixture, content bundle, content
   bundle renderer, content bundle export, and CLI behavior are unchanged;
   normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 191 - Advisory Operating Brief Package Export Contract adds
+  `src/algotrader/research/advisory_operating_brief_package_export.py` with
+  frozen/slotted `AdvisoryOperatingBriefPackageExport` and
+  `export_advisory_operating_brief_package(package)`. The builder accepts
+  only the exact `AdvisoryOperatingBriefPackage`, rejects subclasses,
+  lookalikes, dictionaries, and `None`, sets payload from `package.to_dict()`,
+  emits compact deterministic JSON with `sort_keys=True` and
+  `separators=(",", ":")`, and uses
+  `render_advisory_operating_brief_package_text(package)` for rendered text.
+  Direct construction requires a non-empty primitive payload dictionary,
+  non-empty compact JSON text that round-trips to the payload, and non-empty
+  rendered text. The stored payload is defensively copied and repeated
+  `payload` access returns fresh primitive copies. Tests prove Phase 189
+  fixture acceptance, payload/json/rendered parity, byte-for-byte repeated
+  determinism, package `to_dict()` non-mutation, nested content bundle
+  identity preservation, nested content bundle export non-mutation,
+  frozen/slotted behavior, exact type rejection, absence of `from_dict()`,
+  no production imports from `tests` or `tests.fixtures`, and
+  AST/import/call/source guardrails. Existing `AdvisoryOperatingBrief`,
+  package, package fixture, package renderer, content bundle, content bundle
+  renderer/export, and CLI behavior are unchanged; no file I/O, persistence,
+  network/socket, credential, vendor API, broker/account/order/fill/
+  allocation/portfolio mutation, runtime, scheduler/dashboard, notebook, ML,
+  LLM/agent, ranking/scoring, approval/readiness/trading authority, or
+  actionable behavior was added; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
