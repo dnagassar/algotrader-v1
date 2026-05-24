@@ -11686,6 +11686,28 @@ Safe next tasks include:
   export, content bundle, content bundle renderer/export, and content bundle
   CLI behavior are unchanged; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 193 - Advisory Operating Brief Package CLI Regression Guard adds
+  `tests/unit/test_advisory_operating_brief_package_cli_regression.py` as a
+  test-only pin for `algotrader advisory-operating-brief-package-preview`.
+  The guard compares default text, explicit text, and compact JSON stdout
+  against `export_advisory_operating_brief_package(...)` using the current
+  package preview builder, proves JSON round-trips to the exported preview
+  payload, checks package
+  metadata, nested candidate research, strategy eligibility, risk authority,
+  research queue, advisory-only/candidate-only/capital-authority-false
+  metadata, limitations, and non-claims, and proves repeated default/text/JSON
+  invocations are byte-for-byte deterministic. It also verifies the package
+  preview exposes only `--format text|json`, no file/path/source/vendor/
+  broker/network/runtime/credential options are present, existing content
+  bundle preview default, risk, research queue, and combined-flag outputs are
+  unchanged, and AST/import/call/source guardrails add no file I/O,
+  persistence, network/socket, credential, vendor API, broker/account/order/
+  fill/allocation/portfolio mutation, runtime, scheduler/dashboard, notebook,
+  ML, LLM/agent, ranking/scoring, recommendations, approval/readiness/trading
+  authority, actionable behavior, or dependencies. Production package,
+  package renderer/export, content bundle, content bundle renderer/export, and
+  CLI behavior are unchanged; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -5926,6 +5926,34 @@ allocation/order/portfolio mutation, risk approval, paper/live readiness,
 capital authority, trading authority, or dependencies. Normal pytest remains
 offline, credential-free, deterministic, and safe.
 
+Phase 193 - Advisory Operating Brief Package CLI Regression Guard adds
+`tests/unit/test_advisory_operating_brief_package_cli_regression.py` as a
+narrow test-only pin for
+`algotrader advisory-operating-brief-package-preview`. The guard anchors the
+default text, explicit text, and compact JSON stdout to
+`export_advisory_operating_brief_package(...)` using the current package
+preview builder, proves JSON round-trips to the exported preview payload, and
+verifies
+package metadata, advisory-only/candidate-only/capital-authority-false
+metadata, nested candidate research, strategy eligibility, risk authority,
+and research queue branches, limitations, and non-claims remain visible.
+
+The Phase 193 tests also prove repeated default, explicit text, and JSON
+invocations are byte-for-byte deterministic, the package preview CLI exposes
+only `--format text|json`, no file/path/source/vendor/broker/network/runtime/
+credential options are present, and existing content bundle preview default,
+risk, research queue, and combined-flag outputs remain equal to their current
+exports. AST/import/call/source guardrails cover the package preview module
+and the regression guard itself so the preview remains synthetic-only and adds
+no file I/O, persistence, network/socket access, credentials, vendor APIs,
+broker/account/order/fill/allocation/portfolio mutation, runtime,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior, ranking/
+scoring, recommendations, approval/readiness/trading authority, actionable
+behavior, or dependencies. Production package, package renderer/export,
+content bundle, content bundle renderer/export, and CLI behavior are
+unchanged. Normal pytest remains offline, credential-free, deterministic,
+and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
