@@ -12,15 +12,27 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
     build_advisory_operating_brief_content_bundle,
 )
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.research_queue_brief import ResearchQueueBrief
+from algotrader.research.risk_authority_brief import RiskAuthorityBrief
 from algotrader.research.strategy_eligibility_brief import StrategyEligibilityBrief
 from tests.fixtures import advisory_operating_brief_content_bundle as fixture_module
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
     expected_synthetic_advisory_operating_brief_content_bundle_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
     expected_synthetic_candidate_research_brief_dict,
+)
+from tests.fixtures.research_queue_brief import (
+    build_synthetic_research_queue_brief,
+    expected_synthetic_research_queue_brief_dict,
+)
+from tests.fixtures.risk_authority_brief import (
+    build_synthetic_risk_authority_brief,
+    expected_synthetic_risk_authority_brief_dict,
 )
 from tests.fixtures.strategy_eligibility_brief import (
     build_synthetic_strategy_eligibility_brief,
@@ -36,10 +48,11 @@ def _combined_expected_values(
     first: dict[str, object],
     second: dict[str, object],
     field_name: str,
+    *remaining: dict[str, object],
 ) -> tuple[str, ...]:
     values: list[str] = []
     seen: set[str] = set()
-    for payload in (first, second):
+    for payload in (first, second, *remaining):
         for value in payload[field_name]:
             assert isinstance(value, str)
             if value in seen:
@@ -55,6 +68,8 @@ _EXPECTED_CANDIDATE_BRIEF_DICT = expected_synthetic_candidate_research_brief_dic
 _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT = (
     expected_synthetic_strategy_eligibility_brief_dict()
 )
+_EXPECTED_RISK_AUTHORITY_BRIEF_DICT = expected_synthetic_risk_authority_brief_dict()
+_EXPECTED_RESEARCH_QUEUE_BRIEF_DICT = expected_synthetic_research_queue_brief_dict()
 _EXPECTED_LIMITATIONS = _combined_expected_values(
     _EXPECTED_CANDIDATE_BRIEF_DICT,
     _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
@@ -64,6 +79,20 @@ _EXPECTED_NON_CLAIMS = _combined_expected_values(
     _EXPECTED_CANDIDATE_BRIEF_DICT,
     _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
     "non_claims",
+)
+_EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    "limitations",
+    _EXPECTED_RISK_AUTHORITY_BRIEF_DICT,
+    _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT,
+)
+_EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    "non_claims",
+    _EXPECTED_RISK_AUTHORITY_BRIEF_DICT,
+    _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT,
 )
 _EXPECTED_DICT = {
     "bundle_type": "advisory_operating_brief_content_bundle",
@@ -82,8 +111,37 @@ _EXPECTED_DICT = {
     "limitations": list(_EXPECTED_LIMITATIONS),
     "non_claims": list(_EXPECTED_NON_CLAIMS),
 }
+_EXPECTED_WITH_RESEARCH_QUEUE_DICT = {
+    "bundle_type": "advisory_operating_brief_content_bundle",
+    "status": "candidate_only",
+    "authority": "advisory_only",
+    "capital_authority": False,
+    "title": "Advisory operating brief content bundle metadata",
+    "summary": (
+        "Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+        "1 research queue brief(s), "
+        f"{len(_EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS)} limitation(s), and "
+        f"{len(_EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS)} non-claim(s)."
+    ),
+    "candidate_research_brief_count": 1,
+    "strategy_eligibility_brief_count": 1,
+    "risk_authority_brief_count": 1,
+    "research_queue_brief_count": 1,
+    "candidate_research_briefs": [_EXPECTED_CANDIDATE_BRIEF_DICT],
+    "strategy_eligibility_briefs": [_EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT],
+    "risk_authority_briefs": [_EXPECTED_RISK_AUTHORITY_BRIEF_DICT],
+    "research_queue_briefs": [_EXPECTED_RESEARCH_QUEUE_BRIEF_DICT],
+    "limitations": list(_EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS),
+    "non_claims": list(_EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS),
+}
 _EXPECTED_COMPACT_JSON_BYTES = json.dumps(
     _EXPECTED_DICT,
+    ensure_ascii=True,
+    separators=(",", ":"),
+).encode("ascii")
+_EXPECTED_WITH_RESEARCH_QUEUE_COMPACT_JSON_BYTES = json.dumps(
+    _EXPECTED_WITH_RESEARCH_QUEUE_DICT,
     ensure_ascii=True,
     separators=(",", ":"),
 ).encode("ascii")
@@ -273,6 +331,8 @@ def test_fixture_builds_advisory_operating_brief_content_bundle() -> None:
     assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
     assert len(bundle.candidate_research_briefs) == 1
     assert len(bundle.strategy_eligibility_briefs) == 1
+    assert bundle.risk_authority_briefs == ()
+    assert bundle.research_queue_briefs == ()
     assert isinstance(bundle.candidate_research_briefs[0], CandidateResearchBrief)
     assert isinstance(bundle.strategy_eligibility_briefs[0], StrategyEligibilityBrief)
 
@@ -393,10 +453,215 @@ def test_fixture_output_matches_expected_dictionary_exactly() -> None:
     assert expected == _EXPECTED_DICT
     assert payload == expected
     assert tuple(payload) == tuple(_EXPECTED_DICT)
+    assert "risk_authority_brief_count" not in payload
+    assert "risk_authority_briefs" not in payload
+    assert "research_queue_brief_count" not in payload
+    assert "research_queue_briefs" not in payload
     assert payload["candidate_research_briefs"][0] == _EXPECTED_CANDIDATE_BRIEF_DICT
     assert payload["strategy_eligibility_briefs"][0] == (
         _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT
     )
+    _assert_primitive_only(payload)
+    _assert_primitive_only(expected)
+
+
+def test_research_queue_fixture_builds_content_bundle_with_four_branches() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert len(bundle.candidate_research_briefs) == 1
+    assert len(bundle.strategy_eligibility_briefs) == 1
+    assert len(bundle.risk_authority_briefs) == 1
+    assert len(bundle.research_queue_briefs) == 1
+    assert isinstance(bundle.candidate_research_briefs[0], CandidateResearchBrief)
+    assert isinstance(bundle.strategy_eligibility_briefs[0], StrategyEligibilityBrief)
+    assert isinstance(bundle.risk_authority_briefs[0], RiskAuthorityBrief)
+    assert isinstance(bundle.research_queue_briefs[0], ResearchQueueBrief)
+
+
+def test_research_queue_fixture_uses_existing_fixtures_and_phase_184_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, object]] = []
+    source_candidate = build_synthetic_candidate_research_brief()
+    source_strategy = build_synthetic_strategy_eligibility_brief()
+    source_risk = build_synthetic_risk_authority_brief()
+    source_research_queue = build_synthetic_research_queue_brief()
+
+    def recording_candidate_fixture() -> CandidateResearchBrief:
+        calls.append(("candidate_fixture", source_candidate))
+        return source_candidate
+
+    def recording_strategy_fixture() -> StrategyEligibilityBrief:
+        calls.append(("strategy_fixture", source_strategy))
+        return source_strategy
+
+    def recording_risk_fixture() -> RiskAuthorityBrief:
+        calls.append(("risk_fixture", source_risk))
+        return source_risk
+
+    def recording_research_queue_fixture() -> ResearchQueueBrief:
+        calls.append(("research_queue_fixture", source_research_queue))
+        return source_research_queue
+
+    def recording_bundle_builder(
+        candidate_research_briefs: tuple[CandidateResearchBrief, ...],
+        strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
+        risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
+        research_queue_briefs: tuple[ResearchQueueBrief, ...],
+    ) -> AdvisoryOperatingBriefContentBundle:
+        candidate_tuple = tuple(candidate_research_briefs)
+        strategy_tuple = tuple(strategy_eligibility_briefs)
+        risk_tuple = tuple(risk_authority_briefs)
+        research_queue_tuple = tuple(research_queue_briefs)
+        calls.append(
+            (
+                "bundle_builder",
+                (candidate_tuple, strategy_tuple, risk_tuple, research_queue_tuple),
+            )
+        )
+        return build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=candidate_tuple,
+            strategy_eligibility_briefs=strategy_tuple,
+            risk_authority_briefs=risk_tuple,
+            research_queue_briefs=research_queue_tuple,
+        )
+
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_candidate_research_brief",
+        recording_candidate_fixture,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_strategy_eligibility_brief",
+        recording_strategy_fixture,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_risk_authority_brief",
+        recording_risk_fixture,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "build_synthetic_research_queue_brief",
+        recording_research_queue_fixture,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "build_advisory_operating_brief_content_bundle",
+        recording_bundle_builder,
+    )
+
+    bundle = (
+        fixture_module
+        .build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    )
+
+    assert [name for name, _ in calls] == [
+        "candidate_fixture",
+        "strategy_fixture",
+        "risk_fixture",
+        "research_queue_fixture",
+        "bundle_builder",
+    ]
+    assert calls[0][1] is source_candidate
+    assert calls[1][1] is source_strategy
+    assert calls[2][1] is source_risk
+    assert calls[3][1] is source_research_queue
+    assert calls[4][1] == (
+        (source_candidate,),
+        (source_strategy,),
+        (source_risk,),
+        (source_research_queue,),
+    )
+    assert bundle.candidate_research_briefs == (source_candidate,)
+    assert bundle.strategy_eligibility_briefs == (source_strategy,)
+    assert bundle.risk_authority_briefs == (source_risk,)
+    assert bundle.research_queue_briefs == (source_research_queue,)
+
+
+def test_research_queue_expected_helper_uses_all_nested_expected_dictionaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+    source_candidate_expected = expected_synthetic_candidate_research_brief_dict()
+    source_strategy_expected = expected_synthetic_strategy_eligibility_brief_dict()
+    source_risk_expected = expected_synthetic_risk_authority_brief_dict()
+    source_research_queue_expected = expected_synthetic_research_queue_brief_dict()
+
+    def recording_expected_candidate() -> dict[str, object]:
+        calls.append("candidate_expected")
+        return source_candidate_expected
+
+    def recording_expected_strategy() -> dict[str, object]:
+        calls.append("strategy_expected")
+        return source_strategy_expected
+
+    def recording_expected_risk() -> dict[str, object]:
+        calls.append("risk_expected")
+        return source_risk_expected
+
+    def recording_expected_research_queue() -> dict[str, object]:
+        calls.append("research_queue_expected")
+        return source_research_queue_expected
+
+    monkeypatch.setattr(
+        fixture_module,
+        "expected_synthetic_candidate_research_brief_dict",
+        recording_expected_candidate,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "expected_synthetic_strategy_eligibility_brief_dict",
+        recording_expected_strategy,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "expected_synthetic_risk_authority_brief_dict",
+        recording_expected_risk,
+    )
+    monkeypatch.setattr(
+        fixture_module,
+        "expected_synthetic_research_queue_brief_dict",
+        recording_expected_research_queue,
+    )
+
+    expected = (
+        fixture_module
+        .expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+
+    assert calls == [
+        "candidate_expected",
+        "strategy_expected",
+        "risk_expected",
+        "research_queue_expected",
+    ]
+    assert expected["candidate_research_briefs"][0] is source_candidate_expected
+    assert expected["strategy_eligibility_briefs"][0] is source_strategy_expected
+    assert expected["risk_authority_briefs"][0] is source_risk_expected
+    assert expected["research_queue_briefs"][0] is source_research_queue_expected
+    assert expected["limitations"] == list(_EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS)
+    assert expected["non_claims"] == list(_EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS)
+
+
+def test_research_queue_fixture_output_matches_expected_dictionary_exactly() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    payload = bundle.to_dict()
+    expected = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+
+    assert expected == _EXPECTED_WITH_RESEARCH_QUEUE_DICT
+    assert payload == expected
+    assert tuple(payload) == tuple(_EXPECTED_WITH_RESEARCH_QUEUE_DICT)
+    assert payload["candidate_research_briefs"][0] == _EXPECTED_CANDIDATE_BRIEF_DICT
+    assert payload["strategy_eligibility_briefs"][0] == (
+        _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT
+    )
+    assert payload["risk_authority_briefs"][0] == _EXPECTED_RISK_AUTHORITY_BRIEF_DICT
+    assert payload["research_queue_briefs"][0] == _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT
     _assert_primitive_only(payload)
     _assert_primitive_only(expected)
 
@@ -440,6 +705,39 @@ def test_repeated_fixture_construction_is_dict_and_byte_deterministic() -> None:
     assert json.loads(first_json_bytes.decode("ascii")) == first_payload
 
 
+def test_repeated_research_queue_fixture_construction_is_deterministic() -> None:
+    first = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    second = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    )
+    first_payload = first.to_dict()
+    second_payload = second.to_dict()
+    first_expected = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+    second_expected = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+    first_json_bytes = _compact_json_bytes(first_payload)
+    second_json_bytes = _compact_json_bytes(second_payload)
+
+    assert first is not second
+    assert first.candidate_research_briefs[0] is not second.candidate_research_briefs[0]
+    assert first.strategy_eligibility_briefs[0] is not (
+        second.strategy_eligibility_briefs[0]
+    )
+    assert first.risk_authority_briefs[0] is not second.risk_authority_briefs[0]
+    assert first.research_queue_briefs[0] is not second.research_queue_briefs[0]
+    assert first_payload == second_payload == first_expected == second_expected
+    assert first_payload == _EXPECTED_WITH_RESEARCH_QUEUE_DICT
+    assert (
+        first_json_bytes
+        == second_json_bytes
+        == _EXPECTED_WITH_RESEARCH_QUEUE_COMPACT_JSON_BYTES
+    )
+    assert json.loads(first_json_bytes.decode("ascii")) == first_payload
+
+
 def test_fixed_advisory_metadata_is_pinned() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
     payload = bundle.to_dict()
@@ -454,6 +752,7 @@ def test_fixed_advisory_metadata_is_pinned() -> None:
     assert payload["capital_authority"] is False
     assert payload["candidate_research_brief_count"] == 1
     assert payload["strategy_eligibility_brief_count"] == 1
+    assert "research_queue_brief_count" not in payload
 
 
 def test_title_and_summary_are_pinned_and_advisory_only() -> None:
@@ -531,6 +830,89 @@ def test_limitations_and_non_claims_are_carried_forward_from_both_branches() -> 
     assert all(value in bundle.limitations for value in strategy_brief.limitations)
     assert all(value in bundle.non_claims for value in candidate_brief.non_claims)
     assert all(value in bundle.non_claims for value in strategy_brief.non_claims)
+
+
+def test_research_queue_limitations_and_non_claims_are_carried_forward() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    candidate_brief = bundle.candidate_research_briefs[0]
+    strategy_brief = bundle.strategy_eligibility_briefs[0]
+    risk_brief = bundle.risk_authority_briefs[0]
+    research_queue_brief = bundle.research_queue_briefs[0]
+    payload = bundle.to_dict()
+
+    assert risk_brief.limitations
+    assert risk_brief.non_claims
+    assert research_queue_brief.limitations
+    assert research_queue_brief.non_claims
+    assert bundle.limitations == _EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS
+    assert bundle.non_claims == _EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS
+    assert payload["limitations"] == list(_EXPECTED_WITH_RESEARCH_QUEUE_LIMITATIONS)
+    assert payload["non_claims"] == list(_EXPECTED_WITH_RESEARCH_QUEUE_NON_CLAIMS)
+    assert len(bundle.limitations) == len(set(bundle.limitations))
+    assert len(bundle.non_claims) == len(set(bundle.non_claims))
+    assert all(value in bundle.limitations for value in candidate_brief.limitations)
+    assert all(value in bundle.limitations for value in strategy_brief.limitations)
+    assert all(value in bundle.limitations for value in risk_brief.limitations)
+    assert all(
+        value in bundle.limitations for value in research_queue_brief.limitations
+    )
+    assert all(value in bundle.non_claims for value in candidate_brief.non_claims)
+    assert all(value in bundle.non_claims for value in strategy_brief.non_claims)
+    assert all(value in bundle.non_claims for value in risk_brief.non_claims)
+    assert all(
+        value in bundle.non_claims for value in research_queue_brief.non_claims
+    )
+
+
+def test_research_queue_expected_helper_returns_fresh_mutable_copies() -> None:
+    first = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+    second = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+
+    assert first is not second
+    assert first["candidate_research_briefs"] is not second["candidate_research_briefs"]
+    assert first["strategy_eligibility_briefs"] is not (
+        second["strategy_eligibility_briefs"]
+    )
+    assert first["risk_authority_briefs"] is not second["risk_authority_briefs"]
+    assert first["research_queue_briefs"] is not second["research_queue_briefs"]
+    assert first["candidate_research_briefs"][0] is not (
+        second["candidate_research_briefs"][0]
+    )
+    assert first["strategy_eligibility_briefs"][0] is not (
+        second["strategy_eligibility_briefs"][0]
+    )
+    assert first["risk_authority_briefs"][0] is not (
+        second["risk_authority_briefs"][0]
+    )
+    assert first["research_queue_briefs"][0] is not (
+        second["research_queue_briefs"][0]
+    )
+    for field_name in _TUPLE_FIELDS:
+        assert first[field_name] is not second[field_name]
+        assert first[field_name] is not (
+            first["candidate_research_briefs"][0][field_name]
+        )
+        assert first[field_name] is not (
+            first["strategy_eligibility_briefs"][0][field_name]
+        )
+        assert first[field_name] is not first["risk_authority_briefs"][0][field_name]
+        assert first[field_name] is not first["research_queue_briefs"][0][field_name]
+
+    first["limitations"].append("mutated primitive copy")
+    first["research_queue_briefs"][0]["limitations"].append(
+        "mutated research queue expected copy"
+    )
+    first["non_claims"].append("not mutated expected copy")
+
+    assert second == _EXPECTED_WITH_RESEARCH_QUEUE_DICT
+    assert (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+        == _EXPECTED_WITH_RESEARCH_QUEUE_DICT
+    )
 
 
 def test_fixture_helpers_do_not_mutate_sources_or_share_mutable_payload_state(

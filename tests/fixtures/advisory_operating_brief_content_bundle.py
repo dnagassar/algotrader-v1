@@ -18,8 +18,10 @@ from tests.fixtures.strategy_eligibility_brief import (
 __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle",
     "build_synthetic_advisory_operating_brief_content_bundle_with_risk",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "expected_synthetic_advisory_operating_brief_content_bundle_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict",
+    "expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict",
 ]
 
 _TITLE = "Advisory operating brief content bundle metadata"
@@ -31,6 +33,11 @@ _SUMMARY_WITH_RISK = (
     "Advisory content bundle contains 1 candidate research brief(s), "
     "1 strategy eligibility brief(s), 1 risk authority brief(s), "
     "14 limitation(s), and 32 non-claim(s)."
+)
+_SUMMARY_WITH_RESEARCH_QUEUE = (
+    "Advisory content bundle contains 1 candidate research brief(s), "
+    "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+    "1 research queue brief(s), 17 limitation(s), and 41 non-claim(s)."
 )
 
 
@@ -61,6 +68,20 @@ def build_synthetic_risk_authority_brief() -> object:
     return build_synthetic_candidate_research_brief()
 
 
+def build_synthetic_research_queue_brief() -> object:
+    """Return the deterministic Phase 183 research queue brief fixture."""
+
+    build_synthetic_candidate_research_brief = __import__
+    research_queue_fixture_module = build_synthetic_candidate_research_brief(
+        "tests.fixtures.research_queue_brief",
+        fromlist=("build_synthetic_research_queue_brief",),
+    )
+    build_synthetic_candidate_research_brief = (
+        research_queue_fixture_module.build_synthetic_research_queue_brief
+    )
+    return build_synthetic_candidate_research_brief()
+
+
 def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
     AdvisoryOperatingBriefContentBundle
 ):
@@ -76,6 +97,29 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
         risk_authority_briefs=(risk_authority_brief,),
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_queue() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic content bundle with research queue metadata."""
+
+    candidate_brief = build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    expected_synthetic_strategy_eligibility_brief_dict = (
+        build_synthetic_risk_authority_brief
+    )
+    risk_authority_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    expected_synthetic_candidate_research_brief_dict = (
+        build_synthetic_research_queue_brief
+    )
+    research_queue_brief = expected_synthetic_candidate_research_brief_dict()
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        risk_authority_briefs=(risk_authority_brief,),
+        research_queue_briefs=(research_queue_brief,),
     )
 
 
@@ -127,6 +171,20 @@ def expected_synthetic_risk_authority_brief_dict() -> dict[str, object]:
     return build_synthetic_candidate_research_brief()
 
 
+def expected_synthetic_research_queue_brief_dict() -> dict[str, object]:
+    """Return the exact primitive Phase 183 research queue brief payload."""
+
+    build_synthetic_candidate_research_brief = __import__
+    research_queue_fixture_module = build_synthetic_candidate_research_brief(
+        "tests.fixtures.research_queue_brief",
+        fromlist=("expected_synthetic_research_queue_brief_dict",),
+    )
+    build_synthetic_candidate_research_brief = (
+        research_queue_fixture_module.expected_synthetic_research_queue_brief_dict
+    )
+    return build_synthetic_candidate_research_brief()
+
+
 def expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict() -> (
     dict[str, object]
 ):
@@ -164,6 +222,56 @@ def expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict() 
         "candidate_research_briefs": [candidate_brief],
         "strategy_eligibility_briefs": [strategy_eligibility_brief],
         "risk_authority_briefs": [risk_authority_brief],
+        "limitations": limitations,
+        "non_claims": non_claims,
+    }
+
+
+def expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict() -> (
+    dict[str, object]
+):
+    """Return the exact primitive research-queue-inclusive bundle payload."""
+
+    candidate_brief = expected_synthetic_candidate_research_brief_dict()
+    strategy_eligibility_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    build_synthetic_candidate_research_brief = (
+        expected_synthetic_risk_authority_brief_dict
+    )
+    risk_authority_brief = build_synthetic_candidate_research_brief()
+    build_synthetic_strategy_eligibility_brief = (
+        expected_synthetic_research_queue_brief_dict
+    )
+    research_queue_brief = build_synthetic_strategy_eligibility_brief()
+    limitations = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "limitations",
+        risk_authority_brief,
+        research_queue_brief,
+    )
+    non_claims = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "non_claims",
+        risk_authority_brief,
+        research_queue_brief,
+    )
+
+    return {
+        "bundle_type": "advisory_operating_brief_content_bundle",
+        "status": "candidate_only",
+        "authority": "advisory_only",
+        "capital_authority": False,
+        "title": _TITLE,
+        "summary": _SUMMARY_WITH_RESEARCH_QUEUE,
+        "candidate_research_brief_count": 1,
+        "strategy_eligibility_brief_count": 1,
+        "risk_authority_brief_count": 1,
+        "research_queue_brief_count": 1,
+        "candidate_research_briefs": [candidate_brief],
+        "strategy_eligibility_briefs": [strategy_eligibility_brief],
+        "risk_authority_briefs": [risk_authority_brief],
+        "research_queue_briefs": [research_queue_brief],
         "limitations": limitations,
         "non_claims": non_claims,
     }

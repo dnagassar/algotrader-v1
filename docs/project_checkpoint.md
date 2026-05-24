@@ -11459,6 +11459,35 @@ Safe next tasks include:
   persistence, network/socket, credential, vendor API, notebook, ML,
   LLM/agent, or dependency behavior changed; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 184 - Advisory Operating Brief Content Bundle Research Queue
+  Integration adds the Phase 182/183 `ResearchQueueBrief` family as an
+  optional fourth branch in
+  `src/algotrader/research/advisory_operating_brief_content_bundle.py`. The
+  bundle still pins
+  `bundle_type="advisory_operating_brief_content_bundle"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. The builder accepts candidate research, strategy
+  eligibility, risk authority, and research queue brief iterables; each branch
+  may be empty, but at least one total brief is required. Tests prove exact
+  type validation, malformed input rejection, object identity/order
+  preservation within every branch, duplicate identity rejection across all
+  branches, first-seen limitation/non-claim de-duplication, deterministic
+  primitive-only serialization, and no `from_dict()`. Existing Phase 162
+  candidate+strategy and Phase 178 candidate+strategy+risk fixture payloads
+  remain exactly unchanged, while the new
+  `build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()`
+  and
+  `expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()`
+  helpers compose candidate, strategy, risk, and research queue branches
+  through the production builder and emit `research_queue_brief_count` plus
+  `research_queue_briefs`. Renderer, export, CLI, source/data approval,
+  methodology approval, signal/evaluator, strategy execution, backtesting,
+  ranking/scoring, recommendation, allocation/order/portfolio mutation,
+  risk approval, broker/runtime, scheduler/dashboard, paper/live readiness,
+  capital authority, trading authority, file I/O, persistence, network/socket,
+  credential, vendor API, notebook, ML, LLM/agent, and dependency behavior are
+  unchanged; normal pytest remains offline, credential-free, deterministic,
+  and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
