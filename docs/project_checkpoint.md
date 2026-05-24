@@ -11708,6 +11708,32 @@ Safe next tasks include:
   package renderer/export, content bundle, content bundle renderer/export, and
   CLI behavior are unchanged; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 194 - Advisory Operating Brief Package Synthetic Preview Alignment
+  adds
+  `src/algotrader/research/advisory_operating_brief_package_synthetic.py` with
+  `build_synthetic_advisory_operating_brief_package_preview()` as the single
+  production-safe synthetic package preview builder. The builder composes the
+  production synthetic content bundle preview with candidate research, strategy
+  eligibility, risk authority, and research queue branches, then calls
+  `build_advisory_operating_brief_package(...)` with
+  `package_id="advisory-operating-brief-package:synthetic:2026-01-20"`,
+  `title="Synthetic advisory operating brief package"`, advisory-only
+  synthetic summary text, and `as_of="2026-01-20"`. The package CLI preview
+  renders from this canonical builder, and the package fixture delegates to it
+  while returning fresh primitive `to_dict()` payloads. Fixture, CLI, and Phase
+  193 regression tests now pin default text, explicit text, compact JSON, and
+  export payloads against the fixture package, proving fixture/CLI byte parity
+  and repeated deterministic output. Guardrails cover the production synthetic
+  module with no imports from `tests` or `tests.fixtures`, no new external
+  input options, no paper/live/approved/trading-ready/actionable states, and no
+  file I/O, persistence, network/socket, credential, vendor API,
+  broker/account/order/fill/allocation/portfolio mutation, runtime,
+  scheduler/dashboard, notebook, ML, LLM/agent, ranking/scoring,
+  recommendations, approval/readiness/trading authority, actionable behavior,
+  or dependencies. Existing `AdvisoryOperatingBrief`, package contract,
+  renderer/export, content bundle contract, content bundle renderer/export, and
+  content bundle CLI behavior are unchanged; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

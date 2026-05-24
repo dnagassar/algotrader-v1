@@ -5954,6 +5954,32 @@ content bundle, content bundle renderer/export, and CLI behavior are
 unchanged. Normal pytest remains offline, credential-free, deterministic,
 and safe.
 
+Phase 194 - Advisory Operating Brief Package Synthetic Preview Alignment adds
+`src/algotrader/research/advisory_operating_brief_package_synthetic.py` with
+`build_synthetic_advisory_operating_brief_package_preview()` as the single
+production-safe synthetic package preview builder. The builder uses production
+content bundle preview builders to include candidate research, strategy
+eligibility, risk authority, and research queue branches, then wraps the bundle
+through `build_advisory_operating_brief_package(...)` with the fixed package
+id, title, advisory-only synthetic summary, and `as_of="2026-01-20"`.
+
+The Phase 194 package CLI now renders exports from the canonical synthetic
+builder, and the test fixture delegates to the same builder while returning
+fresh `to_dict()` primitive payloads. Package fixture, CLI, and Phase 193
+regression tests now pin default text, explicit text, compact JSON, and export
+payloads against the fixture package, proving fixture/CLI byte parity and
+repeated deterministic output. Guardrails cover the new production synthetic
+module and confirm no imports from `tests` or `tests.fixtures`, no new external
+input options, no paper/live/approved/trading-ready/actionable states, and no
+file I/O, persistence, network/socket access, credentials, vendor APIs,
+broker/account/order/fill/allocation/portfolio mutation, runtime,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior, ranking/
+scoring, recommendations, approval/readiness/trading authority, actionable
+behavior, or dependencies. Existing `AdvisoryOperatingBrief`, package contract,
+renderer/export, content bundle contract, content bundle renderer/export, and
+content bundle CLI behavior remain unchanged. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

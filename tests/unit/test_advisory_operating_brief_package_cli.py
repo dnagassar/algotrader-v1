@@ -14,6 +14,7 @@ import algotrader.cli as cli_module
 import algotrader.research.advisory_operating_brief_cli as brief_preview_module
 import algotrader.research.advisory_operating_brief_content_bundle_cli as bundle_preview_module
 import algotrader.research.advisory_operating_brief_package_cli as preview_module
+import algotrader.research.advisory_operating_brief_package_synthetic as synthetic_module
 from algotrader.cli import build_parser, main
 from algotrader.research.advisory_operating_brief_content_bundle_cli import (
     build_synthetic_advisory_operating_brief_content_bundle,
@@ -30,6 +31,9 @@ from algotrader.research.advisory_operating_brief_package_cli import (
 )
 from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
+)
+from tests.fixtures.advisory_operating_brief_package import (
+    build_synthetic_advisory_operating_brief_package as build_fixture_package,
 )
 
 
@@ -62,11 +66,16 @@ def test_package_preview_command_is_registered() -> None:
 
 def test_synthetic_preview_builder_uses_package_exportable_payload() -> None:
     package = build_synthetic_advisory_operating_brief_package()
+    fixture_package = build_fixture_package()
+    canonical_package = (
+        synthetic_module.build_synthetic_advisory_operating_brief_package_preview()
+    )
     export = export_advisory_operating_brief_package(package)
 
     assert type(package) is AdvisoryOperatingBriefPackage
-    assert package == build_synthetic_equivalent_package()
+    assert package == fixture_package == canonical_package
     assert export.payload == package.to_dict()
+    assert export.payload == fixture_package.to_dict()
     assert _dict(export.payload["content_bundle"]) == package.content_bundle.to_dict()
 
 
@@ -78,6 +87,7 @@ def test_default_output_equals_text_output_and_export_rendered_text(capsys) -> N
 
     assert default_output == text_output
     assert text_output == expected.rendered_text
+    assert text_output.encode("utf-8") == expected.rendered_text.encode("utf-8")
 
 
 def test_json_output_equals_compact_export_json_and_round_trips(capsys) -> None:
@@ -93,6 +103,7 @@ def test_json_output_equals_compact_export_json_and_round_trips(capsys) -> None:
     )
     assert output != json.dumps(expected.payload, sort_keys=True)
     assert json.loads(output) == expected.payload
+    assert output.encode("utf-8") == expected.json_text.encode("utf-8")
 
 
 def test_repeated_text_and_json_invocations_are_byte_identical(capsys) -> None:
@@ -249,6 +260,7 @@ def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
         brief_preview_module,
         bundle_preview_module,
         preview_module,
+        synthetic_module,
     ):
         imports = _import_references(module)
         source = _source_text(module)
@@ -260,8 +272,11 @@ def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
 
 
 def test_production_package_preview_has_no_forbidden_imports_or_calls() -> None:
-    imports = _import_references(preview_module)
-    call_names = _call_names(preview_module)
+    imports = set()
+    call_names = set()
+    for module in (preview_module, synthetic_module):
+        imports.update(_import_references(module))
+        call_names.update(_call_names(module))
 
     assert [
         module_name
@@ -298,7 +313,7 @@ def test_output_adds_no_actionable_authority_states_or_fields(capsys) -> None:
 
 
 def build_synthetic_equivalent_package() -> AdvisoryOperatingBriefPackage:
-    return build_synthetic_advisory_operating_brief_package()
+    return build_fixture_package()
 
 
 def _run_preview_cli(argv: tuple[str, ...], capsys) -> str:

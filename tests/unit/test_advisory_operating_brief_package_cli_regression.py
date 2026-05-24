@@ -9,6 +9,7 @@ import sys
 
 import algotrader.cli as cli_module
 import algotrader.research.advisory_operating_brief_package_cli as preview_module
+import algotrader.research.advisory_operating_brief_package_synthetic as synthetic_module
 from algotrader.cli import build_parser, main
 from algotrader.research.advisory_operating_brief_content_bundle_cli import (
     build_synthetic_advisory_operating_brief_content_bundle,
@@ -20,6 +21,9 @@ from algotrader.research.advisory_operating_brief_content_bundle_export import (
 )
 from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
+)
+from tests.fixtures.advisory_operating_brief_package import (
+    build_synthetic_advisory_operating_brief_package as build_fixture_package,
 )
 
 
@@ -38,7 +42,7 @@ _BRANCH_KEYS = (
     "research_queue_briefs",
 )
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
-    preview_module.build_synthetic_advisory_operating_brief_package()
+    build_fixture_package()
 )
 _EXPECTED_PAYLOAD = _EXPECTED_EXPORT.payload
 _EXPECTED_TEXT = _EXPECTED_EXPORT.rendered_text
@@ -56,6 +60,8 @@ _ALLOWED_SELF_IMPORTS = {
     "algotrader.research.advisory_operating_brief_content_bundle_export",
     "algotrader.research.advisory_operating_brief_package_cli",
     "algotrader.research.advisory_operating_brief_package_export",
+    "algotrader.research.advisory_operating_brief_package_synthetic",
+    "tests.fixtures.advisory_operating_brief_package",
 }
 
 
@@ -71,7 +77,7 @@ def test_default_and_text_stdout_are_exact_package_export_pins(capsys) -> None:
     assert default_stdout == _EXPECTED_TEXT
     assert text_stdout == _EXPECTED_EXPORT.rendered_text
     assert text_stdout == export_advisory_operating_brief_package(
-        preview_module.build_synthetic_advisory_operating_brief_package()
+        build_fixture_package()
     ).rendered_text
 
 
@@ -88,9 +94,9 @@ def test_json_stdout_is_exact_package_export_pin_and_round_trips(capsys) -> None
     )
     assert json_stdout != json.dumps(_EXPECTED_PAYLOAD, sort_keys=True)
     assert payload == _EXPECTED_PAYLOAD
-    assert (
-        payload
-        == preview_module.build_synthetic_advisory_operating_brief_package().to_dict()
+    assert payload == build_fixture_package().to_dict()
+    assert payload == (
+        preview_module.build_synthetic_advisory_operating_brief_package().to_dict()
     )
 
 
@@ -257,7 +263,7 @@ def test_output_authority_terms_are_limited_to_caution_lists(capsys) -> None:
 
 
 def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
-    for module in (cli_module, preview_module):
+    for module in (cli_module, preview_module, synthetic_module):
         imports = _import_references(module)
         source = _source_text(module)
 
@@ -268,9 +274,13 @@ def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
 
 
 def test_production_package_preview_has_no_forbidden_imports_calls_or_terms() -> None:
-    imports = _import_references(preview_module)
-    call_names = _call_names(preview_module)
-    lowered_source = _source_text(preview_module).lower()
+    imports = set()
+    call_names = set()
+    lowered_source = ""
+    for module in (preview_module, synthetic_module):
+        imports.update(_import_references(module))
+        call_names.update(_call_names(module))
+        lowered_source += _source_text(module).lower()
 
     assert [
         module_name

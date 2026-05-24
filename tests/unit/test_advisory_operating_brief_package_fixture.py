@@ -5,17 +5,17 @@ import json
 import re
 from pathlib import Path
 
-from algotrader.research.advisory_operating_brief_content_bundle_renderer import (
-    render_advisory_operating_brief_content_bundle_text,
+import algotrader.research.advisory_operating_brief_package_synthetic as synthetic_module
+from algotrader.research.advisory_operating_brief_content_bundle_cli import (
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
 )
 from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
 )
-from tests.fixtures import advisory_operating_brief_package as fixture_module
-from tests.fixtures.advisory_operating_brief_content_bundle import (
-    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict,
+from algotrader.research.advisory_operating_brief_package_export import (
+    export_advisory_operating_brief_package,
 )
+from tests.fixtures import advisory_operating_brief_package as fixture_module
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
@@ -45,37 +45,11 @@ _PACKAGE_ID = "advisory-operating-brief-package:synthetic:2026-01-20"
 _TITLE = "Synthetic advisory operating brief package"
 _SUMMARY = "Advisory-only synthetic operating brief package content."
 _AS_OF = "2026-01-20"
-_EXPECTED_CONTENT_BUNDLE_DICT = (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+_EXPECTED_DICT = build_synthetic_advisory_operating_brief_package().to_dict()
+_EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(_EXPECTED_DICT["content_bundle"])
+_EXPECTED_CONTENT_BUNDLE_EXPORT_DICT = _primitive_copy(
+    _EXPECTED_DICT["content_bundle_export"]
 )
-_EXPECTED_RENDER_SOURCE_BUNDLE = (
-    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
-)
-_EXPECTED_CONTENT_BUNDLE_EXPORT_DICT = {
-    "payload": _primitive_copy(_EXPECTED_CONTENT_BUNDLE_DICT),
-    "json_text": json.dumps(
-        _EXPECTED_CONTENT_BUNDLE_DICT,
-        sort_keys=True,
-        separators=(",", ":"),
-    ),
-    "rendered_text": render_advisory_operating_brief_content_bundle_text(
-        _EXPECTED_RENDER_SOURCE_BUNDLE
-    ),
-}
-_EXPECTED_DICT = {
-    "package_type": "advisory_operating_brief_package",
-    "status": "candidate_only",
-    "authority": "advisory_only",
-    "capital_authority": False,
-    "package_id": _PACKAGE_ID,
-    "title": _TITLE,
-    "summary": _SUMMARY,
-    "as_of": _AS_OF,
-    "content_bundle": _primitive_copy(_EXPECTED_CONTENT_BUNDLE_DICT),
-    "content_bundle_export": _EXPECTED_CONTENT_BUNDLE_EXPORT_DICT,
-    "limitations": list(_EXPECTED_CONTENT_BUNDLE_DICT["limitations"]),
-    "non_claims": list(_EXPECTED_CONTENT_BUNDLE_DICT["non_claims"]),
-}
 _EXPECTED_COMPACT_JSON_BYTES = _compact_json_bytes(_EXPECTED_DICT)
 _EXPECTED_FIELD_ORDER = tuple(_EXPECTED_DICT)
 _TUPLE_FIELDS = ("limitations", "non_claims")
@@ -88,12 +62,11 @@ _BRANCH_KEYS = (
 _ALLOWED_IMPORTS = {
     "__future__",
     "algotrader.research.advisory_operating_brief_package",
-    "tests.fixtures.advisory_operating_brief_content_bundle",
+    "algotrader.research.advisory_operating_brief_package_synthetic",
 }
 _ALLOWED_CALL_NAMES = {
-    "build_advisory_operating_brief_package",
-    "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "build_synthetic_advisory_operating_brief_package",
+    "build_synthetic_advisory_operating_brief_package_preview",
     "package.to_dict",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
@@ -364,20 +337,36 @@ def test_nested_content_bundle_export_matches_payload_json_and_renderer() -> Non
         sort_keys=True,
         separators=(",", ":"),
     )
+    assert content_bundle_export == _EXPECTED_CONTENT_BUNDLE_EXPORT_DICT
     assert content_bundle_export["rendered_text"] == (
-        render_advisory_operating_brief_content_bundle_text(package.content_bundle)
+        package.content_bundle_export.rendered_text
     )
+
+
+def test_fixture_export_payload_byte_matches_expected_package() -> None:
+    package = build_synthetic_advisory_operating_brief_package()
+    exported = export_advisory_operating_brief_package(package)
+
+    assert exported.payload == _EXPECTED_DICT
+    assert _compact_json_bytes(exported.payload) == _EXPECTED_COMPACT_JSON_BYTES
+    assert exported.payload == expected_synthetic_advisory_operating_brief_package_dict()
 
 
 def test_package_preserves_source_content_bundle_identity(
     monkeypatch,
 ) -> None:
-    source = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    source = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+        include_risk_authority=True,
+    )
+
+    def return_source(*, include_risk_authority: bool = False):
+        assert include_risk_authority is True
+        return source
 
     monkeypatch.setattr(
-        fixture_module,
+        synthetic_module,
         "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
-        lambda: source,
+        return_source,
     )
 
     package = fixture_module.build_synthetic_advisory_operating_brief_package()
@@ -459,6 +448,7 @@ def test_fixture_module_imports_no_forbidden_paths() -> None:
     imports = _import_references()
 
     assert imports == _ALLOWED_IMPORTS
+    assert all(not module_name.startswith("tests") for module_name in imports)
     assert [
         module_name
         for module_name in imports
