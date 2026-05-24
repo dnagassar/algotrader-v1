@@ -5636,6 +5636,30 @@ identity/order preservation, duplicate identity rejection, and AST/import
 guardrails. Normal pytest remains offline, credential-free, deterministic,
 and safe.
 
+Phase 183 - Synthetic Research Queue Brief Fixture adds
+`tests/fixtures/research_queue_brief.py` and
+`tests/unit/test_research_queue_brief_fixture.py` as test-only fixture support
+for the Phase 182 research queue family. The fixture builds a broad ETF SMA
+trend-following research queue item as unresolved, synthetic advisory metadata:
+it is a pipeline-validation candidate with unresolved source clearance,
+universe definition, benchmark/cash proxy, return policy, no-lookahead,
+survivorship, reproduction, validation, provenance, robustness, cost/slippage,
+and evidence questions. The expected dictionary helpers return fresh primitive
+copies that match each object's `to_dict()` output exactly.
+
+The Phase 183 fixture preserves Phase 182 identity semantics: the item keeps
+the exact source status object, the section keeps item identity/order, and the
+brief keeps section identity/order. Limitations and explicit non-claims carry
+forward through item, section, and brief. The fixture remains synthetic and
+does not change `src/`, content bundle construction, renderer, export, CLI,
+source/data approval, methodology approval, signal/evaluator behavior,
+strategy execution, backtesting, ranking/scoring, recommendations,
+allocation/order/portfolio mutation, broker/runtime behavior,
+scheduler/dashboard behavior, paper/live readiness, capital authority, trading
+authority, file I/O, persistence, network/socket access, credentials, vendor
+APIs, notebooks, ML, LLM/agent behavior, or dependencies. Normal pytest
+remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

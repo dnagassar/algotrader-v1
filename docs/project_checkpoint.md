@@ -11438,6 +11438,27 @@ Safe next tasks include:
   credentials, vendor APIs, notebooks, ML, LLM/agent behavior, or dependency
   behavior changed; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 183 - Synthetic Research Queue Brief Fixture adds
+  `tests/fixtures/research_queue_brief.py` and
+  `tests/unit/test_research_queue_brief_fixture.py` as deterministic
+  fixture-only support for the Phase 182 research queue family. The synthetic
+  broad ETF SMA queue item is unresolved advisory metadata, not approved
+  strategy evidence: it records blockers, required next steps, evidence gaps,
+  related synthetic/advisory strategy ids, internal advisory evidence refs,
+  limitations, and explicit non-claims. Expected dictionary helpers match
+  `to_dict()` exactly, return fresh mutable primitive copies, and repeated
+  construction is byte-for-byte deterministic. Tests prove exact Phase 182
+  production types, item/source status identity, section item identity/order,
+  brief section identity/order, fixed advisory metadata, limitation/non-claim
+  carry-forward, absence of actionable authority states, and fixture
+  AST/import/call/literal guardrails. No `src/`, content bundle, renderer,
+  export, CLI, source/data approval, methodology approval, signal/evaluator,
+  strategy execution, backtesting, ranking/scoring, recommendation,
+  allocation/order/portfolio mutation, broker/runtime, scheduler/dashboard,
+  paper/live readiness, capital authority, trading authority, file I/O,
+  persistence, network/socket, credential, vendor API, notebook, ML,
+  LLM/agent, or dependency behavior changed; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
