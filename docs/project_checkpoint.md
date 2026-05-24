@@ -11734,6 +11734,35 @@ Safe next tasks include:
   renderer/export, content bundle contract, content bundle renderer/export, and
   content bundle CLI behavior are unchanged; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 195 - Synthetic SMA Research Observation Mechanics adds
+  `src/algotrader/research/sma_research_observation.py` with frozen/slotted
+  `SmaResearchPricePoint`, frozen/slotted `SmaResearchObservation`, and pure
+  `build_sma_research_observation(...)`. The builder is fixture-only research
+  mechanics: it validates ISO `YYYY-MM-DD` dates with standard library parsing,
+  sorts price points deterministically by date, rejects duplicate dates,
+  non-price-point inputs, non-positive closes, empty symbol/as-of strings,
+  malformed limitations/non-claims, and invalid windows, uses only samples with
+  `date <= as_of`, counts later samples as ignored, and computes a Decimal SMA
+  from the latest eligible window only. Below-window observations emit
+  `position_vs_sma="insufficient_history"` with SMA and distance fields set to
+  `None`; complete windows emit `above`, `below`, or `equal` based only on
+  Decimal distance from the SMA. `to_dict()` is deterministic and
+  primitive-only, serializing Decimals as strings and tuples as lists, with no
+  `from_dict()`. Required non-claims deny strategy approval, source/data
+  approval, predictive validity, profitability, recommendation,
+  signal/evaluator behavior, allocation/order authority, broker authority,
+  portfolio mutation authority, paper/live readiness, capital authority, and
+  trading authority. Tests prove exact above/below/equal/insufficient payloads,
+  future-sample ignoring, malformed input rejection, frozen/slotted behavior,
+  repeated deterministic construction, primitive serialization, no actionable
+  payload keys, no imports from tests or fixtures, and AST/import guardrails
+  against file I/O, persistence, network/socket, vendor APIs, broker/runtime
+  behavior, scheduler/dashboard, notebook, ML, LLM/agent, ranking/scoring,
+  recommendations, approvals/readiness, allocation/order/portfolio mutation,
+  capital authority, trading authority, or new dependencies. Advisory package,
+  package synthetic builder, package CLI, content bundle, renderer, export, and
+  existing CLI behavior are unchanged; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
