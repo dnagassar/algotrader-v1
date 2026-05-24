@@ -11488,6 +11488,27 @@ Safe next tasks include:
   credential, vendor API, notebook, ML, LLM/agent, and dependency behavior are
   unchanged; normal pytest remains offline, credential-free, deterministic,
   and safe
+- Phase 185 - Advisory Operating Brief Content Bundle Renderer Research Queue
+  Branch extends
+  `src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+  to conditionally render the Phase 184 `research_queue_briefs` branch from
+  `bundle.to_dict()` only. Existing Phase 162 candidate+strategy and Phase 178
+  candidate+strategy+risk renderer output remains byte-for-byte unchanged.
+  Research-queue-inclusive rendering now includes deterministic branch,
+  brief, section, item, and source status metadata: queue id, title, research
+  state, priority bucket, topic, hypothesis, blockers, required next steps,
+  evidence gaps, related strategy ids, evidence refs, limitations, and
+  non-claims. Tests prove candidate, strategy, risk, and research queue branch
+  order; repeated byte-for-byte deterministic rendering; source bundle and
+  payload non-mutation; dictionary-only renderer access for the new branch;
+  and AST/import/call/literal guardrails. Content bundle construction, export,
+  CLI, source/data approval, methodology approval, signal/evaluator, strategy
+  execution, backtesting, ranking/scoring, recommendation,
+  allocation/order/portfolio mutation, risk approval, broker/runtime,
+  scheduler/dashboard, paper/live readiness, capital authority, trading
+  authority, file I/O, persistence, network/socket, credential, vendor API,
+  notebook, ML, LLM/agent, and dependency behavior are unchanged; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

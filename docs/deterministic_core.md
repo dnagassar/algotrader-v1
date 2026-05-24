@@ -5692,6 +5692,32 @@ credentials, vendor APIs, notebooks, ML, LLM/agent behavior, or dependencies
 were added. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 185 - Advisory Operating Brief Content Bundle Renderer Research Queue
+Branch extends
+`src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+to conditionally render the Phase 184 `research_queue_briefs` branch from the
+bundle dictionary payload only. The renderer preserves the existing Phase 162
+candidate+strategy and Phase 178 candidate+strategy+risk text output
+byte-for-byte when no research queue branch is present. When present, the
+research queue branch renders deterministic brief, section, item, and source
+status metadata, including queue id, title, research state, priority bucket,
+topic, hypothesis, blockers, required next steps, evidence gaps, related
+strategy ids, evidence refs, limitations, and non-claims.
+
+Phase 185 tests prove research queue branch ordering after candidate,
+strategy, and risk branches and before aggregate limitations/non-claims;
+byte-for-byte deterministic repeated rendering; no mutation of source bundle
+objects or `to_dict()` payloads; dictionary-payload-only branch access; and
+AST/import/call/literal guardrails. Content bundle construction, export, CLI,
+source/data approval, methodology approval, signal/evaluator behavior,
+strategy execution, backtesting, ranking/scoring, recommendations,
+allocation/order/portfolio mutation, risk approval, paper/live readiness,
+capital authority, trading authority, broker/runtime behavior,
+scheduler/dashboard behavior, file I/O, persistence, network/socket access,
+credentials, vendor APIs, notebooks, ML, LLM/agent behavior, and dependencies
+are unchanged. Normal pytest remains offline, credential-free, deterministic,
+and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

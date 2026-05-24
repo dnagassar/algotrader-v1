@@ -51,6 +51,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "risk_authority_brief_count: "
             f"{payload['risk_authority_brief_count']}"
         )
+    if "research_queue_briefs" in payload:
+        lines.append(
+            "research_queue_brief_count: "
+            f"{payload['research_queue_brief_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -73,6 +78,18 @@ def render_advisory_operating_brief_content_bundle_text(
             start=1,
         ):
             _append_risk_authority_brief(lines, risk_payload, brief_index)
+
+    if "research_queue_briefs" in payload:
+        lines.extend(("", "Research Queue Briefs"))
+        for brief_index, research_queue_payload in enumerate(
+            payload["research_queue_briefs"],
+            start=1,
+        ):
+            _append_research_queue_brief(
+                lines,
+                research_queue_payload,
+                brief_index,
+            )
 
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
@@ -412,6 +429,118 @@ def _append_risk_authority_item(
             f"source_status.authority_state: {source_status['authority_state']}",
         )
     )
+
+
+def _append_research_queue_brief(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Research Queue Brief {brief_index}",
+            f"brief_type: {payload['brief_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"section_count: {payload['section_count']}",
+            "Sections",
+        )
+    )
+
+    for section_index, section_payload in enumerate(
+        payload["sections"],
+        start=1,
+    ):
+        _append_research_queue_section(
+            lines,
+            section_payload,
+            brief_index,
+            section_index,
+        )
+
+
+def _append_research_queue_section(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Research Queue Brief {brief_index} Section {section_index}",
+            f"section_type: {payload['section_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"item_count: {payload['item_count']}",
+            "Items",
+        )
+    )
+
+    for item_index, item_payload in enumerate(
+        payload["items"],
+        start=1,
+    ):
+        _append_research_queue_item(
+            lines,
+            item_payload,
+            brief_index,
+            section_index,
+            item_index,
+        )
+
+
+def _append_research_queue_item(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+    item_index: int,
+) -> None:
+    source_status = payload["source_status"]
+    lines.extend(
+        (
+            "",
+            (
+                f"Research Queue Brief {brief_index} "
+                f"Section {section_index} Item {item_index}"
+            ),
+            f"item_type: {payload['item_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"headline: {payload['headline']}",
+            f"summary: {payload['summary']}",
+            "source_status:",
+            f"source_status.queue_id: {source_status['queue_id']}",
+            f"source_status.title: {source_status['title']}",
+            f"source_status.research_state: {source_status['research_state']}",
+            f"source_status.priority_bucket: {source_status['priority_bucket']}",
+            f"source_status.topic: {source_status['topic']}",
+            f"source_status.hypothesis: {source_status['hypothesis']}",
+            "blockers:",
+        )
+    )
+    _append_values(lines, payload["blockers"])
+    lines.extend(("required_next_steps:",))
+    _append_values(lines, payload["required_next_steps"])
+    lines.extend(("evidence_gaps:",))
+    _append_values(lines, payload["evidence_gaps"])
+    lines.extend(("related_strategy_ids:",))
+    _append_values(lines, payload["related_strategy_ids"])
+    lines.extend(("evidence_refs:",))
+    _append_values(lines, payload["evidence_refs"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("non_claims:",))
+    _append_values(lines, payload["non_claims"])
 
 
 def _append_values(lines: list[str], values: object) -> None:

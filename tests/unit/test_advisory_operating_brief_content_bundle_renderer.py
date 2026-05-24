@@ -42,7 +42,9 @@ from algotrader.research.strategy_eligibility_status import (
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     build_synthetic_advisory_operating_brief_content_bundle_with_risk,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
     expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
@@ -398,17 +400,22 @@ _EXPECTED_RISK_INCLUSIVE_TEXT = "\n".join(_EXPECTED_RISK_INCLUSIVE_LINES)
 _AUTHORITY_SENSITIVE_RENDER_TERMS = (
     _s("app", "roval"),
     _s("app", "roved"),
+    _s("reco", "mmendation"),
     "paper readiness",
     "live readiness",
     _s("allo", "cation authority"),
     _s("or", "der authority"),
     _s("bro", "ker authority"),
+    _s("ac", "count authority"),
     _s("port", "folio mutation authority"),
     _s("tra", "ding authority"),
+    _s("allo", "cation guidance"),
     _s("or", "der placement"),
     _s("bro", "ker access"),
     _s("port", "folio mutation"),
     "account state",
+    "rank",
+    "score",
     "paper_eligible",
     "live_probe_eligible",
     "live_authorized",
@@ -615,6 +622,123 @@ def test_repeated_risk_inclusive_rendering_is_byte_for_byte_deterministic() -> N
     assert first.encode("utf-8") == second.encode("utf-8")
 
 
+def test_research_queue_inclusive_rendering_contains_all_branch_metadata() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    expected_bundle = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+    expected_brief = expected_bundle["research_queue_briefs"][0]
+    expected_section = expected_brief["sections"][0]
+    expected_item = expected_section["items"][0]
+    expected_status = expected_item["source_status"]
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+
+    assert bundle.to_dict() == expected_bundle
+    assert "research_queue_brief_count: 1" in lines
+    assert "Research Queue Briefs" in lines
+    assert "Research Queue Brief 1" in lines
+    assert f"brief_type: {expected_brief['brief_type']}" in lines
+    assert f"title: {expected_brief['title']}" in lines
+    assert f"summary: {expected_brief['summary']}" in lines
+    assert f"status: {expected_brief['status']}" in lines
+    assert f"authority: {expected_brief['authority']}" in lines
+    assert f"capital_authority: {expected_brief['capital_authority']}" in lines
+    assert "Research Queue Brief 1 Section 1" in lines
+    assert f"section_type: {expected_section['section_type']}" in lines
+    assert f"title: {expected_section['title']}" in lines
+    assert f"summary: {expected_section['summary']}" in lines
+    assert f"status: {expected_section['status']}" in lines
+    assert f"authority: {expected_section['authority']}" in lines
+    assert f"capital_authority: {expected_section['capital_authority']}" in lines
+    assert "Research Queue Brief 1 Section 1 Item 1" in lines
+    assert f"item_type: {expected_item['item_type']}" in lines
+    assert f"headline: {expected_item['headline']}" in lines
+    assert f"summary: {expected_item['summary']}" in lines
+    assert f"status: {expected_item['status']}" in lines
+    assert f"authority: {expected_item['authority']}" in lines
+    assert f"capital_authority: {expected_item['capital_authority']}" in lines
+    assert "source_status:" in lines
+    assert f"source_status.queue_id: {expected_status['queue_id']}" in lines
+    assert f"source_status.title: {expected_status['title']}" in lines
+    assert (
+        f"source_status.research_state: {expected_status['research_state']}" in lines
+    )
+    assert (
+        f"source_status.priority_bucket: {expected_status['priority_bucket']}" in lines
+    )
+    assert f"source_status.topic: {expected_status['topic']}" in lines
+    assert f"source_status.hypothesis: {expected_status['hypothesis']}" in lines
+    for heading in (
+        "blockers:",
+        "required_next_steps:",
+        "evidence_gaps:",
+        "related_strategy_ids:",
+        "evidence_refs:",
+        "limitations:",
+        "non_claims:",
+    ):
+        assert heading in lines
+    for field_name in (
+        "blockers",
+        "required_next_steps",
+        "evidence_gaps",
+        "related_strategy_ids",
+        "evidence_refs",
+        "limitations",
+        "non_claims",
+    ):
+        for value in expected_item[field_name]:
+            assert f"- {value}" in lines
+
+
+def test_research_queue_inclusive_branch_order_is_deterministic() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    _assert_line_order(
+        rendered,
+        (
+            "Candidate Research Briefs",
+            "Strategy Eligibility Briefs",
+            "Risk Authority Briefs",
+            "Research Queue Briefs",
+            "Research Queue Brief 1",
+            "Research Queue Brief 1 Section 1",
+            "Research Queue Brief 1 Section 1 Item 1",
+            "source_status:",
+            "blockers:",
+            "required_next_steps:",
+            "evidence_gaps:",
+            "related_strategy_ids:",
+            "evidence_refs:",
+            "limitations:",
+            "non_claims:",
+            "Limitations",
+            "Non-Claims",
+        ),
+    )
+
+
+def test_repeated_research_queue_inclusive_rendering_is_byte_for_byte_deterministic() -> (
+    None
+):
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    third = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    )
+
+    assert first
+    assert first.strip() == first
+    assert first == second == third
+    assert first.encode("utf-8") == second.encode("utf-8") == third.encode("utf-8")
+
+
 def test_candidate_research_branch_sequence_is_preserved() -> None:
     first = _candidate_brief_variant("candidate branch alpha")
     second = _candidate_brief_variant("candidate branch beta")
@@ -812,6 +936,27 @@ def test_limitations_and_non_claims_from_all_branches_are_represented_with_risk(
         assert f"- {value}" in rendered
 
 
+def test_limitations_and_non_claims_from_research_queue_branch_are_represented() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch_payloads = (
+        *bundle.to_dict()["candidate_research_briefs"],
+        *bundle.to_dict()["strategy_eligibility_briefs"],
+        *bundle.to_dict()["risk_authority_briefs"],
+        *bundle.to_dict()["research_queue_briefs"],
+    )
+
+    for branch_payload in branch_payloads:
+        for value in branch_payload["limitations"]:
+            assert f"- {value}" in rendered
+        for value in branch_payload["non_claims"]:
+            assert f"- {value}" in rendered
+    for value in bundle.limitations:
+        assert f"- {value}" in rendered
+    for value in bundle.non_claims:
+        assert f"- {value}" in rendered
+
+
 def test_rendering_does_not_mutate_source_bundle_payload() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
     before = bundle.to_dict()
@@ -830,6 +975,53 @@ def test_risk_inclusive_rendering_does_not_mutate_source_bundle_payload() -> Non
     render_advisory_operating_brief_content_bundle_text(bundle)
 
     assert bundle.to_dict() == before
+
+
+def test_research_queue_rendering_does_not_mutate_source_bundle_payload_or_objects() -> (
+    None
+):
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    research_queue_brief = bundle.research_queue_briefs[0]
+    before = bundle.to_dict()
+    identity_snapshot = (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+    )
+
+    render_advisory_operating_brief_content_bundle_text(bundle)
+    render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert bundle.to_dict() == before
+    assert (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+    ) == identity_snapshot
+
+
+def test_renderer_reads_research_queue_branch_from_dictionary_payload_only() -> None:
+    function = _function_def("render_advisory_operating_brief_content_bundle_text")
+    source = ast.get_source_segment(_source_text(), function)
+
+    assert source is not None
+    assert "payload = bundle.to_dict()" in source
+    assert ".research_queue_briefs" not in source
+    assert ".candidate_research_briefs" not in source
+    assert ".strategy_eligibility_briefs" not in source
+    assert ".risk_authority_briefs" not in source
 
 
 @pytest.mark.parametrize("value", (object(), None, "not a bundle"))
@@ -907,6 +1099,24 @@ def test_renderer_does_not_expose_restricted_states_as_authority() -> None:
 
 def test_risk_inclusive_renderer_exposes_authority_terms_only_as_cautions() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    source_cautions = _source_caution_values(bundle.to_dict())
+
+    assert _rendered_field_names(rendered).isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    for line in _authority_sensitive_lines(rendered):
+        assert line.startswith("- ")
+        assert line[2:] in source_cautions
+    for token in (
+        "paper_eligible",
+        "live_probe_eligible",
+        "live_authorized",
+        "trading_ready",
+    ):
+        assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
+
+
+def test_research_queue_renderer_exposes_authority_terms_only_as_cautions() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
     rendered = render_advisory_operating_brief_content_bundle_text(bundle)
     source_cautions = _source_caution_values(bundle.to_dict())
 
@@ -1016,6 +1226,14 @@ def _index(text: str, value: str) -> int:
     return text.index(value)
 
 
+def _assert_line_order(text: str, expected_values: tuple[str, ...]) -> None:
+    previous_index = -1
+    for value in expected_values:
+        current_index = text.index(value, previous_index + 1)
+        assert previous_index < current_index
+        previous_index = current_index
+
+
 def _rendered_field_names(text: str) -> set[str]:
     field_names: set[str] = set()
     for line in text.splitlines():
@@ -1063,6 +1281,14 @@ def _source_text() -> str:
 
 def _tree() -> ast.AST:
     return ast.parse(_source_text(), filename=str(MODULE_PATH))
+
+
+def _function_def(name: str) -> ast.FunctionDef:
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+
+    raise AssertionError(f"{name} function was not found.")
 
 
 def _import_references() -> set[str]:
