@@ -11509,6 +11509,31 @@ Safe next tasks include:
   authority, file I/O, persistence, network/socket, credential, vendor API,
   notebook, ML, LLM/agent, and dependency behavior are unchanged; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 186 - Advisory Operating Brief Content Bundle Export Research Queue
+  Regression Guard adds
+  `tests/unit/test_advisory_operating_brief_content_bundle_export_with_research_queue_regression.py`
+  as a test-only guard around the existing in-memory export path for the
+  Phase 184/185 research-queue-inclusive content bundle. It uses the synthetic
+  research queue content bundle builder and expected dictionary helper, pins
+  `export.payload` exactly, pins compact deterministic JSON with
+  `sort_keys=True` and `separators=(",", ":")`, verifies JSON round-trip
+  behavior, and confirms `export.rendered_text` still equals
+  `render_advisory_operating_brief_content_bundle_text(bundle)`. Tests also
+  prove repeated exports are byte-for-byte deterministic; candidate, strategy,
+  risk, and research queue branches are all present; `research_queue_brief_count`
+  and `research_queue_briefs` are emitted; nested research queue
+  brief/section/item/source-status metadata is preserved; branch sequence is
+  deterministic; limitations and explicit non-claims are preserved in payload
+  and rendered output; exported payload mutation does not mutate the source
+  bundle or later exports; and the new test file imports/calls no forbidden
+  behavior. No `src/`, content bundle, renderer, export, CLI, source/data
+  approval, methodology approval, signal/evaluator, strategy execution,
+  backtesting, ranking/scoring, recommendation, allocation/order/portfolio
+  mutation, risk approval, broker/runtime, scheduler/dashboard, paper/live
+  readiness, capital authority, trading authority, file I/O, persistence,
+  network/socket, credential, vendor API, notebook, ML, LLM/agent, or
+  dependency behavior changed; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -5718,6 +5718,38 @@ credentials, vendor APIs, notebooks, ML, LLM/agent behavior, and dependencies
 are unchanged. Normal pytest remains offline, credential-free, deterministic,
 and safe.
 
+Phase 186 - Advisory Operating Brief Content Bundle Export Research Queue
+Regression Guard adds
+`tests/unit/test_advisory_operating_brief_content_bundle_export_with_research_queue_regression.py`
+as a test-only guard for the existing export path with the Phase 184/185
+research-queue-inclusive content bundle. The test composes the synthetic
+candidate, strategy eligibility, risk authority, and research queue branches
+through
+`build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()`,
+pins the exported payload to
+`expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()`,
+pins compact deterministic JSON with `sort_keys=True` and
+`separators=(",", ":")`, verifies JSON round-trip behavior, and confirms
+rendered text still comes from
+`render_advisory_operating_brief_content_bundle_text(bundle)`.
+
+The Phase 186 guard also proves repeated exports are byte-for-byte
+deterministic, candidate/strategy/risk/research queue branch counts and
+payload branches are present, `research_queue_brief_count` and
+`research_queue_briefs` remain emitted for the inclusive fixture, nested
+research queue brief/section/item/source-status metadata is preserved, branch
+sequence remains candidate, strategy, risk, research queue, limitations, then
+non-claims, limitations and explicit non-claims carry through to rendered
+output, and mutating the exported payload does not mutate the source bundle or
+later exports. It changes no `src/`, content bundle construction, renderer,
+export, CLI, source/data approval, methodology approval, signal/evaluator
+behavior, strategy execution, backtesting, ranking/scoring, recommendations,
+allocation/order/portfolio mutation, risk approval, broker/runtime behavior,
+scheduler/dashboard behavior, paper/live readiness, capital authority, trading
+authority, file I/O, persistence, network/socket access, credentials, vendor
+APIs, notebooks, ML, LLM/agent behavior, or dependencies. Normal pytest
+remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
