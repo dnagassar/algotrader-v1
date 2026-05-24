@@ -11348,6 +11348,33 @@ Safe next tasks include:
   allocation, order, portfolio mutation, paper-readiness, live-readiness,
   capital, or trading-authority behavior changed; normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 179 - Advisory Operating Brief Content Bundle Renderer Risk Authority
+  Branch extends
+  `src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+  so `render_advisory_operating_brief_content_bundle_text(...)` renders risk
+  authority branch metadata only when `risk_authority_briefs` are present in
+  `bundle.to_dict()`. It keeps exact
+  `AdvisoryOperatingBriefContentBundle` input validation, renders only from
+  the primitive `to_dict()` payload, preserves the Phase 162 no-risk
+  candidate-plus-strategy text byte-for-byte, and keeps deterministic fixed
+  headings, candidate, strategy, and risk branch order, and repeated byte
+  output. The risk branch renders advisory-only brief, section, item, and
+  source-status metadata including title, summary, `authority_state`, reasons,
+  blockers, required next steps, evidence references, related strategy ids,
+  limitations, and non-claims, with bundle-level limitations and non-claims
+  still rendered after branch content. Tests pin the exact risk-inclusive line
+  tuple, source bundle non-mutation, fixed metadata, all-branch limitations
+  and non-claims, rejected non-bundle and subclass inputs, and AST/literal
+  guardrails proving no forbidden network, vendor, broker, pandas, numpy,
+  vectorbt, QuantConnect, ML, LLM, file I/O, persistence, scheduler/runtime,
+  dashboard, CLI, dependency, or actionable authority output fields were
+  added. No existing `AdvisoryOperatingBrief` behavior, existing renderer/
+  export/CLI behavior, content bundle export/CLI behavior, risk engine
+  behavior, strategy/signal/evaluator behavior, backtesting behavior,
+  broker/runtime behavior, recommendation, allocation, order, portfolio
+  mutation, paper-readiness, live-readiness, capital, or trading-authority
+  behavior changed; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

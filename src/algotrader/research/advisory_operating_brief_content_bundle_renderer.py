@@ -44,10 +44,15 @@ def render_advisory_operating_brief_content_bundle_text(
                 "strategy_eligibility_brief_count: "
                 f"{payload['strategy_eligibility_brief_count']}"
             ),
-            "",
-            "Candidate Research Briefs",
         )
     )
+    if "risk_authority_briefs" in payload:
+        lines.append(
+            "risk_authority_brief_count: "
+            f"{payload['risk_authority_brief_count']}"
+        )
+
+    lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
         payload["candidate_research_briefs"],
         start=1,
@@ -60,6 +65,14 @@ def render_advisory_operating_brief_content_bundle_text(
         start=1,
     ):
         _append_strategy_eligibility_brief(lines, eligibility_payload, brief_index)
+
+    if "risk_authority_briefs" in payload:
+        lines.extend(("", "Risk Authority Briefs"))
+        for brief_index, risk_payload in enumerate(
+            payload["risk_authority_briefs"],
+            start=1,
+        ):
+            _append_risk_authority_brief(lines, risk_payload, brief_index)
 
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
@@ -279,6 +292,124 @@ def _append_strategy_eligibility_item(
                 "source_status.capital_authority: "
                 f"{source_status['capital_authority']}"
             ),
+        )
+    )
+
+
+def _append_risk_authority_brief(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Risk Authority Brief {brief_index}",
+            f"brief_type: {payload['brief_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"section_count: {payload['section_count']}",
+            "Sections",
+        )
+    )
+
+    for section_index, section_payload in enumerate(
+        payload["sections"],
+        start=1,
+    ):
+        _append_risk_authority_section(
+            lines,
+            section_payload,
+            brief_index,
+            section_index,
+        )
+
+
+def _append_risk_authority_section(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Risk Authority Brief {brief_index} Section {section_index}",
+            f"section_type: {payload['section_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"item_count: {payload['item_count']}",
+            "Items",
+        )
+    )
+
+    for item_index, item_payload in enumerate(
+        payload["items"],
+        start=1,
+    ):
+        _append_risk_authority_item(
+            lines,
+            item_payload,
+            brief_index,
+            section_index,
+            item_index,
+        )
+
+
+def _append_risk_authority_item(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+    item_index: int,
+) -> None:
+    source_status = payload["source_status"]
+    lines.extend(
+        (
+            "",
+            (
+                f"Risk Authority Brief {brief_index} "
+                f"Section {section_index} Item {item_index}"
+            ),
+            f"item_type: {payload['item_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"authority_state: {payload['authority_state']}",
+            f"headline: {payload['headline']}",
+            f"summary: {payload['summary']}",
+            "reasons:",
+        )
+    )
+    _append_values(lines, payload["reasons"])
+    lines.extend(("evidence_refs:",))
+    _append_values(lines, payload["evidence_refs"])
+    lines.extend(("blockers:",))
+    _append_values(lines, payload["blockers"])
+    lines.extend(("required_next_steps:",))
+    _append_values(lines, payload["required_next_steps"])
+    lines.extend(("related_strategy_ids:",))
+    _append_values(lines, payload["related_strategy_ids"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("non_claims:",))
+    _append_values(lines, payload["non_claims"])
+    lines.extend(
+        (
+            "source_status:",
+            f"source_status.authority_type: {source_status['authority_type']}",
+            f"source_status.authority: {source_status['authority']}",
+            (
+                "source_status.capital_authority: "
+                f"{source_status['capital_authority']}"
+            ),
+            f"source_status.authority_state: {source_status['authority_state']}",
         )
     )
 

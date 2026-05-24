@@ -15,6 +15,17 @@ from algotrader.research.advisory_operating_brief_content_bundle_renderer import
     render_advisory_operating_brief_content_bundle_text,
 )
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.risk_authority_brief import (
+    RiskAuthorityBrief,
+    build_risk_authority_brief,
+)
+from algotrader.research.risk_authority_brief_item import (
+    build_risk_authority_brief_item,
+)
+from algotrader.research.risk_authority_brief_section import (
+    build_risk_authority_brief_section,
+)
+from algotrader.research.risk_authority_status import build_risk_authority_status
 from algotrader.research.strategy_eligibility_brief import (
     StrategyEligibilityBrief,
     build_strategy_eligibility_brief,
@@ -30,6 +41,8 @@ from algotrader.research.strategy_eligibility_status import (
 )
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
+    build_synthetic_advisory_operating_brief_content_bundle_with_risk,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
@@ -223,6 +236,184 @@ _EXPECTED_SYNTHETIC_LINES = (
     "- not capital authority",
 )
 _EXPECTED_SYNTHETIC_TEXT = "\n".join(_EXPECTED_SYNTHETIC_LINES)
+_EXPECTED_RISK_AUTHORITY_BRANCH_LINES = (
+    "Risk Authority Briefs",
+    "",
+    "Risk Authority Brief 1",
+    "brief_type: risk_authority_brief",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    "title: Advisory risk metadata brief: 1 section",
+    (
+        "summary: Advisory brief contains 1 candidate risk metadata section(s) "
+        "with 1 item(s), 3 limitation(s), and 13 non-claim(s)."
+    ),
+    "section_count: 1",
+    "Sections",
+    "",
+    "Risk Authority Brief 1 Section 1",
+    "section_type: risk_authority_brief_section",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    "title: Advisory risk metadata: not_authorized",
+    (
+        "summary: Advisory section contains 1 candidate risk metadata item(s) "
+        "across 1 related strategy id(s), state(s): not_authorized, with "
+        "3 limitation(s) and 13 non-claim(s)."
+    ),
+    "item_count: 1",
+    "Items",
+    "",
+    "Risk Authority Brief 1 Section 1 Item 1",
+    "item_type: risk_authority_brief_item",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    "authority_state: not_authorized",
+    "headline: Advisory risk metadata: not_authorized.",
+    (
+        "summary: Advisory risk metadata records not_authorized with "
+        "2 reason(s), 3 limitation(s), 13 non-claim(s), 2 evidence "
+        "reference(s), 2 blocker(s), 2 required next step(s), and "
+        "1 related strategy id(s)."
+    ),
+    "reasons:",
+    "- synthetic risk authority status is scoped to advisory composition tests",
+    "- risk-capital authority remains absent for this synthetic candidate",
+    "evidence_refs:",
+    "- synthetic-risk-authority-status-evidence-001",
+    "- phase-169-risk-authority-status-contract",
+    "blockers:",
+    "- external risk review has not been completed",
+    "- capital authorization path is not represented",
+    "required_next_steps:",
+    "- complete independent risk governance review before any authority change",
+    "- record advisory-only evidence before composing downstream briefs",
+    "related_strategy_ids:",
+    "- synthetic-risk-authority-strategy-001",
+    "limitations:",
+    "- synthetic metadata only",
+    (
+        "- no approval, readiness, recommendation, allocation, order placement, "
+        "broker access, portfolio mutation, capital authority, or trading "
+        "authority is represented"
+    ),
+    "- fixture output is not connected to runtime or account state",
+    "non_claims:",
+    "- not risk approval",
+    "- not allocation authority",
+    "- not order authority",
+    "- not paper readiness",
+    "- not live readiness",
+    "- not broker authority",
+    "- not portfolio mutation authority",
+    "- not capital authority",
+    "- not trading authority",
+    "- not a trading recommendation",
+    "- not order placement",
+    "- not broker access",
+    "- not portfolio mutation",
+    "source_status:",
+    "source_status.authority_type: risk_authority_status",
+    "source_status.authority: advisory_only",
+    "source_status.capital_authority: False",
+    "source_status.authority_state: not_authorized",
+)
+_EXPECTED_RISK_INCLUSIVE_LIMITATION_LINES = (
+    "- metadata-only brief for existing candidate research brief sections",
+    "- does not create research, compute metrics, or mutate section payloads",
+    "- advisory container for future queue and brief surfaces only",
+    "- metadata-only section for existing candidate brief items",
+    "- does not create research, compute metrics, or mutate item payloads",
+    "- advisory grouping for future queue and brief surfaces only",
+    "- metadata-only dossier for an already prepared package and matching result",
+    "- does not run research, fetch inputs, compute metrics, or mutate payloads",
+    "- advisory candidate summary for future queue and brief surfaces only",
+    "- synthetic metadata only",
+    "- no profitability evidence is represented",
+    "- no approval or readiness decision is represented",
+    (
+        "- no approval, readiness, recommendation, allocation, order placement, "
+        "broker access, portfolio mutation, capital authority, or trading "
+        "authority is represented"
+    ),
+    "- fixture output is not connected to runtime or account state",
+)
+_EXPECTED_RISK_INCLUSIVE_NON_CLAIM_LINES = (
+    "- not source approval",
+    "- not data approval",
+    "- not endpoint approval",
+    "- not universe approval",
+    "- not benchmark approval",
+    "- not cash proxy approval",
+    "- not methodology approval",
+    "- not evidence approval",
+    "- not return-construction approval",
+    "- not no-lookahead approval",
+    "- not strategy validation",
+    "- not trading readiness",
+    "- not production use",
+    "- not broker or runtime use",
+    "- not order generation",
+    "- not portfolio or allocation authority",
+    "- not validation",
+    "- not paper readiness",
+    "- not live readiness",
+    "- not a trading recommendation",
+    "- not allocation authority",
+    "- not order authority",
+    "- not profitability evidence",
+    "- not approval",
+    "- not capital authority",
+    "- not risk approval",
+    "- not broker authority",
+    "- not portfolio mutation authority",
+    "- not trading authority",
+    "- not order placement",
+    "- not broker access",
+    "- not portfolio mutation",
+)
+_EXPECTED_RISK_INCLUSIVE_LINES = (
+    *_EXPECTED_SYNTHETIC_LINES[:6],
+    (
+        "summary: Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+        "14 limitation(s), and 32 non-claim(s)."
+    ),
+    "candidate_research_brief_count: 1",
+    "strategy_eligibility_brief_count: 1",
+    "risk_authority_brief_count: 1",
+    *_EXPECTED_SYNTHETIC_LINES[9:103],
+    *_EXPECTED_RISK_AUTHORITY_BRANCH_LINES,
+    "",
+    "Limitations",
+    *_EXPECTED_RISK_INCLUSIVE_LIMITATION_LINES,
+    "",
+    "Non-Claims",
+    *_EXPECTED_RISK_INCLUSIVE_NON_CLAIM_LINES,
+)
+_EXPECTED_RISK_INCLUSIVE_TEXT = "\n".join(_EXPECTED_RISK_INCLUSIVE_LINES)
+_AUTHORITY_SENSITIVE_RENDER_TERMS = (
+    _s("app", "roval"),
+    _s("app", "roved"),
+    "paper readiness",
+    "live readiness",
+    _s("allo", "cation authority"),
+    _s("or", "der authority"),
+    _s("bro", "ker authority"),
+    _s("port", "folio mutation authority"),
+    _s("tra", "ding authority"),
+    _s("or", "der placement"),
+    _s("bro", "ker access"),
+    _s("port", "folio mutation"),
+    "account state",
+    "paper_eligible",
+    "live_probe_eligible",
+    "live_authorized",
+    "trading_ready",
+)
 _ALLOWED_IMPORTS = {
     "__future__",
     "algotrader.errors",
@@ -387,6 +578,19 @@ def test_valid_rendering_from_phase_162_synthetic_content_bundle_fixture() -> No
     assert tuple(rendered.splitlines()) == _EXPECTED_SYNTHETIC_LINES
 
 
+def test_valid_rendering_from_phase_178_risk_inclusive_fixture() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert bundle.to_dict() == (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict()
+    )
+    assert rendered == _EXPECTED_RISK_INCLUSIVE_TEXT
+    assert tuple(rendered.splitlines()) == _EXPECTED_RISK_INCLUSIVE_LINES
+
+
 def test_repeated_rendering_is_byte_for_byte_deterministic() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
 
@@ -394,6 +598,18 @@ def test_repeated_rendering_is_byte_for_byte_deterministic() -> None:
     second = render_advisory_operating_brief_content_bundle_text(bundle)
 
     assert first
+    assert first.strip() == first
+    assert first == second
+    assert first.encode("utf-8") == second.encode("utf-8")
+
+
+def test_repeated_risk_inclusive_rendering_is_byte_for_byte_deterministic() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert first == _EXPECTED_RISK_INCLUSIVE_TEXT
     assert first.strip() == first
     assert first == second
     assert first.encode("utf-8") == second.encode("utf-8")
@@ -433,6 +649,28 @@ def test_strategy_eligibility_branch_sequence_is_preserved() -> None:
     )
 
 
+def test_risk_authority_branch_sequence_is_preserved() -> None:
+    first = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+        .risk_authority_briefs[0]
+    )
+    second = _second_risk_authority_brief()
+    bundle = build_advisory_operating_brief_content_bundle(
+        risk_authority_briefs=(second, first),
+    )
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert _index(rendered, "authority_state: blocked") < _index(
+        rendered,
+        "authority_state: not_authorized",
+    )
+    assert _index(
+        rendered,
+        "synthetic-risk-authority-renderer-strategy-002",
+    ) < _index(rendered, "synthetic-risk-authority-strategy-001")
+
+
 def test_fixed_advisory_metadata_is_present() -> None:
     rendered = render_advisory_operating_brief_content_bundle_text(
         build_synthetic_advisory_operating_brief_content_bundle()
@@ -446,6 +684,24 @@ def test_fixed_advisory_metadata_is_present() -> None:
     assert (
         "summary: Advisory content bundle contains 1 candidate research brief(s), "
         "1 strategy eligibility brief(s), 12 limitation(s), and 25 non-claim(s)."
+    ) in rendered
+
+
+def test_fixed_advisory_metadata_is_present_for_risk_inclusive_bundle() -> None:
+    rendered = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+    )
+
+    assert "bundle_type: advisory_operating_brief_content_bundle" in rendered
+    assert "status: candidate_only" in rendered
+    assert "authority: advisory_only" in rendered
+    assert "capital_authority: False" in rendered
+    assert "title: Advisory operating brief content bundle metadata" in rendered
+    assert "risk_authority_brief_count: 1" in rendered
+    assert (
+        "summary: Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+        "14 limitation(s), and 32 non-claim(s)."
     ) in rendered
 
 
@@ -492,6 +748,40 @@ def test_existing_candidate_research_payload_content_is_represented() -> None:
         assert f"- {value}" in rendered
 
 
+def test_phase_178_risk_authority_payload_content_is_represented() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+    expected = bundle.to_dict()["risk_authority_briefs"][0]
+    section = expected["sections"][0]
+    item = section["items"][0]
+    source_status = item["source_status"]
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert f"title: {expected['title']}" in rendered
+    assert f"summary: {expected['summary']}" in rendered
+    assert f"title: {section['title']}" in rendered
+    assert f"summary: {section['summary']}" in rendered
+    assert f"authority_state: {item['authority_state']}" in rendered
+    assert f"headline: {item['headline']}" in rendered
+    assert f"summary: {item['summary']}" in rendered
+    assert f"source_status.authority_type: {source_status['authority_type']}" in (
+        rendered
+    )
+    assert f"source_status.authority_state: {source_status['authority_state']}" in (
+        rendered
+    )
+    for field_name in (
+        "reasons",
+        "evidence_refs",
+        "blockers",
+        "required_next_steps",
+        "related_strategy_ids",
+        "limitations",
+        "non_claims",
+    ):
+        for value in item[field_name]:
+            assert f"- {value}" in rendered
+
+
 def test_limitations_and_non_claims_are_represented() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
     rendered = render_advisory_operating_brief_content_bundle_text(bundle)
@@ -502,8 +792,38 @@ def test_limitations_and_non_claims_are_represented() -> None:
         assert f"- {value}" in rendered
 
 
+def test_limitations_and_non_claims_from_all_branches_are_represented_with_risk() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch_payloads = (
+        *bundle.to_dict()["candidate_research_briefs"],
+        *bundle.to_dict()["strategy_eligibility_briefs"],
+        *bundle.to_dict()["risk_authority_briefs"],
+    )
+
+    for branch_payload in branch_payloads:
+        for value in branch_payload["limitations"]:
+            assert f"- {value}" in rendered
+        for value in branch_payload["non_claims"]:
+            assert f"- {value}" in rendered
+    for value in bundle.limitations:
+        assert f"- {value}" in rendered
+    for value in bundle.non_claims:
+        assert f"- {value}" in rendered
+
+
 def test_rendering_does_not_mutate_source_bundle_payload() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
+    before = bundle.to_dict()
+
+    render_advisory_operating_brief_content_bundle_text(bundle)
+    render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert bundle.to_dict() == before
+
+
+def test_risk_inclusive_rendering_does_not_mutate_source_bundle_payload() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
     before = bundle.to_dict()
 
     render_advisory_operating_brief_content_bundle_text(bundle)
@@ -585,6 +905,24 @@ def test_renderer_does_not_expose_restricted_states_as_authority() -> None:
         assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
 
 
+def test_risk_inclusive_renderer_exposes_authority_terms_only_as_cautions() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    source_cautions = _source_caution_values(bundle.to_dict())
+
+    assert _rendered_field_names(rendered).isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    for line in _authority_sensitive_lines(rendered):
+        assert line.startswith("- ")
+        assert line[2:] in source_cautions
+    for token in (
+        "paper_eligible",
+        "live_probe_eligible",
+        "live_authorized",
+        "trading_ready",
+    ):
+        assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
+
+
 def test_renderer_module_has_no_forbidden_imports_or_calls() -> None:
     imports = _import_references()
     call_names = _call_names()
@@ -644,6 +982,36 @@ def _second_strategy_eligibility_brief() -> StrategyEligibilityBrief:
     return build_strategy_eligibility_brief((section,))
 
 
+def _second_risk_authority_brief() -> RiskAuthorityBrief:
+    status = build_risk_authority_status(
+        authority_state="blocked",
+        reasons=("secondary risk metadata is scoped to advisory display",),
+        blockers=("secondary risk governance review has not been completed",),
+        required_next_steps=(
+            "complete secondary risk governance review before any claim",
+        ),
+        limitations=("synthetic metadata only", "secondary risk renderer only"),
+        non_claims=(
+            "not risk approval",
+            _s("not allo", "cation authority"),
+            _s("not or", "der authority"),
+            "not paper readiness",
+            "not live readiness",
+            _s("not bro", "ker authority"),
+            _s("not port", "folio mutation authority"),
+            "not capital authority",
+            "not trading authority",
+            _s("not a tra", "ding recommendation"),
+            "not secondary risk renderer claim",
+        ),
+        evidence_refs=("synthetic-risk-renderer-evidence-ref-002",),
+        related_strategy_ids=("synthetic-risk-authority-renderer-strategy-002",),
+    )
+    item = build_risk_authority_brief_item(status)
+    section = build_risk_authority_brief_section((item,))
+    return build_risk_authority_brief((section,))
+
+
 def _index(text: str, value: str) -> int:
     return text.index(value)
 
@@ -656,6 +1024,37 @@ def _rendered_field_names(text: str) -> set[str]:
         field_names.add(line.split(":", maxsplit=1)[0])
 
     return field_names
+
+
+def _authority_sensitive_lines(text: str) -> tuple[str, ...]:
+    return tuple(
+        line
+        for line in text.splitlines()
+        if any(
+            re.search(rf"(?<![a-z0-9_]){re.escape(term)}(?![a-z0-9_])", line.lower())
+            for term in _AUTHORITY_SENSITIVE_RENDER_TERMS
+        )
+    )
+
+
+def _source_caution_values(payload: object) -> set[str]:
+    caution_fields = {
+        "blockers",
+        "limitations",
+        "non_claims",
+        "required_next_steps",
+    }
+    values: set[str] = set()
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            if key in caution_fields and isinstance(value, list):
+                values.update(item for item in value if isinstance(item, str))
+            values.update(_source_caution_values(value))
+    elif isinstance(payload, list):
+        for value in payload:
+            values.update(_source_caution_values(value))
+
+    return values
 
 
 def _source_text() -> str:
