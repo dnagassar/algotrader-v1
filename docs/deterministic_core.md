@@ -5897,6 +5897,35 @@ allocation/order/portfolio mutation, risk approval, paper/live readiness,
 capital authority, trading authority, or dependencies were added. Normal
 pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 192 - Advisory Operating Brief Package CLI Preview adds
+`src/algotrader/research/advisory_operating_brief_package_cli.py` and registers
+`algotrader advisory-operating-brief-package-preview`. The preview is
+synthetic-only, accepts only `--format text` or `--format json`, defaults to
+text, builds the nested content bundle through production builders with
+candidate research, strategy eligibility, risk authority, and research queue
+branches included, wraps it with
+`build_advisory_operating_brief_package(...)` using the fixed package id,
+title, advisory-only summary, and `as_of="2026-01-20"`, and emits only
+`export_advisory_operating_brief_package(...)` rendered text or compact JSON.
+
+The Phase 192 tests prove default output equals explicit text output, rendered
+text and compact JSON equal the package export views, JSON round-trips to the
+expected package payload, repeated invocations are byte-for-byte deterministic,
+package metadata and all nested content branches are visible, existing content
+bundle preview behavior is unchanged, production CLI modules do not import
+tests or `tests.fixtures`, and no file/path/source/vendor/broker/network/
+runtime/credential options or paper/live/approved/trading-ready/actionable
+authority states are introduced. Existing `AdvisoryOperatingBrief`, package,
+package renderer/export, content bundle, content bundle renderer/export, and
+content bundle CLI behavior remain unchanged. The command adds no file I/O,
+persistence, network/socket access, credentials, vendor APIs, broker/runtime
+behavior, scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+source/data approval, methodology approval, strategy/signal/evaluator
+behavior, backtesting, ranking/scoring, recommendations,
+allocation/order/portfolio mutation, risk approval, paper/live readiness,
+capital authority, trading authority, or dependencies. Normal pytest remains
+offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

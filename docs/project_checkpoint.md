@@ -11661,6 +11661,31 @@ Safe next tasks include:
   LLM/agent, ranking/scoring, approval/readiness/trading authority, or
   actionable behavior was added; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 192 - Advisory Operating Brief Package CLI Preview adds
+  `src/algotrader/research/advisory_operating_brief_package_cli.py` and
+  registers `algotrader advisory-operating-brief-package-preview`. The command
+  is synthetic-only, accepts only `--format text` or `--format json`, defaults
+  to text, builds a deterministic production-builder package with candidate
+  research, strategy eligibility, risk authority, and research queue content in
+  the nested bundle, pins
+  `package_id="advisory-operating-brief-package:synthetic:2026-01-20"`,
+  `title="Synthetic advisory operating brief package"`, advisory-only
+  synthetic summary text, and `as_of="2026-01-20"`, and prints the rendered
+  text or compact JSON from `export_advisory_operating_brief_package(...)`.
+  Tests prove default/text parity, export rendered and JSON parity, JSON
+  round-trip to the expected payload, byte-for-byte repeated determinism,
+  package metadata visibility, nested candidate/strategy/risk/research-queue
+  branch visibility, unchanged existing content-bundle CLI behavior, no
+  production imports from `tests` or `tests.fixtures`, no external input
+  options, no paper/live/approved/trading-ready/actionable authority states,
+  and no file I/O, persistence, network/socket, credential, vendor API,
+  broker/account/order/fill/allocation/portfolio mutation, runtime,
+  scheduler/dashboard, notebook, ML, LLM/agent, ranking/scoring,
+  approval/readiness/trading authority, actionable behavior, or dependency
+  additions. Existing `AdvisoryOperatingBrief`, package, package renderer/
+  export, content bundle, content bundle renderer/export, and content bundle
+  CLI behavior are unchanged; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
