@@ -32,6 +32,17 @@ from algotrader.research.research_return_input_package import (
 from algotrader.research.research_return_input_result_adapter import (
     build_synthetic_research_result_from_return_input_package,
 )
+from algotrader.research.risk_authority_brief import (
+    RiskAuthorityBrief,
+    build_risk_authority_brief,
+)
+from algotrader.research.risk_authority_brief_item import (
+    build_risk_authority_brief_item,
+)
+from algotrader.research.risk_authority_brief_section import (
+    build_risk_authority_brief_section,
+)
+from algotrader.research.risk_authority_status import build_risk_authority_status
 from algotrader.research.strategy_eligibility_brief import (
     StrategyEligibilityBrief,
     build_strategy_eligibility_brief,
@@ -48,6 +59,7 @@ from algotrader.research.strategy_eligibility_status import (
 
 __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_risk",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -56,6 +68,10 @@ _PREVIEW_FORMATS = ("text", "json")
 
 def _not(*parts: str) -> str:
     return f"not {''.join(parts)}"
+
+
+def _join(*parts: str) -> str:
+    return "".join(parts)
 
 
 _RETURN_INPUT_NON_CLAIMS = (
@@ -104,6 +120,50 @@ _STRATEGY_NON_CLAIMS = (
     _not("approval"),
     _not("capital authority"),
 )
+_RISK_REASONS = (
+    "synthetic risk authority status is scoped to advisory composition tests",
+    "risk-capital authority remains absent for this synthetic candidate",
+)
+_RISK_BLOCKERS = (
+    "external risk review has not been completed",
+    "capital authorization path is not represented",
+)
+_RISK_REQUIRED_NEXT_STEPS = (
+    "complete independent risk governance review before any authority change",
+    "record advisory-only evidence before composing downstream briefs",
+)
+_RISK_LIMITATIONS = (
+    "synthetic metadata only",
+    _join(
+        "no approval, readiness, recommendation, allo",
+        "cation, or",
+        "der placement, bro",
+        "ker access, port",
+        "folio mutation, capital authority, or tra",
+        "ding authority is represented",
+    ),
+    _join("fixture output is not connected to run", "time or ac", "count state"),
+)
+_RISK_NON_CLAIMS = (
+    _not("risk approval"),
+    _not("allo", "cation authority"),
+    _not("or", "der authority"),
+    _not("paper readiness"),
+    _not("live readiness"),
+    _not("bro", "ker authority"),
+    _not("port", "folio mutation authority"),
+    _not("capital authority"),
+    _not("tra", "ding authority"),
+    _not("a tra", "ding recommendation"),
+    _not("or", "der placement"),
+    _not("bro", "ker access"),
+    _not("port", "folio mutation"),
+)
+_RISK_EVIDENCE_REFS = (
+    "synthetic-risk-authority-status-evidence-001",
+    "phase-169-risk-authority-status-contract",
+)
+_RISK_RELATED_STRATEGY_IDS = ("synthetic-risk-authority-strategy-001",)
 
 
 def build_synthetic_advisory_operating_brief_content_bundle() -> (
@@ -119,13 +179,35 @@ def build_synthetic_advisory_operating_brief_content_bundle() -> (
     )
 
 
+def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic synthetic advisory content bundle with risk."""
+
+    candidate_brief = _build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
+    risk_authority_brief = _build_synthetic_risk_authority_brief()
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        risk_authority_briefs=(risk_authority_brief,),
+    )
+
+
 def render_advisory_operating_brief_content_bundle_preview(
     output_format: str = "text",
+    *,
+    include_risk_authority: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+        if include_risk_authority
+        else build_synthetic_advisory_operating_brief_content_bundle()
+    )
     exported = export_advisory_operating_brief_content_bundle(
-        build_synthetic_advisory_operating_brief_content_bundle()
+        bundle
     )
     if output_format == "text":
         return exported.rendered_text
@@ -192,3 +274,19 @@ def _build_synthetic_strategy_eligibility_brief() -> StrategyEligibilityBrief:
     item = build_strategy_eligibility_brief_item(status)
     section = build_strategy_eligibility_brief_section((item,))
     return build_strategy_eligibility_brief((section,))
+
+
+def _build_synthetic_risk_authority_brief() -> RiskAuthorityBrief:
+    status = build_risk_authority_status(
+        authority_state="not_authorized",
+        reasons=_RISK_REASONS,
+        blockers=_RISK_BLOCKERS,
+        required_next_steps=_RISK_REQUIRED_NEXT_STEPS,
+        limitations=_RISK_LIMITATIONS,
+        non_claims=_RISK_NON_CLAIMS,
+        evidence_refs=_RISK_EVIDENCE_REFS,
+        related_strategy_ids=_RISK_RELATED_STRATEGY_IDS,
+    )
+    item = build_risk_authority_brief_item(status)
+    section = build_risk_authority_brief_section((item,))
+    return build_risk_authority_brief((section,))

@@ -62,6 +62,14 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Preview output format.",
     )
+    _add_hidden_option(
+        content_bundle_preview_parser,
+        "--include-risk-authority",
+        action="store_true",
+        dest="include_risk_authority",
+        help=argparse.SUPPRESS,
+    )
+    content_bundle_preview_parser.set_defaults(include_risk_authority=False)
     return parser
 
 
@@ -70,12 +78,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     preview_output_format = _preview_output_format(argv_items)
     if preview_output_format is not None:
         return _run_advisory_operating_brief_preview(preview_output_format)
-    content_bundle_preview_output_format = (
-        _content_bundle_preview_output_format(argv_items)
-    )
-    if content_bundle_preview_output_format is not None:
+    content_bundle_preview_options = _content_bundle_preview_options(argv_items)
+    if content_bundle_preview_options is not None:
+        (
+            content_bundle_preview_output_format,
+            include_risk_authority,
+        ) = content_bundle_preview_options
         return _run_advisory_operating_brief_content_bundle_preview(
-            content_bundle_preview_output_format
+            content_bundle_preview_output_format,
+            include_risk_authority=include_risk_authority,
         )
 
     parser = build_parser()
@@ -87,7 +98,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_advisory_operating_brief_preview(args.output_format)
     if command == "advisory-operating-brief-content-bundle-preview":
         return _run_advisory_operating_brief_content_bundle_preview(
-            args.output_format
+            args.output_format,
+            include_risk_authority=args.include_risk_authority,
         )
 
     config = _load_runtime_config(profile=args.profile)
@@ -202,13 +214,18 @@ def _run_advisory_operating_brief_preview(output_format: str) -> int:
 
 def _run_advisory_operating_brief_content_bundle_preview(
     output_format: str,
+    *,
+    include_risk_authority: bool = False,
 ) -> int:
     from .research.advisory_operating_brief_content_bundle_cli import (
         render_advisory_operating_brief_content_bundle_preview,
     )
 
     print(
-        render_advisory_operating_brief_content_bundle_preview(output_format),
+        render_advisory_operating_brief_content_bundle_preview(
+            output_format,
+            include_risk_authority=include_risk_authority,
+        ),
         end="",
     )
     return 0
@@ -228,9 +245,20 @@ def _preview_output_format(argv: tuple[str, ...]) -> str | None:
 
 
 def _content_bundle_preview_output_format(argv: tuple[str, ...]) -> str | None:
-    return _preview_command_output_format(
+    options = _content_bundle_preview_options(argv)
+    if options is None:
+        return None
+
+    return options[0]
+
+
+def _content_bundle_preview_options(
+    argv: tuple[str, ...],
+) -> tuple[str, bool] | None:
+    return _preview_command_options(
         argv,
         "advisory-operating-brief-content-bundle-preview",
+        allowed_flags=("--include-risk-authority",),
     )
 
 
@@ -238,6 +266,19 @@ def _preview_command_output_format(
     argv: tuple[str, ...],
     command: str,
 ) -> str | None:
+    options = _preview_command_options(argv, command)
+    if options is None:
+        return None
+
+    return options[0]
+
+
+def _preview_command_options(
+    argv: tuple[str, ...],
+    command: str,
+    *,
+    allowed_flags: tuple[str, ...] = (),
+) -> tuple[str, bool] | None:
     if command not in argv:
         return None
 
@@ -246,15 +287,31 @@ def _preview_command_output_format(
         return None
 
     preview_args = argv[command_index + 1 :]
-    if preview_args == ():
-        return "text"
-    if (
-        len(preview_args) == 2
-        and preview_args[0] == "--format"
-        and preview_args[1] in _PREVIEW_FORMATS
-    ):
-        return preview_args[1]
-    return None
+    output_format = "text"
+    include_risk_authority = False
+    saw_format = False
+    index = 0
+    while index < len(preview_args):
+        argument = preview_args[index]
+        if argument == "--format":
+            if saw_format or index + 1 >= len(preview_args):
+                return None
+            candidate_format = preview_args[index + 1]
+            if candidate_format not in _PREVIEW_FORMATS:
+                return None
+            output_format = candidate_format
+            saw_format = True
+            index += 2
+        elif argument in allowed_flags:
+            if argument == "--include-risk-authority":
+                if include_risk_authority:
+                    return None
+                include_risk_authority = True
+            index += 1
+        else:
+            return None
+
+    return output_format, include_risk_authority
 
 
 def _only_ignored_runtime_options(argv: tuple[str, ...]) -> bool:
@@ -269,3 +326,16 @@ def _only_ignored_runtime_options(argv: tuple[str, ...]) -> bool:
             return False
 
     return index == len(argv)
+
+
+def _add_hidden_option(
+    parser: argparse.ArgumentParser,
+    *args,
+    **kwargs,
+) -> argparse.Action:
+    action = parser.add_argument(*args, **kwargs)
+    parser._actions.remove(action)
+    for group in parser._action_groups:
+        if action in group._group_actions:
+            group._group_actions.remove(action)
+    return action

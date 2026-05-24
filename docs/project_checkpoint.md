@@ -11396,6 +11396,27 @@ Safe next tasks include:
   portfolio mutation, paper/live readiness, capital, or trading-authority
   behavior changed; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 181 - Advisory Operating Brief Content Bundle CLI Risk Preview extends
+  `algotrader advisory-operating-brief-content-bundle-preview` with the
+  explicit synthetic-only `--include-risk-authority` flag. Without the flag,
+  default text, `--format text`, and compact `--format json` output remain
+  byte-for-byte identical to the existing no-risk preview. With the flag, the
+  CLI composes candidate research, strategy eligibility, and risk authority
+  branches using only public production builders, exports through
+  `export_advisory_operating_brief_content_bundle(...)`, renders text by
+  default, and emits compact sorted JSON with `--format json`. Tests prove the
+  risk branch text is present, JSON includes `risk_authority_briefs` and
+  `risk_authority_brief_count`, risk-inclusive invocations are byte-for-byte
+  deterministic and JSON round-trips, production CLI modules import no
+  `tests` or `tests.fixtures`, no file/path/source/vendor/broker/network/
+  runtime/credential options were introduced, and no paper/live/approved/
+  trading-ready/actionable authority states or fields were added. No real
+  data, ingestion, persistence, file I/O, network/socket access, credentials,
+  vendor APIs, scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, strategy/signal/evaluator behavior, backtesting, ranking/scoring,
+  recommendations, allocation/order/portfolio mutation, risk approval,
+  paper/live readiness, capital authority, or trading authority changed;
+  normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

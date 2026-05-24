@@ -5583,6 +5583,32 @@ mutation, risk approval, paper/live readiness, capital, or trading-authority
 behavior. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 181 - Advisory Operating Brief Content Bundle CLI Risk Preview extends
+`algotrader advisory-operating-brief-content-bundle-preview` with an explicit
+synthetic-only `--include-risk-authority` flag. When the flag is absent, the
+existing default text output, `--format text`, and compact `--format json`
+views remain byte-for-byte identical to the Phase 165 no-risk preview. When
+the flag is present, the preview composes a production-safe synthetic bundle
+from public production builders for candidate research, strategy eligibility,
+and risk authority, then exports it through
+`export_advisory_operating_brief_content_bundle(...)`.
+
+The Phase 181 risk-inclusive CLI path renders text by default and compact
+sorted JSON with `--format json`, includes `risk_authority_briefs` and
+`risk_authority_brief_count` only on the explicit risk path, round-trips JSON
+to the exported payload, and remains byte-for-byte deterministic across
+repeated invocations and option ordering. Focused tests prove the default
+preview remains unchanged, the production CLI modules import no `tests` or
+`tests.fixtures`, no file/path/source/vendor/broker/network/runtime/credential
+options were introduced, and no paper/live/approved/trading-ready/actionable
+authority states or fields were added. No real data, ingestion, persistence,
+file I/O, network/socket access, credentials, vendor APIs, scheduler/dashboard
+behavior, notebooks, ML, LLM/agent behavior, strategy/signal/evaluator
+behavior, backtesting, ranking/scoring, recommendations, allocation/order/
+portfolio mutation, risk approval, paper/live readiness, capital authority, or
+trading authority was added. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
