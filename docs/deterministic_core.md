@@ -5609,6 +5609,33 @@ portfolio mutation, risk approval, paper/live readiness, capital authority, or
 trading authority was added. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 182 - Advisory Research Queue Brief Family adds a metadata-only
+research queue branch in `src/algotrader/research/research_queue_status.py`,
+`src/algotrader/research/research_queue_brief_item.py`,
+`src/algotrader/research/research_queue_brief_section.py`, and
+`src/algotrader/research/research_queue_brief.py`. The branch represents
+unresolved research work, blockers, required next steps, evidence gaps,
+related strategy ids, limitations, and advisory non-claims. It pins every
+level to `candidate_only`, `advisory_only`, and `capital_authority=False`,
+uses frozen slotted dataclasses, exact-type composition, deterministic
+primitive-only `to_dict()` serialization, input tuple conversion without
+source mutation, identity/order preservation, duplicate identity rejection,
+and duplicate-removed limitation/non-claim carry-forward.
+
+The Phase 182 family is not connected to the existing content bundle,
+renderer, export, or CLI paths. It adds no source/data approval, methodology
+approval, signal/evaluator behavior, strategy execution, backtesting,
+ranking/scoring, recommendations, allocation/order/portfolio mutation,
+broker/runtime behavior, scheduler/dashboard behavior, paper/live readiness,
+capital authority, trading authority, file I/O, persistence, network/socket
+access, credentials, vendor APIs, notebooks, ML, LLM/agent behavior, or new
+dependencies. Focused tests cover construction, direct-constructor validation,
+immutability, slots, malformed input rejection, required non-claims,
+forbidden language/state rejection, deterministic serialization,
+identity/order preservation, duplicate identity rejection, and AST/import
+guardrails. Normal pytest remains offline, credential-free, deterministic,
+and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

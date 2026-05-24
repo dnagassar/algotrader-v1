@@ -11417,6 +11417,27 @@ Safe next tasks include:
   recommendations, allocation/order/portfolio mutation, risk approval,
   paper/live readiness, capital authority, or trading authority changed;
   normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 182 - Advisory Research Queue Brief Family adds a metadata-only
+  research queue branch in `src/algotrader/research/research_queue_status.py`,
+  `src/algotrader/research/research_queue_brief_item.py`,
+  `src/algotrader/research/research_queue_brief_section.py`, and
+  `src/algotrader/research/research_queue_brief.py`. It models unresolved
+  research work, blockers, required next steps, evidence gaps, related
+  strategy ids, limitations, and advisory non-claims while pinning all levels
+  to `candidate_only`, `advisory_only`, and `capital_authority=False`. Tests
+  cover builders, direct-constructor validation, immutability, slots, tuple
+  conversion and input non-mutation, deterministic primitive-only `to_dict()`,
+  identity/order preservation, duplicate identity rejection, malformed input,
+  required non-claims, forbidden language/state rejection, and AST/import
+  guardrails. No existing content bundle, renderer, export, CLI,
+  source/data approval, methodology approval, signal/evaluator behavior,
+  strategy execution, backtesting, ranking/scoring, recommendations,
+  allocation/order/portfolio mutation, broker/runtime behavior,
+  scheduler/dashboard behavior, paper/live readiness, capital authority,
+  trading authority, file I/O, persistence, network/socket access,
+  credentials, vendor APIs, notebooks, ML, LLM/agent behavior, or dependency
+  behavior changed; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
