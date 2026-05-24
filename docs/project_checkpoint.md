@@ -11986,6 +11986,32 @@ Safe next tasks include:
   advisory operating brief package, package synthetic builder, package CLI,
   content bundle, renderer, export, or existing CLI behavior changed; normal
   pytest remains offline, credential-free, deterministic, and safe
+- Phase 203 - SMA Research Observation Brief Text Renderer adds
+  `src/algotrader/research/sma_research_observation_brief_renderer.py` with
+  `render_sma_research_observation_brief_text(brief)` and
+  `tests/unit/test_sma_research_observation_brief_renderer.py`. The renderer
+  accepts only exact Phase 201 `SmaResearchObservationBrief` objects, rejects
+  malformed lookalikes, dictionaries, `None`, and subclasses, and renders
+  solely from `brief.to_dict()` so source brief, section, item, and nested
+  observation objects are not mutated. It emits deterministic plain text for
+  brief metadata, sections, items, nested source observation mechanics,
+  limitations, and non-claims; preserves section and item sequence; includes
+  ignored future sample counts; renders insufficient-history SMA and distance
+  mechanics as `null`; and keeps output byte-for-byte stable across repeated
+  renders. Tests pin exact output for the Phase 202 synthetic brief fixture,
+  prove source `.to_dict()` and nested identities are unchanged, verify both
+  `above_sma_observation` and `insufficient_history`, reject invalid inputs,
+  and guard production imports, calls, source literals, public renderer
+  concepts, and rendered text against broker/account/order/fill/allocation/
+  portfolio mutation behavior, file I/O, persistence, network/socket access,
+  vendor APIs, credentials, runtime/scheduler/dashboard behavior, notebooks,
+  ML, LLM/agent behavior, ranking/scoring, recommendations, approval/readiness
+  or trading authority language outside explicit non-claims, or dependencies.
+  SMA mechanics, SMA fixtures, brief item behavior, section behavior,
+  container behavior, advisory operating brief package, package synthetic
+  builder, package CLI, content bundle, renderer, export, and existing CLI
+  behavior are unchanged; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

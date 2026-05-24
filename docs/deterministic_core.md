@@ -6260,6 +6260,34 @@ builder, package CLI, content bundle, renderer, export, or existing CLI
 behavior change. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 203 - SMA Research Observation Brief Text Renderer adds
+`src/algotrader/research/sma_research_observation_brief_renderer.py` with
+`render_sma_research_observation_brief_text(brief)` plus
+`tests/unit/test_sma_research_observation_brief_renderer.py`. The renderer
+accepts only exact Phase 201 `SmaResearchObservationBrief` objects, rejects
+malformed lookalikes, dictionaries, `None`, and subclasses, and renders solely
+from `brief.to_dict()` so source brief, section, item, and nested observation
+objects are not mutated.
+
+The Phase 203 renderer emits deterministic plain text for brief metadata,
+sections, items, nested source observation mechanics, limitations, and
+non-claims. It preserves section and item sequence, includes ignored future
+sample counts, renders insufficient-history SMA and distance mechanics as
+`null`, and keeps the output byte-for-byte stable across repeated renders.
+Tests pin the exact rendered text for the Phase 202 synthetic brief fixture;
+prove source `.to_dict()` and nested identities are unchanged; verify both
+`above_sma_observation` and `insufficient_history`; reject invalid inputs; and
+guard production imports, calls, source literals, public renderer concepts,
+and rendered text against broker/account/order/fill/allocation/portfolio
+mutation behavior, file I/O, persistence, network/socket access, vendor APIs,
+credentials, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+behavior, ranking/scoring, recommendations, approval/readiness/trading
+authority language outside explicit non-claims, or new dependencies. SMA
+mechanics, fixtures, brief item behavior, section behavior, container behavior,
+advisory operating brief package, package synthetic builder, package CLI,
+content bundle, renderer, export, and existing CLI behavior remain unchanged.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
