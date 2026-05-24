@@ -11557,6 +11557,34 @@ Safe next tasks include:
   approval, paper/live readiness, capital authority, or trading authority
   behavior changed; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 188 - Advisory Operating Brief Package Contract adds
+  `src/algotrader/research/advisory_operating_brief_package.py` with frozen/
+  slotted `AdvisoryOperatingBriefPackage` and
+  `build_advisory_operating_brief_package(...)`. The builder requires an exact
+  `AdvisoryOperatingBriefContentBundle`, preserves source bundle identity,
+  builds `content_bundle_export` through the existing
+  `export_advisory_operating_brief_content_bundle(...)`, pins
+  `package_type="advisory_operating_brief_package"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`, and carries forward bundle limitations and
+  non-claims with first-seen dedupe. `to_dict()` emits deterministic
+  primitive-only package metadata, `content_bundle.to_dict()`, a primitive
+  `content_bundle_export` dictionary with `payload`, `json_text`, and
+  `rendered_text`, plus limitations and non-claims. Tests cover builder and
+  direct construction, frozen/slots behavior, exact-type rejection for
+  subclasses and lookalikes, export value matching, repeated determinism,
+  source bundle and export payload non-mutation, primitive-only serialization,
+  absence of `from_dict()`, malformed metadata rejection, positive
+  authority-like language rejection, no production imports from `tests` or
+  `tests.fixtures`, and AST/import/call guardrails. Existing
+  `AdvisoryOperatingBrief`, content bundle, renderer, export, CLI, real data,
+  ingestion, persistence, file I/O, network/socket, credential, vendor API,
+  broker/runtime, scheduler/dashboard, notebook, ML, LLM/agent, dependency,
+  source/data approval, methodology approval, strategy/signal/evaluator,
+  backtesting, ranking/scoring, recommendation, allocation/order/portfolio
+  mutation, risk approval, paper/live readiness, capital authority, and
+  trading authority behavior are unchanged; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

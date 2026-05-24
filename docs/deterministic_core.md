@@ -5778,6 +5778,35 @@ portfolio mutation, risk approval, paper/live readiness, capital authority, or
 trading authority were added. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 188 - Advisory Operating Brief Package Contract adds
+`AdvisoryOperatingBriefPackage` and
+`build_advisory_operating_brief_package(...)` in
+`src/algotrader/research/advisory_operating_brief_package.py`. The package is
+a frozen/slotted metadata-only top-level handoff wrapper around an existing
+`AdvisoryOperatingBriefContentBundle` and the existing
+`export_advisory_operating_brief_content_bundle(...)` export. It pins
+`package_type="advisory_operating_brief_package"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`, requires explicit
+non-empty `package_id`, `title`, `summary`, and `as_of` strings, preserves the
+source content bundle object identity, and carries forward bundle limitations
+and non-claims with first-seen dedupe.
+
+The Phase 188 package emits deterministic primitive-only `to_dict()` output
+with package metadata, `content_bundle.to_dict()`, a primitive
+`content_bundle_export` dictionary containing `payload`, `json_text`, and
+`rendered_text`, plus limitations and non-claims. The builder requires the
+exact content bundle type, builds the export through the existing export
+function, rejects mismatched direct-constructor exports and malformed package
+metadata, and rejects positive authority-like language while allowing existing
+negative advisory cautions. It adds no `from_dict()`, current-time generation,
+file I/O, persistence, network/socket access, credentials, vendor APIs,
+broker/runtime behavior, scheduler/dashboard behavior, notebooks, ML,
+LLM/agent behavior, source/data approval, methodology approval,
+strategy/signal/evaluator behavior, backtesting, ranking/scoring,
+recommendations, allocation/order/portfolio mutation, risk approval,
+paper/live readiness, capital authority, trading authority, or dependencies.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
