@@ -5750,6 +5750,34 @@ authority, file I/O, persistence, network/socket access, credentials, vendor
 APIs, notebooks, ML, LLM/agent behavior, or dependencies. Normal pytest
 remains offline, credential-free, deterministic, and safe.
 
+Phase 187 - Advisory Operating Brief Content Bundle CLI Research Queue Preview
+adds an explicit synthetic-only `--include-research-queue` flag to
+`algotrader advisory-operating-brief-content-bundle-preview`. The default
+preview remains candidate research plus strategy eligibility only, and the
+existing `--include-risk-authority` text and JSON previews remain
+byte-for-byte unchanged. With `--include-research-queue`, the preview composes
+candidate research, strategy eligibility, and research queue branches; with
+both `--include-risk-authority` and `--include-research-queue`, it composes all
+four candidate, strategy, risk, and research queue branches.
+
+The Phase 187 implementation uses only production builders and the existing
+`export_advisory_operating_brief_content_bundle(...)` path, so text output
+continues to come from `export.rendered_text` and JSON output from compact
+deterministic `export.json_text`. The new CLI tests prove default and risk
+compatibility, research queue text/JSON branch presence, risk omission unless
+the risk flag is also present, both-flag branch composition, JSON round-trip
+behavior, repeated byte-for-byte deterministic invocations, no production
+imports from `tests` or `tests.fixtures`, no new file/path/source/vendor/
+broker/network/runtime/credential options, and no paper/live/approved/
+trading-ready/actionable authority states. No real data, ingestion,
+persistence, file I/O, network/socket access, credentials, vendor APIs,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior, dependencies,
+source/data approval, methodology approval, strategy/signal/evaluator
+behavior, backtesting, ranking/scoring, recommendations, allocation/order/
+portfolio mutation, risk approval, paper/live readiness, capital authority, or
+trading authority were added. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -11534,6 +11534,29 @@ Safe next tasks include:
   network/socket, credential, vendor API, notebook, ML, LLM/agent, or
   dependency behavior changed; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 187 - Advisory Operating Brief Content Bundle CLI Research Queue
+  Preview adds the explicit synthetic-only `--include-research-queue` flag to
+  `algotrader advisory-operating-brief-content-bundle-preview`. The existing
+  default text/JSON preview remains candidate research plus strategy
+  eligibility only, and the existing `--include-risk-authority` text/JSON
+  preview remains byte-for-byte unchanged. The new flag composes candidate,
+  strategy, and research queue branches; combining it with
+  `--include-risk-authority` composes candidate, strategy, risk, and research
+  queue branches. The CLI continues to return
+  `export_advisory_operating_brief_content_bundle(...).rendered_text` for text
+  and compact deterministic `json_text` for JSON. Tests prove parser
+  acceptance, branch presence/omission, both-flag branch composition, JSON
+  round-trip behavior, repeated byte-for-byte deterministic CLI output, no
+  production imports from `tests` or `tests.fixtures`, no file/path/source/
+  vendor/broker/network/runtime/credential options, and no paper/live/
+  approved/trading-ready/actionable authority states. No real data, ingestion,
+  persistence, file I/O, network/socket, credential, vendor API,
+  scheduler/dashboard, notebook, ML, LLM/agent, dependency, source/data
+  approval, methodology approval, strategy/signal/evaluator, backtesting,
+  ranking/scoring, recommendation, allocation/order/portfolio mutation, risk
+  approval, paper/live readiness, capital authority, or trading authority
+  behavior changed; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

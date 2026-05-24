@@ -32,6 +32,17 @@ from algotrader.research.research_return_input_package import (
 from algotrader.research.research_return_input_result_adapter import (
     build_synthetic_research_result_from_return_input_package,
 )
+from algotrader.research.research_queue_brief import (
+    ResearchQueueBrief,
+    build_research_queue_brief,
+)
+from algotrader.research.research_queue_brief_item import (
+    build_research_queue_brief_item,
+)
+from algotrader.research.research_queue_brief_section import (
+    build_research_queue_brief_section,
+)
+from algotrader.research.research_queue_status import build_research_queue_status
 from algotrader.research.risk_authority_brief import (
     RiskAuthorityBrief,
     build_risk_authority_brief,
@@ -60,6 +71,7 @@ from algotrader.research.strategy_eligibility_status import (
 __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle",
     "build_synthetic_advisory_operating_brief_content_bundle_with_risk",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -164,6 +176,66 @@ _RISK_EVIDENCE_REFS = (
     "phase-169-risk-authority-status-contract",
 )
 _RISK_RELATED_STRATEGY_IDS = ("synthetic-risk-authority-strategy-001",)
+_RESEARCH_QUEUE_BLOCKERS = (
+    _join("sour", "ce data clearance is unresolved"),
+    "ETF universe definition is unresolved",
+    "benchmark and cash proxy policy is unresolved",
+    "return policy is unresolved",
+    "no-lookahead protocol is unresolved",
+    "survivorship policy is unresolved",
+    "reproduction protocol is unresolved",
+    "validation evidence is missing",
+)
+_RESEARCH_QUEUE_REQUIRED_NEXT_STEPS = (
+    "validate deterministic preview shape for broad ETF SMA inputs",
+    "confirm provenance boundaries before synthetic preview expansion",
+    "scope methodology before any research claim",
+    "construct no-lookahead returns from synthetic inputs only",
+)
+_RESEARCH_QUEUE_EVIDENCE_GAPS = (
+    "real data provenance evidence is absent",
+    "benchmark and cash handling evidence is absent",
+    "survivorship treatment evidence is absent",
+    "cost and slippage assumptions are absent",
+    "out-of-sample robustness evidence is absent",
+    "reproduction evidence is absent",
+)
+_RESEARCH_QUEUE_LIMITATIONS = (
+    "synthetic metadata-only unresolved research queue preview",
+    "broad ETF SMA remains pipeline-validation metadata only",
+    _join("preview output is not connected to real data or run", "time state"),
+)
+_RESEARCH_QUEUE_NON_CLAIMS = (
+    _not("a recomm", "endation"),
+    _not("allo", "cation authority"),
+    _not("or", "der authority"),
+    _not("paper readiness"),
+    _not("live readiness"),
+    _not("bro", "ker authority"),
+    _not("ac", "count authority"),
+    _not("port", "folio mutation authority"),
+    _not("capital authority"),
+    _not("tra", "ding authority"),
+    _not("stra", "tegy approval"),
+    _not("data sour", "ce approval"),
+    _not("methodology approval"),
+    _not("profitability evidence"),
+    _not("research conclusion"),
+    _not("backtest readiness"),
+    _not("execution readiness"),
+    _not("allo", "cation guidance"),
+    _not("or", "der placement"),
+    _not("ranking or scoring output"),
+)
+_RESEARCH_QUEUE_RELATED_STRATEGY_IDS = (
+    "synthetic-advisory:broad-etf-sma",
+    "research-queue:broad-etf-sma",
+)
+_RESEARCH_QUEUE_EVIDENCE_REFS = (
+    "phase-182-research-queue-status-contract",
+    "phase-184-content-bundle-research-queue-branch",
+    "phase-187-cli-research-queue-preview",
+)
 
 
 def build_synthetic_advisory_operating_brief_content_bundle() -> (
@@ -171,11 +243,9 @@ def build_synthetic_advisory_operating_brief_content_bundle() -> (
 ):
     """Return the deterministic synthetic advisory content bundle preview."""
 
-    candidate_brief = _build_synthetic_candidate_research_brief()
-    strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
-    return build_advisory_operating_brief_content_bundle(
-        candidate_research_briefs=(candidate_brief,),
-        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=False,
+        include_research_queue=False,
     )
 
 
@@ -184,13 +254,42 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
 ):
     """Return the deterministic synthetic advisory content bundle with risk."""
 
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=True,
+        include_research_queue=False,
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+    *,
+    include_risk_authority: bool = False,
+) -> AdvisoryOperatingBriefContentBundle:
+    """Return the deterministic synthetic content bundle with research queue."""
+
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=True,
+    )
+
+
+def _build_synthetic_advisory_operating_brief_content_bundle(
+    *,
+    include_risk_authority: bool,
+    include_research_queue: bool,
+) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
-    risk_authority_brief = _build_synthetic_risk_authority_brief()
+    risk_authority_briefs = (
+        (_build_synthetic_risk_authority_brief(),) if include_risk_authority else ()
+    )
+    research_queue_briefs = (
+        (_build_synthetic_research_queue_brief(),) if include_research_queue else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
-        risk_authority_briefs=(risk_authority_brief,),
+        risk_authority_briefs=risk_authority_briefs,
+        research_queue_briefs=research_queue_briefs,
     )
 
 
@@ -198,17 +297,22 @@ def render_advisory_operating_brief_content_bundle_preview(
     output_format: str = "text",
     *,
     include_risk_authority: bool = False,
+    include_research_queue: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
     bundle = (
-        build_synthetic_advisory_operating_brief_content_bundle_with_risk()
-        if include_risk_authority
-        else build_synthetic_advisory_operating_brief_content_bundle()
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+            include_risk_authority=include_risk_authority,
+        )
+        if include_research_queue
+        else (
+            build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+            if include_risk_authority
+            else build_synthetic_advisory_operating_brief_content_bundle()
+        )
     )
-    exported = export_advisory_operating_brief_content_bundle(
-        bundle
-    )
+    exported = export_advisory_operating_brief_content_bundle(bundle)
     if output_format == "text":
         return exported.rendered_text
     if output_format == "json":
@@ -290,3 +394,27 @@ def _build_synthetic_risk_authority_brief() -> RiskAuthorityBrief:
     item = build_risk_authority_brief_item(status)
     section = build_risk_authority_brief_section((item,))
     return build_risk_authority_brief((section,))
+
+
+def _build_synthetic_research_queue_brief() -> ResearchQueueBrief:
+    status = build_research_queue_status(
+        queue_id="research-queue:broad-etf-sma:candidate",
+        title="Broad ETF SMA trend-following research queue item",
+        research_state="needs_evidence",
+        priority_bucket="medium",
+        topic="broad_etf_sma_trend_following",
+        hypothesis=(
+            "broad ETF SMA trend-following remains a pipeline-validation "
+            "candidate only"
+        ),
+        blockers=_RESEARCH_QUEUE_BLOCKERS,
+        required_next_steps=_RESEARCH_QUEUE_REQUIRED_NEXT_STEPS,
+        evidence_gaps=_RESEARCH_QUEUE_EVIDENCE_GAPS,
+        related_strategy_ids=_RESEARCH_QUEUE_RELATED_STRATEGY_IDS,
+        evidence_refs=_RESEARCH_QUEUE_EVIDENCE_REFS,
+        limitations=_RESEARCH_QUEUE_LIMITATIONS,
+        non_claims=_RESEARCH_QUEUE_NON_CLAIMS,
+    )
+    item = build_research_queue_brief_item(status)
+    section = build_research_queue_brief_section((item,))
+    return build_research_queue_brief((section,))
