@@ -5837,6 +5837,35 @@ paper/live readiness, capital authority, trading authority, or dependencies
 changed. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 190 - Advisory Operating Brief Package Text Renderer adds
+`src/algotrader/research/advisory_operating_brief_package_renderer.py` with
+`render_advisory_operating_brief_package_text(package)`. The renderer accepts
+only the exact `AdvisoryOperatingBriefPackage` type, rejects subclasses,
+lookalikes, dictionaries, and `None`, and renders exclusively from
+`package.to_dict()`. The output pins deterministic package metadata order:
+package type, package id, title, summary, as-of, status, authority, and
+capital authority, then a clear content bundle section containing the stored
+`content_bundle_export.rendered_text` exactly, followed by package-level
+limitations and non-claims.
+
+The Phase 190 tests use the Phase 189 synthetic package fixture to pin exact
+rendered lines, prove repeated byte-for-byte deterministic rendering, confirm
+the package dictionary, nested content bundle identity, and stored export
+payload remain unchanged, and verify candidate research, strategy eligibility,
+risk authority, and research queue content flow through the nested rendered
+content bundle. AST/import/call guardrails prove production code imports no
+tests or `tests.fixtures`, adds no `from_dict()`, does not read nested package
+objects directly, and adds no file I/O, persistence, network/socket access,
+credentials, vendor APIs, broker/runtime behavior, scheduler/dashboard
+behavior, notebooks, ML, LLM/agent behavior, source/data approval,
+methodology approval, strategy/signal/evaluator behavior, backtesting,
+ranking/scoring, recommendations, allocation/order/portfolio mutation, risk
+approval, paper/live readiness, capital authority, trading authority, or
+dependencies. Existing `AdvisoryOperatingBrief`, package, package fixture,
+content bundle, content bundle renderer, content bundle export, and CLI
+behavior are unchanged. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

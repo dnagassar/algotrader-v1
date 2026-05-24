@@ -11612,6 +11612,29 @@ Safe next tasks include:
   portfolio mutation, risk approval, paper/live readiness, capital authority,
   or trading authority behavior changed; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 190 - Advisory Operating Brief Package Text Renderer adds
+  `src/algotrader/research/advisory_operating_brief_package_renderer.py` with
+  `render_advisory_operating_brief_package_text(package)`. The renderer
+  accepts only the exact `AdvisoryOperatingBriefPackage` type, rejects
+  subclasses, lookalikes, dictionaries, and `None`, and renders from
+  `package.to_dict()` only. It emits package type, package id, title, summary,
+  as-of, status, authority, and capital authority in deterministic order,
+  then a content bundle section containing the stored
+  `content_bundle_export.rendered_text` exactly, followed by package-level
+  limitations and non-claims. Tests pin the exact rendered line tuple, prove
+  byte-for-byte repeated determinism, confirm rendering does not mutate the
+  source package dictionary, nested content bundle identity, or stored export
+  payload, and verify candidate research, strategy eligibility, risk
+  authority, and research queue branches flow through the nested rendered
+  content bundle. Production AST/import/call guardrails prove no imports from
+  `tests` or `tests.fixtures`, no `from_dict()`, no direct reads from nested
+  package objects, and no file I/O, persistence, network/socket, credential,
+  vendor API, broker/account/order/fill/allocation/portfolio mutation,
+  runtime, scheduler/dashboard, notebook, ML, LLM/agent, ranking/scoring,
+  approval/readiness/trading authority, or actionable behavior. Existing
+  `AdvisoryOperatingBrief`, package, package fixture, content bundle, content
+  bundle renderer, content bundle export, and CLI behavior are unchanged;
+  normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
