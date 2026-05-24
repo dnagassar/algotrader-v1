@@ -11889,6 +11889,38 @@ Safe next tasks include:
   package synthetic builder, package CLI, content bundle, renderer, export,
   and existing CLI behavior are unchanged; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 200 - Synthetic SMA Research Observation Brief Section Fixture adds
+  `tests/fixtures/sma_research_observation_brief_section.py` and
+  `tests/unit/test_sma_research_observation_brief_section_fixture.py` as a
+  tests-only layer over the Phase 199 section container. The fixture builds
+  from the Phase 198 above-SMA and insufficient-history brief item fixtures,
+  uses
+  `section_id="sma-research-observation-section:synthetic:broad-etf-sma"`,
+  `title="Synthetic broad ETF SMA observation summary"`, and a deterministic
+  summary stating the section is advisory-only synthetic SMA observation
+  content. It preserves exact item identity and order, contains exactly two
+  items (`above_sma_observation` followed by `insufficient_history`), carries
+  item limitations and non-claims forward with first-seen de-dupe, and emits
+  fixed `section_type="sma_research_observation_brief_section"`,
+  candidate-only/advisory-only/capital-authority-false metadata. The expected
+  dict helper composes nested item payloads from the Phase 198 expected brief
+  item dictionaries and returns fresh primitive copies. Tests prove exact Phase
+  199 production type construction, `.to_dict()` parity, fresh mutable
+  primitive expected dictionaries, deterministic repeated construction,
+  compact JSON byte determinism, nested Phase 198 payload parity, item identity
+  preservation through the section builder, limitation/non-claim carry-forward,
+  no `from_dict()`, no paper/live/approved/trading-ready/actionable authority
+  states outside explicit non-claims, and fixture AST/import/call/source
+  guardrails against broker/account/order/fill/allocation/portfolio mutation
+  behavior, file I/O, persistence, network/socket access, vendor APIs,
+  credentials, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, ranking/scoring, recommendations, approval/readiness/trading
+  authority language outside explicit non-claims, or dependencies. No `src`
+  files, SMA mechanics, SMA observation fixtures, SMA observation brief item
+  behavior, SMA observation brief section behavior, advisory operating brief
+  package, package synthetic builder, package CLI, content bundle, renderer,
+  export, or existing CLI behavior changed; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
