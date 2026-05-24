@@ -6045,6 +6045,43 @@ renderer, export, existing CLI behavior, real data ingestion, evaluator,
 backtesting, strategy execution, or dependencies change. Normal pytest remains
 offline, credential-free, deterministic, and safe.
 
+Phase 197 - SMA Research Observation Brief Item adds
+`src/algotrader/research/sma_research_observation_brief.py` with frozen/slotted
+`SmaResearchObservationBriefItem` and
+`build_sma_research_observation_brief_item(observation)`. The wrapper accepts
+only the exact Phase 195 `SmaResearchObservation` type, preserves the source
+observation object identity, and emits fixed `item_type`,
+candidate-only/advisory-only/capital-authority-false metadata.
+
+The Phase 197 builder maps `position_vs_sma` deterministically to one of
+`above_sma_observation`, `below_sma_observation`, `equal_sma_observation`, or
+`insufficient_history`, then generates deterministic non-actionable headline
+and summary text from observation metadata only. It carries forward source
+limitations and non-claims with first-seen de-dupe and validates direct
+construction against source metadata so malformed lookalikes, subclasses,
+metadata mismatches, and authority/actionability wording outside explicit
+non-claims are rejected. `to_dict()` is deterministic and primitive-only,
+includes nested `source_observation.to_dict()`, serializes tuples as lists,
+does not mutate the source observation, and adds no `from_dict()`.
+
+Phase 197 tests cover above-SMA and insufficient-history fixture wrapping,
+exact source identity, exact type rejection for non-observations, lookalikes,
+and subclasses, fixed advisory metadata, all mechanical state mappings,
+deterministic non-actionable headline and summary text, limitation/non-claim
+carry-forward, primitive deterministic serialization, compact JSON byte
+determinism, source observation non-mutation, frozen/slotted behavior, absence
+of `from_dict()`, no public buy/sell/hold/signal/evaluator/order/allocation/
+broker/portfolio/trading-authority payload fields, no production imports from
+`tests` or `tests.fixtures`, and AST/import/call/source guardrails against
+file I/O, persistence, network/socket access, vendor APIs, credentials,
+broker/runtime behavior, scheduler/dashboard behavior, notebooks, ML,
+LLM/agent behavior, ranking/scoring, recommendations, approvals/readiness,
+allocation/order/portfolio mutation, capital authority, trading authority, or
+new dependencies. SMA research observation mechanics and fixtures, advisory
+operating brief package, package synthetic builder, package CLI, content
+bundle, renderer, export, and existing CLI behavior remain unchanged. Normal
+pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

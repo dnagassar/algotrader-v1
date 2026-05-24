@@ -11792,6 +11792,37 @@ Safe next tasks include:
   renderer, export, existing CLI behavior, real data ingestion, evaluator,
   backtesting, strategy execution, or dependencies changed; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 197 - SMA Research Observation Brief Item adds
+  `src/algotrader/research/sma_research_observation_brief.py` with
+  frozen/slotted `SmaResearchObservationBriefItem` and
+  `build_sma_research_observation_brief_item(observation)`. The wrapper
+  accepts only the exact Phase 195 `SmaResearchObservation`, preserves source
+  observation identity, pins `item_type="sma_research_observation_brief_item"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`, maps `position_vs_sma` to
+  `above_sma_observation`, `below_sma_observation`,
+  `equal_sma_observation`, or `insufficient_history`, and generates
+  deterministic non-actionable headline and summary text from observation
+  metadata only. It carries source limitations and non-claims forward with
+  first-seen de-dupe, validates direct construction against the source
+  observation, rejects malformed lookalikes and subclasses, emits
+  primitive-only deterministic `to_dict()` output with nested
+  `source_observation.to_dict()`, does not mutate the source observation, and
+  adds no `from_dict()`. Tests cover above-SMA and insufficient-history fixture
+  wrapping, exact source identity, fixed metadata, mechanical mapping,
+  headline/summary determinism, non-claim carry-forward, compact JSON byte
+  determinism, source non-mutation, frozen/slotted behavior, no public
+  buy/sell/hold/signal/evaluator/order/allocation/broker/portfolio/
+  trading-authority payload fields, no production imports from `tests` or
+  `tests.fixtures`, and AST/import/call/source guardrails against file I/O,
+  persistence, network/socket access, vendor APIs, credentials,
+  broker/runtime behavior, scheduler/dashboard behavior, notebooks, ML,
+  LLM/agent behavior, ranking/scoring, recommendations, approval/readiness,
+  allocation/order/portfolio mutation, capital authority, trading authority,
+  or dependencies. SMA research observation mechanics and fixtures, advisory
+  operating brief package, package synthetic builder, package CLI, content
+  bundle, renderer, export, and existing CLI behavior are unchanged; normal
+  pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
