@@ -6320,6 +6320,36 @@ synthetic builder, package CLI, content bundle, renderer, export, and existing
 CLI behavior remain unchanged. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 205 - Advisory Operating Brief Content Bundle SMA Research Observation
+Branch extends `src/algotrader/research/advisory_operating_brief_content_bundle.py`
+with an optional `sma_research_observation_briefs` branch for exact Phase 201
+`SmaResearchObservationBrief` objects. The bundle still emits fixed
+`bundle_type="advisory_operating_brief_content_bundle"`,
+candidate-only/advisory-only/capital-authority-false metadata, requires at
+least one total brief across all supported branches, preserves object identity
+and order inside each branch, rejects malformed inputs and subclasses, rejects
+duplicate identities across all branches, and carries limitations and
+non-claims forward with first-seen de-dupe.
+
+The Phase 205 `to_dict()` output remains deterministic and primitive-only. It
+adds `sma_research_observation_brief_count` and
+`sma_research_observation_briefs` only when the SMA branch is populated, which
+keeps the existing no-risk, risk-inclusive, and research-queue-inclusive
+fixture payloads byte-for-byte unchanged. The new synthetic fixture helper
+composes candidate research, strategy eligibility, risk authority, research
+queue, and SMA research observation briefs through the production bundle
+builder, and its expected dictionary nests the Phase 202 SMA brief expected
+payload. Tests prove existing fixture compatibility, new SMA branch payload
+presence, nested SMA payload parity, branch identity/order preservation,
+cross-branch duplicate rejection, deterministic repeated construction, fresh
+mutable primitive expected dictionaries, and unchanged renderer/export/CLI
+behavior. No real data ingestion, broker/runtime behavior, file I/O,
+persistence, network/socket access, credentials, scheduler/dashboard behavior,
+notebooks, ML, LLM/agent behavior, ranking/scoring, recommendations,
+approval/readiness/trading authority behavior, new dependencies, or `from_dict()`
+are added. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

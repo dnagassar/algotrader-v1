@@ -12040,6 +12040,34 @@ Safe next tasks include:
   operating brief package, package synthetic builder, package CLI, content
   bundle, renderer, export, and existing CLI behavior are unchanged; normal
   pytest remains offline, credential-free, deterministic, and safe
+- Phase 205 - Advisory Operating Brief Content Bundle SMA Research Observation
+  Branch extends
+  `src/algotrader/research/advisory_operating_brief_content_bundle.py` with an
+  optional `sma_research_observation_briefs` branch for exact Phase 201
+  `SmaResearchObservationBrief` objects. The bundle keeps fixed
+  `bundle_type="advisory_operating_brief_content_bundle"`,
+  candidate-only/advisory-only/capital-authority-false metadata, requires at
+  least one total brief across all supported branches, preserves object
+  identity and order within each branch, rejects malformed inputs and
+  subclasses, rejects duplicate identities across all branches, and carries
+  limitations/non-claims forward with first-seen de-dupe. `to_dict()` adds
+  `sma_research_observation_brief_count` and
+  `sma_research_observation_briefs` only when populated, preserving existing
+  no-risk, risk-inclusive, and research-queue-inclusive fixture payloads
+  byte-for-byte. The new synthetic fixture helper composes candidate research,
+  strategy eligibility, risk authority, research queue, and SMA research
+  observation branches through the production bundle builder, and its expected
+  dictionary nests the Phase 202 expected SMA brief payload. Tests prove
+  existing fixture compatibility, new SMA branch payload presence, nested SMA
+  payload parity, branch identity/order preservation, cross-branch duplicate
+  rejection, deterministic repeated construction, fresh mutable primitive
+  expected dictionaries, and unchanged renderer/export/CLI behavior. No real
+  data ingestion, broker/runtime behavior, file I/O, persistence,
+  network/socket access, credentials, scheduler/dashboard behavior, notebooks,
+  ML, LLM/agent behavior, ranking/scoring, recommendations,
+  approval/readiness/trading authority behavior, dependencies, or `from_dict()`
+  are added; normal pytest remains offline, credential-free, deterministic,
+  and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

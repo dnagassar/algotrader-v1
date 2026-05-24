@@ -37,6 +37,9 @@ from algotrader.research.risk_authority_brief_section import (
     build_risk_authority_brief_section,
 )
 from algotrader.research.risk_authority_status import build_risk_authority_status
+from algotrader.research.sma_research_observation_brief_container import (
+    SmaResearchObservationBrief,
+)
 from algotrader.research.strategy_eligibility_brief import (
     StrategyEligibilityBrief,
     build_strategy_eligibility_brief,
@@ -61,6 +64,10 @@ from tests.fixtures.research_queue_brief import (
 from tests.fixtures.risk_authority_brief import (
     build_synthetic_risk_authority_brief,
     expected_synthetic_risk_authority_brief_dict,
+)
+from tests.fixtures.sma_research_observation_brief_container import (
+    build_synthetic_sma_research_observation_brief,
+    expected_synthetic_sma_research_observation_brief_dict,
 )
 from tests.fixtures.strategy_eligibility_brief import (
     build_synthetic_strategy_eligibility_brief,
@@ -98,6 +105,9 @@ _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT = (
 )
 _EXPECTED_RISK_AUTHORITY_BRIEF_DICT = expected_synthetic_risk_authority_brief_dict()
 _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT = expected_synthetic_research_queue_brief_dict()
+_EXPECTED_SMA_RESEARCH_OBSERVATION_BRIEF_DICT = (
+    expected_synthetic_sma_research_observation_brief_dict()
+)
 _EXPECTED_LIMITATIONS = _combined_expected_values(
     _EXPECTED_CANDIDATE_BRIEF_DICT,
     _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
@@ -132,6 +142,22 @@ _EXPECTED_RESEARCH_QUEUE_FAMILY_NON_CLAIMS = _combined_expected_values(
     _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
     _EXPECTED_RISK_AUTHORITY_BRIEF_DICT,
     _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT,
+    field_name="non_claims",
+)
+_EXPECTED_SMA_FAMILY_LIMITATIONS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    _EXPECTED_RISK_AUTHORITY_BRIEF_DICT,
+    _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT,
+    _EXPECTED_SMA_RESEARCH_OBSERVATION_BRIEF_DICT,
+    field_name="limitations",
+)
+_EXPECTED_SMA_FAMILY_NON_CLAIMS = _combined_expected_values(
+    _EXPECTED_CANDIDATE_BRIEF_DICT,
+    _EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT,
+    _EXPECTED_RISK_AUTHORITY_BRIEF_DICT,
+    _EXPECTED_RESEARCH_QUEUE_BRIEF_DICT,
+    _EXPECTED_SMA_RESEARCH_OBSERVATION_BRIEF_DICT,
     field_name="non_claims",
 )
 _EXPECTED_COMBINED_BUNDLE_DICT = {
@@ -196,6 +222,32 @@ _EXPECTED_RESEARCH_QUEUE_FAMILY_BUNDLE_DICT = {
     "limitations": list(_EXPECTED_RESEARCH_QUEUE_FAMILY_LIMITATIONS),
     "non_claims": list(_EXPECTED_RESEARCH_QUEUE_FAMILY_NON_CLAIMS),
 }
+_EXPECTED_SMA_FAMILY_BUNDLE_DICT = {
+    "bundle_type": "advisory_operating_brief_content_bundle",
+    "status": "candidate_only",
+    "authority": "advisory_only",
+    "capital_authority": False,
+    "title": "Advisory operating brief content bundle metadata",
+    "summary": (
+        "Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+        "1 research queue brief(s), 1 SMA research observation brief(s), "
+        f"{len(_EXPECTED_SMA_FAMILY_LIMITATIONS)} limitation(s), and "
+        f"{len(_EXPECTED_SMA_FAMILY_NON_CLAIMS)} non-claim(s)."
+    ),
+    "candidate_research_brief_count": 1,
+    "strategy_eligibility_brief_count": 1,
+    "risk_authority_brief_count": 1,
+    "research_queue_brief_count": 1,
+    "sma_research_observation_brief_count": 1,
+    "candidate_research_briefs": [_EXPECTED_CANDIDATE_BRIEF_DICT],
+    "strategy_eligibility_briefs": [_EXPECTED_STRATEGY_ELIGIBILITY_BRIEF_DICT],
+    "risk_authority_briefs": [_EXPECTED_RISK_AUTHORITY_BRIEF_DICT],
+    "research_queue_briefs": [_EXPECTED_RESEARCH_QUEUE_BRIEF_DICT],
+    "sma_research_observation_briefs": [_EXPECTED_SMA_RESEARCH_OBSERVATION_BRIEF_DICT],
+    "limitations": list(_EXPECTED_SMA_FAMILY_LIMITATIONS),
+    "non_claims": list(_EXPECTED_SMA_FAMILY_NON_CLAIMS),
+}
 _EXPECTED_COMPACT_JSON = json.dumps(
     _EXPECTED_COMBINED_BUNDLE_DICT,
     ensure_ascii=True,
@@ -208,6 +260,11 @@ _EXPECTED_ALL_FAMILY_COMPACT_JSON = json.dumps(
 )
 _EXPECTED_RESEARCH_QUEUE_FAMILY_COMPACT_JSON = json.dumps(
     _EXPECTED_RESEARCH_QUEUE_FAMILY_BUNDLE_DICT,
+    ensure_ascii=True,
+    separators=(",", ":"),
+)
+_EXPECTED_SMA_FAMILY_COMPACT_JSON = json.dumps(
+    _EXPECTED_SMA_FAMILY_BUNDLE_DICT,
     ensure_ascii=True,
     separators=(",", ":"),
 )
@@ -235,6 +292,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.research.candidate_research_brief",
     "algotrader.research.research_queue_brief",
     "algotrader.research.risk_authority_brief",
+    "algotrader.research.sma_research_observation_brief_container",
     "algotrader.research.strategy_eligibility_brief",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
@@ -393,8 +451,10 @@ def test_valid_construction_with_synthetic_candidate_research_brief() -> None:
     assert bundle.strategy_eligibility_briefs == ()
     assert bundle.risk_authority_briefs == ()
     assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == ()
     assert "risk_authority_briefs" not in bundle.to_dict()
     assert "research_queue_briefs" not in bundle.to_dict()
+    assert "sma_research_observation_briefs" not in bundle.to_dict()
     assert bundle.to_dict()["candidate_research_briefs"][0] == (
         expected_synthetic_candidate_research_brief_dict()
     )
@@ -413,8 +473,10 @@ def test_valid_construction_with_phase_160_strategy_eligibility_brief() -> None:
     assert bundle.strategy_eligibility_briefs[0] is eligibility_brief
     assert bundle.risk_authority_briefs == ()
     assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == ()
     assert "risk_authority_briefs" not in bundle.to_dict()
     assert "research_queue_briefs" not in bundle.to_dict()
+    assert "sma_research_observation_briefs" not in bundle.to_dict()
     assert bundle.to_dict()["strategy_eligibility_briefs"][0] == (
         expected_synthetic_strategy_eligibility_brief_dict()
     )
@@ -433,6 +495,7 @@ def test_valid_construction_with_both_families_populated() -> None:
     assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
     assert bundle.risk_authority_briefs == ()
     assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == ()
     assert bundle.to_dict() == _EXPECTED_COMBINED_BUNDLE_DICT
 
 
@@ -450,11 +513,14 @@ def test_valid_construction_with_phase_176_risk_authority_brief() -> None:
     assert bundle.risk_authority_briefs == (risk_brief,)
     assert bundle.risk_authority_briefs[0] is risk_brief
     assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == ()
     assert payload["candidate_research_brief_count"] == 0
     assert payload["strategy_eligibility_brief_count"] == 0
     assert payload["risk_authority_brief_count"] == 1
     assert "research_queue_brief_count" not in payload
     assert "research_queue_briefs" not in payload
+    assert "sma_research_observation_brief_count" not in payload
+    assert "sma_research_observation_briefs" not in payload
     assert payload["risk_authority_briefs"][0] == (
         expected_synthetic_risk_authority_brief_dict()
     )
@@ -474,12 +540,39 @@ def test_valid_construction_with_phase_182_research_queue_brief() -> None:
     assert bundle.risk_authority_briefs == ()
     assert bundle.research_queue_briefs == (research_queue_brief,)
     assert bundle.research_queue_briefs[0] is research_queue_brief
+    assert bundle.sma_research_observation_briefs == ()
     assert payload["candidate_research_brief_count"] == 0
     assert payload["strategy_eligibility_brief_count"] == 0
     assert "risk_authority_brief_count" not in payload
     assert payload["research_queue_brief_count"] == 1
+    assert "sma_research_observation_brief_count" not in payload
     assert payload["research_queue_briefs"][0] == (
         expected_synthetic_research_queue_brief_dict()
+    )
+
+
+def test_valid_construction_with_phase_201_sma_research_observation_brief() -> None:
+    sma_brief = build_synthetic_sma_research_observation_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        sma_research_observation_briefs=[sma_brief],
+    )
+    payload = bundle.to_dict()
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert bundle.candidate_research_briefs == ()
+    assert bundle.strategy_eligibility_briefs == ()
+    assert bundle.risk_authority_briefs == ()
+    assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == (sma_brief,)
+    assert bundle.sma_research_observation_briefs[0] is sma_brief
+    assert payload["candidate_research_brief_count"] == 0
+    assert payload["strategy_eligibility_brief_count"] == 0
+    assert "risk_authority_brief_count" not in payload
+    assert "research_queue_brief_count" not in payload
+    assert payload["sma_research_observation_brief_count"] == 1
+    assert payload["sma_research_observation_briefs"][0] == (
+        expected_synthetic_sma_research_observation_brief_dict()
     )
 
 
@@ -498,6 +591,7 @@ def test_valid_construction_with_all_three_families_populated() -> None:
     assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
     assert bundle.risk_authority_briefs == (risk_brief,)
     assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == ()
     assert bundle.to_dict() == _EXPECTED_ALL_FAMILY_BUNDLE_DICT
 
 
@@ -518,7 +612,31 @@ def test_valid_construction_with_all_four_families_populated() -> None:
     assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
     assert bundle.risk_authority_briefs == (risk_brief,)
     assert bundle.research_queue_briefs == (research_queue_brief,)
+    assert bundle.sma_research_observation_briefs == ()
     assert bundle.to_dict() == _EXPECTED_RESEARCH_QUEUE_FAMILY_BUNDLE_DICT
+
+
+def test_valid_construction_with_all_five_families_populated() -> None:
+    candidate_brief = build_synthetic_candidate_research_brief()
+    eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    risk_brief = build_synthetic_risk_authority_brief()
+    research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[candidate_brief],
+        strategy_eligibility_briefs=[eligibility_brief],
+        risk_authority_briefs=[risk_brief],
+        research_queue_briefs=[research_queue_brief],
+        sma_research_observation_briefs=[sma_brief],
+    )
+
+    assert bundle.candidate_research_briefs == (candidate_brief,)
+    assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
+    assert bundle.risk_authority_briefs == (risk_brief,)
+    assert bundle.research_queue_briefs == (research_queue_brief,)
+    assert bundle.sma_research_observation_briefs == (sma_brief,)
+    assert bundle.to_dict() == _EXPECTED_SMA_FAMILY_BUNDLE_DICT
 
 
 def test_empty_candidate_family_is_allowed_when_eligibility_family_is_non_empty() -> (
@@ -538,6 +656,7 @@ def test_empty_candidate_family_is_allowed_when_eligibility_family_is_non_empty(
     assert bundle.to_dict()["strategy_eligibility_brief_count"] == 1
     assert "risk_authority_brief_count" not in bundle.to_dict()
     assert "research_queue_brief_count" not in bundle.to_dict()
+    assert "sma_research_observation_brief_count" not in bundle.to_dict()
 
 
 def test_empty_eligibility_family_is_allowed_when_candidate_family_is_non_empty() -> (
@@ -557,6 +676,7 @@ def test_empty_eligibility_family_is_allowed_when_candidate_family_is_non_empty(
     assert bundle.to_dict()["strategy_eligibility_brief_count"] == 0
     assert "risk_authority_brief_count" not in bundle.to_dict()
     assert "research_queue_brief_count" not in bundle.to_dict()
+    assert "sma_research_observation_brief_count" not in bundle.to_dict()
 
 
 def test_empty_candidate_and_eligibility_families_are_allowed_when_risk_is_non_empty() -> (
@@ -576,6 +696,7 @@ def test_empty_candidate_and_eligibility_families_are_allowed_when_risk_is_non_e
     assert bundle.to_dict()["candidate_research_brief_count"] == 0
     assert bundle.to_dict()["strategy_eligibility_brief_count"] == 0
     assert bundle.to_dict()["risk_authority_brief_count"] == 1
+    assert "sma_research_observation_brief_count" not in bundle.to_dict()
 
 
 def test_empty_existing_families_are_allowed_when_research_queue_is_non_empty() -> (
@@ -598,6 +719,30 @@ def test_empty_existing_families_are_allowed_when_research_queue_is_non_empty() 
     assert bundle.to_dict()["strategy_eligibility_brief_count"] == 0
     assert "risk_authority_brief_count" not in bundle.to_dict()
     assert bundle.to_dict()["research_queue_brief_count"] == 1
+    assert "sma_research_observation_brief_count" not in bundle.to_dict()
+
+
+def test_empty_existing_families_are_allowed_when_sma_branch_is_non_empty() -> None:
+    sma_brief = build_synthetic_sma_research_observation_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(),
+        strategy_eligibility_briefs=(),
+        risk_authority_briefs=(),
+        research_queue_briefs=(),
+        sma_research_observation_briefs=(sma_brief,),
+    )
+
+    assert bundle.candidate_research_briefs == ()
+    assert bundle.strategy_eligibility_briefs == ()
+    assert bundle.risk_authority_briefs == ()
+    assert bundle.research_queue_briefs == ()
+    assert bundle.sma_research_observation_briefs == (sma_brief,)
+    assert bundle.to_dict()["candidate_research_brief_count"] == 0
+    assert bundle.to_dict()["strategy_eligibility_brief_count"] == 0
+    assert "risk_authority_brief_count" not in bundle.to_dict()
+    assert "research_queue_brief_count" not in bundle.to_dict()
+    assert bundle.to_dict()["sma_research_observation_brief_count"] == 1
 
 
 def test_all_families_empty_is_rejected() -> None:
@@ -609,6 +754,7 @@ def test_all_families_empty_is_rejected() -> None:
     payload["strategy_eligibility_briefs"] = ()
     payload["risk_authority_briefs"] = ()
     payload["research_queue_briefs"] = ()
+    payload["sma_research_observation_briefs"] = ()
     with pytest.raises(ValidationError, match="at least one supported brief"):
         AdvisoryOperatingBriefContentBundle(**payload)
 
@@ -685,21 +831,42 @@ def test_research_queue_family_identity_and_order_are_preserved() -> None:
     ]
 
 
+def test_sma_research_observation_family_identity_and_order_are_preserved() -> None:
+    first = build_synthetic_sma_research_observation_brief()
+    second = _second_sma_research_observation_brief()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        sma_research_observation_briefs=[second, first],
+    )
+    payload = bundle.to_dict()
+
+    assert bundle.sma_research_observation_briefs == (second, first)
+    assert bundle.sma_research_observation_briefs[0] is second
+    assert bundle.sma_research_observation_briefs[1] is first
+    assert payload["sma_research_observation_briefs"] == [
+        second.to_dict(),
+        first.to_dict(),
+    ]
+
+
 def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     candidate_brief = build_synthetic_candidate_research_brief()
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
     risk_brief = build_synthetic_risk_authority_brief()
     research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
     payload = _valid_constructor_payload(
         candidate_brief,
         eligibility_brief,
         risk_brief,
         research_queue_brief,
+        sma_brief,
     )
     payload["candidate_research_briefs"] = [candidate_brief]
     payload["strategy_eligibility_briefs"] = [eligibility_brief]
     payload["risk_authority_briefs"] = [risk_brief]
     payload["research_queue_briefs"] = [research_queue_brief]
+    payload["sma_research_observation_briefs"] = [sma_brief]
 
     bundle = AdvisoryOperatingBriefContentBundle(**payload)
 
@@ -707,10 +874,12 @@ def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     assert isinstance(bundle.strategy_eligibility_briefs, tuple)
     assert isinstance(bundle.risk_authority_briefs, tuple)
     assert isinstance(bundle.research_queue_briefs, tuple)
+    assert isinstance(bundle.sma_research_observation_briefs, tuple)
     assert bundle.candidate_research_briefs == (candidate_brief,)
     assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
     assert bundle.risk_authority_briefs == (risk_brief,)
     assert bundle.research_queue_briefs == (research_queue_brief,)
+    assert bundle.sma_research_observation_briefs == (sma_brief,)
 
 
 def test_duplicate_object_identities_are_rejected() -> None:
@@ -718,6 +887,7 @@ def test_duplicate_object_identities_are_rejected() -> None:
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
     risk_brief = build_synthetic_risk_authority_brief()
     research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
 
     with pytest.raises(ValidationError, match="duplicate brief identities"):
         build_advisory_operating_brief_content_bundle(
@@ -740,8 +910,23 @@ def test_duplicate_object_identities_are_rejected() -> None:
         )
 
     with pytest.raises(ValidationError, match="duplicate brief identities"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=[sma_brief, sma_brief],
+        )
+
+    with pytest.raises(ValidationError, match="duplicate brief identities"):
         _validate_unique_brief_identities_for_test(
             (candidate_brief,),
+            (),
+            (),
+            (candidate_brief,),  # type: ignore[arg-type]
+            (),
+        )
+
+    with pytest.raises(ValidationError, match="duplicate brief identities"):
+        _validate_unique_brief_identities_for_test(
+            (candidate_brief,),
+            (),
             (),
             (),
             (candidate_brief,),  # type: ignore[arg-type]
@@ -760,6 +945,7 @@ def test_duplicate_guard_uses_both_supported_collections() -> None:
     assert "strategy_eligibility_briefs" in loaded_names
     assert "risk_authority_briefs" in loaded_names
     assert "research_queue_briefs" in loaded_names
+    assert "sma_research_observation_briefs" in loaded_names
     assert "seen_identities" in loaded_names
 
 
@@ -813,10 +999,26 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         def to_dict(self) -> dict[str, object]:
             return {"brief_type": self.brief_type}
 
+    class SmaResearchObservationBriefLike:
+        brief_type = "sma_research_observation_brief"
+        status = "candidate_only"
+        authority = "advisory_only"
+        capital_authority = False
+        title = "SMA research observation brief metadata"
+        summary = "SMA research observation brief contains synthetic metadata."
+        limitations = ("synthetic metadata only",)
+        non_claims = ("not synthetic claim",)
+
+        def to_dict(self) -> dict[str, object]:
+            return {"brief_type": self.brief_type}
+
     class DerivedRiskAuthorityBrief(RiskAuthorityBrief):
         pass
 
     class DerivedResearchQueueBrief(ResearchQueueBrief):
+        pass
+
+    class DerivedSmaResearchObservationBrief(SmaResearchObservationBrief):
         pass
 
     source_risk = build_synthetic_risk_authority_brief()
@@ -842,6 +1044,19 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         sections=source_research_queue.sections,
         limitations=source_research_queue.limitations,
         non_claims=source_research_queue.non_claims,
+    )
+    source_sma = build_synthetic_sma_research_observation_brief()
+    subclass_sma = DerivedSmaResearchObservationBrief(
+        brief_type=source_sma.brief_type,
+        status=source_sma.status,
+        authority=source_sma.authority,
+        capital_authority=source_sma.capital_authority,
+        brief_id=source_sma.brief_id,
+        title=source_sma.title,
+        summary=source_sma.summary,
+        sections=source_sma.sections,
+        limitations=source_sma.limitations,
+        non_claims=source_sma.non_claims,
     )
 
     with pytest.raises(ValidationError, match="CandidateResearchBrief"):
@@ -904,6 +1119,26 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
             research_queue_briefs=[build_synthetic_candidate_research_brief()],
         )
 
+    with pytest.raises(ValidationError, match="SmaResearchObservationBrief"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=[object()],
+        )
+
+    with pytest.raises(ValidationError, match="SmaResearchObservationBrief"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=[SmaResearchObservationBriefLike()],
+        )
+
+    with pytest.raises(ValidationError, match="SmaResearchObservationBrief"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=[subclass_sma],
+        )
+
+    with pytest.raises(ValidationError, match="SmaResearchObservationBrief"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=[build_synthetic_candidate_research_brief()],
+        )
+
     with pytest.raises(ValidationError, match="iterable"):
         build_advisory_operating_brief_content_bundle(
             candidate_research_briefs=object(),  # type: ignore[arg-type]
@@ -922,6 +1157,11 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
     with pytest.raises(ValidationError, match="iterable"):
         build_advisory_operating_brief_content_bundle(
             research_queue_briefs=object(),  # type: ignore[arg-type]
+        )
+
+    with pytest.raises(ValidationError, match="iterable"):
+        build_advisory_operating_brief_content_bundle(
+            sma_research_observation_briefs=object(),  # type: ignore[arg-type]
         )
 
 
@@ -963,6 +1203,7 @@ def test_title_and_summary_are_deterministic_and_advisory_only() -> None:
     second = _combined_bundle()
     all_family = _all_family_bundle()
     research_queue_family = _research_queue_family_bundle()
+    sma_family = _sma_family_bundle()
 
     assert first.title == second.title == _EXPECTED_COMBINED_BUNDLE_DICT["title"]
     assert first.summary == second.summary == _EXPECTED_COMBINED_BUNDLE_DICT["summary"]
@@ -974,6 +1215,8 @@ def test_title_and_summary_are_deterministic_and_advisory_only() -> None:
     assert research_queue_family.summary == (
         _EXPECTED_RESEARCH_QUEUE_FAMILY_BUNDLE_DICT["summary"]
     )
+    assert sma_family.title == _EXPECTED_SMA_FAMILY_BUNDLE_DICT["title"]
+    assert sma_family.summary == _EXPECTED_SMA_FAMILY_BUNDLE_DICT["summary"]
     for text in (
         first.title,
         first.summary,
@@ -981,6 +1224,8 @@ def test_title_and_summary_are_deterministic_and_advisory_only() -> None:
         all_family.summary,
         research_queue_family.title,
         research_queue_family.summary,
+        sma_family.title,
+        sma_family.summary,
     ):
         lowered = text.lower()
         for token in _FORBIDDEN_TEXT_TOKENS:
@@ -1077,25 +1322,54 @@ def test_to_dict_exact_output_and_compact_json_are_pinned_for_research_queue_cas
     assert bundle.to_dict() == _EXPECTED_RESEARCH_QUEUE_FAMILY_BUNDLE_DICT
 
 
+def test_to_dict_exact_output_and_compact_json_are_pinned_for_sma_case() -> None:
+    bundle = _sma_family_bundle()
+    payload = bundle.to_dict()
+    compact_json = json.dumps(payload, ensure_ascii=True, separators=(",", ":"))
+
+    assert payload == _EXPECTED_SMA_FAMILY_BUNDLE_DICT
+    assert tuple(payload) == tuple(_EXPECTED_SMA_FAMILY_BUNDLE_DICT)
+    assert compact_json == _EXPECTED_SMA_FAMILY_COMPACT_JSON
+    assert json.loads(compact_json) == payload
+    assert payload["sma_research_observation_briefs"][0] == (
+        expected_synthetic_sma_research_observation_brief_dict()
+    )
+    _assert_primitive_only(payload)
+
+    payload["sma_research_observation_briefs"][0]["sections"][0][
+        "limitations"
+    ].append("mutated primitive copy")
+    payload["sma_research_observation_briefs"][0]["non_claims"].append(
+        "not mutated primitive copy"
+    )
+    payload["limitations"].append("mutated primitive copy")
+    payload["non_claims"].append("not mutated primitive copy")
+
+    assert bundle.to_dict() == _EXPECTED_SMA_FAMILY_BUNDLE_DICT
+
+
 def test_repeated_construction_is_deterministic() -> None:
     candidate_brief = build_synthetic_candidate_research_brief()
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
     risk_brief = build_synthetic_risk_authority_brief()
     research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
 
     first = build_advisory_operating_brief_content_bundle(
         [candidate_brief],
         [eligibility_brief],
         [risk_brief],
         [research_queue_brief],
+        [sma_brief],
     )
     second = build_advisory_operating_brief_content_bundle(
         [candidate_brief],
         [eligibility_brief],
         [risk_brief],
         [research_queue_brief],
+        [sma_brief],
     )
-    third = _research_queue_family_bundle()
+    third = _sma_family_bundle()
     first_payload = first.to_dict()
     second_payload = second.to_dict()
     first_json = json.dumps(first_payload, ensure_ascii=True, separators=(",", ":"))
@@ -1108,8 +1382,11 @@ def test_repeated_construction_is_deterministic() -> None:
     )
     assert first.risk_authority_briefs[0] is second.risk_authority_briefs[0]
     assert first.research_queue_briefs[0] is second.research_queue_briefs[0]
+    assert first.sma_research_observation_briefs[0] is (
+        second.sma_research_observation_briefs[0]
+    )
     assert first_payload == second_payload == third.to_dict()
-    assert first_json == second_json == _EXPECTED_RESEARCH_QUEUE_FAMILY_COMPACT_JSON
+    assert first_json == second_json == _EXPECTED_SMA_FAMILY_COMPACT_JSON
 
 
 def test_source_briefs_are_not_mutated() -> None:
@@ -1117,10 +1394,12 @@ def test_source_briefs_are_not_mutated() -> None:
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
     risk_brief = build_synthetic_risk_authority_brief()
     research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
     candidate_before = candidate_brief.to_dict()
     eligibility_before = eligibility_brief.to_dict()
     risk_before = risk_brief.to_dict()
     research_queue_before = research_queue_brief.to_dict()
+    sma_before = sma_brief.to_dict()
     identity_snapshot = (
         id(candidate_brief),
         id(candidate_brief.sections),
@@ -1138,6 +1417,10 @@ def test_source_briefs_are_not_mutated() -> None:
         id(research_queue_brief.sections),
         id(research_queue_brief.limitations),
         id(research_queue_brief.non_claims),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_brief.limitations),
+        id(sma_brief.non_claims),
     )
 
     bundle = build_advisory_operating_brief_content_bundle(
@@ -1145,6 +1428,7 @@ def test_source_briefs_are_not_mutated() -> None:
         [eligibility_brief],
         [risk_brief],
         [research_queue_brief],
+        [sma_brief],
     )
     payload = bundle.to_dict()
 
@@ -1160,12 +1444,16 @@ def test_source_briefs_are_not_mutated() -> None:
     payload["research_queue_briefs"][0]["sections"][0]["items"][0][
         "source_status"
     ]["non_claims"].append("not mutated primitive copy")
+    payload["sma_research_observation_briefs"][0]["sections"][0]["items"][0][
+        "source_observation"
+    ]["non_claims"].append("not mutated primitive copy")
     payload["limitations"].append("mutated primitive copy")
 
     assert candidate_brief.to_dict() == candidate_before
     assert eligibility_brief.to_dict() == eligibility_before
     assert risk_brief.to_dict() == risk_before
     assert research_queue_brief.to_dict() == research_queue_before
+    assert sma_brief.to_dict() == sma_before
     assert (
         id(candidate_brief),
         id(candidate_brief.sections),
@@ -1183,11 +1471,16 @@ def test_source_briefs_are_not_mutated() -> None:
         id(research_queue_brief.sections),
         id(research_queue_brief.limitations),
         id(research_queue_brief.non_claims),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_brief.limitations),
+        id(sma_brief.non_claims),
     ) == identity_snapshot
     assert bundle.candidate_research_briefs[0] is candidate_brief
     assert bundle.strategy_eligibility_briefs[0] is eligibility_brief
     assert bundle.risk_authority_briefs[0] is risk_brief
     assert bundle.research_queue_briefs[0] is research_queue_brief
+    assert bundle.sma_research_observation_briefs[0] is sma_brief
 
 
 def test_nested_strategy_eligibility_brief_dictionary_matches_phase_160_helper() -> (
@@ -1216,6 +1509,16 @@ def test_nested_research_queue_brief_dictionary_matches_phase_183_helper() -> No
     )
 
 
+def test_nested_sma_research_observation_brief_dictionary_matches_phase_202_helper() -> (
+    None
+):
+    bundle = _sma_family_bundle()
+
+    assert bundle.to_dict()["sma_research_observation_briefs"][0] == (
+        expected_synthetic_sma_research_observation_brief_dict()
+    )
+
+
 def test_nested_candidate_research_brief_dictionary_matches_existing_helper() -> None:
     bundle = _combined_bundle()
 
@@ -1229,27 +1532,31 @@ def test_limitations_and_non_claims_are_carried_forward_in_order() -> None:
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
     risk_brief = build_synthetic_risk_authority_brief()
     research_queue_brief = build_synthetic_research_queue_brief()
+    sma_brief = build_synthetic_sma_research_observation_brief()
     bundle = build_advisory_operating_brief_content_bundle(
         [candidate_brief],
         [eligibility_brief],
         [risk_brief],
         [research_queue_brief],
+        [sma_brief],
     )
 
-    assert bundle.limitations == _EXPECTED_RESEARCH_QUEUE_FAMILY_LIMITATIONS
-    assert bundle.non_claims == _EXPECTED_RESEARCH_QUEUE_FAMILY_NON_CLAIMS
+    assert bundle.limitations == _EXPECTED_SMA_FAMILY_LIMITATIONS
+    assert bundle.non_claims == _EXPECTED_SMA_FAMILY_NON_CLAIMS
     assert all(value in bundle.limitations for value in candidate_brief.limitations)
     assert all(value in bundle.limitations for value in eligibility_brief.limitations)
     assert all(value in bundle.limitations for value in risk_brief.limitations)
     assert all(
         value in bundle.limitations for value in research_queue_brief.limitations
     )
+    assert all(value in bundle.limitations for value in sma_brief.limitations)
     assert all(value in bundle.non_claims for value in candidate_brief.non_claims)
     assert all(value in bundle.non_claims for value in eligibility_brief.non_claims)
     assert all(value in bundle.non_claims for value in risk_brief.non_claims)
     assert all(
         value in bundle.non_claims for value in research_queue_brief.non_claims
     )
+    assert all(value in bundle.non_claims for value in sma_brief.non_claims)
 
 
 @pytest.mark.parametrize(
@@ -1315,6 +1622,7 @@ def test_no_actionable_trading_authority_fields_are_exposed() -> None:
         "non_claims",
         "risk_authority_briefs",
         "research_queue_briefs",
+        "sma_research_observation_briefs",
     )
     assert tuple(payload) == tuple(_EXPECTED_ALL_FAMILY_BUNDLE_DICT)
     assert field_names.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
@@ -1380,11 +1688,22 @@ def _research_queue_family_bundle() -> AdvisoryOperatingBriefContentBundle:
     )
 
 
+def _sma_family_bundle() -> AdvisoryOperatingBriefContentBundle:
+    return build_advisory_operating_brief_content_bundle(
+        [build_synthetic_candidate_research_brief()],
+        [build_synthetic_strategy_eligibility_brief()],
+        [build_synthetic_risk_authority_brief()],
+        [build_synthetic_research_queue_brief()],
+        [build_synthetic_sma_research_observation_brief()],
+    )
+
+
 def _valid_constructor_payload(
     candidate_brief: CandidateResearchBrief | None = None,
     eligibility_brief: StrategyEligibilityBrief | None = None,
     risk_brief: RiskAuthorityBrief | None = None,
     research_queue_brief: ResearchQueueBrief | None = None,
+    sma_brief: SmaResearchObservationBrief | None = None,
 ) -> dict[str, object]:
     source_candidate = candidate_brief or build_synthetic_candidate_research_brief()
     source_eligibility = eligibility_brief or build_synthetic_strategy_eligibility_brief()
@@ -1392,11 +1711,13 @@ def _valid_constructor_payload(
     source_research_queue = (
         research_queue_brief or build_synthetic_research_queue_brief()
     )
+    source_sma = sma_brief or build_synthetic_sma_research_observation_brief()
     bundle = build_advisory_operating_brief_content_bundle(
         [source_candidate],
         [source_eligibility],
         [source_risk],
         [source_research_queue],
+        [source_sma],
     )
     return {
         "bundle_type": bundle.bundle_type,
@@ -1411,6 +1732,7 @@ def _valid_constructor_payload(
         "non_claims": bundle.non_claims,
         "risk_authority_briefs": bundle.risk_authority_briefs,
         "research_queue_briefs": bundle.research_queue_briefs,
+        "sma_research_observation_briefs": bundle.sma_research_observation_briefs,
     }
 
 
@@ -1513,17 +1835,35 @@ def _second_research_queue_brief() -> ResearchQueueBrief:
     return build_research_queue_brief((section,))
 
 
+def _second_sma_research_observation_brief() -> SmaResearchObservationBrief:
+    brief = build_synthetic_sma_research_observation_brief()
+    return SmaResearchObservationBrief(
+        brief_type=brief.brief_type,
+        status=brief.status,
+        authority=brief.authority,
+        capital_authority=brief.capital_authority,
+        brief_id="sma-research-observation-brief:synthetic:secondary",
+        title="Secondary synthetic SMA observation brief",
+        summary="Secondary synthetic SMA observation metadata.",
+        sections=brief.sections,
+        limitations=brief.limitations,
+        non_claims=brief.non_claims,
+    )
+
+
 def _validate_unique_brief_identities_for_test(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     research_queue_briefs: tuple[ResearchQueueBrief, ...],
+    sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...],
 ) -> None:
     bundle_module._validate_unique_brief_identities(
         candidate_research_briefs,
         strategy_eligibility_briefs,
         risk_authority_briefs,
         research_queue_briefs,
+        sma_research_observation_briefs,
     )
 
 
