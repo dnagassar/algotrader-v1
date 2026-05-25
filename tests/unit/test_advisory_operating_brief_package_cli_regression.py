@@ -40,6 +40,7 @@ _BRANCH_KEYS = (
     "strategy_eligibility_briefs",
     "risk_authority_briefs",
     "research_queue_briefs",
+    "sma_research_observation_briefs",
 )
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
@@ -98,6 +99,9 @@ def test_json_stdout_is_exact_package_export_pin_and_round_trips(capsys) -> None
     assert payload == (
         preview_module.build_synthetic_advisory_operating_brief_package().to_dict()
     )
+    assert _dict(_dict(payload["content_bundle_export"])["payload"]) == _dict(
+        payload["content_bundle"]
+    )
 
 
 def test_repeated_preview_invocations_are_byte_for_byte_identical(capsys) -> None:
@@ -135,10 +139,12 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "Strategy Eligibility Briefs",
         "Risk Authority Briefs",
         "Research Queue Briefs",
+        "SMA Research Observation Briefs",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
         "research_queue_brief_count: 1",
+        "sma_research_observation_brief_count: 1",
         "Limitations",
         "Non-Claims",
     ):
@@ -165,6 +171,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["strategy_eligibility_brief_count"] == 1
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
+    assert content_bundle["sma_research_observation_brief_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
 

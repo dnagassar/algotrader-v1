@@ -6428,6 +6428,31 @@ recommendations, approvals/readiness/trading authority behavior, dependencies,
 or `from_dict()`. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 209 - Advisory Operating Brief Package Synthetic SMA Branch Alignment
+updates `build_synthetic_advisory_operating_brief_package_preview()` so the
+canonical package preview now builds the existing SMA-inclusive content bundle
+with risk authority and research queue branches enabled. The package metadata
+remains pinned to
+`advisory-operating-brief-package:synthetic:2026-01-20`, the synthetic advisory
+title/summary, `as_of="2026-01-20"`, `status="candidate_only"`,
+`authority="advisory_only"`, and `capital_authority=False`.
+
+The Phase 209 package fixture continues to delegate to the production-safe
+synthetic package builder while tests pin candidate research, strategy
+eligibility, risk authority, research queue, and SMA research observation
+branches together. Package fixture, export, renderer, CLI, and CLI regression
+tests now prove the nested content bundle payload/export/rendered text includes
+`sma_research_observation_brief_count` and
+`sma_research_observation_briefs`, round-trips through compact deterministic
+JSON, and stays byte-for-byte deterministic across repeated fixture, export,
+and CLI invocations. Content bundle preview behavior and package preview
+options remain unchanged; no file/path/source/vendor/broker/network/runtime/
+credential options, real data ingestion, persistence, scheduler/dashboard
+behavior, notebooks, ML, LLM/agent behavior, recommendations, ranking/scoring,
+approval/readiness/trading authority behavior, dependencies, or `from_dict()`
+are added. Normal pytest remains offline, credential-free, deterministic, and
+safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

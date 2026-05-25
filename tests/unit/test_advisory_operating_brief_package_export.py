@@ -20,6 +20,9 @@ from algotrader.research.advisory_operating_brief_package_export import (
 from algotrader.research.advisory_operating_brief_package_renderer import (
     render_advisory_operating_brief_package_text,
 )
+from tests.fixtures.advisory_operating_brief_content_bundle import (
+    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
+)
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
@@ -31,6 +34,9 @@ def _s(*parts: str) -> str:
 
 
 _EXPECTED_PAYLOAD = expected_synthetic_advisory_operating_brief_package_dict()
+_EXPECTED_CONTENT_BUNDLE_PAYLOAD = (
+    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+)
 _EXPECTED_JSON_TEXT = json.dumps(
     _EXPECTED_PAYLOAD,
     sort_keys=True,
@@ -249,6 +255,10 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     assert type(package) is AdvisoryOperatingBriefPackage
     assert type(exported) is AdvisoryOperatingBriefPackageExport
     assert exported.payload == package.to_dict() == before_payload == _EXPECTED_PAYLOAD
+    assert exported.payload["content_bundle"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
+    assert _dict(exported.payload["content_bundle_export"])["payload"] == (
+        _EXPECTED_CONTENT_BUNDLE_PAYLOAD
+    )
     assert exported.json_text == _EXPECTED_JSON_TEXT
     assert exported.json_text == json.dumps(
         exported.payload,
@@ -256,6 +266,7 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
         separators=(",", ":"),
     )
     assert json.loads(exported.json_text) == exported.payload
+    assert json.loads(exported.json_text) == _EXPECTED_PAYLOAD
     assert exported.rendered_text == _EXPECTED_RENDERED_TEXT
     assert exported.rendered_text == render_advisory_operating_brief_package_text(
         package

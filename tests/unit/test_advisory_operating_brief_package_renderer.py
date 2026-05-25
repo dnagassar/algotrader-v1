@@ -302,6 +302,8 @@ def test_rendered_output_embeds_stored_content_bundle_rendered_text_exactly() ->
     rendered = render_advisory_operating_brief_package_text(package)
 
     assert nested_rendered == _EXPECTED_NESTED_RENDERED_TEXT
+    assert "SMA Research Observation Briefs" in nested_rendered
+    assert "sma_research_observation_brief_count: 1" in nested_rendered
     assert rendered == (
         "\n".join(_EXPECTED_PREFIX_LINES)
         + "\n"
@@ -321,10 +323,12 @@ def test_rendered_output_includes_all_nested_brief_branches() -> None:
     assert "Strategy Eligibility Briefs" in rendered
     assert "Risk Authority Briefs" in rendered
     assert "Research Queue Briefs" in rendered
+    assert "SMA Research Observation Briefs" in rendered
     assert "candidate_research_brief_count: 1" in rendered
     assert "strategy_eligibility_brief_count: 1" in rendered
     assert "risk_authority_brief_count: 1" in rendered
     assert "research_queue_brief_count: 1" in rendered
+    assert "sma_research_observation_brief_count: 1" in rendered
 
 
 @pytest.mark.parametrize(

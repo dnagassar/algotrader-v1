@@ -12138,6 +12138,29 @@ Safe next tasks include:
   recommendations, approvals/readiness/trading authority behavior,
   dependencies, or `from_dict()` are added; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 209 - Advisory Operating Brief Package Synthetic SMA Branch Alignment
+  updates `build_synthetic_advisory_operating_brief_package_preview()` so the
+  canonical package preview now uses the existing SMA-inclusive content bundle
+  builder with risk authority and research queue enabled. Package metadata
+  stays pinned to
+  `advisory-operating-brief-package:synthetic:2026-01-20`, the synthetic
+  advisory title/summary, `as_of="2026-01-20"`, `status="candidate_only"`,
+  `authority="advisory_only"`, and `capital_authority=False`. The package
+  fixture still delegates to the production-safe synthetic builder, while
+  fixture/export/renderer/CLI/regression tests pin candidate research,
+  strategy eligibility, risk authority, research queue, and SMA research
+  observation branches together. The tests prove
+  `sma_research_observation_brief_count`,
+  `sma_research_observation_briefs`, nested content bundle export equality,
+  stored nested rendered text, compact JSON round-tripping, fixture-export-CLI
+  parity, and repeated byte-for-byte deterministic output. Content bundle
+  preview behavior and package preview options remain unchanged. No new
+  file/path/source/vendor/broker/network/runtime/credential options, real data
+  ingestion, broker/runtime behavior, file I/O, persistence,
+  scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+  recommendations, ranking/scoring, approval/readiness/trading authority
+  behavior, dependencies, or `from_dict()` are added; normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

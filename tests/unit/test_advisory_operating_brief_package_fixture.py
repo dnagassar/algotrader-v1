@@ -7,7 +7,7 @@ from pathlib import Path
 
 import algotrader.research.advisory_operating_brief_package_synthetic as synthetic_module
 from algotrader.research.advisory_operating_brief_content_bundle_cli import (
-    build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
+    build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation,
 )
 from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
@@ -16,6 +16,9 @@ from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
 )
 from tests.fixtures import advisory_operating_brief_package as fixture_module
+from tests.fixtures.advisory_operating_brief_content_bundle import (
+    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
+)
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
@@ -46,7 +49,9 @@ _TITLE = "Synthetic advisory operating brief package"
 _SUMMARY = "Advisory-only synthetic operating brief package content."
 _AS_OF = "2026-01-20"
 _EXPECTED_DICT = build_synthetic_advisory_operating_brief_package().to_dict()
-_EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(_EXPECTED_DICT["content_bundle"])
+_EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(
+    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+)
 _EXPECTED_CONTENT_BUNDLE_EXPORT_DICT = _primitive_copy(
     _EXPECTED_DICT["content_bundle_export"]
 )
@@ -58,6 +63,7 @@ _BRANCH_KEYS = (
     "strategy_eligibility_briefs",
     "risk_authority_briefs",
     "research_queue_briefs",
+    "sma_research_observation_briefs",
 )
 _ALLOWED_IMPORTS = {
     "__future__",
@@ -309,15 +315,19 @@ def test_repeated_construction_and_compact_json_bytes_are_deterministic() -> Non
     assert json.loads(_EXPECTED_COMPACT_JSON_BYTES.decode("ascii")) == _EXPECTED_DICT
 
 
-def test_nested_content_bundle_matches_research_queue_inclusive_fixture() -> None:
+def test_nested_content_bundle_matches_sma_inclusive_fixture() -> None:
     payload = build_synthetic_advisory_operating_brief_package().to_dict()
     content_bundle = _dict(payload["content_bundle"])
 
     assert content_bundle == _EXPECTED_CONTENT_BUNDLE_DICT
+    assert content_bundle == (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+    )
     assert content_bundle["candidate_research_brief_count"] == 1
     assert content_bundle["strategy_eligibility_brief_count"] == 1
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
+    assert content_bundle["sma_research_observation_brief_count"] == 1
     assert tuple(branch_key for branch_key in _BRANCH_KEYS if branch_key in content_bundle) == (
         _BRANCH_KEYS
     )
@@ -352,26 +362,45 @@ def test_fixture_export_payload_byte_matches_expected_package() -> None:
     assert exported.payload == expected_synthetic_advisory_operating_brief_package_dict()
 
 
-def test_package_preserves_source_content_bundle_identity(
+def test_package_builds_expected_content_bundle_from_sma_inclusive_source(
     monkeypatch,
 ) -> None:
-    source = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+    source = build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
         include_risk_authority=True,
+        include_research_queue=True,
     )
 
-    def return_source(*, include_risk_authority: bool = False):
+    def return_source(
+        *,
+        include_risk_authority: bool = False,
+        include_research_queue: bool = False,
+    ):
         assert include_risk_authority is True
+        assert include_research_queue is True
         return source
 
     monkeypatch.setattr(
         synthetic_module,
-        "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
+        "build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation",
         return_source,
     )
 
     package = fixture_module.build_synthetic_advisory_operating_brief_package()
 
-    assert package.content_bundle is source
+    assert package.content_bundle is not source
+    assert package.content_bundle.candidate_research_briefs == (
+        source.candidate_research_briefs
+    )
+    assert package.content_bundle.strategy_eligibility_briefs == (
+        source.strategy_eligibility_briefs
+    )
+    assert package.content_bundle.risk_authority_briefs == source.risk_authority_briefs
+    assert package.content_bundle.sma_research_observation_briefs == (
+        source.sma_research_observation_briefs
+    )
+    assert package.content_bundle.research_queue_briefs[0] is not (
+        source.research_queue_briefs[0]
+    )
     assert package.content_bundle.to_dict() == _EXPECTED_CONTENT_BUNDLE_DICT
 
 
