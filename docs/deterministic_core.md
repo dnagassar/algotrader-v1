@@ -6912,6 +6912,40 @@ recommendations, allocation/order/portfolio mutation, risk approval,
 paper/live readiness, additional capital or trading authority, dependencies,
 runtime timestamps, or `from_dict()` are added.
 
+Phase 225 - Research Return Summary Observation Mechanics adds
+`algotrader.research.research_return_summary_observation` as a tiny frozen,
+slotted, deterministic descriptive summary over exact Phase 210
+`ResearchReturnSeriesObservation` objects. The builder preserves source
+observation object identity, accepts no subclasses or malformed lookalikes, and
+sets fixed metadata `observation_type="research_return_summary_observation"`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`.
+
+The Phase 225 summary records source symbol, `as_of`, return method, price
+basis, source return count, positive/negative/zero return counts, and
+Decimal-only min/max/mean simple return values when source returns exist. A
+source observation with returns receives `summary_state="returns_summarized"`;
+an empty source return history receives
+`summary_state="insufficient_return_history"` and `None` min/max/mean values.
+`to_dict()` emits deterministic primitive-only output, serializes Decimals as
+strings and `None` as JSON null, nests `source_observation.to_dict()`, converts
+tuples to lists, preserves the source observation, carries limitations and
+non-claims forward with first-seen de-dupe, and adds no `from_dict()`.
+
+Phase 225 changes no research return construction mechanics, research return
+brief item/section/container/renderer/export paths, advisory package paths,
+package synthetic builder, package CLI, content bundle, renderer/export/CLI,
+SMA mechanics, SMA brief renderer/export, or existing CLI behavior. It adds no
+real data ingestion, vendor data, broker/runtime behavior, file I/O,
+persistence, network/socket access, credentials, scheduler/dashboard behavior,
+notebooks, ML, LLM/agent behavior, source/data approval, adjusted-close
+approval, corporate-action completeness claims, methodology approval,
+signal/evaluator behavior, strategy execution, backtesting behavior,
+ranking/scoring, recommendations, allocation/order/portfolio mutation, risk
+approval, paper/live readiness, capital authority beyond fixed false metadata,
+trading authority, runtime timestamps, new dependencies, or trading behavior.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

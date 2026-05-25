@@ -12573,6 +12573,39 @@ Safe next tasks include:
   existing false metadata, trading authority, dependencies, runtime timestamps,
   or `from_dict()` are added; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 225 - Research Return Summary Observation Mechanics adds
+  `algotrader.research.research_return_summary_observation` as a tiny frozen,
+  slotted, deterministic descriptive summary over exact Phase 210
+  `ResearchReturnSeriesObservation` objects. The builder rejects subclasses,
+  dictionaries, malformed lookalikes, and non-observations; preserves source
+  observation identity; pins `observation_type` to
+  `research_return_summary_observation`; keeps `candidate_only`,
+  `advisory_only`, and `capital_authority=False`; and records source symbol,
+  `as_of`, return method, price basis, source return count,
+  positive/negative/zero return counts, and Decimal-only min/max/mean simple
+  return values. Return-bearing observations use
+  `summary_state="returns_summarized"`; empty return histories use
+  `summary_state="insufficient_return_history"` with `None` min/max/mean.
+  `to_dict()` emits primitive-only deterministic payloads, serializes Decimals
+  as strings and `None` as JSON null, nests `source_observation.to_dict()`,
+  converts tuples to lists, preserves source `.to_dict()` output, carries
+  limitations/non-claims forward with first-seen de-dupe, and adds no
+  `from_dict()`. Tests pin Phase 211 primary and insufficient fixtures,
+  exact Decimal strings, fixed metadata, exact-type validation, frozen/slotted
+  behavior, deterministic compact JSON bytes, import/source guardrails, and
+  absence of action/trading authority payload keys. No research return
+  mechanics, research return brief item/section/container/renderer/export,
+  advisory package, package synthetic builder, package CLI, content bundle,
+  renderer/export/CLI, SMA mechanics, SMA brief renderer/export, existing CLI
+  behavior, real data ingestion, vendor data, broker/runtime behavior, file
+  I/O, persistence, network/socket access, credentials, scheduler/dashboard
+  behavior, notebooks, ML, LLM/agent behavior, approval/readiness claims,
+  signal/evaluator behavior, strategy execution, backtesting behavior,
+  ranking/scoring, recommendations, allocation/order/portfolio mutation, risk
+  approval, paper/live readiness, capital authority beyond fixed false
+  metadata, trading authority, dependencies, runtime timestamps, or trading
+  behavior are added; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
