@@ -12630,6 +12630,24 @@ Safe next tasks include:
   approval, validation/recommendation/ranking/scoring/readiness claims,
   allocation/order authority, paper/live eligibility, capital authority beyond
   fixed false metadata, or trading authority
+- Phase 231-236 - Tiny Synthetic SMA Mechanics Seed adds a tests-only
+  regression seed over the existing Phase 195 synthetic SMA mechanics instead
+  of adding a duplicate object. The seed pins a four-row synthetic close-price
+  series through `SmaResearchObservation` and
+  `build_sma_research_observation`, exact Decimal SMA arithmetic,
+  explicit `as_of` filtering with later samples ignored, deterministic
+  insufficient-history non-formation, repeated compact JSON stability,
+  primitive-only `.to_dict()` output, source price-point non-mutation, and
+  absence of action/trading authority payload fields. No SMA production
+  mechanics, fixtures, advisory package paths, renderer/export/CLI behavior,
+  research return mechanics, real data ingestion, vendor/public data handling,
+  file I/O, network/socket/API access, credentials, broker/execution/portfolio/
+  runtime/scheduler/dashboard behavior, ML, LLM/agent behavior,
+  signal/evaluator/backtesting behavior, strategy approval, validation/
+  recommendation/ranking/scoring/readiness claims, allocation/order authority,
+  paper/live eligibility, capital authority beyond fixed false metadata,
+  trading authority, dependencies, or deserialization paths are added; normal
+  pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
