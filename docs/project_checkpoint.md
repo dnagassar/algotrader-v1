@@ -12334,6 +12334,34 @@ Safe next tasks include:
   synthetic builder, package CLI, content bundle, renderer/export, SMA
   mechanics, SMA brief renderer/export, or existing CLI behavior changed;
   normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 216 - Research Return Observation Brief Container adds
+  `algotrader.research.research_return_observation_brief_container` as a
+  frozen, slotted, metadata-only advisory top-level grouping for exact Phase
+  214 `ResearchReturnObservationBriefSection` objects. The builder accepts a
+  brief id, title, summary, and one or more exact sections; preserves section
+  object identity and order; rejects empty collections, duplicate section
+  identities, malformed lookalikes, and subclasses; and pins
+  `brief_type="research_return_observation_brief"`, `status="candidate_only"`,
+  `authority="advisory_only"`, and `capital_authority=False`. It carries
+  section limitations and non-claims forward with first-seen de-duplication
+  while rejecting authority/actionability wording outside explicit non-claims.
+  Serialization is deterministic primitive-only metadata with fixed brief
+  fields, section count, nested `section.to_dict()` payloads, list-form tuple
+  fields, and no `from_dict()`. Tests build from the Phase 215 synthetic
+  section fixture, prove source section `.to_dict()` output is unchanged before
+  and after construction/serialization, pin compact JSON byte determinism,
+  verify frozen/slotted behavior, confirm public payload keys avoid action/
+  trading fields, and enforce AST/import/call/literal guardrails against file
+  I/O, network/socket access, vendor APIs, broker/runtime/scheduler/dashboard
+  behavior, persistence, credentials, notebooks, ML, LLM/agent behavior,
+  recommendations, ranking/scoring, approvals/readiness, allocation/order/
+  portfolio mutation, capital authority, trading authority, new dependencies,
+  and production imports from tests. Research return mechanics, observation
+  fixtures, brief item behavior, brief item fixtures, brief section behavior,
+  brief section fixtures, advisory package, package synthetic builder, package
+  CLI, content bundle, renderer/export, SMA mechanics, SMA brief renderer/
+  export, and existing CLI behavior remain unchanged; normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
