@@ -43,8 +43,10 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     build_synthetic_advisory_operating_brief_content_bundle_with_risk,
     build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
+    build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation,
     expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict,
     expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
@@ -397,6 +399,171 @@ _EXPECTED_RISK_INCLUSIVE_LINES = (
     *_EXPECTED_RISK_INCLUSIVE_NON_CLAIM_LINES,
 )
 _EXPECTED_RISK_INCLUSIVE_TEXT = "\n".join(_EXPECTED_RISK_INCLUSIVE_LINES)
+_EXPECTED_RESEARCH_QUEUE_BRANCH_LINES = (
+    "Research Queue Briefs",
+    "",
+    "Research Queue Brief 1",
+    "brief_type: research_queue_brief",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    "title: Research queue brief: 1 section",
+    (
+        "summary: Research queue brief contains 1 candidate metadata section(s) "
+        "with 1 item(s), 3 limitation(s), and 20 non-claim(s)."
+    ),
+    "section_count: 1",
+    "Sections",
+    "",
+    "Research Queue Brief 1 Section 1",
+    "section_type: research_queue_brief_section",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    "title: Research queue metadata: needs_evidence",
+    (
+        "summary: Research queue section contains 1 candidate metadata item(s) "
+        "across 2 related strategy id(s), state(s): needs_evidence, "
+        "priority bucket(s): medium, with 3 limitation(s) and 20 non-claim(s)."
+    ),
+    "item_count: 1",
+    "Items",
+    "",
+    "Research Queue Brief 1 Section 1 Item 1",
+    "item_type: research_queue_brief_item",
+    "status: candidate_only",
+    "authority: advisory_only",
+    "capital_authority: False",
+    (
+        "headline: Research queue item research-queue:broad-etf-sma:candidate: "
+        "needs_evidence."
+    ),
+    (
+        "summary: Research queue metadata records needs_evidence work in the "
+        "medium priority bucket with 8 blocker(s), 4 required next step(s), "
+        "6 evidence gap(s), 3 evidence reference(s), 2 related strategy id(s), "
+        "3 limitation(s), and 20 non-claim(s)."
+    ),
+    "source_status:",
+    "source_status.queue_id: research-queue:broad-etf-sma:candidate",
+    "source_status.title: Broad ETF SMA trend-following research queue item",
+    "source_status.research_state: needs_evidence",
+    "source_status.priority_bucket: medium",
+    "source_status.topic: broad_etf_sma_trend_following",
+    (
+        "source_status.hypothesis: broad ETF SMA trend-following remains a "
+        "pipeline-validation candidate only"
+    ),
+    "blockers:",
+    "- source data clearance is unresolved",
+    "- ETF universe definition is unresolved",
+    "- benchmark and cash proxy policy is unresolved",
+    "- return policy is unresolved",
+    "- no-lookahead protocol is unresolved",
+    "- survivorship policy is unresolved",
+    "- reproduction protocol is unresolved",
+    "- validation evidence is missing",
+    "required_next_steps:",
+    "- validate deterministic fixture shape for broad ETF SMA inputs",
+    "- confirm source provenance boundaries before real data use",
+    "- scope methodology before any research claim",
+    "- construct no-lookahead returns from fixture inputs only",
+    "evidence_gaps:",
+    "- real data provenance evidence is absent",
+    "- benchmark and cash handling evidence is absent",
+    "- survivorship treatment evidence is absent",
+    "- cost and slippage assumptions are absent",
+    "- out-of-sample robustness evidence is absent",
+    "- reproduction evidence is absent",
+    "related_strategy_ids:",
+    "- synthetic-advisory:broad-etf-sma",
+    "- research-queue:broad-etf-sma",
+    "evidence_refs:",
+    "- phase-182-research-queue-status-contract",
+    "- phase-182-research-queue-brief-contract",
+    "- advisory-operating-brief-synthetic-foundation",
+    "limitations:",
+    "- synthetic metadata-only unresolved research queue fixture",
+    "- broad ETF SMA remains pipeline-validation metadata only",
+    "- fixture output is not connected to real data or runtime state",
+    "non_claims:",
+    "- not a recommendation",
+    "- not allocation authority",
+    "- not order authority",
+    "- not paper readiness",
+    "- not live readiness",
+    "- not broker authority",
+    "- not account authority",
+    "- not portfolio mutation authority",
+    "- not capital authority",
+    "- not trading authority",
+    "- not strategy approval",
+    "- not data source approval",
+    "- not methodology approval",
+    "- not profitability evidence",
+    "- not research conclusion",
+    "- not backtest readiness",
+    "- not execution readiness",
+    "- not allocation guidance",
+    "- not order placement",
+    "- not ranking or scoring output",
+)
+_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LIMITATION_LINES = (
+    *_EXPECTED_RISK_INCLUSIVE_LIMITATION_LINES,
+    "- synthetic metadata-only unresolved research queue fixture",
+    "- broad ETF SMA remains pipeline-validation metadata only",
+    "- fixture output is not connected to real data or runtime state",
+)
+_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_NON_CLAIM_LINES = (
+    *_EXPECTED_RISK_INCLUSIVE_NON_CLAIM_LINES,
+    "- not a recommendation",
+    "- not account authority",
+    "- not strategy approval",
+    "- not data source approval",
+    "- not research conclusion",
+    "- not backtest readiness",
+    "- not execution readiness",
+    "- not allocation guidance",
+    "- not ranking or scoring output",
+)
+_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LINES = (
+    *_EXPECTED_SYNTHETIC_LINES[:6],
+    (
+        "summary: Advisory content bundle contains 1 candidate research brief(s), "
+        "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+        "1 research queue brief(s), 17 limitation(s), and 41 non-claim(s)."
+    ),
+    "candidate_research_brief_count: 1",
+    "strategy_eligibility_brief_count: 1",
+    "risk_authority_brief_count: 1",
+    "research_queue_brief_count: 1",
+    *_EXPECTED_SYNTHETIC_LINES[9:103],
+    *_EXPECTED_RISK_AUTHORITY_BRANCH_LINES,
+    "",
+    *_EXPECTED_RESEARCH_QUEUE_BRANCH_LINES,
+    "",
+    "Limitations",
+    *_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LIMITATION_LINES,
+    "",
+    "Non-Claims",
+    *_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_NON_CLAIM_LINES,
+)
+_EXPECTED_RESEARCH_QUEUE_INCLUSIVE_TEXT = "\n".join(
+    _EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LINES
+)
+_SMA_SOURCE_OBSERVATION_FIELDS = (
+    "symbol",
+    "as_of",
+    "window",
+    "sample_count",
+    "eligible_sample_count",
+    "ignored_future_sample_count",
+    "latest_close",
+    "sma_value",
+    "distance_from_sma",
+    "distance_from_sma_pct",
+    "position_vs_sma",
+)
 _AUTHORITY_SENSITIVE_RENDER_TERMS = (
     _s("app", "roval"),
     _s("app", "roved"),
@@ -485,6 +652,7 @@ _FORBIDDEN_CALL_NAMES = {
     _s("down", "load"),
     "eval",
     "exec",
+    "from_dict",
     "exists",
     "from_file",
     "getenv",
@@ -596,6 +764,19 @@ def test_valid_rendering_from_phase_178_risk_inclusive_fixture() -> None:
     )
     assert rendered == _EXPECTED_RISK_INCLUSIVE_TEXT
     assert tuple(rendered.splitlines()) == _EXPECTED_RISK_INCLUSIVE_LINES
+
+
+def test_valid_rendering_from_phase_184_research_queue_inclusive_fixture() -> None:
+    bundle = build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert bundle.to_dict() == (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict()
+    )
+    assert rendered == _EXPECTED_RESEARCH_QUEUE_INCLUSIVE_TEXT
+    assert tuple(rendered.splitlines()) == _EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LINES
 
 
 def test_repeated_rendering_is_byte_for_byte_deterministic() -> None:
@@ -731,6 +912,155 @@ def test_repeated_research_queue_inclusive_rendering_is_byte_for_byte_determinis
     second = render_advisory_operating_brief_content_bundle_text(bundle)
     third = render_advisory_operating_brief_content_bundle_text(
         build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
+    )
+
+    assert first
+    assert first.strip() == first
+    assert first == second == third
+    assert first.encode("utf-8") == second.encode("utf-8") == third.encode("utf-8")
+
+
+def test_sma_inclusive_rendering_contains_all_expected_sma_metadata() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+    expected_bundle = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+    )
+    expected_brief = expected_bundle["sma_research_observation_briefs"][0]
+    expected_section = expected_brief["sections"][0]
+    expected_items = expected_section["items"]
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+
+    assert bundle.to_dict() == expected_bundle
+    assert "sma_research_observation_brief_count: 1" in lines
+    assert "SMA Research Observation Briefs" in lines
+    assert "SMA Research Observation Brief 1" in lines
+    for field_name in (
+        "brief_type",
+        "brief_id",
+        "title",
+        "summary",
+        "status",
+        "authority",
+        "capital_authority",
+        "section_count",
+    ):
+        assert f"{field_name}: {_render_value(expected_brief[field_name])}" in lines
+    assert "Brief Limitations" in lines
+    assert "Brief Non-Claims" in lines
+    for value in expected_brief["limitations"]:
+        assert f"- {value}" in lines
+    for value in expected_brief["non_claims"]:
+        assert f"- {value}" in lines
+
+    assert "SMA Research Observation Brief 1 Section 1" in lines
+    for field_name in (
+        "section_type",
+        "section_id",
+        "title",
+        "summary",
+        "status",
+        "authority",
+        "capital_authority",
+        "item_count",
+    ):
+        assert f"{field_name}: {_render_value(expected_section[field_name])}" in lines
+    assert "Section Limitations" in lines
+    assert "Section Non-Claims" in lines
+    for value in expected_section["limitations"]:
+        assert f"- {value}" in lines
+    for value in expected_section["non_claims"]:
+        assert f"- {value}" in lines
+
+    for item_index, expected_item in enumerate(expected_items, start=1):
+        assert (
+            f"SMA Research Observation Brief 1 Section 1 Item {item_index}" in lines
+        )
+        for field_name in (
+            "item_type",
+            "headline",
+            "summary",
+            "mechanical_state",
+            "status",
+            "authority",
+            "capital_authority",
+        ):
+            assert f"{field_name}: {_render_value(expected_item[field_name])}" in lines
+        assert "Source Observation" in lines
+        for field_name in _SMA_SOURCE_OBSERVATION_FIELDS:
+            source = expected_item["source_observation"]
+            assert f"{field_name}: {_render_value(source[field_name])}" in lines
+        assert "Item Limitations" in lines
+        assert "Item Non-Claims" in lines
+        for value in expected_item["limitations"]:
+            assert f"- {value}" in lines
+        for value in expected_item["non_claims"]:
+            assert f"- {value}" in lines
+
+
+def test_sma_inclusive_branch_includes_mechanical_states_and_null_mechanics() -> None:
+    rendered = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+
+    assert "mechanical_state: above_sma_observation" in rendered
+    assert "mechanical_state: insufficient_history" in rendered
+    assert "position_vs_sma: above" in rendered
+    assert "position_vs_sma: insufficient_history" in rendered
+    assert rendered.count("ignored_future_sample_count: 1") == 2
+    assert "sma_value: null" in rendered
+    assert "distance_from_sma: null" in rendered
+    assert "distance_from_sma_pct: null" in rendered
+
+
+def test_sma_inclusive_branch_order_is_deterministic() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    _assert_line_order(
+        rendered,
+        (
+            "Candidate Research Briefs",
+            "Strategy Eligibility Briefs",
+            "Risk Authority Briefs",
+            "Research Queue Briefs",
+            "SMA Research Observation Briefs",
+            "SMA Research Observation Brief 1",
+            "Brief Limitations",
+            "Brief Non-Claims",
+            "SMA Research Observation Brief 1 Section 1",
+            "Section Limitations",
+            "Section Non-Claims",
+            "SMA Research Observation Brief 1 Section 1 Item 1",
+            "Source Observation",
+            "Item Limitations",
+            "Item Non-Claims",
+            "SMA Research Observation Brief 1 Section 1 Item 2",
+            "Source Observation",
+            "sma_value: null",
+            "distance_from_sma: null",
+            "distance_from_sma_pct: null",
+            "Limitations",
+            "Non-Claims",
+        ),
+    )
+
+
+def test_repeated_sma_inclusive_rendering_is_byte_for_byte_deterministic() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    third = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
     )
 
     assert first
@@ -957,6 +1287,30 @@ def test_limitations_and_non_claims_from_research_queue_branch_are_represented()
         assert f"- {value}" in rendered
 
 
+def test_limitations_and_non_claims_from_sma_branch_are_represented() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch_payloads = (
+        *bundle.to_dict()["candidate_research_briefs"],
+        *bundle.to_dict()["strategy_eligibility_briefs"],
+        *bundle.to_dict()["risk_authority_briefs"],
+        *bundle.to_dict()["research_queue_briefs"],
+        *bundle.to_dict()["sma_research_observation_briefs"],
+    )
+
+    for branch_payload in branch_payloads:
+        for value in branch_payload["limitations"]:
+            assert f"- {value}" in rendered
+        for value in branch_payload["non_claims"]:
+            assert f"- {value}" in rendered
+    for value in bundle.limitations:
+        assert f"- {value}" in rendered
+    for value in bundle.non_claims:
+        assert f"- {value}" in rendered
+
+
 def test_rendering_does_not_mutate_source_bundle_payload() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
     before = bundle.to_dict()
@@ -1012,7 +1366,66 @@ def test_research_queue_rendering_does_not_mutate_source_bundle_payload_or_objec
     ) == identity_snapshot
 
 
-def test_renderer_reads_research_queue_branch_from_dictionary_payload_only() -> None:
+def test_sma_rendering_does_not_mutate_source_bundle_payload_or_objects() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+    research_queue_brief = bundle.research_queue_briefs[0]
+    sma_brief = bundle.sma_research_observation_briefs[0]
+    sma_section = sma_brief.sections[0]
+    first_item = sma_section.items[0]
+    second_item = sma_section.items[1]
+    before = bundle.to_dict()
+    expected = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+    )
+    identity_snapshot = (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_section),
+        id(sma_section.items),
+        id(first_item),
+        id(second_item),
+        id(first_item.source_observation),
+        id(second_item.source_observation),
+    )
+
+    render_advisory_operating_brief_content_bundle_text(bundle)
+    render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert before == expected
+    assert bundle.to_dict() == before
+    assert (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_section),
+        id(sma_section.items),
+        id(first_item),
+        id(second_item),
+        id(first_item.source_observation),
+        id(second_item.source_observation),
+    ) == identity_snapshot
+
+
+def test_renderer_reads_optional_branches_from_dictionary_payload_only() -> None:
     function = _function_def("render_advisory_operating_brief_content_bundle_text")
     source = ast.get_source_segment(_source_text(), function)
 
@@ -1022,6 +1435,7 @@ def test_renderer_reads_research_queue_branch_from_dictionary_payload_only() -> 
     assert ".candidate_research_briefs" not in source
     assert ".strategy_eligibility_briefs" not in source
     assert ".risk_authority_briefs" not in source
+    assert ".sma_research_observation_briefs" not in source
 
 
 @pytest.mark.parametrize("value", (object(), None, "not a bundle"))
@@ -1133,6 +1547,26 @@ def test_research_queue_renderer_exposes_authority_terms_only_as_cautions() -> N
         assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
 
 
+def test_sma_renderer_exposes_authority_terms_only_as_cautions() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    source_cautions = _source_caution_values(bundle.to_dict())
+
+    assert _rendered_field_names(rendered).isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    for line in _authority_sensitive_lines(rendered):
+        assert line.startswith("- ")
+        assert line[2:] in source_cautions
+    for token in (
+        "paper_eligible",
+        "live_probe_eligible",
+        "live_authorized",
+        "trading_ready",
+    ):
+        assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
+
+
 def test_renderer_module_has_no_forbidden_imports_or_calls() -> None:
     imports = _import_references()
     call_names = _call_names()
@@ -1153,6 +1587,20 @@ def test_renderer_module_literals_add_no_actionable_authority_fields() -> None:
     assert literals.isdisjoint(_FORBIDDEN_EXACT_LITERALS)
     for token in _FORBIDDEN_SOURCE_TOKENS:
         assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", lowered_source) is None
+
+
+def test_renderer_adds_no_export_cli_package_or_from_dict_paths() -> None:
+    source = _source_text()
+
+    for token in (
+        "advisory_operating_brief_content_bundle_export",
+        "advisory_operating_brief_content_bundle_cli",
+        "advisory_operating_brief_package",
+        "sma_research_observation_brief_export",
+        "render_sma_research_observation_brief_text",
+        "from_dict",
+    ):
+        assert token not in source
 
 
 def _candidate_brief_variant(title: str) -> CandidateResearchBrief:
@@ -1220,6 +1668,13 @@ def _second_risk_authority_brief() -> RiskAuthorityBrief:
     item = build_risk_authority_brief_item(status)
     section = build_risk_authority_brief_section((item,))
     return build_risk_authority_brief((section,))
+
+
+def _render_value(value: object) -> str:
+    if value is None:
+        return "null"
+
+    return str(value)
 
 
 def _index(text: str, value: str) -> int:

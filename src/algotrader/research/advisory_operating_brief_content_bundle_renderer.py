@@ -56,6 +56,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "research_queue_brief_count: "
             f"{payload['research_queue_brief_count']}"
         )
+    if "sma_research_observation_briefs" in payload:
+        lines.append(
+            "sma_research_observation_brief_count: "
+            f"{payload['sma_research_observation_brief_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -90,6 +95,14 @@ def render_advisory_operating_brief_content_bundle_text(
                 research_queue_payload,
                 brief_index,
             )
+
+    if "sma_research_observation_briefs" in payload:
+        lines.extend(("", "SMA Research Observation Briefs"))
+        for brief_index, sma_payload in enumerate(
+            payload["sma_research_observation_briefs"],
+            start=1,
+        ):
+            _append_sma_research_observation_brief(lines, sma_payload, brief_index)
 
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
@@ -543,6 +556,140 @@ def _append_research_queue_item(
     _append_values(lines, payload["non_claims"])
 
 
+def _append_sma_research_observation_brief(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"SMA Research Observation Brief {brief_index}",
+            f"brief_type: {payload['brief_type']}",
+            f"brief_id: {payload['brief_id']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"section_count: {payload['section_count']}",
+            "Brief Limitations",
+        )
+    )
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Brief Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+    lines.extend(("Sections",))
+
+    for section_index, section_payload in enumerate(
+        payload["sections"],
+        start=1,
+    ):
+        _append_sma_research_observation_section(
+            lines,
+            section_payload,
+            brief_index,
+            section_index,
+        )
+
+
+def _append_sma_research_observation_section(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"SMA Research Observation Brief {brief_index} Section {section_index}",
+            f"section_type: {payload['section_type']}",
+            f"section_id: {payload['section_id']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"item_count: {payload['item_count']}",
+            "Section Limitations",
+        )
+    )
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Section Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+    lines.extend(("Items",))
+
+    for item_index, item_payload in enumerate(
+        payload["items"],
+        start=1,
+    ):
+        _append_sma_research_observation_item(
+            lines,
+            item_payload,
+            brief_index,
+            section_index,
+            item_index,
+        )
+
+
+def _append_sma_research_observation_item(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    section_index: int,
+    item_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            (
+                f"SMA Research Observation Brief {brief_index} "
+                f"Section {section_index} Item {item_index}"
+            ),
+            f"item_type: {payload['item_type']}",
+            f"headline: {payload['headline']}",
+            f"summary: {payload['summary']}",
+            f"mechanical_state: {payload['mechanical_state']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            "Source Observation",
+        )
+    )
+    _append_sma_source_observation(lines, payload["source_observation"])
+    lines.extend(("Item Limitations",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Item Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+
+
+def _append_sma_source_observation(
+    lines: list[str],
+    payload: dict[str, object],
+) -> None:
+    for key in (
+        "symbol",
+        "as_of",
+        "window",
+        "sample_count",
+        "eligible_sample_count",
+        "ignored_future_sample_count",
+        "latest_close",
+        "sma_value",
+        "distance_from_sma",
+        "distance_from_sma_pct",
+        "position_vs_sma",
+    ):
+        lines.append(f"{key}: {_format_value(payload[key])}")
+
+
 def _append_values(lines: list[str], values: object) -> None:
     for value in values:
         lines.append(f"- {value}")
+
+
+def _format_value(value: object) -> str:
+    if value is None:
+        return "null"
+
+    return str(value)

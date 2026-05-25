@@ -6350,6 +6350,32 @@ approval/readiness/trading authority behavior, new dependencies, or `from_dict()
 are added. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 206 - Advisory Operating Brief Content Bundle Renderer SMA Research
+Observation Branch extends
+`src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+to conditionally render `sma_research_observation_briefs` solely from the
+bundle `to_dict()` payload. Existing no-SMA renderer output for the Phase 162
+candidate-plus-strategy fixture, Phase 178 risk-inclusive fixture, and Phase
+184/185 research-queue-inclusive fixture remains byte-for-byte pinned.
+
+The Phase 206 SMA branch is rendered after candidate research, strategy
+eligibility, risk authority, and research queue branches, and before aggregate
+limitations/non-claims. It emits deterministic text for SMA brief, section,
+item, and nested source-observation metadata, including ignored future sample
+counts, null SMA and distance mechanics for insufficient history, limitations,
+and non-claims. Tests prove both `above_sma_observation` and
+`insufficient_history`, repeated SMA-inclusive rendering stability, unchanged
+source `.to_dict()` output and object identities, dictionary-only renderer
+access, no production imports from tests or fixtures, no export/CLI/package/SMA
+export coupling, and AST/import/call/source/text guardrails against file I/O,
+persistence, network/socket access, vendor APIs, credentials,
+runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+ranking/scoring, recommendations, approvals/readiness/trading authority
+behavior, dependencies, or `from_dict()`. Content bundle construction, content
+bundle export, content bundle CLI, package behavior, SMA mechanics, SMA brief
+renderer, SMA brief export, and existing CLI behavior remain unchanged. Normal
+pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

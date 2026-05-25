@@ -12068,6 +12068,30 @@ Safe next tasks include:
   approval/readiness/trading authority behavior, dependencies, or `from_dict()`
   are added; normal pytest remains offline, credential-free, deterministic,
   and safe
+- Phase 206 - Advisory Operating Brief Content Bundle Renderer SMA Research
+  Observation Branch extends
+  `src/algotrader/research/advisory_operating_brief_content_bundle_renderer.py`
+  to conditionally render `sma_research_observation_briefs` solely from the
+  bundle `to_dict()` payload. Existing no-SMA renderer output for the Phase
+  162 candidate-plus-strategy fixture, Phase 178 risk-inclusive fixture, and
+  Phase 184/185 research-queue-inclusive fixture remains byte-for-byte pinned.
+  The SMA branch renders after candidate research, strategy eligibility, risk
+  authority, and research queue branches, and before aggregate
+  limitations/non-claims. It emits deterministic brief, section, item, and
+  nested source-observation metadata, including ignored future sample counts,
+  null SMA/distance mechanics for insufficient history, limitations, and
+  non-claims. Tests prove both `above_sma_observation` and
+  `insufficient_history`, repeated SMA-inclusive rendering stability, unchanged
+  source `.to_dict()` output and object identities, dictionary-only renderer
+  access, no export/CLI/package/SMA export coupling, and AST/import/call/source
+  guardrails. Content bundle construction, content bundle export, content
+  bundle CLI, package behavior, SMA mechanics, SMA brief renderer, SMA brief
+  export, and existing CLI behavior remain unchanged. No real data ingestion,
+  broker/runtime behavior, file I/O, persistence, network/socket access,
+  credentials, scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, ranking/scoring, recommendations, approval/readiness/trading
+  authority behavior, dependencies, or `from_dict()` are added; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
