@@ -6607,6 +6607,41 @@ bundle, renderer/export, SMA mechanics, SMA brief renderer/export, and existing
 CLI behavior remain unchanged. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 215 - Synthetic Research Return Observation Brief Section Fixture adds
+`tests/fixtures/research_return_observation_brief_section.py` and
+`tests/unit/test_research_return_observation_brief_section_fixture.py` as a
+tests-only fixture layer over the Phase 214 section container. The fixture
+builds from the Phase 213 primary and insufficient-history brief item fixtures,
+uses
+`section_id="research-return-observation-section:synthetic:broad-etf-return-construction"`,
+`title="Synthetic broad ETF return observation summary"`, and a deterministic
+summary stating the section is advisory-only synthetic close-to-close return
+observation content.
+
+The Phase 215 expected dictionary helper matches
+`ResearchReturnObservationBriefSection.to_dict()` exactly while returning fresh
+mutable primitive copies. It nests the exact Phase 213 primary
+`returns_constructed` item payload followed by the
+`insufficient_return_history` item payload, pins fixed candidate-only,
+advisory-only, capital-authority-false section metadata, carries limitations
+and non-claims forward with first-seen de-duplication, and preserves item
+identity and section ordering through the Phase 214 builder. Tests prove
+repeated construction and compact JSON bytes are deterministic, nested
+positive/negative/zero return-count metadata and insufficient-history metadata
+remain present, no `from_dict()` exists, no paper/live/approved/trading-ready/
+actionable authority states appear, and fixture AST/import/call/literal
+guardrails exclude broker/account/order/fill/allocation/portfolio mutation
+behavior, file I/O, persistence, network/socket access, vendor APIs,
+credentials, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+behavior, recommendations, ranking/scoring, approvals/readiness/trading
+authority language outside explicit non-claims, and new dependencies. No
+source files, research return mechanics, research return observation fixtures,
+research return brief item behavior, research return brief section behavior,
+advisory package, package synthetic builder, package CLI, content bundle,
+renderer/export, SMA mechanics, SMA brief renderer/export, or existing CLI
+behavior changed. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
