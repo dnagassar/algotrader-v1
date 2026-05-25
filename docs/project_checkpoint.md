@@ -12362,6 +12362,33 @@ Safe next tasks include:
   CLI, content bundle, renderer/export, SMA mechanics, SMA brief renderer/
   export, and existing CLI behavior remain unchanged; normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 217 - Synthetic Research Return Observation Brief Container Fixture
+  adds `tests/fixtures/research_return_observation_brief_container.py` and
+  `tests/unit/test_research_return_observation_brief_container_fixture.py` as a
+  deterministic synthetic fixture layer for the Phase 216 advisory brief
+  container. The fixture builds exactly one Phase 215 synthetic section,
+  preserves that section's identity and order through the production builder,
+  and emits the fixed advisory metadata
+  `brief_id="research-return-observation-brief:synthetic:broad-etf-return-construction"`,
+  `title="Synthetic broad ETF return observation brief"`,
+  `brief_type="research_return_observation_brief"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. Its expected-dict helper mirrors `.to_dict()`
+  exactly with fresh primitive mutable copies, deterministic compact JSON
+  bytes, one nested section payload matching the Phase 215 expected section
+  dict, nested positive/negative/zero return-count metadata, the
+  insufficient-history state, and carried-forward limitations and non-claims.
+  Tests confirm there is no `from_dict()`, no positive approval/readiness/
+  actionability/trading authority state, and fixture-module AST/import/call/
+  literal guardrails against broker, account, order, fill, allocation,
+  portfolio mutation, file I/O, network/socket access, vendor APIs,
+  credentials, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, recommendations, ranking/scoring, approvals, or trading authority.
+  No src files, research return mechanics, observation fixtures, brief item
+  behavior or fixtures, brief section behavior or fixtures, container behavior,
+  advisory/package/CLI/content/render/export paths, SMA paths, or existing CLI
+  behavior changed; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
