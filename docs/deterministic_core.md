@@ -6989,6 +6989,38 @@ allocation/order authority, paper/live eligibility, capital authority beyond
 fixed false metadata, trading authority, dependencies, or deserialization paths.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 237 - SMA Research Summary Observation Mechanics adds
+`algotrader.research.sma_research_summary_observation` as a tiny frozen,
+slotted, deterministic, advisory-only summary over exact existing
+`SmaResearchObservation` objects. The builder accepts only tuple/list inputs
+containing exact `SmaResearchObservation` instances, rejects subclasses,
+lookalikes, dictionaries, raw price points, and non-observations, preserves
+source observation object identity and input ordering, and pins
+`observation_type="sma_research_summary_observation"`, `status="candidate_only"`,
+`authority="advisory_only"`, `research_scope="research_only"`, and
+`capital_authority=False`.
+
+The Phase 237 summary records only primitive descriptive counts: total source
+observations, above-SMA, below-SMA, equal-SMA, and insufficient-history counts.
+Non-empty inputs use `summary_state="observations_summarized"`; empty inputs use
+`summary_state="empty_insufficient_observations"` with zero counts and explicit
+advisory limitations/non-claims. `to_dict()` emits deterministic primitive-only
+metadata, nests source observation `.to_dict()` payloads, converts tuples to
+fresh lists, and adds no `from_dict()`.
+
+Phase 237 changes no SMA observation construction mechanics, SMA brief
+renderer/export paths, advisory package paths, content bundle behavior, CLI
+behavior, research return mechanics, evaluator behavior, signal behavior,
+portfolio state, trading behavior, real data ingestion, vendor/public data
+handling, file/path/source/vendor/broker/network/runtime/credential options,
+persistence, network/socket/API access, credentials, scheduler/dashboard
+behavior, ML, LLM/agent behavior, profitability or predictive-validity claims,
+recommendations, ranking/scoring, allocation/order/fill authority,
+paper/live eligibility, readiness or approval flags, capital authority beyond
+fixed false metadata, trading authority, dependencies, runtime timestamps, or
+deserialization paths. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

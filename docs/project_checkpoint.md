@@ -12648,6 +12648,27 @@ Safe next tasks include:
   paper/live eligibility, capital authority beyond fixed false metadata,
   trading authority, dependencies, or deserialization paths are added; normal
   pytest remains offline, credential-free, deterministic, and safe
+- Phase 237 - SMA Research Summary Observation Mechanics adds
+  `algotrader.research.sma_research_summary_observation` as a tiny frozen,
+  slotted, deterministic, advisory-only summary over exact existing
+  `SmaResearchObservation` objects. The builder accepts only tuple/list inputs
+  containing exact observations, rejects subclasses, lookalikes, dictionaries,
+  raw price points, and non-observations, preserves source observation identity
+  and input ordering, and pins `candidate_only`, `advisory_only`,
+  `research_only`, and `capital_authority=False`. The summary records only
+  primitive descriptive metadata counts: total source observations, above-SMA,
+  below-SMA, equal-SMA, and insufficient-history counts. Non-empty inputs use
+  `summary_state="observations_summarized"`; empty inputs use
+  `summary_state="empty_insufficient_observations"` with zero counts and
+  explicit limitations/non-claims. `to_dict()` emits deterministic
+  primitive-only output, nests source observation payloads, returns fresh lists,
+  and adds no `from_dict()`. No existing SMA mechanics, advisory bundle,
+  renderer, package, export, CLI, signal/evaluator, portfolio, trading,
+  real-data, file/path/source/vendor/broker/network/runtime/credential,
+  persistence, socket, scheduler/dashboard, ML, LLM/agent, recommendation,
+  ranking/scoring, readiness/approval, allocation/order/fill, paper/live,
+  dependency, timestamp, capital-authority, or trading-authority behavior is
+  added; normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
