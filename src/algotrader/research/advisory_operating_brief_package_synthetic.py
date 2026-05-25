@@ -7,7 +7,7 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
     build_advisory_operating_brief_content_bundle,
 )
 from algotrader.research.advisory_operating_brief_content_bundle_cli import (
-    build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation,
 )
 from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
@@ -74,9 +74,10 @@ def build_synthetic_advisory_operating_brief_package_preview() -> (
 
 def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBundle:
     source = (
-        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation(
             include_risk_authority=True,
             include_research_queue=True,
+            include_sma_research_observation=True,
         )
     )
     return build_advisory_operating_brief_content_bundle(
@@ -85,6 +86,7 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         risk_authority_briefs=source.risk_authority_briefs,
         research_queue_briefs=(_build_package_research_queue_brief(source),),
         sma_research_observation_briefs=source.sma_research_observation_briefs,
+        research_return_observation_briefs=source.research_return_observation_briefs,
     )
 
 

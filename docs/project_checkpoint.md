@@ -12550,6 +12550,29 @@ Safe next tasks include:
   existing false metadata, trading authority, new dependencies, runtime
   timestamps, or `from_dict()`; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 224 - Advisory Operating Brief Package Synthetic Research Return
+  Branch Alignment updates the canonical synthetic package preview to build
+  the nested content bundle from the existing research-return-inclusive
+  production helper. The package now carries candidate research, strategy
+  eligibility, risk authority, research queue, SMA research observation, and
+  research return observation branches through the stored nested content bundle
+  payload, nested content bundle export payload, compact JSON, and rendered
+  text. Fixed package metadata remains
+  `advisory-operating-brief-package:synthetic:2026-01-20`, the existing title,
+  advisory-only summary, `as_of`, `candidate_only`, `advisory_only`, and
+  `capital_authority=False`; the fixture still delegates to the production-safe
+  synthetic builder. Package fixture, export, renderer, CLI, and CLI regression
+  tests pin byte-for-byte deterministic parity against the updated package
+  export, while content bundle preview behavior remains unchanged and package
+  preview still exposes only `--format text|json`. No package contract,
+  renderer/export/CLI production code, content bundle contract, research return
+  mechanics, SMA mechanics, new input options, file/env/network/socket access,
+  credentials, scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+  approval/readiness claims, recommendations, allocation/order/portfolio
+  mutation, risk approval, paper/live readiness, capital authority beyond
+  existing false metadata, trading authority, dependencies, runtime timestamps,
+  or `from_dict()` are added; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

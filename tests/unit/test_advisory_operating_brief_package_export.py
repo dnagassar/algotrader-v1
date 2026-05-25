@@ -21,7 +21,7 @@ from algotrader.research.advisory_operating_brief_package_renderer import (
     render_advisory_operating_brief_package_text,
 )
 from tests.fixtures.advisory_operating_brief_content_bundle import (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict,
 )
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
@@ -35,7 +35,7 @@ def _s(*parts: str) -> str:
 
 _EXPECTED_PAYLOAD = expected_synthetic_advisory_operating_brief_package_dict()
 _EXPECTED_CONTENT_BUNDLE_PAYLOAD = (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict()
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict()
 )
 _EXPECTED_JSON_TEXT = json.dumps(
     _EXPECTED_PAYLOAD,

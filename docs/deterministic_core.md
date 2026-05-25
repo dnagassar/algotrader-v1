@@ -6888,6 +6888,30 @@ mutation, risk approval, paper/live readiness, capital authority beyond
 existing false metadata, trading authority, new dependencies, runtime
 timestamps, or `from_dict()`.
 
+Phase 224 - Advisory Operating Brief Package Synthetic Research Return Branch
+Alignment updates the canonical synthetic package preview to build its nested
+content bundle from the existing research-return-inclusive production helper.
+The package now carries candidate research, strategy eligibility, risk
+authority, research queue, SMA research observation, and research return
+observation branches in the stored content bundle payload, nested content
+bundle export payload, compact JSON, and rendered text.
+
+The Phase 224 package keeps the fixed package metadata
+`advisory-operating-brief-package:synthetic:2026-01-20`, title, advisory-only
+summary, `as_of`, `candidate_only` status, `advisory_only` authority, and
+`capital_authority=False`. The fixture continues to delegate to the
+production-safe synthetic package builder. Package fixture, export, renderer,
+CLI, and CLI regression tests pin byte-for-byte deterministic text and JSON
+parity against the updated package export. The content bundle preview remains
+unchanged and the package preview still exposes only `--format text|json`.
+No package contract, renderer/export/CLI production code, content bundle
+contract, research return mechanics, SMA mechanics, new input options, file or
+environment behavior, network/socket access, credentials, scheduler/dashboard
+behavior, notebooks, ML, LLM/agent behavior, approval/readiness claims,
+recommendations, allocation/order/portfolio mutation, risk approval,
+paper/live readiness, additional capital or trading authority, dependencies,
+runtime timestamps, or `from_dict()` are added.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -41,6 +41,7 @@ _BRANCH_KEYS = (
     "risk_authority_briefs",
     "research_queue_briefs",
     "sma_research_observation_briefs",
+    "research_return_observation_briefs",
 )
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
@@ -140,11 +141,13 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "Risk Authority Briefs",
         "Research Queue Briefs",
         "SMA Research Observation Briefs",
+        "Research Return Observation Briefs",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
         "research_queue_brief_count: 1",
         "sma_research_observation_brief_count: 1",
+        "research_return_observation_brief_count: 1",
         "Limitations",
         "Non-Claims",
     ):
@@ -172,6 +175,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
     assert content_bundle["sma_research_observation_brief_count"] == 1
+    assert content_bundle["research_return_observation_brief_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
 
