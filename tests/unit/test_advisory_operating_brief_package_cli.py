@@ -33,7 +33,7 @@ from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
 )
 from tests.fixtures.advisory_operating_brief_content_bundle import (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict,
 )
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package as build_fixture_package,
@@ -55,6 +55,7 @@ _BRANCH_KEYS = (
     "research_queue_briefs",
     "sma_research_observation_briefs",
     "research_return_observation_briefs",
+    "research_return_summary_observation_briefs",
 )
 
 
@@ -83,7 +84,7 @@ def test_synthetic_preview_builder_uses_package_exportable_payload() -> None:
     assert export.payload == fixture_package.to_dict()
     assert _dict(export.payload["content_bundle"]) == package.content_bundle.to_dict()
     assert _dict(export.payload["content_bundle"]) == (
-        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict()
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict()
     )
 
 

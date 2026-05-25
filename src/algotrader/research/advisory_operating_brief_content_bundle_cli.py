@@ -68,6 +68,13 @@ from algotrader.research.research_return_observation_brief_container import (
 from algotrader.research.research_return_observation_brief_section import (
     build_research_return_observation_brief_section,
 )
+from algotrader.research.research_return_summary_observation import (
+    build_research_return_summary_observation,
+)
+from algotrader.research.research_return_summary_observation_brief import (
+    ResearchReturnSummaryObservationBrief,
+    build_research_return_summary_observation_brief,
+)
 from algotrader.research.sma_research_observation import (
     SmaResearchPricePoint,
     build_sma_research_observation,
@@ -102,6 +109,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -309,6 +317,17 @@ _RESEARCH_RETURN_BRIEF_TITLE = "Synthetic broad ETF return observation brief"
 _RESEARCH_RETURN_BRIEF_SUMMARY = (
     "Brief is advisory-only synthetic close-to-close return observation content."
 )
+_RESEARCH_RETURN_SUMMARY_BRIEF_ID = (
+    "research-return-summary-observation-brief:synthetic:"
+    "broad-etf-return-summary"
+)
+_RESEARCH_RETURN_SUMMARY_BRIEF_TITLE = (
+    "Synthetic broad ETF return summary observation brief"
+)
+_RESEARCH_RETURN_SUMMARY_BRIEF_SUMMARY = (
+    "Brief is advisory-only synthetic close-to-close return summary "
+    "observation content."
+)
 
 
 def build_synthetic_advisory_operating_brief_content_bundle() -> (
@@ -321,6 +340,7 @@ def build_synthetic_advisory_operating_brief_content_bundle() -> (
         include_research_queue=False,
         include_sma_research_observation=False,
         include_research_return_observation=False,
+        include_research_return_summary_observation=False,
     )
 
 
@@ -334,6 +354,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
         include_research_queue=False,
         include_sma_research_observation=False,
         include_research_return_observation=False,
+        include_research_return_summary_observation=False,
     )
 
 
@@ -348,6 +369,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
         include_research_queue=True,
         include_sma_research_observation=False,
         include_research_return_observation=False,
+        include_research_return_summary_observation=False,
     )
 
 
@@ -363,6 +385,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_ob
         include_research_queue=include_research_queue,
         include_sma_research_observation=True,
         include_research_return_observation=False,
+        include_research_return_summary_observation=False,
     )
 
 
@@ -371,6 +394,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_return
     include_risk_authority: bool = False,
     include_research_queue: bool = False,
     include_sma_research_observation: bool = False,
+    include_research_return_summary_observation: bool = False,
 ) -> AdvisoryOperatingBriefContentBundle:
     """Return the deterministic synthetic content bundle with return observation."""
 
@@ -379,6 +403,27 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_return
         include_research_queue=include_research_queue,
         include_sma_research_observation=include_sma_research_observation,
         include_research_return_observation=True,
+        include_research_return_summary_observation=(
+            include_research_return_summary_observation
+        ),
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation(
+    *,
+    include_risk_authority: bool = False,
+    include_research_queue: bool = False,
+    include_sma_research_observation: bool = False,
+    include_research_return_observation: bool = False,
+) -> AdvisoryOperatingBriefContentBundle:
+    """Return the deterministic synthetic content bundle with return summary."""
+
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=include_research_queue,
+        include_sma_research_observation=include_sma_research_observation,
+        include_research_return_observation=include_research_return_observation,
+        include_research_return_summary_observation=True,
     )
 
 
@@ -388,6 +433,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     include_research_queue: bool,
     include_sma_research_observation: bool,
     include_research_return_observation: bool,
+    include_research_return_summary_observation: bool,
 ) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
@@ -407,6 +453,11 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         if include_research_return_observation
         else ()
     )
+    research_return_summary_observation_briefs = (
+        (_build_synthetic_research_return_summary_observation_brief(),)
+        if include_research_return_summary_observation
+        else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
@@ -414,6 +465,9 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         research_queue_briefs=research_queue_briefs,
         sma_research_observation_briefs=sma_research_observation_briefs,
         research_return_observation_briefs=research_return_observation_briefs,
+        research_return_summary_observation_briefs=(
+            research_return_summary_observation_briefs
+        ),
     )
 
 
@@ -424,34 +478,18 @@ def render_advisory_operating_brief_content_bundle_preview(
     include_research_queue: bool = False,
     include_sma_research_observation: bool = False,
     include_research_return_observation: bool = False,
+    include_research_return_summary_observation: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
-    bundle = (
-        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation(
-            include_risk_authority=include_risk_authority,
-            include_research_queue=include_research_queue,
-            include_sma_research_observation=include_sma_research_observation,
-        )
-        if include_research_return_observation
-        else (
-            build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
-                include_risk_authority=include_risk_authority,
-                include_research_queue=include_research_queue,
-            )
-            if include_sma_research_observation
-            else (
-                build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
-                    include_risk_authority=include_risk_authority,
-                )
-                if include_research_queue
-                else (
-                    build_synthetic_advisory_operating_brief_content_bundle_with_risk()
-                    if include_risk_authority
-                    else build_synthetic_advisory_operating_brief_content_bundle()
-                )
-            )
-        )
+    bundle = _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=include_research_queue,
+        include_sma_research_observation=include_sma_research_observation,
+        include_research_return_observation=include_research_return_observation,
+        include_research_return_summary_observation=(
+            include_research_return_summary_observation
+        ),
     )
     exported = export_advisory_operating_brief_content_bundle(bundle)
     if output_format == "text":
@@ -632,6 +670,36 @@ def _build_synthetic_research_return_observation_brief() -> (
         title=_RESEARCH_RETURN_BRIEF_TITLE,
         summary=_RESEARCH_RETURN_BRIEF_SUMMARY,
         sections=(section,),
+    )
+
+
+def _build_synthetic_research_return_summary_observation_brief() -> (
+    ResearchReturnSummaryObservationBrief
+):
+    primary_observation = build_research_return_series_observation(
+        symbol=_RESEARCH_RETURN_SYMBOL,
+        as_of=_RESEARCH_RETURN_AS_OF,
+        price_points=_build_synthetic_research_return_price_points(),
+        limitations=_RESEARCH_RETURN_LIMITATIONS,
+        non_claims=_RESEARCH_RETURN_EXTRA_NON_CLAIMS,
+    )
+    insufficient_history_observation = build_research_return_series_observation(
+        symbol=_RESEARCH_RETURN_SYMBOL,
+        as_of=_RESEARCH_RETURN_AS_OF,
+        price_points=_build_synthetic_insufficient_history_research_return_price_points(),
+        limitations=_RESEARCH_RETURN_LIMITATIONS,
+        non_claims=_RESEARCH_RETURN_EXTRA_NON_CLAIMS,
+    )
+    return build_research_return_summary_observation_brief(
+        brief_id=_RESEARCH_RETURN_SUMMARY_BRIEF_ID,
+        title=_RESEARCH_RETURN_SUMMARY_BRIEF_TITLE,
+        summary=_RESEARCH_RETURN_SUMMARY_BRIEF_SUMMARY,
+        summary_observations=(
+            build_research_return_summary_observation(primary_observation),
+            build_research_return_summary_observation(
+                insufficient_history_observation
+            ),
+        ),
     )
 
 

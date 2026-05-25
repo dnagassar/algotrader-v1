@@ -66,6 +66,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "research_return_observation_brief_count: "
             f"{payload['research_return_observation_brief_count']}"
         )
+    if "research_return_summary_observation_briefs" in payload:
+        lines.append(
+            "research_return_summary_observation_brief_count: "
+            f"{payload['research_return_summary_observation_brief_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -118,6 +123,18 @@ def render_advisory_operating_brief_content_bundle_text(
             _append_research_return_observation_brief(
                 lines,
                 return_payload,
+                brief_index,
+            )
+
+    if "research_return_summary_observation_briefs" in payload:
+        lines.extend(("", "Research Return Summary Observation Briefs"))
+        for brief_index, summary_payload in enumerate(
+            payload["research_return_summary_observation_briefs"],
+            start=1,
+        ):
+            _append_research_return_summary_observation_brief(
+                lines,
+                summary_payload,
                 brief_index,
             )
 
@@ -857,6 +874,86 @@ def _append_research_return_points(
                 f"simple_return: {payload['simple_return']}",
             )
         )
+
+
+def _append_research_return_summary_observation_brief(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Research Return Summary Observation Brief {brief_index}",
+            f"brief_type: {payload['brief_type']}",
+            f"brief_id: {payload['brief_id']}",
+            f"title: {payload['title']}",
+            f"summary: {payload['summary']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"summary_observation_count: {payload['summary_observation_count']}",
+            "Brief Limitations",
+        )
+    )
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Brief Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+    lines.extend(("Summary Observations",))
+
+    for observation_index, observation_payload in enumerate(
+        payload["summary_observations"],
+        start=1,
+    ):
+        _append_research_return_summary_observation(
+            lines,
+            observation_payload,
+            brief_index,
+            observation_index,
+        )
+
+
+def _append_research_return_summary_observation(
+    lines: list[str],
+    payload: dict[str, object],
+    brief_index: int,
+    observation_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            (
+                f"Research Return Summary Observation Brief {brief_index} "
+                f"Observation {observation_index}"
+            ),
+            f"observation_type: {payload['observation_type']}",
+            f"symbol: {payload['symbol']}",
+            f"as_of: {payload['as_of']}",
+            f"return_method: {payload['return_method']}",
+            f"price_basis: {payload['price_basis']}",
+            f"source_return_count: {payload['source_return_count']}",
+            f"positive_return_count: {payload['positive_return_count']}",
+            f"negative_return_count: {payload['negative_return_count']}",
+            f"zero_return_count: {payload['zero_return_count']}",
+            f"min_simple_return: {_format_value(payload['min_simple_return'])}",
+            f"max_simple_return: {_format_value(payload['max_simple_return'])}",
+            f"mean_simple_return: {_format_value(payload['mean_simple_return'])}",
+            f"summary_state: {payload['summary_state']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            "Source Observation",
+        )
+    )
+    _append_research_return_source_observation(
+        lines,
+        payload["source_observation"],
+        payload["summary_state"],
+    )
+    lines.extend(("Observation Limitations",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Observation Non-Claims",))
+    _append_values(lines, payload["non_claims"])
 
 
 def _append_values(lines: list[str], values: object) -> None:

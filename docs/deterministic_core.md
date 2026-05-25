@@ -6946,6 +6946,28 @@ approval, paper/live readiness, capital authority beyond fixed false metadata,
 trading authority, runtime timestamps, new dependencies, or trading behavior.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 226-230 - Research Return Summary Observation Advisory Integration adds a
+bounded synthetic advisory branch for the Phase 225
+`ResearchReturnSummaryObservation`. It introduces deterministic fixture helpers
+for constructed-return and insufficient-history summaries, exact expected
+primitive dictionaries matching `.to_dict()`, and a frozen/slotted
+`ResearchReturnSummaryObservationBrief` with in-memory render/export helpers.
+The brief preserves exact summary observation identities, carries limitations
+and non-claims forward with first-seen de-dupe, emits compact deterministic
+JSON, nests each source observation payload, and adds no deserialization path.
+
+The Phase 226-230 branch is wired into the existing advisory content bundle only
+as an optional additive branch after the existing research return observation
+branch. The renderer/export/hidden CLI/package preview paths render and export
+the summary branch when explicitly included by synthetic preview helpers. The
+branch remains metadata-only, advisory-only, synthetic-fixture-only,
+offline-safe, deterministic, non-actionable, and non-authoritative; it adds no
+real market data, file I/O, network/socket/API access, credentials, broker,
+execution, portfolio, runtime, scheduler, dashboard, persistence, ML, LLM,
+agent, signal, evaluator, strategy approval, ranking/scoring, recommendation,
+allocation/order authority, paper/live readiness, capital authority beyond fixed
+false metadata, or trading authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

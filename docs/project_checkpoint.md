@@ -12606,6 +12606,30 @@ Safe next tasks include:
   metadata, trading authority, dependencies, runtime timestamps, or trading
   behavior are added; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 226-230 - Research Return Summary Observation Advisory Integration adds
+  a bounded synthetic advisory branch for the committed Phase 225 summary
+  observation. It adds
+  `tests/fixtures/research_return_summary_observation.py` with constructed and
+  insufficient-history summary fixtures plus exact expected primitive dict
+  helpers matching `.to_dict()`. It also adds
+  `algotrader.research.research_return_summary_observation_brief` with a
+  frozen/slotted `ResearchReturnSummaryObservationBrief`, deterministic text
+  rendering, and in-memory export views. The brief preserves exact source
+  summary observation identities, includes the summary state, return counts,
+  min/max/mean simple return values, advisory metadata, limitations,
+  non-claims, and nested source observation payloads, and adds no `from_dict()`.
+  The branch is wired into the existing advisory content bundle, renderer,
+  export, hidden synthetic CLI preview, and package synthetic preview only as an
+  optional additive branch after the existing research return observation
+  branch. Existing branch ordering and exact-output regressions are preserved.
+  The packet remains synthetic-fixture-only, metadata-only, advisory-only,
+  offline-safe, deterministic, and non-actionable; it adds no real market data,
+  raw vendor/public data, network/socket/API access, credentials, file I/O,
+  broker/execution/portfolio/runtime/scheduler/dashboard/persistence behavior,
+  ML, LLM/agent/notebook paths, signal/evaluator/backtesting behavior, strategy
+  approval, validation/recommendation/ranking/scoring/readiness claims,
+  allocation/order authority, paper/live eligibility, capital authority beyond
+  fixed false metadata, or trading authority
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

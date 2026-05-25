@@ -21,11 +21,13 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     "expected_synthetic_advisory_operating_brief_content_bundle_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict",
+    "expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict",
 ]
 
 _TITLE = "Advisory operating brief content bundle metadata"
@@ -55,6 +57,13 @@ _SUMMARY_WITH_RESEARCH_RETURN_OBSERVATION = (
     "1 research queue brief(s), 1 SMA research observation brief(s), "
     "1 research return observation brief(s), 22 limitation(s), and "
     "48 non-claim(s)."
+)
+_SUMMARY_WITH_RESEARCH_RETURN_SUMMARY_OBSERVATION = (
+    "Advisory content bundle contains 1 candidate research brief(s), "
+    "1 strategy eligibility brief(s), 1 risk authority brief(s), "
+    "1 research queue brief(s), 1 SMA research observation brief(s), "
+    "1 research return observation brief(s), 1 research return summary "
+    "observation brief(s), 22 limitation(s), and 48 non-claim(s)."
 )
 
 
@@ -123,6 +132,20 @@ def build_synthetic_research_return_observation_brief() -> object:
     )
     build_synthetic_candidate_research_brief = (
         research_return_observation_fixture_module.build_synthetic_research_return_observation_brief
+    )
+    return build_synthetic_candidate_research_brief()
+
+
+def build_synthetic_research_return_summary_observation_brief() -> object:
+    """Return the deterministic Phase 226-230 return summary brief."""
+
+    build_synthetic_candidate_research_brief = __import__
+    research_return_summary_fixture_module = build_synthetic_candidate_research_brief(
+        "tests.fixtures.research_return_summary_observation",
+        fromlist=("build_synthetic_research_return_summary_observation_brief",),
+    )
+    build_synthetic_candidate_research_brief = (
+        research_return_summary_fixture_module.build_synthetic_research_return_summary_observation_brief
     )
     return build_synthetic_candidate_research_brief()
 
@@ -229,6 +252,46 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_return
     )
 
 
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic content bundle with return summary metadata."""
+
+    candidate_brief = build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    expected_synthetic_strategy_eligibility_brief_dict = (
+        build_synthetic_risk_authority_brief
+    )
+    risk_authority_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    expected_synthetic_candidate_research_brief_dict = (
+        build_synthetic_research_queue_brief
+    )
+    research_queue_brief = expected_synthetic_candidate_research_brief_dict()
+    expected_synthetic_strategy_eligibility_brief_dict = (
+        build_synthetic_sma_research_observation_brief
+    )
+    sma_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    expected_synthetic_candidate_research_brief_dict = (
+        build_synthetic_research_return_observation_brief
+    )
+    research_return_brief = expected_synthetic_candidate_research_brief_dict()
+    expected_synthetic_strategy_eligibility_brief_dict = (
+        build_synthetic_research_return_summary_observation_brief
+    )
+    research_return_summary_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        risk_authority_briefs=(risk_authority_brief,),
+        research_queue_briefs=(research_queue_brief,),
+        sma_research_observation_briefs=(sma_brief,),
+        research_return_observation_briefs=(research_return_brief,),
+        research_return_summary_observation_briefs=(
+            research_return_summary_brief,
+        ),
+    )
+
+
 def expected_synthetic_advisory_operating_brief_content_bundle_dict() -> (
     dict[str, object]
 ):
@@ -319,6 +382,26 @@ def expected_synthetic_research_return_observation_brief_dict() -> dict[str, obj
     )
     expected_synthetic_candidate_research_brief_dict = (
         research_return_observation_fixture_module.expected_synthetic_research_return_observation_brief_dict
+    )
+    return expected_synthetic_candidate_research_brief_dict()
+
+
+def expected_synthetic_research_return_summary_observation_brief_dict() -> (
+    dict[str, object]
+):
+    """Return the exact primitive Phase 226-230 return summary payload."""
+
+    expected_synthetic_candidate_research_brief_dict = __import__
+    research_return_summary_fixture_module = (
+        expected_synthetic_candidate_research_brief_dict(
+            "tests.fixtures.research_return_summary_observation",
+            fromlist=(
+                "expected_synthetic_research_return_summary_observation_brief_dict",
+            ),
+        )
+    )
+    expected_synthetic_candidate_research_brief_dict = (
+        research_return_summary_fixture_module.expected_synthetic_research_return_summary_observation_brief_dict
     )
     return expected_synthetic_candidate_research_brief_dict()
 
@@ -534,6 +617,82 @@ def expected_synthetic_advisory_operating_brief_content_bundle_with_research_ret
         "research_queue_briefs": [research_queue_brief],
         "sma_research_observation_briefs": [sma_brief],
         "research_return_observation_briefs": [research_return_brief],
+        "limitations": limitations,
+        "non_claims": non_claims,
+    }
+
+
+def expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict() -> (
+    dict[str, object]
+):
+    """Return the exact primitive return-summary bundle payload."""
+
+    candidate_brief = expected_synthetic_candidate_research_brief_dict()
+    strategy_eligibility_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    build_synthetic_candidate_research_brief = (
+        expected_synthetic_risk_authority_brief_dict
+    )
+    risk_authority_brief = build_synthetic_candidate_research_brief()
+    build_synthetic_strategy_eligibility_brief = (
+        expected_synthetic_research_queue_brief_dict
+    )
+    research_queue_brief = build_synthetic_strategy_eligibility_brief()
+    build_synthetic_candidate_research_brief = (
+        expected_synthetic_sma_research_observation_brief_dict
+    )
+    sma_brief = build_synthetic_candidate_research_brief()
+    build_synthetic_strategy_eligibility_brief = (
+        expected_synthetic_research_return_observation_brief_dict
+    )
+    research_return_brief = build_synthetic_strategy_eligibility_brief()
+    build_synthetic_candidate_research_brief = (
+        expected_synthetic_research_return_summary_observation_brief_dict
+    )
+    research_return_summary_brief = build_synthetic_candidate_research_brief()
+    limitations = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "limitations",
+        risk_authority_brief,
+        research_queue_brief,
+        sma_brief,
+        research_return_brief,
+        research_return_summary_brief,
+    )
+    non_claims = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "non_claims",
+        risk_authority_brief,
+        research_queue_brief,
+        sma_brief,
+        research_return_brief,
+        research_return_summary_brief,
+    )
+
+    return {
+        "bundle_type": "advisory_operating_brief_content_bundle",
+        "status": "candidate_only",
+        "authority": "advisory_only",
+        "capital_authority": False,
+        "title": _TITLE,
+        "summary": _SUMMARY_WITH_RESEARCH_RETURN_SUMMARY_OBSERVATION,
+        "candidate_research_brief_count": 1,
+        "strategy_eligibility_brief_count": 1,
+        "risk_authority_brief_count": 1,
+        "research_queue_brief_count": 1,
+        "sma_research_observation_brief_count": 1,
+        "research_return_observation_brief_count": 1,
+        "research_return_summary_observation_brief_count": 1,
+        "candidate_research_briefs": [candidate_brief],
+        "strategy_eligibility_briefs": [strategy_eligibility_brief],
+        "risk_authority_briefs": [risk_authority_brief],
+        "research_queue_briefs": [research_queue_brief],
+        "sma_research_observation_briefs": [sma_brief],
+        "research_return_observation_briefs": [research_return_brief],
+        "research_return_summary_observation_briefs": [
+            research_return_summary_brief
+        ],
         "limitations": limitations,
         "non_claims": non_claims,
     }
