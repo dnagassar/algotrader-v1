@@ -6823,6 +6823,43 @@ authority beyond existing false metadata, trading authority, new dependencies,
 or `from_dict()`. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 222 - Advisory Operating Brief Content Bundle Export Research Return
+Observation Regression Guard adds a test-only regression file for the existing
+`export_advisory_operating_brief_content_bundle(...)` path over the Phase
+220/221 research-return-inclusive synthetic content bundle. The guard uses the
+existing research-return-inclusive bundle builder and expected dictionary,
+asserts the export payload equals that dictionary, pins compact deterministic
+JSON with `sort_keys=True` and `separators=(",", ":")`, proves JSON
+round-trips, and requires rendered text to match
+`render_advisory_operating_brief_content_bundle_text(bundle)`.
+
+The Phase 222 guard proves repeated exports are byte-for-byte deterministic;
+candidate, strategy, risk, research queue, SMA, and research return branches
+are all present; `research_return_observation_brief_count` and
+`research_return_observation_briefs` are preserved; nested research return
+brief, section, item, source observation, and return point metadata remain
+present; return mechanics include `returns_constructed`,
+`insufficient_return_history`, positive/negative/zero return counts,
+`close_to_close_simple_return`, `synthetic_close`, ignored future sample count,
+ordered return points, and deterministic empty-return representation; branch
+sequence remains candidate, strategy, risk, research queue, SMA, research
+return, limitations, and non-claims; limitations/non-claims are preserved; and
+mutating the exported payload does not mutate the source bundle or later
+exports. The guard also self-checks imports, calls, and source terms so the
+test remains isolated from broker/account/order/fill/allocation/portfolio
+mutation behavior, file I/O, network/socket, vendor APIs, credentials,
+runtime/scheduler/dashboard paths, notebooks, ML, LLM/agent behavior,
+recommendation/ranking/scoring/approval/readiness/trading authority behavior,
+and `from_dict()`.
+
+Phase 222 changes no source files and adds no content bundle, renderer, export,
+CLI, package, package synthetic builder, package CLI, research return
+mechanics, research return brief renderer/export, SMA mechanics, SMA brief
+renderer/export, or existing CLI behavior changes. Existing no-risk,
+risk-inclusive, research-queue-inclusive, and SMA-inclusive export regressions
+remain the compatibility baseline. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

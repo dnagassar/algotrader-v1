@@ -12499,6 +12499,33 @@ Safe next tasks include:
   mutation, capital authority beyond existing false metadata, trading
   authority, new dependencies, or `from_dict()` are added; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 222 - Advisory Operating Brief Content Bundle Export Research Return
+  Observation Regression Guard adds a test-only regression for the existing
+  `export_advisory_operating_brief_content_bundle(...)` path over the Phase
+  220/221 research-return-inclusive synthetic content bundle. The guard uses
+  the existing research-return-inclusive builder and expected dictionary, pins
+  payload equality, compact deterministic JSON (`sort_keys=True`,
+  `separators=(",", ":")`), JSON round-tripping, rendered text equality with
+  `render_advisory_operating_brief_content_bundle_text(bundle)`, and repeated
+  byte-for-byte export determinism. It also proves candidate, strategy, risk,
+  research queue, SMA, and research return branches are present; pins
+  `research_return_observation_brief_count` and
+  `research_return_observation_briefs`; verifies nested research return brief,
+  section, item, source observation, and return point metadata; covers
+  `returns_constructed`, `insufficient_return_history`, positive/negative/zero
+  return counts, `close_to_close_simple_return`, `synthetic_close`, ignored
+  future sample count, ordered return points, deterministic empty-return
+  representation, branch sequence, limitations/non-claims preservation, and
+  source-bundle mutation isolation. The new file self-checks imports, calls,
+  and source terms to stay isolated from broker/account/order/fill/allocation/
+  portfolio mutation behavior, file I/O, network/socket, vendor APIs,
+  credentials, runtime/scheduler/dashboard paths, notebooks, ML, LLM/agent
+  behavior, recommendation/ranking/scoring/approval/readiness/trading authority
+  behavior, and `from_dict()`. No source files, content bundle, renderer,
+  export, CLI, package, package synthetic builder, package CLI, research return
+  mechanics, research return brief renderer/export, SMA mechanics, SMA brief
+  renderer/export, or existing CLI behavior are changed; normal pytest remains
+  offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
