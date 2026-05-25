@@ -54,6 +54,20 @@ from algotrader.research.risk_authority_brief_section import (
     build_risk_authority_brief_section,
 )
 from algotrader.research.risk_authority_status import build_risk_authority_status
+from algotrader.research.sma_research_observation import (
+    SmaResearchPricePoint,
+    build_sma_research_observation,
+)
+from algotrader.research.sma_research_observation_brief import (
+    build_sma_research_observation_brief_item,
+)
+from algotrader.research.sma_research_observation_brief_container import (
+    SmaResearchObservationBrief,
+    build_sma_research_observation_brief,
+)
+from algotrader.research.sma_research_observation_brief_section import (
+    build_sma_research_observation_brief_section,
+)
 from algotrader.research.strategy_eligibility_brief import (
     StrategyEligibilityBrief,
     build_strategy_eligibility_brief,
@@ -72,6 +86,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle",
     "build_synthetic_advisory_operating_brief_content_bundle_with_risk",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -236,6 +251,27 @@ _RESEARCH_QUEUE_EVIDENCE_REFS = (
     "phase-184-content-bundle-research-queue-branch",
     "phase-187-cli-research-queue-preview",
 )
+_SMA_SYMBOL = "SYNTH_ETF"
+_SMA_AS_OF = "2026-01-20"
+_SMA_WINDOW = 3
+_SMA_LIMITATIONS = (
+    "synthetic broad ETF close series for fixture mechanics only",
+    "fixed date samples with later samples ignored by the builder",
+    "candidate-only advisory research metadata with no system connection",
+)
+_SMA_EXTRA_NON_CLAIMS = (_not("meth", "odology app", "roval"),)
+_SMA_SECTION_ID = "sma-research-observation-section:synthetic:broad-etf-sma"
+_SMA_SECTION_TITLE = "Synthetic broad ETF SMA observation summary"
+_SMA_SECTION_SUMMARY = (
+    "Section is advisory-only synthetic SMA observation content for broad ETF "
+    "SMA mechanics."
+)
+_SMA_BRIEF_ID = "sma-research-observation-brief:synthetic:broad-etf-sma"
+_SMA_BRIEF_TITLE = "Synthetic broad ETF SMA research observation brief"
+_SMA_BRIEF_SUMMARY = (
+    "Brief is advisory-only synthetic SMA observation content for broad ETF "
+    "SMA mechanics."
+)
 
 
 def build_synthetic_advisory_operating_brief_content_bundle() -> (
@@ -246,6 +282,7 @@ def build_synthetic_advisory_operating_brief_content_bundle() -> (
     return _build_synthetic_advisory_operating_brief_content_bundle(
         include_risk_authority=False,
         include_research_queue=False,
+        include_sma_research_observation=False,
     )
 
 
@@ -257,6 +294,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
     return _build_synthetic_advisory_operating_brief_content_bundle(
         include_risk_authority=True,
         include_research_queue=False,
+        include_sma_research_observation=False,
     )
 
 
@@ -269,6 +307,21 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
     return _build_synthetic_advisory_operating_brief_content_bundle(
         include_risk_authority=include_risk_authority,
         include_research_queue=True,
+        include_sma_research_observation=False,
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
+    *,
+    include_risk_authority: bool = False,
+    include_research_queue: bool = False,
+) -> AdvisoryOperatingBriefContentBundle:
+    """Return the deterministic synthetic content bundle with SMA observation."""
+
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=include_research_queue,
+        include_sma_research_observation=True,
     )
 
 
@@ -276,6 +329,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     *,
     include_risk_authority: bool,
     include_research_queue: bool,
+    include_sma_research_observation: bool,
 ) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
@@ -285,11 +339,17 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     research_queue_briefs = (
         (_build_synthetic_research_queue_brief(),) if include_research_queue else ()
     )
+    sma_research_observation_briefs = (
+        (_build_synthetic_sma_research_observation_brief(),)
+        if include_sma_research_observation
+        else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
         risk_authority_briefs=risk_authority_briefs,
         research_queue_briefs=research_queue_briefs,
+        sma_research_observation_briefs=sma_research_observation_briefs,
     )
 
 
@@ -298,18 +358,26 @@ def render_advisory_operating_brief_content_bundle_preview(
     *,
     include_risk_authority: bool = False,
     include_research_queue: bool = False,
+    include_sma_research_observation: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
     bundle = (
-        build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
             include_risk_authority=include_risk_authority,
+            include_research_queue=include_research_queue,
         )
-        if include_research_queue
+        if include_sma_research_observation
         else (
-            build_synthetic_advisory_operating_brief_content_bundle_with_risk()
-            if include_risk_authority
-            else build_synthetic_advisory_operating_brief_content_bundle()
+            build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+                include_risk_authority=include_risk_authority,
+            )
+            if include_research_queue
+            else (
+                build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+                if include_risk_authority
+                else build_synthetic_advisory_operating_brief_content_bundle()
+            )
         )
     )
     exported = export_advisory_operating_brief_content_bundle(bundle)
@@ -418,3 +486,66 @@ def _build_synthetic_research_queue_brief() -> ResearchQueueBrief:
     item = build_research_queue_brief_item(status)
     section = build_research_queue_brief_section((item,))
     return build_research_queue_brief((section,))
+
+
+def _build_synthetic_sma_research_observation_brief() -> (
+    SmaResearchObservationBrief
+):
+    primary_observation = build_sma_research_observation(
+        symbol=_SMA_SYMBOL,
+        as_of=_SMA_AS_OF,
+        window=_SMA_WINDOW,
+        price_points=_build_synthetic_sma_research_price_points(),
+        limitations=_SMA_LIMITATIONS,
+        non_claims=_SMA_EXTRA_NON_CLAIMS,
+    )
+    insufficient_history_observation = build_sma_research_observation(
+        symbol=_SMA_SYMBOL,
+        as_of=_SMA_AS_OF,
+        window=_SMA_WINDOW,
+        price_points=_build_synthetic_insufficient_history_sma_research_price_points(),
+        limitations=_SMA_LIMITATIONS,
+        non_claims=_SMA_EXTRA_NON_CLAIMS,
+    )
+    section = build_sma_research_observation_brief_section(
+        section_id=_SMA_SECTION_ID,
+        title=_SMA_SECTION_TITLE,
+        summary=_SMA_SECTION_SUMMARY,
+        items=(
+            build_sma_research_observation_brief_item(primary_observation),
+            build_sma_research_observation_brief_item(
+                insufficient_history_observation
+            ),
+        ),
+    )
+    return build_sma_research_observation_brief(
+        brief_id=_SMA_BRIEF_ID,
+        title=_SMA_BRIEF_TITLE,
+        summary=_SMA_BRIEF_SUMMARY,
+        sections=(section,),
+    )
+
+
+def _build_synthetic_sma_research_price_points() -> (
+    tuple[SmaResearchPricePoint, ...]
+):
+    return (
+        _sma_price_point("2026-01-16", "90.00"),
+        _sma_price_point("2026-01-17", "100.00"),
+        _sma_price_point("2026-01-20", "110.00"),
+        _sma_price_point("2026-01-21", "130.00"),
+    )
+
+
+def _build_synthetic_insufficient_history_sma_research_price_points() -> (
+    tuple[SmaResearchPricePoint, ...]
+):
+    return (
+        _sma_price_point("2026-01-19", "100.00"),
+        _sma_price_point("2026-01-20", "101.00"),
+        _sma_price_point("2026-01-21", "125.00"),
+    )
+
+
+def _sma_price_point(value_date: str, close: str) -> SmaResearchPricePoint:
+    return SmaResearchPricePoint(value_date, Decimal(close))

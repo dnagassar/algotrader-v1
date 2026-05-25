@@ -6404,6 +6404,30 @@ behavior, recommendations, ranking/scoring, approvals/readiness/trading
 authority behavior outside explicit non-claims, dependencies, or `from_dict()`.
 Normal pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 208 - Advisory Operating Brief Content Bundle CLI SMA Research
+Observation Preview exposes the existing SMA-inclusive synthetic content bundle
+through `algotrader advisory-operating-brief-content-bundle-preview` with the
+hidden synthetic-only `--include-sma-research-observation` flag. The default,
+`--format text|json`, `--include-risk-authority`,
+`--include-research-queue`, and combined risk plus research-queue preview
+outputs remain byte-for-byte unchanged.
+
+The Phase 208 preview helper builds the SMA observation branch from production
+SMA observation and brief builders only, then routes text and JSON through
+`export_advisory_operating_brief_content_bundle(...)`. The new flag composes
+candidate research, strategy eligibility, and SMA research observation
+branches by default, and includes risk and/or research queue branches only when
+their existing flags are also present. Tests pin compact deterministic JSON,
+JSON round-tripping, repeated byte-identical SMA-inclusive CLI invocations,
+`above_sma_observation`, `insufficient_history`, ignored future sample counts,
+and null SMA/distance fields for insufficient history. Production CLI modules
+still import no tests or fixtures and add no file/path/source/vendor/broker/
+network/runtime/credential options, real data ingestion, persistence,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior, scoring,
+recommendations, approvals/readiness/trading authority behavior, dependencies,
+or `from_dict()`. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

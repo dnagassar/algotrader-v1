@@ -12116,6 +12116,28 @@ Safe next tasks include:
   authority behavior outside explicit non-claims, dependencies, or
   `from_dict()` are added; normal pytest remains offline, credential-free,
   deterministic, and safe
+- Phase 208 - Advisory Operating Brief Content Bundle CLI SMA Research
+  Observation Preview exposes the existing SMA-inclusive synthetic content
+  bundle through `algotrader advisory-operating-brief-content-bundle-preview`
+  with the hidden synthetic-only `--include-sma-research-observation` flag.
+  Default, text/json, risk-inclusive, research-queue-inclusive, and combined
+  risk plus research-queue preview outputs remain byte-for-byte unchanged. The
+  new flag composes candidate research, strategy eligibility, and SMA research
+  observation branches, and includes risk and/or research queue branches only
+  when their existing flags are also present. The helper uses production SMA
+  observation and brief builders only and routes text/JSON through
+  `export_advisory_operating_brief_content_bundle(...)`. Tests pin compact
+  JSON round-tripping, repeated byte-identical SMA-inclusive CLI invocations,
+  branch combinations, `above_sma_observation`, `insufficient_history`,
+  ignored future sample counts, null SMA/distance fields for insufficient
+  history, no production imports from tests or fixtures, no new file/path/
+  source/vendor/broker/network/runtime/credential options, and no actionable
+  authority states. No real data ingestion, broker/runtime behavior, file I/O,
+  persistence, network/socket access, credentials, scheduler/dashboard
+  behavior, notebooks, ML, LLM/agent behavior, ranking/scoring,
+  recommendations, approvals/readiness/trading authority behavior,
+  dependencies, or `from_dict()` are added; normal pytest remains offline,
+  credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
