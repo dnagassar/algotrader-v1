@@ -12161,6 +12161,31 @@ Safe next tasks include:
   recommendations, ranking/scoring, approval/readiness/trading authority
   behavior, dependencies, or `from_dict()` are added; normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 210 - Synthetic Close-to-Close Research Return Observation Mechanics
+  adds `algotrader.research.research_return_observation` as a tiny
+  synthetic-fixture-only, offline-safe, advisory-only, non-trading research
+  mechanics artifact. It defines frozen/slotted synthetic price points,
+  close-to-close return points, and a candidate-only/advisory-only return
+  series observation with `capital_authority=False`,
+  `return_method="close_to_close_simple_return"`, and
+  `price_basis="synthetic_close"`. The builder validates strict `YYYY-MM-DD`
+  dates, sorts samples deterministically, ignores and counts future samples,
+  rejects duplicate dates and non-positive closes, and constructs only
+  consecutive simple returns with
+  `(end_close / start_close) - Decimal("1")`; fewer than two eligible samples
+  produce zero returns. Serialization is deterministic primitive-only output
+  with Decimal values as strings, tuple fields as lists, nested deterministic
+  return dictionaries, required negative non-claims, and no `from_dict()`.
+  Tests pin positive, negative, and zero returns, deterministic sorting,
+  future-sample exclusion, empty-return behavior, validation failures,
+  immutability/slots, byte-stable compact JSON, primitive-only payloads,
+  forbidden public payload keys, no tests/fixture production imports, and
+  AST/import/call/reference guardrails against file I/O, network/socket access,
+  vendor APIs, broker/runtime/scheduler/dashboard behavior, persistence,
+  credentials, notebooks, ML, LLM/agent behavior, recommendations,
+  ranking/scoring, approvals/readiness, allocation/order/portfolio mutation,
+  capital authority, trading authority, dependencies, and real data ingestion;
+  normal pytest remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

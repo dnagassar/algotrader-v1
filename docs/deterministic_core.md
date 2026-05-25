@@ -6453,6 +6453,33 @@ approval/readiness/trading authority behavior, dependencies, or `from_dict()`
 are added. Normal pytest remains offline, credential-free, deterministic, and
 safe.
 
+Phase 210 - Synthetic Close-to-Close Research Return Observation Mechanics adds
+`algotrader.research.research_return_observation` as a tiny synthetic-only
+research mechanics artifact. It defines frozen/slotted price points, return
+points, and a candidate-only/advisory-only return series observation with
+`capital_authority=False`, `return_method="close_to_close_simple_return"`, and
+`price_basis="synthetic_close"`.
+
+The Phase 210 builder validates strict `YYYY-MM-DD` dates, sorts synthetic
+price points deterministically, ignores and counts future samples relative to
+the supplied `as_of`, rejects duplicate dates and non-positive closes, and
+constructs only consecutive close-to-close simple returns:
+`(end_close / start_close) - Decimal("1")`. Fewer than two eligible samples
+produce zero returns. The artifact does not annualize, compound, benchmark,
+model transaction costs/slippage/dividends, claim adjusted-close or
+corporate-action completeness, rank/score, recommend, emit signals, allocate,
+order, mutate portfolios, approve sources/data/methodology/readiness, or add
+broker/runtime behavior. Serialization is deterministic primitive-only output
+with Decimal values as strings, tuple fields as lists, nested return points
+through deterministic dictionaries, required negative non-claims, and no
+`from_dict()`. Tests add AST/import/call/reference guardrails against file I/O,
+network/socket access, vendor APIs, broker/runtime/scheduler/dashboard
+behavior, persistence, credentials, notebooks, ML, LLM/agent behavior,
+recommendations, ranking/scoring, approvals/readiness, allocation/order/
+portfolio mutation, capital authority, trading authority, tests/fixture
+imports, new dependencies, or real data ingestion. Normal pytest remains
+offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
