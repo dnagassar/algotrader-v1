@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 import re
 from pathlib import Path
 
@@ -43,9 +44,11 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     build_synthetic_advisory_operating_brief_content_bundle_with_risk,
     build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation,
     build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation,
     expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict,
     expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict,
+    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict,
     expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
 )
 from tests.fixtures.candidate_research_brief import (
@@ -564,6 +567,27 @@ _SMA_SOURCE_OBSERVATION_FIELDS = (
     "distance_from_sma_pct",
     "position_vs_sma",
 )
+_EXPECTED_SMA_INCLUSIVE_UTF8_LENGTH = 17336
+_EXPECTED_SMA_INCLUSIVE_SHA256 = (
+    "f9fba7495089441c34daab4b313f9d1a3436c5b973c4eecd18950609c65cac6b"
+)
+_RESEARCH_RETURN_SOURCE_OBSERVATION_FIELDS = (
+    "symbol",
+    "as_of",
+    "return_method",
+    "price_basis",
+    "sample_count",
+    "eligible_sample_count",
+    "ignored_future_sample_count",
+    "return_count",
+)
+_RESEARCH_RETURN_POINT_FIELDS = (
+    "start_date",
+    "end_date",
+    "start_close",
+    "end_close",
+    "simple_return",
+)
 _AUTHORITY_SENSITIVE_RENDER_TERMS = (
     _s("app", "roval"),
     _s("app", "roved"),
@@ -777,6 +801,22 @@ def test_valid_rendering_from_phase_184_research_queue_inclusive_fixture() -> No
     )
     assert rendered == _EXPECTED_RESEARCH_QUEUE_INCLUSIVE_TEXT
     assert tuple(rendered.splitlines()) == _EXPECTED_RESEARCH_QUEUE_INCLUSIVE_LINES
+
+
+def test_valid_rendering_from_phase_205_sma_inclusive_fixture_preserves_existing_bytes() -> (
+    None
+):
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation()
+    )
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    rendered_bytes = rendered.encode("utf-8")
+
+    assert isinstance(bundle, AdvisoryOperatingBriefContentBundle)
+    assert isinstance(rendered, str)
+    assert len(rendered_bytes) == _EXPECTED_SMA_INCLUSIVE_UTF8_LENGTH
+    assert hashlib.sha256(rendered_bytes).hexdigest() == _EXPECTED_SMA_INCLUSIVE_SHA256
 
 
 def test_repeated_rendering_is_byte_for_byte_deterministic() -> None:
@@ -1069,6 +1109,196 @@ def test_repeated_sma_inclusive_rendering_is_byte_for_byte_deterministic() -> No
     assert first.encode("utf-8") == second.encode("utf-8") == third.encode("utf-8")
 
 
+def test_research_return_inclusive_rendering_contains_all_expected_return_metadata() -> (
+    None
+):
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+    expected_bundle = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict()
+    )
+    expected_brief = expected_bundle["research_return_observation_briefs"][0]
+    expected_section = expected_brief["sections"][0]
+    expected_items = expected_section["items"]
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+
+    assert bundle.to_dict() == expected_bundle
+    assert "research_return_observation_brief_count: 1" in lines
+    assert "Research Return Observation Briefs" in lines
+    assert "Research Return Observation Brief 1" in lines
+    for field_name in (
+        "brief_type",
+        "brief_id",
+        "title",
+        "summary",
+        "status",
+        "authority",
+        "capital_authority",
+        "section_count",
+    ):
+        assert f"{field_name}: {_render_value(expected_brief[field_name])}" in lines
+    assert "Brief Limitations" in lines
+    assert "Brief Non-Claims" in lines
+    for value in expected_brief["limitations"]:
+        assert f"- {value}" in lines
+    for value in expected_brief["non_claims"]:
+        assert f"- {value}" in lines
+
+    assert "Research Return Observation Brief 1 Section 1" in lines
+    for field_name in (
+        "section_type",
+        "section_id",
+        "title",
+        "summary",
+        "status",
+        "authority",
+        "capital_authority",
+        "item_count",
+    ):
+        assert f"{field_name}: {_render_value(expected_section[field_name])}" in lines
+    assert "Section Limitations" in lines
+    assert "Section Non-Claims" in lines
+    for value in expected_section["limitations"]:
+        assert f"- {value}" in lines
+    for value in expected_section["non_claims"]:
+        assert f"- {value}" in lines
+
+    for item_index, expected_item in enumerate(expected_items, start=1):
+        assert (
+            f"Research Return Observation Brief 1 Section 1 Item {item_index}"
+            in lines
+        )
+        for field_name in (
+            "item_type",
+            "headline",
+            "summary",
+            "mechanical_state",
+            "positive_return_count",
+            "negative_return_count",
+            "zero_return_count",
+            "status",
+            "authority",
+            "capital_authority",
+        ):
+            assert f"{field_name}: {_render_value(expected_item[field_name])}" in lines
+        assert "Source Observation" in lines
+        source = expected_item["source_observation"]
+        for field_name in _RESEARCH_RETURN_SOURCE_OBSERVATION_FIELDS:
+            assert f"{field_name}: {_render_value(source[field_name])}" in lines
+        assert "Return Points" in lines
+        for return_index, return_point in enumerate(source["returns"], start=1):
+            assert f"Return Point {return_index}" in lines
+            for field_name in _RESEARCH_RETURN_POINT_FIELDS:
+                assert f"{field_name}: {_render_value(return_point[field_name])}" in (
+                    lines
+                )
+        assert "Item Limitations" in lines
+        assert "Item Non-Claims" in lines
+        for value in expected_item["limitations"]:
+            assert f"- {value}" in lines
+        for value in expected_item["non_claims"]:
+            assert f"- {value}" in lines
+
+
+def test_research_return_branch_includes_states_counts_mechanics_and_empty_wording() -> (
+    None
+):
+    rendered = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+    branch = rendered[rendered.index("Research Return Observation Briefs") :]
+
+    assert "mechanical_state: returns_constructed" in branch
+    assert "mechanical_state: insufficient_return_history" in branch
+    assert "positive_return_count: 1" in branch
+    assert "negative_return_count: 1" in branch
+    assert "zero_return_count: 1" in branch
+    assert "positive_return_count: 0" in branch
+    assert "negative_return_count: 0" in branch
+    assert "zero_return_count: 0" in branch
+    assert branch.count("return_method: close_to_close_simple_return") == 2
+    assert branch.count("price_basis: synthetic_close") == 2
+    assert branch.count("ignored_future_sample_count: 1") == 2
+    assert "Return Point 1" in branch
+    assert "Return Point 2" in branch
+    assert "Return Point 3" in branch
+    assert "start_date: 2026-01-15" in branch
+    assert "end_date: 2026-01-20" in branch
+    assert "start_close: 100.00" in branch
+    assert "end_close: 94.50" in branch
+    assert "simple_return: 0.05" in branch
+    assert "simple_return: -0.1" in branch
+    assert "simple_return: 0" in branch
+    assert (
+        "- none; insufficient_return_history has no close-to-close return points."
+        in branch
+    )
+
+
+def test_research_return_inclusive_branch_order_is_deterministic() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+
+    _assert_line_order(
+        rendered,
+        (
+            "Candidate Research Briefs",
+            "Strategy Eligibility Briefs",
+            "Risk Authority Briefs",
+            "Research Queue Briefs",
+            "SMA Research Observation Briefs",
+            "Research Return Observation Briefs",
+            "Research Return Observation Brief 1",
+            "Brief Limitations",
+            "Brief Non-Claims",
+            "Research Return Observation Brief 1 Section 1",
+            "Section Limitations",
+            "Section Non-Claims",
+            "Research Return Observation Brief 1 Section 1 Item 1",
+            "Source Observation",
+            "Return Points",
+            "Return Point 1",
+            "Return Point 2",
+            "Return Point 3",
+            "Item Limitations",
+            "Item Non-Claims",
+            "Research Return Observation Brief 1 Section 1 Item 2",
+            "Source Observation",
+            "Return Points",
+            "- none; insufficient_return_history has no close-to-close return points.",
+            "Item Limitations",
+            "Item Non-Claims",
+            "Limitations",
+            "Non-Claims",
+        ),
+    )
+
+
+def test_repeated_research_return_inclusive_rendering_is_byte_for_byte_deterministic() -> (
+    None
+):
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    third = render_advisory_operating_brief_content_bundle_text(
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+
+    assert first
+    assert first.strip() == first
+    assert first == second == third
+    assert first.encode("utf-8") == second.encode("utf-8") == third.encode("utf-8")
+
+
 def test_candidate_research_branch_sequence_is_preserved() -> None:
     first = _candidate_brief_variant("candidate branch alpha")
     second = _candidate_brief_variant("candidate branch beta")
@@ -1311,6 +1541,33 @@ def test_limitations_and_non_claims_from_sma_branch_are_represented() -> None:
         assert f"- {value}" in rendered
 
 
+def test_limitations_and_non_claims_from_research_return_branch_are_represented() -> (
+    None
+):
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch_payloads = (
+        *bundle.to_dict()["candidate_research_briefs"],
+        *bundle.to_dict()["strategy_eligibility_briefs"],
+        *bundle.to_dict()["risk_authority_briefs"],
+        *bundle.to_dict()["research_queue_briefs"],
+        *bundle.to_dict()["sma_research_observation_briefs"],
+        *bundle.to_dict()["research_return_observation_briefs"],
+    )
+
+    for branch_payload in branch_payloads:
+        for value in branch_payload["limitations"]:
+            assert f"- {value}" in rendered
+        for value in branch_payload["non_claims"]:
+            assert f"- {value}" in rendered
+    for value in bundle.limitations:
+        assert f"- {value}" in rendered
+    for value in bundle.non_claims:
+        assert f"- {value}" in rendered
+
+
 def test_rendering_does_not_mutate_source_bundle_payload() -> None:
     bundle = build_synthetic_advisory_operating_brief_content_bundle()
     before = bundle.to_dict()
@@ -1425,6 +1682,94 @@ def test_sma_rendering_does_not_mutate_source_bundle_payload_or_objects() -> Non
     ) == identity_snapshot
 
 
+def test_research_return_rendering_does_not_mutate_source_bundle_payload_or_objects() -> (
+    None
+):
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+    research_queue_brief = bundle.research_queue_briefs[0]
+    sma_brief = bundle.sma_research_observation_briefs[0]
+    return_brief = bundle.research_return_observation_briefs[0]
+    return_section = return_brief.sections[0]
+    first_item = return_section.items[0]
+    second_item = return_section.items[1]
+    first_observation = first_item.source_observation
+    second_observation = second_item.source_observation
+    before = bundle.to_dict()
+    expected = (
+        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict()
+    )
+    identity_snapshot = (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_brief.sections[0]),
+        id(sma_brief.sections[0].items),
+        id(sma_brief.sections[0].items[0]),
+        id(sma_brief.sections[0].items[1]),
+        id(sma_brief.sections[0].items[0].source_observation),
+        id(sma_brief.sections[0].items[1].source_observation),
+        id(return_brief),
+        id(return_brief.sections),
+        id(return_section),
+        id(return_section.items),
+        id(first_item),
+        id(second_item),
+        id(first_observation),
+        id(first_observation.returns),
+        *(id(return_point) for return_point in first_observation.returns),
+        id(second_observation),
+        id(second_observation.returns),
+        *(id(return_point) for return_point in second_observation.returns),
+    )
+
+    render_advisory_operating_brief_content_bundle_text(bundle)
+    render_advisory_operating_brief_content_bundle_text(bundle)
+
+    assert before == expected
+    assert bundle.to_dict() == before
+    assert (
+        id(bundle),
+        id(bundle.candidate_research_briefs[0]),
+        id(bundle.strategy_eligibility_briefs[0]),
+        id(bundle.risk_authority_briefs[0]),
+        id(research_queue_brief),
+        id(research_queue_brief.sections),
+        id(research_queue_brief.sections[0]),
+        id(research_queue_brief.sections[0].items[0]),
+        id(research_queue_brief.sections[0].items[0].source_status),
+        id(sma_brief),
+        id(sma_brief.sections),
+        id(sma_brief.sections[0]),
+        id(sma_brief.sections[0].items),
+        id(sma_brief.sections[0].items[0]),
+        id(sma_brief.sections[0].items[1]),
+        id(sma_brief.sections[0].items[0].source_observation),
+        id(sma_brief.sections[0].items[1].source_observation),
+        id(return_brief),
+        id(return_brief.sections),
+        id(return_section),
+        id(return_section.items),
+        id(first_item),
+        id(second_item),
+        id(first_observation),
+        id(first_observation.returns),
+        *(id(return_point) for return_point in first_observation.returns),
+        id(second_observation),
+        id(second_observation.returns),
+        *(id(return_point) for return_point in second_observation.returns),
+    ) == identity_snapshot
+
+
 def test_renderer_reads_optional_branches_from_dictionary_payload_only() -> None:
     function = _function_def("render_advisory_operating_brief_content_bundle_text")
     source = ast.get_source_segment(_source_text(), function)
@@ -1436,6 +1781,7 @@ def test_renderer_reads_optional_branches_from_dictionary_payload_only() -> None
     assert ".strategy_eligibility_briefs" not in source
     assert ".risk_authority_briefs" not in source
     assert ".sma_research_observation_briefs" not in source
+    assert ".research_return_observation_briefs" not in source
 
 
 @pytest.mark.parametrize("value", (object(), None, "not a bundle"))
@@ -1567,6 +1913,26 @@ def test_sma_renderer_exposes_authority_terms_only_as_cautions() -> None:
         assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
 
 
+def test_research_return_renderer_exposes_authority_terms_only_as_cautions() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation()
+    )
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    source_cautions = _source_caution_values(bundle.to_dict())
+
+    assert _rendered_field_names(rendered).isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)
+    for line in _authority_sensitive_lines(rendered):
+        assert line.startswith("- ")
+        assert line[2:] in source_cautions
+    for token in (
+        "paper_eligible",
+        "live_probe_eligible",
+        "live_authorized",
+        "trading_ready",
+    ):
+        assert re.search(rf"(?<![a-z0-9_]){token}(?![a-z0-9_])", rendered) is None
+
+
 def test_renderer_module_has_no_forbidden_imports_or_calls() -> None:
     imports = _import_references()
     call_names = _call_names()
@@ -1596,6 +1962,8 @@ def test_renderer_adds_no_export_cli_package_or_from_dict_paths() -> None:
         "advisory_operating_brief_content_bundle_export",
         "advisory_operating_brief_content_bundle_cli",
         "advisory_operating_brief_package",
+        "research_return_observation_brief_export",
+        "render_research_return_observation_brief_text",
         "sma_research_observation_brief_export",
         "render_sma_research_observation_brief_text",
         "from_dict",

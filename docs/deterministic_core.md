@@ -6792,6 +6792,37 @@ renderer/export paths, SMA mechanics and renderer/export paths, and existing
 CLI behavior remain unchanged. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 221 - Advisory Operating Brief Content Bundle Renderer Research Return
+Observation Branch extends
+`algotrader.research.advisory_operating_brief_content_bundle_renderer` to
+conditionally render Phase 220 `research_return_observation_briefs` from
+`bundle.to_dict()` only. The renderer keeps the existing branch order of
+candidate research, strategy eligibility, risk authority, research queue, SMA
+research observation, research return observation, then aggregate limitations
+and non-claims.
+
+The Phase 221 research return branch renders deterministic brief, section, and
+item metadata; positive, negative, and zero return-count metadata; nested
+close-to-close synthetic source observation mechanics; return points in source
+order; deterministic insufficient-history empty-return wording; and item,
+section, and brief limitations and non-claims. Tests preserve Phase 162,
+Phase 178, Phase 184/185, and Phase 205/206 no-return-branch renderer output,
+pin the SMA-inclusive renderer bytes by length and SHA-256, prove repeated
+research-return-inclusive rendering is byte-for-byte deterministic, and verify
+source bundle `.to_dict()` payloads and nested objects are unchanged before
+and after rendering.
+
+Phase 221 adds no content bundle contract, export, CLI, package, synthetic
+builder, research return mechanics, research return renderer/export, SMA
+mechanics, SMA renderer/export, or existing CLI behavior changes. It adds no
+real data ingestion, vendor data, broker/runtime behavior, file I/O,
+persistence, network/socket access, credentials, scheduler/dashboard behavior,
+notebooks, ML, LLM/agent behavior, scoring, ranking, recommendations,
+approval/readiness claims, allocation/order/portfolio mutation, capital
+authority beyond existing false metadata, trading authority, new dependencies,
+or `from_dict()`. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

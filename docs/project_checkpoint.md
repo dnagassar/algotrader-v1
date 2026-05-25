@@ -12473,6 +12473,32 @@ Safe next tasks include:
   renderer/export paths, SMA mechanics and renderer/export paths, and existing
   CLI behavior remain unchanged; normal pytest remains offline,
   credential-free, deterministic, and safe
+- Phase 221 - Advisory Operating Brief Content Bundle Renderer Research Return
+  Observation Branch extends
+  `algotrader.research.advisory_operating_brief_content_bundle_renderer` to
+  conditionally render Phase 220 `research_return_observation_briefs` from
+  `bundle.to_dict()` only. The renderer preserves candidate research, strategy
+  eligibility, risk authority, research queue, SMA research observation,
+  research return observation, and aggregate limitations/non-claims branch
+  order. The new branch renders deterministic brief, section, and item
+  metadata; positive/negative/zero return-count metadata; nested close-to-close
+  synthetic source observation mechanics; return points in source order;
+  deterministic insufficient-history empty-return wording; and item, section,
+  and brief limitations/non-claims. Tests preserve Phase 162, Phase 178,
+  Phase 184/185, and Phase 205/206 no-return-branch renderer output, pin the
+  SMA-inclusive renderer bytes by length and SHA-256, prove repeated research-
+  return-inclusive rendering is byte-for-byte deterministic, verify source
+  `.to_dict()` payloads and nested objects remain unchanged, and enforce
+  AST/import/call/literal guardrails. No content bundle contract, export, CLI,
+  package, synthetic builder, research return mechanics, research return
+  renderer/export, SMA mechanics, SMA renderer/export, existing CLI behavior,
+  real data ingestion, vendor data, broker/runtime behavior, file I/O,
+  persistence, network/socket access, credentials, scheduler/dashboard
+  behavior, notebooks, ML, LLM/agent behavior, scoring, ranking,
+  recommendations, approval/readiness claims, allocation/order/portfolio
+  mutation, capital authority beyond existing false metadata, trading
+  authority, new dependencies, or `from_dict()` are added; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
