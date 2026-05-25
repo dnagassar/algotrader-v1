@@ -96,6 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_hidden_option(
         content_bundle_preview_parser,
+        "--include-sma-research-summary-observation",
+        action="store_true",
+        dest="include_sma_research_summary_observation",
+        help=argparse.SUPPRESS,
+    )
+    _add_hidden_option(
+        content_bundle_preview_parser,
         "--include-research-return-observation",
         action="store_true",
         dest="include_research_return_observation",
@@ -112,6 +119,7 @@ def build_parser() -> argparse.ArgumentParser:
         include_risk_authority=False,
         include_research_queue=False,
         include_sma_research_observation=False,
+        include_sma_research_summary_observation=False,
         include_research_return_observation=False,
         include_research_return_summary_observation=False,
     )
@@ -130,6 +138,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_risk_authority,
             include_research_queue,
             include_sma_research_observation,
+            include_sma_research_summary_observation,
             include_research_return_observation,
             include_research_return_summary_observation,
         ) = content_bundle_preview_options
@@ -138,6 +147,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_risk_authority=include_risk_authority,
             include_research_queue=include_research_queue,
             include_sma_research_observation=include_sma_research_observation,
+            include_sma_research_summary_observation=(
+                include_sma_research_summary_observation
+            ),
             include_research_return_observation=include_research_return_observation,
             include_research_return_summary_observation=(
                 include_research_return_summary_observation
@@ -162,6 +174,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_risk_authority=args.include_risk_authority,
             include_research_queue=args.include_research_queue,
             include_sma_research_observation=args.include_sma_research_observation,
+            include_sma_research_summary_observation=(
+                args.include_sma_research_summary_observation
+            ),
             include_research_return_observation=(
                 args.include_research_return_observation
             ),
@@ -288,6 +303,7 @@ def _run_advisory_operating_brief_content_bundle_preview(
     include_risk_authority: bool = False,
     include_research_queue: bool = False,
     include_sma_research_observation: bool = False,
+    include_sma_research_summary_observation: bool = False,
     include_research_return_observation: bool = False,
     include_research_return_summary_observation: bool = False,
 ) -> int:
@@ -301,6 +317,9 @@ def _run_advisory_operating_brief_content_bundle_preview(
             include_risk_authority=include_risk_authority,
             include_research_queue=include_research_queue,
             include_sma_research_observation=include_sma_research_observation,
+            include_sma_research_summary_observation=(
+                include_sma_research_summary_observation
+            ),
             include_research_return_observation=include_research_return_observation,
             include_research_return_summary_observation=(
                 include_research_return_summary_observation
@@ -350,7 +369,7 @@ def _package_preview_output_format(argv: tuple[str, ...]) -> str | None:
 
 def _content_bundle_preview_options(
     argv: tuple[str, ...],
-) -> tuple[str, bool, bool, bool, bool, bool] | None:
+) -> tuple[str, bool, bool, bool, bool, bool, bool] | None:
     return _preview_command_options(
         argv,
         "advisory-operating-brief-content-bundle-preview",
@@ -358,6 +377,7 @@ def _content_bundle_preview_options(
             "--include-risk-authority",
             "--include-research-queue",
             "--include-sma-research-observation",
+            "--include-sma-research-summary-observation",
             "--include-research-return-observation",
             "--include-research-return-summary-observation",
         ),
@@ -380,7 +400,7 @@ def _preview_command_options(
     command: str,
     *,
     allowed_flags: tuple[str, ...] = (),
-) -> tuple[str, bool, bool, bool, bool, bool] | None:
+) -> tuple[str, bool, bool, bool, bool, bool, bool] | None:
     if command not in argv:
         return None
 
@@ -393,6 +413,7 @@ def _preview_command_options(
     include_risk_authority = False
     include_research_queue = False
     include_sma_research_observation = False
+    include_sma_research_summary_observation = False
     include_research_return_observation = False
     include_research_return_summary_observation = False
     saw_format = False
@@ -421,6 +442,10 @@ def _preview_command_options(
                 if include_sma_research_observation:
                     return None
                 include_sma_research_observation = True
+            if argument == "--include-sma-research-summary-observation":
+                if include_sma_research_summary_observation:
+                    return None
+                include_sma_research_summary_observation = True
             if argument == "--include-research-return-observation":
                 if include_research_return_observation:
                     return None
@@ -438,6 +463,7 @@ def _preview_command_options(
         include_risk_authority,
         include_research_queue,
         include_sma_research_observation,
+        include_sma_research_summary_observation,
         include_research_return_observation,
         include_research_return_summary_observation,
     )

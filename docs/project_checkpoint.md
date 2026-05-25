@@ -12669,6 +12669,22 @@ Safe next tasks include:
   ranking/scoring, readiness/approval, allocation/order/fill, paper/live,
   dependency, timestamp, capital-authority, or trading-authority behavior is
   added; normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 238 - Advisory Content Bundle SMA Summary Observation Preview wires the
+  Phase 237 `SmaResearchSummaryObservation` into the synthetic advisory
+  operating brief content bundle preview path behind hidden
+  `--include-sma-research-summary-observation`. The preview builder constructs
+  the summary from the same synthetic SMA observations used by the existing SMA
+  observation preview branch, carries it through content bundle export and text
+  rendering as advisory metadata only, and omits the branch unless the hidden
+  synthetic-only flag is explicitly supplied. Default content bundle preview
+  output and package preview output remain unchanged. The branch stays
+  `candidate_only`, `advisory_only`, `research_only`, and
+  `capital_authority=False`; no strategy validation, signal, evaluator,
+  recommendation, ranking/scoring, readiness state, allocation/order/fill,
+  paper/live, trading authority, broker/runtime/vendor option, real data,
+  persistence, network/socket/API access, scheduler/dashboard, ML, LLM/agent,
+  dependency, runtime timestamp, or deserialization behavior is added.
+  Verification: `python -m pytest` -> 4644 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

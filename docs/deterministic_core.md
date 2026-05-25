@@ -7021,6 +7021,25 @@ fixed false metadata, trading authority, dependencies, runtime timestamps, or
 deserialization paths. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 238 - Advisory Content Bundle SMA Summary Observation Preview wires the
+Phase 237 `SmaResearchSummaryObservation` into the synthetic advisory operating
+brief content bundle preview path behind hidden
+`--include-sma-research-summary-observation`. The preview builder constructs the
+summary from the same synthetic SMA observations used by the existing SMA
+observation preview branch, carries it through content bundle export and text
+rendering as advisory metadata only, and omits the branch unless the hidden
+synthetic-only flag is explicitly supplied.
+
+Phase 238 preserves all default advisory operating brief content bundle preview
+bytes and leaves the package preview unchanged. The added SMA summary branch
+remains `candidate_only`, `advisory_only`, `research_only`, and
+`capital_authority=False`; it adds no strategy validation, signal, evaluator,
+recommendation, ranking/scoring, readiness state, allocation/order/fill
+authority, paper/live eligibility, trading authority, broker/runtime/vendor
+option, real data input, persistence, network/socket/API access, scheduler,
+dashboard, ML, LLM/agent behavior, dependency, runtime timestamp, or
+deserialization path.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
