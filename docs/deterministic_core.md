@@ -6760,6 +6760,38 @@ renderer behavior, advisory/package/CLI/content bundle paths, SMA paths, and
 existing CLI behavior remain unchanged. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 220 - Advisory Operating Brief Content Bundle Research Return
+Observation Branch extends
+`algotrader.research.advisory_operating_brief_content_bundle` with optional
+`research_return_observation_briefs` support for exact
+`ResearchReturnObservationBrief` instances. The bundle still preserves fixed
+metadata (`bundle_type="advisory_operating_brief_content_bundle"`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`), accepts empty individual branches, requires at
+least one total brief across candidate research, strategy eligibility, risk
+authority, research queue, SMA research observation, and research return
+observation branches, rejects subclasses and malformed lookalikes, preserves
+per-branch identity/order, rejects duplicate identities across all branches,
+and carries limitations/non-claims forward with first-seen de-dupe.
+
+The Phase 220 `to_dict()` output adds `research_return_observation_brief_count`
+and `research_return_observation_briefs` only when that optional branch is
+populated, preserving existing no-risk, risk-inclusive, research-queue-
+inclusive, and SMA-inclusive fixture payloads byte-for-byte. The new fixture
+helper composes candidate research, strategy eligibility, risk authority,
+research queue, SMA research observation, and research return observation
+branches through the production bundle builder, exposing the synthetic
+close-to-close return-construction observation payload for later operating
+brief rendering/export/CLI phases. Tests pin the nested research return
+observation payload, including `returns_constructed`,
+`insufficient_return_history`, positive/negative/zero return counts,
+`close_to_close_simple_return`, `synthetic_close`, ignored future sample count,
+and return points. No `from_dict()` is added. Renderer/export/CLI/package
+paths, package synthetic builder paths, research return mechanics and
+renderer/export paths, SMA mechanics and renderer/export paths, and existing
+CLI behavior remain unchanged. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

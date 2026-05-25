@@ -7,6 +7,9 @@ from dataclasses import dataclass
 
 from algotrader.errors import ValidationError
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
+from algotrader.research.research_return_observation_brief_container import (
+    ResearchReturnObservationBrief,
+)
 from algotrader.research.research_queue_brief import ResearchQueueBrief
 from algotrader.research.risk_authority_brief import RiskAuthorityBrief
 from algotrader.research.sma_research_observation_brief_container import (
@@ -25,6 +28,7 @@ _STRATEGY_ELIGIBILITY_BRIEF_TYPE = "strategy_eligibility_brief"
 _RISK_AUTHORITY_BRIEF_TYPE = "risk_authority_brief"
 _RESEARCH_QUEUE_BRIEF_TYPE = "research_queue_brief"
 _SMA_RESEARCH_OBSERVATION_BRIEF_TYPE = "sma_research_observation_brief"
+_RESEARCH_RETURN_OBSERVATION_BRIEF_TYPE = "research_return_observation_brief"
 _STATUS = "candidate_only"
 _AUTHORITY = "advisory_only"
 _CAPITAL_AUTHORITY = False
@@ -48,6 +52,9 @@ class AdvisoryOperatingBriefContentBundle:
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...] = ()
     research_queue_briefs: tuple[ResearchQueueBrief, ...] = ()
     sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...] = ()
+    research_return_observation_briefs: tuple[
+        ResearchReturnObservationBrief, ...
+    ] = ()
 
     def __post_init__(self) -> None:
         candidate_briefs = _candidate_research_briefs_tuple(
@@ -63,12 +70,16 @@ class AdvisoryOperatingBriefContentBundle:
         sma_briefs = _sma_research_observation_briefs_tuple(
             self.sma_research_observation_briefs
         )
+        research_return_briefs = _research_return_observation_briefs_tuple(
+            self.research_return_observation_briefs
+        )
         _validate_non_empty_bundle(
             candidate_briefs,
             eligibility_briefs,
             risk_briefs,
             research_queue_briefs,
             sma_briefs,
+            research_return_briefs,
         )
         _validate_unique_brief_identities(
             candidate_briefs,
@@ -76,6 +87,7 @@ class AdvisoryOperatingBriefContentBundle:
             risk_briefs,
             research_queue_briefs,
             sma_briefs,
+            research_return_briefs,
         )
 
         limitations = _required_string_tuple(self.limitations, "limitations")
@@ -86,6 +98,7 @@ class AdvisoryOperatingBriefContentBundle:
             risk_briefs,
             research_queue_briefs,
             sma_briefs,
+            research_return_briefs,
             "limitations",
         )
         expected_non_claims = _combined_brief_values(
@@ -94,6 +107,7 @@ class AdvisoryOperatingBriefContentBundle:
             risk_briefs,
             research_queue_briefs,
             sma_briefs,
+            research_return_briefs,
             "non_claims",
         )
 
@@ -113,6 +127,7 @@ class AdvisoryOperatingBriefContentBundle:
                 risk_briefs,
                 research_queue_briefs,
                 sma_briefs,
+                research_return_briefs,
             ),
         )
         _validate_matches("limitations", limitations, expected_limitations)
@@ -125,6 +140,11 @@ class AdvisoryOperatingBriefContentBundle:
         object.__setattr__(self, "risk_authority_briefs", risk_briefs)
         object.__setattr__(self, "research_queue_briefs", research_queue_briefs)
         object.__setattr__(self, "sma_research_observation_briefs", sma_briefs)
+        object.__setattr__(
+            self,
+            "research_return_observation_briefs",
+            research_return_briefs,
+        )
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic primitive-only bundle metadata."""
@@ -149,6 +169,10 @@ class AdvisoryOperatingBriefContentBundle:
             payload["sma_research_observation_brief_count"] = len(
                 self.sma_research_observation_briefs
             )
+        if self.research_return_observation_briefs:
+            payload["research_return_observation_brief_count"] = len(
+                self.research_return_observation_briefs
+            )
 
         payload["candidate_research_briefs"] = [
             brief.to_dict() for brief in self.candidate_research_briefs
@@ -168,6 +192,10 @@ class AdvisoryOperatingBriefContentBundle:
             payload["sma_research_observation_briefs"] = [
                 brief.to_dict() for brief in self.sma_research_observation_briefs
             ]
+        if self.research_return_observation_briefs:
+            payload["research_return_observation_briefs"] = [
+                brief.to_dict() for brief in self.research_return_observation_briefs
+            ]
 
         payload["limitations"] = list(self.limitations)
         payload["non_claims"] = list(self.non_claims)
@@ -180,6 +208,9 @@ def build_advisory_operating_brief_content_bundle(
     risk_authority_briefs: Iterable[RiskAuthorityBrief] = (),
     research_queue_briefs: Iterable[ResearchQueueBrief] = (),
     sma_research_observation_briefs: Iterable[SmaResearchObservationBrief] = (),
+    research_return_observation_briefs: Iterable[
+        ResearchReturnObservationBrief
+    ] = (),
 ) -> AdvisoryOperatingBriefContentBundle:
     """Build a deterministic advisory-only content bundle from existing briefs."""
 
@@ -192,12 +223,16 @@ def build_advisory_operating_brief_content_bundle(
     sma_briefs = _sma_research_observation_briefs_tuple(
         sma_research_observation_briefs
     )
+    research_return_briefs = _research_return_observation_briefs_tuple(
+        research_return_observation_briefs
+    )
     _validate_non_empty_bundle(
         candidate_briefs,
         eligibility_briefs,
         risk_briefs,
         research_queue_briefs_tuple,
         sma_briefs,
+        research_return_briefs,
     )
     _validate_unique_brief_identities(
         candidate_briefs,
@@ -205,6 +240,7 @@ def build_advisory_operating_brief_content_bundle(
         risk_briefs,
         research_queue_briefs_tuple,
         sma_briefs,
+        research_return_briefs,
     )
 
     return AdvisoryOperatingBriefContentBundle(
@@ -219,6 +255,7 @@ def build_advisory_operating_brief_content_bundle(
             risk_briefs,
             research_queue_briefs_tuple,
             sma_briefs,
+            research_return_briefs,
         ),
         candidate_research_briefs=candidate_briefs,
         strategy_eligibility_briefs=eligibility_briefs,
@@ -228,6 +265,7 @@ def build_advisory_operating_brief_content_bundle(
             risk_briefs,
             research_queue_briefs_tuple,
             sma_briefs,
+            research_return_briefs,
             "limitations",
         ),
         non_claims=_combined_brief_values(
@@ -236,11 +274,13 @@ def build_advisory_operating_brief_content_bundle(
             risk_briefs,
             research_queue_briefs_tuple,
             sma_briefs,
+            research_return_briefs,
             "non_claims",
         ),
         risk_authority_briefs=risk_briefs,
         research_queue_briefs=research_queue_briefs_tuple,
         sma_research_observation_briefs=sma_briefs,
+        research_return_observation_briefs=research_return_briefs,
     )
 
 
@@ -254,6 +294,7 @@ def _summary(
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     research_queue_briefs: tuple[ResearchQueueBrief, ...],
     sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...],
+    research_return_observation_briefs: tuple[ResearchReturnObservationBrief, ...],
 ) -> str:
     limitations = _combined_brief_values(
         candidate_research_briefs,
@@ -261,6 +302,7 @@ def _summary(
         risk_authority_briefs,
         research_queue_briefs,
         sma_research_observation_briefs,
+        research_return_observation_briefs,
         "limitations",
     )
     non_claims = _combined_brief_values(
@@ -269,6 +311,7 @@ def _summary(
         risk_authority_briefs,
         research_queue_briefs,
         sma_research_observation_briefs,
+        research_return_observation_briefs,
         "non_claims",
     )
     risk_clause = (
@@ -286,11 +329,18 @@ def _summary(
         if sma_research_observation_briefs
         else ""
     )
+    research_return_clause = (
+        f"{len(research_return_observation_briefs)} research return observation "
+        "brief(s), "
+        if research_return_observation_briefs
+        else ""
+    )
     return (
         "Advisory content bundle contains "
         f"{len(candidate_research_briefs)} candidate research brief(s), "
         f"{len(strategy_eligibility_briefs)} strategy eligibility brief(s), "
         f"{risk_clause}{research_queue_clause}{sma_clause}"
+        f"{research_return_clause}"
         f"{len(limitations)} limitation(s), and "
         f"{len(non_claims)} non-claim(s)."
     )
@@ -483,12 +533,54 @@ def _sma_research_observation_briefs_tuple(
     return briefs
 
 
+def _research_return_observation_briefs_tuple(
+    values: Iterable[ResearchReturnObservationBrief],
+) -> tuple[ResearchReturnObservationBrief, ...]:
+    try:
+        briefs = tuple(values)
+    except TypeError as exc:
+        raise ValidationError(
+            "research_return_observation_briefs must be an iterable of "
+            "ResearchReturnObservationBrief."
+        ) from exc
+
+    for index, brief in enumerate(briefs):
+        if type(brief) is not ResearchReturnObservationBrief:
+            raise ValidationError(
+                f"research_return_observation_briefs[{index}] must be a "
+                "ResearchReturnObservationBrief."
+            )
+        if brief.brief_type != _RESEARCH_RETURN_OBSERVATION_BRIEF_TYPE:
+            raise ValidationError(
+                f"research_return_observation_briefs[{index}] brief_type must be "
+                "exactly research_return_observation_brief."
+            )
+        if brief.status != _STATUS:
+            raise ValidationError(
+                f"research_return_observation_briefs[{index}] status must be "
+                "exactly candidate_only."
+            )
+        if brief.authority != _AUTHORITY:
+            raise ValidationError(
+                f"research_return_observation_briefs[{index}] authority must be "
+                "exactly advisory_only."
+            )
+        if brief.capital_authority is not _CAPITAL_AUTHORITY:
+            raise ValidationError(
+                f"research_return_observation_briefs[{index}] capital_authority "
+                "must be False."
+            )
+
+    return briefs
+
+
 def _validate_non_empty_bundle(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     research_queue_briefs: tuple[ResearchQueueBrief, ...],
     sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...],
+    research_return_observation_briefs: tuple[ResearchReturnObservationBrief, ...],
 ) -> None:
     if (
         not candidate_research_briefs
@@ -496,6 +588,7 @@ def _validate_non_empty_bundle(
         and not risk_authority_briefs
         and not research_queue_briefs
         and not sma_research_observation_briefs
+        and not research_return_observation_briefs
     ):
         raise ValidationError(
             "content bundle must contain at least one supported brief."
@@ -508,6 +601,7 @@ def _validate_unique_brief_identities(
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     research_queue_briefs: tuple[ResearchQueueBrief, ...],
     sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...],
+    research_return_observation_briefs: tuple[ResearchReturnObservationBrief, ...],
 ) -> None:
     seen_identities: set[int] = set()
     for brief in (
@@ -516,6 +610,7 @@ def _validate_unique_brief_identities(
         *risk_authority_briefs,
         *research_queue_briefs,
         *sma_research_observation_briefs,
+        *research_return_observation_briefs,
     ):
         brief_identity = id(brief)
         if brief_identity in seen_identities:
@@ -531,6 +626,7 @@ def _combined_brief_values(
     risk_authority_briefs: tuple[RiskAuthorityBrief, ...],
     research_queue_briefs: tuple[ResearchQueueBrief, ...],
     sma_research_observation_briefs: tuple[SmaResearchObservationBrief, ...],
+    research_return_observation_briefs: tuple[ResearchReturnObservationBrief, ...],
     field_name: str,
 ) -> tuple[str, ...]:
     values: list[str] = []
@@ -541,6 +637,7 @@ def _combined_brief_values(
         *risk_authority_briefs,
         *research_queue_briefs,
         *sma_research_observation_briefs,
+        *research_return_observation_briefs,
     ):
         for value in getattr(brief, field_name):
             if value in seen:
