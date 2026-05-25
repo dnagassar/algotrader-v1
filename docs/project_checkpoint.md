@@ -12092,6 +12092,30 @@ Safe next tasks include:
   behavior, ranking/scoring, recommendations, approval/readiness/trading
   authority behavior, dependencies, or `from_dict()` are added; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 207 - Advisory Operating Brief Content Bundle Export SMA Branch
+  Regression Guard adds
+  `tests/unit/test_advisory_operating_brief_content_bundle_export_with_sma_research_observation_regression.py`
+  as a test-only regression for the existing export path over the Phase
+  205/206 SMA-inclusive synthetic content bundle. The guard proves the export
+  payload equals the pinned SMA-inclusive expected dictionary, compact JSON
+  uses `sort_keys=True` and `separators=(",", ":")`, JSON round-trips to the
+  expected dictionary, rendered text equals
+  `render_advisory_operating_brief_content_bundle_text(bundle)`, and repeated
+  exports are byte-for-byte deterministic. It pins candidate, strategy, risk,
+  research queue, and SMA branches together, including
+  `sma_research_observation_brief_count`,
+  `sma_research_observation_briefs`, nested SMA observation metadata,
+  `above_sma_observation`, `insufficient_history`, ignored future sample
+  counts, null SMA/distance fields for insufficient history, branch sequence,
+  limitations, non-claims, and source-bundle mutation isolation. No source
+  files, renderer/export/CLI/package behavior, SMA mechanics, SMA brief
+  renderer/export behavior, existing CLI behavior, real data ingestion, broker
+  or runtime behavior, file I/O, persistence, network/socket access,
+  credentials, scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, recommendations, ranking/scoring, approvals/readiness/trading
+  authority behavior outside explicit non-claims, dependencies, or
+  `from_dict()` are added; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

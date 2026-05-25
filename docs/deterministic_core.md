@@ -6376,6 +6376,34 @@ bundle export, content bundle CLI, package behavior, SMA mechanics, SMA brief
 renderer, SMA brief export, and existing CLI behavior remain unchanged. Normal
 pytest remains offline, credential-free, deterministic, and safe.
 
+Phase 207 - Advisory Operating Brief Content Bundle Export SMA Branch
+Regression Guard adds
+`tests/unit/test_advisory_operating_brief_content_bundle_export_with_sma_research_observation_regression.py`
+as a test-only guard for the existing export path over the Phase 205/206
+SMA-inclusive synthetic content bundle. The regression proves the exported
+payload equals the pinned SMA-inclusive expected dictionary, compact JSON uses
+`sort_keys=True` with `separators=(",", ":")`, JSON round-trips to the same
+primitive payload, rendered text matches
+`render_advisory_operating_brief_content_bundle_text(bundle)`, and repeated
+exports are byte-for-byte deterministic.
+
+The Phase 207 guard pins candidate research, strategy eligibility, risk
+authority, research queue, and SMA research observation branches together,
+including `sma_research_observation_brief_count`,
+`sma_research_observation_briefs`, nested SMA source-observation metadata,
+`above_sma_observation`, `insufficient_history`, ignored future sample counts,
+and null SMA/distance fields for insufficient history. It also proves branch
+sequence, limitations, non-claims, and source-bundle mutation isolation. No
+source files, content bundle construction, renderer, export implementation,
+CLI, package behavior, package synthetic builder, package CLI, SMA mechanics,
+SMA brief renderer, SMA brief export, or existing CLI behavior changed. The
+new test carries AST/import/call/source guardrails against real data
+ingestion, file I/O, persistence, network/socket access, vendor APIs,
+credentials, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+behavior, recommendations, ranking/scoring, approvals/readiness/trading
+authority behavior outside explicit non-claims, dependencies, or `from_dict()`.
+Normal pytest remains offline, credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
