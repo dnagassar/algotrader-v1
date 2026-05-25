@@ -61,6 +61,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "sma_research_observation_brief_count: "
             f"{payload['sma_research_observation_brief_count']}"
         )
+    if "sma_research_summary_observations" in payload:
+        lines.append(
+            "sma_research_summary_observation_count: "
+            f"{payload['sma_research_summary_observation_count']}"
+        )
     if "research_return_observation_briefs" in payload:
         lines.append(
             "research_return_observation_brief_count: "
@@ -113,6 +118,18 @@ def render_advisory_operating_brief_content_bundle_text(
             start=1,
         ):
             _append_sma_research_observation_brief(lines, sma_payload, brief_index)
+
+    if "sma_research_summary_observations" in payload:
+        lines.extend(("", "SMA Research Summary Observations"))
+        for observation_index, summary_payload in enumerate(
+            payload["sma_research_summary_observations"],
+            start=1,
+        ):
+            _append_sma_research_summary_observation(
+                lines,
+                summary_payload,
+                observation_index,
+            )
 
     if "research_return_observation_briefs" in payload:
         lines.extend(("", "Research Return Observation Briefs"))
@@ -715,6 +732,57 @@ def _append_sma_source_observation(
         "position_vs_sma",
     ):
         lines.append(f"{key}: {_format_value(payload[key])}")
+
+
+def _append_sma_research_summary_observation(
+    lines: list[str],
+    payload: dict[str, object],
+    observation_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"SMA Research Summary Observation {observation_index}",
+            f"observation_type: {payload['observation_type']}",
+            f"status: {payload['status']}",
+            f"authority: {payload['authority']}",
+            f"capital_authority: {payload['capital_authority']}",
+            f"research_scope: {payload['research_scope']}",
+            f"total_observation_count: {payload['total_observation_count']}",
+            f"above_sma_count: {payload['above_sma_count']}",
+            f"below_sma_count: {payload['below_sma_count']}",
+            f"equal_sma_count: {payload['equal_sma_count']}",
+            (
+                "insufficient_history_count: "
+                f"{payload['insufficient_history_count']}"
+            ),
+            f"summary_state: {payload['summary_state']}",
+            "Source Observations",
+        )
+    )
+    _append_sma_summary_source_observations(
+        lines,
+        payload["source_observations"],
+        payload["summary_state"],
+    )
+    lines.extend(("Observation Limitations",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("Observation Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+
+
+def _append_sma_summary_source_observations(
+    lines: list[str],
+    payloads: object,
+    summary_state: object,
+) -> None:
+    if not payloads:
+        lines.append(f"- none; {summary_state} has no source SMA observations.")
+        return
+
+    for source_index, payload in enumerate(payloads, start=1):
+        lines.extend(("", f"Source SMA Observation {source_index}"))
+        _append_sma_source_observation(lines, payload)
 
 
 def _append_research_return_observation_brief(

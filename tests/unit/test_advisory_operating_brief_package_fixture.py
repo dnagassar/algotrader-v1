@@ -16,9 +16,6 @@ from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
 )
 from tests.fixtures import advisory_operating_brief_package as fixture_module
-from tests.fixtures.advisory_operating_brief_content_bundle import (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict,
-)
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
@@ -49,9 +46,7 @@ _TITLE = "Synthetic advisory operating brief package"
 _SUMMARY = "Advisory-only synthetic operating brief package content."
 _AS_OF = "2026-01-20"
 _EXPECTED_DICT = build_synthetic_advisory_operating_brief_package().to_dict()
-_EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict()
-)
+_EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(_EXPECTED_DICT["content_bundle"])
 _EXPECTED_CONTENT_BUNDLE_EXPORT_DICT = _primitive_copy(
     _EXPECTED_DICT["content_bundle_export"]
 )
@@ -64,6 +59,7 @@ _BRANCH_KEYS = (
     "risk_authority_briefs",
     "research_queue_briefs",
     "sma_research_observation_briefs",
+    "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
 )
@@ -317,24 +313,41 @@ def test_repeated_construction_and_compact_json_bytes_are_deterministic() -> Non
     assert json.loads(_EXPECTED_COMPACT_JSON_BYTES.decode("ascii")) == _EXPECTED_DICT
 
 
-def test_nested_content_bundle_matches_research_return_summary_fixture() -> None:
+def test_nested_content_bundle_promotes_sma_summary_branch() -> None:
     payload = build_synthetic_advisory_operating_brief_package().to_dict()
     content_bundle = _dict(payload["content_bundle"])
+    summary = _dict(_list(content_bundle["sma_research_summary_observations"])[0])
+    sma_brief = _dict(_list(content_bundle["sma_research_observation_briefs"])[0])
+    sma_section = _dict(_list(sma_brief["sections"])[0])
+    sma_sources = [
+        _dict(item)["source_observation"]
+        for item in _list(sma_section["items"])
+    ]
 
     assert content_bundle == _EXPECTED_CONTENT_BUNDLE_DICT
-    assert content_bundle == (
-        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict()
-    )
     assert content_bundle["candidate_research_brief_count"] == 1
     assert content_bundle["strategy_eligibility_brief_count"] == 1
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
     assert content_bundle["sma_research_observation_brief_count"] == 1
+    assert content_bundle["sma_research_summary_observation_count"] == 1
     assert content_bundle["research_return_observation_brief_count"] == 1
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
     assert tuple(branch_key for branch_key in _BRANCH_KEYS if branch_key in content_bundle) == (
         _BRANCH_KEYS
     )
+    assert summary["observation_type"] == "sma_research_summary_observation"
+    assert summary["status"] == "candidate_only"
+    assert summary["authority"] == "advisory_only"
+    assert summary["capital_authority"] is False
+    assert summary["research_scope"] == "research_only"
+    assert summary["summary_state"] == "observations_summarized"
+    assert summary["total_observation_count"] == 2
+    assert summary["above_sma_count"] == 1
+    assert summary["below_sma_count"] == 0
+    assert summary["equal_sma_count"] == 0
+    assert summary["insufficient_history_count"] == 1
+    assert _list(summary["source_observations"]) == sma_sources
 
 
 def test_nested_content_bundle_export_matches_payload_json_and_renderer() -> None:
@@ -373,6 +386,7 @@ def test_package_builds_expected_content_bundle_from_research_return_summary_sou
         include_risk_authority=True,
         include_research_queue=True,
         include_sma_research_observation=True,
+        include_sma_research_summary_observation=True,
         include_research_return_observation=True,
     )
 
@@ -381,11 +395,13 @@ def test_package_builds_expected_content_bundle_from_research_return_summary_sou
         include_risk_authority: bool = False,
         include_research_queue: bool = False,
         include_sma_research_observation: bool = False,
+        include_sma_research_summary_observation: bool = False,
         include_research_return_observation: bool = False,
     ):
         assert include_risk_authority is True
         assert include_research_queue is True
         assert include_sma_research_observation is True
+        assert include_sma_research_summary_observation is True
         assert include_research_return_observation is True
         return source
 
@@ -407,6 +423,9 @@ def test_package_builds_expected_content_bundle_from_research_return_summary_sou
     assert package.content_bundle.risk_authority_briefs == source.risk_authority_briefs
     assert package.content_bundle.sma_research_observation_briefs == (
         source.sma_research_observation_briefs
+    )
+    assert package.content_bundle.sma_research_summary_observations == (
+        source.sma_research_summary_observations
     )
     assert package.content_bundle.research_return_observation_briefs == (
         source.research_return_observation_briefs

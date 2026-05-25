@@ -7040,6 +7040,24 @@ option, real data input, persistence, network/socket/API access, scheduler,
 dashboard, ML, LLM/agent behavior, dependency, runtime timestamp, or
 deserialization path.
 
+Phase 239 - Advisory Package SMA Summary Alignment promotes the Phase 238 SMA
+summary branch into the canonical synthetic advisory operating brief package
+path. The package synthetic builder requests the content-bundle
+`SmaResearchSummaryObservation`, carries the exact advisory-only summary object
+into the rebuilt package content bundle, and keeps package export, renderer,
+fixture, and CLI preview output deterministic.
+
+Phase 239 is metadata-only. The promoted branch remains `candidate_only`,
+`advisory_only`, `research_only`, and `capital_authority=False`, with the
+summary counts rendered and exported alongside the existing SMA observation,
+research return, and research return summary branches. It adds no strategy
+approval, validation/readiness, recommendation, ranking/scoring, signal or
+evaluator behavior, allocation/order/fill authority, broker/runtime/vendor
+option, real data input, persistence, network/socket/API access, scheduler,
+dashboard, ML, LLM/agent behavior, dependency, runtime timestamp, paper/live
+eligibility, capital authority beyond fixed false metadata, trading authority,
+or deserialization path.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

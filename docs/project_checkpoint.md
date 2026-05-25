@@ -12685,6 +12685,22 @@ Safe next tasks include:
   persistence, network/socket/API access, scheduler/dashboard, ML, LLM/agent,
   dependency, runtime timestamp, or deserialization behavior is added.
   Verification: `python -m pytest` -> 4644 passed, 4 skipped
+- Phase 239 - Advisory Package SMA Summary Alignment promotes the Phase 238 SMA
+  summary branch into the canonical synthetic advisory operating brief package
+  path. The package synthetic builder now requests the content-bundle
+  `SmaResearchSummaryObservation`, carries the exact summary object into the
+  rebuilt package content bundle, and pins the package fixture/export/render/CLI
+  regression path around the new nested
+  `sma_research_summary_observations` branch. The branch is advisory metadata
+  only: it remains `candidate_only`, `advisory_only`, `research_only`, and
+  `capital_authority=False`, exports/renders source-observation counts without
+  changing SMA mechanics, and adds no strategy approval, validation/readiness,
+  recommendation, ranking/scoring, signal/evaluator behavior, allocation/order/
+  fill authority, broker/runtime/vendor option, real data input, persistence,
+  network/socket/API access, scheduler/dashboard, ML, LLM/agent behavior,
+  dependency, runtime timestamp, paper/live eligibility, capital authority
+  beyond fixed false metadata, trading authority, or deserialization behavior.
+  Verification: `python -m pytest` -> 4644 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

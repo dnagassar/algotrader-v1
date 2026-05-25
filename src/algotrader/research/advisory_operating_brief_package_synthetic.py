@@ -78,6 +78,7 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
             include_risk_authority=True,
             include_research_queue=True,
             include_sma_research_observation=True,
+            include_sma_research_summary_observation=True,
             include_research_return_observation=True,
         )
     )
@@ -87,6 +88,9 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         risk_authority_briefs=source.risk_authority_briefs,
         research_queue_briefs=(_build_package_research_queue_brief(source),),
         sma_research_observation_briefs=source.sma_research_observation_briefs,
+        sma_research_summary_observations=(
+            source.sma_research_summary_observations
+        ),
         research_return_observation_briefs=source.research_return_observation_briefs,
         research_return_summary_observation_briefs=(
             source.research_return_summary_observation_briefs

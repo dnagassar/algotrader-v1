@@ -41,6 +41,7 @@ _BRANCH_KEYS = (
     "risk_authority_briefs",
     "research_queue_briefs",
     "sma_research_observation_briefs",
+    "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
 )
@@ -126,6 +127,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     text_stdout = _run_preview_cli((_COMMAND,), capsys)
     payload = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
     content_bundle = _dict(payload["content_bundle"])
+    sma_summary = _dict(_list(content_bundle["sma_research_summary_observations"])[0])
 
     for value in (
         "Advisory Operating Brief Package",
@@ -142,6 +144,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "Risk Authority Briefs",
         "Research Queue Briefs",
         "SMA Research Observation Briefs",
+        "SMA Research Summary Observations",
         "Research Return Observation Briefs",
         "Research Return Summary Observation Briefs",
         "candidate_research_brief_count: 1",
@@ -149,6 +152,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "risk_authority_brief_count: 1",
         "research_queue_brief_count: 1",
         "sma_research_observation_brief_count: 1",
+        "sma_research_summary_observation_count: 1",
         "research_return_observation_brief_count: 1",
         "research_return_summary_observation_brief_count: 1",
         "Limitations",
@@ -178,8 +182,18 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
     assert content_bundle["sma_research_observation_brief_count"] == 1
+    assert content_bundle["sma_research_summary_observation_count"] == 1
     assert content_bundle["research_return_observation_brief_count"] == 1
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
+    assert sma_summary["observation_type"] == "sma_research_summary_observation"
+    assert sma_summary["status"] == "candidate_only"
+    assert sma_summary["authority"] == "advisory_only"
+    assert sma_summary["capital_authority"] is False
+    assert sma_summary["research_scope"] == "research_only"
+    assert sma_summary["summary_state"] == "observations_summarized"
+    assert sma_summary["total_observation_count"] == 2
+    assert sma_summary["above_sma_count"] == 1
+    assert sma_summary["insufficient_history_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
 
@@ -425,6 +439,8 @@ def _state_values(value: object) -> tuple[str, ...]:
                 "authority_state",
                 "eligibility_state",
                 "research_state",
+                "summary_state",
+                "position_vs_sma",
             }:
                 assert isinstance(nested_value, str)
                 values.append(nested_value)

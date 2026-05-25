@@ -303,9 +303,11 @@ def test_rendered_output_embeds_stored_content_bundle_rendered_text_exactly() ->
 
     assert nested_rendered == _EXPECTED_NESTED_RENDERED_TEXT
     assert "SMA Research Observation Briefs" in nested_rendered
+    assert "SMA Research Summary Observations" in nested_rendered
     assert "Research Return Observation Briefs" in nested_rendered
     assert "Research Return Summary Observation Briefs" in nested_rendered
     assert "sma_research_observation_brief_count: 1" in nested_rendered
+    assert "sma_research_summary_observation_count: 1" in nested_rendered
     assert "research_return_observation_brief_count: 1" in nested_rendered
     assert "research_return_summary_observation_brief_count: 1" in nested_rendered
     assert rendered == (
@@ -328,6 +330,7 @@ def test_rendered_output_includes_all_nested_brief_branches() -> None:
     assert "Risk Authority Briefs" in rendered
     assert "Research Queue Briefs" in rendered
     assert "SMA Research Observation Briefs" in rendered
+    assert "SMA Research Summary Observations" in rendered
     assert "Research Return Observation Briefs" in rendered
     assert "Research Return Summary Observation Briefs" in rendered
     assert "candidate_research_brief_count: 1" in rendered
@@ -335,6 +338,7 @@ def test_rendered_output_includes_all_nested_brief_branches() -> None:
     assert "risk_authority_brief_count: 1" in rendered
     assert "research_queue_brief_count: 1" in rendered
     assert "sma_research_observation_brief_count: 1" in rendered
+    assert "sma_research_summary_observation_count: 1" in rendered
     assert "research_return_observation_brief_count: 1" in rendered
     assert "research_return_summary_observation_brief_count: 1" in rendered
 

@@ -32,9 +32,6 @@ from algotrader.research.advisory_operating_brief_package_cli import (
 from algotrader.research.advisory_operating_brief_package_export import (
     export_advisory_operating_brief_package,
 )
-from tests.fixtures.advisory_operating_brief_content_bundle import (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict,
-)
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package as build_fixture_package,
 )
@@ -54,6 +51,7 @@ _BRANCH_KEYS = (
     "risk_authority_briefs",
     "research_queue_briefs",
     "sma_research_observation_briefs",
+    "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
 )
@@ -82,10 +80,16 @@ def test_synthetic_preview_builder_uses_package_exportable_payload() -> None:
     assert package == fixture_package == canonical_package
     assert export.payload == package.to_dict()
     assert export.payload == fixture_package.to_dict()
-    assert _dict(export.payload["content_bundle"]) == package.content_bundle.to_dict()
-    assert _dict(export.payload["content_bundle"]) == (
-        expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict()
-    )
+    content_bundle = _dict(export.payload["content_bundle"])
+    sma_summary = _dict(_list(content_bundle["sma_research_summary_observations"])[0])
+
+    assert content_bundle == package.content_bundle.to_dict()
+    assert content_bundle["sma_research_summary_observation_count"] == 1
+    assert sma_summary["observation_type"] == "sma_research_summary_observation"
+    assert sma_summary["status"] == "candidate_only"
+    assert sma_summary["authority"] == "advisory_only"
+    assert sma_summary["capital_authority"] is False
+    assert sma_summary["research_scope"] == "research_only"
 
 
 def test_default_output_equals_text_output_and_export_rendered_text(capsys) -> None:
@@ -164,13 +168,17 @@ def test_nested_output_includes_all_content_bundle_branches(capsys) -> None:
         "Risk Authority Briefs",
         "Research Queue Briefs",
         "SMA Research Observation Briefs",
+        "SMA Research Summary Observations",
         "Research Return Observation Briefs",
+        "Research Return Summary Observation Briefs",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
         "research_queue_brief_count: 1",
         "sma_research_observation_brief_count: 1",
+        "sma_research_summary_observation_count: 1",
         "research_return_observation_brief_count: 1",
+        "research_return_summary_observation_brief_count: 1",
     ):
         assert value in text_output
 
@@ -180,7 +188,9 @@ def test_nested_output_includes_all_content_bundle_branches(capsys) -> None:
     assert content_bundle["risk_authority_brief_count"] == 1
     assert content_bundle["research_queue_brief_count"] == 1
     assert content_bundle["sma_research_observation_brief_count"] == 1
+    assert content_bundle["sma_research_summary_observation_count"] == 1
     assert content_bundle["research_return_observation_brief_count"] == 1
+    assert content_bundle["research_return_summary_observation_brief_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
 

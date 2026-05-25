@@ -20,9 +20,6 @@ from algotrader.research.advisory_operating_brief_package_export import (
 from algotrader.research.advisory_operating_brief_package_renderer import (
     render_advisory_operating_brief_package_text,
 )
-from tests.fixtures.advisory_operating_brief_content_bundle import (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict,
-)
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
@@ -34,9 +31,7 @@ def _s(*parts: str) -> str:
 
 
 _EXPECTED_PAYLOAD = expected_synthetic_advisory_operating_brief_package_dict()
-_EXPECTED_CONTENT_BUNDLE_PAYLOAD = (
-    expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict()
-)
+_EXPECTED_CONTENT_BUNDLE_PAYLOAD = _EXPECTED_PAYLOAD["content_bundle"]
 _EXPECTED_JSON_TEXT = json.dumps(
     _EXPECTED_PAYLOAD,
     sort_keys=True,
@@ -256,6 +251,15 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     assert type(exported) is AdvisoryOperatingBriefPackageExport
     assert exported.payload == package.to_dict() == before_payload == _EXPECTED_PAYLOAD
     assert exported.payload["content_bundle"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
+    content_bundle = _dict(exported.payload["content_bundle"])
+    sma_summary = _dict(_list(content_bundle["sma_research_summary_observations"])[0])
+    assert content_bundle["sma_research_summary_observation_count"] == 1
+    assert sma_summary["observation_type"] == "sma_research_summary_observation"
+    assert sma_summary["status"] == "candidate_only"
+    assert sma_summary["authority"] == "advisory_only"
+    assert sma_summary["capital_authority"] is False
+    assert sma_summary["research_scope"] == "research_only"
+    assert sma_summary["summary_state"] == "observations_summarized"
     assert _dict(exported.payload["content_bundle_export"])["payload"] == (
         _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     )
