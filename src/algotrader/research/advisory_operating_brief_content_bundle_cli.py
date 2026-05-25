@@ -54,6 +54,20 @@ from algotrader.research.risk_authority_brief_section import (
     build_risk_authority_brief_section,
 )
 from algotrader.research.risk_authority_status import build_risk_authority_status
+from algotrader.research.research_return_observation import (
+    ResearchReturnPricePoint,
+    build_research_return_series_observation,
+)
+from algotrader.research.research_return_observation_brief import (
+    build_research_return_observation_brief_item,
+)
+from algotrader.research.research_return_observation_brief_container import (
+    ResearchReturnObservationBrief,
+    build_research_return_observation_brief,
+)
+from algotrader.research.research_return_observation_brief_section import (
+    build_research_return_observation_brief_section,
+)
 from algotrader.research.sma_research_observation import (
     SmaResearchPricePoint,
     build_sma_research_observation,
@@ -87,6 +101,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_risk",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_queue",
     "build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -272,6 +287,28 @@ _SMA_BRIEF_SUMMARY = (
     "Brief is advisory-only synthetic SMA observation content for broad ETF "
     "SMA mechanics."
 )
+_RESEARCH_RETURN_SYMBOL = "SYNTH_ETF"
+_RESEARCH_RETURN_AS_OF = "2026-01-20"
+_RESEARCH_RETURN_LIMITATIONS = (
+    "synthetic broad ETF close series for return mechanics only",
+    "fixed close samples with later samples ignored by the builder",
+    "candidate-only advisory research metadata with no system connection",
+)
+_RESEARCH_RETURN_EXTRA_NON_CLAIMS = (_not("meth", "odology app", "roval"),)
+_RESEARCH_RETURN_SECTION_ID = (
+    "research-return-observation-section:synthetic:broad-etf-return-construction"
+)
+_RESEARCH_RETURN_SECTION_TITLE = "Synthetic broad ETF return observation summary"
+_RESEARCH_RETURN_SECTION_SUMMARY = (
+    "Section is advisory-only synthetic close-to-close return observation content."
+)
+_RESEARCH_RETURN_BRIEF_ID = (
+    "research-return-observation-brief:synthetic:broad-etf-return-construction"
+)
+_RESEARCH_RETURN_BRIEF_TITLE = "Synthetic broad ETF return observation brief"
+_RESEARCH_RETURN_BRIEF_SUMMARY = (
+    "Brief is advisory-only synthetic close-to-close return observation content."
+)
 
 
 def build_synthetic_advisory_operating_brief_content_bundle() -> (
@@ -283,6 +320,7 @@ def build_synthetic_advisory_operating_brief_content_bundle() -> (
         include_risk_authority=False,
         include_research_queue=False,
         include_sma_research_observation=False,
+        include_research_return_observation=False,
     )
 
 
@@ -295,6 +333,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_risk() -> (
         include_risk_authority=True,
         include_research_queue=False,
         include_sma_research_observation=False,
+        include_research_return_observation=False,
     )
 
 
@@ -308,6 +347,7 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
         include_risk_authority=include_risk_authority,
         include_research_queue=True,
         include_sma_research_observation=False,
+        include_research_return_observation=False,
     )
 
 
@@ -322,6 +362,23 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_ob
         include_risk_authority=include_risk_authority,
         include_research_queue=include_research_queue,
         include_sma_research_observation=True,
+        include_research_return_observation=False,
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation(
+    *,
+    include_risk_authority: bool = False,
+    include_research_queue: bool = False,
+    include_sma_research_observation: bool = False,
+) -> AdvisoryOperatingBriefContentBundle:
+    """Return the deterministic synthetic content bundle with return observation."""
+
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=include_research_queue,
+        include_sma_research_observation=include_sma_research_observation,
+        include_research_return_observation=True,
     )
 
 
@@ -330,6 +387,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     include_risk_authority: bool,
     include_research_queue: bool,
     include_sma_research_observation: bool,
+    include_research_return_observation: bool,
 ) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
@@ -344,12 +402,18 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         if include_sma_research_observation
         else ()
     )
+    research_return_observation_briefs = (
+        (_build_synthetic_research_return_observation_brief(),)
+        if include_research_return_observation
+        else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
         risk_authority_briefs=risk_authority_briefs,
         research_queue_briefs=research_queue_briefs,
         sma_research_observation_briefs=sma_research_observation_briefs,
+        research_return_observation_briefs=research_return_observation_briefs,
     )
 
 
@@ -359,24 +423,33 @@ def render_advisory_operating_brief_content_bundle_preview(
     include_risk_authority: bool = False,
     include_research_queue: bool = False,
     include_sma_research_observation: bool = False,
+    include_research_return_observation: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
     bundle = (
-        build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation(
             include_risk_authority=include_risk_authority,
             include_research_queue=include_research_queue,
+            include_sma_research_observation=include_sma_research_observation,
         )
-        if include_sma_research_observation
+        if include_research_return_observation
         else (
-            build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+            build_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation(
                 include_risk_authority=include_risk_authority,
+                include_research_queue=include_research_queue,
             )
-            if include_research_queue
+            if include_sma_research_observation
             else (
-                build_synthetic_advisory_operating_brief_content_bundle_with_risk()
-                if include_risk_authority
-                else build_synthetic_advisory_operating_brief_content_bundle()
+                build_synthetic_advisory_operating_brief_content_bundle_with_research_queue(
+                    include_risk_authority=include_risk_authority,
+                )
+                if include_research_queue
+                else (
+                    build_synthetic_advisory_operating_brief_content_bundle_with_risk()
+                    if include_risk_authority
+                    else build_synthetic_advisory_operating_brief_content_bundle()
+                )
             )
         )
     )
@@ -526,6 +599,42 @@ def _build_synthetic_sma_research_observation_brief() -> (
     )
 
 
+def _build_synthetic_research_return_observation_brief() -> (
+    ResearchReturnObservationBrief
+):
+    primary_observation = build_research_return_series_observation(
+        symbol=_RESEARCH_RETURN_SYMBOL,
+        as_of=_RESEARCH_RETURN_AS_OF,
+        price_points=_build_synthetic_research_return_price_points(),
+        limitations=_RESEARCH_RETURN_LIMITATIONS,
+        non_claims=_RESEARCH_RETURN_EXTRA_NON_CLAIMS,
+    )
+    insufficient_history_observation = build_research_return_series_observation(
+        symbol=_RESEARCH_RETURN_SYMBOL,
+        as_of=_RESEARCH_RETURN_AS_OF,
+        price_points=_build_synthetic_insufficient_history_research_return_price_points(),
+        limitations=_RESEARCH_RETURN_LIMITATIONS,
+        non_claims=_RESEARCH_RETURN_EXTRA_NON_CLAIMS,
+    )
+    section = build_research_return_observation_brief_section(
+        section_id=_RESEARCH_RETURN_SECTION_ID,
+        title=_RESEARCH_RETURN_SECTION_TITLE,
+        summary=_RESEARCH_RETURN_SECTION_SUMMARY,
+        items=(
+            build_research_return_observation_brief_item(primary_observation),
+            build_research_return_observation_brief_item(
+                insufficient_history_observation
+            ),
+        ),
+    )
+    return build_research_return_observation_brief(
+        brief_id=_RESEARCH_RETURN_BRIEF_ID,
+        title=_RESEARCH_RETURN_BRIEF_TITLE,
+        summary=_RESEARCH_RETURN_BRIEF_SUMMARY,
+        sections=(section,),
+    )
+
+
 def _build_synthetic_sma_research_price_points() -> (
     tuple[SmaResearchPricePoint, ...]
 ):
@@ -549,3 +658,31 @@ def _build_synthetic_insufficient_history_sma_research_price_points() -> (
 
 def _sma_price_point(value_date: str, close: str) -> SmaResearchPricePoint:
     return SmaResearchPricePoint(value_date, Decimal(close))
+
+
+def _build_synthetic_research_return_price_points() -> (
+    tuple[ResearchReturnPricePoint, ...]
+):
+    return (
+        _research_return_price_point("2026-01-15", "100.00"),
+        _research_return_price_point("2026-01-16", "105.00"),
+        _research_return_price_point("2026-01-19", "94.50"),
+        _research_return_price_point("2026-01-20", "94.50"),
+        _research_return_price_point("2026-01-21", "120.00"),
+    )
+
+
+def _build_synthetic_insufficient_history_research_return_price_points() -> (
+    tuple[ResearchReturnPricePoint, ...]
+):
+    return (
+        _research_return_price_point("2026-01-20", "101.00"),
+        _research_return_price_point("2026-01-21", "125.00"),
+    )
+
+
+def _research_return_price_point(
+    value_date: str,
+    close: str,
+) -> ResearchReturnPricePoint:
+    return ResearchReturnPricePoint(value_date, Decimal(close))

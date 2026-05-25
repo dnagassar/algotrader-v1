@@ -6860,6 +6860,34 @@ risk-inclusive, research-queue-inclusive, and SMA-inclusive export regressions
 remain the compatibility baseline. Normal pytest remains offline,
 credential-free, deterministic, and safe.
 
+Phase 223 - Advisory Operating Brief Content Bundle CLI Research Return
+Observation Preview adds the hidden synthetic-only
+`--include-research-return-observation` flag to
+`algotrader advisory-operating-brief-content-bundle-preview`. The default
+preview, `--format text|json`, risk-inclusive, research-queue-inclusive,
+SMA-inclusive, and existing risk+research-queue+SMA outputs remain unchanged;
+the new flag composes candidate research, strategy eligibility, and research
+return observation branches, and combines with existing flags only when those
+branches are explicitly requested.
+
+The Phase 223 preview builds the research return branch through public
+production builders only, using deterministic synthetic close samples. Text
+still comes from `export_advisory_operating_brief_content_bundle(...).rendered_text`,
+and JSON still comes from `.json_text` with compact deterministic ordering.
+Tests cover JSON round-tripping, byte-for-byte repeated CLI determinism,
+all-flags branch presence, `returns_constructed`,
+`insufficient_return_history`, positive/negative/zero return counts,
+`close_to_close_simple_return`, `synthetic_close`, ignored future sample count,
+ordered return points, and deterministic insufficient-history empty-return
+wording. Production CLI modules continue to import no tests or fixtures and
+add no file/path/source/vendor/broker/network/runtime/credential options,
+real data ingestion, persistence, network/socket access, credentials,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+approval/readiness claims, recommendations, allocation/order/portfolio
+mutation, risk approval, paper/live readiness, capital authority beyond
+existing false metadata, trading authority, new dependencies, runtime
+timestamps, or `from_dict()`.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

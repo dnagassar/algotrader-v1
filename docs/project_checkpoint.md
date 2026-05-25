@@ -12526,6 +12526,30 @@ Safe next tasks include:
   mechanics, research return brief renderer/export, SMA mechanics, SMA brief
   renderer/export, or existing CLI behavior are changed; normal pytest remains
   offline, credential-free, deterministic, and safe
+- Phase 223 - Advisory Operating Brief Content Bundle CLI Research Return
+  Observation Preview adds the hidden synthetic-only
+  `--include-research-return-observation` flag to
+  `algotrader advisory-operating-brief-content-bundle-preview`. The default,
+  text/json, risk-inclusive, research-queue-inclusive, SMA-inclusive, and
+  existing risk+research-queue+SMA preview bytes remain unchanged. The new flag
+  composes candidate research, strategy eligibility, and research return
+  observation branches, and combines with risk, research queue, and SMA only
+  when those flags are explicitly present. The preview uses public production
+  builders with deterministic synthetic close samples, still exports through
+  `export_advisory_operating_brief_content_bundle(...)`, preserves compact JSON,
+  and tests branch presence, JSON round-tripping, repeated byte determinism,
+  `returns_constructed`, `insufficient_return_history`,
+  positive/negative/zero counts, `close_to_close_simple_return`,
+  `synthetic_close`, ignored future sample count, ordered return points, and
+  deterministic empty-return wording. Production CLI modules still import no
+  tests/fixtures and add no file/path/source/vendor/broker/network/runtime/
+  credential options, real data ingestion, persistence, network/socket access,
+  credentials, scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior,
+  approval/readiness claims, recommendations, allocation/order/portfolio
+  mutation, risk approval, paper/live readiness, capital authority beyond
+  existing false metadata, trading authority, new dependencies, runtime
+  timestamps, or `from_dict()`; normal pytest remains offline, credential-free,
+  deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
