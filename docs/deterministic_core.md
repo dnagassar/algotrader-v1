@@ -6701,6 +6701,34 @@ or fixtures, container behavior, advisory/package/CLI/content/render/export
 paths, SMA paths, or existing CLI behavior changed. Normal pytest remains
 offline, credential-free, deterministic, and safe.
 
+Phase 218 - Research Return Observation Brief Text Renderer adds
+`algotrader.research.research_return_observation_brief_renderer` with
+`render_research_return_observation_brief_text(brief)` as a deterministic
+plain-text view over the Phase 216/217 synthetic advisory brief. The renderer
+accepts only exact `ResearchReturnObservationBrief` instances, rejects
+subclasses, dictionaries, malformed lookalikes, and `None`, and renders solely
+from `brief.to_dict()` without touching source objects.
+
+The Phase 218 text output pins top-level brief metadata, section metadata,
+item metadata, positive/negative/zero return-count metadata, nested
+close-to-close synthetic source observation mechanics, each nested return
+point in source order, deterministic empty-return wording for
+`insufficient_return_history`, and item/section/brief limitations and
+non-claims. Tests pin the rendered text exactly, prove repeated byte-for-byte
+determinism, verify source `.to_dict()` output and nested section/item/source
+observation/return-point identities remain unchanged, and enforce
+AST/import/call/literal guardrails. The renderer imports no tests or fixtures,
+adds no `from_dict()`, and does not add real data ingestion, vendor/broker/
+runtime behavior, file I/O, persistence, network/socket access, credentials,
+scheduler/dashboard behavior, notebooks, ML, LLM/agent behavior, scoring,
+ranking, recommendations, approval/readiness claims, trading authority,
+capital authority beyond the existing false metadata field, or new
+dependencies. Research return mechanics, observation fixtures, brief item/
+section/container behavior and fixtures, advisory/package/CLI/content bundle
+paths, existing renderer/export paths, SMA paths, and existing CLI behavior
+remain unchanged. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
