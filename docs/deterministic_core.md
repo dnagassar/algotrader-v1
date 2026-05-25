@@ -6729,6 +6729,37 @@ paths, existing renderer/export paths, SMA paths, and existing CLI behavior
 remain unchanged. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 219 - Research Return Observation Brief Export Contract adds
+`algotrader.research.research_return_observation_brief_export` with frozen,
+slotted `ResearchReturnObservationBriefExport` and
+`export_research_return_observation_brief(brief)` as a deterministic
+in-memory export view over the Phase 216/217/218 research return observation
+brief. The builder accepts only exact `ResearchReturnObservationBrief`
+instances, rejects subclasses, dictionaries, malformed lookalikes, and `None`,
+sets `payload` from `brief.to_dict()`, sets `json_text` with compact
+deterministic JSON (`sort_keys=True`, `separators=(",", ":")`), and sets
+`rendered_text` from the Phase 218 renderer.
+
+The Phase 219 export validates direct construction, requiring a non-empty
+primitive payload dictionary, non-empty compact JSON text that round-trips to
+the payload, and non-empty rendered text. Payload access returns fresh
+primitive copies, the export remains frozen/slotted, and no `from_dict()` is
+added. Tests prove repeated byte-for-byte determinism, unchanged source
+`.to_dict()` output, stable section/item/source observation/return-point
+identities, exact fixture equality, renderer equality, and production imports
+with no tests or fixtures. AST/import/call/literal guardrails confirm the
+export adds no file I/O, persistence, network/socket access, vendor APIs,
+credentials, broker/runtime/scheduler/dashboard behavior, notebooks, ML,
+LLM/agent behavior, recommendations, ranking/scoring, approval/readiness
+claims, source/data approval, methodology approval, adjusted-close completeness
+claims, signal/evaluator behavior, allocation/order/portfolio mutation,
+capital authority beyond existing false metadata, trading authority, new
+dependencies, real data ingestion, or CLI behavior. Research return mechanics,
+observation fixtures, brief item/section/container behavior and fixtures,
+renderer behavior, advisory/package/CLI/content bundle paths, SMA paths, and
+existing CLI behavior remain unchanged. Normal pytest remains offline,
+credential-free, deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
