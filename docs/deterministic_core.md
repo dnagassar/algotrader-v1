@@ -6480,6 +6480,39 @@ portfolio mutation, capital authority, trading authority, tests/fixture
 imports, new dependencies, or real data ingestion. Normal pytest remains
 offline, credential-free, deterministic, and safe.
 
+Phase 211 - Synthetic Research Return Observation Fixture adds
+`tests/fixtures/research_return_observation.py` and
+`tests/unit/test_research_return_observation_fixture.py` as a deterministic
+fixture layer over the Phase 210 production mechanics. The fixture uses only
+synthetic broad ETF-like closes for `symbol="SYNTH_ETF"` and
+`as_of="2026-01-20"`, pins `return_method` to
+`close_to_close_simple_return`, `price_basis` to `synthetic_close`,
+`status="candidate_only"`, `authority="advisory_only"`, and
+`capital_authority=False`, and provides exact expected primitive dictionary
+helpers for both the primary and insufficient-history observations.
+
+The primary Phase 211 fixture has five deterministic price points, four
+eligible samples, one ignored future sample, and consecutive eligible
+close-to-close returns covering positive, negative, and zero simple returns.
+The insufficient fixture has fewer than two eligible samples, counts one
+ignored future sample, and emits `return_count=0` with `returns=[]`. Tests
+prove fixture builders return exact Phase 210 production types, expected
+dictionary helpers match `.to_dict()` exactly while returning fresh mutable
+primitive copies, repeated construction and compact JSON bytes are
+deterministic, future samples are excluded, fixed advisory metadata,
+limitations, and non-claims are pinned, no `from_dict()` exists, and no
+paper/live/approved/trading-ready/actionable authority states appear. Fixture
+AST/import/call/literal guardrails exclude real data ingestion, file I/O,
+persistence, network/socket access, vendor APIs, credentials, broker/account/
+order/fill/allocation/portfolio mutation behavior, runtime/scheduler/
+dashboard behavior, notebooks, ML, LLM/agent behavior, recommendations,
+ranking/scoring, approvals/readiness/trading authority behavior outside
+explicit non-claims, dependencies, or production imports from tests. No source
+files, advisory package, synthetic package builder, package CLI, content
+bundle, renderer/export, SMA mechanics, SMA brief renderer/export, or existing
+CLI behavior changed. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

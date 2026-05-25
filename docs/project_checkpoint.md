@@ -12186,6 +12186,36 @@ Safe next tasks include:
   ranking/scoring, approvals/readiness, allocation/order/portfolio mutation,
   capital authority, trading authority, dependencies, and real data ingestion;
   normal pytest remains offline, credential-free, deterministic, and safe
+- Phase 211 - Synthetic Research Return Observation Fixture adds
+  `tests/fixtures/research_return_observation.py` and
+  `tests/unit/test_research_return_observation_fixture.py` as a deterministic
+  fixture layer over the Phase 210 close-to-close observation mechanics. The
+  primary fixture uses synthetic broad ETF-like closes only, pins
+  `symbol="SYNTH_ETF"`, `as_of="2026-01-20"`,
+  `return_method="close_to_close_simple_return"`,
+  `price_basis="synthetic_close"`, `status="candidate_only"`,
+  `authority="advisory_only"`, and `capital_authority=False`, and includes
+  five samples with one ignored future sample plus positive, negative, and
+  zero consecutive eligible simple returns. The insufficient fixture has
+  fewer than two eligible samples, counts one ignored future sample, and emits
+  `return_count=0` with `returns=[]`. Expected dictionary helpers match
+  `.to_dict()` exactly while returning fresh primitive mutable copies, and
+  repeated construction plus compact JSON bytes remain deterministic. Tests
+  pin fixed advisory metadata, limitations, required non-claims including
+  source/data, adjusted-close/corporate-action, methodology, predictive,
+  profitability, recommendation, signal/evaluator, backtesting, allocation/
+  order, broker, portfolio mutation, paper/live, capital, and trading denials,
+  absence of `from_dict()`, absence of paper/live/approved/trading-ready/
+  actionable authority states, and AST/import/call/literal guardrails against
+  real data ingestion, file I/O, persistence, network/socket access, vendor
+  APIs, credentials, broker/account/order/fill/allocation/portfolio mutation
+  behavior, runtime/scheduler/dashboard behavior, notebooks, ML, LLM/agent
+  behavior, recommendations, ranking/scoring, approval/readiness/trading
+  authority behavior outside explicit non-claims, dependencies, or production
+  imports from tests. No source files, advisory package, synthetic package
+  builder, package CLI, content bundle, renderer/export, SMA mechanics, SMA
+  brief renderer/export, or existing CLI behavior changed; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
