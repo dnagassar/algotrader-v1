@@ -12216,6 +12216,38 @@ Safe next tasks include:
   builder, package CLI, content bundle, renderer/export, SMA mechanics, SMA
   brief renderer/export, or existing CLI behavior changed; normal pytest
   remains offline, credential-free, deterministic, and safe
+- Phase 212 - Research Return Observation Brief Item adds
+  `algotrader.research.research_return_observation_brief` as a tiny
+  metadata-only advisory wrapper around Phase 210 research return
+  observations. It defines frozen/slotted
+  `ResearchReturnObservationBriefItem` and
+  `build_research_return_observation_brief_item()` with fixed
+  `item_type="research_return_observation_brief_item"`,
+  `status="candidate_only"`, `authority="advisory_only"`, and
+  `capital_authority=False`. The builder accepts only exact
+  `ResearchReturnSeriesObservation` instances, preserves source observation
+  identity, maps `return_count=0` to `insufficient_return_history` and
+  nonzero return counts to `returns_constructed`, deterministically counts
+  positive, negative, and zero simple returns, and carries limitations plus
+  non-claims forward with first-seen de-duplication. Headline and summary text
+  are deterministic advisory research content generated from source metadata
+  and return direction counts only, while authority/actionability wording is
+  rejected outside explicit non-claims. Serialization is primitive-only and
+  deterministic with nested `source_observation.to_dict()`, tuple fields as
+  lists, fixed metadata, mechanical state, return direction counts, and no
+  `from_dict()`. Tests pin the Phase 211 primary and insufficient fixtures,
+  exact source type rejection for malformed lookalikes/subclasses, source
+  non-mutation, frozen/slotted behavior, compact JSON byte determinism,
+  forbidden public payload keys, no production imports from tests, and
+  AST/import/call/literal guardrails against file I/O, network/socket access,
+  vendor APIs, broker/runtime/scheduler/dashboard behavior, persistence,
+  credentials, notebooks, ML, LLM/agent behavior, recommendations,
+  ranking/scoring, approval/readiness, allocation/order/portfolio mutation,
+  capital authority, trading authority, dependencies, or real data ingestion.
+  Research return mechanics, fixtures, advisory packages, synthetic package
+  builders, package CLI/content bundle/renderer/export, SMA mechanics/brief
+  rendering/export, and existing CLI behavior remain unchanged; normal pytest
+  remains offline, credential-free, deterministic, and safe
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
