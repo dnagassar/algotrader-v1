@@ -7393,6 +7393,22 @@ access, scheduler/dashboard behavior, ML/LLM/agent behavior, timestamps,
 randomness, global state, hidden I/O, capital authority, trading authority, or
 deserialization behavior.
 
+Phase 258 - Research Observation Manifest Export Snapshot adds
+`algotrader.research.research_observation_manifest_export`, a generic
+in-memory helper that accepts the Phase 255 manifest entry shape, builds the
+generic manifest, and returns `to_dict()` unchanged for deterministic review.
+The helper adds no new semantics beyond existing payload metadata and digest
+behavior, preserves builder-defined ordering, and remains independent of SMA
+production/export modules.
+
+Phase 258 adds no CLI/package/renderer/storage behavior, file I/O,
+evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness authority, broker/runtime/vendor dependency, real data
+input, persistence, network/API access, scheduler/dashboard behavior,
+ML/LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
+capital authority, trading authority, or deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

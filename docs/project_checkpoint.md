@@ -13006,6 +13006,21 @@ Safe next tasks include:
   input, persistence, network/socket/API access, scheduler/dashboard behavior,
   ML, LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
   capital authority, trading authority, or deserialization behavior.
+- Phase 258 - Research Observation Manifest Export Snapshot adds
+  `algotrader.research.research_observation_manifest_export`, a tiny generic
+  in-memory helper that accepts the Phase 255 manifest entry shape, builds the
+  generic manifest, and returns `to_dict()` unchanged. Focused tests cover
+  validation delegation, primitive JSON round-tripping, repeated-call and
+  compact sorted-key JSON determinism, builder-defined ordering, SMA fixture
+  compatibility through tests only, and import/source guardrails. This phase
+  adds no SMA production coupling, CLI commands, CLI flags, package behavior,
+  renderer behavior, storage behavior, file I/O, evaluator/signal/trading
+  behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+  benchmark comparison, backtest output, approval/readiness authority,
+  broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
