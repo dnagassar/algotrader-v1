@@ -7343,6 +7343,22 @@ access, scheduler/dashboard behavior, ML/LLM/agent behavior, timestamps,
 randomness, global state, hidden I/O, capital authority, trading authority, or
 deserialization behavior.
 
+Phase 255 - Research Observation Manifest Contract adds
+`algotrader.research.research_observation_manifest`, a generic in-memory
+metadata manifest for primitive research observation payload dictionaries. The
+builder preserves input ordering, rejects malformed or duplicate named payloads,
+counts top-level payload keys, and hashes each payload with compact sorted-key
+JSON SHA-256 while keeping `to_dict()` primitive-only and deterministic.
+
+Phase 255 adds no file paths, persistence, CLI/package/renderer behavior,
+evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness authority, broker/runtime/vendor dependency, real data input,
+network/API access, scheduler/dashboard behavior, ML/LLM/agent behavior,
+timestamps, randomness, global state, hidden I/O, capital authority, trading
+authority, or deserialization behavior. The manifest remains generic and does
+not import the SMA export snapshot module.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -12960,6 +12960,20 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, timestamps, randomness, global state, hidden I/O, capital
   authority, trading authority, or deserialization behavior.
+- Phase 255 - Research Observation Manifest Contract adds
+  `algotrader.research.research_observation_manifest`, a generic in-memory
+  metadata manifest for primitive research observation payload dictionaries.
+  It preserves input entry ordering, rejects malformed or duplicate named
+  payloads, records top-level payload key counts, and hashes payloads with
+  compact sorted-key JSON SHA-256. The manifest remains generic and does not
+  import the SMA export snapshot module. This phase adds no file paths,
+  persistence, CLI/package/renderer behavior, evaluator/signal/trading
+  behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+  benchmark comparison, backtest output, approval/readiness authority,
+  broker/runtime/vendor dependency, real data input, network/socket/API access,
+  scheduler/dashboard behavior, ML, LLM/agent behavior, timestamps,
+  randomness, global state, hidden I/O, capital authority, trading authority,
+  or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
