@@ -12945,6 +12945,21 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, timestamps, randomness, global state, hidden I/O, capital
   authority, trading authority, or deserialization behavior.
+- Phase 254 - SMA Return Pipeline Export Snapshot Import Guard adds a focused
+  file-based AST/source guard for the Phase 252 export snapshot and Phase 253
+  expected fixture. It pins the export source to deterministic research
+  contracts/builders, pins the fixture to expected fixture helpers, rejects
+  forbidden CLI/package/broker/runtime/vendor/network/file/path/env/credential/
+  trading imports or tokens, keeps the export signature zero-argument, and
+  preserves the expected primitive payload. This phase is test/guard coverage
+  only and changes no production source, CLI commands, CLI flags, package
+  behavior, renderer branch, evaluator/signal/trading behavior,
+  portfolio/cash/equity/PnL state, allocation/order/fill behavior, benchmark
+  comparison, backtest output, approval/readiness authority,
+  broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

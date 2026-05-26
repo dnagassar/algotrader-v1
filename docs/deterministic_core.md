@@ -7326,6 +7326,23 @@ access, scheduler/dashboard behavior, ML/LLM behavior, timestamps, randomness,
 global state, hidden I/O, capital authority, trading authority, or
 deserialization behavior.
 
+Phase 254 - SMA Return Pipeline Export Snapshot Import Guard adds a focused
+file-based AST/source regression guard for the standalone SMA return research
+pipeline export snapshot and its expected fixture. The guard pins the export
+source to deterministic research contracts/builders, pins the fixture to the
+expected fixture helper, rejects forbidden CLI/package/broker/runtime/vendor/
+network/file/path/env/credential/trading imports or tokens, and keeps the
+export signature zero-argument while preserving the Phase 253 expected payload.
+
+Phase 254 is test/guard coverage only. It changes no production source and adds
+no CLI commands, CLI flags, package behavior, renderer branch, evaluator/signal/
+trading behavior, portfolio/cash/equity/PnL state, allocation/order/fill
+behavior, benchmark comparison, backtest output, approval/readiness authority,
+broker/runtime/vendor dependency, real data input, persistence, network/API
+access, scheduler/dashboard behavior, ML/LLM/agent behavior, timestamps,
+randomness, global state, hidden I/O, capital authority, trading authority, or
+deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
