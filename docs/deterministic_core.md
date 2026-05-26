@@ -7218,6 +7218,27 @@ access, add scheduler/dashboard behavior, add ML/LLM behavior, add capital
 authority, add trading authority, or add deserialization behavior. Verification:
 `python -m pytest` -> 4747 passed, 4 skipped.
 
+Phase 248 - Research Return Construction Policy Observation Mechanics adds
+`algotrader.research.research_return_construction_policy_observation` with a
+frozen/slotted `ResearchReturnConstructionPolicyObservation` plus a pure
+`build_research_return_construction_policy_observation()` builder. The
+observation accepts only the exact Phase 247
+`ResearchReturnConstructionPolicy` type, preserves source policy identity,
+records deterministic zero audit counts for selected periods, excluded periods,
+source return observations, and forbidden outputs, and nests the source
+policy's existing primitive `to_dict()` payload unchanged.
+
+Phase 248 is advisory audit metadata only. It does not accept period inputs,
+construct returns, calculate strategy/portfolio/cash returns, calculate equity
+curves, compound returns, map excluded periods to cash or zero, create a
+benchmark comparison, create a backtest result, touch portfolio state, create
+exposure, create positions or orders, add allocation/readiness/approval/
+recommendation/signal/evaluator behavior, add broker/runtime/vendor behavior,
+add persistence, add network/API access, add scheduler/dashboard behavior, add
+ML/LLM behavior, add capital authority, add trading authority, or add
+deserialization behavior. Verification: `python -m pytest` -> 4761 passed,
+4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

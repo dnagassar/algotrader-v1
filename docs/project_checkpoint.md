@@ -12851,6 +12851,25 @@ Safe next tasks include:
   ML, LLM/agent behavior, capital authority, trading authority, or
   deserialization behavior. Verification: `python -m pytest` -> 4747 passed,
   4 skipped
+- Phase 248 - Research Return Construction Policy Observation Mechanics adds
+  `algotrader.research.research_return_construction_policy_observation` with
+  a frozen/slotted `ResearchReturnConstructionPolicyObservation` plus a pure
+  `build_research_return_construction_policy_observation()` builder. The
+  observation accepts only the exact Phase 247
+  `ResearchReturnConstructionPolicy` type, preserves source policy identity,
+  records deterministic zero audit counts for selected periods, excluded
+  periods, source return observations, and forbidden outputs, and nests the
+  source policy's existing primitive `to_dict()` payload unchanged. This phase
+  is advisory audit metadata only and does not accept period inputs, construct
+  returns, calculate strategy/portfolio/cash returns, calculate equity curves,
+  compound returns, map excluded periods to cash or zero, create a benchmark
+  comparison, create a backtest result, touch portfolio state, create
+  exposure, create positions or orders, add allocation/readiness/approval/
+  recommendation/signal/evaluator behavior, add broker/runtime/vendor
+  behavior, add real data input, persistence, network/socket/API access,
+  scheduler/dashboard behavior, ML, LLM/agent behavior, capital authority,
+  trading authority, or deserialization behavior. Verification:
+  `python -m pytest` -> 4761 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
