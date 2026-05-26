@@ -7058,6 +7058,24 @@ dashboard, ML, LLM/agent behavior, dependency, runtime timestamp, paper/live
 eligibility, capital authority beyond fixed false metadata, trading authority,
 or deserialization path.
 
+Phase 240 - Research-Only SMA Return Alignment Mechanics adds
+`algotrader.research.sma_return_alignment_observation` with frozen/slotted
+`SmaReturnAlignmentPeriod` and `SmaReturnAlignmentObservation` contracts plus a
+pure `build_sma_return_alignment_observation(...)` builder. The artifact joins
+existing `SmaResearchObservation` state to existing
+`ResearchReturnSeriesObservation` periods by selecting the latest SMA
+observation whose `as_of` is on or before each return `start_date`.
+Unavailable prior SMA state is represented explicitly, source observation
+identity is preserved, duplicate SMA `as_of` inputs are rejected, and the
+payload remains primitive-only and deterministic.
+
+Phase 240 is research metadata only. It does not compute strategy returns,
+exposure-adjusted returns, equity curves, benchmarks, costs, orders, positions,
+allocations, portfolio state, readiness, approvals, recommendations, signals,
+evaluator behavior, broker/runtime/vendor behavior, persistence, network/API
+access, scheduler/dashboard behavior, ML/LLM behavior, capital authority, or
+trading authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

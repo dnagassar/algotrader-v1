@@ -12701,6 +12701,22 @@ Safe next tasks include:
   dependency, runtime timestamp, paper/live eligibility, capital authority
   beyond fixed false metadata, trading authority, or deserialization behavior.
   Verification: `python -m pytest` -> 4644 passed, 4 skipped
+- Phase 240 - Research-Only SMA Return Alignment Mechanics adds
+  `algotrader.research.sma_return_alignment_observation` with frozen/slotted
+  `SmaReturnAlignmentPeriod` and `SmaReturnAlignmentObservation` contracts plus
+  a pure `build_sma_return_alignment_observation(...)` builder. The artifact
+  aligns existing SMA research observation state to existing close-to-close
+  return periods by selecting the latest SMA observation whose `as_of` is on or
+  before each return `start_date`, explicitly represents periods with no prior
+  SMA state, preserves source observation identity, rejects duplicate SMA
+  `as_of` inputs, and emits primitive-only deterministic payloads. This phase
+  remains research metadata only and adds no strategy-return computation,
+  equity curve, benchmark comparison, cost model, trade order, position,
+  allocation, portfolio state, readiness, approval, recommendation, signal or
+  evaluator behavior, broker/runtime/vendor option, real data input,
+  persistence, network/socket/API access, scheduler/dashboard behavior, ML,
+  LLM/agent behavior, capital authority, trading authority, or deserialization
+  behavior. Verification: `python -m pytest` -> 4658 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
