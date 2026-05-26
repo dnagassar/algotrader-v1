@@ -13021,6 +13021,22 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, timestamps, randomness, global state, hidden I/O, capital
   authority, trading authority, or deserialization behavior.
+- Phase 259 - Research Observation Manifest Export Import Guard adds
+  `tests.unit.test_research_observation_manifest_export_dependency`, a focused
+  test-only AST/source guard for the generic export helper. It pins imports to
+  `__future__`, `collections.abc`, and the generic manifest builder; rejects
+  SMA/package/CLI/renderer/runtime/broker/portfolio/vendor/network/storage/ML/
+  LLM/trading dependencies and file/path/env/config/network helper surfaces;
+  and verifies the helper returns
+  `build_research_observation_manifest(entries).to_dict()` unchanged with
+  compact sorted-key JSON determinism. This phase changes no production source,
+  CLI/package/renderer behavior, storage behavior, file I/O,
+  evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+  allocation/order/fill behavior, benchmark comparison, backtest output,
+  approval/readiness authority, broker/runtime/vendor dependency, real data
+  input, persistence, network/socket/API access, scheduler/dashboard behavior,
+  ML, LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
+  capital authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
