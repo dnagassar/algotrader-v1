@@ -12887,6 +12887,20 @@ Safe next tasks include:
   approval/readiness authority, timestamps, randomness, global state, hidden
   I/O, capital authority, trading authority, or deserialization behavior.
   Verification: `python -m pytest` -> 4762 passed, 4 skipped
+- Phase 250 - Advisory Package SMA Return Pipeline Serialization Alignment
+  pins the canonical synthetic advisory package/export fixture path to the
+  Phase 249 `SmaReturnResearchPipelineObservation` payload. The package payload
+  carries the existing SMA return research pipeline dictionary unchanged,
+  including the nested Phase 248 `return_construction_policy_observation`
+  generated from the same Phase 247 policy object, while content-bundle branch
+  ordering and package CLI flags remain unchanged. This phase is serialization
+  alignment only and adds no advisory conclusion, ranking, readiness/approval
+  state, trading behavior, broker/runtime/vendor dependency, real data input,
+  persistence, network/socket/API access, scheduler/dashboard behavior, ML,
+  LLM/agent behavior, portfolio/cash/equity/PnL state, allocation/order/fill
+  behavior, benchmark comparison, backtest output, timestamps, randomness,
+  global state, hidden I/O, capital authority, trading authority, or
+  deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -20,6 +20,9 @@ from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
 )
+from tests.fixtures.sma_return_research_pipeline_observation import (
+    expected_synthetic_sma_return_research_pipeline_observation_dict,
+)
 
 
 def _s(*parts: str) -> str:
@@ -50,6 +53,9 @@ _EXPECTED_CONTENT_BUNDLE_DICT = _primitive_copy(_EXPECTED_DICT["content_bundle"]
 _EXPECTED_CONTENT_BUNDLE_EXPORT_DICT = _primitive_copy(
     _EXPECTED_DICT["content_bundle_export"]
 )
+_EXPECTED_SMA_RETURN_PIPELINE_DICT = (
+    expected_synthetic_sma_return_research_pipeline_observation_dict()
+)
 _EXPECTED_COMPACT_JSON_BYTES = _compact_json_bytes(_EXPECTED_DICT)
 _EXPECTED_FIELD_ORDER = tuple(_EXPECTED_DICT)
 _TUPLE_FIELDS = ("limitations", "non_claims")
@@ -63,6 +69,26 @@ _BRANCH_KEYS = (
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
 )
+_FORBIDDEN_SERIALIZED_FIELD_NAMES = {
+    "broker",
+    "account",
+    "order",
+    "fill",
+    "position",
+    "portfolio",
+    "cash",
+    "equity",
+    "pnl",
+    "benchmark",
+    "backtest",
+    "allocation",
+    "signal",
+    "execution",
+    "live",
+    "paper",
+    "readiness",
+    "approval",
+}
 _ALLOWED_IMPORTS = {
     "__future__",
     "algotrader.research.advisory_operating_brief_package",
@@ -274,6 +300,9 @@ def test_expected_dict_helper_returns_fresh_mutable_primitive_copies() -> None:
     assert first is not second
     assert first["content_bundle"] is not second["content_bundle"]
     assert first["content_bundle"] is not first_export["payload"]
+    assert first["sma_return_research_pipeline_observation"] is not (
+        second["sma_return_research_pipeline_observation"]
+    )
     assert first_export is not second_export
     assert first_export["payload"] is not second_export["payload"]
     assert first["limitations"] is not second["limitations"]
@@ -348,6 +377,37 @@ def test_nested_content_bundle_promotes_sma_summary_branch() -> None:
     assert summary["equal_sma_count"] == 0
     assert summary["insufficient_history_count"] == 1
     assert _list(summary["source_observations"]) == sma_sources
+
+
+def test_package_fixture_pins_phase_249_sma_return_pipeline_payload() -> None:
+    package = build_synthetic_advisory_operating_brief_package()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    pipeline_payload = _dict(payload["sma_return_research_pipeline_observation"])
+    pipeline = package.sma_return_research_pipeline_observation
+
+    assert pipeline is not None
+    assert pipeline_payload == pipeline.to_dict()
+    assert pipeline_payload == _EXPECTED_SMA_RETURN_PIPELINE_DICT
+    assert (
+        pipeline_payload["return_construction_policy_observation"]
+        == pipeline.return_construction_policy_observation.to_dict()
+    )
+    assert pipeline_payload["return_construction_policy_observation"] == (
+        _EXPECTED_SMA_RETURN_PIPELINE_DICT["return_construction_policy_observation"]
+    )
+    assert _key_count(payload, "return_construction_policy_observation") == 1
+    assert _key_count(pipeline_payload, "return_construction_policy_observation") == 1
+    assert "sma_return_research_pipeline_observation" not in content_bundle
+    assert tuple(branch_key for branch_key in _BRANCH_KEYS if branch_key in content_bundle) == (
+        _BRANCH_KEYS
+    )
+
+
+def test_package_fixture_adds_no_forbidden_serialized_fields() -> None:
+    payload = expected_synthetic_advisory_operating_brief_package_dict()
+
+    assert _payload_keys(payload).isdisjoint(_FORBIDDEN_SERIALIZED_FIELD_NAMES)
 
 
 def test_nested_content_bundle_export_matches_payload_json_and_renderer() -> None:
@@ -561,6 +621,34 @@ def _dict_nodes(value: object) -> tuple[dict[str, object], ...]:
             nodes.extend(_dict_nodes(item))
 
     return tuple(nodes)
+
+
+def _key_count(value: object, key: str) -> int:
+    if isinstance(value, dict):
+        return sum(
+            (1 if item_key == key else 0) + _key_count(item_value, key)
+            for item_key, item_value in value.items()
+        )
+    if isinstance(value, list):
+        return sum(_key_count(item, key) for item in value)
+
+    return 0
+
+
+def _payload_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        keys: set[str] = set()
+        for key, item in value.items():
+            keys.add(str(key))
+            keys.update(_payload_keys(item))
+        return keys
+    if isinstance(value, list):
+        keys = set()
+        for item in value:
+            keys.update(_payload_keys(item))
+        return keys
+
+    return set()
 
 
 def _string_values(value: object) -> tuple[str, ...]:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal
+
 from algotrader.research.advisory_operating_brief_content_bundle import (
     AdvisoryOperatingBriefContentBundle,
     build_advisory_operating_brief_content_bundle,
@@ -24,6 +26,38 @@ from algotrader.research.research_queue_brief_section import (
     build_research_queue_brief_section,
 )
 from algotrader.research.research_queue_status import build_research_queue_status
+from algotrader.research.research_return_observation import (
+    ResearchReturnPricePoint,
+    ResearchReturnSeriesObservation,
+    build_research_return_series_observation,
+)
+from algotrader.research.sma_conditional_return_selection_observation import (
+    build_sma_conditional_return_selection_observation,
+)
+from algotrader.research.sma_conditional_return_selection_summary_observation import (
+    build_sma_conditional_return_selection_summary_observation,
+)
+from algotrader.research.sma_research_observation import (
+    SmaResearchObservation,
+    SmaResearchPricePoint,
+    build_sma_research_observation,
+)
+from algotrader.research.sma_return_alignment_observation import (
+    build_sma_return_alignment_observation,
+)
+from algotrader.research.sma_return_alignment_summary_observation import (
+    build_sma_return_alignment_summary_observation,
+)
+from algotrader.research.sma_return_research_pipeline_observation import (
+    SmaReturnResearchPipelineObservation,
+    build_sma_return_research_pipeline_observation,
+)
+from algotrader.research.sma_selected_source_return_series_observation import (
+    build_sma_selected_source_return_series_observation,
+)
+from algotrader.research.sma_selected_source_return_summary_observation import (
+    build_sma_selected_source_return_summary_observation,
+)
 
 __all__ = [
     "build_synthetic_advisory_operating_brief_package_preview",
@@ -37,6 +71,10 @@ _AS_OF = "2026-01-20"
 
 def _join(*parts: str) -> str:
     return "".join(parts)
+
+
+def _not(*parts: str) -> str:
+    return f"not {''.join(parts)}"
 
 
 _PACKAGE_QUEUE_REQUIRED_NEXT_STEPS = (
@@ -55,6 +93,21 @@ _PACKAGE_QUEUE_LIMITATIONS = (
     "broad ETF SMA remains pipeline-validation metadata only",
     _join("fixture output is not connected to real data or run", "time state"),
 )
+_SMA_RETURN_PIPELINE_SYMBOL = "SYNTH_ETF"
+_SMA_RETURN_PIPELINE_AS_OF = "2026-01-20"
+_SMA_RETURN_PIPELINE_WINDOW = 2
+_SMA_RETURN_PIPELINE_SMA_LIMITATIONS = (
+    "synthetic SMA states for alignment fixture only",
+    "fixed as-of samples exercise no-lookahead alignment",
+)
+_SMA_RETURN_PIPELINE_RETURN_LIMITATIONS = (
+    "synthetic broad ETF close series for return mechanics only",
+    "fixed close samples with later samples ignored by the builder",
+    "candidate-only advisory research metadata with no system connection",
+)
+_SMA_RETURN_PIPELINE_EXTRA_NON_CLAIMS = (
+    _not("meth", "odology app", "roval"),
+)
 
 
 def build_synthetic_advisory_operating_brief_package_preview() -> (
@@ -69,6 +122,9 @@ def build_synthetic_advisory_operating_brief_package_preview() -> (
         summary=_SUMMARY,
         as_of=_AS_OF,
         content_bundle=content_bundle,
+        sma_return_research_pipeline_observation=(
+            _build_synthetic_sma_return_research_pipeline_observation()
+        ),
     )
 
 
@@ -120,3 +176,111 @@ def _build_package_research_queue_brief(
     item = build_research_queue_brief_item(status)
     section = build_research_queue_brief_section((item,))
     return build_research_queue_brief((section,))
+
+
+def _build_synthetic_sma_return_research_pipeline_observation() -> (
+    SmaReturnResearchPipelineObservation
+):
+    alignment = build_sma_return_alignment_observation(
+        _build_sma_return_pipeline_sma_observations(),
+        _build_sma_return_pipeline_return_observation(),
+    )
+    alignment_summary = build_sma_return_alignment_summary_observation(alignment)
+    selection = build_sma_conditional_return_selection_observation(alignment)
+    selection_summary = build_sma_conditional_return_selection_summary_observation(
+        selection
+    )
+    selected_series = build_sma_selected_source_return_series_observation(selection)
+    selected_summary = build_sma_selected_source_return_summary_observation(
+        selected_series
+    )
+    return build_sma_return_research_pipeline_observation(
+        alignment,
+        alignment_summary,
+        selection,
+        selection_summary,
+        selected_series,
+        selected_summary,
+    )
+
+
+def _build_sma_return_pipeline_sma_observations() -> (
+    tuple[SmaResearchObservation, ...]
+):
+    return (
+        _build_sma_return_pipeline_sma_observation(
+            as_of="2026-01-14",
+            prices=(
+                _sma_return_pipeline_sma_price_point("2026-01-13", "10.00"),
+                _sma_return_pipeline_sma_price_point("2026-01-14", "10.00"),
+            ),
+        ),
+        _build_sma_return_pipeline_sma_observation(
+            as_of="2026-01-16",
+            prices=(
+                _sma_return_pipeline_sma_price_point("2026-01-15", "10.00"),
+                _sma_return_pipeline_sma_price_point("2026-01-16", "30.00"),
+            ),
+        ),
+        _build_sma_return_pipeline_sma_observation(
+            as_of="2026-01-19",
+            prices=(
+                _sma_return_pipeline_sma_price_point("2026-01-16", "30.00"),
+                _sma_return_pipeline_sma_price_point("2026-01-19", "10.00"),
+            ),
+        ),
+        _build_sma_return_pipeline_sma_observation(
+            as_of="2026-01-20",
+            prices=(
+                _sma_return_pipeline_sma_price_point("2026-01-19", "10.00"),
+                _sma_return_pipeline_sma_price_point("2026-01-20", "40.00"),
+            ),
+        ),
+    )
+
+
+def _build_sma_return_pipeline_sma_observation(
+    *,
+    as_of: str,
+    prices: tuple[SmaResearchPricePoint, ...],
+) -> SmaResearchObservation:
+    return build_sma_research_observation(
+        symbol=_SMA_RETURN_PIPELINE_SYMBOL,
+        as_of=as_of,
+        window=_SMA_RETURN_PIPELINE_WINDOW,
+        price_points=prices,
+        limitations=_SMA_RETURN_PIPELINE_SMA_LIMITATIONS,
+        non_claims=_SMA_RETURN_PIPELINE_EXTRA_NON_CLAIMS,
+    )
+
+
+def _build_sma_return_pipeline_return_observation() -> (
+    ResearchReturnSeriesObservation
+):
+    return build_research_return_series_observation(
+        symbol=_SMA_RETURN_PIPELINE_SYMBOL,
+        as_of=_SMA_RETURN_PIPELINE_AS_OF,
+        price_points=(
+            _sma_return_pipeline_return_price_point("2026-01-15", "100.00"),
+            _sma_return_pipeline_return_price_point("2026-01-16", "105.00"),
+            _sma_return_pipeline_return_price_point("2026-01-19", "94.50"),
+            _sma_return_pipeline_return_price_point("2026-01-20", "94.50"),
+            _sma_return_pipeline_return_price_point("2026-01-21", "120.00"),
+        ),
+        limitations=_SMA_RETURN_PIPELINE_RETURN_LIMITATIONS,
+        non_claims=_SMA_RETURN_PIPELINE_EXTRA_NON_CLAIMS,
+    )
+
+
+def _sma_return_pipeline_sma_price_point(
+    value_date: str,
+    close: str,
+) -> SmaResearchPricePoint:
+    return SmaResearchPricePoint(value_date, Decimal(close))
+
+
+def _sma_return_pipeline_return_price_point(
+    value_date: str,
+    close: str,
+) -> ResearchReturnPricePoint:
+    return ResearchReturnPricePoint(value_date, Decimal(close))

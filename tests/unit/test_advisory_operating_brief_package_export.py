@@ -24,6 +24,9 @@ from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
 )
+from tests.fixtures.sma_return_research_pipeline_observation import (
+    expected_synthetic_sma_return_research_pipeline_observation_dict,
+)
 
 
 def _s(*parts: str) -> str:
@@ -32,6 +35,9 @@ def _s(*parts: str) -> str:
 
 _EXPECTED_PAYLOAD = expected_synthetic_advisory_operating_brief_package_dict()
 _EXPECTED_CONTENT_BUNDLE_PAYLOAD = _EXPECTED_PAYLOAD["content_bundle"]
+_EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
+    expected_synthetic_sma_return_research_pipeline_observation_dict()
+)
 _EXPECTED_JSON_TEXT = json.dumps(
     _EXPECTED_PAYLOAD,
     sort_keys=True,
@@ -251,7 +257,14 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     assert type(exported) is AdvisoryOperatingBriefPackageExport
     assert exported.payload == package.to_dict() == before_payload == _EXPECTED_PAYLOAD
     assert exported.payload["content_bundle"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
+    assert exported.payload["sma_return_research_pipeline_observation"] == (
+        _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD
+    )
+    assert package.sma_return_research_pipeline_observation is not None
     content_bundle = _dict(exported.payload["content_bundle"])
+    pipeline_payload = _dict(
+        exported.payload["sma_return_research_pipeline_observation"]
+    )
     sma_summary = _dict(_list(content_bundle["sma_research_summary_observations"])[0])
     assert content_bundle["sma_research_summary_observation_count"] == 1
     assert sma_summary["observation_type"] == "sma_research_summary_observation"
@@ -263,6 +276,11 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     assert _dict(exported.payload["content_bundle_export"])["payload"] == (
         _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     )
+    assert pipeline_payload["return_construction_policy_observation"] == (
+        package.sma_return_research_pipeline_observation
+        .return_construction_policy_observation.to_dict()
+    )
+    assert _key_count(exported.payload, "return_construction_policy_observation") == 1
     assert exported.json_text == _EXPECTED_JSON_TEXT
     assert exported.json_text == json.dumps(
         exported.payload,
@@ -562,6 +580,18 @@ def _string_values(value: object) -> tuple[str, ...]:
             values.extend(_string_values(item))
 
     return tuple(values)
+
+
+def _key_count(value: object, key: str) -> int:
+    if isinstance(value, dict):
+        return sum(
+            (1 if item_key == key else 0) + _key_count(item_value, key)
+            for item_key, item_value in value.items()
+        )
+    if isinstance(value, list):
+        return sum(_key_count(item, key) for item in value)
+
+    return 0
 
 
 def _is_negative_advisory_text(value: str) -> bool:

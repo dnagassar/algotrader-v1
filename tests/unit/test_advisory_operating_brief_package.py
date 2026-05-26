@@ -47,6 +47,7 @@ _EXPECTED_FIELD_NAMES = (
     "content_bundle_export",
     "limitations",
     "non_claims",
+    "sma_return_research_pipeline_observation",
 )
 _ALLOWED_IMPORTS = {
     "__future__",
@@ -54,6 +55,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.errors",
     "algotrader.research.advisory_operating_brief_content_bundle",
     "algotrader.research.advisory_operating_brief_content_bundle_export",
+    "algotrader.research.sma_return_research_pipeline_observation",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",

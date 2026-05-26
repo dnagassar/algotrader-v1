@@ -12,6 +12,9 @@ from algotrader.research.advisory_operating_brief_content_bundle_export import (
     AdvisoryOperatingBriefContentBundleExport,
     export_advisory_operating_brief_content_bundle,
 )
+from algotrader.research.sma_return_research_pipeline_observation import (
+    SmaReturnResearchPipelineObservation,
+)
 
 __all__ = [
     "AdvisoryOperatingBriefPackage",
@@ -74,6 +77,9 @@ class AdvisoryOperatingBriefPackage:
     content_bundle_export: AdvisoryOperatingBriefContentBundleExport
     limitations: tuple[str, ...]
     non_claims: tuple[str, ...]
+    sma_return_research_pipeline_observation: (
+        SmaReturnResearchPipelineObservation | None
+    ) = None
 
     def __post_init__(self) -> None:
         _validate_fixed_metadata(
@@ -96,6 +102,9 @@ class AdvisoryOperatingBriefPackage:
         object.__setattr__(self, "as_of", _required_string(self.as_of, "as_of"))
         _validate_content_bundle(self.content_bundle)
         _validate_content_bundle_export(self.content_bundle_export)
+        sma_pipeline = _optional_sma_return_research_pipeline_observation(
+            self.sma_return_research_pipeline_observation
+        )
         expected_export = export_advisory_operating_brief_content_bundle(
             self.content_bundle
         )
@@ -116,11 +125,16 @@ class AdvisoryOperatingBriefPackage:
 
         object.__setattr__(self, "limitations", limitations)
         object.__setattr__(self, "non_claims", non_claims)
+        object.__setattr__(
+            self,
+            "sma_return_research_pipeline_observation",
+            sma_pipeline,
+        )
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic primitive-only package metadata."""
 
-        return {
+        payload: dict[str, object] = {
             "package_type": self.package_type,
             "status": self.status,
             "authority": self.authority,
@@ -138,6 +152,11 @@ class AdvisoryOperatingBriefPackage:
             "limitations": list(self.limitations),
             "non_claims": list(self.non_claims),
         }
+        if self.sma_return_research_pipeline_observation is not None:
+            payload["sma_return_research_pipeline_observation"] = (
+                self.sma_return_research_pipeline_observation.to_dict()
+            )
+        return payload
 
 
 def build_advisory_operating_brief_package(
@@ -147,10 +166,16 @@ def build_advisory_operating_brief_package(
     summary: str,
     as_of: str,
     content_bundle: AdvisoryOperatingBriefContentBundle,
+    sma_return_research_pipeline_observation: (
+        SmaReturnResearchPipelineObservation | None
+    ) = None,
 ) -> AdvisoryOperatingBriefPackage:
     """Build an advisory-only package from an existing content bundle."""
 
     _validate_content_bundle(content_bundle)
+    sma_pipeline = _optional_sma_return_research_pipeline_observation(
+        sma_return_research_pipeline_observation
+    )
     return AdvisoryOperatingBriefPackage(
         package_type=_PACKAGE_TYPE,
         status=_STATUS,
@@ -166,6 +191,7 @@ def build_advisory_operating_brief_package(
         ),
         limitations=_dedupe_first_seen(content_bundle.limitations),
         non_claims=_dedupe_first_seen(content_bundle.non_claims),
+        sma_return_research_pipeline_observation=sma_pipeline,
     )
 
 
@@ -203,6 +229,19 @@ def _validate_content_bundle_export(value: object) -> None:
             "content_bundle_export must be exactly an "
             "AdvisoryOperatingBriefContentBundleExport."
         )
+
+
+def _optional_sma_return_research_pipeline_observation(
+    value: object,
+) -> SmaReturnResearchPipelineObservation | None:
+    if value is None:
+        return None
+    if type(value) is not SmaReturnResearchPipelineObservation:
+        raise ValidationError(
+            "sma_return_research_pipeline_observation must be exactly a "
+            "SmaReturnResearchPipelineObservation."
+        )
+    return value
 
 
 def _validate_export_matches_bundle(
