@@ -12931,6 +12931,20 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, timestamps, randomness, global state, hidden I/O, capital
   authority, trading authority, or deserialization behavior.
+- Phase 253 - SMA Return Pipeline Export Snapshot Fixture Regression adds
+  `tests.fixtures.sma_return_research_pipeline_observation_export` with
+  expected dict and compact sorted-key JSON helpers for the Phase 252
+  standalone export snapshot. The fixture reuses the canonical synthetic
+  `SmaReturnResearchPipelineObservation.to_dict()` payload and pins exactly one
+  nested `return_construction_policy_observation`. This phase is test/fixture
+  regression coverage only and changes no production source, CLI/package
+  behavior, renderer branch, evaluator/signal/trading behavior,
+  portfolio/cash/equity/PnL state, allocation/order/fill behavior, benchmark
+  comparison, backtest output, approval/readiness authority,
+  broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

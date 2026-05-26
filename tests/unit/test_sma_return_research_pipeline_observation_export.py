@@ -5,8 +5,13 @@ import inspect
 import json
 
 import algotrader.research.sma_return_research_pipeline_observation_export as export_module
+import tests.fixtures.sma_return_research_pipeline_observation_export as export_fixture
 from algotrader.research.sma_return_research_pipeline_observation_export import (
     export_synthetic_sma_return_research_pipeline_observation_snapshot,
+)
+from tests.fixtures.sma_return_research_pipeline_observation_export import (
+    expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict,
+    expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_json,
 )
 from tests.fixtures.sma_return_research_pipeline_observation import (
     build_synthetic_sma_return_research_pipeline_observation,
@@ -138,21 +143,50 @@ _FORBIDDEN_CALL_NAMES = {
 def test_snapshot_returns_canonical_primitive_pipeline_payload() -> None:
     snapshot = export_synthetic_sma_return_research_pipeline_observation_snapshot()
     pipeline = build_synthetic_sma_return_research_pipeline_observation()
-    expected = expected_synthetic_sma_return_research_pipeline_observation_dict()
+    expected = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
+    )
 
     assert snapshot == expected
     assert snapshot == pipeline.to_dict()
+    assert expected == expected_synthetic_sma_return_research_pipeline_observation_dict()
     assert _primitive_only(snapshot)
     assert json.loads(_compact_json(snapshot)) == expected
+
+
+def test_expected_fixture_json_matches_compact_sorted_payload() -> None:
+    first = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
+    )
+    second = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
+    )
+    first_json = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_json()
+    )
+    second_json = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_json()
+    )
+
+    assert first == second
+    assert first_json == second_json
+    assert first_json.encode("utf-8") == second_json.encode("utf-8")
+    assert first_json == _compact_json(first)
+    assert json.loads(first_json) == first
 
 
 def test_snapshot_preserves_policy_observation_payload_exactly_once() -> None:
     snapshot = export_synthetic_sma_return_research_pipeline_observation_snapshot()
     pipeline = build_synthetic_sma_return_research_pipeline_observation()
     policy_payload = pipeline.return_construction_policy_observation.to_dict()
+    expected = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
+    )
 
     assert _key_count(snapshot, "return_construction_policy_observation") == 1
+    assert _key_count(expected, "return_construction_policy_observation") == 1
     assert snapshot["return_construction_policy_observation"] == policy_payload
+    assert expected["return_construction_policy_observation"] == policy_payload
     assert snapshot["return_construction_policy_observation"] == (
         pipeline.to_dict()["return_construction_policy_observation"]
     )
@@ -186,12 +220,15 @@ def test_snapshot_returns_fresh_payload_without_hidden_mutation() -> None:
     assert second == expected_synthetic_sma_return_research_pipeline_observation_dict()
     assert (
         export_synthetic_sma_return_research_pipeline_observation_snapshot()
-        == expected_synthetic_sma_return_research_pipeline_observation_dict()
+        == expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
     )
 
 
 def test_snapshot_exposes_no_options_and_no_forbidden_payload_fields() -> None:
     snapshot = export_synthetic_sma_return_research_pipeline_observation_snapshot()
+    expected = (
+        expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict()
+    )
 
     assert inspect.signature(
         export_synthetic_sma_return_research_pipeline_observation_snapshot
@@ -199,19 +236,39 @@ def test_snapshot_exposes_no_options_and_no_forbidden_payload_fields() -> None:
     assert export_module.__all__ == [
         "export_synthetic_sma_return_research_pipeline_observation_snapshot",
     ]
+    assert export_fixture.__all__ == [
+        "expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_dict",
+        "expected_synthetic_sma_return_research_pipeline_observation_export_snapshot_json",
+    ]
     assert _payload_keys(snapshot).isdisjoint(_FORBIDDEN_FIELDS)
+    assert _payload_keys(expected).isdisjoint(_FORBIDDEN_FIELDS)
 
 
-def test_export_module_imports_no_forbidden_dependencies() -> None:
-    imports = _import_references(export_module)
-    call_names = _call_names(export_module)
+def test_export_and_fixture_modules_add_no_forbidden_dependencies_or_surfaces() -> None:
+    imports = _import_references(export_module) | _import_references(export_fixture)
+    call_names = _call_names(export_module) | _call_names(export_fixture)
 
     assert [
         module_name
         for module_name in imports
         if _matches_forbidden_prefix(module_name, _FORBIDDEN_IMPORT_PREFIXES)
     ] == []
+    assert [
+        module_name
+        for module_name in imports
+        if module_name.endswith("_cli")
+        or module_name.endswith("_renderer")
+        or "advisory_operating_brief_package" in module_name
+    ] == []
     assert call_names.isdisjoint(_FORBIDDEN_CALL_NAMES)
+    assert call_names.isdisjoint(
+        {
+            "add_argument",
+            "add_parser",
+            "render_advisory_operating_brief_package_text",
+            "set_defaults",
+        }
+    )
 
 
 def _compact_json(payload: dict[str, object]) -> str:
