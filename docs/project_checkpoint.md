@@ -12717,6 +12717,24 @@ Safe next tasks include:
   persistence, network/socket/API access, scheduler/dashboard behavior, ML,
   LLM/agent behavior, capital authority, trading authority, or deserialization
   behavior. Verification: `python -m pytest` -> 4658 passed, 4 skipped
+- Phase 241 - SMA Return Alignment Summary Observation adds
+  `algotrader.research.sma_return_alignment_summary_observation` with a
+  frozen/slotted `SmaReturnAlignmentSummaryObservation` contract plus a pure
+  `build_sma_return_alignment_summary_observation(...)` builder. The artifact
+  preserves the existing Phase 240 source alignment object and emits
+  primitive-only deterministic summary metadata for alignment-period count,
+  aligned return count, periods with no prior SMA state, aligned periods using
+  insufficient-history SMA observations, and aligned above/below/equal SMA
+  state counts. It also derives a fixed summary state for all, partial, none,
+  or empty return-period alignment while keeping source identity and nested
+  source payloads auditable. This phase remains advisory research metadata
+  only and adds no strategy-return computation, equity curve, exposure
+  calculation, cash behavior, benchmark comparison, trade order, position,
+  allocation, portfolio state, readiness, approval, recommendation, signal or
+  evaluator behavior, broker/runtime/vendor option, real data input,
+  persistence, network/socket/API access, scheduler/dashboard behavior, ML,
+  LLM/agent behavior, capital authority, trading authority, or deserialization
+  behavior. Verification: `python -m pytest` -> 4671 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

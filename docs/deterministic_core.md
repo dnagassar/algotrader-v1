@@ -7076,6 +7076,25 @@ evaluator behavior, broker/runtime/vendor behavior, persistence, network/API
 access, scheduler/dashboard behavior, ML/LLM behavior, capital authority, or
 trading authority.
 
+Phase 241 - SMA Return Alignment Summary Observation adds
+`algotrader.research.sma_return_alignment_summary_observation` with a
+frozen/slotted `SmaReturnAlignmentSummaryObservation` contract plus a pure
+`build_sma_return_alignment_summary_observation(...)` builder. The artifact
+summarizes an existing Phase 240 `SmaReturnAlignmentObservation` by preserving
+the source object and counting total alignment periods, aligned return periods,
+periods with no prior SMA state, aligned periods using insufficient-history
+SMA observations, and aligned periods whose SMA state is above, below, or
+equal. It also derives a deterministic alignment summary state for full,
+partial, none, or empty return-period alignment.
+
+Phase 241 remains advisory research metadata only. It does not compute
+strategy returns, exposure-adjusted returns, equity curves, cash behavior,
+benchmarks, costs, orders, positions, allocations, portfolio state, readiness,
+approvals, recommendations, signals, evaluator behavior,
+broker/runtime/vendor behavior, persistence, network/API access,
+scheduler/dashboard behavior, ML/LLM behavior, capital authority, or trading
+authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
