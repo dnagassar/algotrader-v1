@@ -5,6 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from algotrader.errors import ValidationError
+from algotrader.research.research_return_construction_policy import (
+    build_research_return_construction_policy,
+)
+from algotrader.research.research_return_construction_policy_observation import (
+    ResearchReturnConstructionPolicyObservation,
+    build_research_return_construction_policy_observation,
+)
 from algotrader.research.sma_conditional_return_selection_observation import (
     SmaConditionalReturnSelectionObservation,
 )
@@ -156,6 +163,9 @@ class SmaReturnResearchPipelineObservation:
     source_selected_source_return_summary_observation: (
         SmaSelectedSourceReturnSummaryObservation
     )
+    return_construction_policy_observation: (
+        ResearchReturnConstructionPolicyObservation
+    )
     limitations: tuple[str, ...]
     non_claims: tuple[str, ...]
 
@@ -184,6 +194,11 @@ class SmaReturnResearchPipelineObservation:
         source_selected_source_return_summary_observation = (
             _require_source_selected_source_return_summary_observation(
                 self.source_selected_source_return_summary_observation
+            )
+        )
+        return_construction_policy_observation = (
+            _require_return_construction_policy_observation(
+                self.return_construction_policy_observation
             )
         )
         _validate_fixed_metadata(
@@ -299,6 +314,11 @@ class SmaReturnResearchPipelineObservation:
         )
         object.__setattr__(
             self,
+            "return_construction_policy_observation",
+            return_construction_policy_observation,
+        )
+        object.__setattr__(
+            self,
             "limitations",
             _deduped_advisory_text_tuple(self.limitations, "limitations"),
         )
@@ -360,6 +380,9 @@ class SmaReturnResearchPipelineObservation:
             "source_selected_source_return_summary_observation": (
                 self.source_selected_source_return_summary_observation.to_dict()
             ),
+            "return_construction_policy_observation": (
+                self.return_construction_policy_observation.to_dict()
+            ),
             "limitations": list(self.limitations),
             "non_claims": list(self.non_claims),
         }
@@ -403,6 +426,12 @@ def build_sma_return_research_pipeline_observation(
     source_selected_source_return_summary_observation = (
         _require_source_selected_source_return_summary_observation(
             selected_source_return_summary_observation
+        )
+    )
+    return_construction_policy = build_research_return_construction_policy()
+    return_construction_policy_observation = (
+        build_research_return_construction_policy_observation(
+            return_construction_policy
         )
     )
 
@@ -451,6 +480,9 @@ def build_sma_return_research_pipeline_observation(
         ),
         source_selected_source_return_summary_observation=(
             source_selected_source_return_summary_observation
+        ),
+        return_construction_policy_observation=(
+            return_construction_policy_observation
         ),
         limitations=_pipeline_limitations(
             source_alignment_observation,
@@ -871,6 +903,18 @@ def _require_source_selected_source_return_summary_observation(
         raise ValidationError(
             "source_selected_source_return_summary_observation must be a "
             "SmaSelectedSourceReturnSummaryObservation."
+        )
+
+    return value
+
+
+def _require_return_construction_policy_observation(
+    value: object,
+) -> ResearchReturnConstructionPolicyObservation:
+    if type(value) is not ResearchReturnConstructionPolicyObservation:
+        raise ValidationError(
+            "return_construction_policy_observation must be a "
+            "ResearchReturnConstructionPolicyObservation."
         )
 
     return value

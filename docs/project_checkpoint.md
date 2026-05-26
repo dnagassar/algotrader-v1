@@ -12870,6 +12870,23 @@ Safe next tasks include:
   scheduler/dashboard behavior, ML, LLM/agent behavior, capital authority,
   trading authority, or deserialization behavior. Verification:
   `python -m pytest` -> 4761 passed, 4 skipped
+- Phase 249 - SMA Return Research Pipeline Construction Policy Observation
+  Attachment extends the existing
+  `algotrader.research.sma_return_research_pipeline_observation` payload with
+  a `return_construction_policy_observation` child. The pipeline builder
+  constructs the Phase 247 `ResearchReturnConstructionPolicy` first, then
+  constructs the Phase 248 `ResearchReturnConstructionPolicyObservation` from
+  that exact policy object, preserving the pipeline -> policy observation ->
+  source policy identity chain and nesting the policy observation's primitive
+  `to_dict()` payload unchanged. This phase remains advisory metadata only and
+  does not change the Phase 247 or Phase 248 contracts, expose CLI/package
+  behavior, add broker/runtime/vendor behavior, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, evaluator/signal/trading behavior, portfolio/cash/equity/PnL
+  state, allocation/order/fill behavior, benchmark comparison, backtest output,
+  approval/readiness authority, timestamps, randomness, global state, hidden
+  I/O, capital authority, trading authority, or deserialization behavior.
+  Verification: `python -m pytest` -> 4762 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

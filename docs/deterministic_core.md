@@ -7239,6 +7239,26 @@ ML/LLM behavior, add capital authority, add trading authority, or add
 deserialization behavior. Verification: `python -m pytest` -> 4761 passed,
 4 skipped.
 
+Phase 249 - SMA Return Research Pipeline Construction Policy Observation
+Attachment extends the existing
+`algotrader.research.sma_return_research_pipeline_observation` payload with a
+`return_construction_policy_observation` child. The pipeline builder constructs
+the Phase 247 `ResearchReturnConstructionPolicy` first, then constructs the
+Phase 248 `ResearchReturnConstructionPolicyObservation` from that exact policy
+object, preserving the pipeline -> policy observation -> source policy identity
+chain and nesting the policy observation's primitive `to_dict()` payload
+unchanged.
+
+Phase 249 remains advisory metadata only. It does not change the Phase 247 or
+Phase 248 contracts, does not expose CLI/package behavior, and does not add
+broker/runtime/vendor behavior, real data input, persistence, network/API
+access, scheduler/dashboard behavior, ML/LLM behavior, evaluator/signal/trading
+behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+benchmark comparison, backtest output, approval/readiness authority, timestamps,
+randomness, global state, hidden I/O, capital authority, trading authority, or
+deserialization behavior. Verification: `python -m pytest` -> 4762 passed,
+4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

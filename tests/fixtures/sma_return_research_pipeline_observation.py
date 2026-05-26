@@ -21,6 +21,9 @@ from algotrader.research.sma_selected_source_return_series_observation import (
 from algotrader.research.sma_selected_source_return_summary_observation import (
     build_sma_selected_source_return_summary_observation,
 )
+from tests.fixtures.research_return_construction_policy import (
+    expected_synthetic_research_return_construction_policy_dict,
+)
 from tests.fixtures.sma_conditional_return_selection_observation import (
     expected_synthetic_sma_conditional_return_selection_observation_dict,
 )
@@ -127,6 +130,9 @@ def expected_synthetic_sma_return_research_pipeline_observation_dict() -> (
         "source_selection_summary_observation": selection_summary,
         "source_selected_source_return_series_observation": selected_series,
         "source_selected_source_return_summary_observation": selected_summary,
+        "return_construction_policy_observation": (
+            _expected_return_construction_policy_observation()
+        ),
         "limitations": _expected_limitations(
             alignment,
             alignment_summary,
@@ -143,6 +149,19 @@ def expected_synthetic_sma_return_research_pipeline_observation_dict() -> (
             selected_series,
             selected_summary,
         ),
+    }
+
+
+def _expected_return_construction_policy_observation() -> dict[str, object]:
+    return {
+        "observation_type": "research_return_construction_policy_observation",
+        "advisory_scope": "policy_contract_observation_only",
+        "policy_state": "return_construction_policy_defined",
+        "selected_period_count": 0,
+        "excluded_period_count": 0,
+        "source_return_observation_count": 0,
+        "forbidden_output_count": 0,
+        "source_policy": expected_synthetic_research_return_construction_policy_dict(),
     }
 
 

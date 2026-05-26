@@ -8,6 +8,12 @@ from pathlib import Path
 import pytest
 
 from algotrader.errors import ValidationError
+from algotrader.research.research_return_construction_policy import (
+    ResearchReturnConstructionPolicy,
+)
+from algotrader.research.research_return_construction_policy_observation import (
+    ResearchReturnConstructionPolicyObservation,
+)
 from algotrader.research.sma_conditional_return_selection_observation import (
     SmaConditionalReturnSelectionObservation,
     build_sma_conditional_return_selection_observation,
@@ -97,6 +103,8 @@ _ALLOWED_IMPORTS = {
     "__future__",
     "dataclasses",
     "algotrader.errors",
+    "algotrader.research.research_return_construction_policy",
+    "algotrader.research.research_return_construction_policy_observation",
     "algotrader.research.sma_conditional_return_selection_observation",
     "algotrader.research.sma_conditional_return_selection_summary_observation",
     "algotrader.research.sma_return_alignment_observation",
@@ -290,6 +298,7 @@ def test_builds_research_only_pipeline_from_existing_artifacts() -> None:
     sources = _build_pipeline_sources()
     pipeline = build_sma_return_research_pipeline_observation(*sources)
     expected = expected_synthetic_sma_return_research_pipeline_observation_dict()
+    policy_observation = pipeline.return_construction_policy_observation
 
     assert type(pipeline) is SmaReturnResearchPipelineObservation
     assert pipeline.source_alignment_observation is sources[0]
@@ -298,6 +307,12 @@ def test_builds_research_only_pipeline_from_existing_artifacts() -> None:
     assert pipeline.source_selection_summary_observation is sources[3]
     assert pipeline.source_selected_source_return_series_observation is sources[4]
     assert pipeline.source_selected_source_return_summary_observation is sources[5]
+    assert type(policy_observation) is ResearchReturnConstructionPolicyObservation
+    assert type(policy_observation.source_policy) is ResearchReturnConstructionPolicy
+    assert (
+        policy_observation.to_dict()
+        == expected["return_construction_policy_observation"]
+    )
     assert pipeline.observation_type == "sma_return_research_pipeline_observation"
     assert pipeline.status == "candidate_only"
     assert pipeline.authority == "advisory_only"
@@ -420,6 +435,26 @@ def test_source_identity_is_preserved_and_sources_are_not_mutated() -> None:
     assert after_serialize == before
 
 
+def test_return_construction_policy_observation_identity_chain_is_preserved() -> None:
+    pipeline = build_synthetic_sma_return_research_pipeline_observation()
+    policy_observation = pipeline.return_construction_policy_observation
+    source_policy = policy_observation.source_policy
+    reconstructed = SmaReturnResearchPipelineObservation(**_direct_payload(pipeline))
+    payload = pipeline.to_dict()
+
+    assert reconstructed.return_construction_policy_observation is policy_observation
+    assert reconstructed.return_construction_policy_observation.source_policy is source_policy
+    assert policy_observation.source_policy is source_policy
+    assert (
+        payload["return_construction_policy_observation"]
+        == policy_observation.to_dict()
+    )
+    assert (
+        payload["return_construction_policy_observation"]["source_policy"]
+        == source_policy.to_dict()
+    )
+
+
 def test_direct_construction_rejects_mismatched_or_malformed_values() -> None:
     pipeline = build_synthetic_sma_return_research_pipeline_observation()
     payload = _direct_payload(pipeline)
@@ -454,6 +489,7 @@ def test_direct_construction_rejects_mismatched_or_malformed_values() -> None:
         ("source_selection_summary_observation", object()),
         ("source_selected_source_return_series_observation", object()),
         ("source_selected_source_return_summary_observation", object()),
+        ("return_construction_policy_observation", object()),
         ("limitations", (_join("action", "able metadata"),)),
         ("non_claims", ("positive claim",)),
     ):
@@ -497,6 +533,9 @@ def test_to_dict_is_primitive_only_deterministic_and_returns_fresh_lists() -> No
     assert first["source_selected_source_return_summary_observation"] is not (
         second["source_selected_source_return_summary_observation"]
     )
+    assert first["return_construction_policy_observation"] is not (
+        second["return_construction_policy_observation"]
+    )
     assert first["limitations"] is not second["limitations"]
     assert first["non_claims"] is not second["non_claims"]
 
@@ -512,6 +551,9 @@ def test_to_dict_is_primitive_only_deterministic_and_returns_fresh_lists() -> No
             "selected_source_returns"
         ][0]
     )
+    first["return_construction_policy_observation"]["source_policy"][
+        "limitations"
+    ].append("mutated primitive copy")
 
     assert second == expected
     assert build_synthetic_sma_return_research_pipeline_observation().to_dict() == expected
@@ -519,7 +561,9 @@ def test_to_dict_is_primitive_only_deterministic_and_returns_fresh_lists() -> No
 
 def test_public_payload_excludes_disallowed_result_fields() -> None:
     payload = build_synthetic_sma_return_research_pipeline_observation().to_dict()
+    field_names = {field.name for field in fields(SmaReturnResearchPipelineObservation)}
 
+    assert _FORBIDDEN_PAYLOAD_KEYS.isdisjoint(field_names)
     assert _FORBIDDEN_PAYLOAD_KEYS.isdisjoint(_payload_keys(payload))
     assert _capital_authority_values(payload) == [False] * len(
         _capital_authority_values(payload)
@@ -561,6 +605,7 @@ def test_object_is_frozen_and_slotted() -> None:
         "source_selection_summary_observation",
         "source_selected_source_return_series_observation",
         "source_selected_source_return_summary_observation",
+        "return_construction_policy_observation",
         "limitations",
         "non_claims",
     )
@@ -746,6 +791,9 @@ def _direct_payload(
         ),
         "source_selected_source_return_summary_observation": (
             pipeline.source_selected_source_return_summary_observation
+        ),
+        "return_construction_policy_observation": (
+            pipeline.return_construction_policy_observation
         ),
         "limitations": pipeline.limitations,
         "non_claims": pipeline.non_claims,
