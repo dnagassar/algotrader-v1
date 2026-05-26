@@ -7427,6 +7427,24 @@ access, scheduler/dashboard behavior, ML/LLM/agent behavior, timestamps,
 randomness, global state, hidden I/O, capital authority, trading authority, or
 deserialization behavior.
 
+Phase 260 - Advisory Package Research Observation Manifest Attachment extends
+the advisory operating brief package with an optional exact
+`ResearchObservationManifest` audit field. The field is metadata-only, preserves
+manifest object identity, is omitted from `to_dict()` when absent, and serializes
+the primitive manifest payload when present. The synthetic advisory package
+preview now builds a one-entry manifest named
+`sma_return_research_pipeline_observation` from the existing synthetic SMA
+return research pipeline observation's primitive `to_dict()` payload, so the
+manifest digest tracks the included observation payload deterministically.
+
+Phase 260 adds no CLI flags, renderer behavior, storage behavior, file/path/env
+inputs, evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness authority, broker/runtime/vendor dependency, real data input,
+persistence, network/API access, scheduler/dashboard behavior, ML/LLM/agent
+behavior, timestamps, randomness, global state, hidden I/O, capital authority,
+trading authority, or deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

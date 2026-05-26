@@ -18,6 +18,10 @@ from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
     build_advisory_operating_brief_package,
 )
+from algotrader.research.research_observation_manifest import (
+    ResearchObservationManifest,
+    build_research_observation_manifest,
+)
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle_with_research_queue,
 )
@@ -48,6 +52,7 @@ _EXPECTED_FIELD_NAMES = (
     "limitations",
     "non_claims",
     "sma_return_research_pipeline_observation",
+    "research_observation_manifest",
 )
 _ALLOWED_IMPORTS = {
     "__future__",
@@ -55,6 +60,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.errors",
     "algotrader.research.advisory_operating_brief_content_bundle",
     "algotrader.research.advisory_operating_brief_content_bundle_export",
+    "algotrader.research.research_observation_manifest",
     "algotrader.research.sma_return_research_pipeline_observation",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
@@ -198,6 +204,40 @@ def test_direct_construction_validates_and_preserves_bundle_identity() -> None:
     )
     assert package.limitations == bundle.limitations
     assert package.non_claims == bundle.non_claims
+
+
+def test_existing_package_construction_without_manifest_still_works() -> None:
+    package = _package()
+
+    assert package.research_observation_manifest is None
+    assert "research_observation_manifest" not in package.to_dict()
+
+
+def test_package_manifest_preserves_identity_and_serializes_payload() -> None:
+    manifest = _manifest()
+    package = _package(research_observation_manifest=manifest)
+    payload = package.to_dict()
+
+    assert package.research_observation_manifest is manifest
+    assert payload["research_observation_manifest"] == manifest.to_dict()
+    assert _dict(payload["research_observation_manifest"]) is not manifest.to_dict()
+
+
+def test_research_observation_manifest_requires_exact_type() -> None:
+    manifest = _manifest()
+
+    for value in (
+        _ManifestLookalike(manifest),
+        _manifest_subclass(manifest),
+        {"manifest_type": "research_observation_manifest"},
+    ):
+        with pytest.raises(ValidationError, match="research_observation_manifest"):
+            _package(research_observation_manifest=value)
+
+        constructor_payload = _valid_constructor_payload()
+        constructor_payload["research_observation_manifest"] = value
+        with pytest.raises(ValidationError, match="research_observation_manifest"):
+            AdvisoryOperatingBriefPackage(**constructor_payload)
 
 
 def test_package_is_frozen_slotted_and_has_no_from_dict() -> None:
@@ -534,6 +574,10 @@ class ContentBundleSubclass(AdvisoryOperatingBriefContentBundle):
     pass
 
 
+class ManifestSubclass(ResearchObservationManifest):
+    pass
+
+
 class _BundleLookalike:
     def __init__(self, source: AdvisoryOperatingBriefContentBundle) -> None:
         self.bundle_type = source.bundle_type
@@ -556,12 +600,25 @@ class _ExportLookalike:
         self.rendered_text = source.rendered_text
 
 
+class _ManifestLookalike:
+    def __init__(self, source: ResearchObservationManifest) -> None:
+        self.manifest_type = source.manifest_type
+        self.schema_version = source.schema_version
+        self.advisory_scope = source.advisory_scope
+        self.entry_count = source.entry_count
+        self.entries = source.entries
+
+    def to_dict(self) -> dict[str, object]:
+        return {}
+
+
 def _source_bundle() -> AdvisoryOperatingBriefContentBundle:
     return build_synthetic_advisory_operating_brief_content_bundle_with_research_queue()
 
 
 def _package(
     bundle: AdvisoryOperatingBriefContentBundle | None = None,
+    research_observation_manifest: object = None,
 ) -> AdvisoryOperatingBriefPackage:
     return build_advisory_operating_brief_package(
         package_id=_PACKAGE_ID,
@@ -569,6 +626,31 @@ def _package(
         summary=_SUMMARY,
         as_of=_AS_OF,
         content_bundle=bundle or _source_bundle(),
+        research_observation_manifest=research_observation_manifest,
+    )
+
+
+def _manifest() -> ResearchObservationManifest:
+    return build_research_observation_manifest(
+        (
+            (
+                "synthetic_research_observation",
+                {
+                    "observation_type": "synthetic_research_observation",
+                    "value": 1,
+                },
+            ),
+        )
+    )
+
+
+def _manifest_subclass(source: ResearchObservationManifest) -> ManifestSubclass:
+    return ManifestSubclass(
+        manifest_type=source.manifest_type,
+        schema_version=source.schema_version,
+        advisory_scope=source.advisory_scope,
+        entry_count=source.entry_count,
+        entries=source.entries,
     )
 
 

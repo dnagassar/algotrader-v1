@@ -13037,6 +13037,22 @@ Safe next tasks include:
   input, persistence, network/socket/API access, scheduler/dashboard behavior,
   ML, LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
   capital authority, trading authority, or deserialization behavior.
+- Phase 260 - Advisory Package Research Observation Manifest Attachment extends
+  `AdvisoryOperatingBriefPackage` with an optional exact
+  `ResearchObservationManifest` metadata-only audit field. The field preserves
+  object identity, remains absent from `to_dict()` when unset, and emits the
+  primitive manifest payload when present. The synthetic package preview now
+  includes a one-entry manifest named
+  `sma_return_research_pipeline_observation`, built from the included synthetic
+  SMA return research pipeline observation's primitive `to_dict()` payload, so
+  its digest deterministically matches that payload. This phase adds no CLI
+  flags, renderer behavior, storage behavior, file/path/env inputs,
+  evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+  allocation/order/fill behavior, benchmark comparison, backtest output,
+  approval/readiness authority, broker/runtime/vendor dependency, real data
+  input, persistence, network/socket/API access, scheduler/dashboard behavior,
+  ML, LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
+  capital authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

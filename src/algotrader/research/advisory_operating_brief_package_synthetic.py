@@ -31,6 +31,9 @@ from algotrader.research.research_return_observation import (
     ResearchReturnSeriesObservation,
     build_research_return_series_observation,
 )
+from algotrader.research.research_observation_manifest import (
+    build_research_observation_manifest,
+)
 from algotrader.research.sma_conditional_return_selection_observation import (
     build_sma_conditional_return_selection_observation,
 )
@@ -116,14 +119,23 @@ def build_synthetic_advisory_operating_brief_package_preview() -> (
     """Return the deterministic synthetic advisory package preview."""
 
     content_bundle = _build_synthetic_package_content_bundle()
+    sma_return_research_pipeline_observation = (
+        _build_synthetic_sma_return_research_pipeline_observation()
+    )
     return build_advisory_operating_brief_package(
         package_id=_PACKAGE_ID,
         title=_TITLE,
         summary=_SUMMARY,
         as_of=_AS_OF,
         content_bundle=content_bundle,
-        sma_return_research_pipeline_observation=(
-            _build_synthetic_sma_return_research_pipeline_observation()
+        sma_return_research_pipeline_observation=sma_return_research_pipeline_observation,
+        research_observation_manifest=build_research_observation_manifest(
+            (
+                (
+                    "sma_return_research_pipeline_observation",
+                    sma_return_research_pipeline_observation.to_dict(),
+                ),
+            )
         ),
     )
 

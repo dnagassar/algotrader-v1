@@ -12,6 +12,9 @@ from algotrader.research.advisory_operating_brief_content_bundle_export import (
     AdvisoryOperatingBriefContentBundleExport,
     export_advisory_operating_brief_content_bundle,
 )
+from algotrader.research.research_observation_manifest import (
+    ResearchObservationManifest,
+)
 from algotrader.research.sma_return_research_pipeline_observation import (
     SmaReturnResearchPipelineObservation,
 )
@@ -80,6 +83,7 @@ class AdvisoryOperatingBriefPackage:
     sma_return_research_pipeline_observation: (
         SmaReturnResearchPipelineObservation | None
     ) = None
+    research_observation_manifest: ResearchObservationManifest | None = None
 
     def __post_init__(self) -> None:
         _validate_fixed_metadata(
@@ -105,6 +109,9 @@ class AdvisoryOperatingBriefPackage:
         sma_pipeline = _optional_sma_return_research_pipeline_observation(
             self.sma_return_research_pipeline_observation
         )
+        research_manifest = _optional_research_observation_manifest(
+            self.research_observation_manifest
+        )
         expected_export = export_advisory_operating_brief_content_bundle(
             self.content_bundle
         )
@@ -129,6 +136,11 @@ class AdvisoryOperatingBriefPackage:
             self,
             "sma_return_research_pipeline_observation",
             sma_pipeline,
+        )
+        object.__setattr__(
+            self,
+            "research_observation_manifest",
+            research_manifest,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -156,6 +168,10 @@ class AdvisoryOperatingBriefPackage:
             payload["sma_return_research_pipeline_observation"] = (
                 self.sma_return_research_pipeline_observation.to_dict()
             )
+        if self.research_observation_manifest is not None:
+            payload["research_observation_manifest"] = (
+                self.research_observation_manifest.to_dict()
+            )
         return payload
 
 
@@ -169,12 +185,16 @@ def build_advisory_operating_brief_package(
     sma_return_research_pipeline_observation: (
         SmaReturnResearchPipelineObservation | None
     ) = None,
+    research_observation_manifest: ResearchObservationManifest | None = None,
 ) -> AdvisoryOperatingBriefPackage:
     """Build an advisory-only package from an existing content bundle."""
 
     _validate_content_bundle(content_bundle)
     sma_pipeline = _optional_sma_return_research_pipeline_observation(
         sma_return_research_pipeline_observation
+    )
+    research_manifest = _optional_research_observation_manifest(
+        research_observation_manifest
     )
     return AdvisoryOperatingBriefPackage(
         package_type=_PACKAGE_TYPE,
@@ -192,6 +212,7 @@ def build_advisory_operating_brief_package(
         limitations=_dedupe_first_seen(content_bundle.limitations),
         non_claims=_dedupe_first_seen(content_bundle.non_claims),
         sma_return_research_pipeline_observation=sma_pipeline,
+        research_observation_manifest=research_manifest,
     )
 
 
@@ -240,6 +261,19 @@ def _optional_sma_return_research_pipeline_observation(
         raise ValidationError(
             "sma_return_research_pipeline_observation must be exactly a "
             "SmaReturnResearchPipelineObservation."
+        )
+    return value
+
+
+def _optional_research_observation_manifest(
+    value: object,
+) -> ResearchObservationManifest | None:
+    if value is None:
+        return None
+    if type(value) is not ResearchObservationManifest:
+        raise ValidationError(
+            "research_observation_manifest must be exactly a "
+            "ResearchObservationManifest."
         )
     return value
 
