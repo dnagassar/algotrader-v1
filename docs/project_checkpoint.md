@@ -12754,6 +12754,25 @@ Safe next tasks include:
   persistence, network/socket/API access, scheduler/dashboard behavior, ML,
   LLM/agent behavior, capital authority, trading authority, or deserialization
   behavior. Verification: `python -m pytest` -> 4685 passed, 4 skipped
+- Phase 243 - SMA Conditional Return Selection Summary Observation adds
+  `algotrader.research.sma_conditional_return_selection_summary_observation`
+  with a frozen/slotted
+  `SmaConditionalReturnSelectionSummaryObservation` contract plus a pure
+  `build_sma_conditional_return_selection_summary_observation(...)` builder.
+  The artifact consumes the existing Phase 242
+  `SmaConditionalReturnSelectionObservation`, preserves the source selection
+  object, and emits primitive-only deterministic summary metadata for
+  selection-period count, included count, excluded count, no-prior-SMA
+  excluded count, insufficient-history excluded count, below-SMA excluded
+  count, and equal-SMA excluded count. It also derives a fixed summary state
+  for mixed, all-included, all-excluded, or empty classification sets. This
+  phase remains advisory research metadata only and adds no return
+  calculation, profit calculation, equity curve, trade order, position,
+  allocation, portfolio state, readiness, approval, recommendation, signal or
+  evaluator behavior, broker/runtime/vendor option, real data input,
+  persistence, network/socket/API access, scheduler/dashboard behavior, ML,
+  LLM/agent behavior, capital authority, trading authority, or deserialization
+  behavior. Verification: `python -m pytest` -> 4698 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

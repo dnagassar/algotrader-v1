@@ -7114,6 +7114,25 @@ broker/runtime/vendor behavior, persistence, network/API access,
 scheduler/dashboard behavior, ML/LLM behavior, capital authority, or trading
 authority. Verification: `python -m pytest` -> 4685 passed, 4 skipped.
 
+Phase 243 - SMA Conditional Return Selection Summary Observation adds
+`algotrader.research.sma_conditional_return_selection_summary_observation`
+with a frozen/slotted `SmaConditionalReturnSelectionSummaryObservation`
+contract plus a pure
+`build_sma_conditional_return_selection_summary_observation(...)` builder. The
+artifact consumes an existing Phase 242
+`SmaConditionalReturnSelectionObservation`, preserves the source selection
+object, counts selection periods, included periods, excluded periods, and the
+deterministic excluded-reason buckets for no-prior-SMA, insufficient-history,
+below-SMA, and equal-SMA classifications. It also derives a fixed summary
+state for mixed, all-included, all-excluded, or empty classification sets.
+
+Phase 243 remains advisory research metadata only. It does not calculate
+returns, profit, equity curves, positions, orders, portfolio state, capital
+authority, trading authority, approvals, recommendations, signals, evaluator
+behavior, broker/runtime/vendor behavior, persistence, network/API access,
+scheduler/dashboard behavior, ML/LLM behavior, or deserialization behavior.
+Verification: `python -m pytest` -> 4698 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
