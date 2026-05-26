@@ -7359,6 +7359,23 @@ timestamps, randomness, global state, hidden I/O, capital authority, trading
 authority, or deserialization behavior. The manifest remains generic and does
 not import the SMA export snapshot module.
 
+Phase 256 - SMA Export Snapshot Manifest Fixture Integration adds a test-only
+fixture that represents the Phase 253 SMA return research pipeline export
+snapshot with the generic Phase 255 research observation manifest contract. The
+fixture builds a one-entry metadata manifest for the canonical synthetic
+payload, pins the stable observation name, payload key count, compact sorted-key
+JSON SHA-256 digest, primitive `to_dict()` shape, and deterministic compact
+JSON serialization.
+
+Phase 256 changes no production source and adds no CLI/package/renderer
+behavior, evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness authority, broker/runtime/vendor dependency, real data
+input, persistence, network/API access, scheduler/dashboard behavior,
+ML/LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
+capital authority, trading authority, or deserialization behavior. The
+production manifest remains generic and does not import SMA export modules.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

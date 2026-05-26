@@ -12974,6 +12974,22 @@ Safe next tasks include:
   scheduler/dashboard behavior, ML, LLM/agent behavior, timestamps,
   randomness, global state, hidden I/O, capital authority, trading authority,
   or deserialization behavior.
+- Phase 256 - SMA Export Snapshot Manifest Fixture Integration adds
+  `tests.fixtures.research_observation_manifest` with expected dict and compact
+  sorted-key JSON helpers for representing the Phase 253 SMA return research
+  pipeline export snapshot as a one-entry Phase 255 generic metadata manifest.
+  The fixture pins the stable observation name, payload key count, payload
+  observation type, compact sorted-key JSON SHA-256 digest, primitive
+  round-trippable `to_dict()` output, and repeated-call byte determinism. This
+  phase is fixture/test integration only and changes no production source,
+  CLI/package/renderer behavior, evaluator/signal/trading behavior,
+  portfolio/cash/equity/PnL state, allocation/order/fill behavior, benchmark
+  comparison, backtest output, approval/readiness authority,
+  broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior. The production
+  manifest remains generic and does not import SMA export modules.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
