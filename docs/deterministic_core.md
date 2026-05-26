@@ -7095,6 +7095,25 @@ broker/runtime/vendor behavior, persistence, network/API access,
 scheduler/dashboard behavior, ML/LLM behavior, capital authority, or trading
 authority.
 
+Phase 242 - Research-Only SMA Conditional Return Selection Observation adds
+`algotrader.research.sma_conditional_return_selection_observation` with
+frozen/slotted `SmaConditionalReturnSelectionPeriod` and
+`SmaConditionalReturnSelectionObservation` contracts plus a pure
+`build_sma_conditional_return_selection_observation(...)` builder. The
+artifact consumes an existing Phase 240 `SmaReturnAlignmentObservation`,
+preserves the source alignment object and period identities, and classifies
+each aligned return period as `included` only when the aligned SMA state is
+`above`; below, equal, insufficient-history, and no-prior-SMA cases are
+classified as `excluded` with deterministic reasons and counts.
+
+Phase 242 remains advisory research metadata only. It does not compute
+strategy returns, compounded returns, equity curves, cash returns, benchmark
+comparisons, portfolio state, exposure, positions, orders, allocation,
+readiness, approvals, recommendations, signals, evaluator behavior,
+broker/runtime/vendor behavior, persistence, network/API access,
+scheduler/dashboard behavior, ML/LLM behavior, capital authority, or trading
+authority. Verification: `python -m pytest` -> 4685 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
