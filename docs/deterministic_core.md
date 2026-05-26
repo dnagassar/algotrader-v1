@@ -7133,6 +7133,27 @@ behavior, broker/runtime/vendor behavior, persistence, network/API access,
 scheduler/dashboard behavior, ML/LLM behavior, or deserialization behavior.
 Verification: `python -m pytest` -> 4698 passed, 4 skipped.
 
+Phase 244 - SMA Selected Source Return Series Observation adds
+`algotrader.research.sma_selected_source_return_series_observation` with
+frozen/slotted `SmaSelectedSourceReturnPoint` and
+`SmaSelectedSourceReturnSeriesObservation` contracts plus a pure
+`build_sma_selected_source_return_series_observation(...)` builder. The
+artifact consumes an existing Phase 242
+`SmaConditionalReturnSelectionObservation`, preserves the source selection
+object and selected period identities, and emits primitive-only source return
+values only for selection periods marked `included`. It carries the source
+simple return value, return period dates, selection rule, and count metadata
+forward without aggregating or compounding the values.
+
+Phase 244 remains advisory research metadata only. It does not calculate
+strategy returns, compounded returns, equity curves, cash returns, benchmark
+comparisons, portfolio state, exposure, positions, orders, allocation,
+readiness, approvals, recommendations, signals, evaluator behavior,
+broker/runtime/vendor behavior, persistence, network/API access,
+scheduler/dashboard behavior, ML/LLM behavior, capital authority, trading
+authority, or deserialization behavior. Verification: `python -m pytest` ->
+4712 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

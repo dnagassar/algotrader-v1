@@ -12773,6 +12773,25 @@ Safe next tasks include:
   persistence, network/socket/API access, scheduler/dashboard behavior, ML,
   LLM/agent behavior, capital authority, trading authority, or deserialization
   behavior. Verification: `python -m pytest` -> 4698 passed, 4 skipped
+- Phase 244 - SMA Selected Source Return Series Observation adds
+  `algotrader.research.sma_selected_source_return_series_observation` with
+  frozen/slotted `SmaSelectedSourceReturnPoint` and
+  `SmaSelectedSourceReturnSeriesObservation` contracts plus a pure
+  `build_sma_selected_source_return_series_observation(...)` builder. The
+  artifact consumes the existing Phase 242
+  `SmaConditionalReturnSelectionObservation`, preserves the source selection
+  object and selected period identity, and emits primitive-only selected source
+  return rows only for periods marked `included` by the above-SMA rule. Each
+  row carries the source simple return value and return period dates from the
+  included source period. This phase remains advisory research metadata only
+  and adds no strategy-return calculation, compounded-return calculation,
+  equity curve, cash return, benchmark comparison, portfolio state, exposure
+  calculation, trade order, position, allocation, readiness, approval,
+  recommendation, signal or evaluator behavior, broker/runtime/vendor option,
+  real data input, persistence, network/socket/API access, scheduler/dashboard
+  behavior, ML, LLM/agent behavior, capital authority, trading authority, or
+  deserialization behavior. Verification: `python -m pytest` -> 4712 passed,
+  4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
