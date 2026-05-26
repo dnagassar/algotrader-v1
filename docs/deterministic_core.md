@@ -7174,6 +7174,28 @@ broker/runtime/vendor, persistence, network/API, scheduler/dashboard, ML/LLM,
 capital authority, trading authority, or deserialization behavior.
 Verification: `python -m pytest` -> 4724 passed, 4 skipped.
 
+Phase 246 - SMA Return Research Pipeline Observation adds
+`algotrader.research.sma_return_research_pipeline_observation` with a
+frozen/slotted `SmaReturnResearchPipelineObservation` contract and pure
+`build_sma_return_research_pipeline_observation(...)` builder. The artifact
+accepts the existing Phase 240 alignment observation, Phase 241 alignment
+summary, Phase 242 above-SMA selection observation, Phase 243 selection
+summary, Phase 244 selected source return series, and Phase 245 selected
+source return summary. It validates that those six objects share the same
+identity-preserved derivation chain, emits primitive-only top-level
+source-count and summary-state metadata, and nests each source artifact in a
+stable pipeline order.
+
+Phase 246 remains advisory research metadata only. It composes existing SMA
+return research artifacts without adding return math, strategy-return
+calculation, selected source return compounding, backtest behavior, equity
+curves, cash returns, benchmark comparisons, portfolio state, exposure,
+positions, orders, allocation, readiness, approval, recommendation, signal,
+evaluator behavior, broker/runtime/vendor behavior, persistence, network/API
+access, scheduler/dashboard behavior, ML/LLM behavior, capital authority,
+trading authority, or deserialization behavior. Verification:
+`python -m pytest` -> 4737 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

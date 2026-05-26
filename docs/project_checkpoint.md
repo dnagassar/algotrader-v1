@@ -12811,6 +12811,25 @@ Safe next tasks include:
   persistence, network/socket/API access, scheduler/dashboard behavior, ML,
   LLM/agent behavior, capital authority, trading authority, or deserialization
   behavior. Verification: `python -m pytest` -> 4724 passed, 4 skipped
+- Phase 246 - SMA Return Research Pipeline Observation adds
+  `algotrader.research.sma_return_research_pipeline_observation` with a
+  frozen/slotted `SmaReturnResearchPipelineObservation` contract plus a pure
+  `build_sma_return_research_pipeline_observation(...)` builder. The artifact
+  accepts the existing Phase 240 alignment observation, Phase 241 alignment
+  summary, Phase 242 above-SMA selection observation, Phase 243 selection
+  summary, Phase 244 selected source return series, and Phase 245 selected
+  source return summary. It validates the identity-preserved derivation chain
+  across all six source artifacts, emits primitive-only top-level source-count
+  and summary-state metadata, and nests each source artifact in stable pipeline
+  order. This phase remains advisory research metadata only and adds no new
+  return math, strategy-return calculation, selected source return compounding,
+  backtest behavior, equity curve, cash return, benchmark comparison,
+  portfolio state, exposure calculation, trade order, position, allocation,
+  readiness, approval, recommendation, signal or evaluator behavior,
+  broker/runtime/vendor option, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, capital authority, trading authority, or deserialization behavior.
+  Verification: `python -m pytest` -> 4737 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
