@@ -12917,6 +12917,20 @@ Safe next tasks include:
   benchmark comparison, backtest output, timestamps, randomness, global state,
   hidden I/O, capital authority, trading authority, or deserialization
   behavior.
+- Phase 252 - SMA Return Research Pipeline Observation Export Snapshot adds
+  `algotrader.research.sma_return_research_pipeline_observation_export` with
+  `export_synthetic_sma_return_research_pipeline_observation_snapshot()`. The
+  helper constructs the existing deterministic synthetic SMA return research
+  pipeline through production research builders and returns the pipeline
+  observation's primitive `to_dict()` payload unchanged, including exactly one
+  nested `return_construction_policy_observation`. This phase is an export
+  snapshot convenience only and adds no CLI/package behavior, evaluator/signal/
+  trading behavior, portfolio/cash/equity/PnL state, allocation/order/fill
+  behavior, benchmark comparison, backtest output, approval/readiness
+  authority, broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
