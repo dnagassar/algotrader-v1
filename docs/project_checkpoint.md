@@ -12792,6 +12792,25 @@ Safe next tasks include:
   behavior, ML, LLM/agent behavior, capital authority, trading authority, or
   deserialization behavior. Verification: `python -m pytest` -> 4712 passed,
   4 skipped
+- Phase 245 - SMA Selected Source Return Summary Observation adds
+  `algotrader.research.sma_selected_source_return_summary_observation` with a
+  frozen/slotted `SmaSelectedSourceReturnSummaryObservation` contract plus a
+  pure `build_sma_selected_source_return_summary_observation(...)` builder.
+  The artifact consumes the Phase 244
+  `SmaSelectedSourceReturnSeriesObservation`, preserves the source selected
+  source return series object, and emits primitive-only selected source return
+  count, minimum selected source return, maximum selected source return, and
+  arithmetic mean selected source return metadata. Empty selected source
+  return inputs deterministically report no selected source returns and
+  `None` for selected source return minimum, maximum, and arithmetic mean
+  fields. This phase remains advisory research metadata only and does not
+  compound selected source returns or convert selected source returns into any
+  strategy, portfolio, invested, backtest, cash, benchmark, exposure,
+  position, order, allocation, readiness, approval, recommendation, signal,
+  evaluator behavior, broker/runtime/vendor option, real data input,
+  persistence, network/socket/API access, scheduler/dashboard behavior, ML,
+  LLM/agent behavior, capital authority, trading authority, or deserialization
+  behavior. Verification: `python -m pytest` -> 4724 passed, 4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

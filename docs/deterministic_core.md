@@ -7154,6 +7154,26 @@ scheduler/dashboard behavior, ML/LLM behavior, capital authority, trading
 authority, or deserialization behavior. Verification: `python -m pytest` ->
 4712 passed, 4 skipped.
 
+Phase 245 - SMA Selected Source Return Summary Observation adds
+`algotrader.research.sma_selected_source_return_summary_observation` with a
+frozen/slotted `SmaSelectedSourceReturnSummaryObservation` contract and pure
+`build_sma_selected_source_return_summary_observation(...)` builder. The
+artifact consumes the Phase 244 `SmaSelectedSourceReturnSeriesObservation`,
+preserves the source selected source return series object, and emits
+primitive-only selected source return count, minimum selected source return,
+maximum selected source return, and arithmetic mean selected source return
+metadata. Empty selected source return inputs deterministically report no
+selected source returns and `None` for the selected source return minimum,
+maximum, and arithmetic mean fields.
+
+Phase 245 remains advisory research metadata only. It summarizes selected
+source return values without compounding them or converting them into any
+strategy, portfolio, invested, backtest, cash, benchmark, exposure, position,
+order, allocation, readiness, approval, recommendation, signal, evaluator,
+broker/runtime/vendor, persistence, network/API, scheduler/dashboard, ML/LLM,
+capital authority, trading authority, or deserialization behavior.
+Verification: `python -m pytest` -> 4724 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
