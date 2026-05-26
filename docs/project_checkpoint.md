@@ -12830,6 +12830,27 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, capital authority, trading authority, or deserialization behavior.
   Verification: `python -m pytest` -> 4737 passed, 4 skipped
+- Phase 247 - Research Return Construction Policy Contract adds
+  `algotrader.research.research_return_construction_policy` with a
+  frozen/slotted `ResearchReturnConstructionPolicy` contract plus a pure
+  `build_research_return_construction_policy()` builder. The contract pins the
+  conservative research-only answer before future return-construction code:
+  selected periods may carry source return observations only, excluded periods
+  remain excluded without zero/cash/strategy mapping, missing periods are not
+  imputed, no cash proxy exists, costs and slippage are not included,
+  compounding is not allowed, and strategy-return, portfolio-return,
+  cash-return, equity-curve, and backtest outputs are all disallowed. This
+  phase is policy metadata only and does not accept source observations, apply
+  the policy, calculate strategy returns, calculate portfolio returns,
+  calculate cash returns, calculate equity curves, compound selected source
+  returns, map excluded periods to cash or zero, create a benchmark comparison,
+  create a backtest result, touch portfolio state, create exposure, create
+  positions or orders, add allocation/readiness/approval/recommendation/signal
+  or evaluator behavior, add broker/runtime/vendor behavior, add real data
+  input, persistence, network/socket/API access, scheduler/dashboard behavior,
+  ML, LLM/agent behavior, capital authority, trading authority, or
+  deserialization behavior. Verification: `python -m pytest` -> 4747 passed,
+  4 skipped
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

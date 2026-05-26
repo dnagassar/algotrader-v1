@@ -7196,6 +7196,28 @@ access, scheduler/dashboard behavior, ML/LLM behavior, capital authority,
 trading authority, or deserialization behavior. Verification:
 `python -m pytest` -> 4737 passed, 4 skipped.
 
+Phase 247 - Research Return Construction Policy Contract adds
+`algotrader.research.research_return_construction_policy` with a frozen/slotted
+`ResearchReturnConstructionPolicy` contract plus a pure
+`build_research_return_construction_policy()` builder. The contract pins the
+conservative research-only treatment before any future return-construction code:
+selected periods may carry source return observations only, excluded periods
+remain excluded without zero/cash/strategy mapping, missing periods are not
+imputed, no cash proxy exists, costs and slippage are not included, compounding
+is not allowed, and strategy-return, portfolio-return, cash-return,
+equity-curve, and backtest outputs are all disallowed.
+
+Phase 247 is policy metadata only. It does not accept source observations, apply
+the policy, calculate strategy returns, calculate portfolio returns, calculate
+cash returns, calculate equity curves, compound selected source returns, map
+excluded periods to cash or zero, create a benchmark comparison, create a
+backtest result, touch portfolio state, create exposure, create positions or
+orders, add allocation/readiness/approval/recommendation/signal/evaluator
+behavior, add broker/runtime/vendor behavior, add persistence, add network/API
+access, add scheduler/dashboard behavior, add ML/LLM behavior, add capital
+authority, add trading authority, or add deserialization behavior. Verification:
+`python -m pytest` -> 4747 passed, 4 skipped.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
