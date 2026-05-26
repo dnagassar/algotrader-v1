@@ -12901,6 +12901,22 @@ Safe next tasks include:
   behavior, benchmark comparison, backtest output, timestamps, randomness,
   global state, hidden I/O, capital authority, trading authority, or
   deserialization behavior.
+- Phase 251 - Advisory Package CLI SMA Pipeline Serialization Regression Guard
+  adds a focused CLI/export test pin for the existing synthetic advisory
+  package JSON path. The guard proves the
+  `advisory-operating-brief-package-preview` command with `--format json`
+  preserves the Phase 250 `sma_return_research_pipeline_observation` payload
+  byte-deterministically, including exactly one nested
+  `return_construction_policy_observation` matching the canonical
+  package/export fixture policy observation. This phase is a regression guard
+  only and adds no new CLI flags, commands, renderer branches, package
+  behavior, advisory conclusions, ranking, readiness/approval state, trading
+  behavior, broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+  benchmark comparison, backtest output, timestamps, randomness, global state,
+  hidden I/O, capital authority, trading authority, or deserialization
+  behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

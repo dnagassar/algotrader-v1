@@ -25,6 +25,9 @@ from algotrader.research.advisory_operating_brief_package_export import (
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package as build_fixture_package,
 )
+from tests.fixtures.sma_return_research_pipeline_observation import (
+    expected_synthetic_sma_return_research_pipeline_observation_dict,
+)
 
 
 _COMMAND = "advisory-operating-brief-package-preview"
@@ -49,6 +52,9 @@ _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
 )
 _EXPECTED_PAYLOAD = _EXPECTED_EXPORT.payload
+_EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
+    expected_synthetic_sma_return_research_pipeline_observation_dict()
+)
 _EXPECTED_TEXT = _EXPECTED_EXPORT.rendered_text
 _EXPECTED_JSON = _EXPECTED_EXPORT.json_text
 _ALLOWED_SELF_IMPORTS = {
@@ -66,6 +72,27 @@ _ALLOWED_SELF_IMPORTS = {
     "algotrader.research.advisory_operating_brief_package_export",
     "algotrader.research.advisory_operating_brief_package_synthetic",
     "tests.fixtures.advisory_operating_brief_package",
+    "tests.fixtures.sma_return_research_pipeline_observation",
+}
+_FORBIDDEN_SERIALIZED_FIELD_NAMES = {
+    "broker",
+    "account",
+    "order",
+    "fill",
+    "position",
+    "portfolio",
+    "cash",
+    "equity",
+    "pnl",
+    "benchmark",
+    "backtest",
+    "allocation",
+    "signal",
+    "execution",
+    "live",
+    "paper",
+    "readiness",
+    "approval",
 }
 
 
@@ -105,6 +132,39 @@ def test_json_stdout_is_exact_package_export_pin_and_round_trips(capsys) -> None
     assert _dict(_dict(payload["content_bundle_export"])["payload"]) == _dict(
         payload["content_bundle"]
     )
+
+
+def test_json_stdout_preserves_sma_return_pipeline_payload(capsys) -> None:
+    first_json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    second_json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    payload = json.loads(first_json_stdout)
+    package = build_fixture_package()
+    pipeline = package.sma_return_research_pipeline_observation
+
+    assert pipeline is not None
+    assert first_json_stdout == second_json_stdout == _EXPECTED_JSON
+    assert first_json_stdout.encode("utf-8") == second_json_stdout.encode("utf-8")
+    assert payload == package.to_dict() == _EXPECTED_PAYLOAD
+    assert "sma_return_research_pipeline_observation" in payload
+
+    pipeline_payload = _dict(payload["sma_return_research_pipeline_observation"])
+    policy_payload = _dict(pipeline_payload["return_construction_policy_observation"])
+
+    assert pipeline_payload == _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD
+    assert pipeline_payload == pipeline.to_dict()
+    assert pipeline_payload == _dict(
+        _EXPECTED_PAYLOAD["sma_return_research_pipeline_observation"]
+    )
+    assert policy_payload == (
+        pipeline.return_construction_policy_observation.to_dict()
+    )
+    assert policy_payload == _dict(
+        _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD[
+            "return_construction_policy_observation"
+        ]
+    )
+    assert _key_count(pipeline_payload, "return_construction_policy_observation") == 1
+    assert _key_count(payload, "return_construction_policy_observation") == 1
 
 
 def test_repeated_preview_invocations_are_byte_for_byte_identical(capsys) -> None:
@@ -200,9 +260,15 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
 
 def test_package_preview_exposes_only_format_text_or_json() -> None:
     parser = _preview_parser()
+    package_commands = tuple(
+        command
+        for command in _subparser_choices(build_parser())
+        if command.startswith("advisory-operating-brief-package")
+    )
 
     assert parser.prog == f"algotrader {_COMMAND}"
     assert _COMMAND in _subparser_choices(build_parser())
+    assert package_commands == (_COMMAND,)
     assert _positional_rows(parser) == ()
     assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
 
@@ -289,6 +355,15 @@ def test_output_authority_terms_are_limited_to_caution_lists(capsys) -> None:
     assert _s("tra", "ding-ready") not in compact
     assert _s("tra", "ding_ready") not in compact
     assert "actionable" not in compact
+
+
+def test_json_payload_adds_no_forbidden_serialized_fields(capsys) -> None:
+    payload = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+
+    assert _payload_keys(payload).isdisjoint(_FORBIDDEN_SERIALIZED_FIELD_NAMES)
+    assert _payload_keys(_EXPECTED_PAYLOAD).isdisjoint(
+        _FORBIDDEN_SERIALIZED_FIELD_NAMES
+    )
 
 
 def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
@@ -418,6 +493,17 @@ def _payload_keys(value: object) -> set[str]:
             keys.update(_payload_keys(nested_value))
         return keys
     return set()
+
+
+def _key_count(value: object, key: str) -> int:
+    if isinstance(value, dict):
+        return sum(
+            (1 if item_key == key else 0) + _key_count(item_value, key)
+            for item_key, item_value in value.items()
+        )
+    if isinstance(value, list):
+        return sum(_key_count(item, key) for item in value)
+    return 0
 
 
 def _rendered_field_names(text: str) -> set[str]:
