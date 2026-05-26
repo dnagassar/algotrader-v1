@@ -12990,6 +12990,22 @@ Safe next tasks include:
   behavior, timestamps, randomness, global state, hidden I/O, capital
   authority, trading authority, or deserialization behavior. The production
   manifest remains generic and does not import SMA export modules.
+- Phase 257 - Research Observation Manifest Import Guard adds
+  `tests.unit.test_research_observation_manifest_dependency`, a focused
+  test-only AST/source guard for the Phase 255 manifest, Phase 256 manifest
+  fixture, and SMA manifest integration test. It pins the production manifest
+  to generic deterministic dependencies, pins the fixture to the generic
+  manifest contract and Phase 253 expected payload fixture, rejects SMA
+  production/export coupling from the production manifest, and checks that the
+  guarded files add no CLI/package/renderer/storage/file-I/O/runtime/broker/
+  vendor surface. This phase changes no production source, CLI commands, CLI
+  flags, package behavior, renderer behavior, storage behavior,
+  evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+  allocation/order/fill behavior, benchmark comparison, backtest output,
+  approval/readiness authority, broker/runtime/vendor dependency, real data
+  input, persistence, network/socket/API access, scheduler/dashboard behavior,
+  ML, LLM/agent behavior, timestamps, randomness, global state, hidden I/O,
+  capital authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
