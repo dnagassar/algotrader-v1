@@ -105,6 +105,7 @@ def test_synthetic_preview_includes_data_source_readiness_branch() -> None:
     content_bundle_export = _dict(payload["content_bundle_export"])
     readiness_payload = expected_synthetic_research_data_source_readiness_dict()
     readiness = expected_synthetic_research_data_source_readiness()
+    package_readiness = package.content_bundle.research_data_source_readiness[0]
 
     assert content_bundle["research_data_source_readiness_count"] == 1
     assert content_bundle["research_data_source_readiness"] == [readiness_payload]
@@ -113,7 +114,16 @@ def test_synthetic_preview_includes_data_source_readiness_branch() -> None:
     assert "Research Data Source Readiness Diagnostics" in content_bundle_export[
         "rendered_text"
     ]
+    assert package_readiness.to_dict() == readiness_payload
     assert readiness_payload["missing_controls"] == list(readiness.missing_controls)
+    assert readiness_payload["missing_controls"] == list(
+        package_readiness.missing_controls
+    )
+    assert readiness_payload["missing_controls"] == [
+        control
+        for control in readiness_payload["required_controls"]
+        if control not in readiness_payload["satisfied_controls"]
+    ]
     assert readiness.missing_controls
 
 

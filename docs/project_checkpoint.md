@@ -13231,6 +13231,15 @@ Safe next tasks include:
   fields. This phase adds no real data ingestion, source selection, vendor
   access, approval semantics, runtime, persistence, broker, network, backtest,
   or trading behavior.
+- Phase 275 - Advisory Package CLI Data Source Readiness Regression adds
+  package-preview regression coverage for the existing synthetic research data
+  source readiness diagnostic branch. The tests pin package synthetic output,
+  package CLI text diagnostics, compact sorted-key package JSON with
+  builder-computed `missing_controls`, repeated byte-for-byte text and JSON
+  determinism, and the absence of new package input-bearing options beyond
+  existing `--format text|json`. This phase changes no production source and
+  adds no real data ingestion, source/vendor selection, approval semantics,
+  runtime, persistence, broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

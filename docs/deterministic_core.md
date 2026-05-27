@@ -7637,6 +7637,19 @@ credential fields. Phase 274 adds no real data ingestion, source selection,
 vendor access, approval semantics, runtime, persistence, broker, network,
 backtest, or trading behavior.
 
+Phase 275 - Advisory Package CLI Data Source Readiness Regression adds focused
+package-preview regression coverage for the existing synthetic research data
+source readiness diagnostic branch. Tests pin that the package synthetic path,
+package CLI text output, and compact sorted-key JSON output all carry the
+branch deterministically; that the text output includes the required,
+satisfied, and missing diagnostic controls; that JSON preserves
+builder-computed `missing_controls`; that repeated package CLI text and JSON
+output are byte-for-byte stable; and that the package preview exposes no new
+input-bearing options beyond existing `--format text|json`. Phase 275 changes
+no production source and adds no real data ingestion, source/vendor selection,
+approval semantics, runtime, persistence, broker, network, backtest, or trading
+behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

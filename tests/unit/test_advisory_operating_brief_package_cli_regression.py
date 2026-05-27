@@ -51,6 +51,65 @@ _BRANCH_KEYS = (
     "research_return_summary_observation_briefs",
     "research_data_source_readiness",
 )
+_EXPECTED_READINESS_REQUIRED_CONTROLS = (
+    "terms_review_documented",
+    "snapshot_provenance_defined",
+    "redistribution_policy_reviewed",
+    "adjustment_policy_defined",
+    "fixture_policy_review_documented",
+    "no_lookahead_protocol_defined",
+)
+_EXPECTED_READINESS_SATISFIED_CONTROLS = (
+    "no_lookahead_protocol_defined",
+)
+_EXPECTED_READINESS_MISSING_CONTROLS = (
+    "terms_review_documented",
+    "snapshot_provenance_defined",
+    "redistribution_policy_reviewed",
+    "adjustment_policy_defined",
+    "fixture_policy_review_documented",
+)
+_EXPECTED_READINESS_TEXT_BLOCK = (
+    "Research Data Source Readiness Diagnostics",
+    "",
+    "Research Data Source Readiness Diagnostic 1",
+    "contract_type: research_data_source_readiness",
+    "schema_version: 1",
+    "source_id: synthetic-broad-etf-source-candidate",
+    "source_name: Synthetic broad ETF source candidate",
+    "asset_class_scope:",
+    "- equity_etf",
+    "intended_use: pipeline_validation_only",
+    "readiness_state: candidate_only",
+    "required_controls:",
+    "- terms_review_documented",
+    "- snapshot_provenance_defined",
+    "- redistribution_policy_reviewed",
+    "- adjustment_policy_defined",
+    "- fixture_policy_review_documented",
+    "- no_lookahead_protocol_defined",
+    "satisfied_controls:",
+    "- no_lookahead_protocol_defined",
+    "missing_controls:",
+    "- terms_review_documented",
+    "- snapshot_provenance_defined",
+    "- redistribution_policy_reviewed",
+    "- adjustment_policy_defined",
+    "- fixture_policy_review_documented",
+    "evidence_refs:",
+    "- synthetic_phase_271_readiness_fixture",
+    "- internal_control_gap_note",
+    "limitations:",
+    "- Fixture is synthetic metadata only and not connected to real data.",
+    "- Fixture carries no observations, values, or external source content.",
+    "non_claims:",
+    "- no source approval",
+    "- no data ingestion approval",
+    "- no trading authority",
+    "- no capital authority",
+    "- no data-source authorization",
+    "",
+)
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
 )
@@ -310,6 +369,85 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         assert len(_list(content_bundle[branch_key])) == 1
 
 
+def test_package_cli_text_output_includes_readiness_diagnostic_controls(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli((_COMMAND,), capsys)
+    explicit_text_stdout = _run_preview_cli((_COMMAND, "--format", "text"), capsys)
+
+    assert text_stdout == explicit_text_stdout == _EXPECTED_TEXT
+    assert _readiness_text_block(text_stdout) == _EXPECTED_READINESS_TEXT_BLOCK
+    assert text_stdout.count("Research Data Source Readiness Diagnostics") == 1
+    assert text_stdout.count("required_controls:") == 1
+    assert text_stdout.count("satisfied_controls:") == 1
+    assert text_stdout.count("missing_controls:") == 1
+
+
+def test_package_cli_json_output_preserves_builder_computed_missing_controls(
+    capsys,
+) -> None:
+    json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    payload = json.loads(json_stdout)
+    package = preview_module.build_synthetic_advisory_operating_brief_package()
+    readiness = package.content_bundle.research_data_source_readiness[0]
+    readiness_payload = _readiness_payload(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_readiness = _readiness_payload(
+        {"content_bundle": nested_export_payload}
+    )
+
+    assert json_stdout == _EXPECTED_JSON
+    assert json_stdout == _compact_sorted_json(_EXPECTED_PAYLOAD)
+    assert readiness_payload == readiness.to_dict()
+    assert nested_export_readiness == readiness_payload
+    assert readiness_payload["required_controls"] == list(
+        _EXPECTED_READINESS_REQUIRED_CONTROLS
+    )
+    assert readiness_payload["satisfied_controls"] == list(
+        _EXPECTED_READINESS_SATISFIED_CONTROLS
+    )
+    assert readiness_payload["missing_controls"] == list(
+        _EXPECTED_READINESS_MISSING_CONTROLS
+    )
+    assert readiness_payload["missing_controls"] == list(readiness.missing_controls)
+    assert readiness_payload["missing_controls"] == [
+        control
+        for control in readiness_payload["required_controls"]
+        if control not in readiness_payload["satisfied_controls"]
+    ]
+    assert readiness_payload["missing_controls"]
+    assert "json_text" not in readiness_payload
+    assert "rendered_text" not in readiness_payload
+    assert "payload" not in readiness_payload
+    assert "digest" not in readiness_payload
+    assert "raw_data" not in readiness_payload
+
+
+def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
+    capsys,
+) -> None:
+    first_text = _run_preview_cli((_COMMAND,), capsys)
+    second_text = _run_preview_cli((_COMMAND,), capsys)
+    first_json = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    second_json = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    first_payload = json.loads(first_json)
+    second_payload = json.loads(second_json)
+    first_readiness = _readiness_payload(first_payload)
+    second_readiness = _readiness_payload(second_payload)
+
+    assert first_text == second_text == _EXPECTED_TEXT
+    assert first_json == second_json == _EXPECTED_JSON
+    assert first_text.encode("utf-8") == second_text.encode("utf-8")
+    assert first_json.encode("utf-8") == second_json.encode("utf-8")
+    assert _readiness_text_block(first_text) == _EXPECTED_READINESS_TEXT_BLOCK
+    assert _readiness_text_block(second_text) == _EXPECTED_READINESS_TEXT_BLOCK
+    assert first_readiness == second_readiness
+    assert _compact_sorted_json(first_readiness) == _compact_sorted_json(
+        second_readiness
+    )
+    assert _compact_sorted_json(first_payload) == _compact_sorted_json(second_payload)
+
+
 def test_package_preview_exposes_only_format_text_or_json() -> None:
     parser = _preview_parser()
     package_commands = tuple(
@@ -323,6 +461,12 @@ def test_package_preview_exposes_only_format_text_or_json() -> None:
     assert package_commands == (_COMMAND,)
     assert _positional_rows(parser) == ()
     assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
+
+
+def test_package_preview_exposes_no_new_input_bearing_options() -> None:
+    assert _input_bearing_option_rows(_preview_parser()) == (
+        ("output_format", ("--format",), ("text", "json")),
+    )
 
 
 def test_package_preview_exposes_no_external_input_options() -> None:
@@ -504,6 +648,20 @@ def _option_rows(
     return tuple(rows)
 
 
+def _input_bearing_option_rows(
+    parser: argparse.ArgumentParser,
+) -> tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...]:
+    return tuple(
+        (
+            action.dest,
+            tuple(action.option_strings),
+            tuple(action.choices or ()),
+        )
+        for action in parser._actions
+        if action.dest != "help" and action.option_strings and action.nargs != 0
+    )
+
+
 def _positional_rows(parser: argparse.ArgumentParser) -> tuple[str, ...]:
     return tuple(
         action.dest
@@ -530,6 +688,22 @@ def _dict(value: object) -> dict[str, object]:
 def _list(value: object) -> list[object]:
     assert isinstance(value, list)
     return value
+
+
+def _readiness_payload(payload: dict[str, object]) -> dict[str, object]:
+    content_bundle = _dict(payload["content_bundle"])
+    readiness_values = _list(content_bundle["research_data_source_readiness"])
+
+    assert len(readiness_values) == 1
+    return _dict(readiness_values[0])
+
+
+def _readiness_text_block(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    start = lines.index("Research Data Source Readiness Diagnostics")
+    end = lines.index("Limitations", start)
+
+    return tuple(lines[start:end])
 
 
 def _payload_keys(value: object) -> set[str]:
