@@ -13147,6 +13147,17 @@ Safe next tasks include:
   rechecks deterministic one-entry fixture output. This phase changes no
   production source and adds no CLI/renderer/broker/runtime/vendor/network/
   persistence/trading behavior.
+- Phase 267 - Advisory Package Audit Snapshot Export Helper adds
+  `export_advisory_operating_brief_package_audit_snapshot`, a tiny
+  metadata-only package audit snapshot helper. It accepts only exact
+  `AdvisoryOperatingBriefPackage` objects with an attached research observation
+  manifest, composes the Phase 263 manifest export helper, and returns
+  deterministic package identity metadata, the manifest payload, and compact
+  sorted-key JSON SHA-256 digests for the package and manifest payloads.
+  Focused tests guard exact type rejection, primitive JSON round-tripping,
+  byte-stable synthetic output, no mutation, one-entry SMA pipeline manifest
+  metadata, bounded imports, and no CLI/renderer/broker/runtime/vendor/network/
+  persistence/data-ingestion/trading behavior changes.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

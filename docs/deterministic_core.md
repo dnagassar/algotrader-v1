@@ -7544,6 +7544,18 @@ ML/LLM/agent, I/O, digest, credential, authority, and trading tokens, and
 rechecks deterministic one-entry fixture output without production source
 changes.
 
+Phase 267 - Advisory Package Audit Snapshot Export Helper adds
+`export_advisory_operating_brief_package_audit_snapshot`, a tiny metadata-only
+package audit snapshot helper. It accepts only exact
+`AdvisoryOperatingBriefPackage` objects with an attached research observation
+manifest, composes the Phase 263 manifest export helper, returns deterministic
+package identity metadata, the manifest payload, and compact sorted-key JSON
+SHA-256 digests for the package and manifest payloads. Focused tests guard exact
+type rejection, primitive JSON round-tripping, byte-stable synthetic output,
+no mutation, one-entry SMA pipeline manifest metadata, bounded imports, and no
+CLI/renderer/broker/runtime/vendor/network/persistence/data-ingestion/trading
+behavior changes.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
