@@ -7706,6 +7706,22 @@ credential fields. Phase 279 adds no real data ingestion, source selection,
 source/vendor approval, runtime, persistence, broker, network, backtest, or
 trading behavior.
 
+Phase 280 - Advisory Content Bundle CLI Data Source Readiness Summary Preview
+adds a hidden synthetic-only
+`--include-research-data-source-readiness-summary` flag to the advisory
+operating brief content bundle preview. Defaults remain byte-stable; the
+explicit flag renders or exports only the compact
+`ResearchDataSourceReadinessSummary` diagnostic branch with summary state,
+required/satisfied/missing control counts, and diagnostic limitations. Focused
+tests pin text and compact sorted-key JSON output, repeated byte-for-byte
+determinism, hidden boolean-only non-input handling, visible option-surface
+restrictions, deterministic branch order when paired with the existing
+readiness diagnostic branch, and absence of broker/order/fill/portfolio/
+backtest/runtime/vendor/network/credential fields. Phase 280 changes only the
+synthetic content-bundle preview CLI path and adds no real data ingestion,
+source selection, source/vendor approval, runtime, persistence, broker,
+network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -13291,6 +13291,21 @@ Safe next tasks include:
   credential fields. This phase adds no real data ingestion, source
   selection, source/vendor approval, runtime, persistence, broker, network,
   backtest, or trading behavior.
+- Phase 280 - Advisory Content Bundle CLI Data Source Readiness Summary
+  Preview adds a hidden synthetic-only
+  `--include-research-data-source-readiness-summary` flag to the advisory
+  operating brief content bundle preview. Defaults remain byte-stable; the
+  explicit flag renders or exports only the compact summary diagnostic branch
+  with `summary_state`, required/satisfied/missing control counts, and
+  diagnostic limitations. Focused tests pin text and compact sorted-key JSON
+  output, byte-for-byte repeated determinism, hidden boolean-only non-input
+  handling, visible option-surface restrictions, deterministic branch order
+  when paired with the existing readiness diagnostic branch, and absence of
+  broker/order/fill/portfolio/backtest/runtime/vendor/network/credential
+  fields. This phase changes only the synthetic content-bundle preview CLI
+  path and adds no real data ingestion, source selection, source/vendor
+  approval, runtime, persistence, broker, network, backtest, or trading
+  behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

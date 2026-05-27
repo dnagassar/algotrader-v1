@@ -47,6 +47,10 @@ from algotrader.research.research_data_source_readiness import (
     ResearchDataSourceReadiness,
     build_research_data_source_readiness,
 )
+from algotrader.research.research_data_source_readiness_summary import (
+    ResearchDataSourceReadinessSummary,
+    build_research_data_source_readiness_summary,
+)
 from algotrader.research.risk_authority_brief import (
     RiskAuthorityBrief,
     build_risk_authority_brief,
@@ -121,6 +125,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary",
     "render_advisory_operating_brief_content_bundle_preview",
 ]
 
@@ -520,6 +525,34 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_s
     )
 
 
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary(
+    *,
+    include_risk_authority: bool = False,
+    include_research_queue: bool = False,
+    include_sma_research_observation: bool = False,
+    include_sma_research_summary_observation: bool = False,
+    include_research_return_observation: bool = False,
+    include_research_return_summary_observation: bool = False,
+    include_research_data_source_readiness: bool = False,
+) -> AdvisoryOperatingBriefContentBundle:
+    """Return the deterministic content bundle with readiness summary diagnostics."""
+
+    return _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=include_risk_authority,
+        include_research_queue=include_research_queue,
+        include_sma_research_observation=include_sma_research_observation,
+        include_sma_research_summary_observation=(
+            include_sma_research_summary_observation
+        ),
+        include_research_return_observation=include_research_return_observation,
+        include_research_return_summary_observation=(
+            include_research_return_summary_observation
+        ),
+        include_research_data_source_readiness=include_research_data_source_readiness,
+        include_research_data_source_readiness_summary=True,
+    )
+
+
 def _build_synthetic_advisory_operating_brief_content_bundle(
     *,
     include_risk_authority: bool,
@@ -529,6 +562,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     include_research_return_observation: bool,
     include_research_return_summary_observation: bool,
     include_research_data_source_readiness: bool = False,
+    include_research_data_source_readiness_summary: bool = False,
 ) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
@@ -571,6 +605,11 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         if include_research_data_source_readiness
         else ()
     )
+    research_data_source_readiness_summaries = (
+        (_build_synthetic_research_data_source_readiness_summary(),)
+        if include_research_data_source_readiness_summary
+        else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
@@ -583,6 +622,9 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         ),
         sma_research_summary_observations=sma_research_summary_observations,
         research_data_source_readiness=research_data_source_readiness,
+        research_data_source_readiness_summaries=(
+            research_data_source_readiness_summaries
+        ),
     )
 
 
@@ -596,6 +638,7 @@ def render_advisory_operating_brief_content_bundle_preview(
     include_research_return_observation: bool = False,
     include_research_return_summary_observation: bool = False,
     include_research_data_source_readiness: bool = False,
+    include_research_data_source_readiness_summary: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
@@ -612,6 +655,9 @@ def render_advisory_operating_brief_content_bundle_preview(
         ),
         include_research_data_source_readiness=(
             include_research_data_source_readiness
+        ),
+        include_research_data_source_readiness_summary=(
+            include_research_data_source_readiness_summary
         ),
     )
     exported = export_advisory_operating_brief_content_bundle(bundle)
@@ -736,6 +782,14 @@ def _build_synthetic_research_data_source_readiness() -> (
         evidence_refs=_RESEARCH_DATA_SOURCE_EVIDENCE_REFS,
         limitations=_RESEARCH_DATA_SOURCE_LIMITATIONS,
         non_claims=_RESEARCH_DATA_SOURCE_NON_CLAIMS,
+    )
+
+
+def _build_synthetic_research_data_source_readiness_summary() -> (
+    ResearchDataSourceReadinessSummary
+):
+    return build_research_data_source_readiness_summary(
+        _build_synthetic_research_data_source_readiness()
     )
 
 
