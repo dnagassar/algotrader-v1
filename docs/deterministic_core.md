@@ -7464,6 +7464,25 @@ network/API access, scheduler/dashboard behavior, ML/LLM/agent behavior,
 timestamps, randomness, global state, hidden I/O, capital authority, trading
 authority, or deserialization behavior.
 
+Phase 262 - Advisory Package Manifest CLI Serialization Regression Guard extends
+`tests.unit.test_advisory_operating_brief_package_cli_regression` to prove the
+existing `advisory-operating-brief-package-preview --format json` path carries
+the Phase 260 research observation manifest deterministically. The guard checks
+the one-entry manifest metadata, recomputes the compact sorted-key JSON SHA-256
+digest for the included SMA return research pipeline observation payload, and
+asserts repeated JSON CLI output is byte-for-byte stable.
+
+Phase 262 also guards that the package preview CLI surface remains limited to
+the existing `--format text|json` option set and that default/text rendering does
+not expose raw manifest internals. It changes no production source and adds no
+CLI flags, renderer behavior, storage behavior, file/path/env/config/network
+inputs, evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness/recommendation authority, broker/runtime/vendor dependency,
+real data input, persistence, network/API access, scheduler/dashboard behavior,
+ML/LLM/agent behavior, timestamps, randomness, global state, hidden I/O, capital
+authority, trading authority, or deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

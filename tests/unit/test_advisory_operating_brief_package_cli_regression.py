@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import inspect
 import json
 import re
@@ -38,6 +39,7 @@ _PACKAGE_ID = "advisory-operating-brief-package:synthetic:2026-01-20"
 _TITLE = "Synthetic advisory operating brief package"
 _SUMMARY = "Advisory-only synthetic operating brief package content."
 _AS_OF = "2026-01-20"
+_OBSERVATION_NAME = "sma_return_research_pipeline_observation"
 _BRANCH_KEYS = (
     "candidate_research_briefs",
     "strategy_eligibility_briefs",
@@ -61,6 +63,7 @@ _ALLOWED_SELF_IMPORTS = {
     "__future__",
     "argparse",
     "ast",
+    "hashlib",
     "inspect",
     "json",
     "re",
@@ -167,6 +170,39 @@ def test_json_stdout_preserves_sma_return_pipeline_payload(capsys) -> None:
     assert _key_count(payload, "return_construction_policy_observation") == 1
 
 
+def test_json_stdout_serializes_research_observation_manifest_deterministically(
+    capsys,
+) -> None:
+    first_json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    second_json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    first_payload = json.loads(first_json_stdout)
+    second_payload = json.loads(second_json_stdout)
+    manifest = _dict(first_payload["research_observation_manifest"])
+    entries = _list(manifest["entries"])
+    entry = _dict(entries[0])
+    pipeline_payload = _dict(first_payload[_OBSERVATION_NAME])
+    first_compact_json = _compact_sorted_json(first_payload)
+    second_compact_json = _compact_sorted_json(second_payload)
+
+    assert first_json_stdout == second_json_stdout == _EXPECTED_JSON
+    assert first_json_stdout.encode("utf-8") == second_json_stdout.encode("utf-8")
+    assert first_compact_json == second_compact_json
+    assert first_compact_json.encode("utf-8") == second_compact_json.encode("utf-8")
+    assert first_payload == second_payload == _EXPECTED_PAYLOAD
+    assert "research_observation_manifest" in first_payload
+    assert _OBSERVATION_NAME in first_payload
+
+    assert manifest["manifest_type"] == "research_observation_manifest"
+    assert manifest["schema_version"] == "1"
+    assert manifest["advisory_scope"] == "research_observation_metadata_only"
+    assert manifest["entry_count"] == 1
+    assert [item["observation_name"] for item in entries] == [_OBSERVATION_NAME]
+
+    assert entry["payload_digest_sha256"] == _payload_digest(pipeline_payload)
+    assert entry["observation_type"] == pipeline_payload["observation_type"]
+    assert entry["payload_key_count"] == len(pipeline_payload)
+
+
 def test_repeated_preview_invocations_are_byte_for_byte_identical(capsys) -> None:
     first_default = _run_preview_cli((_COMMAND,), capsys)
     second_default = _run_preview_cli((_COMMAND,), capsys)
@@ -181,6 +217,20 @@ def test_repeated_preview_invocations_are_byte_for_byte_identical(capsys) -> Non
     assert first_default.encode("utf-8") == second_default.encode("utf-8")
     assert first_text.encode("utf-8") == second_text.encode("utf-8")
     assert first_json.encode("utf-8") == second_json.encode("utf-8")
+
+
+def test_text_stdout_does_not_expose_manifest_internals(capsys) -> None:
+    default_stdout = _run_preview_cli((_COMMAND,), capsys)
+    text_stdout = _run_preview_cli((_COMMAND, "--format", "text"), capsys)
+
+    assert default_stdout == text_stdout == _EXPECTED_TEXT
+    for term in (
+        "research_observation_manifest",
+        "payload_digest_sha256",
+        "schema_version",
+    ):
+        assert term not in default_stdout
+        assert term not in text_stdout
 
 
 def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
@@ -506,6 +556,16 @@ def _key_count(value: object, key: str) -> int:
     return 0
 
 
+def _payload_digest(payload: dict[str, object]) -> str:
+    return hashlib.sha256(
+        _compact_sorted_json(payload).encode("utf-8")
+    ).hexdigest()
+
+
+def _compact_sorted_json(payload: object) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
 def _rendered_field_names(text: str) -> set[str]:
     field_names: set[str] = set()
     for line in text.splitlines():
@@ -675,6 +735,7 @@ def _blocked_cli_option_terms() -> tuple[str, ...]:
         _s("bro", "ker"),
         _s("net", "work"),
         _s("run", "time"),
+        _s("sto", "rage"),
         _s("cre", "dential"),
         "endpoint",
         "feed",
