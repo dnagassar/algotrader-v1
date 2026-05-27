@@ -17,6 +17,9 @@ from algotrader.research.research_queue_brief import ResearchQueueBrief
 from algotrader.research.research_data_source_readiness import (
     ResearchDataSourceReadiness,
 )
+from algotrader.research.research_data_source_readiness_summary import (
+    ResearchDataSourceReadinessSummary,
+)
 from algotrader.research.risk_authority_brief import RiskAuthorityBrief
 from algotrader.research.sma_research_observation_brief_container import (
     SmaResearchObservationBrief,
@@ -37,6 +40,10 @@ _STRATEGY_ELIGIBILITY_BRIEF_TYPE = "strategy_eligibility_brief"
 _RISK_AUTHORITY_BRIEF_TYPE = "risk_authority_brief"
 _RESEARCH_QUEUE_BRIEF_TYPE = "research_queue_brief"
 _RESEARCH_DATA_SOURCE_READINESS_TYPE = "research_data_source_readiness"
+_RESEARCH_DATA_SOURCE_READINESS_SUMMARY_TYPE = (
+    "research_data_source_readiness_summary"
+)
+_RESEARCH_DATA_SOURCE_READINESS_SUMMARY_SCOPE = "advisory_metadata_only"
 _SMA_RESEARCH_OBSERVATION_BRIEF_TYPE = "sma_research_observation_brief"
 _SMA_RESEARCH_SUMMARY_OBSERVATION_TYPE = "sma_research_summary_observation"
 _RESEARCH_RETURN_OBSERVATION_BRIEF_TYPE = "research_return_observation_brief"
@@ -75,6 +82,9 @@ class AdvisoryOperatingBriefContentBundle:
     ] = ()
     sma_research_summary_observations: tuple[SmaResearchSummaryObservation, ...] = ()
     research_data_source_readiness: tuple[ResearchDataSourceReadiness, ...] = ()
+    research_data_source_readiness_summaries: tuple[
+        ResearchDataSourceReadinessSummary, ...
+    ] = ()
 
     def __post_init__(self) -> None:
         candidate_briefs = _candidate_research_briefs_tuple(
@@ -104,6 +114,11 @@ class AdvisoryOperatingBriefContentBundle:
         data_source_readiness = _research_data_source_readiness_tuple(
             self.research_data_source_readiness
         )
+        data_source_readiness_summaries = (
+            _research_data_source_readiness_summaries_tuple(
+                self.research_data_source_readiness_summaries
+            )
+        )
         _validate_non_empty_bundle(
             candidate_briefs,
             eligibility_briefs,
@@ -114,6 +129,7 @@ class AdvisoryOperatingBriefContentBundle:
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
         )
         _validate_unique_brief_identities(
             candidate_briefs,
@@ -125,6 +141,7 @@ class AdvisoryOperatingBriefContentBundle:
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
         )
 
         limitations = _required_string_tuple(self.limitations, "limitations")
@@ -139,6 +156,7 @@ class AdvisoryOperatingBriefContentBundle:
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
             "limitations",
         )
         expected_non_claims = _combined_brief_values(
@@ -151,6 +169,7 @@ class AdvisoryOperatingBriefContentBundle:
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
             "non_claims",
         )
 
@@ -174,6 +193,7 @@ class AdvisoryOperatingBriefContentBundle:
                 research_return_summary_briefs,
                 sma_summary_observations,
                 data_source_readiness,
+                data_source_readiness_summaries,
             ),
         )
         _validate_matches("limitations", limitations, expected_limitations)
@@ -205,6 +225,11 @@ class AdvisoryOperatingBriefContentBundle:
             self,
             "research_data_source_readiness",
             data_source_readiness,
+        )
+        object.__setattr__(
+            self,
+            "research_data_source_readiness_summaries",
+            data_source_readiness_summaries,
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -246,6 +271,10 @@ class AdvisoryOperatingBriefContentBundle:
             payload["research_data_source_readiness_count"] = len(
                 self.research_data_source_readiness
             )
+        if self.research_data_source_readiness_summaries:
+            payload["research_data_source_readiness_summary_count"] = len(
+                self.research_data_source_readiness_summaries
+            )
 
         payload["candidate_research_briefs"] = [
             brief.to_dict() for brief in self.candidate_research_briefs
@@ -284,6 +313,11 @@ class AdvisoryOperatingBriefContentBundle:
                 readiness.to_dict()
                 for readiness in self.research_data_source_readiness
             ]
+        if self.research_data_source_readiness_summaries:
+            payload["research_data_source_readiness_summaries"] = [
+                summary.to_dict()
+                for summary in self.research_data_source_readiness_summaries
+            ]
 
         payload["limitations"] = list(self.limitations)
         payload["non_claims"] = list(self.non_claims)
@@ -306,6 +340,9 @@ def build_advisory_operating_brief_content_bundle(
         SmaResearchSummaryObservation
     ] = (),
     research_data_source_readiness: Iterable[ResearchDataSourceReadiness] = (),
+    research_data_source_readiness_summaries: Iterable[
+        ResearchDataSourceReadinessSummary
+    ] = (),
 ) -> AdvisoryOperatingBriefContentBundle:
     """Build a deterministic advisory-only content bundle from existing briefs."""
 
@@ -330,6 +367,11 @@ def build_advisory_operating_brief_content_bundle(
     data_source_readiness = _research_data_source_readiness_tuple(
         research_data_source_readiness
     )
+    data_source_readiness_summaries = (
+        _research_data_source_readiness_summaries_tuple(
+            research_data_source_readiness_summaries
+        )
+    )
     _validate_non_empty_bundle(
         candidate_briefs,
         eligibility_briefs,
@@ -340,6 +382,7 @@ def build_advisory_operating_brief_content_bundle(
         research_return_summary_briefs,
         sma_summary_observations,
         data_source_readiness,
+        data_source_readiness_summaries,
     )
     _validate_unique_brief_identities(
         candidate_briefs,
@@ -351,6 +394,7 @@ def build_advisory_operating_brief_content_bundle(
         research_return_summary_briefs,
         sma_summary_observations,
         data_source_readiness,
+        data_source_readiness_summaries,
     )
 
     return AdvisoryOperatingBriefContentBundle(
@@ -369,6 +413,7 @@ def build_advisory_operating_brief_content_bundle(
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
         ),
         candidate_research_briefs=candidate_briefs,
         strategy_eligibility_briefs=eligibility_briefs,
@@ -382,6 +427,7 @@ def build_advisory_operating_brief_content_bundle(
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
             "limitations",
         ),
         non_claims=_combined_brief_values(
@@ -394,6 +440,7 @@ def build_advisory_operating_brief_content_bundle(
             research_return_summary_briefs,
             sma_summary_observations,
             data_source_readiness,
+            data_source_readiness_summaries,
             "non_claims",
         ),
         risk_authority_briefs=risk_briefs,
@@ -403,6 +450,7 @@ def build_advisory_operating_brief_content_bundle(
         research_return_summary_observation_briefs=research_return_summary_briefs,
         sma_research_summary_observations=sma_summary_observations,
         research_data_source_readiness=data_source_readiness,
+        research_data_source_readiness_summaries=data_source_readiness_summaries,
     )
 
 
@@ -422,6 +470,9 @@ def _summary(
     ],
     sma_research_summary_observations: tuple[SmaResearchSummaryObservation, ...],
     research_data_source_readiness: tuple[ResearchDataSourceReadiness, ...],
+    research_data_source_readiness_summaries: tuple[
+        ResearchDataSourceReadinessSummary, ...
+    ],
 ) -> str:
     limitations = _combined_brief_values(
         candidate_research_briefs,
@@ -433,6 +484,7 @@ def _summary(
         research_return_summary_observation_briefs,
         sma_research_summary_observations,
         research_data_source_readiness,
+        research_data_source_readiness_summaries,
         "limitations",
     )
     non_claims = _combined_brief_values(
@@ -445,6 +497,7 @@ def _summary(
         research_return_summary_observation_briefs,
         sma_research_summary_observations,
         research_data_source_readiness,
+        research_data_source_readiness_summaries,
         "non_claims",
     )
     risk_clause = (
@@ -486,13 +539,19 @@ def _summary(
         if research_data_source_readiness
         else ""
     )
+    data_source_readiness_summary_clause = (
+        f"{len(research_data_source_readiness_summaries)} research data source "
+        "readiness summary diagnostic(s), "
+        if research_data_source_readiness_summaries
+        else ""
+    )
     return (
         "Advisory content bundle contains "
         f"{len(candidate_research_briefs)} candidate research brief(s), "
         f"{len(strategy_eligibility_briefs)} strategy eligibility brief(s), "
         f"{risk_clause}{research_queue_clause}{sma_clause}{sma_summary_clause}"
         f"{research_return_clause}{research_return_summary_clause}"
-        f"{data_source_readiness_clause}"
+        f"{data_source_readiness_clause}{data_source_readiness_summary_clause}"
         f"{len(limitations)} limitation(s), and "
         f"{len(non_claims)} non-claim(s)."
     )
@@ -850,6 +909,42 @@ def _research_data_source_readiness_tuple(
     return readiness_items
 
 
+def _research_data_source_readiness_summaries_tuple(
+    values: Iterable[ResearchDataSourceReadinessSummary],
+) -> tuple[ResearchDataSourceReadinessSummary, ...]:
+    try:
+        summaries = tuple(values)
+    except TypeError as exc:
+        raise ValidationError(
+            "research_data_source_readiness_summaries must be an iterable of "
+            "ResearchDataSourceReadinessSummary."
+        ) from exc
+
+    for index, summary in enumerate(summaries):
+        if type(summary) is not ResearchDataSourceReadinessSummary:
+            raise ValidationError(
+                "research_data_source_readiness_summaries"
+                f"[{index}] must be a ResearchDataSourceReadinessSummary."
+            )
+        if summary.summary_type != _RESEARCH_DATA_SOURCE_READINESS_SUMMARY_TYPE:
+            raise ValidationError(
+                "research_data_source_readiness_summaries"
+                f"[{index}] summary_type must be exactly "
+                "research_data_source_readiness_summary."
+            )
+        if (
+            summary.summary_scope
+            != _RESEARCH_DATA_SOURCE_READINESS_SUMMARY_SCOPE
+        ):
+            raise ValidationError(
+                "research_data_source_readiness_summaries"
+                f"[{index}] summary_scope must be exactly "
+                "advisory_metadata_only."
+            )
+
+    return summaries
+
+
 def _validate_non_empty_bundle(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
@@ -864,6 +959,9 @@ def _validate_non_empty_bundle(
         SmaResearchSummaryObservation, ...
     ] = (),
     research_data_source_readiness: tuple[ResearchDataSourceReadiness, ...] = (),
+    research_data_source_readiness_summaries: tuple[
+        ResearchDataSourceReadinessSummary, ...
+    ] = (),
 ) -> None:
     if (
         not candidate_research_briefs
@@ -875,6 +973,7 @@ def _validate_non_empty_bundle(
         and not research_return_summary_observation_briefs
         and not sma_research_summary_observations
         and not research_data_source_readiness
+        and not research_data_source_readiness_summaries
     ):
         raise ValidationError(
             "content bundle must contain at least one supported brief."
@@ -895,6 +994,9 @@ def _validate_unique_brief_identities(
         SmaResearchSummaryObservation, ...
     ] = (),
     research_data_source_readiness: tuple[ResearchDataSourceReadiness, ...] = (),
+    research_data_source_readiness_summaries: tuple[
+        ResearchDataSourceReadinessSummary, ...
+    ] = (),
 ) -> None:
     seen_identities: set[int] = set()
     for brief in (
@@ -907,6 +1009,7 @@ def _validate_unique_brief_identities(
         *research_return_summary_observation_briefs,
         *sma_research_summary_observations,
         *research_data_source_readiness,
+        *research_data_source_readiness_summaries,
     ):
         brief_identity = id(brief)
         if brief_identity in seen_identities:
@@ -928,6 +1031,9 @@ def _combined_brief_values(
     ],
     sma_research_summary_observations: tuple[SmaResearchSummaryObservation, ...],
     research_data_source_readiness: tuple[ResearchDataSourceReadiness, ...],
+    research_data_source_readiness_summaries: tuple[
+        ResearchDataSourceReadinessSummary, ...
+    ],
     field_name: str,
 ) -> tuple[str, ...]:
     values: list[str] = []
@@ -948,8 +1054,27 @@ def _combined_brief_values(
                 continue
             values.append(value)
             seen.add(value)
+    for summary in research_data_source_readiness_summaries:
+        for value in _research_data_source_readiness_summary_values(
+            summary,
+            field_name,
+        ):
+            if value in seen:
+                continue
+            values.append(value)
+            seen.add(value)
 
     return tuple(values)
+
+
+def _research_data_source_readiness_summary_values(
+    summary: ResearchDataSourceReadinessSummary,
+    field_name: str,
+) -> tuple[str, ...]:
+    if field_name == "limitations":
+        return summary.diagnostic_limitations
+
+    return ()
 
 
 def _validate_fixed_metadata(

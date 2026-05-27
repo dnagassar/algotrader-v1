@@ -7690,6 +7690,22 @@ production source and adds no real data ingestion, source selection,
 source/vendor approval, runtime, persistence, broker, network, backtest, or
 trading behavior.
 
+Phase 279 - Advisory Content Bundle Data Source Readiness Summary Branch adds
+an optional metadata-only `ResearchDataSourceReadinessSummary` branch to the
+advisory operating brief content bundle. The branch is absent by default,
+accepts exact summary objects only, serializes each summary through
+`summary.to_dict()`, renders compact diagnostic counts and limitations, and is
+included by the synthetic advisory package builder beside the existing
+readiness diagnostic branch. Existing default bundle/package behavior remains
+unchanged except for the explicit synthetic package summary inclusion. Focused
+tests pin absent-by-default behavior, exact type rejection for subclasses and
+lookalikes, renderer wording, compact sorted-key JSON determinism,
+byte-for-byte repeated text/JSON output, deterministic package branch order,
+and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+credential fields. Phase 279 adds no real data ingestion, source selection,
+source/vendor approval, runtime, persistence, broker, network, backtest, or
+trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

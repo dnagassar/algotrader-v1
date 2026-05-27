@@ -50,6 +50,7 @@ _BRANCH_KEYS = (
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
     "research_data_source_readiness",
+    "research_data_source_readiness_summaries",
 )
 _EXPECTED_READINESS_REQUIRED_CONTROLS = (
     "terms_review_documented",
@@ -108,6 +109,22 @@ _EXPECTED_READINESS_TEXT_BLOCK = (
     "- no trading authority",
     "- no capital authority",
     "- no data-source authorization",
+    "",
+)
+_EXPECTED_READINESS_SUMMARY_TEXT_BLOCK = (
+    "Research Data Source Readiness Summary Diagnostics",
+    "",
+    "Research Data Source Readiness Summary Diagnostic 1",
+    "summary_type: research_data_source_readiness_summary",
+    "schema_version: 1",
+    "summary_scope: advisory_metadata_only",
+    "summary_state: candidate_only",
+    "required_control_count: 6",
+    "satisfied_control_count: 1",
+    "missing_control_count: 5",
+    "diagnostic_limitations:",
+    "- Fixture carries no observations, values, or external source content.",
+    "- Fixture is synthetic metadata only and not connected to real data.",
     "",
 )
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
@@ -325,6 +342,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "research_return_observation_brief_count: 1",
         "research_return_summary_observation_brief_count: 1",
         "research_data_source_readiness_count: 1",
+        "research_data_source_readiness_summary_count: 1",
         "Limitations",
         "Non-Claims",
     ):
@@ -356,6 +374,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["research_return_observation_brief_count"] == 1
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
     assert content_bundle["research_data_source_readiness_count"] == 1
+    assert content_bundle["research_data_source_readiness_summary_count"] == 1
     assert sma_summary["observation_type"] == "sma_research_summary_observation"
     assert sma_summary["status"] == "candidate_only"
     assert sma_summary["authority"] == "advisory_only"
@@ -377,10 +396,18 @@ def test_package_cli_text_output_includes_readiness_diagnostic_controls(
 
     assert text_stdout == explicit_text_stdout == _EXPECTED_TEXT
     assert _readiness_text_block(text_stdout) == _EXPECTED_READINESS_TEXT_BLOCK
+    assert _readiness_summary_text_block(text_stdout) == (
+        _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK
+    )
     assert text_stdout.count("Research Data Source Readiness Diagnostics") == 1
+    assert (
+        text_stdout.count("Research Data Source Readiness Summary Diagnostics")
+        == 1
+    )
     assert text_stdout.count("required_controls:") == 1
     assert text_stdout.count("satisfied_controls:") == 1
     assert text_stdout.count("missing_controls:") == 1
+    assert text_stdout.count("diagnostic_limitations:") == 1
 
 
 def test_package_cli_json_output_preserves_builder_computed_missing_controls(
@@ -441,6 +468,12 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     assert first_json.encode("utf-8") == second_json.encode("utf-8")
     assert _readiness_text_block(first_text) == _EXPECTED_READINESS_TEXT_BLOCK
     assert _readiness_text_block(second_text) == _EXPECTED_READINESS_TEXT_BLOCK
+    assert _readiness_summary_text_block(first_text) == (
+        _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK
+    )
+    assert _readiness_summary_text_block(second_text) == (
+        _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK
+    )
     assert first_readiness == second_readiness
     assert _compact_sorted_json(first_readiness) == _compact_sorted_json(
         second_readiness
@@ -701,6 +734,14 @@ def _readiness_payload(payload: dict[str, object]) -> dict[str, object]:
 def _readiness_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Research Data Source Readiness Diagnostics")
+    end = lines.index("Research Data Source Readiness Summary Diagnostics", start)
+
+    return tuple(lines[start:end])
+
+
+def _readiness_summary_text_block(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    start = lines.index("Research Data Source Readiness Summary Diagnostics")
     end = lines.index("Limitations", start)
 
     return tuple(lines[start:end])

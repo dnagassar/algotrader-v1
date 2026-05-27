@@ -83,6 +83,10 @@ _ALLOWED_SYNTHETIC_IMPORTS = {
         "ResearchDataSourceReadiness",
         "build_research_data_source_readiness",
     ),
+    "algotrader.research.research_data_source_readiness_summary": (
+        "ResearchDataSourceReadinessSummary",
+        "build_research_data_source_readiness_summary",
+    ),
     "algotrader.research.research_return_observation": (
         "ResearchReturnPricePoint",
         "ResearchReturnSeriesObservation",
@@ -407,13 +411,18 @@ _SYNTHETIC_SOURCE_TOKEN_ALLOWLIST = {
         "algotrader.research.research_data_source_readiness",
         "ResearchDataSourceReadiness",
         "build_research_data_source_readiness",
+        "algotrader.research.research_data_source_readiness_summary",
+        "ResearchDataSourceReadinessSummary",
+        "build_research_data_source_readiness_summary",
         "_DATA_SOURCE_REQUIRED_CONTROLS",
         "_DATA_SOURCE_SATISFIED_CONTROLS",
         "_DATA_SOURCE_EVIDENCE_REFS",
         "_build_package_research_data_source_readiness",
+        "_build_package_research_data_source_readiness_summary",
         "synthetic_phase_271_readiness_fixture",
         "readiness_state=\"candidate_only\"",
         "research_data_source_readiness=(",
+        "research_data_source_readiness_summaries=(",
     ),
 }
 
@@ -886,11 +895,18 @@ def _package_content_bundle_includes_readiness_builder(path: Path) -> bool:
             if keyword.arg != "research_data_source_readiness":
                 continue
             return _contains_call(
-                keyword.value,
+                function_def,
                 "_build_package_research_data_source_readiness",
-            )
+            ) and _contains_name(keyword.value, "data_source_readiness")
 
     return False
+
+
+def _contains_name(node: ast.AST, name: str) -> bool:
+    return any(
+        isinstance(child, ast.Name) and child.id == name
+        for child in ast.walk(node)
+    )
 
 
 def _contains_call(node: ast.AST, call_name: str) -> bool:

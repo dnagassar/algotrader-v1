@@ -13277,6 +13277,20 @@ Safe next tasks include:
   This phase changes no production source and adds no real data ingestion,
   source selection, source/vendor approval, runtime, persistence, broker,
   network, backtest, or trading behavior.
+- Phase 279 - Advisory Content Bundle Data Source Readiness Summary Branch
+  adds an optional metadata-only `ResearchDataSourceReadinessSummary` branch to
+  advisory content bundles. The branch is absent unless explicitly supplied,
+  accepts exact summary objects only, serializes through `summary.to_dict()`,
+  renders compact diagnostic counts and limitations, and is included
+  deterministically by the synthetic advisory package builder beside the
+  existing readiness diagnostic branch. Focused tests pin absent-by-default
+  behavior, exact type rejection for subclasses/lookalikes/non-summary
+  objects, renderer wording, compact sorted-key JSON determinism,
+  byte-for-byte repeated text/JSON output, deterministic package branch order,
+  and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+  credential fields. This phase adds no real data ingestion, source
+  selection, source/vendor approval, runtime, persistence, broker, network,
+  backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -6,12 +6,16 @@ import json
 from algotrader.research.advisory_operating_brief_package_synthetic import (
     build_synthetic_advisory_operating_brief_package_preview,
 )
+from algotrader.research.research_data_source_readiness_summary import (
+    build_research_data_source_readiness_summary,
+)
 from algotrader.research.research_observation_manifest import (
     ResearchObservationManifest,
 )
 from tests.fixtures.research_data_source_readiness import (
     expected_synthetic_research_data_source_readiness,
     expected_synthetic_research_data_source_readiness_dict,
+    expected_synthetic_research_data_source_readiness_summary_dict,
 )
 
 
@@ -104,17 +108,39 @@ def test_synthetic_preview_includes_data_source_readiness_branch() -> None:
     content_bundle = _dict(payload["content_bundle"])
     content_bundle_export = _dict(payload["content_bundle_export"])
     readiness_payload = expected_synthetic_research_data_source_readiness_dict()
+    summary_payload = expected_synthetic_research_data_source_readiness_summary_dict(
+        build_research_data_source_readiness_summary
+    )
     readiness = expected_synthetic_research_data_source_readiness()
     package_readiness = package.content_bundle.research_data_source_readiness[0]
+    package_summary = package.content_bundle.research_data_source_readiness_summaries[
+        0
+    ]
 
     assert content_bundle["research_data_source_readiness_count"] == 1
     assert content_bundle["research_data_source_readiness"] == [readiness_payload]
+    assert content_bundle["research_data_source_readiness_summary_count"] == 1
+    assert content_bundle["research_data_source_readiness_summaries"] == [
+        summary_payload
+    ]
     assert content_bundle_export["payload"] == content_bundle
     assert '"research_data_source_readiness"' in content_bundle_export["json_text"]
+    assert (
+        '"research_data_source_readiness_summaries"'
+        in content_bundle_export["json_text"]
+    )
     assert "Research Data Source Readiness Diagnostics" in content_bundle_export[
         "rendered_text"
     ]
+    assert "Research Data Source Readiness Summary Diagnostics" in (
+        content_bundle_export["rendered_text"]
+    )
     assert package_readiness.to_dict() == readiness_payload
+    assert package_summary.to_dict() == summary_payload
+    assert package_summary.source_readiness is package_readiness
+    assert package_summary.missing_control_count == len(
+        package_readiness.missing_controls
+    )
     assert readiness_payload["missing_controls"] == list(readiness.missing_controls)
     assert readiness_payload["missing_controls"] == list(
         package_readiness.missing_controls
@@ -133,10 +159,18 @@ def test_synthetic_preview_readiness_branch_has_no_runtime_trading_or_vendor_fie
     payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
     content_bundle = _dict(payload["content_bundle"])
     readiness_payload = _list(content_bundle["research_data_source_readiness"])[0]
+    summary_payload = _list(
+        content_bundle["research_data_source_readiness_summaries"]
+    )[0]
     field_names = _serialized_keys(readiness_payload)
+    summary_field_names = _serialized_keys(summary_payload)
 
     assert _matching_field_terms(
         field_names,
+        _FORBIDDEN_READINESS_FIELD_TERMS,
+    ) == []
+    assert _matching_field_terms(
+        summary_field_names,
         _FORBIDDEN_READINESS_FIELD_TERMS,
     ) == []
 

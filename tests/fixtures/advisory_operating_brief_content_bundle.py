@@ -6,6 +6,9 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
     AdvisoryOperatingBriefContentBundle,
     build_advisory_operating_brief_content_bundle,
 )
+from algotrader.research.research_data_source_readiness_summary import (
+    build_research_data_source_readiness_summary,
+)
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
     expected_synthetic_candidate_research_brief_dict,
@@ -13,6 +16,8 @@ from tests.fixtures.candidate_research_brief import (
 from tests.fixtures.research_data_source_readiness import (
     expected_synthetic_research_data_source_readiness,
     expected_synthetic_research_data_source_readiness_dict,
+    expected_synthetic_research_data_source_readiness_summary,
+    expected_synthetic_research_data_source_readiness_summary_dict,
 )
 from tests.fixtures.strategy_eligibility_brief import (
     build_synthetic_strategy_eligibility_brief,
@@ -27,6 +32,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary",
     "expected_synthetic_advisory_operating_brief_content_bundle_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict",
@@ -34,6 +40,7 @@ __all__ = [
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_dict",
+    "expected_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary_dict",
 ]
 
 _TITLE = "Advisory operating brief content bundle metadata"
@@ -75,6 +82,11 @@ _SUMMARY_WITH_RESEARCH_DATA_SOURCE_READINESS = (
     "Advisory content bundle contains 1 candidate research brief(s), "
     "1 strategy eligibility brief(s), 1 research data source readiness "
     "diagnostic(s), 14 limitation(s), and 30 non-claim(s)."
+)
+_SUMMARY_WITH_RESEARCH_DATA_SOURCE_READINESS_SUMMARY = (
+    "Advisory content bundle contains 1 candidate research brief(s), "
+    "1 strategy eligibility brief(s), 1 research data source readiness summary "
+    "diagnostic(s), 14 limitation(s), and 25 non-claim(s)."
 )
 
 
@@ -315,6 +327,23 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_s
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
         research_data_source_readiness=(readiness,),
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic content bundle with data-source summary diagnostics."""
+
+    candidate_brief = build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    summary = expected_synthetic_research_data_source_readiness_summary(
+        build_research_data_source_readiness_summary
+    )
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        research_data_source_readiness_summaries=(summary,),
     )
 
 
@@ -758,6 +787,46 @@ def expected_synthetic_advisory_operating_brief_content_bundle_with_research_dat
         "candidate_research_briefs": [candidate_brief],
         "strategy_eligibility_briefs": [strategy_eligibility_brief],
         "research_data_source_readiness": [readiness],
+        "limitations": limitations,
+        "non_claims": non_claims,
+    }
+
+
+def expected_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary_dict() -> (
+    dict[str, object]
+):
+    """Return the exact primitive data-source summary bundle payload."""
+
+    candidate_brief = expected_synthetic_candidate_research_brief_dict()
+    strategy_eligibility_brief = expected_synthetic_strategy_eligibility_brief_dict()
+    summary = expected_synthetic_research_data_source_readiness_summary_dict(
+        build_research_data_source_readiness_summary
+    )
+    limitations = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "limitations",
+        {"limitations": summary["diagnostic_limitations"]},
+    )
+    non_claims = _combined_expected_values(
+        candidate_brief,
+        strategy_eligibility_brief,
+        "non_claims",
+    )
+
+    return {
+        "bundle_type": "advisory_operating_brief_content_bundle",
+        "status": "candidate_only",
+        "authority": "advisory_only",
+        "capital_authority": False,
+        "title": _TITLE,
+        "summary": _SUMMARY_WITH_RESEARCH_DATA_SOURCE_READINESS_SUMMARY,
+        "candidate_research_brief_count": 1,
+        "strategy_eligibility_brief_count": 1,
+        "research_data_source_readiness_summary_count": 1,
+        "candidate_research_briefs": [candidate_brief],
+        "strategy_eligibility_briefs": [strategy_eligibility_brief],
+        "research_data_source_readiness_summaries": [summary],
         "limitations": limitations,
         "non_claims": non_claims,
     }

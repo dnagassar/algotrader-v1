@@ -146,6 +146,7 @@ _FORBIDDEN_TEXT_TOKENS = (
 _ALLOWED_IMPORTS = {
     "__future__",
     "algotrader.research.advisory_operating_brief_content_bundle",
+    "algotrader.research.research_data_source_readiness_summary",
     "tests.fixtures.candidate_research_brief",
     "tests.fixtures.research_data_source_readiness",
     "tests.fixtures.strategy_eligibility_brief",
@@ -158,6 +159,8 @@ _ALLOWED_CALL_NAMES = {
     "expected_synthetic_candidate_research_brief_dict",
     "expected_synthetic_research_data_source_readiness",
     "expected_synthetic_research_data_source_readiness_dict",
+    "expected_synthetic_research_data_source_readiness_summary",
+    "expected_synthetic_research_data_source_readiness_summary_dict",
     "expected_synthetic_strategy_eligibility_brief_dict",
     "values.append",
 }

@@ -81,6 +81,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "research_data_source_readiness_count: "
             f"{payload['research_data_source_readiness_count']}"
         )
+    if "research_data_source_readiness_summaries" in payload:
+        lines.append(
+            "research_data_source_readiness_summary_count: "
+            f"{payload['research_data_source_readiness_summary_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -170,6 +175,18 @@ def render_advisory_operating_brief_content_bundle_text(
                 lines,
                 readiness_payload,
                 readiness_index,
+            )
+
+    if "research_data_source_readiness_summaries" in payload:
+        lines.extend(("", "Research Data Source Readiness Summary Diagnostics"))
+        for summary_index, summary_payload in enumerate(
+            payload["research_data_source_readiness_summaries"],
+            start=1,
+        ):
+            _append_research_data_source_readiness_summary(
+                lines,
+                summary_payload,
+                summary_index,
             )
 
     lines.extend(("", "Limitations"))
@@ -1076,6 +1093,28 @@ def _append_research_data_source_readiness(
     _append_values(lines, payload["limitations"])
     lines.extend(("non_claims:",))
     _append_values(lines, payload["non_claims"])
+
+
+def _append_research_data_source_readiness_summary(
+    lines: list[str],
+    payload: dict[str, object],
+    summary_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Research Data Source Readiness Summary Diagnostic {summary_index}",
+            f"summary_type: {payload['summary_type']}",
+            f"schema_version: {payload['schema_version']}",
+            f"summary_scope: {payload['summary_scope']}",
+            f"summary_state: {payload['summary_state']}",
+            f"required_control_count: {payload['required_control_count']}",
+            f"satisfied_control_count: {payload['satisfied_control_count']}",
+            f"missing_control_count: {payload['missing_control_count']}",
+            "diagnostic_limitations:",
+        )
+    )
+    _append_values(lines, payload["diagnostic_limitations"])
 
 
 def _append_values(lines: list[str], values: object) -> None:

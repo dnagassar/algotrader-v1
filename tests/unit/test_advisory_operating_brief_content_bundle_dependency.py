@@ -45,6 +45,9 @@ _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "algotrader.research.research_data_source_readiness": (
         "ResearchDataSourceReadiness",
     ),
+    "algotrader.research.research_data_source_readiness_summary": (
+        "ResearchDataSourceReadinessSummary",
+    ),
     "algotrader.research.risk_authority_brief": ("RiskAuthorityBrief",),
     "algotrader.research.sma_research_observation_brief_container": (
         "SmaResearchObservationBrief",

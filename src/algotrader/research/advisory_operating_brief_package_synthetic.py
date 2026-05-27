@@ -30,6 +30,10 @@ from algotrader.research.research_data_source_readiness import (
     ResearchDataSourceReadiness,
     build_research_data_source_readiness,
 )
+from algotrader.research.research_data_source_readiness_summary import (
+    ResearchDataSourceReadinessSummary,
+    build_research_data_source_readiness_summary,
+)
 from algotrader.research.research_return_observation import (
     ResearchReturnPricePoint,
     ResearchReturnSeriesObservation,
@@ -178,6 +182,7 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
             include_research_return_observation=True,
         )
     )
+    data_source_readiness = _build_package_research_data_source_readiness()
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=source.candidate_research_briefs,
         strategy_eligibility_briefs=source.strategy_eligibility_briefs,
@@ -192,7 +197,12 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
             source.research_return_summary_observation_briefs
         ),
         research_data_source_readiness=(
-            _build_package_research_data_source_readiness(),
+            data_source_readiness,
+        ),
+        research_data_source_readiness_summaries=(
+            _build_package_research_data_source_readiness_summary(
+                data_source_readiness
+            ),
         ),
     )
 
@@ -210,6 +220,12 @@ def _build_package_research_data_source_readiness() -> ResearchDataSourceReadine
         limitations=_DATA_SOURCE_LIMITATIONS,
         non_claims=_DATA_SOURCE_NON_CLAIMS,
     )
+
+
+def _build_package_research_data_source_readiness_summary(
+    source_readiness: ResearchDataSourceReadiness,
+) -> ResearchDataSourceReadinessSummary:
+    return build_research_data_source_readiness_summary(source_readiness)
 
 
 def _build_package_research_queue_brief(

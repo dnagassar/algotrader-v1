@@ -69,6 +69,7 @@ _BRANCH_KEYS = (
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
     "research_data_source_readiness",
+    "research_data_source_readiness_summaries",
 )
 _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
     "broker",
