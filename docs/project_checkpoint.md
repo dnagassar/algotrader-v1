@@ -13327,6 +13327,20 @@ Safe next tasks include:
   phase changes no production source and adds no real data ingestion, source
   selection, source/vendor approval, runtime, persistence, broker, network,
   backtest, or trading behavior.
+- Phase 283 - Advisory Operating Brief Diagnostic Issue List adds a tiny
+  metadata-only issue-record builder for advisory operating brief content
+  bundles. It returns deterministic frozen/slotted
+  `AdvisoryOperatingBriefDiagnosticIssue` records from existing research data
+  source readiness and readiness summary diagnostic branches, carrying only
+  source branch, issue code, issue state, diagnostic message, blocking
+  controls, and limitations. Focused tests pin paired synthetic
+  readiness/readiness-summary inputs, missing controls as diagnostic controls
+  rather than approvals, deterministic branch ordering, frozen/slotted
+  immutability, primitive-only `to_dict()` output, repeated-build equality,
+  and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+  credential fields or approval/trading vocabulary. This phase adds no real
+  data ingestion, source selection, source/vendor approval, runtime,
+  persistence, broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

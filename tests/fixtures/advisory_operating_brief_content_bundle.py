@@ -33,6 +33,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary",
     "expected_synthetic_advisory_operating_brief_content_bundle_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict",
@@ -343,6 +344,26 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_s
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        research_data_source_readiness_summaries=(summary,),
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic content bundle with paired data-source diagnostics."""
+
+    candidate_brief = build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    readiness = expected_synthetic_research_data_source_readiness()
+    summary = expected_synthetic_research_data_source_readiness_summary(
+        build_research_data_source_readiness_summary,
+        readiness,
+    )
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        research_data_source_readiness=(readiness,),
         research_data_source_readiness_summaries=(summary,),
     )
 

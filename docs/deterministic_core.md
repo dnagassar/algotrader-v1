@@ -7746,6 +7746,21 @@ positive approval vocabulary. Phase 282 changes no production source and adds
 no real data ingestion, source selection, source/vendor approval, runtime,
 persistence, broker, network, backtest, or trading behavior.
 
+Phase 283 - Advisory Operating Brief Diagnostic Issue List adds a tiny
+metadata-only issue-record builder for advisory operating brief content
+bundles. The builder returns a deterministic tuple of frozen/slotted
+`AdvisoryOperatingBriefDiagnosticIssue` records derived only from existing
+research data source readiness and readiness summary diagnostic branches. Each
+record carries plain primitive metadata: source branch, issue code, issue
+state, diagnostic message, blocking controls, and limitations. Focused tests
+pin paired synthetic readiness/readiness-summary inputs, missing controls as
+diagnostic controls rather than approvals, deterministic branch ordering,
+frozen/slotted immutability, primitive-only `to_dict()` output, repeated-build
+equality, and absence of broker/order/fill/portfolio/backtest/runtime/vendor/
+network/credential fields or approval/trading vocabulary. Phase 283 adds no
+real data ingestion, source selection, source/vendor approval, runtime,
+persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
