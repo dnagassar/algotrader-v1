@@ -13136,6 +13136,17 @@ Safe next tasks include:
   round-tripping, no approval/readiness/trading-authority claims, and bounded
   fixture imports. This phase changes no production source and adds no CLI/
   renderer/broker/runtime/vendor/network/persistence/trading behavior.
+- Phase 266 - Advisory Package Manifest Export Fixture Dependency Guard adds
+  `tests.unit.test_advisory_operating_brief_package_manifest_export_fixture_dependency`,
+  a focused test-only AST/source guard for the Phase 265 snapshot fixture. It
+  pins fixture imports and `__all__`, proves the dict helper remains a thin
+  synthetic-package build plus Phase 263 helper export, proves the JSON helper
+  keeps compact sorted-key serialization, rejects direct generic manifest, SMA,
+  CLI, renderer, runtime, broker, vendor, network, storage, path, config,
+  ML/LLM/agent, I/O, digest, credential, authority, and trading tokens, and
+  rechecks deterministic one-entry fixture output. This phase changes no
+  production source and adds no CLI/renderer/broker/runtime/vendor/network/
+  persistence/trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
