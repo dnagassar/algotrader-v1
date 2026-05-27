@@ -13107,6 +13107,24 @@ Safe next tasks include:
   real data input, persistence, network/socket/API access, scheduler/dashboard
   behavior, ML, LLM/agent behavior, timestamps, randomness, global state,
   hidden I/O, capital authority, trading authority, or deserialization behavior.
+- Phase 264 - Advisory Package Manifest Export Dependency Guard adds
+  `tests.unit.test_advisory_operating_brief_package_manifest_export_dependency`,
+  a focused test-only AST/source guard for the Phase 263 package manifest export
+  helper. It pins the helper to `ValidationError` and exact
+  `AdvisoryOperatingBriefPackage` imports only, verifies the single-helper
+  public surface, exact package and manifest validation, unchanged attached-
+  manifest `to_dict()` export, no manifest builder/export helper calls, no I/O/
+  runtime/broker/vendor/network/storage/path/config/ML/LLM/agent surfaces, no
+  package or manifest mutation, and deterministic one-entry synthetic manifest
+  export. This phase changes no production source, CLI flags, renderer
+  behavior, package builder behavior, synthetic builder behavior, storage
+  behavior, file/path/env/config/network inputs, evaluator/signal/trading
+  behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+  benchmark comparison, backtest output, approval/readiness/recommendation
+  authority, broker/runtime/vendor dependency, real data input, persistence,
+  network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
+  behavior, timestamps, randomness, global state, hidden I/O, capital
+  authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
