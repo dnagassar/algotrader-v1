@@ -13190,6 +13190,17 @@ Safe next tasks include:
   production source and adds no real data ingestion, CLI/renderer/broker/
   runtime/vendor/network/persistence/backtest/trading behavior, approval
   authority, or capital authority.
+- Phase 271 - Research Data Source Readiness Synthetic Fixture adds
+  `tests.fixtures.research_data_source_readiness` and
+  `tests.unit.test_research_data_source_readiness_fixture` as reusable
+  metadata-only candidate readiness fixture coverage for the Phase 269
+  contract. It builds through `build_research_data_source_readiness`, exposes
+  the object, primitive dict, and compact sorted-key JSON unchanged, pins
+  derived missing controls plus synthetic/internal evidence refs and negative
+  non-claims, and changes no production source. It adds no real data ingestion,
+  CLI/renderer/broker/runtime/vendor/network/persistence/backtest/trading
+  behavior, data-source authorization, approval authority, or capital
+  authority.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -7590,6 +7590,17 @@ adds no real data ingestion, CLI/renderer/broker/runtime/vendor/network/
 persistence/backtest/trading behavior, approval authority, or capital
 authority.
 
+Phase 271 - Research Data Source Readiness Synthetic Fixture adds
+`tests.fixtures.research_data_source_readiness` plus
+`tests.unit.test_research_data_source_readiness_fixture` as a reusable
+metadata-only candidate readiness payload for the Phase 269 contract. The
+fixture builds through `build_research_data_source_readiness`, exposes the
+object, primitive `to_dict()` output, and compact sorted-key JSON unchanged,
+pins derived missing controls, synthetic/internal evidence refs, limitations,
+and negative non-claims, and adds no production source, real data ingestion,
+CLI/renderer/broker/runtime/vendor/network/persistence/backtest/trading
+behavior, approval authority, data-source authorization, or capital authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
