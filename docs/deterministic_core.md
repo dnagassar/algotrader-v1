@@ -7564,6 +7564,19 @@ compact sorted-key JSON SHA-256 digests, exact snapshot keys, deterministic
 synthetic behavior, and no production source, CLI/renderer/broker/runtime/
 vendor/network/persistence/data-ingestion/trading behavior changes.
 
+Phase 269 - Research Data Source Readiness Contract adds
+`ResearchDataSourceReadiness` and `build_research_data_source_readiness` as a
+small frozen/slotted metadata-only contract for future research data source
+candidate review. It pins `contract_type` and schema version, derives missing
+controls from required and satisfied controls, validates readiness states,
+negative non-claims, duplicate-free controls/scopes/evidence refs, primitive
+`to_dict()` output, deterministic compact JSON behavior, and source-level
+guardrails against file/path/env/network/vendor/broker/runtime/persistence/
+portfolio/order/fill/backtest/ML/LLM/notebook/vectorbt/QuantConnect surfaces.
+It adds no real data ingestion, source approval, CLI/renderer/broker/runtime/
+vendor/network/persistence/backtest/trading behavior, strategy evaluation, or
+capital authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

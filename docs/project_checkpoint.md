@@ -13166,6 +13166,18 @@ Safe next tasks include:
   deterministic synthetic behavior, and no production source, CLI/renderer/
   broker/runtime/vendor/network/persistence/data-ingestion/trading behavior
   changes.
+- Phase 269 - Research Data Source Readiness Contract adds
+  `ResearchDataSourceReadiness` and
+  `build_research_data_source_readiness` as a small frozen/slotted
+  metadata-only contract for future research data source candidate review. It
+  pins fixed metadata, computes missing controls deterministically, validates
+  readiness states, duplicate-free controls/scopes/evidence refs, negative
+  non-claims, primitive `to_dict()` output, deterministic compact JSON, and
+  source guardrails against file/path/env/network/vendor/broker/runtime/
+  persistence/portfolio/order/fill/backtest/ML/LLM/notebook/vectorbt/
+  QuantConnect surfaces. It adds no real data ingestion, source approval, CLI/
+  renderer/broker/runtime/vendor/network/persistence/backtest/trading
+  behavior, strategy evaluation, or capital authority.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
