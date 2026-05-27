@@ -7521,6 +7521,18 @@ network/API access, scheduler/dashboard behavior, ML/LLM/agent behavior,
 timestamps, randomness, global state, hidden I/O, capital authority, trading
 authority, or deserialization behavior.
 
+Phase 265 - Advisory Package Manifest Export Snapshot Fixture adds
+`tests.fixtures.advisory_operating_brief_package_manifest_export` plus
+`tests.unit.test_advisory_operating_brief_package_manifest_export_fixture` as a
+test-only reusable expected payload for the Phase 263 package manifest export
+helper. The fixture builds the existing synthetic package preview, exports the
+attached research observation manifest unchanged through the package-level
+helper, and exposes both the primitive dict and compact sorted-key JSON. Focused
+tests prove one-entry SMA pipeline metadata, SHA-256 digest alignment with the
+included synthetic observation payload, deterministic JSON round-tripping, and
+bounded fixture imports without production source changes or new CLI/renderer/
+broker/runtime/vendor/network/persistence/trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
