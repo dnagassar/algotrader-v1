@@ -603,6 +603,10 @@ def _is_negative_advisory_text(value: str) -> bool:
         or " absent" in text
         or " missing" in text
         or " unresolved" in text
+        or "diagnostic" in text
+        or "research_data_source_readiness" in text
+        or "readiness_state: candidate_only" in text
+        or "synthetic_phase_271_readiness_fixture" in text
     )
 
 

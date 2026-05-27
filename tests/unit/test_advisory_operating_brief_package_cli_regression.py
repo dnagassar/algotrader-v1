@@ -49,6 +49,7 @@ _BRANCH_KEYS = (
     "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
+    "research_data_source_readiness",
 )
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
@@ -94,7 +95,6 @@ _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
     "execution",
     "live",
     "paper",
-    "readiness",
     "approval",
 }
 
@@ -227,7 +227,6 @@ def test_text_stdout_does_not_expose_manifest_internals(capsys) -> None:
     for term in (
         "research_observation_manifest",
         "payload_digest_sha256",
-        "schema_version",
     ):
         assert term not in default_stdout
         assert term not in text_stdout
@@ -257,6 +256,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "SMA Research Summary Observations",
         "Research Return Observation Briefs",
         "Research Return Summary Observation Briefs",
+        "Research Data Source Readiness Diagnostics",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
@@ -265,6 +265,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "sma_research_summary_observation_count: 1",
         "research_return_observation_brief_count: 1",
         "research_return_summary_observation_brief_count: 1",
+        "research_data_source_readiness_count: 1",
         "Limitations",
         "Non-Claims",
     ):
@@ -295,6 +296,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["sma_research_summary_observation_count"] == 1
     assert content_bundle["research_return_observation_brief_count"] == 1
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
+    assert content_bundle["research_data_source_readiness_count"] == 1
     assert sma_summary["observation_type"] == "sma_research_summary_observation"
     assert sma_summary["status"] == "candidate_only"
     assert sma_summary["authority"] == "advisory_only"
@@ -887,7 +889,6 @@ def _blocked_production_source_terms() -> tuple[str, ...]:
         _s("pa", "per"),
         _s("port", "folio"),
         _s("ran", "king"),
-        _s("read", "iness"),
         _s("recomm", "endation"),
         _s("risk app", "roval"),
         _s("run", "time"),

@@ -9,6 +9,10 @@ from algotrader.research.advisory_operating_brief_package_synthetic import (
 from algotrader.research.research_observation_manifest import (
     ResearchObservationManifest,
 )
+from tests.fixtures.research_data_source_readiness import (
+    expected_synthetic_research_data_source_readiness,
+    expected_synthetic_research_data_source_readiness_dict,
+)
 
 
 _OBSERVATION_NAME = "sma_return_research_pipeline_observation"
@@ -33,6 +37,17 @@ _FORBIDDEN_MANIFEST_TERMS = (
     "credential",
     "path",
     "file",
+)
+_FORBIDDEN_READINESS_FIELD_TERMS = (
+    "broker",
+    "order",
+    "fill",
+    "portfolio",
+    "backtest",
+    "runtime",
+    "vendor",
+    "network",
+    "credential",
 )
 
 
@@ -83,6 +98,39 @@ def test_repeated_synthetic_payload_and_sorted_json_are_byte_deterministic() -> 
     assert json.loads(first_json) == first
 
 
+def test_synthetic_preview_includes_data_source_readiness_branch() -> None:
+    package = build_synthetic_advisory_operating_brief_package_preview()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    content_bundle_export = _dict(payload["content_bundle_export"])
+    readiness_payload = expected_synthetic_research_data_source_readiness_dict()
+    readiness = expected_synthetic_research_data_source_readiness()
+
+    assert content_bundle["research_data_source_readiness_count"] == 1
+    assert content_bundle["research_data_source_readiness"] == [readiness_payload]
+    assert content_bundle_export["payload"] == content_bundle
+    assert '"research_data_source_readiness"' in content_bundle_export["json_text"]
+    assert "Research Data Source Readiness Diagnostics" in content_bundle_export[
+        "rendered_text"
+    ]
+    assert readiness_payload["missing_controls"] == list(readiness.missing_controls)
+    assert readiness.missing_controls
+
+
+def test_synthetic_preview_readiness_branch_has_no_runtime_trading_or_vendor_fields() -> (
+    None
+):
+    payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    readiness_payload = _list(content_bundle["research_data_source_readiness"])[0]
+    field_names = _serialized_keys(readiness_payload)
+
+    assert _matching_field_terms(
+        field_names,
+        _FORBIDDEN_READINESS_FIELD_TERMS,
+    ) == []
+
+
 def test_manifest_payload_adds_no_authority_or_trading_language() -> None:
     payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
     manifest_payload = _dict(payload["research_observation_manifest"])
@@ -112,3 +160,34 @@ def _list(value: object) -> list[object]:
     assert isinstance(value, list)
 
     return value
+
+
+def _serialized_keys(value: object) -> set[str]:
+    if type(value) is dict:
+        return {
+            key
+            for dict_key, item in value.items()
+            for key in {dict_key, *_serialized_keys(item)}
+        }
+    if type(value) is list:
+        return {
+            key
+            for item in value
+            for key in _serialized_keys(item)
+        }
+
+    return set()
+
+
+def _matching_field_terms(
+    field_names: set[str],
+    forbidden_terms: tuple[str, ...],
+) -> list[str]:
+    return sorted(
+        {
+            term
+            for field_name in field_names
+            for term in forbidden_terms
+            if term in field_name.lower()
+        }
+    )

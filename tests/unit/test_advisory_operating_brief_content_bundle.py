@@ -357,6 +357,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.research.research_return_observation_brief_container",
     "algotrader.research.research_return_summary_observation_brief",
     "algotrader.research.research_queue_brief",
+    "algotrader.research.research_data_source_readiness",
     "algotrader.research.risk_authority_brief",
     "algotrader.research.sma_research_observation_brief_container",
     "algotrader.research.sma_research_summary_observation",
@@ -1948,6 +1949,7 @@ def test_no_actionable_trading_authority_fields_are_exposed() -> None:
         "research_return_observation_briefs",
         "research_return_summary_observation_briefs",
         "sma_research_summary_observations",
+        "research_data_source_readiness",
     )
     assert tuple(payload) == tuple(_EXPECTED_ALL_FAMILY_BUNDLE_DICT)
     assert field_names.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)

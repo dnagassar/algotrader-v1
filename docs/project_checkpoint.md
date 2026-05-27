@@ -13210,6 +13210,16 @@ Safe next tasks include:
   wrapper, clock, digest, or raw payload fields. This phase changes no
   production source and adds no real data ingestion, CLI/renderer/broker/
   runtime/vendor/network/persistence/backtest/trading behavior.
+- Phase 273 - Advisory Operating Brief Data Source Readiness Branch adds an
+  optional `ResearchDataSourceReadiness` diagnostic branch to the advisory
+  operating brief content bundle and synthetic package preview. Existing bundle
+  outputs stay unchanged unless a fixture or synthetic package builder supplies
+  the branch. The branch serializes through the existing readiness `to_dict()`
+  contract, preserves builder-derived `missing_controls`, renders required,
+  satisfied, and missing controls as diagnostic metadata, pins compact JSON and
+  text output, and adds no real data ingestion, source/vendor approval, CLI
+  options, broker/order/fill/portfolio/backtest/runtime/persistence/credential/
+  network, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -147,6 +147,7 @@ _ALLOWED_IMPORTS = {
     "__future__",
     "algotrader.research.advisory_operating_brief_content_bundle",
     "tests.fixtures.candidate_research_brief",
+    "tests.fixtures.research_data_source_readiness",
     "tests.fixtures.strategy_eligibility_brief",
 }
 _ALLOWED_CALL_NAMES = {
@@ -155,6 +156,8 @@ _ALLOWED_CALL_NAMES = {
     "build_synthetic_candidate_research_brief",
     "build_synthetic_strategy_eligibility_brief",
     "expected_synthetic_candidate_research_brief_dict",
+    "expected_synthetic_research_data_source_readiness",
+    "expected_synthetic_research_data_source_readiness_dict",
     "expected_synthetic_strategy_eligibility_brief_dict",
     "values.append",
 }

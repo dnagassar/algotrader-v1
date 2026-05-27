@@ -68,6 +68,7 @@ _BRANCH_KEYS = (
     "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
+    "research_data_source_readiness",
 )
 _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
     "broker",
@@ -86,7 +87,6 @@ _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
     "execution",
     "live",
     "paper",
-    "readiness",
     "approval",
 }
 _ALLOWED_IMPORTS = {
@@ -673,6 +673,10 @@ def _is_negative_advisory_text(value: str) -> bool:
         or " absent" in value
         or " missing" in value
         or " unresolved" in value
+        or "diagnostic" in value
+        or "research_data_source_readiness" in value
+        or "readiness_state: candidate_only" in value
+        or "synthetic_phase_271_readiness_fixture" in value
     )
 
 

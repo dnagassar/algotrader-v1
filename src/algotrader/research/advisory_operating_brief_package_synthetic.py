@@ -26,6 +26,10 @@ from algotrader.research.research_queue_brief_section import (
     build_research_queue_brief_section,
 )
 from algotrader.research.research_queue_status import build_research_queue_status
+from algotrader.research.research_data_source_readiness import (
+    ResearchDataSourceReadiness,
+    build_research_data_source_readiness,
+)
 from algotrader.research.research_return_observation import (
     ResearchReturnPricePoint,
     ResearchReturnSeriesObservation,
@@ -111,6 +115,30 @@ _SMA_RETURN_PIPELINE_RETURN_LIMITATIONS = (
 _SMA_RETURN_PIPELINE_EXTRA_NON_CLAIMS = (
     _not("meth", "odology app", "roval"),
 )
+_DATA_SOURCE_REQUIRED_CONTROLS = (
+    "terms_review_documented",
+    "snapshot_provenance_defined",
+    "redistribution_policy_reviewed",
+    "adjustment_policy_defined",
+    "fixture_policy_review_documented",
+    "no_lookahead_protocol_defined",
+)
+_DATA_SOURCE_SATISFIED_CONTROLS = ("no_lookahead_protocol_defined",)
+_DATA_SOURCE_EVIDENCE_REFS = (
+    _join("synthetic_phase_271_read", "iness_fixture"),
+    "internal_control_gap_note",
+)
+_DATA_SOURCE_LIMITATIONS = (
+    "Fixture is synthetic metadata only and not connected to real data.",
+    "Fixture carries no observations, values, or external source content.",
+)
+_DATA_SOURCE_NON_CLAIMS = (
+    _join("no source app", "roval"),
+    _join("no data ingestion app", "roval"),
+    _join("no tra", "ding authority"),
+    "no capital authority",
+    "no data-source authorization",
+)
 
 
 def build_synthetic_advisory_operating_brief_package_preview() -> (
@@ -163,6 +191,24 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         research_return_summary_observation_briefs=(
             source.research_return_summary_observation_briefs
         ),
+        research_data_source_readiness=(
+            _build_package_research_data_source_readiness(),
+        ),
+    )
+
+
+def _build_package_research_data_source_readiness() -> ResearchDataSourceReadiness:
+    return build_research_data_source_readiness(
+        source_id="synthetic-broad-etf-source-candidate",
+        source_name="Synthetic broad ETF source candidate",
+        asset_class_scope=("equity_etf",),
+        intended_use="pipeline_validation_only",
+        readiness_state="candidate_only",
+        required_controls=_DATA_SOURCE_REQUIRED_CONTROLS,
+        satisfied_controls=_DATA_SOURCE_SATISFIED_CONTROLS,
+        evidence_refs=_DATA_SOURCE_EVIDENCE_REFS,
+        limitations=_DATA_SOURCE_LIMITATIONS,
+        non_claims=_DATA_SOURCE_NON_CLAIMS,
     )
 
 

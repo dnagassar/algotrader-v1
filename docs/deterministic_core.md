@@ -7611,6 +7611,19 @@ absence of wrapper, clock, digest, or raw payload fields. Phase 272 changes no
 production source and adds no real data ingestion, CLI/renderer/broker/runtime/
 vendor/network/persistence/backtest/trading behavior.
 
+Phase 273 - Advisory Operating Brief Data Source Readiness Branch adds an
+optional `ResearchDataSourceReadiness` diagnostic branch to the advisory
+operating brief content bundle and synthetic package preview. The branch is
+absent from existing bundle outputs unless explicitly supplied by a fixture or
+the synthetic package builder, serializes through the existing readiness
+`to_dict()` contract, preserves builder-derived `missing_controls`, and renders
+required, satisfied, and missing controls as negative/diagnostic metadata.
+Focused tests pin compact sorted-key JSON, rendered diagnostic text, byte-stable
+repeated output, package inclusion, and absence of broker/order/fill/portfolio/
+backtest/runtime/vendor/network/credential fields. Phase 273 adds no real data
+ingestion, source/vendor approval, CLI options, runtime, persistence, broker,
+backtest, order, portfolio, credential, network, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

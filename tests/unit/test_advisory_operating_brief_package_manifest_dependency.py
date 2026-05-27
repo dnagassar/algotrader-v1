@@ -79,6 +79,10 @@ _ALLOWED_SYNTHETIC_IMPORTS = {
     "algotrader.research.research_queue_status": (
         "build_research_queue_status",
     ),
+    "algotrader.research.research_data_source_readiness": (
+        "ResearchDataSourceReadiness",
+        "build_research_data_source_readiness",
+    ),
     "algotrader.research.research_return_observation": (
         "ResearchReturnPricePoint",
         "ResearchReturnSeriesObservation",
@@ -361,6 +365,20 @@ _PACKAGE_SOURCE_TOKEN_ALLOWLIST = {
         "must not imply approval, recommendation",
     ),
 }
+_SYNTHETIC_SOURCE_TOKEN_ALLOWLIST = {
+    "readiness": (
+        "algotrader.research.research_data_source_readiness",
+        "ResearchDataSourceReadiness",
+        "build_research_data_source_readiness",
+        "_DATA_SOURCE_REQUIRED_CONTROLS",
+        "_DATA_SOURCE_SATISFIED_CONTROLS",
+        "_DATA_SOURCE_EVIDENCE_REFS",
+        "_build_package_research_data_source_readiness",
+        "synthetic_phase_271_readiness_fixture",
+        "readiness_state=\"candidate_only\"",
+        "research_data_source_readiness=(",
+    ),
+}
 
 
 def test_package_imports_generic_manifest_without_snapshot_or_runtime_layers() -> None:
@@ -454,7 +472,11 @@ def test_synthetic_source_builds_manifest_from_sma_pipeline_payload() -> None:
     assert _OBSERVATION_NAME in source
     assert _manifest_builder_uses_sma_pipeline_payload(SYNTHETIC_SOURCE_PATH)
     assert (
-        _forbidden_source_token_matches(source, _FORBIDDEN_SOURCE_TOKENS, {})
+        _forbidden_source_token_matches(
+            source,
+            _FORBIDDEN_SOURCE_TOKENS,
+            _SYNTHETIC_SOURCE_TOKEN_ALLOWLIST,
+        )
         == []
     )
     assert calls.isdisjoint(_FORBIDDEN_CALL_NAMES)

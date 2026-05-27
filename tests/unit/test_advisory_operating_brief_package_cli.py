@@ -54,6 +54,7 @@ _BRANCH_KEYS = (
     "sma_research_summary_observations",
     "research_return_observation_briefs",
     "research_return_summary_observation_briefs",
+    "research_data_source_readiness",
 )
 
 
@@ -171,6 +172,7 @@ def test_nested_output_includes_all_content_bundle_branches(capsys) -> None:
         "SMA Research Summary Observations",
         "Research Return Observation Briefs",
         "Research Return Summary Observation Briefs",
+        "Research Data Source Readiness Diagnostics",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
@@ -179,6 +181,7 @@ def test_nested_output_includes_all_content_bundle_branches(capsys) -> None:
         "sma_research_summary_observation_count: 1",
         "research_return_observation_brief_count: 1",
         "research_return_summary_observation_brief_count: 1",
+        "research_data_source_readiness_count: 1",
     ):
         assert value in text_output
 
@@ -191,6 +194,7 @@ def test_nested_output_includes_all_content_bundle_branches(capsys) -> None:
     assert content_bundle["sma_research_summary_observation_count"] == 1
     assert content_bundle["research_return_observation_brief_count"] == 1
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
+    assert content_bundle["research_data_source_readiness_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
 

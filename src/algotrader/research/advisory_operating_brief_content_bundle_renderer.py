@@ -76,6 +76,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "research_return_summary_observation_brief_count: "
             f"{payload['research_return_summary_observation_brief_count']}"
         )
+    if "research_data_source_readiness" in payload:
+        lines.append(
+            "research_data_source_readiness_count: "
+            f"{payload['research_data_source_readiness_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -153,6 +158,18 @@ def render_advisory_operating_brief_content_bundle_text(
                 lines,
                 summary_payload,
                 brief_index,
+            )
+
+    if "research_data_source_readiness" in payload:
+        lines.extend(("", "Research Data Source Readiness Diagnostics"))
+        for readiness_index, readiness_payload in enumerate(
+            payload["research_data_source_readiness"],
+            start=1,
+        ):
+            _append_research_data_source_readiness(
+                lines,
+                readiness_payload,
+                readiness_index,
             )
 
     lines.extend(("", "Limitations"))
@@ -1021,6 +1038,43 @@ def _append_research_return_summary_observation(
     lines.extend(("Observation Limitations",))
     _append_values(lines, payload["limitations"])
     lines.extend(("Observation Non-Claims",))
+    _append_values(lines, payload["non_claims"])
+
+
+def _append_research_data_source_readiness(
+    lines: list[str],
+    payload: dict[str, object],
+    readiness_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Research Data Source Readiness Diagnostic {readiness_index}",
+            f"contract_type: {payload['contract_type']}",
+            f"schema_version: {payload['schema_version']}",
+            f"source_id: {payload['source_id']}",
+            f"source_name: {payload['source_name']}",
+            "asset_class_scope:",
+        )
+    )
+    _append_values(lines, payload["asset_class_scope"])
+    lines.extend(
+        (
+            f"intended_use: {payload['intended_use']}",
+            f"readiness_state: {payload['readiness_state']}",
+            "required_controls:",
+        )
+    )
+    _append_values(lines, payload["required_controls"])
+    lines.extend(("satisfied_controls:",))
+    _append_values(lines, payload["satisfied_controls"])
+    lines.extend(("missing_controls:",))
+    _append_values(lines, payload["missing_controls"])
+    lines.extend(("evidence_refs:",))
+    _append_values(lines, payload["evidence_refs"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
+    lines.extend(("non_claims:",))
     _append_values(lines, payload["non_claims"])
 
 
