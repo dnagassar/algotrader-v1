@@ -7722,6 +7722,19 @@ synthetic content-bundle preview CLI path and adds no real data ingestion,
 source selection, source/vendor approval, runtime, persistence, broker,
 network, backtest, or trading behavior.
 
+Phase 281 - Advisory Package CLI Data Source Readiness Summary Regression adds
+test-only package-preview regression coverage for the existing synthetic
+`ResearchDataSourceReadinessSummary` diagnostic branch. The coverage pins that
+package synthetic output includes the summary branch, package CLI text includes
+summary state, required/satisfied/missing control counts, and diagnostic
+limitations, package CLI JSON preserves the deterministic summary count and
+compact summary payload, and repeated package CLI text and JSON output remain
+byte-for-byte deterministic. The package preview continues to expose only the
+existing `--format text|json` option surface, and existing content bundle
+preview behavior remains unchanged. Phase 281 changes no production source and
+adds no real data ingestion, source selection, source/vendor approval, runtime,
+persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

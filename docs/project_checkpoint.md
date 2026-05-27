@@ -13306,6 +13306,17 @@ Safe next tasks include:
   path and adds no real data ingestion, source selection, source/vendor
   approval, runtime, persistence, broker, network, backtest, or trading
   behavior.
+- Phase 281 - Advisory Package CLI Data Source Readiness Summary Regression
+  adds test-only package-preview regression coverage for the existing
+  synthetic `ResearchDataSourceReadinessSummary` diagnostic branch. It pins
+  package synthetic inclusion, package CLI text summary state and
+  required/satisfied/missing control counts, diagnostic limitations, compact
+  sorted-key JSON with deterministic summary count fields, repeated
+  byte-for-byte text/JSON determinism, unchanged content bundle preview
+  behavior, and no new package input-bearing options beyond existing
+  `--format text|json`. This phase changes no production source and adds no
+  real data ingestion, source selection, source/vendor approval, runtime,
+  persistence, broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

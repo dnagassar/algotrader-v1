@@ -450,6 +450,49 @@ def test_package_cli_json_output_preserves_builder_computed_missing_controls(
     assert "raw_data" not in readiness_payload
 
 
+def test_package_cli_json_output_includes_readiness_summary_counts(
+    capsys,
+) -> None:
+    json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    payload = json.loads(json_stdout)
+    package = preview_module.build_synthetic_advisory_operating_brief_package()
+    summary = package.content_bundle.research_data_source_readiness_summaries[0]
+    content_bundle = _dict(payload["content_bundle"])
+    summary_payload = _readiness_summary_payload(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_summary = _readiness_summary_payload(
+        {"content_bundle": nested_export_payload}
+    )
+
+    assert json_stdout == _EXPECTED_JSON
+    assert json_stdout == _compact_sorted_json(_EXPECTED_PAYLOAD)
+    assert content_bundle["research_data_source_readiness_summary_count"] == 1
+    assert summary_payload == summary.to_dict()
+    assert nested_export_summary == summary_payload
+    assert summary_payload == {
+        "summary_type": "research_data_source_readiness_summary",
+        "schema_version": "1",
+        "summary_scope": "advisory_metadata_only",
+        "summary_state": "candidate_only",
+        "required_control_count": 6,
+        "satisfied_control_count": 1,
+        "missing_control_count": 5,
+        "diagnostic_limitations": [
+            "Fixture carries no observations, values, or external source content.",
+            "Fixture is synthetic metadata only and not connected to real data.",
+        ],
+    }
+    assert "source_readiness" not in summary_payload
+    assert "required_controls" not in summary_payload
+    assert "satisfied_controls" not in summary_payload
+    assert "missing_controls" not in summary_payload
+    assert "json_text" not in summary_payload
+    assert "rendered_text" not in summary_payload
+    assert "payload" not in summary_payload
+    assert "digest" not in summary_payload
+    assert "raw_data" not in summary_payload
+
+
 def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     capsys,
 ) -> None:
@@ -461,6 +504,8 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     second_payload = json.loads(second_json)
     first_readiness = _readiness_payload(first_payload)
     second_readiness = _readiness_payload(second_payload)
+    first_summary = _readiness_summary_payload(first_payload)
+    second_summary = _readiness_summary_payload(second_payload)
 
     assert first_text == second_text == _EXPECTED_TEXT
     assert first_json == second_json == _EXPECTED_JSON
@@ -475,8 +520,12 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
         _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK
     )
     assert first_readiness == second_readiness
+    assert first_summary == second_summary
     assert _compact_sorted_json(first_readiness) == _compact_sorted_json(
         second_readiness
+    )
+    assert _compact_sorted_json(first_summary) == _compact_sorted_json(
+        second_summary
     )
     assert _compact_sorted_json(first_payload) == _compact_sorted_json(second_payload)
 
@@ -729,6 +778,14 @@ def _readiness_payload(payload: dict[str, object]) -> dict[str, object]:
 
     assert len(readiness_values) == 1
     return _dict(readiness_values[0])
+
+
+def _readiness_summary_payload(payload: dict[str, object]) -> dict[str, object]:
+    content_bundle = _dict(payload["content_bundle"])
+    summary_values = _list(content_bundle["research_data_source_readiness_summaries"])
+
+    assert len(summary_values) == 1
+    return _dict(summary_values[0])
 
 
 def _readiness_text_block(text: str) -> tuple[str, ...]:
