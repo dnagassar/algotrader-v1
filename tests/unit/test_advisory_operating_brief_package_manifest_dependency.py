@@ -353,6 +353,43 @@ _FORBIDDEN_SOURCE_TOKENS = (
     "trading_authority",
     "capital_authority=True",
 )
+_EXPECTED_READINESS_PAYLOAD_KEYS = (
+    "contract_type",
+    "schema_version",
+    "source_id",
+    "source_name",
+    "asset_class_scope",
+    "intended_use",
+    "readiness_state",
+    "required_controls",
+    "satisfied_controls",
+    "missing_controls",
+    "evidence_refs",
+    "limitations",
+    "non_claims",
+)
+_FORBIDDEN_READINESS_PAYLOAD_KEYS = {
+    "account",
+    "approved",
+    "authorization_status",
+    "broker",
+    "credential",
+    "digest",
+    "endpoint",
+    "fill",
+    "order",
+    "portfolio",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "source_payload",
+    "timestamp",
+    "token",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
 _PACKAGE_SOURCE_TOKEN_ALLOWLIST = {
     "account": ('"account",',),
     "token": ("token in lowered for token in",),
@@ -498,6 +535,38 @@ def test_synthetic_manifest_matches_included_observation_payload() -> None:
     assert entry.observation_type == observation_payload["observation_type"]
     assert entry.payload_key_count == len(observation_payload)
     assert entry.payload_digest_sha256 == _payload_digest(observation_payload)
+
+
+def test_synthetic_package_includes_readiness_as_synthetic_diagnostic_metadata() -> None:
+    package = build_synthetic_advisory_operating_brief_package_preview()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    readiness = _dict(_single(_list(content_bundle["research_data_source_readiness"])))
+    manifest_payload = _dict(payload["research_observation_manifest"])
+
+    assert _package_content_bundle_includes_readiness_builder(SYNTHETIC_SOURCE_PATH)
+    assert content_bundle["research_data_source_readiness_count"] == 1
+    assert tuple(readiness) == _EXPECTED_READINESS_PAYLOAD_KEYS
+    assert readiness["contract_type"] == "research_data_source_readiness"
+    assert readiness["source_id"] == "synthetic-broad-etf-source-candidate"
+    assert readiness["source_name"] == "Synthetic broad ETF source candidate"
+    assert readiness["intended_use"] == "pipeline_validation_only"
+    assert readiness["readiness_state"] == "candidate_only"
+    assert readiness["satisfied_controls"] == ["no_lookahead_protocol_defined"]
+    assert readiness["missing_controls"] == [
+        "terms_review_documented",
+        "snapshot_provenance_defined",
+        "redistribution_policy_reviewed",
+        "adjustment_policy_defined",
+        "fixture_policy_review_documented",
+    ]
+    assert set(readiness).isdisjoint(_FORBIDDEN_READINESS_PAYLOAD_KEYS)
+    assert all(
+        str(ref).startswith(("synthetic_", "internal_"))
+        for ref in readiness["evidence_refs"]
+    )
+    assert all(str(value).startswith("no ") for value in readiness["non_claims"])
+    assert "research_data_source_readiness" not in _compact_sorted_json(manifest_payload)
 
 
 def test_synthetic_preview_manifest_output_is_byte_deterministic() -> None:
@@ -800,6 +869,37 @@ def _manifest_builder_uses_sma_pipeline_payload(path: Path) -> bool:
     return False
 
 
+def _package_content_bundle_includes_readiness_builder(path: Path) -> bool:
+    function_def = _function_def_from_path(
+        path,
+        "_build_synthetic_package_content_bundle",
+    )
+    if function_def is None:
+        return False
+
+    for node in ast.walk(function_def):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) != "build_advisory_operating_brief_content_bundle":
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "research_data_source_readiness":
+                continue
+            return _contains_call(
+                keyword.value,
+                "_build_package_research_data_source_readiness",
+            )
+
+    return False
+
+
+def _contains_call(node: ast.AST, call_name: str) -> bool:
+    return any(
+        isinstance(child, ast.Call) and _call_name(child.func) == call_name
+        for child in ast.walk(node)
+    )
+
+
 def _contains_string_constant(node: ast.AST, value: str) -> bool:
     return any(
         isinstance(child, ast.Constant) and child.value == value
@@ -851,3 +951,9 @@ def _list(value: object) -> list[object]:
     assert isinstance(value, list)
 
     return value
+
+
+def _single(value: list[object]) -> object:
+    assert len(value) == 1
+
+    return value[0]

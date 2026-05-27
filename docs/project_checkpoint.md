@@ -13240,6 +13240,17 @@ Safe next tasks include:
   existing `--format text|json`. This phase changes no production source and
   adds no real data ingestion, source/vendor selection, approval semantics,
   runtime, persistence, broker, network, backtest, or trading behavior.
+- Phase 276 - Research Data Source Readiness Advisory Integration Dependency
+  Guard adds focused test-only coverage for the advisory content bundle
+  readiness branch, renderer diagnostic wording, package synthetic readiness
+  inclusion, and hidden content-bundle CLI preview flag. It pins
+  metadata-only imports, synthetic-only readiness inclusion where applicable,
+  hidden boolean-only non-input CLI handling, diagnostic/negative rendering,
+  and no broker/runtime/vendor/network/persistence/backtest/trading calls or
+  tokens.
+  This phase changes no production source and adds no real data ingestion,
+  source selection, source/vendor approval, runtime, persistence, broker,
+  network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

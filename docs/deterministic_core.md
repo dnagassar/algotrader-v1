@@ -7650,6 +7650,18 @@ no production source and adds no real data ingestion, source/vendor selection,
 approval semantics, runtime, persistence, broker, network, backtest, or trading
 behavior.
 
+Phase 276 - Research Data Source Readiness Advisory Integration Dependency
+Guard adds focused test-only dependency coverage for the content bundle
+readiness branch, renderer diagnostic wording, package synthetic readiness
+inclusion, and hidden content-bundle CLI preview flag. The guards pin
+metadata-only imports, synthetic-only readiness inclusion where applicable,
+hidden
+boolean-only non-input CLI handling, diagnostic/negative rendering, and absence
+of broker/runtime/vendor/network/persistence/backtest/trading calls or tokens.
+Phase 276 changes no production source and adds no real data ingestion, source
+selection, source/vendor approval, runtime, persistence, broker, network,
+backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

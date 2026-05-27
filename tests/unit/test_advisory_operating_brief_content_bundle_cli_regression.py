@@ -6,6 +6,8 @@ import json
 import re
 import sys
 
+import pytest
+
 import algotrader.research.advisory_operating_brief_content_bundle_cli as preview_module
 from algotrader.cli import build_parser, main
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
@@ -54,6 +56,7 @@ _ALLOWED_SELF_IMPORTS = {
     "ast",
     "inspect",
     "json",
+    "pytest",
     "re",
     "sys",
     "algotrader.cli",
@@ -204,6 +207,57 @@ def test_command_exposes_no_file_path_source_vendor_broker_runtime_options() -> 
     option_text = _option_text(parser)
     for term in _blocked_cli_option_terms():
         assert term not in option_text
+
+
+def test_readiness_preview_flag_is_hidden_boolean_and_non_input_bearing(
+    capsys,
+) -> None:
+    parser = _preview_parser()
+    help_text = f"{build_parser().format_help()}\n{parser.format_help()}"
+
+    assert "--include-research-data-source-readiness" not in help_text
+    assert "--include-research-data-source-readiness" not in _option_text(parser)
+    assert _positional_rows(parser) == ()
+    assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
+
+    json_stdout = _run_preview_cli(
+        (
+            _COMMAND,
+            "--include-research-data-source-readiness",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    readiness = _single_branch(payload, "research_data_source_readiness")
+
+    assert payload["research_data_source_readiness_count"] == 1
+    assert readiness["contract_type"] == "research_data_source_readiness"
+    assert readiness["readiness_state"] == "candidate_only"
+    assert readiness["source_id"] == "synthetic-broad-etf-source-candidate"
+    assert readiness["missing_controls"] == [
+        "terms_review_documented",
+        "snapshot_provenance_defined",
+        "redistribution_policy_reviewed",
+        "adjustment_policy_defined",
+        "fixture_policy_review_documented",
+    ]
+
+    for argv in (
+        (_COMMAND, "--include-research-data-source-readiness=true"),
+        (_COMMAND, "--include-research-data-source-readiness", "true"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert captured.out == ""
+        assert (
+            "ignored explicit argument" in captured.err
+            or "unrecognized arguments:" in captured.err
+        )
+        assert "true" in captured.err
 
 
 def test_preview_module_is_synthetic_only_and_has_no_external_chains() -> None:
