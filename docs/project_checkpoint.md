@@ -13251,6 +13251,18 @@ Safe next tasks include:
   This phase changes no production source and adds no real data ingestion,
   source selection, source/vendor approval, runtime, persistence, broker,
   network, backtest, or trading behavior.
+- Phase 277 - Research Data Source Readiness Summary Observation adds
+  `ResearchDataSourceReadinessSummary`, a tiny metadata-only summary over an
+  exact `ResearchDataSourceReadiness` object. It preserves source object
+  identity, mirrors readiness state into `summary_state`, counts required,
+  satisfied, and builder-computed missing controls from existing source fields
+  only, and emits sorted diagnostic limitations as primitive deterministic
+  metadata without nesting the source payload. Focused tests pin exact type
+  rejection, frozen/slotted shape, primitive deterministic output, repeated
+  build equality with distinct source identities, and dependency/import/call/
+  token guardrails. This phase adds no real data ingestion, source selection,
+  source/vendor approval, runtime, persistence, broker, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -18,9 +18,16 @@ from algotrader.research.research_data_source_readiness import (
 
 
 SOURCE_PATH = Path("src/algotrader/research/research_data_source_readiness.py")
+SUMMARY_SOURCE_PATH = Path(
+    "src/algotrader/research/research_data_source_readiness_summary.py"
+)
 EXPECTED_PUBLIC_SURFACE = [
     "ResearchDataSourceReadiness",
     "build_research_data_source_readiness",
+]
+EXPECTED_SUMMARY_PUBLIC_SURFACE = [
+    "ResearchDataSourceReadinessSummary",
+    "build_research_data_source_readiness_summary",
 ]
 EXPECTED_BUILDER_PARAMS = [
     "source_id",
@@ -56,6 +63,17 @@ EXPECTED_IMPORT_STATEMENTS = [
     ("from", "__future__", (("annotations", None),), 0),
     ("from", "dataclasses", (("dataclass", None),), 0),
     ("from", "algotrader.errors", (("ValidationError", None),), 0),
+]
+EXPECTED_SUMMARY_IMPORT_STATEMENTS = [
+    ("from", "__future__", (("annotations", None),), 0),
+    ("from", "dataclasses", (("dataclass", None),), 0),
+    ("from", "algotrader.errors", (("ValidationError", None),), 0),
+    (
+        "from",
+        "algotrader.research.research_data_source_readiness",
+        (("ResearchDataSourceReadiness", None),),
+        0,
+    ),
 ]
 FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
@@ -274,6 +292,40 @@ def test_source_has_no_forbidden_dependency_or_behavior_tokens() -> None:
     )
 
 
+def test_summary_source_imports_only_readiness_and_safe_stdlib() -> None:
+    source = _source_text_from_path(SUMMARY_SOURCE_PATH)
+    tree = _source_tree_from_path(SUMMARY_SOURCE_PATH)
+
+    assert _import_statements(tree) == EXPECTED_SUMMARY_IMPORT_STATEMENTS
+    assert _matching_imports(_imported_modules(tree), FORBIDDEN_IMPORT_PREFIXES) == []
+    assert _public_defs(tree) == set(EXPECTED_SUMMARY_PUBLIC_SURFACE)
+    assert _source_token_matches(source, FORBIDDEN_SOURCE_TOKENS) == []
+    assert _source_token_matches(
+        source,
+        FORBIDDEN_BEHAVIOR_TOKENS,
+        allow_negative_advisory=True,
+    ) == []
+    assert _call_names(tree).isdisjoint(
+        {
+            "__import__",
+            "Path",
+            "datetime.now",
+            "eval",
+            "exec",
+            "getenv",
+            "open",
+            "os.getenv",
+            "random",
+            "read_text",
+            "requests.get",
+            "socket.socket",
+            "time.time",
+            "uuid4",
+            "write",
+        }
+    )
+
+
 def test_behavior_rejects_unknown_duplicates_missing_metadata_and_authority() -> None:
     with pytest.raises(ValidationError, match="satisfied_controls"):
         _build_contract(satisfied_controls=["terms_review", "unknown_control"])
@@ -412,6 +464,14 @@ def _source_text() -> str:
 
 def _source_tree() -> ast.Module:
     return ast.parse(_source_text(), filename=str(SOURCE_PATH))
+
+
+def _source_text_from_path(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
+
+
+def _source_tree_from_path(path: Path) -> ast.Module:
+    return ast.parse(_source_text_from_path(path), filename=str(path))
 
 
 def _import_statements(tree: ast.AST) -> list[tuple[str, str, tuple[tuple[str, str | None], ...], int]]:

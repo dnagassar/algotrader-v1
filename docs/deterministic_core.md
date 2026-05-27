@@ -7662,6 +7662,19 @@ Phase 276 changes no production source and adds no real data ingestion, source
 selection, source/vendor approval, runtime, persistence, broker, network,
 backtest, or trading behavior.
 
+Phase 277 - Research Data Source Readiness Summary Observation adds a tiny
+metadata-only `ResearchDataSourceReadinessSummary` contract over an exact
+`ResearchDataSourceReadiness` object. The summary preserves source object
+identity, mirrors the existing readiness state into `summary_state`, counts
+required, satisfied, and builder-computed missing controls from the source
+object only, and emits sorted diagnostic limitations as primitive deterministic
+metadata without serializing a nested source payload. Focused tests pin exact
+type rejection for subclasses and lookalikes, frozen/slotted immutability,
+primitive `to_dict()` output, deterministic repeated builds with distinct
+source identities, and dependency/import/call/token guardrails. Phase 277 adds
+no real data ingestion, source selection, source/vendor approval, runtime,
+persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

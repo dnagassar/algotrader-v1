@@ -13,6 +13,8 @@ __all__ = [
     "expected_synthetic_research_data_source_readiness_export_snapshot_dict",
     "expected_synthetic_research_data_source_readiness_export_snapshot_json",
     "expected_synthetic_research_data_source_readiness_json",
+    "expected_synthetic_research_data_source_readiness_summary_dict",
+    "expected_synthetic_research_data_source_readiness_summary_json",
 ]
 
 
@@ -93,5 +95,32 @@ def expected_synthetic_research_data_source_readiness_export_snapshot_json() -> 
     """Return compact sorted-key JSON for the synthetic export snapshot."""
 
     payload = expected_synthetic_research_data_source_readiness_export_snapshot_dict()
+
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def expected_synthetic_research_data_source_readiness_summary_dict() -> (
+    dict[str, object]
+):
+    """Return the synthetic readiness summary as primitive metadata."""
+
+    readiness = expected_synthetic_research_data_source_readiness()
+
+    return {
+        "summary_type": "research_data_source_readiness_summary",
+        "schema_version": "1",
+        "summary_scope": "advisory_metadata_only",
+        "summary_state": readiness.readiness_state,
+        "required_control_count": len(readiness.required_controls),
+        "satisfied_control_count": len(readiness.satisfied_controls),
+        "missing_control_count": len(readiness.missing_controls),
+        "diagnostic_limitations": sorted(_LIMITATIONS),
+    }
+
+
+def expected_synthetic_research_data_source_readiness_summary_json() -> str:
+    """Return compact sorted-key JSON for the synthetic readiness summary."""
+
+    payload = expected_synthetic_research_data_source_readiness_summary_dict()
 
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
