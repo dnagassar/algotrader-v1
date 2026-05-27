@@ -7577,6 +7577,19 @@ It adds no real data ingestion, source approval, CLI/renderer/broker/runtime/
 vendor/network/persistence/backtest/trading behavior, strategy evaluation, or
 capital authority.
 
+Phase 270 - Research Data Source Readiness Dependency Guard adds
+`tests.unit.test_research_data_source_readiness_dependency`, a focused test-only
+AST/source guard for the Phase 269 contract. It pins imports and public surface,
+verifies frozen/slotted dataclass shape, keyword-only builder metadata, fixed
+contract metadata, exact readiness states, derived missing controls, duplicate
+and unknown-control rejection, required limitations and negative non-claims,
+negative-only authority/trading language, primitive deterministic `to_dict()`
+output, and no file/path/env/network/vendor/broker/runtime/persistence/
+backtest/trading dependency tokens. Phase 270 changes no production source and
+adds no real data ingestion, CLI/renderer/broker/runtime/vendor/network/
+persistence/backtest/trading behavior, approval authority, or capital
+authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
