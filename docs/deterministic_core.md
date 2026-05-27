@@ -7445,6 +7445,25 @@ persistence, network/API access, scheduler/dashboard behavior, ML/LLM/agent
 behavior, timestamps, randomness, global state, hidden I/O, capital authority,
 trading authority, or deserialization behavior.
 
+Phase 261 - Advisory Package Research Observation Manifest Dependency Guard adds
+`tests.unit.test_advisory_operating_brief_package_manifest_dependency`, a focused
+test-only AST/source guard for the Phase 260 package and synthetic preview
+manifest attachment. The guard pins the package builder to the generic
+`ResearchObservationManifest` contract without manifest snapshot or SMA export
+coupling, checks the optional manifest exact-type boundary and optional
+serialization, verifies the synthetic preview builds the one-entry manifest from
+the included SMA return research pipeline observation payload, and asserts
+compact sorted-key JSON determinism.
+
+Phase 261 changes no production source and adds no CLI flags, renderer behavior,
+storage behavior, file/path/env/config/network inputs, evaluator/signal/trading
+behavior, portfolio/cash/equity/PnL state, allocation/order/fill behavior,
+benchmark comparison, backtest output, approval/readiness/recommendation
+authority, broker/runtime/vendor dependency, real data input, persistence,
+network/API access, scheduler/dashboard behavior, ML/LLM/agent behavior,
+timestamps, randomness, global state, hidden I/O, capital authority, trading
+authority, or deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
