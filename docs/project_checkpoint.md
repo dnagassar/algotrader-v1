@@ -13220,6 +13220,17 @@ Safe next tasks include:
   text output, and adds no real data ingestion, source/vendor approval, CLI
   options, broker/order/fill/portfolio/backtest/runtime/persistence/credential/
   network, or trading behavior.
+- Phase 274 - Advisory Content Bundle CLI Data Source Readiness Preview adds a
+  hidden synthetic-only `--include-research-data-source-readiness` flag to the
+  advisory operating brief content bundle preview. Defaults stay byte-stable;
+  the explicit flag renders or exports the existing readiness diagnostic branch
+  with builder-computed `missing_controls`, deterministic branch order, and
+  compact sorted-key JSON. Focused tests pin default stability, text/JSON
+  output, repeated determinism, visible option-surface restrictions, and no
+  broker/order/fill/portfolio/backtest/runtime/vendor/network/credential
+  fields. This phase adds no real data ingestion, source selection, vendor
+  access, approval semantics, runtime, persistence, broker, network, backtest,
+  or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -7624,6 +7624,19 @@ backtest/runtime/vendor/network/credential fields. Phase 273 adds no real data
 ingestion, source/vendor approval, CLI options, runtime, persistence, broker,
 backtest, order, portfolio, credential, network, or trading behavior.
 
+Phase 274 - Advisory Content Bundle CLI Data Source Readiness Preview adds a
+hidden synthetic-only `--include-research-data-source-readiness` flag to the
+advisory operating brief content bundle preview. Default CLI output remains
+unchanged; the explicit flag adds the existing readiness diagnostic branch in
+text or compact sorted-key JSON, preserves deterministic branch order, and
+keeps `missing_controls` computed by `build_research_data_source_readiness`.
+Focused tests pin default stability, text/JSON readiness output,
+byte-for-byte repeated determinism, visible option-surface restrictions, and
+absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+credential fields. Phase 274 adds no real data ingestion, source selection,
+vendor access, approval semantics, runtime, persistence, broker, network,
+backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

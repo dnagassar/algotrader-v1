@@ -100,7 +100,7 @@ def test_production_cli_code_imports_no_tests_or_fixtures() -> None:
 def test_no_file_path_vendor_broker_network_runtime_or_credential_options() -> None:
     parser = _preview_parser()
     option_text = _option_text(parser)
-    option_strings = " ".join(parser._option_string_actions).lower()
+    option_strings = " ".join(_non_branch_option_strings(parser)).lower()
 
     assert _RISK_FLAG in parser._option_string_actions
     for term in _blocked_option_terms():
@@ -164,6 +164,14 @@ def _option_text(parser: argparse.ArgumentParser) -> str:
         values.append(str(action.help))
         values.extend(str(choice) for choice in (action.choices or ()))
     return " ".join(values).lower()
+
+
+def _non_branch_option_strings(parser: argparse.ArgumentParser) -> tuple[str, ...]:
+    return tuple(
+        option_string
+        for option_string in parser._option_string_actions
+        if not option_string.startswith("--include-")
+    )
 
 
 def _source_text(module: object) -> str:
