@@ -7556,6 +7556,14 @@ no mutation, one-entry SMA pipeline manifest metadata, bounded imports, and no
 CLI/renderer/broker/runtime/vendor/network/persistence/data-ingestion/trading
 behavior changes.
 
+Phase 268 - Advisory Package Audit Snapshot Export Dependency Guard adds
+`tests.unit.test_advisory_operating_brief_package_audit_snapshot_export_dependency`,
+a test-only AST/source guard for the Phase 267 audit snapshot helper. It pins
+the helper to metadata-only imports, the Phase 263 manifest export helper,
+compact sorted-key JSON SHA-256 digests, exact snapshot keys, deterministic
+synthetic behavior, and no production source, CLI/renderer/broker/runtime/
+vendor/network/persistence/data-ingestion/trading behavior changes.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
