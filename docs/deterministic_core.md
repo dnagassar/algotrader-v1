@@ -7675,6 +7675,21 @@ source identities, and dependency/import/call/token guardrails. Phase 277 adds
 no real data ingestion, source selection, source/vendor approval, runtime,
 persistence, broker, network, backtest, or trading behavior.
 
+Phase 278 - Research Data Source Readiness Summary Fixture and Export Snapshot
+adds synthetic fixture helpers and focused export snapshot coverage for the
+Phase 277 summary contract. The fixture helpers build through the production
+summary builder supplied by the caller, use the existing synthetic
+`ResearchDataSourceReadiness` fixture, preserve source object identity when a
+source fixture is supplied, and export primitive snapshot dicts equal to
+`summary.to_dict()`. Focused tests pin compact sorted-key JSON, byte-stable
+repeated output, summary state, required/satisfied/missing control counts,
+diagnostic limitations, fresh primitive payload copies, and absence of source
+wrappers, raw payloads, clocks, digests, approval fields, broker/order/fill/
+portfolio/backtest/runtime fields, or trading behavior. Phase 278 changes no
+production source and adds no real data ingestion, source selection,
+source/vendor approval, runtime, persistence, broker, network, backtest, or
+trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

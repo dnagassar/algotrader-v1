@@ -20,6 +20,7 @@ from algotrader.research.research_data_source_readiness_summary import (
 )
 from tests.fixtures.research_data_source_readiness import (
     expected_synthetic_research_data_source_readiness,
+    expected_synthetic_research_data_source_readiness_summary,
     expected_synthetic_research_data_source_readiness_summary_dict,
     expected_synthetic_research_data_source_readiness_summary_json,
 )
@@ -197,7 +198,35 @@ def test_builder_accepts_exact_readiness_and_preserves_identity() -> None:
     assert type(summary) is ResearchDataSourceReadinessSummary
     assert summary.source_readiness is source
     assert summary.to_dict() == (
-        expected_synthetic_research_data_source_readiness_summary_dict()
+        expected_synthetic_research_data_source_readiness_summary_dict(
+            build_research_data_source_readiness_summary
+        )
+    )
+
+
+def test_fixture_builds_summary_through_production_builder() -> None:
+    source = expected_synthetic_research_data_source_readiness()
+    calls: list[ResearchDataSourceReadiness] = []
+
+    def tracked_builder(
+        source_readiness: ResearchDataSourceReadiness,
+    ) -> ResearchDataSourceReadinessSummary:
+        calls.append(source_readiness)
+        return build_research_data_source_readiness_summary(source_readiness)
+
+    summary = expected_synthetic_research_data_source_readiness_summary(
+        tracked_builder,
+        source,
+    )
+
+    assert type(summary) is ResearchDataSourceReadinessSummary
+    assert calls == [source]
+    assert summary.source_readiness is source
+    assert summary.to_dict() == (
+        expected_synthetic_research_data_source_readiness_summary_dict(
+            build_research_data_source_readiness_summary,
+            source,
+        )
     )
 
 
@@ -347,14 +376,18 @@ def test_to_dict_is_primitive_deterministic_and_has_no_source_wrapper() -> None:
 
     assert list(first) == EXPECTED_KEYS
     assert first == second
-    assert first == expected_synthetic_research_data_source_readiness_summary_dict()
+    assert first == expected_synthetic_research_data_source_readiness_summary_dict(
+        build_research_data_source_readiness_summary
+    )
     assert _primitive_only(first)
     assert "source_readiness" not in first
     assert "source_readiness" not in _payload_keys(first)
     assert first["diagnostic_limitations"] is not second["diagnostic_limitations"]
 
     first["diagnostic_limitations"].append("mutated copy")
-    assert second == expected_synthetic_research_data_source_readiness_summary_dict()
+    assert second == expected_synthetic_research_data_source_readiness_summary_dict(
+        build_research_data_source_readiness_summary
+    )
 
 
 def test_compact_sorted_json_is_byte_deterministic() -> None:
@@ -366,12 +399,14 @@ def test_compact_sorted_json_is_byte_deterministic() -> None:
 
     assert first_json == second_json
     assert first_json == (
-        expected_synthetic_research_data_source_readiness_summary_json().encode(
-            "utf-8"
-        )
+        expected_synthetic_research_data_source_readiness_summary_json(
+            build_research_data_source_readiness_summary
+        ).encode("utf-8")
     )
     assert json.loads(first_json.decode("utf-8")) == (
-        expected_synthetic_research_data_source_readiness_summary_dict()
+        expected_synthetic_research_data_source_readiness_summary_dict(
+            build_research_data_source_readiness_summary
+        )
     )
 
 
@@ -400,7 +435,9 @@ def test_source_readiness_payload_is_unchanged_by_summary_build() -> None:
 
     assert after_build == before
     assert after_summary_serialization == before
-    assert after_dict == expected_synthetic_research_data_source_readiness_summary_dict()
+    assert after_dict == expected_synthetic_research_data_source_readiness_summary_dict(
+        build_research_data_source_readiness_summary
+    )
     assert "source_readiness" not in after_dict
 
 

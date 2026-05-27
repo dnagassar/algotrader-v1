@@ -13263,6 +13263,20 @@ Safe next tasks include:
   token guardrails. This phase adds no real data ingestion, source selection,
   source/vendor approval, runtime, persistence, broker, network, backtest, or
   trading behavior.
+- Phase 278 - Research Data Source Readiness Summary Fixture and Export
+  Snapshot adds synthetic fixture helpers and focused export snapshot coverage
+  for `ResearchDataSourceReadinessSummary`. The helpers build through the
+  production summary builder supplied by the caller, use the existing
+  synthetic `ResearchDataSourceReadiness` fixture, preserve source object
+  identity when a source fixture is supplied, and export primitive snapshot
+  dicts equal to `summary.to_dict()`. Focused tests pin compact sorted-key
+  JSON, byte-stable repeated output, summary state, required/satisfied/missing
+  control counts, diagnostic limitations, fresh primitive payload copies, and
+  absence of source wrappers, raw payloads, clocks, digests, approval fields,
+  broker/order/fill/portfolio/backtest/runtime fields, or trading behavior.
+  This phase changes no production source and adds no real data ingestion,
+  source selection, source/vendor approval, runtime, persistence, broker,
+  network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
