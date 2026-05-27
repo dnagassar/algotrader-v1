@@ -9,6 +9,8 @@ from tests.fixtures import research_data_source_readiness as fixture_module
 from tests.fixtures.research_data_source_readiness import (
     expected_synthetic_research_data_source_readiness,
     expected_synthetic_research_data_source_readiness_dict,
+    expected_synthetic_research_data_source_readiness_export_snapshot_dict,
+    expected_synthetic_research_data_source_readiness_export_snapshot_json,
     expected_synthetic_research_data_source_readiness_json,
 )
 
@@ -181,6 +183,20 @@ def test_json_fixture_returns_compact_sorted_key_json() -> None:
     assert expected_synthetic_research_data_source_readiness_json() == expected_json
 
 
+def test_export_snapshot_fixture_returns_existing_dict_and_json_payloads() -> None:
+    payload = expected_synthetic_research_data_source_readiness_dict()
+    expected_json = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+    assert (
+        expected_synthetic_research_data_source_readiness_export_snapshot_dict()
+        == payload
+    )
+    assert (
+        expected_synthetic_research_data_source_readiness_export_snapshot_json()
+        == expected_json
+    )
+
+
 def test_repeated_fixture_calls_are_deterministic() -> None:
     first_object = expected_synthetic_research_data_source_readiness()
     second_object = expected_synthetic_research_data_source_readiness()
@@ -188,12 +204,27 @@ def test_repeated_fixture_calls_are_deterministic() -> None:
     second_payload = expected_synthetic_research_data_source_readiness_dict()
     first_json = expected_synthetic_research_data_source_readiness_json()
     second_json = expected_synthetic_research_data_source_readiness_json()
+    first_export_payload = (
+        expected_synthetic_research_data_source_readiness_export_snapshot_dict()
+    )
+    second_export_payload = (
+        expected_synthetic_research_data_source_readiness_export_snapshot_dict()
+    )
+    first_export_json = (
+        expected_synthetic_research_data_source_readiness_export_snapshot_json()
+    )
+    second_export_json = (
+        expected_synthetic_research_data_source_readiness_export_snapshot_json()
+    )
 
     assert first_object == second_object
     assert first_object is not second_object
     assert first_payload == second_payload
     assert first_payload is not second_payload
     assert first_json == second_json
+    assert first_export_payload == second_export_payload
+    assert first_export_payload is not second_export_payload
+    assert first_export_json == second_export_json
 
 
 def test_fixture_payload_is_primitive_json_round_trippable() -> None:

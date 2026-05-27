@@ -13201,6 +13201,15 @@ Safe next tasks include:
   CLI/renderer/broker/runtime/vendor/network/persistence/backtest/trading
   behavior, data-source authorization, approval authority, or capital
   authority.
+- Phase 272 - Research Data Source Readiness Export Snapshot adds test-only
+  export snapshot helpers on the synthetic readiness fixture and
+  `tests.unit.test_research_data_source_readiness_export`. The snapshot dict is
+  exactly the existing primitive `to_dict()` payload, the JSON helper keeps
+  compact sorted-key serialization, and focused tests pin byte stability,
+  fresh equal payloads, builder-derived missing controls, and absence of
+  wrapper, clock, digest, or raw payload fields. This phase changes no
+  production source and adds no real data ingestion, CLI/renderer/broker/
+  runtime/vendor/network/persistence/backtest/trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

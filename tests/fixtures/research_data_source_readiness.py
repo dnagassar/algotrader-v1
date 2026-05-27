@@ -10,6 +10,8 @@ from algotrader.research.research_data_source_readiness import (
 __all__ = [
     "expected_synthetic_research_data_source_readiness",
     "expected_synthetic_research_data_source_readiness_dict",
+    "expected_synthetic_research_data_source_readiness_export_snapshot_dict",
+    "expected_synthetic_research_data_source_readiness_export_snapshot_json",
     "expected_synthetic_research_data_source_readiness_json",
 ]
 
@@ -75,5 +77,21 @@ def expected_synthetic_research_data_source_readiness_json() -> str:
     """Return compact sorted-key JSON for the synthetic readiness contract."""
 
     payload = expected_synthetic_research_data_source_readiness_dict()
+
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def expected_synthetic_research_data_source_readiness_export_snapshot_dict() -> (
+    dict[str, object]
+):
+    """Return the synthetic readiness export snapshot as primitive metadata."""
+
+    return expected_synthetic_research_data_source_readiness_dict()
+
+
+def expected_synthetic_research_data_source_readiness_export_snapshot_json() -> str:
+    """Return compact sorted-key JSON for the synthetic export snapshot."""
+
+    payload = expected_synthetic_research_data_source_readiness_export_snapshot_dict()
 
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))

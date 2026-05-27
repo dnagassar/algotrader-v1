@@ -7601,6 +7601,16 @@ and negative non-claims, and adds no production source, real data ingestion,
 CLI/renderer/broker/runtime/vendor/network/persistence/backtest/trading
 behavior, approval authority, data-source authorization, or capital authority.
 
+Phase 272 - Research Data Source Readiness Export Snapshot adds test-only
+export snapshot helpers to `tests.fixtures.research_data_source_readiness` plus
+`tests.unit.test_research_data_source_readiness_export`. The snapshot dict is
+exactly the existing primitive `to_dict()` fixture payload, and the JSON helper
+serializes that payload with compact sorted keys. Focused tests pin byte-stable
+JSON, fresh equal primitive payloads, builder-derived missing controls, and the
+absence of wrapper, clock, digest, or raw payload fields. Phase 272 changes no
+production source and adds no real data ingestion, CLI/renderer/broker/runtime/
+vendor/network/persistence/backtest/trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
