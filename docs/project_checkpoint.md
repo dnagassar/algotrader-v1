@@ -13089,6 +13089,24 @@ Safe next tasks include:
   network/socket/API access, scheduler/dashboard behavior, ML, LLM/agent
   behavior, timestamps, randomness, global state, hidden I/O, capital authority,
   trading authority, or deserialization behavior.
+- Phase 263 - Advisory Package Research Observation Manifest Export Helper adds
+  `export_advisory_operating_brief_package_research_observation_manifest`, a
+  tiny deterministic package-level helper that accepts only exact
+  `AdvisoryOperatingBriefPackage` objects, requires an existing
+  `research_observation_manifest`, and returns the manifest's primitive
+  `to_dict()` payload unchanged. Focused tests prove exact-type rejection,
+  unchanged manifest payload export, identity preservation, primitive JSON
+  round-tripping, compact sorted-key JSON determinism, the single
+  `sma_return_research_pipeline_observation` entry, digest alignment with the
+  included SMA observation payload, and dependency-boundary constraints. This
+  phase adds no CLI flags, renderer behavior, package builder behavior,
+  synthetic builder behavior, storage behavior, file/path/env/config/network
+  inputs, evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+  allocation/order/fill behavior, benchmark comparison, backtest output,
+  approval/readiness/recommendation authority, broker/runtime/vendor dependency,
+  real data input, persistence, network/socket/API access, scheduler/dashboard
+  behavior, ML, LLM/agent behavior, timestamps, randomness, global state,
+  hidden I/O, capital authority, trading authority, or deserialization behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

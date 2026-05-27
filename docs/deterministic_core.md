@@ -7483,6 +7483,24 @@ real data input, persistence, network/API access, scheduler/dashboard behavior,
 ML/LLM/agent behavior, timestamps, randomness, global state, hidden I/O, capital
 authority, trading authority, or deserialization behavior.
 
+Phase 263 - Advisory Package Research Observation Manifest Export Helper adds a
+tiny package-level helper,
+`export_advisory_operating_brief_package_research_observation_manifest`, that
+accepts only exact `AdvisoryOperatingBriefPackage` objects, requires an existing
+`research_observation_manifest`, and returns that manifest's primitive
+`to_dict()` payload unchanged. The helper does not rebuild the package or
+manifest and is guarded with focused deterministic JSON, digest, exact-type, and
+dependency-boundary tests.
+
+Phase 263 adds no CLI flags, renderer behavior, package builder behavior,
+synthetic builder behavior, storage behavior, file/path/env/config/network
+inputs, evaluator/signal/trading behavior, portfolio/cash/equity/PnL state,
+allocation/order/fill behavior, benchmark comparison, backtest output,
+approval/readiness/recommendation authority, broker/runtime/vendor dependency,
+real data input, persistence, network/API access, scheduler/dashboard behavior,
+ML/LLM/agent behavior, timestamps, randomness, global state, hidden I/O, capital
+authority, trading authority, or deserialization behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
