@@ -7735,6 +7735,17 @@ preview behavior remains unchanged. Phase 281 changes no production source and
 adds no real data ingestion, source selection, source/vendor approval, runtime,
 persistence, broker, network, backtest, or trading behavior.
 
+Phase 282 - Advisory Readiness Summary Integration Dependency Guard adds
+test-only dependency/source guard coverage for the
+`ResearchDataSourceReadinessSummary` integration paths. The focused guards pin
+metadata-only content bundle summary inclusion, diagnostic-only renderer
+wording, synthetic package summary inclusion, hidden boolean-only CLI preview
+handling, exact primitive summary payload shape, and source/AST checks against
+broker/runtime/vendor/network/persistence/backtest/trading calls, fields, and
+positive approval vocabulary. Phase 282 changes no production source and adds
+no real data ingestion, source selection, source/vendor approval, runtime,
+persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -13317,6 +13317,16 @@ Safe next tasks include:
   `--format text|json`. This phase changes no production source and adds no
   real data ingestion, source selection, source/vendor approval, runtime,
   persistence, broker, network, backtest, or trading behavior.
+- Phase 282 - Advisory Readiness Summary Integration Dependency Guard adds
+  test-only source/AST dependency guard coverage for
+  `ResearchDataSourceReadinessSummary` integration paths. It pins the content
+  bundle summary branch as metadata-only, renderer output as diagnostic and
+  negative, package synthetic inclusion as deterministic and authority-free,
+  CLI preview handling as hidden boolean-only and non-input-bearing, and
+  forbidden import/token/call/vocabulary scans across the targeted paths. This
+  phase changes no production source and adds no real data ingestion, source
+  selection, source/vendor approval, runtime, persistence, broker, network,
+  backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

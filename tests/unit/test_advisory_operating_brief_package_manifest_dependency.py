@@ -372,6 +372,16 @@ _EXPECTED_READINESS_PAYLOAD_KEYS = (
     "limitations",
     "non_claims",
 )
+_EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
+    "summary_type",
+    "schema_version",
+    "summary_scope",
+    "summary_state",
+    "required_control_count",
+    "satisfied_control_count",
+    "missing_control_count",
+    "diagnostic_limitations",
+)
 _FORBIDDEN_READINESS_PAYLOAD_KEYS = {
     "account",
     "approved",
@@ -393,6 +403,13 @@ _FORBIDDEN_READINESS_PAYLOAD_KEYS = {
     "trading_ready",
     "vendor",
     "wrapper",
+}
+_FORBIDDEN_READINESS_SUMMARY_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
+    "approval_status",
+    "authorization_status",
+    "raw_payload",
+    "source_authorized",
+    "source_readiness",
 }
 _PACKAGE_SOURCE_TOKEN_ALLOWLIST = {
     "account": ('"account",',),
@@ -576,6 +593,38 @@ def test_synthetic_package_includes_readiness_as_synthetic_diagnostic_metadata()
     )
     assert all(str(value).startswith("no ") for value in readiness["non_claims"])
     assert "research_data_source_readiness" not in _compact_sorted_json(manifest_payload)
+
+
+def test_synthetic_package_includes_readiness_summary_as_diagnostic_metadata() -> None:
+    package = build_synthetic_advisory_operating_brief_package_preview()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    summary = _dict(
+        _single(_list(content_bundle["research_data_source_readiness_summaries"]))
+    )
+    manifest_payload = _dict(payload["research_observation_manifest"])
+
+    assert _package_content_bundle_includes_readiness_summary_builder(
+        SYNTHETIC_SOURCE_PATH
+    )
+    assert content_bundle["research_data_source_readiness_summary_count"] == 1
+    assert tuple(summary) == _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS
+    assert summary["summary_type"] == "research_data_source_readiness_summary"
+    assert summary["schema_version"] == "1"
+    assert summary["summary_scope"] == "advisory_metadata_only"
+    assert summary["summary_state"] == "candidate_only"
+    assert summary["required_control_count"] == 6
+    assert summary["satisfied_control_count"] == 1
+    assert summary["missing_control_count"] == 5
+    assert summary["diagnostic_limitations"] == [
+        "Fixture carries no observations, values, or external source content.",
+        "Fixture is synthetic metadata only and not connected to real data.",
+    ]
+    assert set(summary).isdisjoint(_FORBIDDEN_READINESS_SUMMARY_PAYLOAD_KEYS)
+    assert "source_readiness" not in summary
+    assert "research_data_source_readiness_summary" not in _compact_sorted_json(
+        manifest_payload
+    )
 
 
 def test_synthetic_preview_manifest_output_is_byte_deterministic() -> None:
@@ -897,6 +946,30 @@ def _package_content_bundle_includes_readiness_builder(path: Path) -> bool:
             return _contains_call(
                 function_def,
                 "_build_package_research_data_source_readiness",
+            ) and _contains_name(keyword.value, "data_source_readiness")
+
+    return False
+
+
+def _package_content_bundle_includes_readiness_summary_builder(path: Path) -> bool:
+    function_def = _function_def_from_path(
+        path,
+        "_build_synthetic_package_content_bundle",
+    )
+    if function_def is None:
+        return False
+
+    for node in ast.walk(function_def):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) != "build_advisory_operating_brief_content_bundle":
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "research_data_source_readiness_summaries":
+                continue
+            return _contains_call(
+                function_def,
+                "_build_package_research_data_source_readiness_summary",
             ) and _contains_name(keyword.value, "data_source_readiness")
 
     return False

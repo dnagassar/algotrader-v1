@@ -11,9 +11,16 @@ import pytest
 
 from algotrader.errors import ValidationError
 from algotrader.research import research_data_source_readiness as readiness_module
+from algotrader.research import (
+    research_data_source_readiness_summary as summary_module,
+)
 from algotrader.research.research_data_source_readiness import (
     ResearchDataSourceReadiness,
     build_research_data_source_readiness,
+)
+from algotrader.research.research_data_source_readiness_summary import (
+    ResearchDataSourceReadinessSummary,
+    build_research_data_source_readiness_summary,
 )
 
 
@@ -55,6 +62,16 @@ EXPECTED_TO_DICT_KEYS = [
     "evidence_refs",
     "limitations",
     "non_claims",
+]
+EXPECTED_SUMMARY_TO_DICT_KEYS = [
+    "summary_type",
+    "schema_version",
+    "summary_scope",
+    "summary_state",
+    "required_control_count",
+    "satisfied_control_count",
+    "missing_control_count",
+    "diagnostic_limitations",
 ]
 
 # Phase 269 intentionally needs only deterministic stdlib/type support plus
@@ -190,6 +207,30 @@ OUTPUT_FORBIDDEN_TOKENS = (
     "secret",
     "trading authority",
 )
+SUMMARY_OUTPUT_FORBIDDEN_KEYS = {
+    "account",
+    "approval_status",
+    "authorization",
+    "authorization_status",
+    "broker",
+    "credential",
+    "digest",
+    "endpoint",
+    "fill",
+    "order",
+    "portfolio",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "source_payload",
+    "source_readiness",
+    "timestamp",
+    "token",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
 OUTPUT_PATH_PATTERNS = (
     re.compile(r"[A-Za-z]:\\"),
     re.compile(r"(^|[ \t])[/\\][A-Za-z0-9_.-]"),
@@ -295,10 +336,16 @@ def test_source_has_no_forbidden_dependency_or_behavior_tokens() -> None:
 def test_summary_source_imports_only_readiness_and_safe_stdlib() -> None:
     source = _source_text_from_path(SUMMARY_SOURCE_PATH)
     tree = _source_tree_from_path(SUMMARY_SOURCE_PATH)
+    class_node = _class_node(tree, "ResearchDataSourceReadinessSummary")
 
     assert _import_statements(tree) == EXPECTED_SUMMARY_IMPORT_STATEMENTS
     assert _matching_imports(_imported_modules(tree), FORBIDDEN_IMPORT_PREFIXES) == []
+    assert summary_module.__all__ == EXPECTED_SUMMARY_PUBLIC_SURFACE
     assert _public_defs(tree) == set(EXPECTED_SUMMARY_PUBLIC_SURFACE)
+    assert is_dataclass(ResearchDataSourceReadinessSummary)
+    assert ResearchDataSourceReadinessSummary.__dataclass_params__.frozen is True
+    assert not hasattr(_build_summary(), "__dict__")
+    assert _dataclass_keyword_values(class_node) == {"frozen": True, "slots": True}
     assert _source_token_matches(source, FORBIDDEN_SOURCE_TOKENS) == []
     assert _source_token_matches(
         source,
@@ -324,6 +371,47 @@ def test_summary_source_imports_only_readiness_and_safe_stdlib() -> None:
             "write",
         }
     )
+
+
+def test_summary_builder_is_source_derived_diagnostic_and_payload_only() -> None:
+    source = _build_contract(
+        required_controls=["terms_review", "schema_review", "quality_review"],
+        satisfied_controls=["terms_review"],
+        limitations=[
+            "z synthetic diagnostic limit",
+            "a synthetic diagnostic limit",
+        ],
+    )
+    summary = build_research_data_source_readiness_summary(source)
+    payload = summary.to_dict()
+    repeated_payload = build_research_data_source_readiness_summary(source).to_dict()
+
+    assert summary.source_readiness is source
+    assert list(payload) == EXPECTED_SUMMARY_TO_DICT_KEYS
+    assert payload == {
+        "summary_type": "research_data_source_readiness_summary",
+        "schema_version": "1",
+        "summary_scope": "advisory_metadata_only",
+        "summary_state": "candidate_only",
+        "required_control_count": 3,
+        "satisfied_control_count": 1,
+        "missing_control_count": 2,
+        "diagnostic_limitations": [
+            "a synthetic diagnostic limit",
+            "z synthetic diagnostic limit",
+        ],
+    }
+    assert payload == repeated_payload
+    assert _primitive_only(payload)
+    assert _payload_keys(payload).isdisjoint(SUMMARY_OUTPUT_FORBIDDEN_KEYS)
+    assert _output_safety_violations(payload) == []
+
+    for value in (
+        source.to_dict(),
+        _ReadinessLookalike(source),
+    ):
+        with pytest.raises(ValidationError, match="source_readiness"):
+            build_research_data_source_readiness_summary(value)
 
 
 def test_behavior_rejects_unknown_duplicates_missing_metadata_and_authority() -> None:
@@ -456,6 +544,29 @@ def _direct_contract(**overrides: object) -> ResearchDataSourceReadiness:
     params.update(overrides)
 
     return ResearchDataSourceReadiness(**params)
+
+
+def _build_summary(**overrides: object) -> ResearchDataSourceReadinessSummary:
+    source = _build_contract(**overrides)
+
+    return build_research_data_source_readiness_summary(source)
+
+
+class _ReadinessLookalike:
+    def __init__(self, source: ResearchDataSourceReadiness) -> None:
+        self.contract_type = source.contract_type
+        self.schema_version = source.schema_version
+        self.source_id = source.source_id
+        self.source_name = source.source_name
+        self.asset_class_scope = source.asset_class_scope
+        self.intended_use = source.intended_use
+        self.readiness_state = source.readiness_state
+        self.required_controls = source.required_controls
+        self.satisfied_controls = source.satisfied_controls
+        self.missing_controls = source.missing_controls
+        self.evidence_refs = source.evidence_refs
+        self.limitations = source.limitations
+        self.non_claims = source.non_claims
 
 
 def _source_text() -> str:
@@ -748,6 +859,23 @@ def _output_safety_violations(payload: dict[str, object]) -> list[str]:
                 violations.append(f"path:{value}")
 
     return sorted(set(violations))
+
+
+def _payload_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        keys: set[str] = set()
+        for key, nested_value in value.items():
+            keys.add(str(key))
+            keys.update(_payload_keys(nested_value))
+        return keys
+
+    if isinstance(value, list):
+        keys = set()
+        for nested_value in value:
+            keys.update(_payload_keys(nested_value))
+        return keys
+
+    return set()
 
 
 def _flatten_strings(value: object) -> list[str]:

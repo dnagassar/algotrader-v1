@@ -35,6 +35,7 @@ def _s(*parts: str) -> str:
 
 _COMMAND = "advisory-operating-brief-content-bundle-preview"
 _LEGACY_COMMAND = "advisory-operating-brief-preview"
+_READINESS_SUMMARY_FLAG = "--include-research-data-source-readiness-summary"
 
 _EXPECTED_LEGACY_RENDERED_TEXT = "\n".join(_EXPECTED_LEGACY_RENDERED_LINES)
 _EXPECTED_EXPORT_PAYLOAD_KEYS = (
@@ -84,6 +85,16 @@ _AUTHORITY_PRESENTATION_TERMS = (
     "buy",
     "sell",
     "hold",
+)
+_EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
+    "summary_type",
+    "schema_version",
+    "summary_scope",
+    "summary_state",
+    "required_control_count",
+    "satisfied_control_count",
+    "missing_control_count",
+    "diagnostic_limitations",
 )
 
 
@@ -247,6 +258,74 @@ def test_readiness_preview_flag_is_hidden_boolean_and_non_input_bearing(
     for argv in (
         (_COMMAND, "--include-research-data-source-readiness=true"),
         (_COMMAND, "--include-research-data-source-readiness", "true"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert captured.out == ""
+        assert (
+            "ignored explicit argument" in captured.err
+            or "unrecognized arguments:" in captured.err
+        )
+        assert "true" in captured.err
+
+
+def test_readiness_summary_preview_flag_is_hidden_boolean_and_non_input_bearing(
+    capsys,
+) -> None:
+    parser = _preview_parser()
+    help_text = f"{build_parser().format_help()}\n{parser.format_help()}"
+
+    assert _READINESS_SUMMARY_FLAG not in help_text
+    assert _READINESS_SUMMARY_FLAG not in _option_text(parser)
+    assert _positional_rows(parser) == ()
+    assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
+
+    json_stdout = _run_preview_cli(
+        (
+            _COMMAND,
+            _READINESS_SUMMARY_FLAG,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+    text_stdout = _run_preview_cli(
+        (
+            _COMMAND,
+            _READINESS_SUMMARY_FLAG,
+            "--format",
+            "text",
+        ),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    summary = _single_branch(payload, "research_data_source_readiness_summaries")
+
+    assert "research_data_source_readiness" not in payload
+    assert payload["research_data_source_readiness_summary_count"] == 1
+    assert tuple(summary) == tuple(sorted(_EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS))
+    assert summary["summary_type"] == "research_data_source_readiness_summary"
+    assert summary["summary_scope"] == "advisory_metadata_only"
+    assert summary["summary_state"] == "candidate_only"
+    assert summary["required_control_count"] == 6
+    assert summary["satisfied_control_count"] == 1
+    assert summary["missing_control_count"] == 5
+    assert summary["diagnostic_limitations"] == [
+        "Fixture carries no observations, values, or external source content.",
+        "Fixture is synthetic metadata only and not connected to real data.",
+    ]
+    assert _payload_keys(payload).isdisjoint(_forbidden_summary_field_names())
+    assert "Research Data Source Readiness Summary Diagnostics" in text_stdout
+    assert "Research Data Source Readiness Summary Diagnostic 1" in text_stdout
+    assert "source_readiness:" not in text_stdout
+    assert "approval_status:" not in text_stdout
+    assert "trading_ready:" not in text_stdout
+
+    for argv in (
+        (_COMMAND, f"{_READINESS_SUMMARY_FLAG}=true"),
+        (_COMMAND, _READINESS_SUMMARY_FLAG, "true"),
     ):
         with pytest.raises(SystemExit) as exc_info:
             main(argv)
@@ -738,4 +817,16 @@ def _forbidden_actionable_field_names() -> set[str]:
         _s("port", "folios"),
         _s("tra", "ding_authority"),
         "trading_ready",
+    }
+
+
+def _forbidden_summary_field_names() -> set[str]:
+    return _forbidden_actionable_field_names() | {
+        "approval_status",
+        "authorization_status",
+        "raw_payload",
+        "source_authorized",
+        "source_payload",
+        "source_readiness",
+        "wrapper",
     }

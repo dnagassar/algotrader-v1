@@ -18,6 +18,7 @@ from algotrader.research.advisory_operating_brief_content_bundle_renderer import
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary,
 )
 
 
@@ -29,6 +30,18 @@ RENDERER_SOURCE_PATH = Path(
 )
 _READINESS_KEY = "research_data_source_readiness"
 _READINESS_COUNT_KEY = "research_data_source_readiness_count"
+_READINESS_SUMMARY_KEY = "research_data_source_readiness_summaries"
+_READINESS_SUMMARY_COUNT_KEY = "research_data_source_readiness_summary_count"
+_EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
+    "summary_type",
+    "schema_version",
+    "summary_scope",
+    "summary_state",
+    "required_control_count",
+    "satisfied_control_count",
+    "missing_control_count",
+    "diagnostic_limitations",
+)
 _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "__future__": ("annotations",),
     "collections.abc": ("Iterable",),
@@ -248,6 +261,15 @@ _FORBIDDEN_PAYLOAD_KEYS = {
     "url",
     "vendor",
 }
+_FORBIDDEN_SUMMARY_PAYLOAD_KEYS = _FORBIDDEN_PAYLOAD_KEYS | {
+    "approval_status",
+    "authorization_status",
+    "raw_payload",
+    "source_authorized",
+    "source_payload",
+    "source_readiness",
+    "wrapper",
+}
 _POSITIVE_READINESS_TERMS = (
     "approved",
     "approval granted",
@@ -273,6 +295,9 @@ def test_content_bundle_imports_readiness_contract_without_runtime_chains() -> N
     )
     assert _matching_imports(imports, _FORBIDDEN_IMPORT_PREFIXES) == []
     assert "build_research_data_source_readiness" not in _imported_names(
+        import_details
+    )
+    assert "build_research_data_source_readiness_summary" not in _imported_names(
         import_details
     )
 
@@ -304,6 +329,42 @@ def test_content_bundle_readiness_branch_is_optional_metadata_only() -> None:
     assert _primitive_only(readiness_payload)
 
 
+def test_content_bundle_readiness_summary_branch_is_optional_diagnostic_metadata() -> None:
+    signature = inspect.signature(build_advisory_operating_brief_content_bundle)
+    default_payload = build_synthetic_advisory_operating_brief_content_bundle().to_dict()
+    summary_payload = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary().to_dict()
+    )
+    repeated_summary_payload = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary().to_dict()
+    )
+    summary = _single_branch(summary_payload, _READINESS_SUMMARY_KEY)
+
+    assert signature.parameters[_READINESS_SUMMARY_KEY].default == ()
+    assert _READINESS_SUMMARY_KEY not in default_payload
+    assert _READINESS_SUMMARY_COUNT_KEY not in default_payload
+    assert summary_payload[_READINESS_SUMMARY_COUNT_KEY] == 1
+    assert tuple(summary) == _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS
+    assert summary["summary_type"] == "research_data_source_readiness_summary"
+    assert summary["schema_version"] == "1"
+    assert summary["summary_scope"] == "advisory_metadata_only"
+    assert summary["summary_state"] == "candidate_only"
+    assert summary["required_control_count"] == 6
+    assert summary["satisfied_control_count"] == 1
+    assert summary["missing_control_count"] == 5
+    assert summary["diagnostic_limitations"] == [
+        "Fixture carries no observations, values, or external source content.",
+        "Fixture is synthetic metadata only and not connected to real data.",
+    ]
+    assert _payload_keys(summary_payload).isdisjoint(
+        _FORBIDDEN_SUMMARY_PAYLOAD_KEYS
+    )
+    assert _primitive_only(summary_payload)
+    assert _compact_sorted_json(summary_payload) == _compact_sorted_json(
+        repeated_summary_payload
+    )
+
+
 def test_renderer_readiness_wording_stays_diagnostic_and_negative() -> None:
     bundle = (
         build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness()
@@ -322,6 +383,31 @@ def test_renderer_readiness_wording_stays_diagnostic_and_negative() -> None:
     assert _positive_readiness_lines(rendered) == []
     assert "approval_status:" not in rendered
     assert "source_authorized:" not in rendered
+    assert "trading_ready:" not in rendered
+
+
+def test_renderer_readiness_summary_wording_stays_diagnostic_and_negative() -> None:
+    bundle = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary()
+    )
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+
+    assert exported.rendered_text == rendered
+    assert "Research Data Source Readiness Summary Diagnostics" in lines
+    assert "Research Data Source Readiness Summary Diagnostic 1" in lines
+    assert "summary_type: research_data_source_readiness_summary" in lines
+    assert "summary_scope: advisory_metadata_only" in lines
+    assert "summary_state: candidate_only" in lines
+    assert "required_control_count: 6" in lines
+    assert "satisfied_control_count: 1" in lines
+    assert "missing_control_count: 5" in lines
+    assert "diagnostic_limitations:" in lines
+    assert _positive_readiness_lines(rendered) == []
+    assert "approval_status:" not in rendered
+    assert "source_authorized:" not in rendered
+    assert "source_readiness:" not in rendered
     assert "trading_ready:" not in rendered
 
 
