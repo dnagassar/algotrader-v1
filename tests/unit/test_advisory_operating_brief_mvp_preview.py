@@ -40,6 +40,7 @@ _MAJOR_SECTIONS = (
     "Data-Source Readiness Problems",
     "Research Observations",
     "Work Queue / Next Non-Trading Work Items",
+    "Backtest Readiness Gate",
     "Blocked / Missing Before Real Strategy, Backtest, Or Trading Use",
 )
 
@@ -77,6 +78,9 @@ def test_mvp_preview_text_output_is_human_readable_and_useful(capsys) -> None:
         "label=Deterministic backtest readiness evidence",
         "label=Advisory-only research observations",
         "label=Trading authority remains absent",
+        "Backtest Readiness Gate",
+        "gate_state: blocked_not_ready",
+        "real strategy backtesting is blocked or not ready",
         "state=advisory_only | boundary=strategy_approval",
         "No trading authority",
         "not a recommendation",
@@ -107,6 +111,7 @@ def test_mvp_preview_json_output_is_concise_and_consistent(capsys) -> None:
     assert parsed["report_type"] == "synthetic_research_mvp_operating_brief"
     assert set(parsed) == {
         "advisory_view_summary",
+        "backtest_readiness_gate",
         "blocked_missing_before_real_use",
         "data_source_readiness",
         "description",
@@ -121,6 +126,7 @@ def test_mvp_preview_json_output_is_concise_and_consistent(capsys) -> None:
         "work_queue",
     }
     assert parsed["work_queue"] == payload["work_queue"]
+    assert parsed["backtest_readiness_gate"] == payload["backtest_readiness_gate"]
 
 
 def test_mvp_preview_work_queue_records_project_control_items(capsys) -> None:
@@ -170,6 +176,82 @@ def test_mvp_preview_work_queue_records_project_control_items(capsys) -> None:
         "reproduction evidence is absent",
     ):
         assert expected in output
+
+
+def test_mvp_preview_backtest_readiness_gate_records_controls(capsys) -> None:
+    output = _run_preview_cli((_COMMAND,), capsys)
+    parsed = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+    gate_records = parsed["backtest_readiness_gate"]
+
+    assert "Backtest Readiness Gate" in output
+    assert "real strategy backtesting is blocked or not ready" in output
+    assert len(gate_records) == 7
+    for record in gate_records:
+        assert set(record) == {
+            "boundary",
+            "label",
+            "reason",
+            "required_control",
+            "state",
+        }
+
+    expected_records = (
+        (
+            "Real data source approval",
+            "blocked",
+            "data_source",
+            "approved and pinned data source with provenance",
+        ),
+        (
+            "Source, universe, benchmark, and cash controls",
+            "missing",
+            "research_controls",
+            "deterministic source, universe, benchmark, and cash policy",
+        ),
+        (
+            "No-lookahead protocol",
+            "missing",
+            "no_lookahead",
+            "explicit no-lookahead validation protocol",
+        ),
+        (
+            "Return construction policy",
+            "advisory_only",
+            "return_construction",
+            "deterministic return construction policy promoted into the accepted path",
+        ),
+        (
+            "Validation and reproduction evidence",
+            "missing",
+            "validation",
+            "deterministic validation evidence package",
+        ),
+        (
+            "Strategy approval",
+            "blocked",
+            "strategy_approval",
+            "strategy mandate and validation scorecard accepted through a future control process",
+        ),
+        (
+            "Trading authority",
+            "blocked",
+            "trading_authority",
+            "future explicitly scoped capital-layer authorization",
+        ),
+    )
+
+    assert tuple(
+        (
+            record["label"],
+            record["state"],
+            record["boundary"],
+            record["required_control"],
+        )
+        for record in gate_records
+    ) == expected_records
+    for label, state, boundary, required_control in expected_records:
+        assert f"label={label} | state={state} | boundary={boundary}" in output
+        assert f"required_control: {required_control}" in output
 
 
 def test_existing_package_and_content_bundle_previews_remain_compatible(capsys) -> None:

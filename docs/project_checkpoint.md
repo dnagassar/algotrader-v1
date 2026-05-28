@@ -13561,6 +13561,16 @@ Safe next tasks include:
   data ingestion, persistence, scheduler, dashboard, broker, orders, fills,
   portfolio/reconciliation mutation, ranking, scoring, recommendation,
   approval, backtest execution, or trading authority.
+- Phase 302 / Milestone 302 - Synthetic Backtest Readiness Gate extends the MVP
+  preview with a deterministic `Backtest Readiness Gate` section and compact
+  JSON `backtest_readiness_gate` records. The gate reports real strategy
+  backtesting as blocked/not ready and enumerates project-control records for
+  real data source approval, source/universe/benchmark/cash policy,
+  no-lookahead protocol, return construction, validation/reproduction evidence,
+  strategy approval, and trading authority. This phase is reporting-only and
+  adds no real data ingestion, persistence, scheduler, dashboard, broker,
+  orders, fills, portfolio/reconciliation mutation, ranking, scoring,
+  recommendation, approval, actual backtest execution, or trading authority.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

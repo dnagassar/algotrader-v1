@@ -27,7 +27,7 @@ _REAL_SOURCE_STATUS = "No real data source is approved."
 _MVP_DESCRIPTION = (
     "Deterministic terminal brief over the synthetic advisory package, "
     "content bundle, advisory sections, diagnostics, readiness records, "
-    "and research observations."
+    "research observations, and backtest readiness gates."
 )
 _PREVIEW_FORMATS = ("text", "json")
 _IMPORTANT_NON_CLAIMS = (
@@ -95,6 +95,7 @@ def render_advisory_operating_brief_mvp_report_text(
     readiness = _dict(report["data_source_readiness"], "data_source_readiness")
     observations = _dict(report["research_observations"], "research_observations")
     work_queue = _list(report["work_queue"], "work_queue")
+    backtest_gate = _list(report["backtest_readiness_gate"], "backtest_readiness_gate")
     blocked = _dict(
         report["blocked_missing_before_real_use"],
         "blocked_missing_before_real_use",
@@ -314,6 +315,24 @@ def render_advisory_operating_brief_mvp_report_text(
         )
         lines.append(f"   reason: {_string(item['reason'], 'reason')}")
 
+    lines.extend(("", "Backtest Readiness Gate"))
+    lines.append("- gate_state: blocked_not_ready")
+    lines.append(
+        "- statement: real strategy backtesting is blocked or not ready; this "
+        "section reports project controls and does not run a backtest."
+    )
+    for index, gate_record in enumerate(backtest_gate, start=1):
+        item = _dict(gate_record, f"backtest_readiness_gate[{index}]")
+        lines.append(
+            f"{index}. label={_string(item['label'], 'label')} | "
+            f"state={_string(item['state'], 'state')} | "
+            f"boundary={_string(item['boundary'], 'boundary')}"
+        )
+        lines.append(f"   reason: {_string(item['reason'], 'reason')}")
+        lines.append(
+            f"   required_control: {_string(item['required_control'], 'required_control')}"
+        )
+
     lines.extend(("", "Blocked / Missing Before Real Strategy, Backtest, Or Trading Use"))
     lines.append("- blocked_items:")
     _append_values(lines, _list(blocked["blocked_items"], "blocked_items"), indent="  ")
@@ -461,6 +480,7 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
             blocked_missing=blocked_missing,
             capital_authority=package_payload["capital_authority"],
         ),
+        "backtest_readiness_gate": _backtest_readiness_gate_rows(),
         "blocked_missing_before_real_use": blocked_missing,
         "safety": (
             "synthetic-only package preview; no real data ingestion is performed",
@@ -469,6 +489,98 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
             "no orders, fills, portfolio, reconciliation, or persistence mutation is performed",
             "no ranking, scoring, recommendation, approval, or trading authority is represented",
         ),
+    }
+
+
+def _backtest_readiness_gate_rows() -> tuple[dict[str, str], ...]:
+    return (
+        _backtest_gate_item(
+            label="Real data source approval",
+            state="blocked",
+            reason="No real data source is approved for this candidate strategy path.",
+            required_control="approved and pinned data source with provenance",
+            boundary="data_source",
+        ),
+        _backtest_gate_item(
+            label="Source, universe, benchmark, and cash controls",
+            state="missing",
+            reason=(
+                "Source, universe, benchmark, and cash proxy controls are not "
+                "accepted for deterministic use."
+            ),
+            required_control="deterministic source, universe, benchmark, and cash policy",
+            boundary="research_controls",
+        ),
+        _backtest_gate_item(
+            label="No-lookahead protocol",
+            state="missing",
+            reason=(
+                "As-of and clock contracts are not yet applied to this "
+                "candidate backtest path."
+            ),
+            required_control="explicit no-lookahead validation protocol",
+            boundary="no_lookahead",
+        ),
+        _backtest_gate_item(
+            label="Return construction policy",
+            state="advisory_only",
+            reason=(
+                "Synthetic return observations exist, but they are not a "
+                "complete strategy return engine."
+            ),
+            required_control=(
+                "deterministic return construction policy promoted into the "
+                "accepted path"
+            ),
+            boundary="return_construction",
+        ),
+        _backtest_gate_item(
+            label="Validation and reproduction evidence",
+            state="missing",
+            reason=(
+                "No real-data reproduction, robustness, OOS or walk-forward, "
+                "cost, or liquidity validation exists."
+            ),
+            required_control="deterministic validation evidence package",
+            boundary="validation",
+        ),
+        _backtest_gate_item(
+            label="Strategy approval",
+            state="blocked",
+            reason="Advisory observations do not authorize any strategy.",
+            required_control=(
+                "strategy mandate and validation scorecard accepted through a "
+                "future control process"
+            ),
+            boundary="strategy_approval",
+        ),
+        _backtest_gate_item(
+            label="Trading authority",
+            state="blocked",
+            reason=(
+                "No backtest gate may create paper, live, order, or capital "
+                "authority."
+            ),
+            required_control="future explicitly scoped capital-layer authorization",
+            boundary="trading_authority",
+        ),
+    )
+
+
+def _backtest_gate_item(
+    *,
+    label: str,
+    state: str,
+    reason: str,
+    required_control: str,
+    boundary: str,
+) -> dict[str, str]:
+    return {
+        "label": label,
+        "state": state,
+        "reason": reason,
+        "required_control": required_control,
+        "boundary": boundary,
     }
 
 
