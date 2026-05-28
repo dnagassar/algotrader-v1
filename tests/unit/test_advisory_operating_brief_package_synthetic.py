@@ -12,6 +12,9 @@ from algotrader.research.research_data_source_readiness_summary import (
 from algotrader.research.research_observation_manifest import (
     ResearchObservationManifest,
 )
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
+)
 from tests.fixtures.research_data_source_readiness import (
     expected_synthetic_research_data_source_readiness,
     expected_synthetic_research_data_source_readiness_dict,
@@ -52,6 +55,14 @@ _FORBIDDEN_READINESS_FIELD_TERMS = (
     "vendor",
     "network",
     "credential",
+)
+_FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY = (
+    "ranking",
+    "scoring",
+    "recommend",
+    "recommendation",
+    "approval",
+    "approved",
 )
 
 
@@ -151,6 +162,48 @@ def test_synthetic_preview_includes_data_source_readiness_branch() -> None:
         if control not in readiness_payload["satisfied_controls"]
     ]
     assert readiness.missing_controls
+
+
+def test_synthetic_preview_includes_diagnostic_issues_branch_deterministically() -> None:
+    first_payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    second_payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    content_bundle = _dict(first_payload["content_bundle"])
+    second_content_bundle = _dict(second_payload["content_bundle"])
+    content_bundle_export = _dict(first_payload["content_bundle_export"])
+    expected_issues = (
+        expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+    )
+    issue_payload = {"diagnostic_issues": content_bundle["diagnostic_issues"]}
+    second_issue_payload = {
+        "diagnostic_issues": second_content_bundle["diagnostic_issues"]
+    }
+    issue_json = _compact_sorted_json(issue_payload)
+    second_issue_json = _compact_sorted_json(second_issue_payload)
+
+    assert content_bundle["diagnostic_issue_count"] == len(expected_issues)
+    assert content_bundle["diagnostic_issues"] == expected_issues
+    assert second_content_bundle["diagnostic_issues"] == expected_issues
+    assert content_bundle_export["payload"] == content_bundle
+    assert '"diagnostic_issues"' in content_bundle_export["json_text"]
+    assert "Diagnostic Issues" in content_bundle_export["rendered_text"]
+    assert issue_json == second_issue_json
+    assert issue_json.encode("utf-8") == second_issue_json.encode("utf-8")
+    assert json.loads(issue_json) == issue_payload
+
+
+def test_synthetic_diagnostic_issues_add_no_trading_fields_or_positive_terms() -> None:
+    payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    issue_payloads = _list(content_bundle["diagnostic_issues"])
+    field_names = _serialized_keys(issue_payloads)
+    compact = _compact_sorted_json({"diagnostic_issues": issue_payloads}).lower()
+
+    assert _matching_field_terms(
+        field_names,
+        _FORBIDDEN_READINESS_FIELD_TERMS,
+    ) == []
+    for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY:
+        assert term not in compact
 
 
 def test_synthetic_preview_readiness_branch_has_no_runtime_trading_or_vendor_fields() -> (

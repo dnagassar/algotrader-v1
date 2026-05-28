@@ -85,6 +85,7 @@ class AdvisoryOperatingBriefContentBundle:
     research_data_source_readiness_summaries: tuple[
         ResearchDataSourceReadinessSummary, ...
     ] = ()
+    diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = ()
 
     def __post_init__(self) -> None:
         candidate_briefs = _candidate_research_briefs_tuple(
@@ -119,6 +120,7 @@ class AdvisoryOperatingBriefContentBundle:
                 self.research_data_source_readiness_summaries
             )
         )
+        diagnostic_issues = _diagnostic_issues_tuple(self.diagnostic_issues)
         _validate_non_empty_bundle(
             candidate_briefs,
             eligibility_briefs,
@@ -130,6 +132,7 @@ class AdvisoryOperatingBriefContentBundle:
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues,
         )
         _validate_unique_brief_identities(
             candidate_briefs,
@@ -142,6 +145,7 @@ class AdvisoryOperatingBriefContentBundle:
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues,
         )
 
         limitations = _required_string_tuple(self.limitations, "limitations")
@@ -157,6 +161,7 @@ class AdvisoryOperatingBriefContentBundle:
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues,
             "limitations",
         )
         expected_non_claims = _combined_brief_values(
@@ -170,6 +175,7 @@ class AdvisoryOperatingBriefContentBundle:
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues,
             "non_claims",
         )
 
@@ -194,6 +200,7 @@ class AdvisoryOperatingBriefContentBundle:
                 sma_summary_observations,
                 data_source_readiness,
                 data_source_readiness_summaries,
+                diagnostic_issues,
             ),
         )
         _validate_matches("limitations", limitations, expected_limitations)
@@ -231,6 +238,7 @@ class AdvisoryOperatingBriefContentBundle:
             "research_data_source_readiness_summaries",
             data_source_readiness_summaries,
         )
+        object.__setattr__(self, "diagnostic_issues", diagnostic_issues)
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic primitive-only bundle metadata."""
@@ -275,6 +283,8 @@ class AdvisoryOperatingBriefContentBundle:
             payload["research_data_source_readiness_summary_count"] = len(
                 self.research_data_source_readiness_summaries
             )
+        if self.diagnostic_issues:
+            payload["diagnostic_issue_count"] = len(self.diagnostic_issues)
 
         payload["candidate_research_briefs"] = [
             brief.to_dict() for brief in self.candidate_research_briefs
@@ -318,6 +328,10 @@ class AdvisoryOperatingBriefContentBundle:
                 summary.to_dict()
                 for summary in self.research_data_source_readiness_summaries
             ]
+        if self.diagnostic_issues:
+            payload["diagnostic_issues"] = [
+                issue.to_dict() for issue in self.diagnostic_issues
+            ]
 
         payload["limitations"] = list(self.limitations)
         payload["non_claims"] = list(self.non_claims)
@@ -343,6 +357,7 @@ def build_advisory_operating_brief_content_bundle(
     research_data_source_readiness_summaries: Iterable[
         ResearchDataSourceReadinessSummary
     ] = (),
+    diagnostic_issues: Iterable[object] = (),
 ) -> AdvisoryOperatingBriefContentBundle:
     """Build a deterministic advisory-only content bundle from existing briefs."""
 
@@ -372,6 +387,7 @@ def build_advisory_operating_brief_content_bundle(
             research_data_source_readiness_summaries
         )
     )
+    diagnostic_issues_tuple = _diagnostic_issues_tuple(diagnostic_issues)
     _validate_non_empty_bundle(
         candidate_briefs,
         eligibility_briefs,
@@ -383,6 +399,7 @@ def build_advisory_operating_brief_content_bundle(
         sma_summary_observations,
         data_source_readiness,
         data_source_readiness_summaries,
+        diagnostic_issues_tuple,
     )
     _validate_unique_brief_identities(
         candidate_briefs,
@@ -395,6 +412,7 @@ def build_advisory_operating_brief_content_bundle(
         sma_summary_observations,
         data_source_readiness,
         data_source_readiness_summaries,
+        diagnostic_issues_tuple,
     )
 
     return AdvisoryOperatingBriefContentBundle(
@@ -414,6 +432,7 @@ def build_advisory_operating_brief_content_bundle(
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues_tuple,
         ),
         candidate_research_briefs=candidate_briefs,
         strategy_eligibility_briefs=eligibility_briefs,
@@ -428,6 +447,7 @@ def build_advisory_operating_brief_content_bundle(
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues_tuple,
             "limitations",
         ),
         non_claims=_combined_brief_values(
@@ -441,6 +461,7 @@ def build_advisory_operating_brief_content_bundle(
             sma_summary_observations,
             data_source_readiness,
             data_source_readiness_summaries,
+            diagnostic_issues_tuple,
             "non_claims",
         ),
         risk_authority_briefs=risk_briefs,
@@ -451,6 +472,7 @@ def build_advisory_operating_brief_content_bundle(
         sma_research_summary_observations=sma_summary_observations,
         research_data_source_readiness=data_source_readiness,
         research_data_source_readiness_summaries=data_source_readiness_summaries,
+        diagnostic_issues=diagnostic_issues_tuple,
     )
 
 
@@ -473,6 +495,7 @@ def _summary(
     research_data_source_readiness_summaries: tuple[
         ResearchDataSourceReadinessSummary, ...
     ],
+    diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...],
 ) -> str:
     limitations = _combined_brief_values(
         candidate_research_briefs,
@@ -485,6 +508,7 @@ def _summary(
         sma_research_summary_observations,
         research_data_source_readiness,
         research_data_source_readiness_summaries,
+        diagnostic_issues,
         "limitations",
     )
     non_claims = _combined_brief_values(
@@ -498,6 +522,7 @@ def _summary(
         sma_research_summary_observations,
         research_data_source_readiness,
         research_data_source_readiness_summaries,
+        diagnostic_issues,
         "non_claims",
     )
     risk_clause = (
@@ -545,6 +570,11 @@ def _summary(
         if research_data_source_readiness_summaries
         else ""
     )
+    diagnostic_issue_clause = (
+        f"{len(diagnostic_issues)} diagnostic issue(s), "
+        if diagnostic_issues
+        else ""
+    )
     return (
         "Advisory content bundle contains "
         f"{len(candidate_research_briefs)} candidate research brief(s), "
@@ -552,6 +582,7 @@ def _summary(
         f"{risk_clause}{research_queue_clause}{sma_clause}{sma_summary_clause}"
         f"{research_return_clause}{research_return_summary_clause}"
         f"{data_source_readiness_clause}{data_source_readiness_summary_clause}"
+        f"{diagnostic_issue_clause}"
         f"{len(limitations)} limitation(s), and "
         f"{len(non_claims)} non-claim(s)."
     )
@@ -945,6 +976,31 @@ def _research_data_source_readiness_summaries_tuple(
     return summaries
 
 
+def _diagnostic_issues_tuple(
+    values: Iterable[object],
+) -> tuple[AdvisoryOperatingBriefDiagnosticIssue, ...]:
+    from algotrader.research.advisory_operating_brief_diagnostic_issue import (
+        AdvisoryOperatingBriefDiagnosticIssue,
+    )
+
+    try:
+        issues = tuple(values)
+    except TypeError as exc:
+        raise ValidationError(
+            "diagnostic_issues must be an iterable of "
+            "AdvisoryOperatingBriefDiagnosticIssue."
+        ) from exc
+
+    for index, issue in enumerate(issues):
+        if type(issue) is not AdvisoryOperatingBriefDiagnosticIssue:
+            raise ValidationError(
+                "diagnostic_issues"
+                f"[{index}] must be an AdvisoryOperatingBriefDiagnosticIssue."
+            )
+
+    return issues
+
+
 def _validate_non_empty_bundle(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
@@ -962,6 +1018,7 @@ def _validate_non_empty_bundle(
     research_data_source_readiness_summaries: tuple[
         ResearchDataSourceReadinessSummary, ...
     ] = (),
+    diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = (),
 ) -> None:
     if (
         not candidate_research_briefs
@@ -997,6 +1054,7 @@ def _validate_unique_brief_identities(
     research_data_source_readiness_summaries: tuple[
         ResearchDataSourceReadinessSummary, ...
     ] = (),
+    diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = (),
 ) -> None:
     seen_identities: set[int] = set()
     for brief in (
@@ -1010,6 +1068,7 @@ def _validate_unique_brief_identities(
         *sma_research_summary_observations,
         *research_data_source_readiness,
         *research_data_source_readiness_summaries,
+        *diagnostic_issues,
     ):
         brief_identity = id(brief)
         if brief_identity in seen_identities:
@@ -1034,6 +1093,7 @@ def _combined_brief_values(
     research_data_source_readiness_summaries: tuple[
         ResearchDataSourceReadinessSummary, ...
     ],
+    diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...],
     field_name: str,
 ) -> tuple[str, ...]:
     values: list[str] = []
@@ -1063,6 +1123,12 @@ def _combined_brief_values(
                 continue
             values.append(value)
             seen.add(value)
+    for issue in diagnostic_issues:
+        for value in _diagnostic_issue_values(issue, field_name):
+            if value in seen:
+                continue
+            values.append(value)
+            seen.add(value)
 
     return tuple(values)
 
@@ -1073,6 +1139,16 @@ def _research_data_source_readiness_summary_values(
 ) -> tuple[str, ...]:
     if field_name == "limitations":
         return summary.diagnostic_limitations
+
+    return ()
+
+
+def _diagnostic_issue_values(
+    issue: AdvisoryOperatingBriefDiagnosticIssue,
+    field_name: str,
+) -> tuple[str, ...]:
+    if field_name == "limitations":
+        return issue.limitations
 
     return ()
 

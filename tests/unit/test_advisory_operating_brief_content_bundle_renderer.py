@@ -51,6 +51,9 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
     expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_observation_dict,
     expected_synthetic_advisory_operating_brief_content_bundle_with_sma_research_observation_dict,
 )
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    build_synthetic_advisory_operating_brief_diagnostic_issues,
+)
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
     expected_synthetic_candidate_research_brief_dict,
@@ -1782,6 +1785,82 @@ def test_renderer_reads_optional_branches_from_dictionary_payload_only() -> None
     assert ".risk_authority_briefs" not in source
     assert ".sma_research_observation_briefs" not in source
     assert ".research_return_observation_briefs" not in source
+
+
+def test_diagnostic_issue_branch_rendering_is_pinned_and_deterministic() -> None:
+    issues = build_synthetic_advisory_operating_brief_diagnostic_issues()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        diagnostic_issues=issues,
+    )
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch = "Diagnostic Issues\n" + first.split(
+        "\nDiagnostic Issues\n",
+        maxsplit=1,
+    )[1].split("\n\nLimitations\n", maxsplit=1)[0]
+
+    assert first == second
+    assert first.encode("utf-8") == second.encode("utf-8")
+    assert "diagnostic_issue_count: 2" in first
+    assert branch == "\n".join(
+        (
+            "Diagnostic Issues",
+            "",
+            "Diagnostic Issue 1",
+            "source_branch: research_data_source_readiness",
+            "issue_code: missing_diagnostic_controls",
+            "issue_state: candidate_only",
+            (
+                "diagnostic_message: Readiness branch reports missing "
+                "diagnostic controls."
+            ),
+            "blocking_controls:",
+            "- terms_review_documented",
+            "- snapshot_provenance_defined",
+            "- redistribution_policy_reviewed",
+            "- adjustment_policy_defined",
+            "- fixture_policy_review_documented",
+            "limitations:",
+            "- Fixture is synthetic metadata only and not connected to real data.",
+            (
+                "- Fixture carries no observations, values, or external source "
+                "content."
+            ),
+            "",
+            "Diagnostic Issue 2",
+            "source_branch: research_data_source_readiness_summary",
+            "issue_code: missing_diagnostic_controls",
+            "issue_state: candidate_only",
+            (
+                "diagnostic_message: Readiness summary branch reports missing "
+                "diagnostic controls."
+            ),
+            "blocking_controls:",
+            "- terms_review_documented",
+            "- snapshot_provenance_defined",
+            "- redistribution_policy_reviewed",
+            "- adjustment_policy_defined",
+            "- fixture_policy_review_documented",
+            "limitations:",
+            (
+                "- Fixture carries no observations, values, or external source "
+                "content."
+            ),
+            "- Fixture is synthetic metadata only and not connected to real data.",
+        )
+    )
+    lowered_branch = branch.lower()
+    for token in (
+        "ranking",
+        "scoring",
+        _s("recomm", "end"),
+        _s("app", "roval"),
+        _s("app", "roved"),
+    ):
+        assert token not in lowered_branch
 
 
 @pytest.mark.parametrize("value", (object(), None, "not a bundle"))

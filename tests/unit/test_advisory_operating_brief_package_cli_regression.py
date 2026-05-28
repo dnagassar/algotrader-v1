@@ -799,7 +799,7 @@ def _readiness_text_block(text: str) -> tuple[str, ...]:
 def _readiness_summary_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Research Data Source Readiness Summary Diagnostics")
-    end = lines.index("Limitations", start)
+    end = lines.index("Diagnostic Issues", start)
 
     return tuple(lines[start:end])
 

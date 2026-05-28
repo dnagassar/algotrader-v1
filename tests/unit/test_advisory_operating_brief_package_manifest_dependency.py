@@ -62,6 +62,9 @@ _ALLOWED_SYNTHETIC_IMPORTS = {
     "algotrader.research.advisory_operating_brief_content_bundle_cli": (
         "build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation",
     ),
+    "algotrader.research.advisory_operating_brief_diagnostic_issue": (
+        "build_advisory_operating_brief_diagnostic_issues",
+    ),
     "algotrader.research.advisory_operating_brief_package": (
         "AdvisoryOperatingBriefPackage",
         "build_advisory_operating_brief_package",
@@ -970,7 +973,10 @@ def _package_content_bundle_includes_readiness_summary_builder(path: Path) -> bo
             return _contains_call(
                 function_def,
                 "_build_package_research_data_source_readiness_summary",
-            ) and _contains_name(keyword.value, "data_source_readiness")
+            ) and (
+                _contains_name(keyword.value, "data_source_readiness")
+                or _contains_name(keyword.value, "data_source_readiness_summary")
+            )
 
     return False
 

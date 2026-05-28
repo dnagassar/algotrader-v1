@@ -12,6 +12,10 @@ import algotrader.research as research_package
 from algotrader.errors import ValidationError
 from algotrader.research.advisory_operating_brief_content_bundle import (
     AdvisoryOperatingBriefContentBundle,
+    build_advisory_operating_brief_content_bundle,
+)
+from algotrader.research.advisory_operating_brief_diagnostic_issue import (
+    AdvisoryOperatingBriefDiagnosticIssue,
 )
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
     AdvisoryOperatingBriefContentBundleExport,
@@ -23,6 +27,15 @@ from algotrader.research.advisory_operating_brief_content_bundle_renderer import
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     expected_synthetic_advisory_operating_brief_content_bundle_dict,
+)
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    build_synthetic_advisory_operating_brief_diagnostic_issues,
+)
+from tests.fixtures.candidate_research_brief import (
+    build_synthetic_candidate_research_brief,
+)
+from tests.fixtures.strategy_eligibility_brief import (
+    build_synthetic_strategy_eligibility_brief,
 )
 
 
@@ -325,6 +338,66 @@ def test_repeated_export_is_byte_for_byte_deterministic() -> None:
     assert first.json_text.encode("utf-8") == second.json_text.encode("utf-8")
     assert first.rendered_text == second.rendered_text
     assert first.rendered_text.encode("utf-8") == second.rendered_text.encode("utf-8")
+
+
+def test_diagnostic_issue_export_serializes_each_issue_through_to_dict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    issues = build_synthetic_advisory_operating_brief_diagnostic_issues()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        diagnostic_issues=issues,
+    )
+    original_to_dict = AdvisoryOperatingBriefDiagnosticIssue.to_dict
+    calls: list[AdvisoryOperatingBriefDiagnosticIssue] = []
+
+    def spy_to_dict(
+        issue: AdvisoryOperatingBriefDiagnosticIssue,
+    ) -> dict[str, object]:
+        calls.append(issue)
+        return original_to_dict(issue)
+
+    monkeypatch.setattr(
+        AdvisoryOperatingBriefDiagnosticIssue,
+        "to_dict",
+        spy_to_dict,
+    )
+
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert exported.payload["diagnostic_issue_count"] == 2
+    assert exported.payload["diagnostic_issues"] == [
+        original_to_dict(issue) for issue in issues
+    ]
+    assert calls[:2] == list(issues)
+    assert all(issue in calls for issue in issues)
+    assert exported.json_text == json.dumps(
+        exported.payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert "Diagnostic Issues" in exported.rendered_text
+
+
+def test_diagnostic_issue_export_is_byte_for_byte_deterministic() -> None:
+    issues = build_synthetic_advisory_operating_brief_diagnostic_issues()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        diagnostic_issues=issues,
+    )
+
+    first = export_advisory_operating_brief_content_bundle(bundle)
+    second = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert first.payload == second.payload
+    assert first.json_text == second.json_text
+    assert first.json_text.encode("utf-8") == second.json_text.encode("utf-8")
+    assert first.rendered_text == second.rendered_text
+    assert first.rendered_text.encode("utf-8") == second.rendered_text.encode(
+        "utf-8"
+    )
 
 
 def test_payload_is_isolated_from_caller_payload_mutation() -> None:

@@ -11,6 +11,9 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
 from algotrader.research.advisory_operating_brief_content_bundle_cli import (
     build_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation,
 )
+from algotrader.research.advisory_operating_brief_diagnostic_issue import (
+    build_advisory_operating_brief_diagnostic_issues,
+)
 from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
     build_advisory_operating_brief_package,
@@ -183,7 +186,12 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         )
     )
     data_source_readiness = _build_package_research_data_source_readiness()
-    return build_advisory_operating_brief_content_bundle(
+    data_source_readiness_summary = (
+        _build_package_research_data_source_readiness_summary(
+            data_source_readiness
+        )
+    )
+    base_bundle = build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=source.candidate_research_briefs,
         strategy_eligibility_briefs=source.strategy_eligibility_briefs,
         risk_authority_briefs=source.risk_authority_briefs,
@@ -200,9 +208,30 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
             data_source_readiness,
         ),
         research_data_source_readiness_summaries=(
-            _build_package_research_data_source_readiness_summary(
-                data_source_readiness
-            ),
+            data_source_readiness_summary,
+        ),
+    )
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=base_bundle.candidate_research_briefs,
+        strategy_eligibility_briefs=base_bundle.strategy_eligibility_briefs,
+        risk_authority_briefs=base_bundle.risk_authority_briefs,
+        research_queue_briefs=base_bundle.research_queue_briefs,
+        sma_research_observation_briefs=base_bundle.sma_research_observation_briefs,
+        sma_research_summary_observations=(
+            base_bundle.sma_research_summary_observations
+        ),
+        research_return_observation_briefs=(
+            base_bundle.research_return_observation_briefs
+        ),
+        research_return_summary_observation_briefs=(
+            base_bundle.research_return_summary_observation_briefs
+        ),
+        research_data_source_readiness=base_bundle.research_data_source_readiness,
+        research_data_source_readiness_summaries=(
+            base_bundle.research_data_source_readiness_summaries
+        ),
+        diagnostic_issues=build_advisory_operating_brief_diagnostic_issues(
+            base_bundle
         ),
     )
 

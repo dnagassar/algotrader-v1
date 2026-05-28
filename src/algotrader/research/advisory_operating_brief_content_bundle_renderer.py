@@ -86,6 +86,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "research_data_source_readiness_summary_count: "
             f"{payload['research_data_source_readiness_summary_count']}"
         )
+    if "diagnostic_issues" in payload:
+        lines.append(
+            "diagnostic_issue_count: "
+            f"{payload['diagnostic_issue_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -188,6 +193,14 @@ def render_advisory_operating_brief_content_bundle_text(
                 summary_payload,
                 summary_index,
             )
+
+    if "diagnostic_issues" in payload:
+        lines.extend(("", "Diagnostic Issues"))
+        for issue_index, issue_payload in enumerate(
+            payload["diagnostic_issues"],
+            start=1,
+        ):
+            _append_diagnostic_issue(lines, issue_payload, issue_index)
 
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
@@ -1115,6 +1128,27 @@ def _append_research_data_source_readiness_summary(
         )
     )
     _append_values(lines, payload["diagnostic_limitations"])
+
+
+def _append_diagnostic_issue(
+    lines: list[str],
+    payload: dict[str, object],
+    issue_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Diagnostic Issue {issue_index}",
+            f"source_branch: {payload['source_branch']}",
+            f"issue_code: {payload['issue_code']}",
+            f"issue_state: {payload['issue_state']}",
+            f"diagnostic_message: {payload['diagnostic_message']}",
+            "blocking_controls:",
+        )
+    )
+    _append_values(lines, payload["blocking_controls"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
 
 
 def _append_values(lines: list[str], values: object) -> None:

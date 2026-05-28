@@ -13355,6 +13355,19 @@ Safe next tasks include:
   network behavior. This phase changes no production source and adds no real
   data ingestion, source selection, source/vendor approval, runtime,
   persistence, broker, network, backtest, or trading behavior.
+- Phase 285 - Advisory Content Bundle Diagnostic Issues Branch adds an
+  optional metadata-only `diagnostic_issues` branch to advisory operating brief
+  content bundles. The branch is absent from payloads unless explicitly
+  supplied, accepts only exact `AdvisoryOperatingBriefDiagnosticIssue` records,
+  preserves supplied issue order, and serializes each issue through
+  `issue.to_dict()`. Rendering emits diagnostic issue metadata only: source
+  branch, issue code, issue state, diagnostic message, blocking controls, and
+  limitations. Export keeps compact sorted-key JSON determinism, and the
+  synthetic advisory package preview explicitly includes the existing
+  diagnostic issues derived from its readiness diagnostics. Focused tests pin
+  default absence, exact type rejection for subclasses/lookalikes, repeated
+  text and JSON byte determinism, synthetic package inclusion, and no new
+  execution, vendor, network, persistence, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

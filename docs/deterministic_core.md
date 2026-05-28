@@ -7776,6 +7776,21 @@ production source and adds no real data ingestion, source selection,
 source/vendor approval, runtime, persistence, broker, network, backtest, or
 trading behavior.
 
+Phase 285 - Advisory Content Bundle Diagnostic Issues Branch adds an optional
+metadata-only `diagnostic_issues` branch to advisory operating brief content
+bundles. The branch is absent from payloads unless explicitly supplied, accepts
+only exact `AdvisoryOperatingBriefDiagnosticIssue` records, preserves supplied
+issue order, and serializes each issue through `issue.to_dict()`. The content
+bundle renderer emits only diagnostic issue metadata: source branch, issue
+code, issue state, diagnostic message, blocking controls, and limitations. The
+content bundle export keeps compact sorted-key JSON determinism, and the
+synthetic advisory package preview explicitly opts in by deriving the existing
+diagnostic issues from the package readiness diagnostics before export.
+Focused tests pin default absence, exact type rejection for subclasses and
+lookalikes, deterministic text and JSON bytes, synthetic package inclusion, and
+absence of new execution, vendor, network, persistence, backtest, or trading
+behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
