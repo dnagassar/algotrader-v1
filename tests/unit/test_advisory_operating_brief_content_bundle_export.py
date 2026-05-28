@@ -20,6 +20,9 @@ from algotrader.research.advisory_operating_brief_diagnostic_issue import (
 from algotrader.research.advisory_operating_brief_section import (
     AdvisoryOperatingBriefSection,
 )
+from algotrader.research.advisory_operating_brief_view import (
+    AdvisoryOperatingBriefView,
+)
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
     AdvisoryOperatingBriefContentBundleExport,
     export_advisory_operating_brief_content_bundle,
@@ -36,6 +39,9 @@ from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
 )
 from tests.fixtures.advisory_operating_brief_section import (
     build_synthetic_advisory_operating_brief_sections,
+)
+from tests.fixtures.advisory_operating_brief_view import (
+    build_synthetic_advisory_operating_brief_view,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
@@ -466,6 +472,78 @@ def test_advisory_section_export_is_byte_for_byte_deterministic() -> None:
     )
     assert '"advisory_sections"' in first.json_text
     assert "Advisory Sections" in first.rendered_text
+
+
+def test_advisory_view_export_serializes_through_to_dict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    advisory_view = build_synthetic_advisory_operating_brief_view()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_view=advisory_view,
+    )
+    original_to_dict = AdvisoryOperatingBriefView.to_dict
+    calls: list[AdvisoryOperatingBriefView] = []
+
+    def spy_to_dict(
+        view: AdvisoryOperatingBriefView,
+    ) -> dict[str, object]:
+        calls.append(view)
+        return original_to_dict(view)
+
+    monkeypatch.setattr(
+        AdvisoryOperatingBriefView,
+        "to_dict",
+        spy_to_dict,
+    )
+
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert exported.payload["advisory_view"] == original_to_dict(advisory_view)
+    assert calls
+    assert calls[0] is advisory_view
+    assert all(view is advisory_view for view in calls)
+    assert exported.json_text == json.dumps(
+        exported.payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert '"advisory_view"' in exported.json_text
+    assert "Advisory View" in exported.rendered_text
+    compact = json.dumps(
+        {"advisory_view": exported.payload["advisory_view"]},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    for token in (
+        "ranking",
+        "scoring",
+        _s("recomm", "endation"),
+        _s("app", "roval"),
+        _s("app", "roved"),
+    ):
+        assert token not in compact
+
+
+def test_advisory_view_export_is_byte_for_byte_deterministic() -> None:
+    advisory_view = build_synthetic_advisory_operating_brief_view()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_view=advisory_view,
+    )
+
+    first = export_advisory_operating_brief_content_bundle(bundle)
+    second = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert first.payload == second.payload
+    assert first.json_text == second.json_text
+    assert first.json_text.encode("utf-8") == second.json_text.encode("utf-8")
+    assert first.rendered_text == second.rendered_text
+    assert first.rendered_text.encode("utf-8") == second.rendered_text.encode(
+        "utf-8"
+    )
 
 
 def test_payload_is_isolated_from_caller_payload_mutation() -> None:

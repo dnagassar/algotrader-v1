@@ -34,6 +34,7 @@ __all__ = [
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary",
     "build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary",
+    "build_synthetic_advisory_operating_brief_content_bundle_with_advisory_view",
     "expected_synthetic_advisory_operating_brief_content_bundle_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_risk_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_queue_dict",
@@ -42,6 +43,7 @@ __all__ = [
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_return_summary_observation_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_dict",
     "expected_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary_dict",
+    "expected_synthetic_advisory_operating_brief_content_bundle_with_advisory_view_dict",
 ]
 
 _TITLE = "Advisory operating brief content bundle metadata"
@@ -365,6 +367,25 @@ def build_synthetic_advisory_operating_brief_content_bundle_with_research_data_s
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
         research_data_source_readiness=(readiness,),
         research_data_source_readiness_summaries=(summary,),
+    )
+
+
+def build_synthetic_advisory_operating_brief_content_bundle_with_advisory_view() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    """Return the deterministic content bundle with advisory view metadata."""
+
+    from tests.fixtures.advisory_operating_brief_view import (
+        build_synthetic_advisory_operating_brief_view,
+    )
+
+    candidate_brief = build_synthetic_candidate_research_brief()
+    strategy_eligibility_brief = build_synthetic_strategy_eligibility_brief()
+    advisory_view = build_synthetic_advisory_operating_brief_view()
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(candidate_brief,),
+        strategy_eligibility_briefs=(strategy_eligibility_brief,),
+        advisory_view=advisory_view,
     )
 
 
@@ -851,6 +872,17 @@ def expected_synthetic_advisory_operating_brief_content_bundle_with_research_dat
         "limitations": limitations,
         "non_claims": non_claims,
     }
+
+
+def expected_synthetic_advisory_operating_brief_content_bundle_with_advisory_view_dict() -> (
+    dict[str, object]
+):
+    """Return the exact primitive advisory-view bundle fixture payload."""
+
+    return (
+        build_synthetic_advisory_operating_brief_content_bundle_with_advisory_view()
+        .to_dict()
+    )
 
 
 def _combined_expected_values(

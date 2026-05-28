@@ -7953,6 +7953,23 @@ actionable trading vocabulary. Phase 296 changes no production source and adds
 no package, CLI, renderer, dashboard, scheduler, runtime, persistence, broker,
 vendor, network, backtest, or trading behavior.
 
+Phase 297 - Advisory Content Bundle View Branch adds an optional
+`advisory_view` branch to advisory operating brief content bundles. The branch
+is absent by default, accepts only an exact `AdvisoryOperatingBriefView`, and
+serializes through `view.to_dict()` without wrapper/timestamp/digest/raw
+payload fields. The content-bundle renderer emits only view key, title, state,
+section count, section keys, summary lines, diagnostic messages, and
+limitations; compact sorted-key JSON remains deterministic. The synthetic
+package preview explicitly includes the advisory view built from its existing
+synthetic advisory sections, while content-bundle CLI behavior remains
+unchanged. Focused tests pin default absence, exact-type rejection for
+subclasses/lookalikes/non-view objects, text and JSON byte determinism, package
+preview inclusion, metadata-only payload shape, and absence of broker/order/
+fill/portfolio/backtest/runtime/vendor/network/credential fields or ranking/
+scoring/recommendation/approval vocabulary. Phase 297 adds no real data
+ingestion, source selection, source/vendor approval, runtime, persistence,
+broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

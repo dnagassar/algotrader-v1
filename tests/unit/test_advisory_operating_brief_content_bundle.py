@@ -20,6 +20,9 @@ from algotrader.research.advisory_operating_brief_diagnostic_issue import (
 from algotrader.research.advisory_operating_brief_section import (
     AdvisoryOperatingBriefSection,
 )
+from algotrader.research.advisory_operating_brief_view import (
+    AdvisoryOperatingBriefView,
+)
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
 from algotrader.research.research_return_observation_brief_container import (
     ResearchReturnObservationBrief,
@@ -73,6 +76,9 @@ from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
 from tests.fixtures.advisory_operating_brief_section import (
     build_synthetic_advisory_operating_brief_sections,
     expected_synthetic_advisory_operating_brief_section_dicts,
+)
+from tests.fixtures.advisory_operating_brief_view import (
+    build_synthetic_advisory_operating_brief_view,
 )
 from tests.fixtures.research_queue_brief import (
     build_synthetic_research_queue_brief,
@@ -379,6 +385,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.research.strategy_eligibility_brief",
     "algotrader.research.advisory_operating_brief_diagnostic_issue",
     "algotrader.research.advisory_operating_brief_section",
+    "algotrader.research.advisory_operating_brief_view",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
@@ -1075,6 +1082,14 @@ def test_advisory_sections_branch_is_optional_and_absent_by_default() -> None:
     assert "advisory_sections" not in payload
 
 
+def test_advisory_view_branch_is_optional_and_absent_by_default() -> None:
+    bundle = _combined_bundle()
+    payload = bundle.to_dict()
+
+    assert bundle.advisory_view is None
+    assert "advisory_view" not in payload
+
+
 def test_advisory_section_identity_order_serialization_and_limits_are_preserved() -> None:
     sections = tuple(reversed(build_synthetic_advisory_operating_brief_sections()))
 
@@ -1101,10 +1116,37 @@ def test_advisory_section_identity_order_serialization_and_limits_are_preserved(
     assert bundle.non_claims == _EXPECTED_NON_CLAIMS
 
 
+def test_advisory_view_identity_serialization_and_limits_are_preserved() -> None:
+    advisory_view = build_synthetic_advisory_operating_brief_view()
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_view=advisory_view,
+    )
+    payload = bundle.to_dict()
+
+    assert bundle.advisory_view is advisory_view
+    assert payload["advisory_view"] == advisory_view.to_dict()
+    assert "1 advisory view(s)" in bundle.summary
+    assert all(
+        limitation in bundle.limitations
+        for limitation in advisory_view.limitations
+    )
+    assert bundle.non_claims == _EXPECTED_NON_CLAIMS
+
+
 def test_advisory_sections_alone_do_not_make_bundle_non_empty() -> None:
     with pytest.raises(ValidationError, match="at least one supported brief"):
         build_advisory_operating_brief_content_bundle(
             advisory_sections=build_synthetic_advisory_operating_brief_sections()
+        )
+
+
+def test_advisory_view_alone_does_not_make_bundle_non_empty() -> None:
+    with pytest.raises(ValidationError, match="at least one supported brief"):
+        build_advisory_operating_brief_content_bundle(
+            advisory_view=build_synthetic_advisory_operating_brief_view()
         )
 
 
@@ -1357,6 +1399,19 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         def to_dict(self) -> dict[str, object]:
             return {"section_key": self.section_key}
 
+    class AdvisoryViewLike:
+        view_key = "advisory_operating_brief_section_view"
+        view_title = "Advisory operating brief section view"
+        view_state = "candidate_only"
+        section_count = 1
+        section_keys = ("candidate_research_briefs",)
+        summary_lines = ("candidate_research_briefs: Candidate research brief; count=1",)
+        diagnostic_messages = ()
+        limitations = ("synthetic view lookalike only",)
+
+        def to_dict(self) -> dict[str, object]:
+            return {"view_key": self.view_key}
+
     class DerivedRiskAuthorityBrief(RiskAuthorityBrief):
         pass
 
@@ -1373,6 +1428,9 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         pass
 
     class DerivedAdvisorySection(AdvisoryOperatingBriefSection):
+        pass
+
+    class DerivedAdvisoryView(AdvisoryOperatingBriefView):
         pass
 
     source_risk = build_synthetic_risk_authority_brief()
@@ -1443,6 +1501,17 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         item_count=source_section.item_count,
         diagnostic_messages=source_section.diagnostic_messages,
         limitations=source_section.limitations,
+    )
+    source_view = build_synthetic_advisory_operating_brief_view()
+    subclass_view = DerivedAdvisoryView(
+        view_key=source_view.view_key,
+        view_title=source_view.view_title,
+        view_state=source_view.view_state,
+        section_count=source_view.section_count,
+        section_keys=source_view.section_keys,
+        summary_lines=source_view.summary_lines,
+        diagnostic_messages=source_view.diagnostic_messages,
+        limitations=source_view.limitations,
     )
 
     with pytest.raises(ValidationError, match="CandidateResearchBrief"):
@@ -1581,6 +1650,24 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         build_advisory_operating_brief_content_bundle(
             candidate_research_briefs=[build_synthetic_candidate_research_brief()],
             advisory_sections=[subclass_section],
+        )
+
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefView"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_view=object(),
+        )
+
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefView"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_view=AdvisoryViewLike(),
+        )
+
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefView"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_view=subclass_view,
         )
 
     with pytest.raises(ValidationError, match="iterable"):
@@ -2166,6 +2253,7 @@ def test_no_actionable_trading_authority_fields_are_exposed() -> None:
         "research_data_source_readiness_summaries",
         "diagnostic_issues",
         "advisory_sections",
+        "advisory_view",
     )
     assert tuple(payload) == tuple(_EXPECTED_ALL_FAMILY_BUNDLE_DICT)
     assert field_names.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)

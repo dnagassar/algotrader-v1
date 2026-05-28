@@ -1228,7 +1228,8 @@ def _diagnostic_issues_text_block(text: str) -> tuple[str, ...]:
 def _advisory_sections_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Advisory Sections")
-    end = lines.index("Limitations", start)
+    end_marker = "Advisory View" if "Advisory View" in lines[start:] else "Limitations"
+    end = lines.index(end_marker, start)
 
     return tuple(lines[start:end])
 

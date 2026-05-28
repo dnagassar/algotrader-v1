@@ -87,6 +87,7 @@ class AdvisoryOperatingBriefContentBundle:
     ] = ()
     diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = ()
     advisory_sections: tuple[AdvisoryOperatingBriefSection, ...] = ()
+    advisory_view: AdvisoryOperatingBriefView | None = None
 
     def __post_init__(self) -> None:
         candidate_briefs = _candidate_research_briefs_tuple(
@@ -123,6 +124,7 @@ class AdvisoryOperatingBriefContentBundle:
         )
         diagnostic_issues = _diagnostic_issues_tuple(self.diagnostic_issues)
         advisory_sections = _advisory_sections_tuple(self.advisory_sections)
+        advisory_view = _optional_advisory_view(self.advisory_view)
         _validate_non_empty_bundle(
             candidate_briefs,
             eligibility_briefs,
@@ -136,6 +138,7 @@ class AdvisoryOperatingBriefContentBundle:
             data_source_readiness_summaries,
             diagnostic_issues,
             advisory_sections,
+            advisory_view,
         )
         _validate_unique_brief_identities(
             candidate_briefs,
@@ -150,6 +153,7 @@ class AdvisoryOperatingBriefContentBundle:
             data_source_readiness_summaries,
             diagnostic_issues,
             advisory_sections,
+            advisory_view,
         )
 
         limitations = _required_string_tuple(self.limitations, "limitations")
@@ -167,6 +171,7 @@ class AdvisoryOperatingBriefContentBundle:
             data_source_readiness_summaries,
             diagnostic_issues,
             advisory_sections,
+            advisory_view,
             "limitations",
         )
         expected_non_claims = _combined_brief_values(
@@ -182,6 +187,7 @@ class AdvisoryOperatingBriefContentBundle:
             data_source_readiness_summaries,
             diagnostic_issues,
             advisory_sections,
+            advisory_view,
             "non_claims",
         )
 
@@ -208,6 +214,7 @@ class AdvisoryOperatingBriefContentBundle:
                 data_source_readiness_summaries,
                 diagnostic_issues,
                 advisory_sections,
+                advisory_view,
             ),
         )
         _validate_matches("limitations", limitations, expected_limitations)
@@ -247,6 +254,7 @@ class AdvisoryOperatingBriefContentBundle:
         )
         object.__setattr__(self, "diagnostic_issues", diagnostic_issues)
         object.__setattr__(self, "advisory_sections", advisory_sections)
+        object.__setattr__(self, "advisory_view", advisory_view)
 
     def to_dict(self) -> dict[str, object]:
         """Return deterministic primitive-only bundle metadata."""
@@ -346,6 +354,8 @@ class AdvisoryOperatingBriefContentBundle:
             payload["advisory_sections"] = [
                 section.to_dict() for section in self.advisory_sections
             ]
+        if self.advisory_view is not None:
+            payload["advisory_view"] = self.advisory_view.to_dict()
 
         payload["limitations"] = list(self.limitations)
         payload["non_claims"] = list(self.non_claims)
@@ -373,6 +383,7 @@ def build_advisory_operating_brief_content_bundle(
     ] = (),
     diagnostic_issues: Iterable[object] = (),
     advisory_sections: Iterable[object] = (),
+    advisory_view: object | None = None,
 ) -> AdvisoryOperatingBriefContentBundle:
     """Build a deterministic advisory-only content bundle from existing briefs."""
 
@@ -404,6 +415,7 @@ def build_advisory_operating_brief_content_bundle(
     )
     diagnostic_issues_tuple = _diagnostic_issues_tuple(diagnostic_issues)
     advisory_sections_tuple = _advisory_sections_tuple(advisory_sections)
+    advisory_view_value = _optional_advisory_view(advisory_view)
     _validate_non_empty_bundle(
         candidate_briefs,
         eligibility_briefs,
@@ -417,6 +429,7 @@ def build_advisory_operating_brief_content_bundle(
         data_source_readiness_summaries,
         diagnostic_issues_tuple,
         advisory_sections_tuple,
+        advisory_view_value,
     )
     _validate_unique_brief_identities(
         candidate_briefs,
@@ -431,6 +444,7 @@ def build_advisory_operating_brief_content_bundle(
         data_source_readiness_summaries,
         diagnostic_issues_tuple,
         advisory_sections_tuple,
+        advisory_view_value,
     )
 
     return AdvisoryOperatingBriefContentBundle(
@@ -452,6 +466,7 @@ def build_advisory_operating_brief_content_bundle(
             data_source_readiness_summaries,
             diagnostic_issues_tuple,
             advisory_sections_tuple,
+            advisory_view_value,
         ),
         candidate_research_briefs=candidate_briefs,
         strategy_eligibility_briefs=eligibility_briefs,
@@ -468,6 +483,7 @@ def build_advisory_operating_brief_content_bundle(
             data_source_readiness_summaries,
             diagnostic_issues_tuple,
             advisory_sections_tuple,
+            advisory_view_value,
             "limitations",
         ),
         non_claims=_combined_brief_values(
@@ -483,6 +499,7 @@ def build_advisory_operating_brief_content_bundle(
             data_source_readiness_summaries,
             diagnostic_issues_tuple,
             advisory_sections_tuple,
+            advisory_view_value,
             "non_claims",
         ),
         risk_authority_briefs=risk_briefs,
@@ -495,6 +512,7 @@ def build_advisory_operating_brief_content_bundle(
         research_data_source_readiness_summaries=data_source_readiness_summaries,
         diagnostic_issues=diagnostic_issues_tuple,
         advisory_sections=advisory_sections_tuple,
+        advisory_view=advisory_view_value,
     )
 
 
@@ -519,6 +537,7 @@ def _summary(
     ],
     diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...],
     advisory_sections: tuple[AdvisoryOperatingBriefSection, ...],
+    advisory_view: AdvisoryOperatingBriefView | None,
 ) -> str:
     limitations = _combined_brief_values(
         candidate_research_briefs,
@@ -533,6 +552,7 @@ def _summary(
         research_data_source_readiness_summaries,
         diagnostic_issues,
         advisory_sections,
+        advisory_view,
         "limitations",
     )
     non_claims = _combined_brief_values(
@@ -548,6 +568,7 @@ def _summary(
         research_data_source_readiness_summaries,
         diagnostic_issues,
         advisory_sections,
+        advisory_view,
         "non_claims",
     )
     risk_clause = (
@@ -605,6 +626,11 @@ def _summary(
         if advisory_sections
         else ""
     )
+    advisory_view_clause = (
+        "1 advisory view(s), "
+        if advisory_view is not None
+        else ""
+    )
     return (
         "Advisory content bundle contains "
         f"{len(candidate_research_briefs)} candidate research brief(s), "
@@ -613,6 +639,7 @@ def _summary(
         f"{research_return_clause}{research_return_summary_clause}"
         f"{data_source_readiness_clause}{data_source_readiness_summary_clause}"
         f"{diagnostic_issue_clause}{advisory_section_clause}"
+        f"{advisory_view_clause}"
         f"{len(limitations)} limitation(s), and "
         f"{len(non_claims)} non-claim(s)."
     )
@@ -1056,6 +1083,24 @@ def _advisory_sections_tuple(
     return sections
 
 
+def _optional_advisory_view(
+    value: object,
+) -> AdvisoryOperatingBriefView | None:
+    if value is None:
+        return None
+
+    from algotrader.research.advisory_operating_brief_view import (
+        AdvisoryOperatingBriefView,
+    )
+
+    if type(value) is not AdvisoryOperatingBriefView:
+        raise ValidationError(
+            "advisory_view must be exactly an AdvisoryOperatingBriefView."
+        )
+
+    return value
+
+
 def _validate_non_empty_bundle(
     candidate_research_briefs: tuple[CandidateResearchBrief, ...],
     strategy_eligibility_briefs: tuple[StrategyEligibilityBrief, ...],
@@ -1075,6 +1120,7 @@ def _validate_non_empty_bundle(
     ] = (),
     diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = (),
     advisory_sections: tuple[AdvisoryOperatingBriefSection, ...] = (),
+    advisory_view: AdvisoryOperatingBriefView | None = None,
 ) -> None:
     if (
         not candidate_research_briefs
@@ -1112,6 +1158,7 @@ def _validate_unique_brief_identities(
     ] = (),
     diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...] = (),
     advisory_sections: tuple[AdvisoryOperatingBriefSection, ...] = (),
+    advisory_view: AdvisoryOperatingBriefView | None = None,
 ) -> None:
     seen_identities: set[int] = set()
     for brief in (
@@ -1127,6 +1174,7 @@ def _validate_unique_brief_identities(
         *research_data_source_readiness_summaries,
         *diagnostic_issues,
         *advisory_sections,
+        *((advisory_view,) if advisory_view is not None else ()),
     ):
         brief_identity = id(brief)
         if brief_identity in seen_identities:
@@ -1153,6 +1201,7 @@ def _combined_brief_values(
     ],
     diagnostic_issues: tuple[AdvisoryOperatingBriefDiagnosticIssue, ...],
     advisory_sections: tuple[AdvisoryOperatingBriefSection, ...],
+    advisory_view: AdvisoryOperatingBriefView | None,
     field_name: str,
 ) -> tuple[str, ...]:
     values: list[str] = []
@@ -1194,6 +1243,12 @@ def _combined_brief_values(
                 continue
             values.append(value)
             seen.add(value)
+    if advisory_view is not None:
+        for value in _advisory_view_values(advisory_view, field_name):
+            if value in seen:
+                continue
+            values.append(value)
+            seen.add(value)
 
     return tuple(values)
 
@@ -1224,6 +1279,16 @@ def _advisory_section_values(
 ) -> tuple[str, ...]:
     if field_name == "limitations":
         return section.limitations
+
+    return ()
+
+
+def _advisory_view_values(
+    view: AdvisoryOperatingBriefView,
+    field_name: str,
+) -> tuple[str, ...]:
+    if field_name == "limitations":
+        return view.limitations
 
     return ()
 

@@ -86,6 +86,9 @@ _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "algotrader.research.advisory_operating_brief_section": (
         "AdvisoryOperatingBriefSection",
     ),
+    "algotrader.research.advisory_operating_brief_view": (
+        "AdvisoryOperatingBriefView",
+    ),
     "algotrader.research.candidate_research_brief": ("CandidateResearchBrief",),
     "algotrader.research.research_return_observation_brief_container": (
         "ResearchReturnObservationBrief",

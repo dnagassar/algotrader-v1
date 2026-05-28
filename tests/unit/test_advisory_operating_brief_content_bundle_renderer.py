@@ -57,6 +57,9 @@ from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
 from tests.fixtures.advisory_operating_brief_section import (
     build_synthetic_advisory_operating_brief_sections,
 )
+from tests.fixtures.advisory_operating_brief_view import (
+    build_synthetic_advisory_operating_brief_view,
+)
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
     expected_synthetic_candidate_research_brief_dict,
@@ -1788,6 +1791,7 @@ def test_renderer_reads_optional_branches_from_dictionary_payload_only() -> None
     assert ".risk_authority_briefs" not in source
     assert ".sma_research_observation_briefs" not in source
     assert ".research_return_observation_briefs" not in source
+    assert ".advisory_view" not in source
 
 
 def test_diagnostic_issue_branch_rendering_is_pinned_and_deterministic() -> None:
@@ -1907,6 +1911,54 @@ def test_advisory_sections_branch_rendering_is_pinned_and_deterministic() -> Non
     assert first.encode("utf-8") == second.encode("utf-8")
     assert "advisory_section_count: 5" in first
     assert _index(first, "\nAdvisory Sections\n") < _index(first, "\nLimitations\n")
+    assert branch == "\n".join(expected_lines)
+    lowered_branch = branch.lower()
+    for token in (
+        "ranking",
+        "scoring",
+        _s("recomm", "end"),
+        _s("app", "roval"),
+        _s("app", "roved"),
+    ):
+        assert token not in lowered_branch
+
+
+def test_advisory_view_branch_rendering_is_pinned_and_deterministic() -> None:
+    advisory_view = build_synthetic_advisory_operating_brief_view()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_view=advisory_view,
+    )
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch = "Advisory View\n" + first.split(
+        "\nAdvisory View\n",
+        maxsplit=1,
+    )[1].split("\n\nLimitations\n", maxsplit=1)[0]
+    expected_lines: list[str] = [
+        "Advisory View",
+        f"view_key: {advisory_view.view_key}",
+        f"view_title: {advisory_view.view_title}",
+        f"view_state: {advisory_view.view_state}",
+        f"section_count: {advisory_view.section_count}",
+        "section_keys:",
+    ]
+    expected_lines.extend(f"- {value}" for value in advisory_view.section_keys)
+    expected_lines.extend(("summary_lines:",))
+    expected_lines.extend(f"- {value}" for value in advisory_view.summary_lines)
+    expected_lines.extend(("diagnostic_messages:",))
+    expected_lines.extend(
+        f"- {value}" for value in advisory_view.diagnostic_messages
+    )
+    expected_lines.extend(("limitations:",))
+    expected_lines.extend(f"- {value}" for value in advisory_view.limitations)
+
+    assert first == second
+    assert first.encode("utf-8") == second.encode("utf-8")
+    assert "Advisory View" in first
+    assert _index(first, "\nAdvisory View\n") < _index(first, "\nLimitations\n")
     assert branch == "\n".join(expected_lines)
     lowered_branch = branch.lower()
     for token in (

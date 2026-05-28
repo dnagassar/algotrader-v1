@@ -72,6 +72,9 @@ _ALLOWED_SYNTHETIC_IMPORTS = {
     "algotrader.research.advisory_operating_brief_section": (
         "build_advisory_operating_brief_sections",
     ),
+    "algotrader.research.advisory_operating_brief_view": (
+        "build_advisory_operating_brief_view",
+    ),
     "algotrader.research.research_queue_brief": (
         "ResearchQueueBrief",
         "build_research_queue_brief",

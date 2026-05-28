@@ -42,6 +42,7 @@ _EXPECTED_DIAGNOSTIC_ISSUES = (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
 )
 _EXPECTED_ADVISORY_SECTIONS = _EXPECTED_CONTENT_BUNDLE_PAYLOAD["advisory_sections"]
+_EXPECTED_ADVISORY_VIEW = _EXPECTED_CONTENT_BUNDLE_PAYLOAD["advisory_view"]
 _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
     expected_synthetic_sma_return_research_pipeline_observation_dict()
 )
@@ -68,6 +69,16 @@ _EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS = (
     "section_state",
     "source_branches",
     "item_count",
+    "diagnostic_messages",
+    "limitations",
+)
+_EXPECTED_ADVISORY_VIEW_PAYLOAD_KEYS = (
+    "view_key",
+    "view_title",
+    "view_state",
+    "section_count",
+    "section_keys",
+    "summary_lines",
     "diagnostic_messages",
     "limitations",
 )
@@ -361,6 +372,53 @@ _FORBIDDEN_ADVISORY_SECTION_EXPORT_TERMS = (
     "validated_for_trading",
     "usable_for_backtest",
 )
+_FORBIDDEN_ADVISORY_VIEW_EXPORT_KEYS = {
+    "account",
+    "accounts",
+    "allocation",
+    "approval",
+    "approved",
+    "authority",
+    "authorization",
+    "broker",
+    "capital_authority",
+    "created_at",
+    "credential",
+    "digest",
+    "fill",
+    "generated_at",
+    "order",
+    "payload_digest_sha256",
+    "portfolio",
+    "priority",
+    "rank",
+    "ranking",
+    "raw_data",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "severity",
+    "source_payload",
+    "timestamp",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
+_FORBIDDEN_ADVISORY_VIEW_EXPORT_TERMS = (
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "ranking",
+    "scoring",
+    "recommendation",
+    "allocation",
+    "ready_to_trade",
+    "trading_ready",
+    "validated_for_trading",
+    "usable_for_backtest",
+)
 
 
 def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() -> None:
@@ -410,6 +468,8 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
         _EXPECTED_ADVISORY_SECTIONS
     )
     assert nested_export_payload["advisory_sections"] == _EXPECTED_ADVISORY_SECTIONS
+    assert content_bundle["advisory_view"] == _EXPECTED_ADVISORY_VIEW
+    assert nested_export_payload["advisory_view"] == _EXPECTED_ADVISORY_VIEW
     assert content_bundle_export["payload"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     assert pipeline_payload["return_construction_policy_observation"] == (
         package.sma_return_research_pipeline_observation
@@ -580,6 +640,70 @@ def test_export_advisory_sections_are_metadata_only_without_authority_fields() -
         for term in _FORBIDDEN_ADVISORY_SECTION_EXPORT_TERMS
     )
     assert "metadata-only section record for present advisory content branch" in (
+        exported.rendered_text
+    )
+
+
+def test_export_advisory_view_payload_shape_has_no_wrappers_or_trading_terms() -> (
+    None
+):
+    exported = export_advisory_operating_brief_package(
+        build_synthetic_advisory_operating_brief_package()
+    )
+    content_bundle = _dict(exported.payload["content_bundle"])
+    nested_payload = _dict(_dict(exported.payload["content_bundle_export"])["payload"])
+    view_payload = _dict(content_bundle["advisory_view"])
+    nested_view_payload = _dict(nested_payload["advisory_view"])
+    compact_view_json = _compact_sorted_json({"advisory_view": view_payload}).lower()
+
+    assert view_payload == nested_view_payload == _EXPECTED_ADVISORY_VIEW
+    assert tuple(view_payload) == _EXPECTED_ADVISORY_VIEW_PAYLOAD_KEYS
+    assert _payload_keys(view_payload).isdisjoint(_FORBIDDEN_ADVISORY_VIEW_EXPORT_KEYS)
+    assert _payload_keys(nested_view_payload).isdisjoint(
+        _FORBIDDEN_ADVISORY_VIEW_EXPORT_KEYS
+    )
+    assert all(
+        term not in compact_view_json
+        for term in _FORBIDDEN_ADVISORY_VIEW_EXPORT_TERMS
+    )
+    assert '"advisory_view"' in exported.json_text
+    assert "Advisory View" in exported.rendered_text
+
+
+def test_export_advisory_view_is_metadata_only_without_authority_fields() -> None:
+    exported = export_advisory_operating_brief_package(
+        build_synthetic_advisory_operating_brief_package()
+    )
+    payload = exported.payload
+    content_bundle = _dict(payload["content_bundle"])
+    nested_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    view_payload = _dict(content_bundle["advisory_view"])
+    nested_view_payload = _dict(nested_payload["advisory_view"])
+    view_keys = _payload_keys(view_payload)
+    nested_view_keys = _payload_keys(nested_view_payload)
+    view_json = _compact_sorted_json({"advisory_view": view_payload})
+
+    assert view_payload == nested_view_payload == _EXPECTED_ADVISORY_VIEW
+    assert view_keys.isdisjoint(_FORBIDDEN_ADVISORY_VIEW_EXPORT_KEYS)
+    assert nested_view_keys.isdisjoint(_FORBIDDEN_ADVISORY_VIEW_EXPORT_KEYS)
+    assert {
+        "authority",
+        "capital_authority",
+        "wrapper",
+        "timestamp",
+        "payload_digest_sha256",
+        "broker",
+        "order",
+        "fill",
+        "portfolio",
+        "trading_authority",
+    }.isdisjoint(view_keys)
+    assert view_json == _compact_sorted_json({"advisory_view": nested_view_payload})
+    assert all(
+        term not in view_json.lower()
+        for term in _FORBIDDEN_ADVISORY_VIEW_EXPORT_TERMS
+    )
+    assert "metadata-only view over supplied advisory section records" in (
         exported.rendered_text
     )
 

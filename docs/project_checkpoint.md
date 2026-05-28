@@ -13521,6 +13521,20 @@ Safe next tasks include:
   trading vocabulary. This phase changes no production source and adds no
   package, CLI, renderer, dashboard, scheduler, persistence, runtime, broker,
   vendor, network, backtest, or trading behavior.
+- Phase 297 - Advisory Content Bundle View Branch adds an optional
+  `advisory_view` branch to advisory operating brief content bundles. The
+  branch is absent by default, accepts only an exact
+  `AdvisoryOperatingBriefView`, serializes through `view.to_dict()`, and renders
+  only view key/title/state, section count, section keys, summary lines,
+  diagnostic messages, and limitations. The synthetic package preview includes
+  the view built from its existing synthetic advisory sections; content-bundle
+  CLI behavior remains unchanged. Focused tests pin exact-type rejection,
+  compact sorted-key JSON and text determinism, package export inclusion,
+  metadata-only shape, and no broker/order/fill/portfolio/backtest/runtime/
+  vendor/network/credential fields or ranking/scoring/recommendation/approval
+  vocabulary. This phase adds no real data ingestion, source selection,
+  source/vendor approval, persistence, runtime, broker, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

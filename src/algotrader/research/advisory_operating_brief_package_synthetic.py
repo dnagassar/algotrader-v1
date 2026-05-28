@@ -21,6 +21,9 @@ from algotrader.research.advisory_operating_brief_package import (
 from algotrader.research.advisory_operating_brief_section import (
     build_advisory_operating_brief_sections,
 )
+from algotrader.research.advisory_operating_brief_view import (
+    build_advisory_operating_brief_view,
+)
 from algotrader.research.research_queue_brief import (
     ResearchQueueBrief,
     build_research_queue_brief,
@@ -241,6 +244,7 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
     advisory_sections = build_advisory_operating_brief_sections(
         diagnostic_bundle
     )
+    advisory_view = build_advisory_operating_brief_view(advisory_sections)
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=base_bundle.candidate_research_briefs,
         strategy_eligibility_briefs=base_bundle.strategy_eligibility_briefs,
@@ -262,6 +266,7 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         ),
         diagnostic_issues=diagnostic_issues,
         advisory_sections=advisory_sections,
+        advisory_view=advisory_view,
     )
 
 

@@ -72,6 +72,14 @@ _FORBIDDEN_ADVISORY_SECTION_VOCABULARY = (
     "approval",
     "approved",
 )
+_FORBIDDEN_ADVISORY_VIEW_VOCABULARY = (
+    "ranking",
+    "scoring",
+    "recommend",
+    "recommendation",
+    "approval",
+    "approved",
+)
 
 
 def test_synthetic_preview_includes_one_named_research_manifest_entry() -> None:
@@ -264,6 +272,57 @@ def test_synthetic_advisory_sections_add_no_trading_fields_or_positive_terms() -
         _FORBIDDEN_READINESS_FIELD_TERMS,
     ) == []
     for term in _FORBIDDEN_ADVISORY_SECTION_VOCABULARY:
+        assert term not in compact
+
+
+def test_synthetic_preview_includes_advisory_view_branch_deterministically() -> None:
+    first_package = build_synthetic_advisory_operating_brief_package_preview()
+    second_package = build_synthetic_advisory_operating_brief_package_preview()
+    first_payload = first_package.to_dict()
+    second_payload = second_package.to_dict()
+    content_bundle = _dict(first_payload["content_bundle"])
+    second_content_bundle = _dict(second_payload["content_bundle"])
+    content_bundle_export = _dict(first_payload["content_bundle_export"])
+    advisory_view = first_package.content_bundle.advisory_view
+    second_advisory_view = second_package.content_bundle.advisory_view
+    view_payload = _dict(content_bundle["advisory_view"])
+    second_view_payload = _dict(second_content_bundle["advisory_view"])
+    view_json = _compact_sorted_json({"advisory_view": view_payload})
+    second_view_json = _compact_sorted_json(
+        {"advisory_view": second_view_payload}
+    )
+
+    assert advisory_view is not None
+    assert second_advisory_view is not None
+    assert view_payload == advisory_view.to_dict()
+    assert second_view_payload == second_advisory_view.to_dict()
+    assert view_payload["section_keys"] == [
+        section.section_key
+        for section in first_package.content_bundle.advisory_sections
+    ]
+    assert view_payload["section_count"] == len(
+        first_package.content_bundle.advisory_sections
+    )
+    assert content_bundle_export["payload"] == content_bundle
+    assert '"advisory_view"' in content_bundle_export["json_text"]
+    assert "Advisory View" in content_bundle_export["rendered_text"]
+    assert view_json == second_view_json
+    assert view_json.encode("utf-8") == second_view_json.encode("utf-8")
+    assert json.loads(view_json) == {"advisory_view": view_payload}
+
+
+def test_synthetic_advisory_view_adds_no_trading_fields_or_positive_terms() -> None:
+    payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    view_payload = _dict(content_bundle["advisory_view"])
+    field_names = _serialized_keys(view_payload)
+    compact = _compact_sorted_json({"advisory_view": view_payload}).lower()
+
+    assert _matching_field_terms(
+        field_names,
+        _FORBIDDEN_READINESS_FIELD_TERMS,
+    ) == []
+    for term in _FORBIDDEN_ADVISORY_VIEW_VOCABULARY:
         assert term not in compact
 
 

@@ -215,6 +215,10 @@ def render_advisory_operating_brief_content_bundle_text(
         ):
             _append_advisory_section(lines, section_payload, section_index)
 
+    if "advisory_view" in payload:
+        lines.extend(("", "Advisory View"))
+        _append_advisory_view(lines, payload["advisory_view"])
+
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
     lines.extend(("", "Non-Claims"))
@@ -1186,6 +1190,28 @@ def _append_advisory_section(
             "diagnostic_messages:",
         )
     )
+    _append_values(lines, payload["diagnostic_messages"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
+
+
+def _append_advisory_view(
+    lines: list[str],
+    payload: dict[str, object],
+) -> None:
+    lines.extend(
+        (
+            f"view_key: {payload['view_key']}",
+            f"view_title: {payload['view_title']}",
+            f"view_state: {payload['view_state']}",
+            f"section_count: {payload['section_count']}",
+            "section_keys:",
+        )
+    )
+    _append_values(lines, payload["section_keys"])
+    lines.extend(("summary_lines:",))
+    _append_values(lines, payload["summary_lines"])
+    lines.extend(("diagnostic_messages:",))
     _append_values(lines, payload["diagnostic_messages"])
     lines.extend(("limitations:",))
     _append_values(lines, payload["limitations"])
