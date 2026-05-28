@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+import ast
 import json
+import inspect
+import re
 from dataclasses import FrozenInstanceError, fields, is_dataclass
 
 import pytest
 
 from algotrader.errors import ValidationError
+from algotrader.research import (
+    advisory_operating_brief_diagnostic_issue as diagnostic_issue_module,
+)
 from algotrader.research.advisory_operating_brief_diagnostic_issue import (
     AdvisoryOperatingBriefDiagnosticIssue,
     build_advisory_operating_brief_diagnostic_issues,
@@ -47,6 +53,149 @@ FORBIDDEN_OUTPUT_TERMS = (
     "recommendation",
     "allocation",
     "ready_to_trade",
+)
+EXPECTED_PRODUCTION_IMPORTS = {
+    "__future__",
+    "dataclasses",
+    "algotrader.errors",
+    "algotrader.research.advisory_operating_brief_content_bundle",
+    "algotrader.research.research_data_source_readiness",
+    "algotrader.research.research_data_source_readiness_summary",
+}
+FORBIDDEN_IMPORT_PREFIXES = (
+    "aiohttp",
+    "algotrader.agent",
+    "algotrader.agents",
+    "algotrader.broker",
+    "algotrader.brokers",
+    "algotrader.cli",
+    "algotrader.config",
+    "algotrader.core.config",
+    "algotrader.dashboard",
+    "algotrader.execution",
+    "algotrader.llm",
+    "algotrader.llms",
+    "algotrader.ml",
+    "algotrader.orchestration",
+    "algotrader.persistence",
+    "algotrader.portfolio",
+    "algotrader.risk",
+    "algotrader.runtime",
+    "algotrader.scheduler",
+    "algotrader.screener",
+    "algotrader.signals",
+    "algotrader.storage",
+    "algotrader.vendor",
+    "alpaca",
+    "alpaca_trade_api",
+    "anthropic",
+    "database",
+    "duckdb",
+    "google.generativeai",
+    "httpx",
+    "joblib",
+    "langchain",
+    "langgraph",
+    "llm",
+    "network",
+    "openai",
+    "os",
+    "pandas",
+    "pathlib",
+    "polars",
+    "requests",
+    "sklearn",
+    "socket",
+    "sqlmodel",
+    "subprocess",
+    "tensorflow",
+    "torch",
+    "urllib",
+    "vectorbt",
+    "yfinance",
+)
+FORBIDDEN_PRODUCTION_CALL_NAMES = {
+    "__import__",
+    "add_argument",
+    "add_parser",
+    "client",
+    "connect",
+    "create_order",
+    "date.today",
+    "datetime.now",
+    "datetime.utcnow",
+    "download",
+    "eval",
+    "exec",
+    "from_dict",
+    "from_file",
+    "getenv",
+    "glob",
+    "import_module",
+    "ingest",
+    "json.dump",
+    "json.load",
+    "load",
+    "main",
+    "open",
+    "os.environ.get",
+    "os.getenv",
+    "parse_args",
+    "post",
+    "read",
+    "read_bytes",
+    "read_csv",
+    "read_text",
+    "request",
+    "requests.get",
+    "save",
+    "socket.create_connection",
+    "socket.socket",
+    "sorted",
+    "submit_order",
+    "time.monotonic",
+    "time.time",
+    "to_file",
+    "to_sql",
+    "urlopen",
+    "walk",
+    "write",
+    "write_text",
+}
+FORBIDDEN_PRODUCTION_SOURCE_TOKENS = (
+    "account",
+    "allocation",
+    "alpaca",
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "backtest",
+    "broker",
+    "credential",
+    "dashboard",
+    "digest",
+    "fill",
+    "generated_at",
+    "llm",
+    "network",
+    "notebook",
+    "openai",
+    "order",
+    "portfolio",
+    "priority",
+    "ranking",
+    "raw_payload",
+    "recommendation",
+    "runtime",
+    "scheduler",
+    "scoring",
+    "severity",
+    "socket",
+    "timestamp",
+    "trading",
+    "vendor",
+    "wrapper",
 )
 
 
@@ -250,6 +399,26 @@ def test_forbidden_approval_and_trading_vocabulary_is_absent() -> None:
     assert _matching_terms(text, FORBIDDEN_OUTPUT_TERMS) == []
 
 
+def test_diagnostic_issue_builder_source_has_no_runtime_vendor_or_trading_dependencies() -> (
+    None
+):
+    imports = _import_references()
+    call_names = _call_names()
+    source = _source_text()
+
+    assert imports == EXPECTED_PRODUCTION_IMPORTS
+    assert [
+        module_name
+        for module_name in imports
+        if _matches_forbidden_prefix(module_name, FORBIDDEN_IMPORT_PREFIXES)
+    ] == []
+    assert call_names.isdisjoint(FORBIDDEN_PRODUCTION_CALL_NAMES)
+    assert _forbidden_source_token_matches(
+        source,
+        FORBIDDEN_PRODUCTION_SOURCE_TOKENS,
+    ) == []
+
+
 def test_compact_sorted_json_is_byte_deterministic() -> None:
     issues = build_advisory_operating_brief_diagnostic_issues(
         build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary()
@@ -329,3 +498,82 @@ def _matching_field_terms(
 
 def _matching_terms(text: str, forbidden_terms: tuple[str, ...]) -> list[str]:
     return [term for term in forbidden_terms if term in text]
+
+
+def _source_text() -> str:
+    return inspect.getsource(diagnostic_issue_module)
+
+
+def _tree() -> ast.AST:
+    return ast.parse(_source_text())
+
+
+def _import_references() -> set[str]:
+    imports: set[str] = set()
+    for node in ast.walk(_tree()):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module)
+
+    return imports
+
+
+def _call_names() -> set[str]:
+    return {
+        _call_name(node.func)
+        for node in ast.walk(_tree())
+        if isinstance(node, ast.Call)
+    }
+
+
+def _call_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        parent = _call_name(node.value)
+        return f"{parent}.{node.attr}" if parent else node.attr
+
+    return ""
+
+
+def _matches_forbidden_prefix(
+    module_name: str,
+    forbidden_prefixes: tuple[str, ...],
+) -> bool:
+    return any(
+        module_name == forbidden_prefix
+        or module_name.startswith(f"{forbidden_prefix}.")
+        for forbidden_prefix in forbidden_prefixes
+    )
+
+
+def _forbidden_source_token_matches(
+    source: str,
+    forbidden_terms: tuple[str, ...],
+) -> list[str]:
+    return [
+        term
+        for term in forbidden_terms
+        if _source_contains_token(source, term)
+    ]
+
+
+def _source_contains_token(source: str, token: str) -> bool:
+    lowered_token = token.lower()
+
+    for line in source.splitlines():
+        if _line_contains_token(line.lower(), lowered_token):
+            return True
+
+    return False
+
+
+def _line_contains_token(lowered_line: str, token: str) -> bool:
+    if re.match(r"^[a-z0-9_]+$", token):
+        return re.search(
+            rf"(?<![a-z0-9_]){re.escape(token)}(?![a-z0-9_])",
+            lowered_line,
+        ) is not None
+
+    return token in lowered_line

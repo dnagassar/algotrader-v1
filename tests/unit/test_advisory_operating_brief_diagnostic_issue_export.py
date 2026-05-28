@@ -56,12 +56,15 @@ FORBIDDEN_SNAPSHOT_KEYS = {
     "generated_at",
     "order",
     "portfolio",
+    "priority",
+    "rank",
     "ranking",
     "raw_data",
     "raw_payload",
     "recommendation",
     "runtime",
     "score",
+    "severity",
     "socket",
     "timestamp",
     "usable_for_backtest",
@@ -70,10 +73,16 @@ FORBIDDEN_SNAPSHOT_KEYS = {
     "wrapper",
 }
 FORBIDDEN_TEXT_TERMS = (
+    "approval",
     "approved",
+    "authorization",
     "authorized",
+    "priority",
+    "ranking",
     "ready_to_trade",
     "recommendation",
+    "scoring",
+    "severity",
     "validated_for_trading",
     "usable_for_backtest",
 )
@@ -161,6 +170,20 @@ def test_snapshot_contains_expected_diagnostic_issue_fields() -> None:
         "Fixture carries no observations, values, or external source content.",
         "Fixture is synthetic metadata only and not connected to real data.",
     ]
+
+
+def test_snapshot_preserves_builder_order_without_severity_or_priority_ranking() -> (
+    None
+):
+    snapshot = (
+        expected_synthetic_advisory_operating_brief_diagnostic_issue_export_snapshot_dicts()
+    )
+
+    assert [issue["source_branch"] for issue in snapshot] == EXPECTED_BRANCHES
+    assert [issue["diagnostic_message"] for issue in snapshot] == EXPECTED_MESSAGES
+    assert "severity" not in _payload_keys(snapshot)
+    assert "priority" not in _payload_keys(snapshot)
+    assert "rank" not in _payload_keys(snapshot)
 
 
 def test_snapshot_excludes_raw_timestamps_digest_wrappers_and_operating_fields() -> (

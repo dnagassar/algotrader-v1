@@ -53,6 +53,14 @@ _EXPECTED_RENDERED_TEXT = render_advisory_operating_brief_package_text(
     build_synthetic_advisory_operating_brief_package()
 )
 _EXPECTED_FIELD_NAMES = ("payload", "json_text", "rendered_text")
+_EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
+    "source_branch",
+    "issue_code",
+    "issue_state",
+    "diagnostic_message",
+    "blocking_controls",
+    "limitations",
+)
 _ALLOWED_IMPORTS = {
     "__future__",
     "dataclasses",
@@ -248,6 +256,54 @@ _NEGATIVE_TEXT_PREFIXES = (
     "without ",
     "non-",
 )
+_FORBIDDEN_DIAGNOSTIC_EXPORT_KEYS = {
+    "account",
+    "accounts",
+    "allocation",
+    "approval",
+    "approved",
+    "authority",
+    "authorization",
+    "broker",
+    "capital_authority",
+    "created_at",
+    "credential",
+    "digest",
+    "fill",
+    "generated_at",
+    "order",
+    "payload_digest_sha256",
+    "portfolio",
+    "priority",
+    "rank",
+    "ranking",
+    "raw_data",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "severity",
+    "source_authorized",
+    "source_payload",
+    "timestamp",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
+_FORBIDDEN_DIAGNOSTIC_EXPORT_TERMS = (
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "ranking",
+    "scoring",
+    "recommendation",
+    "allocation",
+    "ready_to_trade",
+    "trading_ready",
+    "validated_for_trading",
+    "usable_for_backtest",
+)
 
 
 def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() -> None:
@@ -356,6 +412,36 @@ def test_export_payload_access_returns_stable_primitive_copies() -> None:
     assert exported.payload is not second_payload
     assert json.loads(exported.json_text) == exported.payload
     assert exported.rendered_text == _EXPECTED_RENDERED_TEXT
+
+
+def test_export_diagnostic_issue_payload_shape_has_no_wrappers_or_trading_terms() -> (
+    None
+):
+    exported = export_advisory_operating_brief_package(
+        build_synthetic_advisory_operating_brief_package()
+    )
+    content_bundle = _dict(exported.payload["content_bundle"])
+    nested_payload = _dict(_dict(exported.payload["content_bundle_export"])["payload"])
+    issue_payloads = _list(content_bundle["diagnostic_issues"])
+    nested_issue_payloads = _list(nested_payload["diagnostic_issues"])
+    compact_issue_json = _compact_sorted_json(
+        {"diagnostic_issues": issue_payloads}
+    ).lower()
+
+    assert content_bundle["diagnostic_issue_count"] == 2
+    assert nested_payload["diagnostic_issue_count"] == 2
+    assert issue_payloads == nested_issue_payloads == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert [tuple(_dict(issue)) for issue in issue_payloads] == [
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+    ]
+    assert _payload_keys(issue_payloads).isdisjoint(
+        _FORBIDDEN_DIAGNOSTIC_EXPORT_KEYS
+    )
+    assert _payload_keys(nested_issue_payloads).isdisjoint(
+        _FORBIDDEN_DIAGNOSTIC_EXPORT_KEYS
+    )
+    assert all(term not in compact_issue_json for term in _FORBIDDEN_DIAGNOSTIC_EXPORT_TERMS)
 
 
 def test_direct_construction_validates_copies_and_is_frozen_slotted() -> None:
@@ -606,6 +692,26 @@ def _key_count(value: object, key: str) -> int:
         return sum(_key_count(item, key) for item in value)
 
     return 0
+
+
+def _compact_sorted_json(payload: dict[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _payload_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        keys: set[str] = set()
+        for key, nested_value in value.items():
+            keys.add(str(key))
+            keys.update(_payload_keys(nested_value))
+        return keys
+    if isinstance(value, list):
+        keys = set()
+        for item in value:
+            keys.update(_payload_keys(item))
+        return keys
+
+    return set()
 
 
 def _is_negative_advisory_text(value: str) -> bool:

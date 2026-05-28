@@ -385,6 +385,14 @@ _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
     "missing_control_count",
     "diagnostic_limitations",
 )
+_EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
+    "source_branch",
+    "issue_code",
+    "issue_state",
+    "diagnostic_message",
+    "blocking_controls",
+    "limitations",
+)
 _FORBIDDEN_READINESS_PAYLOAD_KEYS = {
     "account",
     "approved",
@@ -414,6 +422,32 @@ _FORBIDDEN_READINESS_SUMMARY_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | 
     "source_authorized",
     "source_readiness",
 }
+_FORBIDDEN_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
+    "authority",
+    "capital_authority",
+    "created_at",
+    "generated_at",
+    "payload_digest_sha256",
+    "priority",
+    "rank",
+    "raw_data",
+    "severity",
+    "source_authorized",
+}
+_FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS = (
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "ranking",
+    "scoring",
+    "recommendation",
+    "allocation",
+    "ready_to_trade",
+    "trading_ready",
+    "validated_for_trading",
+    "usable_for_backtest",
+)
 _PACKAGE_SOURCE_TOKEN_ALLOWLIST = {
     "account": ('"account",',),
     "token": ("token in lowered for token in",),
@@ -628,6 +662,46 @@ def test_synthetic_package_includes_readiness_summary_as_diagnostic_metadata() -
     assert "research_data_source_readiness_summary" not in _compact_sorted_json(
         manifest_payload
     )
+
+
+def test_synthetic_package_includes_diagnostic_issues_from_base_diagnostics_in_order() -> (
+    None
+):
+    package = build_synthetic_advisory_operating_brief_package_preview()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    issues = _list(content_bundle["diagnostic_issues"])
+    manifest_payload = _dict(payload["research_observation_manifest"])
+    compact_issues = _compact_sorted_json({"diagnostic_issues": issues}).lower()
+
+    assert _package_content_bundle_includes_diagnostic_issues_builder(
+        SYNTHETIC_SOURCE_PATH
+    )
+    assert content_bundle["diagnostic_issue_count"] == 2
+    assert [tuple(_dict(issue)) for issue in issues] == [
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+    ]
+    assert [_dict(issue)["source_branch"] for issue in issues] == [
+        "research_data_source_readiness",
+        "research_data_source_readiness_summary",
+    ]
+    assert [_dict(issue)["issue_code"] for issue in issues] == [
+        "missing_diagnostic_controls",
+        "missing_diagnostic_controls",
+    ]
+    assert [_dict(issue)["issue_state"] for issue in issues] == [
+        "candidate_only",
+        "candidate_only",
+    ]
+    assert _payload_keys(issues).isdisjoint(
+        _FORBIDDEN_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS
+    )
+    assert all(
+        term not in compact_issues
+        for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS
+    )
+    assert "diagnostic_issues" not in _compact_sorted_json(manifest_payload)
 
 
 def test_synthetic_preview_manifest_output_is_byte_deterministic() -> None:
@@ -981,6 +1055,30 @@ def _package_content_bundle_includes_readiness_summary_builder(path: Path) -> bo
     return False
 
 
+def _package_content_bundle_includes_diagnostic_issues_builder(path: Path) -> bool:
+    function_def = _function_def_from_path(
+        path,
+        "_build_synthetic_package_content_bundle",
+    )
+    if function_def is None:
+        return False
+
+    for node in ast.walk(function_def):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) != "build_advisory_operating_brief_content_bundle":
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "diagnostic_issues":
+                continue
+            return _contains_call(
+                keyword.value,
+                "build_advisory_operating_brief_diagnostic_issues",
+            ) and _contains_name(keyword.value, "base_bundle")
+
+    return False
+
+
 def _contains_name(node: ast.AST, name: str) -> bool:
     return any(
         isinstance(child, ast.Name) and child.id == name
@@ -1034,6 +1132,22 @@ def _payload_digest(payload: dict[str, object]) -> str:
 
 def _compact_sorted_json(payload: dict[str, object]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _payload_keys(value: object) -> set[str]:
+    if isinstance(value, dict):
+        keys: set[str] = set()
+        for key, nested_value in value.items():
+            keys.add(str(key))
+            keys.update(_payload_keys(nested_value))
+        return keys
+    if isinstance(value, list):
+        keys = set()
+        for nested_value in value:
+            keys.update(_payload_keys(nested_value))
+        return keys
+
+    return set()
 
 
 def _dict(value: object) -> dict[str, object]:

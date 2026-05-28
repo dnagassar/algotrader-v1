@@ -7,7 +7,11 @@ import re
 from pathlib import Path
 
 from algotrader.research.advisory_operating_brief_content_bundle import (
+    AdvisoryOperatingBriefContentBundle,
     build_advisory_operating_brief_content_bundle,
+)
+from algotrader.research.advisory_operating_brief_diagnostic_issue import (
+    build_advisory_operating_brief_diagnostic_issues,
 )
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
     export_advisory_operating_brief_content_bundle,
@@ -18,7 +22,11 @@ from algotrader.research.advisory_operating_brief_content_bundle_renderer import
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle,
     build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness,
+    build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary,
     build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_summary,
+)
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
 )
 
 
@@ -32,6 +40,8 @@ _READINESS_KEY = "research_data_source_readiness"
 _READINESS_COUNT_KEY = "research_data_source_readiness_count"
 _READINESS_SUMMARY_KEY = "research_data_source_readiness_summaries"
 _READINESS_SUMMARY_COUNT_KEY = "research_data_source_readiness_summary_count"
+_DIAGNOSTIC_ISSUES_KEY = "diagnostic_issues"
+_DIAGNOSTIC_ISSUE_COUNT_KEY = "diagnostic_issue_count"
 _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
     "summary_type",
     "schema_version",
@@ -41,6 +51,14 @@ _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
     "satisfied_control_count",
     "missing_control_count",
     "diagnostic_limitations",
+)
+_EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
+    "source_branch",
+    "issue_code",
+    "issue_state",
+    "diagnostic_message",
+    "blocking_controls",
+    "limitations",
 )
 _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "__future__": ("annotations",),
@@ -273,6 +291,33 @@ _FORBIDDEN_SUMMARY_PAYLOAD_KEYS = _FORBIDDEN_PAYLOAD_KEYS | {
     "source_readiness",
     "wrapper",
 }
+_FORBIDDEN_DIAGNOSTIC_PAYLOAD_KEYS = _FORBIDDEN_SUMMARY_PAYLOAD_KEYS | {
+    "authority",
+    "capital_authority",
+    "created_at",
+    "digest",
+    "generated_at",
+    "priority",
+    "rank",
+    "raw_data",
+    "raw_payload",
+    "severity",
+    "wrapper",
+}
+_FORBIDDEN_DIAGNOSTIC_TEXT_TERMS = (
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "ranking",
+    "scoring",
+    "recommendation",
+    "allocation",
+    "ready_to_trade",
+    "trading_ready",
+    "validated_for_trading",
+    "usable_for_backtest",
+)
 _POSITIVE_READINESS_TERMS = (
     "approved",
     "approval granted",
@@ -368,6 +413,43 @@ def test_content_bundle_readiness_summary_branch_is_optional_diagnostic_metadata
     )
 
 
+def test_content_bundle_diagnostic_issues_branch_is_optional_metadata_only() -> None:
+    signature = inspect.signature(build_advisory_operating_brief_content_bundle)
+    default_payload = build_synthetic_advisory_operating_brief_content_bundle().to_dict()
+    diagnostic_payload = (
+        _build_content_bundle_with_diagnostic_issues().to_dict()
+    )
+    repeated_diagnostic_payload = (
+        _build_content_bundle_with_diagnostic_issues().to_dict()
+    )
+    issues = _branch_items(diagnostic_payload, _DIAGNOSTIC_ISSUES_KEY)
+
+    assert signature.parameters[_DIAGNOSTIC_ISSUES_KEY].default == ()
+    assert _DIAGNOSTIC_ISSUES_KEY not in default_payload
+    assert _DIAGNOSTIC_ISSUE_COUNT_KEY not in default_payload
+    assert _READINESS_KEY not in diagnostic_payload
+    assert _READINESS_SUMMARY_KEY not in diagnostic_payload
+    assert diagnostic_payload[_DIAGNOSTIC_ISSUE_COUNT_KEY] == 2
+    assert issues == expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+    assert [tuple(issue) for issue in issues] == [
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+        _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS,
+    ]
+    assert [issue["source_branch"] for issue in issues] == [
+        "research_data_source_readiness",
+        "research_data_source_readiness_summary",
+    ]
+    assert [issue["issue_state"] for issue in issues] == [
+        "candidate_only",
+        "candidate_only",
+    ]
+    assert _payload_keys(issues).isdisjoint(_FORBIDDEN_DIAGNOSTIC_PAYLOAD_KEYS)
+    assert _primitive_only(issues)
+    assert _compact_sorted_json(diagnostic_payload) == _compact_sorted_json(
+        repeated_diagnostic_payload
+    )
+
+
 def test_renderer_readiness_wording_stays_diagnostic_and_negative() -> None:
     bundle = (
         build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness()
@@ -414,6 +496,43 @@ def test_renderer_readiness_summary_wording_stays_diagnostic_and_negative() -> N
     assert "trading_ready:" not in rendered
 
 
+def test_renderer_diagnostic_issue_wording_stays_diagnostic_and_negative() -> None:
+    bundle = _build_content_bundle_with_diagnostic_issues()
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+    diagnostic_text = "\n".join(
+        _section_lines(rendered, "Diagnostic Issues", "Limitations")
+    )
+
+    assert exported.rendered_text == rendered
+    assert "Diagnostic Issues" in lines
+    assert "Diagnostic Issue 1" in lines
+    assert "Diagnostic Issue 2" in lines
+    assert "source_branch: research_data_source_readiness" in lines
+    assert "source_branch: research_data_source_readiness_summary" in lines
+    assert "issue_code: missing_diagnostic_controls" in lines
+    assert "issue_state: candidate_only" in lines
+    assert (
+        "diagnostic_message: Readiness branch reports missing diagnostic controls."
+        in lines
+    )
+    assert (
+        "diagnostic_message: Readiness summary branch reports missing "
+        "diagnostic controls."
+    ) in lines
+    assert "blocking_controls:" in lines
+    assert "limitations:" in lines
+    assert _matching_terms(
+        diagnostic_text.lower(),
+        _FORBIDDEN_DIAGNOSTIC_TEXT_TERMS,
+    ) == []
+    assert _positive_readiness_lines(rendered) == []
+    assert "approval_status:" not in rendered
+    assert "authorization_status:" not in rendered
+    assert "trading_ready:" not in rendered
+
+
 def test_renderer_imports_only_bundle_contract_and_no_runtime_chains() -> None:
     import_details = _import_details_from_path(RENDERER_SOURCE_PATH)
     imports = set(import_details)
@@ -438,8 +557,28 @@ def test_readiness_integration_paths_have_no_forbidden_tokens_or_calls() -> None
         assert calls.isdisjoint(_FORBIDDEN_CALL_NAMES)
 
 
+def test_diagnostic_issue_branch_source_is_exact_type_and_to_dict_only() -> None:
+    assert _diagnostic_tuple_requires_exact_issue_type(CONTENT_BUNDLE_SOURCE_PATH)
+    assert _content_bundle_to_dict_serializes_diagnostic_issues_with_to_dict(
+        CONTENT_BUNDLE_SOURCE_PATH
+    )
+
+
 def _source_text_from_path(path: Path) -> str:
     return path.read_text(encoding="utf-8")
+
+
+def _build_content_bundle_with_diagnostic_issues() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    source = (
+        build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness_and_summary()
+    )
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=source.candidate_research_briefs,
+        strategy_eligibility_briefs=source.strategy_eligibility_briefs,
+        diagnostic_issues=build_advisory_operating_brief_diagnostic_issues(source),
+    )
 
 
 def _tree_from_path(path: Path) -> ast.AST:
@@ -514,6 +653,107 @@ def _function_names_from_path(path: Path) -> set[str]:
     }
 
 
+def _function_def_from_path(path: Path, name: str) -> ast.FunctionDef | None:
+    for node in ast.walk(_tree_from_path(path)):
+        if isinstance(node, ast.FunctionDef) and node.name == name:
+            return node
+
+    return None
+
+
+def _diagnostic_tuple_requires_exact_issue_type(path: Path) -> bool:
+    function_def = _function_def_from_path(path, "_diagnostic_issues_tuple")
+    if function_def is None:
+        return False
+
+    has_local_import = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module
+        == "algotrader.research.advisory_operating_brief_diagnostic_issue"
+        and any(
+            alias.name == "AdvisoryOperatingBriefDiagnosticIssue"
+            for alias in node.names
+        )
+        for node in ast.walk(function_def)
+    )
+    has_exact_type_check = any(
+        _is_type_is_not_diagnostic_issue_compare(node)
+        for node in ast.walk(function_def)
+    )
+
+    return has_local_import and has_exact_type_check
+
+
+def _is_type_is_not_diagnostic_issue_compare(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Compare)
+        and isinstance(node.left, ast.Call)
+        and _call_name(node.left.func) == "type"
+        and len(node.left.args) == 1
+        and isinstance(node.left.args[0], ast.Name)
+        and node.left.args[0].id == "issue"
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.IsNot)
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Name)
+        and node.comparators[0].id == "AdvisoryOperatingBriefDiagnosticIssue"
+    )
+
+
+def _content_bundle_to_dict_serializes_diagnostic_issues_with_to_dict(
+    path: Path,
+) -> bool:
+    to_dict = _function_def_from_path(path, "to_dict")
+    if to_dict is None:
+        return False
+
+    for node in ast.walk(to_dict):
+        if not isinstance(node, ast.If):
+            continue
+        if not _is_self_attribute(node.test, "diagnostic_issues"):
+            continue
+        if any(
+            _is_payload_key_assignment(child, "diagnostic_issues")
+            and _contains_issue_to_dict_call(child)
+            for child in ast.walk(node)
+        ):
+            return True
+
+    return False
+
+
+def _is_self_attribute(node: ast.AST, attribute_name: str) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == attribute_name
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "self"
+    )
+
+
+def _is_payload_key_assignment(node: ast.AST, key: str) -> bool:
+    return (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Subscript)
+        and isinstance(node.targets[0].value, ast.Name)
+        and node.targets[0].value.id == "payload"
+        and isinstance(node.targets[0].slice, ast.Constant)
+        and node.targets[0].slice.value == key
+    )
+
+
+def _contains_issue_to_dict_call(node: ast.AST) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr == "to_dict"
+        and isinstance(child.func.value, ast.Name)
+        and child.func.value.id == "issue"
+        for child in ast.walk(node)
+    )
+
+
 def _forbidden_source_token_matches(source: str) -> list[str]:
     return [
         token
@@ -550,6 +790,23 @@ def _single_branch(payload: dict[str, object], key: str) -> dict[str, object]:
     assert isinstance(item, dict)
 
     return item
+
+
+def _branch_items(payload: dict[str, object], key: str) -> list[dict[str, object]]:
+    branch = payload[key]
+    assert isinstance(branch, list)
+    for item in branch:
+        assert isinstance(item, dict)
+
+    return branch
+
+
+def _section_lines(text: str, start: str, end: str) -> tuple[str, ...]:
+    lines = tuple(text.splitlines())
+    start_index = lines.index(start)
+    end_index = lines.index(end, start_index)
+
+    return lines[start_index:end_index]
 
 
 def _payload_keys(value: object) -> set[str]:
@@ -598,3 +855,7 @@ def _positive_readiness_lines(text: str) -> list[str]:
 
 def _compact_sorted_json(payload: dict[str, object]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _matching_terms(text: str, forbidden_terms: tuple[str, ...]) -> list[str]:
+    return [term for term in forbidden_terms if term in text]

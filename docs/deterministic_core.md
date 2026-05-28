@@ -7820,6 +7820,17 @@ branch. Phase 287 changes no production source and adds no real data
 ingestion, source selection, source/vendor approval, runtime, persistence,
 broker, network, backtest, or trading behavior.
 
+Phase 288 - Advisory Diagnostic Issues Integration Dependency Guard adds
+focused test-only dependency/source guard coverage for the diagnostic issue
+content bundle, renderer, synthetic package builder, CLI preview, and package
+export integrations. The guards pin the diagnostic issue branch as
+metadata-only and diagnostic-only, preserve deterministic issue ordering,
+verify hidden boolean-only CLI preview handling, and assert export payloads add
+no wrappers, timestamps, digests, authority fields, broker fields, or trading
+vocabulary in the diagnostic issue branch. Phase 288 changes no production
+source and adds no real data ingestion, source selection, source/vendor
+approval, runtime, persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

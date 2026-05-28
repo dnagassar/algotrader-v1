@@ -13396,6 +13396,18 @@ Safe next tasks include:
   diagnostic issue branch. This phase changes no production source and adds no
   real data ingestion, source selection, source/vendor approval, runtime,
   persistence, broker, network, backtest, or trading behavior.
+- Phase 288 - Advisory Diagnostic Issues Integration Dependency Guard adds
+  focused test-only dependency/source guard coverage proving the diagnostic
+  issue content bundle, renderer, synthetic package builder, CLI preview, and
+  package export integrations remain metadata-only, diagnostic-only,
+  deterministic, and free of broker/runtime/vendor/network/trading behavior.
+  The guards pin hidden boolean-only CLI handling, diagnostic/negative
+  renderer wording, deterministic synthetic issue ordering, package export
+  branch shape without wrappers/timestamps/digests/authority fields, and
+  forbidden import/token/call/vocabulary scans. This phase changes no
+  production source and adds no real data ingestion, source selection,
+  source/vendor approval, runtime, persistence, broker, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
