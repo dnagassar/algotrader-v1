@@ -13424,6 +13424,21 @@ Safe next tasks include:
   preview, data, or runtime paths and adds no real data ingestion, source
   selection, source/vendor approval, persistence, broker, network, backtest,
   or trading behavior.
+- Phase 290 - Advisory Section Fixture and Export Snapshot adds test-only
+  synthetic fixture helpers for `AdvisoryOperatingBriefSection` records. The
+  fixture composes the existing synthetic advisory content bundle and
+  diagnostic issue fixtures, then builds section records only through
+  `build_advisory_operating_brief_sections()`. Snapshot helpers return exactly
+  each section `to_dict()` payload and compact sorted-key JSON, preserving
+  present-branches-only behavior, deterministic section ordering, diagnostic
+  messages, and limitations without wrapper fields, timestamps, digests, or raw
+  branch payloads. Focused tests pin repeated-build equality, byte-for-byte JSON
+  determinism, primitive fresh-copy payloads, fixture dependency bounds, and no
+  broker/order/fill/portfolio/backtest/runtime/vendor/network/credential fields
+  or ranking/scoring/recommendation/approval/trading vocabulary. This phase
+  changes no production source and adds no real data ingestion, source
+  selection, source/vendor approval, persistence, broker, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

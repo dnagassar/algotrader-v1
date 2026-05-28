@@ -7850,6 +7850,22 @@ vocabulary. Phase 289 adds no real data ingestion, source selection,
 source/vendor approval, runtime, persistence, broker, network, backtest, or
 trading behavior.
 
+Phase 290 - Advisory Section Fixture and Export Snapshot adds test-only
+synthetic fixture helpers for `AdvisoryOperatingBriefSection` records. The
+fixture composes the existing synthetic advisory content bundle and diagnostic
+issue fixtures, then builds section records only through
+`build_advisory_operating_brief_sections()`. Export snapshot helpers return
+exactly each section `to_dict()` payload and compact sorted-key JSON, preserving
+present-branches-only behavior, deterministic section ordering, diagnostic
+messages, and section limitations without wrapper fields, timestamps, digests,
+or raw branch payloads. Focused tests pin repeated-build equality, byte-for-byte
+JSON determinism, primitive fresh-copy payloads, fixture dependency bounds, and
+absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+credential fields or ranking/scoring/recommendation/approval/trading
+vocabulary. Phase 290 changes no production source and adds no real data
+ingestion, source selection, source/vendor approval, runtime, persistence,
+broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
