@@ -7985,6 +7985,19 @@ network access, and no broker/credential/live/vendor runtime behavior. Phase
 orders, fills, portfolio/reconciliation mutation, ranking, scoring,
 recommendation, approval, backtest execution, or trading authority.
 
+Phase 301 / Milestone 301 - Synthetic Operating Brief Work Queue extends the
+MVP preview with a deterministic `Work Queue / Next Non-Trading Work Items`
+section and matching JSON records derived from the existing synthetic package,
+diagnostic, readiness, research observation, blocked, and missing surfaces.
+Each item records a label, reason, state, and protected boundary for data-source
+gaps, source/universe/benchmark/cash controls, real data approval gaps,
+no-lookahead implementation, deterministic backtest readiness,
+validation/reproduction evidence, diagnostic blockers, advisory-only research
+observations, and absent trading authority. Phase 301 adds no real data
+ingestion, persistence, scheduler, dashboard, broker, orders, fills,
+portfolio/reconciliation mutation, ranking, scoring, recommendation, approval,
+backtest execution, or trading authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

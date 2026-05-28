@@ -13549,6 +13549,18 @@ Safe next tasks include:
   adds no real data ingestion, persistence, scheduler, dashboard, broker,
   orders, fills, portfolio/reconciliation mutation, ranking, scoring,
   recommendation, approval, backtest execution, or trading authority.
+- Phase 301 / Milestone 301 - Synthetic Operating Brief Work Queue extends the
+  MVP preview with a deterministic `Work Queue / Next Non-Trading Work Items`
+  section and matching JSON records derived from existing synthetic package,
+  diagnostic, readiness, research observation, blocked, and missing surfaces.
+  Each item records label, reason, state, and protected boundary for
+  data-source gaps, source/universe/benchmark/cash controls, real data approval
+  gaps, no-lookahead implementation, deterministic backtest readiness,
+  validation/reproduction evidence, diagnostic blockers, advisory-only
+  research observations, and absent trading authority. This phase adds no real
+  data ingestion, persistence, scheduler, dashboard, broker, orders, fills,
+  portfolio/reconciliation mutation, ranking, scoring, recommendation,
+  approval, backtest execution, or trading authority.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

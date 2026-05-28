@@ -39,6 +39,7 @@ _MAJOR_SECTIONS = (
     "Diagnostic Issues",
     "Data-Source Readiness Problems",
     "Research Observations",
+    "Work Queue / Next Non-Trading Work Items",
     "Blocked / Missing Before Real Strategy, Backtest, Or Trading Use",
 )
 
@@ -72,6 +73,12 @@ def test_mvp_preview_text_output_is_human_readable_and_useful(capsys) -> None:
         "Return observations",
         "SMA-return pipeline observation",
         "Data-source readiness observations",
+        "label=Data-source readiness gaps",
+        "label=Deterministic backtest readiness evidence",
+        "label=Advisory-only research observations",
+        "label=Trading authority remains absent",
+        "state=advisory_only | boundary=strategy_approval",
+        "No trading authority",
         "not a recommendation",
         "not trading authority",
     ):
@@ -111,7 +118,58 @@ def test_mvp_preview_json_output_is_concise_and_consistent(capsys) -> None:
         "scope",
         "sections_present",
         "title",
+        "work_queue",
     }
+    assert parsed["work_queue"] == payload["work_queue"]
+
+
+def test_mvp_preview_work_queue_records_project_control_items(capsys) -> None:
+    output = _run_preview_cli((_COMMAND,), capsys)
+    parsed = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+    work_queue = parsed["work_queue"]
+
+    assert len(work_queue) >= 8
+    assert _work_item(work_queue, "Data-source readiness gaps") == {
+        "label": "Data-source readiness gaps",
+        "state": "missing",
+        "boundary": "data_source",
+    }
+    assert _work_item(work_queue, "Real data source approval") == {
+        "label": "Real data source approval",
+        "state": "blocked",
+        "boundary": "data_source",
+    }
+    assert _work_item(
+        work_queue,
+        "Deterministic backtest readiness evidence",
+    ) == {
+        "label": "Deterministic backtest readiness evidence",
+        "state": "insufficient",
+        "boundary": "validation",
+    }
+    assert _work_item(work_queue, "No-lookahead protocol implementation") == {
+        "label": "No-lookahead protocol implementation",
+        "state": "blocked",
+        "boundary": "no_lookahead",
+    }
+    assert _work_item(work_queue, "Advisory-only research observations") == {
+        "label": "Advisory-only research observations",
+        "state": "advisory_only",
+        "boundary": "strategy_approval",
+    }
+    assert _work_item(work_queue, "Trading authority remains absent") == {
+        "label": "Trading authority remains absent",
+        "state": "blocked",
+        "boundary": "trading_authority",
+    }
+    for expected in (
+        "source data clearance is unresolved",
+        "ETF universe definition is unresolved",
+        "benchmark and cash",
+        "validation evidence is missing",
+        "reproduction evidence is absent",
+    ):
+        assert expected in output
 
 
 def test_existing_package_and_content_bundle_previews_remain_compatible(capsys) -> None:
@@ -192,6 +250,25 @@ def test_mvp_payload_adds_no_actionable_authority_fields() -> None:
     assert "trading-ready" not in compact
 
 
+def test_mvp_preview_avoids_trading_recommendation_approval_language(capsys) -> None:
+    text_output = _run_preview_cli((_COMMAND,), capsys).lower()
+    json_output = _run_preview_cli((_COMMAND, "--format", "json"), capsys).lower()
+    combined = f"{text_output}\n{json_output}"
+
+    for forbidden_phrase in (
+        "recommended trade",
+        "approved strategy",
+        "paper eligible",
+        "live eligible",
+        "high conviction",
+        "ranked opportunity",
+        "best trade",
+    ):
+        assert forbidden_phrase not in combined
+    assert re.search(r"\bbuy\b", combined) is None
+    assert re.search(r"\bsell\b", combined) is None
+
+
 def test_mvp_preview_command_exposes_only_format_option() -> None:
     option_rows = _option_rows(_preview_parser())
     positional_rows = _positional_rows(_preview_parser())
@@ -212,6 +289,22 @@ def _run_preview_cli(argv: tuple[str, ...], capsys) -> str:
     captured = capsys.readouterr()
     assert captured.err == ""
     return captured.out
+
+
+def _work_item(
+    work_queue: list[dict[str, object]],
+    label: str,
+) -> dict[str, object]:
+    item = next(
+        row
+        for row in work_queue
+        if row["label"] == label
+    )
+    return {
+        "label": item["label"],
+        "state": item["state"],
+        "boundary": item["boundary"],
+    }
 
 
 def _preview_parser() -> argparse.ArgumentParser:

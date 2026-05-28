@@ -94,6 +94,7 @@ def render_advisory_operating_brief_mvp_report_text(
     issues = _list(report["diagnostic_issues"], "diagnostic_issues")
     readiness = _dict(report["data_source_readiness"], "data_source_readiness")
     observations = _dict(report["research_observations"], "research_observations")
+    work_queue = _list(report["work_queue"], "work_queue")
     blocked = _dict(
         report["blocked_missing_before_real_use"],
         "blocked_missing_before_real_use",
@@ -303,6 +304,16 @@ def render_advisory_operating_brief_mvp_report_text(
         "approval, ranking, scoring, recommendation, or trade authority."
     )
 
+    lines.extend(("", "Work Queue / Next Non-Trading Work Items"))
+    for index, work_item in enumerate(work_queue, start=1):
+        item = _dict(work_item, f"work_queue[{index}]")
+        lines.append(
+            f"{index}. label={_string(item['label'], 'label')} | "
+            f"state={_string(item['state'], 'state')} | "
+            f"boundary={_string(item['boundary'], 'boundary')}"
+        )
+        lines.append(f"   reason: {_string(item['reason'], 'reason')}")
+
     lines.extend(("", "Blocked / Missing Before Real Strategy, Backtest, Or Trading Use"))
     lines.append("- blocked_items:")
     _append_values(lines, _list(blocked["blocked_items"], "blocked_items"), indent="  ")
@@ -374,6 +385,44 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
             *_collect_string_lists(package_payload, "non_claims"),
         )
     )
+    data_source_readiness = {
+        "state": _readiness_state(readiness_items),
+        "summary_state": _summary_state(readiness_summaries),
+        "missing_control_count": len(missing_controls),
+        "real_source_statement": (
+            "No real data source is approved; the readiness records are "
+            "synthetic candidate-only diagnostics."
+        ),
+        "items": readiness_items,
+        "summaries": readiness_summaries,
+    }
+    research_observations = {
+        "sma_observations": _sma_observation_rows(bundle),
+        "sma_summary_observations": _sma_summary_rows(bundle),
+        "return_observations": _return_observation_rows(bundle),
+        "return_summary_observations": _return_summary_rows(bundle),
+        "sma_return_pipeline_observations": _pipeline_rows(package_payload),
+        "data_source_readiness_observations": [
+            {
+                "source_id": item["source_id"],
+                "readiness_state": item["readiness_state"],
+                "missing_control_count": len(
+                    _string_list(item["missing_controls"])
+                ),
+                "real_source_status": _REAL_SOURCE_STATUS,
+            }
+            for item in readiness_items
+        ],
+        "research_observation_manifest": _manifest_rows(package_payload),
+    }
+    blocked_missing = {
+        "blocked_items": blocked_items,
+        "missing_items": missing_items,
+        "required_next_steps": required_next_steps,
+        "explicit_non_authority": tuple(
+            claim for claim in _IMPORTANT_NON_CLAIMS if claim in non_claims
+        ),
+    }
 
     return {
         "report_type": _REPORT_TYPE,
@@ -403,44 +452,16 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
         },
         "sections_present": sections,
         "diagnostic_issues": issues,
-        "data_source_readiness": {
-            "state": _readiness_state(readiness_items),
-            "summary_state": _summary_state(readiness_summaries),
-            "missing_control_count": len(missing_controls),
-            "real_source_statement": (
-                "No real data source is approved; the readiness records are "
-                "synthetic candidate-only diagnostics."
-            ),
-            "items": readiness_items,
-            "summaries": readiness_summaries,
-        },
-        "research_observations": {
-            "sma_observations": _sma_observation_rows(bundle),
-            "sma_summary_observations": _sma_summary_rows(bundle),
-            "return_observations": _return_observation_rows(bundle),
-            "return_summary_observations": _return_summary_rows(bundle),
-            "sma_return_pipeline_observations": _pipeline_rows(package_payload),
-            "data_source_readiness_observations": [
-                {
-                    "source_id": item["source_id"],
-                    "readiness_state": item["readiness_state"],
-                    "missing_control_count": len(
-                        _string_list(item["missing_controls"])
-                    ),
-                    "real_source_status": _REAL_SOURCE_STATUS,
-                }
-                for item in readiness_items
-            ],
-            "research_observation_manifest": _manifest_rows(package_payload),
-        },
-        "blocked_missing_before_real_use": {
-            "blocked_items": blocked_items,
-            "missing_items": missing_items,
-            "required_next_steps": required_next_steps,
-            "explicit_non_authority": tuple(
-                claim for claim in _IMPORTANT_NON_CLAIMS if claim in non_claims
-            ),
-        },
+        "data_source_readiness": data_source_readiness,
+        "research_observations": research_observations,
+        "work_queue": _work_queue_rows(
+            readiness_items=readiness_items,
+            diagnostic_issues=issues,
+            research_observations=research_observations,
+            blocked_missing=blocked_missing,
+            capital_authority=package_payload["capital_authority"],
+        ),
+        "blocked_missing_before_real_use": blocked_missing,
         "safety": (
             "synthetic-only package preview; no real data ingestion is performed",
             "advisory-only and capital_authority is False",
@@ -449,6 +470,260 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
             "no ranking, scoring, recommendation, approval, or trading authority is represented",
         ),
     }
+
+
+def _work_queue_rows(
+    *,
+    readiness_items: list[dict[str, object]],
+    diagnostic_issues: list[dict[str, object]],
+    research_observations: dict[str, object],
+    blocked_missing: dict[str, object],
+    capital_authority: object,
+) -> tuple[dict[str, str], ...]:
+    blocked_items = _string_list(blocked_missing["blocked_items"])
+    missing_items = _string_list(blocked_missing["missing_items"])
+    required_next_steps = _string_list(blocked_missing["required_next_steps"])
+    explicit_non_authority = _string_list(blocked_missing["explicit_non_authority"])
+    missing_controls = _dedupe_first_seen(
+        tuple(
+            control
+            for item in readiness_items
+            for control in _string_list(item["missing_controls"])
+        )
+    )
+    source_ids = _dedupe_first_seen(
+        tuple(_string(item["source_id"], "source_id") for item in readiness_items)
+    )
+    rows: list[dict[str, str]] = []
+
+    if missing_controls:
+        rows.append(
+            _work_item(
+                label="Data-source readiness gaps",
+                reason=(
+                    "Candidate source controls are missing before real source "
+                    f"use for {_join_values(source_ids)}: "
+                    f"{_join_values(missing_controls)}."
+                ),
+                state="missing",
+                boundary="data_source",
+            )
+        )
+
+    if _contains_any(blocked_items, ("source data clearance",)):
+        rows.append(
+            _work_item(
+                label="Real data source approval",
+                reason=(
+                    "No real data source is approved; source data clearance is "
+                    "unresolved before real data use."
+                ),
+                state="blocked",
+                boundary="data_source",
+            )
+        )
+
+    source_control_terms = _matching_items(
+        (*blocked_items, *missing_items),
+        (
+            "source data clearance",
+            "ETF universe",
+            "benchmark and cash",
+            "cash handling",
+        ),
+    )
+    if source_control_terms:
+        rows.append(
+            _work_item(
+                label="Source, universe, benchmark, and cash controls",
+                reason=(
+                    "Existing blocked/missing surfaces list unresolved project "
+                    f"controls: {_join_values(source_control_terms)}."
+                ),
+                state="missing",
+                boundary="validation",
+            )
+        )
+
+    no_lookahead_terms = _matching_items(
+        (*blocked_items, *required_next_steps),
+        ("no-lookahead", "no_lookahead"),
+    )
+    if no_lookahead_terms:
+        rows.append(
+            _work_item(
+                label="No-lookahead protocol implementation",
+                reason=(
+                    "Existing surfaces still require deterministic no-lookahead "
+                    f"implementation evidence: {_join_values(no_lookahead_terms)}."
+                ),
+                state="blocked",
+                boundary="no_lookahead",
+            )
+        )
+
+    backtest_terms = _matching_items(
+        (*explicit_non_authority, *blocked_items, *missing_items),
+        (
+            "not backtesting validation",
+            "validation review",
+            "cost and slippage",
+            "out-of-sample robustness",
+        ),
+    )
+    if backtest_terms:
+        rows.append(
+            _work_item(
+                label="Deterministic backtest readiness evidence",
+                reason=(
+                    "Missing before real backtest use because the existing "
+                    f"surfaces list: {_join_values(backtest_terms)}."
+                ),
+                state="insufficient",
+                boundary="validation",
+            )
+        )
+
+    validation_terms = _matching_items(
+        (*blocked_items, *missing_items),
+        ("validation evidence", "reproduction", "robustness evidence"),
+    )
+    if validation_terms:
+        rows.append(
+            _work_item(
+                label="Validation and reproduction evidence",
+                reason=(
+                    "Blocks strategy validation until the missing evidence is "
+                    f"recorded: {_join_values(validation_terms)}."
+                ),
+                state="missing",
+                boundary="validation",
+            )
+        )
+
+    if diagnostic_issues:
+        issue_categories = _dedupe_first_seen(
+            tuple(_string(issue["category"], "category") for issue in diagnostic_issues)
+        )
+        blocking_controls = _dedupe_first_seen(
+            tuple(
+                control
+                for issue in diagnostic_issues
+                for control in _string_list(issue["blocks"])
+            )
+        )
+        rows.append(
+            _work_item(
+                label="Diagnostic blockers",
+                reason=(
+                    "Diagnostic issues remain represented in the synthetic "
+                    f"package: {_join_values(issue_categories)}; blocks: "
+                    f"{_join_values(blocking_controls)}."
+                ),
+                state="blocked",
+                boundary="data_source",
+            )
+        )
+
+    observation_counts = _observation_counts(research_observations)
+    if observation_counts:
+        rows.append(
+            _work_item(
+                label="Advisory-only research observations",
+                reason=(
+                    "Research observations are available but advisory-only and "
+                    "not sufficient for strategy approval: "
+                    f"{_join_values(observation_counts)}."
+                ),
+                state="advisory_only",
+                boundary="strategy_approval",
+            )
+        )
+
+    strategy_terms = _matching_items(
+        explicit_non_authority,
+        ("not strategy validation", "not ranking", "not scoring", "not a recommendation"),
+    )
+    if strategy_terms:
+        rows.append(
+            _work_item(
+                label="Strategy validation controls",
+                reason=(
+                    "Requires deterministic validation controls before any "
+                    f"strategy approval claim: {_join_values(strategy_terms)}."
+                ),
+                state="blocked",
+                boundary="strategy_approval",
+            )
+        )
+
+    authority_terms = _matching_items(
+        explicit_non_authority,
+        ("not order authority", "not capital authority", "not trading authority"),
+    )
+    if authority_terms or capital_authority is False:
+        rows.append(
+            _work_item(
+                label="Trading authority remains absent",
+                reason=(
+                    "No trading authority; explicit non-authority remains in "
+                    f"effect: {_join_values(authority_terms)}; "
+                    f"capital_authority={_format_value(capital_authority)}."
+                ),
+                state="blocked",
+                boundary="trading_authority",
+            )
+        )
+
+    return tuple(rows)
+
+
+def _work_item(
+    *,
+    label: str,
+    reason: str,
+    state: str,
+    boundary: str,
+) -> dict[str, str]:
+    return {
+        "label": label,
+        "reason": reason,
+        "state": state,
+        "boundary": boundary,
+    }
+
+
+def _matching_items(values: tuple[str, ...], needles: tuple[str, ...]) -> tuple[str, ...]:
+    return _dedupe_first_seen(
+        tuple(value for value in values if _contains_any((value,), needles))
+    )
+
+
+def _contains_any(values: tuple[str, ...], needles: tuple[str, ...]) -> bool:
+    return any(
+        needle.lower() in value.lower()
+        for value in values
+        for needle in needles
+    )
+
+
+def _observation_counts(
+    research_observations: dict[str, object],
+) -> tuple[str, ...]:
+    rows: list[str] = []
+    for key in (
+        "sma_observations",
+        "sma_summary_observations",
+        "return_observations",
+        "return_summary_observations",
+        "sma_return_pipeline_observations",
+        "data_source_readiness_observations",
+        "research_observation_manifest",
+    ):
+        count = len(_list(research_observations[key], key))
+        if count:
+            rows.append(f"{key}={count}")
+    return tuple(rows)
 
 
 def _section_row(payload: object) -> dict[str, object]:
