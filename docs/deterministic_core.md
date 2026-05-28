@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `5062` tests are passing, with `4` skipped paper-integration tests by default.
+- `5156` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -7938,6 +7938,20 @@ and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
 credential fields or ranking/scoring/recommendation/approval/trading
 vocabulary. Phase 295 adds no renderer, CLI, package, dashboard, scheduler,
 runtime, persistence, broker, vendor, network, backtest, or trading behavior.
+
+Phase 296 - Advisory View Fixture and Export Snapshot adds test-only synthetic
+fixture helpers for `AdvisoryOperatingBriefView`. The fixture uses the
+existing synthetic advisory section fixtures and builds only through
+`build_advisory_operating_brief_view()`. Snapshot helpers return exactly
+`view.to_dict()` plus compact sorted-key JSON, preserving supplied section
+ordering and present-sections-only behavior. Focused tests pin view key, title,
+state, section count, section keys, summary lines, diagnostic messages,
+limitations, repeated-build equality, fresh primitive copies, fixture
+dependency bounds, and absence of raw data, timestamps, digests, wrappers,
+source payloads, broker/order/fill/portfolio/backtest/runtime fields, or
+actionable trading vocabulary. Phase 296 changes no production source and adds
+no package, CLI, renderer, dashboard, scheduler, runtime, persistence, broker,
+vendor, network, backtest, or trading behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

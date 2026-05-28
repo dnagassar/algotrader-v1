@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 5062-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 5156-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -13508,6 +13508,19 @@ Safe next tasks include:
   trading vocabulary. This phase adds no renderer, CLI, package, dashboard,
   scheduler, persistence, runtime, broker, vendor, network, backtest, or
   trading behavior.
+- Phase 296 - Advisory View Fixture and Export Snapshot adds test-only
+  synthetic fixture helpers for `AdvisoryOperatingBriefView`. The fixture uses
+  the existing synthetic advisory section fixtures and builds only through
+  `build_advisory_operating_brief_view()`. Snapshot helpers return exactly
+  `view.to_dict()` plus compact sorted-key JSON, preserving supplied section
+  order and present-sections-only behavior. Focused tests pin view key/title/
+  state, section count, section keys, summary lines, diagnostic messages,
+  limitations, repeated-build equality, fresh primitive payload copies, fixture
+  dependency bounds, and no raw data, timestamps, digests, wrappers, source
+  payloads, broker/order/fill/portfolio/backtest/runtime fields, or actionable
+  trading vocabulary. This phase changes no production source and adds no
+  package, CLI, renderer, dashboard, scheduler, persistence, runtime, broker,
+  vendor, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
