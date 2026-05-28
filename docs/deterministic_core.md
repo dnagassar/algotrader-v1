@@ -7831,6 +7831,25 @@ vocabulary in the diagnostic issue branch. Phase 288 changes no production
 source and adds no real data ingestion, source selection, source/vendor
 approval, runtime, persistence, broker, network, backtest, or trading behavior.
 
+Phase 289 - Advisory Operating Brief Section Records adds an unexported
+metadata-only section layer in
+`src/algotrader/research/advisory_operating_brief_section.py` for existing
+advisory operating brief content bundles. The builder requires an exact
+`AdvisoryOperatingBriefContentBundle`, rejects subclasses/lookalikes, emits
+frozen/slotted `AdvisoryOperatingBriefSection` records only for present bundle
+branches in fixed branch order, and records only section key/title/state,
+source branch key, item count, diagnostic messages for diagnostic issues, and
+section-layer limitations. The layer is not wired into package exports, CLI,
+renderers, package preview, data paths, or runtime behavior. Focused tests pin
+synthetic bundle construction, deterministic ordering, primitive-only
+`to_dict()` copies, repeated-build equality, source-bundle non-mutation,
+exact-type rejection, frozen/slotted immutability, dependency/source guards,
+and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+credential fields or ranking/scoring/recommendation/approval/trading
+vocabulary. Phase 289 adds no real data ingestion, source selection,
+source/vendor approval, runtime, persistence, broker, network, backtest, or
+trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

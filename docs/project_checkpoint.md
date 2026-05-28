@@ -13408,6 +13408,22 @@ Safe next tasks include:
   production source and adds no real data ingestion, source selection,
   source/vendor approval, runtime, persistence, broker, network, backtest, or
   trading behavior.
+- Phase 289 - Advisory Operating Brief Section Records adds an unexported
+  metadata-only section layer for existing advisory operating brief content
+  bundles. The builder accepts only exact
+  `AdvisoryOperatingBriefContentBundle` objects, emits frozen/slotted
+  `AdvisoryOperatingBriefSection` records for present branches in fixed
+  branch order, and records only section key/title/state, source branch key,
+  item count, diagnostic messages for diagnostic issues, and section-layer
+  limitations. Focused tests pin deterministic ordering, primitive-only
+  `to_dict()` copies, repeated-build equality, source-bundle non-mutation,
+  exact-type rejection, frozen/slotted immutability, package non-exposure,
+  and no broker/order/fill/portfolio/backtest/runtime/vendor/network/
+  credential fields or ranking/scoring/recommendation/approval/trading
+  vocabulary. This phase does not wire the layer into CLI, renderer, package,
+  preview, data, or runtime paths and adds no real data ingestion, source
+  selection, source/vendor approval, persistence, broker, network, backtest,
+  or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
