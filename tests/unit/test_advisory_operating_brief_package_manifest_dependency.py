@@ -449,8 +449,10 @@ _FORBIDDEN_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
 _FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
     "approval",
     "approved",
+    "authority",
     "authorization",
     "broker",
+    "capital_authority",
     "created_at",
     "generated_at",
     "payload_digest_sha256",
@@ -759,6 +761,40 @@ def test_synthetic_package_includes_advisory_sections_from_diagnostic_bundle() -
         for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS
     )
     assert "advisory_sections" not in _compact_sorted_json(manifest_payload)
+
+
+def test_synthetic_package_advisory_sections_preserve_supplied_order() -> None:
+    first_package = build_synthetic_advisory_operating_brief_package_preview()
+    second_package = build_synthetic_advisory_operating_brief_package_preview()
+    first_content_bundle = _dict(first_package.to_dict()["content_bundle"])
+    second_content_bundle = _dict(second_package.to_dict()["content_bundle"])
+    first_sections = _list(first_content_bundle["advisory_sections"])
+    second_sections = _list(
+        second_content_bundle["advisory_sections"]
+    )
+    source_sections = first_package.content_bundle.advisory_sections
+    first_keys = [_dict(section)["section_key"] for section in first_sections]
+
+    assert first_sections == second_sections
+    assert first_sections == [section.to_dict() for section in source_sections]
+    assert first_keys == [section.section_key for section in source_sections]
+    assert first_keys == [
+        "candidate_research_briefs",
+        "strategy_eligibility_briefs",
+        "risk_authority_briefs",
+        "research_queue_briefs",
+        "sma_research_observation_briefs",
+        "research_return_observation_briefs",
+        "research_return_summary_observation_briefs",
+        "sma_research_summary_observations",
+        "research_data_source_readiness",
+        "research_data_source_readiness_summaries",
+        "diagnostic_issues",
+    ]
+    assert first_keys != sorted(first_keys)
+    assert _compact_sorted_json({"advisory_sections": first_sections}) == (
+        _compact_sorted_json({"advisory_sections": second_sections})
+    )
 
 
 def test_synthetic_preview_manifest_output_is_byte_deterministic() -> None:

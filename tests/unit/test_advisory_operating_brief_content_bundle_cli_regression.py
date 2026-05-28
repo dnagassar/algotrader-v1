@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import ast
 import inspect
 import json
@@ -8,6 +9,7 @@ import sys
 
 import pytest
 
+import algotrader.cli as cli_module
 import algotrader.research.advisory_operating_brief_content_bundle_cli as preview_module
 from algotrader.cli import build_parser, main
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
@@ -62,6 +64,7 @@ _EXPECTED_EXPORT_PAYLOAD_KEYS = (
 )
 _ALLOWED_SELF_IMPORTS = {
     "__future__",
+    "argparse",
     "ast",
     "inspect",
     "json",
@@ -573,9 +576,18 @@ def test_advisory_sections_preview_flag_is_hidden_boolean_and_non_input_bearing(
 ) -> None:
     parser = _preview_parser()
     help_text = f"{build_parser().format_help()}\n{parser.format_help()}"
+    hidden_action = parser._option_string_actions[_ADVISORY_SECTIONS_FLAG]
 
     assert _ADVISORY_SECTIONS_FLAG not in help_text
     assert _ADVISORY_SECTIONS_FLAG not in _option_text(parser)
+    assert _ADVISORY_SECTIONS_FLAG in parser._option_string_actions
+    assert hidden_action not in parser._actions
+    assert hidden_action.dest == "include_advisory_sections"
+    assert hidden_action.option_strings == [_ADVISORY_SECTIONS_FLAG]
+    assert hidden_action.nargs == 0
+    assert hidden_action.const is True
+    assert hidden_action.default is False
+    assert hidden_action.help is argparse.SUPPRESS
     assert _positional_rows(parser) == ()
     assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
 
@@ -614,6 +626,34 @@ def test_advisory_sections_preview_flag_is_hidden_boolean_and_non_input_bearing(
             or "unrecognized arguments:" in captured.err
         )
         assert "true" in captured.err
+
+
+def test_advisory_sections_hidden_flag_source_is_boolean_only() -> None:
+    parser_source = inspect.getsource(cli_module.build_parser)
+    hidden_helper_source = inspect.getsource(cli_module._add_hidden_option)
+    content_bundle_options_source = inspect.getsource(
+        cli_module._content_bundle_preview_options
+    )
+    manual_options_source = inspect.getsource(cli_module._preview_command_options)
+    preview_runner_source = inspect.getsource(
+        cli_module._run_advisory_operating_brief_content_bundle_preview
+    )
+
+    assert _ADVISORY_SECTIONS_FLAG in parser_source
+    assert "dest=\"include_advisory_sections\"" in parser_source
+    assert "action=\"store_true\"" in parser_source
+    assert "help=argparse.SUPPRESS" in parser_source
+    assert "parser._actions.remove(action)" in hidden_helper_source
+    assert "group._group_actions.remove(action)" in hidden_helper_source
+    assert f'"{_ADVISORY_SECTIONS_FLAG}"' in content_bundle_options_source
+    assert f'if argument == "{_ADVISORY_SECTIONS_FLAG}":' in manual_options_source
+    assert f'argument.startswith("{_ADVISORY_SECTIONS_FLAG}=")' not in (
+        manual_options_source
+    )
+    assert "include_advisory_sections = True" in manual_options_source
+    assert "include_advisory_sections=include_advisory_sections" in (
+        preview_runner_source
+    )
 
 
 def test_advisory_sections_preview_text_and_json_include_section_records(

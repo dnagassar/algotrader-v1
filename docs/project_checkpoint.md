@@ -13479,6 +13479,18 @@ Safe next tasks include:
   This phase changes no production source and adds no real data ingestion,
   source selection, source/vendor approval, persistence, runtime, broker,
   network, backtest, or trading behavior.
+- Phase 294 - Advisory Sections Integration Dependency Guard adds focused
+  test-only source and payload guard coverage for the `advisory_sections`
+  integration path across content bundle serialization, renderer wording,
+  synthetic package construction, hidden content-bundle CLI preview handling,
+  and package export payload shape. The guards pin metadata-only renderer
+  fields, hidden boolean-only CLI wiring, deterministic synthetic package
+  section order, compact JSON stability, and no wrapper/timestamp/digest/
+  authority/broker/order/fill/portfolio/runtime/vendor/network/credential
+  fields or ranking/scoring/recommendation/approval/trading vocabulary. This
+  phase changes no production source and adds no real data ingestion, source
+  selection, source/vendor approval, persistence, runtime, broker, network,
+  backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

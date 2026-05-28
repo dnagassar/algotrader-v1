@@ -634,6 +634,44 @@ def test_renderer_advisory_section_wording_stays_metadata_only() -> None:
     assert "trading_ready:" not in rendered
 
 
+def test_renderer_advisory_section_source_uses_metadata_fields_only() -> None:
+    function_def = _function_def_from_path(
+        RENDERER_SOURCE_PATH,
+        "_append_advisory_section",
+    )
+    assert function_def is not None
+
+    source_fields = _string_constants_from_node(function_def)
+    referenced_payload_fields = _payload_subscript_keys(function_def)
+
+    assert {
+        "Advisory Section ",
+        "section_key: ",
+        "section_title: ",
+        "section_state: ",
+        "source_branches:",
+        "item_count: ",
+        "diagnostic_messages:",
+        "limitations:",
+    }.issubset(source_fields)
+    assert referenced_payload_fields == {
+        "section_key",
+        "section_title",
+        "section_state",
+        "source_branches",
+        "item_count",
+        "diagnostic_messages",
+        "limitations",
+    }
+    assert referenced_payload_fields.isdisjoint(
+        _FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS
+    )
+    assert _matching_terms(
+        "\n".join(sorted(source_fields)).lower(),
+        _FORBIDDEN_DIAGNOSTIC_TEXT_TERMS,
+    ) == []
+
+
 def test_renderer_imports_only_bundle_contract_and_no_runtime_chains() -> None:
     import_details = _import_details_from_path(RENDERER_SOURCE_PATH)
     imports = set(import_details)
@@ -672,6 +710,12 @@ def test_advisory_section_branch_source_is_exact_type_and_to_dict_only() -> None
     assert _content_bundle_to_dict_serializes_advisory_sections_with_to_dict(
         CONTENT_BUNDLE_SOURCE_PATH
     )
+    assert _content_bundle_advisory_section_branch_source_fields(
+        CONTENT_BUNDLE_SOURCE_PATH
+    ) == {
+        "advisory_section_count",
+        "advisory_sections",
+    }
 
 
 def _source_text_from_path(path: Path) -> str:
@@ -785,6 +829,26 @@ def _function_def_from_path(path: Path, name: str) -> ast.FunctionDef | None:
             return node
 
     return None
+
+
+def _string_constants_from_node(node: ast.AST) -> set[str]:
+    return {
+        child.value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Constant) and type(child.value) is str
+    }
+
+
+def _payload_subscript_keys(node: ast.AST) -> set[str]:
+    return {
+        child.slice.value
+        for child in ast.walk(node)
+        if isinstance(child, ast.Subscript)
+        and isinstance(child.value, ast.Name)
+        and child.value.id == "payload"
+        and isinstance(child.slice, ast.Constant)
+        and type(child.slice.value) is str
+    }
 
 
 def _diagnostic_tuple_requires_exact_issue_type(path: Path) -> bool:
@@ -906,6 +970,32 @@ def _content_bundle_to_dict_serializes_advisory_sections_with_to_dict(
             return True
 
     return False
+
+
+def _content_bundle_advisory_section_branch_source_fields(path: Path) -> set[str]:
+    to_dict = _function_def_from_path(path, "to_dict")
+    if to_dict is None:
+        return set()
+
+    fields: set[str] = set()
+    for node in ast.walk(to_dict):
+        if not isinstance(node, ast.If):
+            continue
+        if not _is_self_attribute(node.test, "advisory_sections"):
+            continue
+        fields.update(
+            child.targets[0].slice.value
+            for child in ast.walk(node)
+            if isinstance(child, ast.Assign)
+            and len(child.targets) == 1
+            and isinstance(child.targets[0], ast.Subscript)
+            and isinstance(child.targets[0].value, ast.Name)
+            and child.targets[0].value.id == "payload"
+            and isinstance(child.targets[0].slice, ast.Constant)
+            and type(child.targets[0].slice.value) is str
+        )
+
+    return fields
 
 
 def _is_self_attribute(node: ast.AST, attribute_name: str) -> bool:

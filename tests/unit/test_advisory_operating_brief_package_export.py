@@ -320,8 +320,10 @@ _FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS = {
     "allocation",
     "approval",
     "approved",
+    "authority",
     "authorization",
     "broker",
+    "capital_authority",
     "created_at",
     "credential",
     "digest",
@@ -540,6 +542,46 @@ def test_export_advisory_section_payload_shape_has_no_wrappers_or_trading_terms(
     )
     assert '"advisory_sections"' in exported.json_text
     assert "Advisory Sections" in exported.rendered_text
+
+
+def test_export_advisory_sections_are_metadata_only_without_authority_fields() -> None:
+    exported = export_advisory_operating_brief_package(
+        build_synthetic_advisory_operating_brief_package()
+    )
+    payload = exported.payload
+    content_bundle = _dict(payload["content_bundle"])
+    nested_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    section_payloads = _list(content_bundle["advisory_sections"])
+    nested_section_payloads = _list(nested_payload["advisory_sections"])
+    section_keys = _payload_keys(section_payloads)
+    nested_section_keys = _payload_keys(nested_section_payloads)
+    section_json = _compact_sorted_json({"advisory_sections": section_payloads})
+
+    assert section_payloads == nested_section_payloads == _EXPECTED_ADVISORY_SECTIONS
+    assert section_keys.isdisjoint(_FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS)
+    assert nested_section_keys.isdisjoint(_FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS)
+    assert {
+        "authority",
+        "capital_authority",
+        "wrapper",
+        "timestamp",
+        "payload_digest_sha256",
+        "broker",
+        "order",
+        "fill",
+        "portfolio",
+        "trading_authority",
+    }.isdisjoint(section_keys)
+    assert section_json == _compact_sorted_json(
+        {"advisory_sections": nested_section_payloads}
+    )
+    assert all(
+        term not in section_json.lower()
+        for term in _FORBIDDEN_ADVISORY_SECTION_EXPORT_TERMS
+    )
+    assert "metadata-only section record for present advisory content branch" in (
+        exported.rendered_text
+    )
 
 
 def test_direct_construction_validates_copies_and_is_frozen_slotted() -> None:

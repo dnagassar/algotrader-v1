@@ -7909,6 +7909,19 @@ Phase 293 changes no production source and adds no real data ingestion, source
 selection, source/vendor approval, runtime, persistence, broker, network,
 backtest, or trading behavior.
 
+Phase 294 - Advisory Sections Integration Dependency Guard adds focused
+test-only source and payload guard coverage for the `advisory_sections`
+integration path across content bundle serialization, renderer wording,
+synthetic package construction, hidden content-bundle CLI preview handling, and
+package export payload shape. The guards pin metadata-only renderer fields,
+hidden boolean-only CLI wiring, deterministic synthetic package section order,
+compact JSON stability, and absence of wrapper/timestamp/digest/authority/
+broker/order/fill/portfolio/runtime/vendor/network/credential fields or
+ranking/scoring/recommendation/approval/trading vocabulary. Phase 294 changes
+no production source and adds no real data ingestion, source selection,
+source/vendor approval, runtime, persistence, broker, network, backtest, or
+trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
