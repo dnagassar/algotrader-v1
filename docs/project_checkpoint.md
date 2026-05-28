@@ -13368,6 +13368,21 @@ Safe next tasks include:
   default absence, exact type rejection for subclasses/lookalikes, repeated
   text and JSON byte determinism, synthetic package inclusion, and no new
   execution, vendor, network, persistence, backtest, or trading behavior.
+- Phase 286 - Advisory Content Bundle CLI Diagnostic Issues Preview adds a
+  hidden synthetic-only `--include-diagnostic-issues` flag to the advisory
+  operating brief content bundle preview. The default preview remains
+  byte-for-byte unchanged, while the explicit flag derives existing
+  deterministic diagnostic issue records from the synthetic readiness
+  diagnostics and exposes only the `diagnostic_issues` branch. Focused CLI
+  regression tests pin text and JSON issue fields, repeated byte-for-byte
+  determinism, hidden boolean-only non-input handling, visible option-surface
+  restrictions, compact sorted-key JSON determinism, preserved issue order, and
+  no broker/order/fill/portfolio/backtest/runtime/vendor/network/credential
+  fields or ranking/scoring/recommendation/approval vocabulary in the
+  diagnostic issue branch. This phase changes only synthetic preview CLI
+  plumbing and adds no real data ingestion, source selection, source/vendor
+  approval, runtime, persistence, broker, network, backtest, or trading
+  behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -16,6 +16,9 @@ from algotrader.research.advisory_operating_brief_content_bundle_export import (
 from tests.fixtures.advisory_operating_brief_content_bundle import (
     build_synthetic_advisory_operating_brief_content_bundle as build_phase_162_bundle,
 )
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
+)
 from tests.unit.test_advisory_operating_brief_content_bundle_export_regression import (
     _EXPECTED_JSON_TEXT as _EXPECTED_CONTENT_BUNDLE_JSON_TEXT,
     _EXPECTED_PAYLOAD as _EXPECTED_CONTENT_BUNDLE_PAYLOAD,
@@ -36,6 +39,7 @@ def _s(*parts: str) -> str:
 _COMMAND = "advisory-operating-brief-content-bundle-preview"
 _LEGACY_COMMAND = "advisory-operating-brief-preview"
 _READINESS_SUMMARY_FLAG = "--include-research-data-source-readiness-summary"
+_DIAGNOSTIC_ISSUES_FLAG = "--include-diagnostic-issues"
 
 _EXPECTED_LEGACY_RENDERED_TEXT = "\n".join(_EXPECTED_LEGACY_RENDERED_LINES)
 _EXPECTED_EXPORT_PAYLOAD_KEYS = (
@@ -64,6 +68,7 @@ _ALLOWED_SELF_IMPORTS = {
     "algotrader.research.advisory_operating_brief_content_bundle_cli",
     "algotrader.research.advisory_operating_brief_content_bundle_export",
     "tests.fixtures.advisory_operating_brief_content_bundle",
+    "tests.fixtures.advisory_operating_brief_diagnostic_issue",
     "tests.unit.test_advisory_operating_brief_content_bundle_export_regression",
     "tests.unit.test_advisory_operating_brief_export_regression",
     "tests.unit.test_advisory_operating_brief_renderer_regression",
@@ -95,6 +100,33 @@ _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
     "satisfied_control_count",
     "missing_control_count",
     "diagnostic_limitations",
+)
+_EXPECTED_DIAGNOSTIC_ISSUE_KEYS = [
+    "source_branch",
+    "issue_code",
+    "issue_state",
+    "diagnostic_message",
+    "blocking_controls",
+    "limitations",
+]
+_DIAGNOSTIC_BRANCH_FORBIDDEN_FIELD_TERMS = (
+    _s("bro", "ker"),
+    _s("or", "der"),
+    "fill",
+    _s("port", "folio"),
+    "backtest",
+    _s("run", "time"),
+    _s("ven", "dor"),
+    _s("net", "work"),
+    _s("cred", "ential"),
+)
+_DIAGNOSTIC_BRANCH_FORBIDDEN_TEXT_TERMS = (
+    _s("rank", "ing"),
+    _s("scor", "ing"),
+    _s("score"),
+    _s("reco", "mmendation"),
+    _s("app", "roval"),
+    _s("app", "roved"),
 )
 
 
@@ -339,6 +371,175 @@ def test_readiness_summary_preview_flag_is_hidden_boolean_and_non_input_bearing(
         assert "true" in captured.err
 
 
+def test_diagnostic_issues_preview_flag_is_hidden_boolean_and_non_input_bearing(
+    capsys,
+) -> None:
+    parser = _preview_parser()
+    help_text = f"{build_parser().format_help()}\n{parser.format_help()}"
+
+    assert _DIAGNOSTIC_ISSUES_FLAG not in help_text
+    assert _DIAGNOSTIC_ISSUES_FLAG not in _option_text(parser)
+    assert _positional_rows(parser) == ()
+    assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
+
+    json_stdout = _run_preview_cli(
+        (
+            _COMMAND,
+            _DIAGNOSTIC_ISSUES_FLAG,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+
+    assert "research_data_source_readiness" not in payload
+    assert "research_data_source_readiness_summaries" not in payload
+    assert payload["diagnostic_issue_count"] == 2
+    assert payload["diagnostic_issues"] == (
+        expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+    )
+
+    for argv in (
+        (_COMMAND, f"{_DIAGNOSTIC_ISSUES_FLAG}=true"),
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "true"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert captured.out == ""
+        assert (
+            "ignored explicit argument" in captured.err
+            or "unrecognized arguments:" in captured.err
+        )
+        assert "true" in captured.err
+
+
+def test_diagnostic_issues_preview_text_and_json_include_issue_records(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "text"),
+        capsys,
+    )
+    json_stdout = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "json"),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    issues = payload["diagnostic_issues"]
+
+    assert isinstance(issues, list)
+    assert issues == expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+    assert [list(issue) for issue in issues] == [
+        sorted(_EXPECTED_DIAGNOSTIC_ISSUE_KEYS),
+        sorted(_EXPECTED_DIAGNOSTIC_ISSUE_KEYS),
+    ]
+    assert [issue["source_branch"] for issue in issues] == [
+        "research_data_source_readiness",
+        "research_data_source_readiness_summary",
+    ]
+    assert [issue["issue_code"] for issue in issues] == [
+        "missing_diagnostic_controls",
+        "missing_diagnostic_controls",
+    ]
+    assert [issue["issue_state"] for issue in issues] == [
+        "candidate_only",
+        "candidate_only",
+    ]
+    assert [issue["diagnostic_message"] for issue in issues] == [
+        "Readiness branch reports missing diagnostic controls.",
+        "Readiness summary branch reports missing diagnostic controls.",
+    ]
+    assert issues[0]["blocking_controls"] == [
+        "terms_review_documented",
+        "snapshot_provenance_defined",
+        "redistribution_policy_reviewed",
+        "adjustment_policy_defined",
+        "fixture_policy_review_documented",
+    ]
+    assert issues[1]["blocking_controls"] == issues[0]["blocking_controls"]
+    assert issues[0]["limitations"] == [
+        "Fixture is synthetic metadata only and not connected to real data.",
+        "Fixture carries no observations, values, or external source content.",
+    ]
+    assert issues[1]["limitations"] == [
+        "Fixture carries no observations, values, or external source content.",
+        "Fixture is synthetic metadata only and not connected to real data.",
+    ]
+
+    for expected_line in (
+        "Diagnostic Issues",
+        "Diagnostic Issue 1",
+        "source_branch: research_data_source_readiness",
+        "issue_code: missing_diagnostic_controls",
+        "issue_state: candidate_only",
+        "diagnostic_message: Readiness branch reports missing diagnostic controls.",
+        "blocking_controls:",
+        "limitations:",
+        "Diagnostic Issue 2",
+        "source_branch: research_data_source_readiness_summary",
+        (
+            "diagnostic_message: Readiness summary branch reports missing "
+            "diagnostic controls."
+        ),
+    ):
+        assert expected_line in text_stdout
+
+
+def test_diagnostic_issues_preview_repeated_text_and_json_are_byte_identical(
+    capsys,
+) -> None:
+    first_text = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "text"),
+        capsys,
+    )
+    second_text = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "text"),
+        capsys,
+    )
+    first_json = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "json"),
+        capsys,
+    )
+    second_json = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "json"),
+        capsys,
+    )
+
+    assert first_text == second_text
+    assert first_json == second_json
+    assert first_text.encode("utf-8") == second_text.encode("utf-8")
+    assert first_json.encode("utf-8") == second_json.encode("utf-8")
+    assert json.dumps(
+        json.loads(first_json),
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == first_json
+
+
+def test_diagnostic_issues_preview_branch_adds_no_operating_fields_or_terms(
+    capsys,
+) -> None:
+    json_stdout = _run_preview_cli(
+        (_COMMAND, _DIAGNOSTIC_ISSUES_FLAG, "--format", "json"),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    issues = payload["diagnostic_issues"]
+    issue_text = json.dumps(issues, sort_keys=True, separators=(",", ":")).lower()
+
+    assert _matching_field_terms(
+        _payload_keys(issues),
+        _DIAGNOSTIC_BRANCH_FORBIDDEN_FIELD_TERMS,
+    ) == []
+    assert _matching_terms(
+        issue_text,
+        _DIAGNOSTIC_BRANCH_FORBIDDEN_TEXT_TERMS,
+    ) == []
+
+
 def test_preview_module_is_synthetic_only_and_has_no_external_chains() -> None:
     imports = _import_references(preview_module)
     call_names = _call_names(preview_module)
@@ -522,6 +723,24 @@ def _payload_keys(value: object) -> set[str]:
         return keys
 
     return set()
+
+
+def _matching_field_terms(
+    field_names: set[str],
+    forbidden_terms: tuple[str, ...],
+) -> list[str]:
+    matches: list[str] = []
+    for field_name in sorted(field_names):
+        for term in forbidden_terms:
+            if term in field_name.lower():
+                matches.append(field_name)
+                break
+
+    return matches
+
+
+def _matching_terms(text: str, forbidden_terms: tuple[str, ...]) -> list[str]:
+    return [term for term in forbidden_terms if term in text]
 
 
 def _rendered_field_names(text: str) -> set[str]:
