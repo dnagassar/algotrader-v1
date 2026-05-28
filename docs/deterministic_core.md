@@ -7806,6 +7806,20 @@ diagnostic issue branch. This phase changes only synthetic preview CLI plumbing
 and adds no real data ingestion, source selection, source/vendor approval,
 runtime, persistence, broker, network, backtest, or trading behavior.
 
+Phase 287 - Advisory Package CLI Diagnostic Issues Regression adds test-only
+package-preview coverage proving the existing synthetic `diagnostic_issues`
+branch is carried through the canonical advisory package path. The regression
+pins package synthetic inclusion, package CLI text output for source branch,
+issue code, issue state, diagnostic message, blocking controls, and
+limitations, compact sorted-key JSON output, nested content-bundle export
+payload inclusion, repeated byte-for-byte text/JSON determinism, no new
+package input-bearing options beyond existing `--format text|json`, and no
+broker/order/fill/portfolio/backtest/runtime/vendor/network/credential fields
+or ranking/scoring/recommendation/approval vocabulary in the diagnostic issue
+branch. Phase 287 changes no production source and adds no real data
+ingestion, source selection, source/vendor approval, runtime, persistence,
+broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

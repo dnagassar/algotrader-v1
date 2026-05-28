@@ -13383,6 +13383,19 @@ Safe next tasks include:
   plumbing and adds no real data ingestion, source selection, source/vendor
   approval, runtime, persistence, broker, network, backtest, or trading
   behavior.
+- Phase 287 - Advisory Package CLI Diagnostic Issues Regression adds test-only
+  package-preview coverage proving the existing synthetic `diagnostic_issues`
+  branch is carried through the canonical advisory package path. It pins
+  package synthetic inclusion, package CLI text output for source branch,
+  issue code, issue state, diagnostic message, blocking controls, and
+  limitations, compact sorted-key JSON output, nested content-bundle export
+  payload inclusion, repeated byte-for-byte text/JSON determinism, no new
+  package input-bearing options beyond existing `--format text|json`, and no
+  broker/order/fill/portfolio/backtest/runtime/vendor/network/credential
+  fields or ranking/scoring/recommendation/approval vocabulary in the
+  diagnostic issue branch. This phase changes no production source and adds no
+  real data ingestion, source selection, source/vendor approval, runtime,
+  persistence, broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

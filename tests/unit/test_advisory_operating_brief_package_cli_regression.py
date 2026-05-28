@@ -26,6 +26,9 @@ from algotrader.research.advisory_operating_brief_package_export import (
 from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package as build_fixture_package,
 )
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
+)
 from tests.fixtures.sma_return_research_pipeline_observation import (
     expected_synthetic_sma_return_research_pipeline_observation_dict,
 )
@@ -127,10 +130,61 @@ _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK = (
     "- Fixture is synthetic metadata only and not connected to real data.",
     "",
 )
+_EXPECTED_DIAGNOSTIC_ISSUES_TEXT_BLOCK = (
+    "Diagnostic Issues",
+    "",
+    "Diagnostic Issue 1",
+    "source_branch: research_data_source_readiness",
+    "issue_code: missing_diagnostic_controls",
+    "issue_state: candidate_only",
+    "diagnostic_message: Readiness branch reports missing diagnostic controls.",
+    "blocking_controls:",
+    "- terms_review_documented",
+    "- snapshot_provenance_defined",
+    "- redistribution_policy_reviewed",
+    "- adjustment_policy_defined",
+    "- fixture_policy_review_documented",
+    "limitations:",
+    "- Fixture is synthetic metadata only and not connected to real data.",
+    "- Fixture carries no observations, values, or external source content.",
+    "",
+    "Diagnostic Issue 2",
+    "source_branch: research_data_source_readiness_summary",
+    "issue_code: missing_diagnostic_controls",
+    "issue_state: candidate_only",
+    (
+        "diagnostic_message: Readiness summary branch reports missing "
+        "diagnostic controls."
+    ),
+    "blocking_controls:",
+    "- terms_review_documented",
+    "- snapshot_provenance_defined",
+    "- redistribution_policy_reviewed",
+    "- adjustment_policy_defined",
+    "- fixture_policy_review_documented",
+    "limitations:",
+    "- Fixture carries no observations, values, or external source content.",
+    "- Fixture is synthetic metadata only and not connected to real data.",
+    "",
+)
 _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
 )
 _EXPECTED_PAYLOAD = _EXPECTED_EXPORT.payload
+_EXPECTED_DIAGNOSTIC_ISSUES = (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+)
+_EXPECTED_DIAGNOSTIC_ISSUE_KEYS = (
+    "source_branch",
+    "issue_code",
+    "issue_state",
+    "diagnostic_message",
+    "blocking_controls",
+    "limitations",
+)
+_EXPECTED_DIAGNOSTIC_ISSUE_JSON_KEYS = tuple(
+    sorted(_EXPECTED_DIAGNOSTIC_ISSUE_KEYS)
+)
 _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
     expected_synthetic_sma_return_research_pipeline_observation_dict()
 )
@@ -152,6 +206,7 @@ _ALLOWED_SELF_IMPORTS = {
     "algotrader.research.advisory_operating_brief_package_export",
     "algotrader.research.advisory_operating_brief_package_synthetic",
     "tests.fixtures.advisory_operating_brief_package",
+    "tests.fixtures.advisory_operating_brief_diagnostic_issue",
     "tests.fixtures.sma_return_research_pipeline_observation",
 }
 _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
@@ -167,12 +222,43 @@ _FORBIDDEN_SERIALIZED_FIELD_NAMES = {
     "benchmark",
     "backtest",
     "allocation",
+    "runtime",
+    "vendor",
+    "network",
+    "credential",
     "signal",
     "execution",
     "live",
     "paper",
     "approval",
 }
+_FORBIDDEN_DIAGNOSTIC_ISSUE_FIELD_NAMES = {
+    "account",
+    "allocation",
+    "backtest",
+    "benchmark",
+    "broker",
+    "credential",
+    "digest",
+    "fill",
+    "network",
+    "order",
+    "portfolio",
+    "raw_data",
+    "raw_payload",
+    "runtime",
+    "timestamp",
+    "vendor",
+    "wrapper",
+}
+_FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY = (
+    "approval",
+    "approved",
+    "ranking",
+    "recommend",
+    "recommendation",
+    "scoring",
+)
 
 
 def _s(*parts: str) -> str:
@@ -333,6 +419,8 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "Research Return Observation Briefs",
         "Research Return Summary Observation Briefs",
         "Research Data Source Readiness Diagnostics",
+        "Research Data Source Readiness Summary Diagnostics",
+        "Diagnostic Issues",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
@@ -343,6 +431,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "research_return_summary_observation_brief_count: 1",
         "research_data_source_readiness_count: 1",
         "research_data_source_readiness_summary_count: 1",
+        "diagnostic_issue_count: 2",
         "Limitations",
         "Non-Claims",
     ):
@@ -375,6 +464,10 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert content_bundle["research_return_summary_observation_brief_count"] == 1
     assert content_bundle["research_data_source_readiness_count"] == 1
     assert content_bundle["research_data_source_readiness_summary_count"] == 1
+    assert content_bundle["diagnostic_issue_count"] == len(
+        _EXPECTED_DIAGNOSTIC_ISSUES
+    )
+    assert content_bundle["diagnostic_issues"] == _EXPECTED_DIAGNOSTIC_ISSUES
     assert sma_summary["observation_type"] == "sma_research_summary_observation"
     assert sma_summary["status"] == "candidate_only"
     assert sma_summary["authority"] == "advisory_only"
@@ -386,6 +479,26 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
     assert sma_summary["insufficient_history_count"] == 1
     for branch_key in _BRANCH_KEYS:
         assert len(_list(content_bundle[branch_key])) == 1
+
+
+def test_package_cli_text_output_includes_diagnostic_issues(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli((_COMMAND,), capsys)
+    explicit_text_stdout = _run_preview_cli((_COMMAND, "--format", "text"), capsys)
+
+    assert text_stdout == explicit_text_stdout == _EXPECTED_TEXT
+    assert _diagnostic_issues_text_block(text_stdout) == (
+        _EXPECTED_DIAGNOSTIC_ISSUES_TEXT_BLOCK
+    )
+    assert text_stdout.count("Diagnostic Issues") == 1
+    assert text_stdout.count("Diagnostic Issue 1") == 1
+    assert text_stdout.count("Diagnostic Issue 2") == 1
+    assert text_stdout.count("source_branch:") == 2
+    assert text_stdout.count("issue_code: missing_diagnostic_controls") == 2
+    assert text_stdout.count("issue_state: candidate_only") == 2
+    assert text_stdout.count("diagnostic_message:") == 2
+    assert text_stdout.count("blocking_controls:") == 2
 
 
 def test_package_cli_text_output_includes_readiness_diagnostic_controls(
@@ -408,6 +521,66 @@ def test_package_cli_text_output_includes_readiness_diagnostic_controls(
     assert text_stdout.count("satisfied_controls:") == 1
     assert text_stdout.count("missing_controls:") == 1
     assert text_stdout.count("diagnostic_limitations:") == 1
+
+
+def test_package_cli_json_output_includes_diagnostic_issues_branch(
+    capsys,
+) -> None:
+    json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    payload = json.loads(json_stdout)
+    package = preview_module.build_synthetic_advisory_operating_brief_package()
+    content_bundle = _dict(payload["content_bundle"])
+    issue_payloads = _diagnostic_issue_payloads(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_issues = _diagnostic_issue_payloads(
+        {"content_bundle": nested_export_payload}
+    )
+
+    assert json_stdout == _EXPECTED_JSON
+    assert json_stdout == _compact_sorted_json(_EXPECTED_PAYLOAD)
+    assert content_bundle["diagnostic_issue_count"] == len(
+        _EXPECTED_DIAGNOSTIC_ISSUES
+    )
+    assert issue_payloads == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert issue_payloads == [
+        issue.to_dict() for issue in package.content_bundle.diagnostic_issues
+    ]
+    assert nested_export_payload["diagnostic_issue_count"] == len(issue_payloads)
+    assert nested_export_issues == issue_payloads
+    assert [set(issue_payload) for issue_payload in issue_payloads] == [
+        set(_EXPECTED_DIAGNOSTIC_ISSUE_KEYS),
+        set(_EXPECTED_DIAGNOSTIC_ISSUE_KEYS),
+    ]
+    assert [tuple(issue_payload) for issue_payload in issue_payloads] == [
+        _EXPECTED_DIAGNOSTIC_ISSUE_JSON_KEYS,
+        _EXPECTED_DIAGNOSTIC_ISSUE_JSON_KEYS,
+    ]
+    assert [issue["source_branch"] for issue in issue_payloads] == [
+        "research_data_source_readiness",
+        "research_data_source_readiness_summary",
+    ]
+    assert [issue["issue_code"] for issue in issue_payloads] == [
+        "missing_diagnostic_controls",
+        "missing_diagnostic_controls",
+    ]
+    assert [issue["issue_state"] for issue in issue_payloads] == [
+        "candidate_only",
+        "candidate_only",
+    ]
+    assert [issue["diagnostic_message"] for issue in issue_payloads] == [
+        "Readiness branch reports missing diagnostic controls.",
+        "Readiness summary branch reports missing diagnostic controls.",
+    ]
+    assert [issue["blocking_controls"] for issue in issue_payloads] == [
+        list(_EXPECTED_READINESS_MISSING_CONTROLS),
+        list(_EXPECTED_READINESS_MISSING_CONTROLS),
+    ]
+    for issue_payload in issue_payloads:
+        assert "json_text" not in issue_payload
+        assert "rendered_text" not in issue_payload
+        assert "payload" not in issue_payload
+        assert "digest" not in issue_payload
+        assert "raw_data" not in issue_payload
 
 
 def test_package_cli_json_output_preserves_builder_computed_missing_controls(
@@ -506,6 +679,8 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     second_readiness = _readiness_payload(second_payload)
     first_summary = _readiness_summary_payload(first_payload)
     second_summary = _readiness_summary_payload(second_payload)
+    first_issues = _diagnostic_issue_payloads(first_payload)
+    second_issues = _diagnostic_issue_payloads(second_payload)
 
     assert first_text == second_text == _EXPECTED_TEXT
     assert first_json == second_json == _EXPECTED_JSON
@@ -519,14 +694,22 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     assert _readiness_summary_text_block(second_text) == (
         _EXPECTED_READINESS_SUMMARY_TEXT_BLOCK
     )
+    assert _diagnostic_issues_text_block(first_text) == (
+        _EXPECTED_DIAGNOSTIC_ISSUES_TEXT_BLOCK
+    )
+    assert _diagnostic_issues_text_block(second_text) == (
+        _EXPECTED_DIAGNOSTIC_ISSUES_TEXT_BLOCK
+    )
     assert first_readiness == second_readiness
     assert first_summary == second_summary
+    assert first_issues == second_issues == _EXPECTED_DIAGNOSTIC_ISSUES
     assert _compact_sorted_json(first_readiness) == _compact_sorted_json(
         second_readiness
     )
     assert _compact_sorted_json(first_summary) == _compact_sorted_json(
         second_summary
     )
+    assert _compact_sorted_json(first_issues) == _compact_sorted_json(second_issues)
     assert _compact_sorted_json(first_payload) == _compact_sorted_json(second_payload)
 
 
@@ -642,6 +825,24 @@ def test_json_payload_adds_no_forbidden_serialized_fields(capsys) -> None:
     assert _payload_keys(_EXPECTED_PAYLOAD).isdisjoint(
         _FORBIDDEN_SERIALIZED_FIELD_NAMES
     )
+
+
+def test_diagnostic_issue_branch_adds_no_forbidden_fields_or_vocabulary(
+    capsys,
+) -> None:
+    payload = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+    issue_payloads = _diagnostic_issue_payloads(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_issues = _diagnostic_issue_payloads(
+        {"content_bundle": nested_export_payload}
+    )
+    field_names = _payload_keys(issue_payloads)
+    compact = _compact_sorted_json({"diagnostic_issues": issue_payloads}).lower()
+
+    assert issue_payloads == nested_export_issues == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert field_names.isdisjoint(_FORBIDDEN_DIAGNOSTIC_ISSUE_FIELD_NAMES)
+    for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY:
+        assert term not in compact
 
 
 def test_production_cli_modules_import_no_tests_or_fixtures() -> None:
@@ -788,6 +989,16 @@ def _readiness_summary_payload(payload: dict[str, object]) -> dict[str, object]:
     return _dict(summary_values[0])
 
 
+def _diagnostic_issue_payloads(
+    payload: dict[str, object],
+) -> list[dict[str, object]]:
+    content_bundle = _dict(payload["content_bundle"])
+    issue_values = _list(content_bundle["diagnostic_issues"])
+
+    assert len(issue_values) == len(_EXPECTED_DIAGNOSTIC_ISSUES)
+    return [_dict(issue_value) for issue_value in issue_values]
+
+
 def _readiness_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Research Data Source Readiness Diagnostics")
@@ -800,6 +1011,14 @@ def _readiness_summary_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Research Data Source Readiness Summary Diagnostics")
     end = lines.index("Diagnostic Issues", start)
+
+    return tuple(lines[start:end])
+
+
+def _diagnostic_issues_text_block(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    start = lines.index("Diagnostic Issues")
+    end = lines.index("Limitations", start)
 
     return tuple(lines[start:end])
 

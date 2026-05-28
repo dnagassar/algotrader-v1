@@ -24,6 +24,9 @@ from tests.fixtures.advisory_operating_brief_package import (
     build_synthetic_advisory_operating_brief_package,
     expected_synthetic_advisory_operating_brief_package_dict,
 )
+from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
+)
 from tests.fixtures.sma_return_research_pipeline_observation import (
     expected_synthetic_sma_return_research_pipeline_observation_dict,
 )
@@ -35,6 +38,9 @@ def _s(*parts: str) -> str:
 
 _EXPECTED_PAYLOAD = expected_synthetic_advisory_operating_brief_package_dict()
 _EXPECTED_CONTENT_BUNDLE_PAYLOAD = _EXPECTED_PAYLOAD["content_bundle"]
+_EXPECTED_DIAGNOSTIC_ISSUES = (
+    expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
+)
 _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
     expected_synthetic_sma_return_research_pipeline_observation_dict()
 )
@@ -262,6 +268,8 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     )
     assert package.sma_return_research_pipeline_observation is not None
     content_bundle = _dict(exported.payload["content_bundle"])
+    content_bundle_export = _dict(exported.payload["content_bundle_export"])
+    nested_export_payload = _dict(content_bundle_export["payload"])
     pipeline_payload = _dict(
         exported.payload["sma_return_research_pipeline_observation"]
     )
@@ -273,9 +281,15 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
     assert sma_summary["capital_authority"] is False
     assert sma_summary["research_scope"] == "research_only"
     assert sma_summary["summary_state"] == "observations_summarized"
-    assert _dict(exported.payload["content_bundle_export"])["payload"] == (
-        _EXPECTED_CONTENT_BUNDLE_PAYLOAD
+    assert content_bundle["diagnostic_issue_count"] == len(
+        _EXPECTED_DIAGNOSTIC_ISSUES
     )
+    assert content_bundle["diagnostic_issues"] == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert nested_export_payload["diagnostic_issue_count"] == len(
+        _EXPECTED_DIAGNOSTIC_ISSUES
+    )
+    assert nested_export_payload["diagnostic_issues"] == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert content_bundle_export["payload"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     assert pipeline_payload["return_construction_policy_observation"] == (
         package.sma_return_research_pipeline_observation
         .return_construction_policy_observation.to_dict()
