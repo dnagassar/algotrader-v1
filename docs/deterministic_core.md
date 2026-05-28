@@ -7970,6 +7970,21 @@ scoring/recommendation/approval vocabulary. Phase 297 adds no real data
 ingestion, source selection, source/vendor approval, runtime, persistence,
 broker, network, backtest, or trading behavior.
 
+Phase 300 - Synthetic Research MVP Operating Brief adds
+`advisory-operating-brief-mvp-preview` as a deterministic local CLI command
+that composes the existing synthetic advisory package, content bundle, section
+view, diagnostic issues, data-source readiness records, and SMA/return research
+observation surfaces into one human-readable terminal report. The report shows
+the advisory view summary, present sections, diagnostic blockers, readiness
+control gaps, synthetic research observations, and explicit blocked/missing
+items before any real strategy, backtest, or trading use. Focused tests pin CLI
+registration, text readability, compact JSON consistency, byte-for-byte
+determinism, compatibility with existing preview commands, no file/environment/
+network access, and no broker/credential/live/vendor runtime behavior. Phase
+300 adds no real data ingestion, persistence, scheduler, dashboard, broker,
+orders, fills, portfolio/reconciliation mutation, ranking, scoring,
+recommendation, approval, backtest execution, or trading authority.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -13535,6 +13535,20 @@ Safe next tasks include:
   vocabulary. This phase adds no real data ingestion, source selection,
   source/vendor approval, persistence, runtime, broker, network, backtest, or
   trading behavior.
+- Phase 300 - Synthetic Research MVP Operating Brief adds
+  `advisory-operating-brief-mvp-preview` as a deterministic local CLI command
+  that composes the existing synthetic advisory package, content bundle,
+  advisory view, sections, diagnostic issues, data-source readiness records,
+  and SMA/return research observation surfaces into a human-readable terminal
+  report. The report shows advisory summary, present sections, diagnostic and
+  readiness blockers, synthetic observations, and explicit blocked/missing
+  items before real strategy, backtest, or trading use. Focused tests pin CLI
+  registration, text readability, compact JSON consistency, byte determinism,
+  compatibility with existing preview commands, no file/environment/network
+  access, and no broker/credential/live/vendor runtime behavior. This phase
+  adds no real data ingestion, persistence, scheduler, dashboard, broker,
+  orders, fills, portfolio/reconciliation mutation, ranking, scoring,
+  recommendation, approval, backtest execution, or trading authority.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -73,6 +73,17 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Preview output format.",
     )
+    mvp_preview_parser = subparsers.add_parser(
+        "advisory-operating-brief-mvp-preview",
+        help="Print the synthetic research MVP operating brief preview.",
+    )
+    mvp_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
     _add_hidden_option(
         content_bundle_preview_parser,
         "--include-risk-authority",
@@ -204,6 +215,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_advisory_operating_brief_package_preview(
             package_preview_output_format
         )
+    mvp_preview_output_format = _mvp_preview_output_format(argv_items)
+    if mvp_preview_output_format is not None:
+        return _run_advisory_operating_brief_mvp_preview(
+            mvp_preview_output_format
+        )
 
     parser = build_parser()
     args = parser.parse_args(argv_items)
@@ -238,6 +254,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "advisory-operating-brief-package-preview":
         return _run_advisory_operating_brief_package_preview(args.output_format)
+    if command == "advisory-operating-brief-mvp-preview":
+        return _run_advisory_operating_brief_mvp_preview(args.output_format)
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -403,6 +421,18 @@ def _run_advisory_operating_brief_package_preview(output_format: str) -> int:
     return 0
 
 
+def _run_advisory_operating_brief_mvp_preview(output_format: str) -> int:
+    from .research.advisory_operating_brief_mvp_report import (
+        render_synthetic_advisory_operating_brief_mvp_report,
+    )
+
+    print(
+        render_synthetic_advisory_operating_brief_mvp_report(output_format),
+        end="",
+    )
+    return 0
+
+
 def _load_runtime_config(profile: str | None):
     from .config import load_config
 
@@ -428,6 +458,13 @@ def _package_preview_output_format(argv: tuple[str, ...]) -> str | None:
     return _preview_command_output_format(
         argv,
         "advisory-operating-brief-package-preview",
+    )
+
+
+def _mvp_preview_output_format(argv: tuple[str, ...]) -> str | None:
+    return _preview_command_output_format(
+        argv,
+        "advisory-operating-brief-mvp-preview",
     )
 
 
