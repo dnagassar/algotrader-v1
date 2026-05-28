@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `3738` tests are passing, with `4` skipped paper-integration tests by default.
+- `5062` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -7760,6 +7760,21 @@ equality, and absence of broker/order/fill/portfolio/backtest/runtime/vendor/
 network/credential fields or approval/trading vocabulary. Phase 283 adds no
 real data ingestion, source selection, source/vendor approval, runtime,
 persistence, broker, network, backtest, or trading behavior.
+
+Phase 284 - Advisory Diagnostic Issue Fixture and Export Snapshot adds
+test-only synthetic fixture helpers plus export snapshot coverage for advisory
+operating brief diagnostic issues. The fixture composes the existing synthetic
+advisory content bundle with readiness/readiness-summary diagnostics, builds
+records through the production diagnostic issue builder, and exposes only the
+issue `to_dict()` payload list plus compact sorted-key JSON. Focused tests pin
+snapshot equality with issue payloads, deterministic branch ordering, expected
+source branch/issue code/state/message/blocking controls/limitations, repeated
+fixture equality, fresh primitive payload copies, and absence of raw data,
+timestamps, digest fields, wrapper fields, approval fields, or broker/order/
+fill/portfolio/backtest/runtime/vendor/network behavior. Phase 284 changes no
+production source and adds no real data ingestion, source selection,
+source/vendor approval, runtime, persistence, broker, network, backtest, or
+trading behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

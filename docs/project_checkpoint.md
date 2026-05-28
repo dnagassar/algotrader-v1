@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 3738-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 5062-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -13339,6 +13339,20 @@ Safe next tasks include:
   immutability, primitive-only `to_dict()` output, repeated-build equality,
   and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
   credential fields or approval/trading vocabulary. This phase adds no real
+  data ingestion, source selection, source/vendor approval, runtime,
+  persistence, broker, network, backtest, or trading behavior.
+- Phase 284 - Advisory Diagnostic Issue Fixture and Export Snapshot adds
+  test-only synthetic fixture helpers and export snapshot coverage for
+  advisory operating brief diagnostic issues. The fixture composes the existing
+  synthetic advisory content bundle with readiness/readiness-summary
+  diagnostics, builds records through the production diagnostic issue builder,
+  and exposes only the issue `to_dict()` payload list plus compact sorted-key
+  JSON. Focused tests pin snapshot equality with issue payloads, deterministic
+  branch ordering, expected source branch/issue code/state/message/blocking
+  controls/limitations, repeated fixture equality, fresh primitive payload
+  copies, and absence of raw data, timestamps, digest fields, wrapper fields,
+  approval fields, or broker/order/fill/portfolio/backtest/runtime/vendor/
+  network behavior. This phase changes no production source and adds no real
   data ingestion, source selection, source/vendor approval, runtime,
   persistence, broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
