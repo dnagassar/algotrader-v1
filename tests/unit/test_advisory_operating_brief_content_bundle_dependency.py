@@ -28,6 +28,10 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
 from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
 )
+from tests.fixtures.advisory_operating_brief_section import (
+    build_synthetic_advisory_operating_brief_sections,
+    expected_synthetic_advisory_operating_brief_section_dicts,
+)
 
 
 CONTENT_BUNDLE_SOURCE_PATH = Path(
@@ -42,6 +46,8 @@ _READINESS_SUMMARY_KEY = "research_data_source_readiness_summaries"
 _READINESS_SUMMARY_COUNT_KEY = "research_data_source_readiness_summary_count"
 _DIAGNOSTIC_ISSUES_KEY = "diagnostic_issues"
 _DIAGNOSTIC_ISSUE_COUNT_KEY = "diagnostic_issue_count"
+_ADVISORY_SECTIONS_KEY = "advisory_sections"
+_ADVISORY_SECTION_COUNT_KEY = "advisory_section_count"
 _EXPECTED_READINESS_SUMMARY_PAYLOAD_KEYS = (
     "summary_type",
     "schema_version",
@@ -60,6 +66,15 @@ _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
     "blocking_controls",
     "limitations",
 )
+_EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS = (
+    "section_key",
+    "section_title",
+    "section_state",
+    "source_branches",
+    "item_count",
+    "diagnostic_messages",
+    "limitations",
+)
 _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "__future__": ("annotations",),
     "collections.abc": ("Iterable",),
@@ -67,6 +82,9 @@ _EXPECTED_CONTENT_BUNDLE_IMPORTS = {
     "algotrader.errors": ("ValidationError",),
     "algotrader.research.advisory_operating_brief_diagnostic_issue": (
         "AdvisoryOperatingBriefDiagnosticIssue",
+    ),
+    "algotrader.research.advisory_operating_brief_section": (
+        "AdvisoryOperatingBriefSection",
     ),
     "algotrader.research.candidate_research_brief": ("CandidateResearchBrief",),
     "algotrader.research.research_return_observation_brief_container": (
@@ -304,6 +322,31 @@ _FORBIDDEN_DIAGNOSTIC_PAYLOAD_KEYS = _FORBIDDEN_SUMMARY_PAYLOAD_KEYS | {
     "severity",
     "wrapper",
 }
+_FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS = _FORBIDDEN_SUMMARY_PAYLOAD_KEYS | {
+    "approval",
+    "approved",
+    "authorization",
+    "broker",
+    "created_at",
+    "credential",
+    "digest",
+    "fill",
+    "generated_at",
+    "order",
+    "portfolio",
+    "priority",
+    "rank",
+    "raw_data",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "severity",
+    "timestamp",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
 _FORBIDDEN_DIAGNOSTIC_TEXT_TERMS = (
     "approval",
     "approved",
@@ -450,6 +493,35 @@ def test_content_bundle_diagnostic_issues_branch_is_optional_metadata_only() -> 
     )
 
 
+def test_content_bundle_advisory_sections_branch_is_optional_metadata_only() -> None:
+    signature = inspect.signature(build_advisory_operating_brief_content_bundle)
+    default_payload = build_synthetic_advisory_operating_brief_content_bundle().to_dict()
+    section_payload = _build_content_bundle_with_advisory_sections().to_dict()
+    repeated_section_payload = _build_content_bundle_with_advisory_sections().to_dict()
+    sections = _branch_items(section_payload, _ADVISORY_SECTIONS_KEY)
+
+    assert signature.parameters[_ADVISORY_SECTIONS_KEY].default == ()
+    assert _ADVISORY_SECTIONS_KEY not in default_payload
+    assert _ADVISORY_SECTION_COUNT_KEY not in default_payload
+    assert section_payload[_ADVISORY_SECTION_COUNT_KEY] == len(sections)
+    assert sections == expected_synthetic_advisory_operating_brief_section_dicts()
+    assert [tuple(section) for section in sections] == [
+        _EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS
+        for _section in sections
+    ]
+    assert [section["section_state"] for section in sections] == [
+        "candidate_only"
+        for _section in sections
+    ]
+    assert _payload_keys(sections).isdisjoint(
+        _FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS
+    )
+    assert _primitive_only(sections)
+    assert _compact_sorted_json(section_payload) == _compact_sorted_json(
+        repeated_section_payload
+    )
+
+
 def test_renderer_readiness_wording_stays_diagnostic_and_negative() -> None:
     bundle = (
         build_synthetic_advisory_operating_brief_content_bundle_with_research_data_source_readiness()
@@ -533,6 +605,35 @@ def test_renderer_diagnostic_issue_wording_stays_diagnostic_and_negative() -> No
     assert "trading_ready:" not in rendered
 
 
+def test_renderer_advisory_section_wording_stays_metadata_only() -> None:
+    bundle = _build_content_bundle_with_advisory_sections()
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+    rendered = render_advisory_operating_brief_content_bundle_text(bundle)
+    lines = tuple(rendered.splitlines())
+    section_text = "\n".join(
+        _section_lines(rendered, "Advisory Sections", "Limitations")
+    )
+
+    assert exported.rendered_text == rendered
+    assert "Advisory Sections" in lines
+    assert "Advisory Section 1" in lines
+    assert "section_key: candidate_research_briefs" in lines
+    assert "section_title: Candidate research brief metadata" in lines
+    assert "section_state: candidate_only" in lines
+    assert "source_branches:" in lines
+    assert "item_count: 1" in lines
+    assert "diagnostic_messages:" in lines
+    assert "limitations:" in lines
+    assert _matching_terms(
+        section_text.lower(),
+        _FORBIDDEN_DIAGNOSTIC_TEXT_TERMS,
+    ) == []
+    assert _positive_readiness_lines(rendered) == []
+    assert "approval_status:" not in rendered
+    assert "authorization_status:" not in rendered
+    assert "trading_ready:" not in rendered
+
+
 def test_renderer_imports_only_bundle_contract_and_no_runtime_chains() -> None:
     import_details = _import_details_from_path(RENDERER_SOURCE_PATH)
     imports = set(import_details)
@@ -564,6 +665,15 @@ def test_diagnostic_issue_branch_source_is_exact_type_and_to_dict_only() -> None
     )
 
 
+def test_advisory_section_branch_source_is_exact_type_and_to_dict_only() -> None:
+    assert _advisory_sections_tuple_requires_exact_section_type(
+        CONTENT_BUNDLE_SOURCE_PATH
+    )
+    assert _content_bundle_to_dict_serializes_advisory_sections_with_to_dict(
+        CONTENT_BUNDLE_SOURCE_PATH
+    )
+
+
 def _source_text_from_path(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -578,6 +688,22 @@ def _build_content_bundle_with_diagnostic_issues() -> (
         candidate_research_briefs=source.candidate_research_briefs,
         strategy_eligibility_briefs=source.strategy_eligibility_briefs,
         diagnostic_issues=build_advisory_operating_brief_diagnostic_issues(source),
+    )
+
+
+def _build_content_bundle_with_advisory_sections() -> (
+    AdvisoryOperatingBriefContentBundle
+):
+    return build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=(
+            build_synthetic_advisory_operating_brief_content_bundle()
+            .candidate_research_briefs
+        ),
+        strategy_eligibility_briefs=(
+            build_synthetic_advisory_operating_brief_content_bundle()
+            .strategy_eligibility_briefs
+        ),
+        advisory_sections=build_synthetic_advisory_operating_brief_sections(),
     )
 
 
@@ -684,6 +810,28 @@ def _diagnostic_tuple_requires_exact_issue_type(path: Path) -> bool:
     return has_local_import and has_exact_type_check
 
 
+def _advisory_sections_tuple_requires_exact_section_type(path: Path) -> bool:
+    function_def = _function_def_from_path(path, "_advisory_sections_tuple")
+    if function_def is None:
+        return False
+
+    has_local_import = any(
+        isinstance(node, ast.ImportFrom)
+        and node.module == "algotrader.research.advisory_operating_brief_section"
+        and any(
+            alias.name == "AdvisoryOperatingBriefSection"
+            for alias in node.names
+        )
+        for node in ast.walk(function_def)
+    )
+    has_exact_type_check = any(
+        _is_type_is_not_advisory_section_compare(node)
+        for node in ast.walk(function_def)
+    )
+
+    return has_local_import and has_exact_type_check
+
+
 def _is_type_is_not_diagnostic_issue_compare(node: ast.AST) -> bool:
     return (
         isinstance(node, ast.Compare)
@@ -697,6 +845,22 @@ def _is_type_is_not_diagnostic_issue_compare(node: ast.AST) -> bool:
         and len(node.comparators) == 1
         and isinstance(node.comparators[0], ast.Name)
         and node.comparators[0].id == "AdvisoryOperatingBriefDiagnosticIssue"
+    )
+
+
+def _is_type_is_not_advisory_section_compare(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Compare)
+        and isinstance(node.left, ast.Call)
+        and _call_name(node.left.func) == "type"
+        and len(node.left.args) == 1
+        and isinstance(node.left.args[0], ast.Name)
+        and node.left.args[0].id == "section"
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.IsNot)
+        and len(node.comparators) == 1
+        and isinstance(node.comparators[0], ast.Name)
+        and node.comparators[0].id == "AdvisoryOperatingBriefSection"
     )
 
 
@@ -715,6 +879,28 @@ def _content_bundle_to_dict_serializes_diagnostic_issues_with_to_dict(
         if any(
             _is_payload_key_assignment(child, "diagnostic_issues")
             and _contains_issue_to_dict_call(child)
+            for child in ast.walk(node)
+        ):
+            return True
+
+    return False
+
+
+def _content_bundle_to_dict_serializes_advisory_sections_with_to_dict(
+    path: Path,
+) -> bool:
+    to_dict = _function_def_from_path(path, "to_dict")
+    if to_dict is None:
+        return False
+
+    for node in ast.walk(to_dict):
+        if not isinstance(node, ast.If):
+            continue
+        if not _is_self_attribute(node.test, "advisory_sections"):
+            continue
+        if any(
+            _is_payload_key_assignment(child, "advisory_sections")
+            and _contains_section_to_dict_call(child)
             for child in ast.walk(node)
         ):
             return True
@@ -750,6 +936,17 @@ def _contains_issue_to_dict_call(node: ast.AST) -> bool:
         and child.func.attr == "to_dict"
         and isinstance(child.func.value, ast.Name)
         and child.func.value.id == "issue"
+        for child in ast.walk(node)
+    )
+
+
+def _contains_section_to_dict_call(node: ast.AST) -> bool:
+    return any(
+        isinstance(child, ast.Call)
+        and isinstance(child.func, ast.Attribute)
+        and child.func.attr == "to_dict"
+        and isinstance(child.func.value, ast.Name)
+        and child.func.value.id == "section"
         for child in ast.walk(node)
     )
 

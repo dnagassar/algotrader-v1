@@ -171,6 +171,9 @@ _EXPECTED_EXPORT = export_advisory_operating_brief_package(
     build_fixture_package()
 )
 _EXPECTED_PAYLOAD = _EXPECTED_EXPORT.payload
+_EXPECTED_ADVISORY_SECTIONS = _EXPECTED_PAYLOAD["content_bundle"][
+    "advisory_sections"
+]
 _EXPECTED_DIAGNOSTIC_ISSUES = (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
 )
@@ -421,6 +424,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "Research Data Source Readiness Diagnostics",
         "Research Data Source Readiness Summary Diagnostics",
         "Diagnostic Issues",
+        "Advisory Sections",
         "candidate_research_brief_count: 1",
         "strategy_eligibility_brief_count: 1",
         "risk_authority_brief_count: 1",
@@ -432,6 +436,7 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         "research_data_source_readiness_count: 1",
         "research_data_source_readiness_summary_count: 1",
         "diagnostic_issue_count: 2",
+        "advisory_section_count: 11",
         "Limitations",
         "Non-Claims",
     ):
@@ -468,6 +473,10 @@ def test_package_output_contains_metadata_branches_and_cautions(capsys) -> None:
         _EXPECTED_DIAGNOSTIC_ISSUES
     )
     assert content_bundle["diagnostic_issues"] == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert content_bundle["advisory_section_count"] == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert content_bundle["advisory_sections"] == _EXPECTED_ADVISORY_SECTIONS
     assert sma_summary["observation_type"] == "sma_research_summary_observation"
     assert sma_summary["status"] == "candidate_only"
     assert sma_summary["authority"] == "advisory_only"
@@ -1018,7 +1027,7 @@ def _readiness_summary_text_block(text: str) -> tuple[str, ...]:
 def _diagnostic_issues_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Diagnostic Issues")
-    end = lines.index("Limitations", start)
+    end = lines.index("Advisory Sections", start)
 
     return tuple(lines[start:end])
 

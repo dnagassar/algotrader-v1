@@ -69,6 +69,9 @@ _ALLOWED_SYNTHETIC_IMPORTS = {
         "AdvisoryOperatingBriefPackage",
         "build_advisory_operating_brief_package",
     ),
+    "algotrader.research.advisory_operating_brief_section": (
+        "build_advisory_operating_brief_sections",
+    ),
     "algotrader.research.research_queue_brief": (
         "ResearchQueueBrief",
         "build_research_queue_brief",
@@ -393,6 +396,15 @@ _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
     "blocking_controls",
     "limitations",
 )
+_EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS = (
+    "section_key",
+    "section_title",
+    "section_state",
+    "source_branches",
+    "item_count",
+    "diagnostic_messages",
+    "limitations",
+)
 _FORBIDDEN_READINESS_PAYLOAD_KEYS = {
     "account",
     "approved",
@@ -433,6 +445,19 @@ _FORBIDDEN_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
     "raw_data",
     "severity",
     "source_authorized",
+}
+_FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS = _FORBIDDEN_READINESS_PAYLOAD_KEYS | {
+    "approval",
+    "approved",
+    "authorization",
+    "broker",
+    "created_at",
+    "generated_at",
+    "payload_digest_sha256",
+    "priority",
+    "rank",
+    "raw_data",
+    "severity",
 }
 _FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS = (
     "approval",
@@ -702,6 +727,38 @@ def test_synthetic_package_includes_diagnostic_issues_from_base_diagnostics_in_o
         for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS
     )
     assert "diagnostic_issues" not in _compact_sorted_json(manifest_payload)
+
+
+def test_synthetic_package_includes_advisory_sections_from_diagnostic_bundle() -> (
+    None
+):
+    package = build_synthetic_advisory_operating_brief_package_preview()
+    payload = package.to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    sections = _list(content_bundle["advisory_sections"])
+    manifest_payload = _dict(payload["research_observation_manifest"])
+    compact_sections = _compact_sorted_json({"advisory_sections": sections}).lower()
+
+    assert _package_content_bundle_includes_advisory_sections_builder(
+        SYNTHETIC_SOURCE_PATH
+    )
+    assert content_bundle["advisory_section_count"] == len(sections)
+    assert [tuple(_dict(section)) for section in sections] == [
+        _EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS
+        for _section in sections
+    ]
+    assert [_dict(section)["section_state"] for section in sections] == [
+        "candidate_only"
+        for _section in sections
+    ]
+    assert _payload_keys(sections).isdisjoint(
+        _FORBIDDEN_ADVISORY_SECTION_PAYLOAD_KEYS
+    )
+    assert all(
+        term not in compact_sections
+        for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_TEXT_TERMS
+    )
+    assert "advisory_sections" not in _compact_sorted_json(manifest_payload)
 
 
 def test_synthetic_preview_manifest_output_is_byte_deterministic() -> None:
@@ -1072,9 +1129,39 @@ def _package_content_bundle_includes_diagnostic_issues_builder(path: Path) -> bo
             if keyword.arg != "diagnostic_issues":
                 continue
             return _contains_call(
-                keyword.value,
+                function_def,
                 "build_advisory_operating_brief_diagnostic_issues",
-            ) and _contains_name(keyword.value, "base_bundle")
+            ) and (
+                _contains_name(keyword.value, "base_bundle")
+                or _contains_name(keyword.value, "diagnostic_issues")
+            )
+
+    return False
+
+
+def _package_content_bundle_includes_advisory_sections_builder(path: Path) -> bool:
+    function_def = _function_def_from_path(
+        path,
+        "_build_synthetic_package_content_bundle",
+    )
+    if function_def is None:
+        return False
+
+    for node in ast.walk(function_def):
+        if not isinstance(node, ast.Call):
+            continue
+        if _call_name(node.func) != "build_advisory_operating_brief_content_bundle":
+            continue
+        for keyword in node.keywords:
+            if keyword.arg != "advisory_sections":
+                continue
+            return _contains_call(
+                function_def,
+                "build_advisory_operating_brief_sections",
+            ) and (
+                _contains_name(keyword.value, "diagnostic_bundle")
+                or _contains_name(keyword.value, "advisory_sections")
+            )
 
     return False
 

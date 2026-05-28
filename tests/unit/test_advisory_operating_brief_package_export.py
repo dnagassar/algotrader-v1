@@ -41,6 +41,7 @@ _EXPECTED_CONTENT_BUNDLE_PAYLOAD = _EXPECTED_PAYLOAD["content_bundle"]
 _EXPECTED_DIAGNOSTIC_ISSUES = (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
 )
+_EXPECTED_ADVISORY_SECTIONS = _EXPECTED_CONTENT_BUNDLE_PAYLOAD["advisory_sections"]
 _EXPECTED_SMA_RETURN_PIPELINE_PAYLOAD = (
     expected_synthetic_sma_return_research_pipeline_observation_dict()
 )
@@ -59,6 +60,15 @@ _EXPECTED_DIAGNOSTIC_ISSUE_PAYLOAD_KEYS = (
     "issue_state",
     "diagnostic_message",
     "blocking_controls",
+    "limitations",
+)
+_EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS = (
+    "section_key",
+    "section_title",
+    "section_state",
+    "source_branches",
+    "item_count",
+    "diagnostic_messages",
     "limitations",
 )
 _ALLOWED_IMPORTS = {
@@ -304,6 +314,51 @@ _FORBIDDEN_DIAGNOSTIC_EXPORT_TERMS = (
     "validated_for_trading",
     "usable_for_backtest",
 )
+_FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS = {
+    "account",
+    "accounts",
+    "allocation",
+    "approval",
+    "approved",
+    "authorization",
+    "broker",
+    "created_at",
+    "credential",
+    "digest",
+    "fill",
+    "generated_at",
+    "order",
+    "payload_digest_sha256",
+    "portfolio",
+    "priority",
+    "rank",
+    "ranking",
+    "raw_data",
+    "raw_payload",
+    "recommendation",
+    "score",
+    "severity",
+    "source_payload",
+    "timestamp",
+    "trading_authority",
+    "trading_ready",
+    "vendor",
+    "wrapper",
+}
+_FORBIDDEN_ADVISORY_SECTION_EXPORT_TERMS = (
+    "approval",
+    "approved",
+    "authorization",
+    "authorized",
+    "ranking",
+    "scoring",
+    "recommendation",
+    "allocation",
+    "ready_to_trade",
+    "trading_ready",
+    "validated_for_trading",
+    "usable_for_backtest",
+)
 
 
 def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() -> None:
@@ -345,6 +400,14 @@ def test_export_builder_accepts_phase_189_fixture_and_matches_package_views() ->
         _EXPECTED_DIAGNOSTIC_ISSUES
     )
     assert nested_export_payload["diagnostic_issues"] == _EXPECTED_DIAGNOSTIC_ISSUES
+    assert content_bundle["advisory_section_count"] == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert content_bundle["advisory_sections"] == _EXPECTED_ADVISORY_SECTIONS
+    assert nested_export_payload["advisory_section_count"] == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert nested_export_payload["advisory_sections"] == _EXPECTED_ADVISORY_SECTIONS
     assert content_bundle_export["payload"] == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     assert pipeline_payload["return_construction_policy_observation"] == (
         package.sma_return_research_pipeline_observation
@@ -442,6 +505,41 @@ def test_export_diagnostic_issue_payload_shape_has_no_wrappers_or_trading_terms(
         _FORBIDDEN_DIAGNOSTIC_EXPORT_KEYS
     )
     assert all(term not in compact_issue_json for term in _FORBIDDEN_DIAGNOSTIC_EXPORT_TERMS)
+
+
+def test_export_advisory_section_payload_shape_has_no_wrappers_or_trading_terms() -> (
+    None
+):
+    exported = export_advisory_operating_brief_package(
+        build_synthetic_advisory_operating_brief_package()
+    )
+    content_bundle = _dict(exported.payload["content_bundle"])
+    nested_payload = _dict(_dict(exported.payload["content_bundle_export"])["payload"])
+    section_payloads = _list(content_bundle["advisory_sections"])
+    nested_section_payloads = _list(nested_payload["advisory_sections"])
+    compact_section_json = _compact_sorted_json(
+        {"advisory_sections": section_payloads}
+    ).lower()
+
+    assert content_bundle["advisory_section_count"] == len(section_payloads)
+    assert nested_payload["advisory_section_count"] == len(section_payloads)
+    assert section_payloads == nested_section_payloads == _EXPECTED_ADVISORY_SECTIONS
+    assert [tuple(_dict(section)) for section in section_payloads] == [
+        _EXPECTED_ADVISORY_SECTION_PAYLOAD_KEYS
+        for _section in section_payloads
+    ]
+    assert _payload_keys(section_payloads).isdisjoint(
+        _FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS
+    )
+    assert _payload_keys(nested_section_payloads).isdisjoint(
+        _FORBIDDEN_ADVISORY_SECTION_EXPORT_KEYS
+    )
+    assert all(
+        term not in compact_section_json
+        for term in _FORBIDDEN_ADVISORY_SECTION_EXPORT_TERMS
+    )
+    assert '"advisory_sections"' in exported.json_text
+    assert "Advisory Sections" in exported.rendered_text
 
 
 def test_direct_construction_validates_copies_and_is_frozen_slotted() -> None:

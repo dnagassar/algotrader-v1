@@ -64,6 +64,14 @@ _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY = (
     "approval",
     "approved",
 )
+_FORBIDDEN_ADVISORY_SECTION_VOCABULARY = (
+    "ranking",
+    "scoring",
+    "recommend",
+    "recommendation",
+    "approval",
+    "approved",
+)
 
 
 def test_synthetic_preview_includes_one_named_research_manifest_entry() -> None:
@@ -203,6 +211,59 @@ def test_synthetic_diagnostic_issues_add_no_trading_fields_or_positive_terms() -
         _FORBIDDEN_READINESS_FIELD_TERMS,
     ) == []
     for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY:
+        assert term not in compact
+
+
+def test_synthetic_preview_includes_advisory_sections_branch_deterministically() -> None:
+    first_package = build_synthetic_advisory_operating_brief_package_preview()
+    second_package = build_synthetic_advisory_operating_brief_package_preview()
+    first_payload = first_package.to_dict()
+    second_payload = second_package.to_dict()
+    content_bundle = _dict(first_payload["content_bundle"])
+    second_content_bundle = _dict(second_payload["content_bundle"])
+    content_bundle_export = _dict(first_payload["content_bundle_export"])
+    section_payloads = _list(content_bundle["advisory_sections"])
+    second_section_payloads = _list(second_content_bundle["advisory_sections"])
+    section_json = _compact_sorted_json({"advisory_sections": section_payloads})
+    second_section_json = _compact_sorted_json(
+        {"advisory_sections": second_section_payloads}
+    )
+
+    assert content_bundle["advisory_section_count"] == len(
+        first_package.content_bundle.advisory_sections
+    )
+    assert content_bundle["advisory_sections"] == [
+        section.to_dict()
+        for section in first_package.content_bundle.advisory_sections
+    ]
+    assert second_content_bundle["advisory_sections"] == [
+        section.to_dict()
+        for section in second_package.content_bundle.advisory_sections
+    ]
+    assert [section["section_key"] for section in section_payloads] == [
+        section.section_key
+        for section in first_package.content_bundle.advisory_sections
+    ]
+    assert content_bundle_export["payload"] == content_bundle
+    assert '"advisory_sections"' in content_bundle_export["json_text"]
+    assert "Advisory Sections" in content_bundle_export["rendered_text"]
+    assert section_json == second_section_json
+    assert section_json.encode("utf-8") == second_section_json.encode("utf-8")
+    assert json.loads(section_json) == {"advisory_sections": section_payloads}
+
+
+def test_synthetic_advisory_sections_add_no_trading_fields_or_positive_terms() -> None:
+    payload = build_synthetic_advisory_operating_brief_package_preview().to_dict()
+    content_bundle = _dict(payload["content_bundle"])
+    section_payloads = _list(content_bundle["advisory_sections"])
+    field_names = _serialized_keys(section_payloads)
+    compact = _compact_sorted_json({"advisory_sections": section_payloads}).lower()
+
+    assert _matching_field_terms(
+        field_names,
+        _FORBIDDEN_READINESS_FIELD_TERMS,
+    ) == []
+    for term in _FORBIDDEN_ADVISORY_SECTION_VOCABULARY:
         assert term not in compact
 
 

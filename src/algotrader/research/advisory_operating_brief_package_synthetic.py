@@ -18,6 +18,9 @@ from algotrader.research.advisory_operating_brief_package import (
     AdvisoryOperatingBriefPackage,
     build_advisory_operating_brief_package,
 )
+from algotrader.research.advisory_operating_brief_section import (
+    build_advisory_operating_brief_sections,
+)
 from algotrader.research.research_queue_brief import (
     ResearchQueueBrief,
     build_research_queue_brief,
@@ -211,6 +214,33 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
             data_source_readiness_summary,
         ),
     )
+    diagnostic_issues = build_advisory_operating_brief_diagnostic_issues(
+        base_bundle
+    )
+    diagnostic_bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=base_bundle.candidate_research_briefs,
+        strategy_eligibility_briefs=base_bundle.strategy_eligibility_briefs,
+        risk_authority_briefs=base_bundle.risk_authority_briefs,
+        research_queue_briefs=base_bundle.research_queue_briefs,
+        sma_research_observation_briefs=base_bundle.sma_research_observation_briefs,
+        sma_research_summary_observations=(
+            base_bundle.sma_research_summary_observations
+        ),
+        research_return_observation_briefs=(
+            base_bundle.research_return_observation_briefs
+        ),
+        research_return_summary_observation_briefs=(
+            base_bundle.research_return_summary_observation_briefs
+        ),
+        research_data_source_readiness=base_bundle.research_data_source_readiness,
+        research_data_source_readiness_summaries=(
+            base_bundle.research_data_source_readiness_summaries
+        ),
+        diagnostic_issues=diagnostic_issues,
+    )
+    advisory_sections = build_advisory_operating_brief_sections(
+        diagnostic_bundle
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=base_bundle.candidate_research_briefs,
         strategy_eligibility_briefs=base_bundle.strategy_eligibility_briefs,
@@ -230,9 +260,8 @@ def _build_synthetic_package_content_bundle() -> AdvisoryOperatingBriefContentBu
         research_data_source_readiness_summaries=(
             base_bundle.research_data_source_readiness_summaries
         ),
-        diagnostic_issues=build_advisory_operating_brief_diagnostic_issues(
-            base_bundle
-        ),
+        diagnostic_issues=diagnostic_issues,
+        advisory_sections=advisory_sections,
     )
 
 

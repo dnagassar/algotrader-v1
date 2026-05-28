@@ -306,10 +306,12 @@ def test_rendered_output_embeds_stored_content_bundle_rendered_text_exactly() ->
     assert "SMA Research Summary Observations" in nested_rendered
     assert "Research Return Observation Briefs" in nested_rendered
     assert "Research Return Summary Observation Briefs" in nested_rendered
+    assert "Advisory Sections" in nested_rendered
     assert "sma_research_observation_brief_count: 1" in nested_rendered
     assert "sma_research_summary_observation_count: 1" in nested_rendered
     assert "research_return_observation_brief_count: 1" in nested_rendered
     assert "research_return_summary_observation_brief_count: 1" in nested_rendered
+    assert "advisory_section_count: 11" in nested_rendered
     assert rendered == (
         "\n".join(_EXPECTED_PREFIX_LINES)
         + "\n"
@@ -333,6 +335,7 @@ def test_rendered_output_includes_all_nested_brief_branches() -> None:
     assert "SMA Research Summary Observations" in rendered
     assert "Research Return Observation Briefs" in rendered
     assert "Research Return Summary Observation Briefs" in rendered
+    assert "Advisory Sections" in rendered
     assert "candidate_research_brief_count: 1" in rendered
     assert "strategy_eligibility_brief_count: 1" in rendered
     assert "risk_authority_brief_count: 1" in rendered
@@ -341,6 +344,7 @@ def test_rendered_output_includes_all_nested_brief_branches() -> None:
     assert "sma_research_summary_observation_count: 1" in rendered
     assert "research_return_observation_brief_count: 1" in rendered
     assert "research_return_summary_observation_brief_count: 1" in rendered
+    assert "advisory_section_count: 11" in rendered
 
 
 @pytest.mark.parametrize(

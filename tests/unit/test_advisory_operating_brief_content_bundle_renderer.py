@@ -54,6 +54,9 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
 from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
     build_synthetic_advisory_operating_brief_diagnostic_issues,
 )
+from tests.fixtures.advisory_operating_brief_section import (
+    build_synthetic_advisory_operating_brief_sections,
+)
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
     expected_synthetic_candidate_research_brief_dict,
@@ -1852,6 +1855,59 @@ def test_diagnostic_issue_branch_rendering_is_pinned_and_deterministic() -> None
             "- Fixture is synthetic metadata only and not connected to real data.",
         )
     )
+    lowered_branch = branch.lower()
+    for token in (
+        "ranking",
+        "scoring",
+        _s("recomm", "end"),
+        _s("app", "roval"),
+        _s("app", "roved"),
+    ):
+        assert token not in lowered_branch
+
+
+def test_advisory_sections_branch_rendering_is_pinned_and_deterministic() -> None:
+    sections = build_synthetic_advisory_operating_brief_sections()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_sections=sections,
+    )
+
+    first = render_advisory_operating_brief_content_bundle_text(bundle)
+    second = render_advisory_operating_brief_content_bundle_text(bundle)
+    branch = "Advisory Sections\n" + first.split(
+        "\nAdvisory Sections\n",
+        maxsplit=1,
+    )[1].split("\n\nLimitations\n", maxsplit=1)[0]
+    expected_lines: list[str] = ["Advisory Sections"]
+    for section_index, section in enumerate(sections, start=1):
+        expected_lines.extend(
+            (
+                "",
+                f"Advisory Section {section_index}",
+                f"section_key: {section.section_key}",
+                f"section_title: {section.section_title}",
+                f"section_state: {section.section_state}",
+                "source_branches:",
+            )
+        )
+        expected_lines.extend(f"- {value}" for value in section.source_branches)
+        expected_lines.extend(
+            (
+                f"item_count: {section.item_count}",
+                "diagnostic_messages:",
+            )
+        )
+        expected_lines.extend(f"- {value}" for value in section.diagnostic_messages)
+        expected_lines.extend(("limitations:",))
+        expected_lines.extend(f"- {value}" for value in section.limitations)
+
+    assert first == second
+    assert first.encode("utf-8") == second.encode("utf-8")
+    assert "advisory_section_count: 5" in first
+    assert _index(first, "\nAdvisory Sections\n") < _index(first, "\nLimitations\n")
+    assert branch == "\n".join(expected_lines)
     lowered_branch = branch.lower()
     for token in (
         "ranking",

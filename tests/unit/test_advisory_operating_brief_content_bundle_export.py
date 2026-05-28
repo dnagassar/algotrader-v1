@@ -17,6 +17,9 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
 from algotrader.research.advisory_operating_brief_diagnostic_issue import (
     AdvisoryOperatingBriefDiagnosticIssue,
 )
+from algotrader.research.advisory_operating_brief_section import (
+    AdvisoryOperatingBriefSection,
+)
 from algotrader.research.advisory_operating_brief_content_bundle_export import (
     AdvisoryOperatingBriefContentBundleExport,
     export_advisory_operating_brief_content_bundle,
@@ -30,6 +33,9 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
 )
 from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
     build_synthetic_advisory_operating_brief_diagnostic_issues,
+)
+from tests.fixtures.advisory_operating_brief_section import (
+    build_synthetic_advisory_operating_brief_sections,
 )
 from tests.fixtures.candidate_research_brief import (
     build_synthetic_candidate_research_brief,
@@ -398,6 +404,68 @@ def test_diagnostic_issue_export_is_byte_for_byte_deterministic() -> None:
     assert first.rendered_text.encode("utf-8") == second.rendered_text.encode(
         "utf-8"
     )
+
+
+def test_advisory_section_export_serializes_each_section_through_to_dict(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sections = build_synthetic_advisory_operating_brief_sections()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_sections=sections,
+    )
+    original_to_dict = AdvisoryOperatingBriefSection.to_dict
+    calls: list[AdvisoryOperatingBriefSection] = []
+
+    def spy_to_dict(
+        section: AdvisoryOperatingBriefSection,
+    ) -> dict[str, object]:
+        calls.append(section)
+        return original_to_dict(section)
+
+    monkeypatch.setattr(
+        AdvisoryOperatingBriefSection,
+        "to_dict",
+        spy_to_dict,
+    )
+
+    exported = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert exported.payload["advisory_section_count"] == len(sections)
+    assert exported.payload["advisory_sections"] == [
+        original_to_dict(section) for section in sections
+    ]
+    assert calls[: len(sections)] == list(sections)
+    assert all(section in calls for section in sections)
+    assert exported.json_text == json.dumps(
+        exported.payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    assert "Advisory Sections" in exported.rendered_text
+
+
+def test_advisory_section_export_is_byte_for_byte_deterministic() -> None:
+    sections = build_synthetic_advisory_operating_brief_sections()
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_sections=sections,
+    )
+
+    first = export_advisory_operating_brief_content_bundle(bundle)
+    second = export_advisory_operating_brief_content_bundle(bundle)
+
+    assert first.payload == second.payload
+    assert first.json_text == second.json_text
+    assert first.json_text.encode("utf-8") == second.json_text.encode("utf-8")
+    assert first.rendered_text == second.rendered_text
+    assert first.rendered_text.encode("utf-8") == second.rendered_text.encode(
+        "utf-8"
+    )
+    assert '"advisory_sections"' in first.json_text
+    assert "Advisory Sections" in first.rendered_text
 
 
 def test_payload_is_isolated_from_caller_payload_mutation() -> None:

@@ -91,6 +91,11 @@ def render_advisory_operating_brief_content_bundle_text(
             "diagnostic_issue_count: "
             f"{payload['diagnostic_issue_count']}"
         )
+    if "advisory_sections" in payload:
+        lines.append(
+            "advisory_section_count: "
+            f"{payload['advisory_section_count']}"
+        )
 
     lines.extend(("", "Candidate Research Briefs"))
     for brief_index, candidate_payload in enumerate(
@@ -201,6 +206,14 @@ def render_advisory_operating_brief_content_bundle_text(
             start=1,
         ):
             _append_diagnostic_issue(lines, issue_payload, issue_index)
+
+    if "advisory_sections" in payload:
+        lines.extend(("", "Advisory Sections"))
+        for section_index, section_payload in enumerate(
+            payload["advisory_sections"],
+            start=1,
+        ):
+            _append_advisory_section(lines, section_payload, section_index)
 
     lines.extend(("", "Limitations"))
     _append_values(lines, payload["limitations"])
@@ -1147,6 +1160,33 @@ def _append_diagnostic_issue(
         )
     )
     _append_values(lines, payload["blocking_controls"])
+    lines.extend(("limitations:",))
+    _append_values(lines, payload["limitations"])
+
+
+def _append_advisory_section(
+    lines: list[str],
+    payload: dict[str, object],
+    section_index: int,
+) -> None:
+    lines.extend(
+        (
+            "",
+            f"Advisory Section {section_index}",
+            f"section_key: {payload['section_key']}",
+            f"section_title: {payload['section_title']}",
+            f"section_state: {payload['section_state']}",
+            "source_branches:",
+        )
+    )
+    _append_values(lines, payload["source_branches"])
+    lines.extend(
+        (
+            f"item_count: {payload['item_count']}",
+            "diagnostic_messages:",
+        )
+    )
+    _append_values(lines, payload["diagnostic_messages"])
     lines.extend(("limitations:",))
     _append_values(lines, payload["limitations"])
 

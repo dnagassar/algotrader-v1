@@ -17,6 +17,9 @@ from algotrader.research.advisory_operating_brief_content_bundle import (
 from algotrader.research.advisory_operating_brief_diagnostic_issue import (
     AdvisoryOperatingBriefDiagnosticIssue,
 )
+from algotrader.research.advisory_operating_brief_section import (
+    AdvisoryOperatingBriefSection,
+)
 from algotrader.research.candidate_research_brief import CandidateResearchBrief
 from algotrader.research.research_return_observation_brief_container import (
     ResearchReturnObservationBrief,
@@ -66,6 +69,10 @@ from tests.fixtures.candidate_research_brief import (
 from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
     build_synthetic_advisory_operating_brief_diagnostic_issues,
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
+)
+from tests.fixtures.advisory_operating_brief_section import (
+    build_synthetic_advisory_operating_brief_sections,
+    expected_synthetic_advisory_operating_brief_section_dicts,
 )
 from tests.fixtures.research_queue_brief import (
     build_synthetic_research_queue_brief,
@@ -371,6 +378,7 @@ _ALLOWED_IMPORTS = {
     "algotrader.research.sma_research_summary_observation",
     "algotrader.research.strategy_eligibility_brief",
     "algotrader.research.advisory_operating_brief_diagnostic_issue",
+    "algotrader.research.advisory_operating_brief_section",
 }
 _FORBIDDEN_IMPORT_PREFIXES = (
     "aiohttp",
@@ -1058,6 +1066,48 @@ def test_diagnostic_issue_identity_order_and_serialization_are_preserved() -> No
     )
 
 
+def test_advisory_sections_branch_is_optional_and_absent_by_default() -> None:
+    bundle = _combined_bundle()
+    payload = bundle.to_dict()
+
+    assert bundle.advisory_sections == ()
+    assert "advisory_section_count" not in payload
+    assert "advisory_sections" not in payload
+
+
+def test_advisory_section_identity_order_serialization_and_limits_are_preserved() -> None:
+    sections = tuple(reversed(build_synthetic_advisory_operating_brief_sections()))
+
+    bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+        strategy_eligibility_briefs=[build_synthetic_strategy_eligibility_brief()],
+        advisory_sections=sections,
+    )
+    payload = bundle.to_dict()
+
+    assert bundle.advisory_sections == sections
+    assert bundle.advisory_sections[0] is sections[0]
+    assert bundle.advisory_sections[-1] is sections[-1]
+    assert payload["advisory_section_count"] == len(sections)
+    assert payload["advisory_sections"] == [section.to_dict() for section in sections]
+    assert payload["advisory_sections"] == list(
+        reversed(expected_synthetic_advisory_operating_brief_section_dicts())
+    )
+    assert all(
+        limitation in bundle.limitations
+        for section in sections
+        for limitation in section.limitations
+    )
+    assert bundle.non_claims == _EXPECTED_NON_CLAIMS
+
+
+def test_advisory_sections_alone_do_not_make_bundle_non_empty() -> None:
+    with pytest.raises(ValidationError, match="at least one supported brief"):
+        build_advisory_operating_brief_content_bundle(
+            advisory_sections=build_synthetic_advisory_operating_brief_sections()
+        )
+
+
 def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     candidate_brief = build_synthetic_candidate_research_brief()
     eligibility_brief = build_synthetic_strategy_eligibility_brief()
@@ -1065,6 +1115,7 @@ def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     research_queue_brief = build_synthetic_research_queue_brief()
     sma_brief = build_synthetic_sma_research_observation_brief()
     research_return_brief = build_synthetic_research_return_observation_brief()
+    advisory_section = build_synthetic_advisory_operating_brief_sections()[0]
     payload = _valid_constructor_payload(
         candidate_brief,
         eligibility_brief,
@@ -1079,6 +1130,19 @@ def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     payload["research_queue_briefs"] = [research_queue_brief]
     payload["sma_research_observation_briefs"] = [sma_brief]
     payload["research_return_observation_briefs"] = [research_return_brief]
+    payload["advisory_sections"] = [advisory_section]
+    expected_bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=[candidate_brief],
+        strategy_eligibility_briefs=[eligibility_brief],
+        risk_authority_briefs=[risk_brief],
+        research_queue_briefs=[research_queue_brief],
+        sma_research_observation_briefs=[sma_brief],
+        research_return_observation_briefs=[research_return_brief],
+        advisory_sections=[advisory_section],
+    )
+    payload["summary"] = expected_bundle.summary
+    payload["limitations"] = expected_bundle.limitations
+    payload["non_claims"] = expected_bundle.non_claims
 
     bundle = AdvisoryOperatingBriefContentBundle(**payload)
 
@@ -1088,12 +1152,14 @@ def test_brief_collections_are_converted_to_immutable_tuples() -> None:
     assert isinstance(bundle.research_queue_briefs, tuple)
     assert isinstance(bundle.sma_research_observation_briefs, tuple)
     assert isinstance(bundle.research_return_observation_briefs, tuple)
+    assert isinstance(bundle.advisory_sections, tuple)
     assert bundle.candidate_research_briefs == (candidate_brief,)
     assert bundle.strategy_eligibility_briefs == (eligibility_brief,)
     assert bundle.risk_authority_briefs == (risk_brief,)
     assert bundle.research_queue_briefs == (research_queue_brief,)
     assert bundle.sma_research_observation_briefs == (sma_brief,)
     assert bundle.research_return_observation_briefs == (research_return_brief,)
+    assert bundle.advisory_sections == (advisory_section,)
 
 
 def test_duplicate_object_identities_are_rejected() -> None:
@@ -1103,6 +1169,7 @@ def test_duplicate_object_identities_are_rejected() -> None:
     research_queue_brief = build_synthetic_research_queue_brief()
     sma_brief = build_synthetic_sma_research_observation_brief()
     research_return_brief = build_synthetic_research_return_observation_brief()
+    advisory_section = build_synthetic_advisory_operating_brief_sections()[0]
 
     with pytest.raises(ValidationError, match="duplicate brief identities"):
         build_advisory_operating_brief_content_bundle(
@@ -1135,6 +1202,12 @@ def test_duplicate_object_identities_are_rejected() -> None:
                 research_return_brief,
                 research_return_brief,
             ],
+        )
+
+    with pytest.raises(ValidationError, match="duplicate brief identities"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[candidate_brief],
+            advisory_sections=[advisory_section, advisory_section],
         )
 
     with pytest.raises(ValidationError, match="duplicate brief identities"):
@@ -1181,6 +1254,7 @@ def test_duplicate_guard_uses_both_supported_collections() -> None:
     assert "sma_research_observation_briefs" in loaded_names
     assert "research_return_observation_briefs" in loaded_names
     assert "diagnostic_issues" in loaded_names
+    assert "advisory_sections" in loaded_names
     assert "seen_identities" in loaded_names
 
 
@@ -1271,6 +1345,18 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         def to_dict(self) -> dict[str, object]:
             return {"source_branch": self.source_branch}
 
+    class AdvisorySectionLike:
+        section_key = "candidate_research_briefs"
+        section_title = "Candidate research brief metadata"
+        section_state = "candidate_only"
+        source_branches = ("candidate_research_briefs",)
+        item_count = 1
+        diagnostic_messages = ()
+        limitations = ("synthetic section lookalike only",)
+
+        def to_dict(self) -> dict[str, object]:
+            return {"section_key": self.section_key}
+
     class DerivedRiskAuthorityBrief(RiskAuthorityBrief):
         pass
 
@@ -1284,6 +1370,9 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         pass
 
     class DerivedDiagnosticIssue(AdvisoryOperatingBriefDiagnosticIssue):
+        pass
+
+    class DerivedAdvisorySection(AdvisoryOperatingBriefSection):
         pass
 
     source_risk = build_synthetic_risk_authority_brief()
@@ -1344,6 +1433,16 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         diagnostic_message=source_issue.diagnostic_message,
         blocking_controls=source_issue.blocking_controls,
         limitations=source_issue.limitations,
+    )
+    source_section = build_synthetic_advisory_operating_brief_sections()[0]
+    subclass_section = DerivedAdvisorySection(
+        section_key=source_section.section_key,
+        section_title=source_section.section_title,
+        section_state=source_section.section_state,
+        source_branches=source_section.source_branches,
+        item_count=source_section.item_count,
+        diagnostic_messages=source_section.diagnostic_messages,
+        limitations=source_section.limitations,
     )
 
     with pytest.raises(ValidationError, match="CandidateResearchBrief"):
@@ -1466,6 +1565,24 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
             diagnostic_issues=[subclass_issue],
         )
 
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefSection"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_sections=[object()],
+        )
+
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefSection"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_sections=[AdvisorySectionLike()],
+        )
+
+    with pytest.raises(ValidationError, match="AdvisoryOperatingBriefSection"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_sections=[subclass_section],
+        )
+
     with pytest.raises(ValidationError, match="iterable"):
         build_advisory_operating_brief_content_bundle(
             candidate_research_briefs=object(),  # type: ignore[arg-type]
@@ -1500,6 +1617,12 @@ def test_non_brief_and_malformed_brief_like_inputs_are_rejected() -> None:
         build_advisory_operating_brief_content_bundle(
             candidate_research_briefs=[build_synthetic_candidate_research_brief()],
             diagnostic_issues=object(),
+        )
+
+    with pytest.raises(ValidationError, match="iterable"):
+        build_advisory_operating_brief_content_bundle(
+            candidate_research_briefs=[build_synthetic_candidate_research_brief()],
+            advisory_sections=object(),
         )
 
 
@@ -2042,6 +2165,7 @@ def test_no_actionable_trading_authority_fields_are_exposed() -> None:
         "research_data_source_readiness",
         "research_data_source_readiness_summaries",
         "diagnostic_issues",
+        "advisory_sections",
     )
     assert tuple(payload) == tuple(_EXPECTED_ALL_FAMILY_BUNDLE_DICT)
     assert field_names.isdisjoint(_FORBIDDEN_AUTHORITY_FIELDS)

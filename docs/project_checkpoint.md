@@ -13439,6 +13439,19 @@ Safe next tasks include:
   changes no production source and adds no real data ingestion, source
   selection, source/vendor approval, persistence, broker, network, backtest, or
   trading behavior.
+- Phase 291 - Advisory Content Bundle Sections Branch adds an explicit optional
+  `advisory_sections` branch to advisory operating brief content bundles. The
+  branch is absent unless supplied, accepts only exact
+  `AdvisoryOperatingBriefSection` records, preserves supplied ordering, does not
+  make an otherwise empty bundle valid, serializes each section through
+  `section.to_dict()`, and contributes only section limitations to aggregate
+  bundle limitations. Rendering emits section metadata only after diagnostic
+  issues and before aggregate limitations, while the synthetic package preview
+  derives sections from its diagnostic-inclusive bundle and explicitly includes
+  them in the final synthetic package content bundle. This phase adds no
+  content-bundle CLI surface and no real data ingestion, source selection,
+  source/vendor approval, persistence, runtime, broker, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

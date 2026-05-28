@@ -7866,6 +7866,20 @@ vocabulary. Phase 290 changes no production source and adds no real data
 ingestion, source selection, source/vendor approval, runtime, persistence,
 broker, network, backtest, or trading behavior.
 
+Phase 291 - Advisory Content Bundle Sections Branch adds an explicit optional
+`advisory_sections` branch to advisory operating brief content bundles. The
+branch is absent unless supplied, accepts only exact
+`AdvisoryOperatingBriefSection` records, preserves supplied ordering, does not
+make an otherwise empty bundle valid, serializes sections through
+`section.to_dict()`, and contributes only section limitations to aggregate
+bundle limitations. The renderer emits metadata only in an `Advisory Sections`
+block after diagnostic issues and before aggregate limitations, and synthetic
+package preview construction now derives sections from the diagnostic-inclusive
+content bundle before explicitly including them in the final synthetic package
+bundle. Phase 291 adds no content-bundle CLI surface, real data ingestion,
+source selection, source/vendor approval, runtime, persistence, broker,
+network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
