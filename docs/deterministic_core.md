@@ -7880,6 +7880,22 @@ bundle. Phase 291 adds no content-bundle CLI surface, real data ingestion,
 source selection, source/vendor approval, runtime, persistence, broker,
 network, backtest, or trading behavior.
 
+Phase 292 - Advisory Content Bundle CLI Sections Preview adds a hidden
+synthetic-only `--include-advisory-sections` boolean flag to
+`advisory-operating-brief-content-bundle-preview`. The default content bundle
+preview remains byte-for-byte unchanged; when the flag is supplied, the CLI
+builds deterministic advisory section records from the existing synthetic
+diagnostic section source and attaches only the `advisory_sections` branch to
+the preview bundle. Text and compact sorted-key JSON output preserve section
+ordering exactly as built, exposing section key/title/state, source branches,
+item count, diagnostic messages, and section limitations without file/path/
+source/vendor/broker/network/credential CLI inputs. Focused regression tests
+pin hidden boolean-only handling, text/JSON determinism, compact JSON output,
+default-output stability, forbidden-field scans, and absence of ranking,
+scoring, recommendation, or approval vocabulary in the advisory sections
+branch. Phase 292 adds no real data ingestion, source selection, source/vendor
+approval, runtime, persistence, broker, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

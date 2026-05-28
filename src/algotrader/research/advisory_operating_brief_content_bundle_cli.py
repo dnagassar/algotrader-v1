@@ -15,6 +15,9 @@ from algotrader.research.advisory_operating_brief_content_bundle_export import (
 from algotrader.research.advisory_operating_brief_diagnostic_issue import (
     build_advisory_operating_brief_diagnostic_issues,
 )
+from algotrader.research.advisory_operating_brief_section import (
+    build_advisory_operating_brief_sections,
+)
 from algotrader.research.candidate_research_brief import (
     CandidateResearchBrief,
     build_candidate_research_brief,
@@ -584,6 +587,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
     include_research_data_source_readiness: bool = False,
     include_research_data_source_readiness_summary: bool = False,
     include_diagnostic_issues: bool = False,
+    include_advisory_sections: bool = False,
 ) -> AdvisoryOperatingBriefContentBundle:
     candidate_brief = _build_synthetic_candidate_research_brief()
     strategy_eligibility_brief = _build_synthetic_strategy_eligibility_brief()
@@ -636,6 +640,11 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
         if include_diagnostic_issues
         else ()
     )
+    advisory_sections = (
+        _build_synthetic_advisory_operating_brief_sections()
+        if include_advisory_sections
+        else ()
+    )
     return build_advisory_operating_brief_content_bundle(
         candidate_research_briefs=(candidate_brief,),
         strategy_eligibility_briefs=(strategy_eligibility_brief,),
@@ -652,6 +661,7 @@ def _build_synthetic_advisory_operating_brief_content_bundle(
             research_data_source_readiness_summaries
         ),
         diagnostic_issues=diagnostic_issues,
+        advisory_sections=advisory_sections,
     )
 
 
@@ -667,6 +677,7 @@ def render_advisory_operating_brief_content_bundle_preview(
     include_research_data_source_readiness: bool = False,
     include_research_data_source_readiness_summary: bool = False,
     include_diagnostic_issues: bool = False,
+    include_advisory_sections: bool = False,
 ) -> str:
     """Return the deterministic synthetic advisory content bundle export."""
 
@@ -688,6 +699,7 @@ def render_advisory_operating_brief_content_bundle_preview(
             include_research_data_source_readiness_summary
         ),
         include_diagnostic_issues=include_diagnostic_issues,
+        include_advisory_sections=include_advisory_sections,
     )
     exported = export_advisory_operating_brief_content_bundle(bundle)
     if output_format == "text":
@@ -835,6 +847,34 @@ def _build_synthetic_advisory_operating_brief_diagnostic_issues() -> tuple[objec
         include_diagnostic_issues=False,
     )
     return build_advisory_operating_brief_diagnostic_issues(source_bundle)
+
+
+def _build_synthetic_advisory_operating_brief_sections() -> tuple[object, ...]:
+    source_bundle = _build_synthetic_advisory_operating_brief_content_bundle(
+        include_risk_authority=False,
+        include_research_queue=False,
+        include_sma_research_observation=False,
+        include_sma_research_summary_observation=False,
+        include_research_return_observation=False,
+        include_research_return_summary_observation=False,
+        include_research_data_source_readiness=True,
+        include_research_data_source_readiness_summary=True,
+        include_diagnostic_issues=False,
+    )
+    diagnostic_issues = build_advisory_operating_brief_diagnostic_issues(
+        source_bundle
+    )
+    section_source_bundle = build_advisory_operating_brief_content_bundle(
+        candidate_research_briefs=source_bundle.candidate_research_briefs,
+        strategy_eligibility_briefs=source_bundle.strategy_eligibility_briefs,
+        research_data_source_readiness=source_bundle.research_data_source_readiness,
+        research_data_source_readiness_summaries=(
+            source_bundle.research_data_source_readiness_summaries
+        ),
+        diagnostic_issues=diagnostic_issues,
+    )
+
+    return build_advisory_operating_brief_sections(section_source_bundle)
 
 
 def _build_synthetic_sma_research_observations() -> (

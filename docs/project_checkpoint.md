@@ -13452,6 +13452,21 @@ Safe next tasks include:
   content-bundle CLI surface and no real data ingestion, source selection,
   source/vendor approval, persistence, runtime, broker, network, backtest, or
   trading behavior.
+- Phase 292 - Advisory Content Bundle CLI Sections Preview adds a hidden
+  synthetic-only `--include-advisory-sections` boolean flag to
+  `advisory-operating-brief-content-bundle-preview`. Default output stays
+  byte-for-byte unchanged; with the flag, the preview builds deterministic
+  section records from the existing synthetic diagnostic section source and
+  attaches only the `advisory_sections` branch. Text and compact sorted-key
+  JSON output preserve builder ordering and expose only section key/title/state,
+  source branches, item count, diagnostic messages, and limitations. Focused
+  tests pin hidden non-input-bearing CLI handling, repeated text/JSON
+  determinism, compact JSON, no file/path/source/vendor/broker/network/
+  credential options, and no broker/order/fill/portfolio/backtest/runtime/
+  vendor/network/credential fields or ranking/scoring/recommendation/approval
+  vocabulary in the advisory sections branch. This phase adds no real data
+  ingestion, source selection, source/vendor approval, persistence, runtime,
+  broker, network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

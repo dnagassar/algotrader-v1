@@ -19,6 +19,9 @@ from tests.fixtures.advisory_operating_brief_content_bundle import (
 from tests.fixtures.advisory_operating_brief_diagnostic_issue import (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts,
 )
+from tests.fixtures.advisory_operating_brief_section import (
+    expected_synthetic_advisory_operating_brief_section_dicts,
+)
 from tests.unit.test_advisory_operating_brief_content_bundle_export_regression import (
     _EXPECTED_JSON_TEXT as _EXPECTED_CONTENT_BUNDLE_JSON_TEXT,
     _EXPECTED_PAYLOAD as _EXPECTED_CONTENT_BUNDLE_PAYLOAD,
@@ -40,6 +43,7 @@ _COMMAND = "advisory-operating-brief-content-bundle-preview"
 _LEGACY_COMMAND = "advisory-operating-brief-preview"
 _READINESS_SUMMARY_FLAG = "--include-research-data-source-readiness-summary"
 _DIAGNOSTIC_ISSUES_FLAG = "--include-diagnostic-issues"
+_ADVISORY_SECTIONS_FLAG = "--include-advisory-sections"
 
 _EXPECTED_LEGACY_RENDERED_TEXT = "\n".join(_EXPECTED_LEGACY_RENDERED_LINES)
 _EXPECTED_EXPORT_PAYLOAD_KEYS = (
@@ -69,6 +73,7 @@ _ALLOWED_SELF_IMPORTS = {
     "algotrader.research.advisory_operating_brief_content_bundle_export",
     "tests.fixtures.advisory_operating_brief_content_bundle",
     "tests.fixtures.advisory_operating_brief_diagnostic_issue",
+    "tests.fixtures.advisory_operating_brief_section",
     "tests.unit.test_advisory_operating_brief_content_bundle_export_regression",
     "tests.unit.test_advisory_operating_brief_export_regression",
     "tests.unit.test_advisory_operating_brief_renderer_regression",
@@ -128,6 +133,27 @@ _DIAGNOSTIC_BRANCH_FORBIDDEN_TEXT_TERMS = (
     _s("app", "roval"),
     _s("app", "roved"),
 )
+_ADVISORY_SECTIONS_FORBIDDEN_FIELD_TERMS = (
+    _s("bro", "ker"),
+    _s("or", "der"),
+    "fill",
+    _s("port", "folio"),
+    "backtest",
+    _s("run", "time"),
+    _s("ven", "dor"),
+    _s("net", "work"),
+    _s("cred", "ential"),
+)
+_ADVISORY_SECTIONS_FORBIDDEN_TEXT_TERMS = (
+    _s("rank", "ing"),
+    _s("scor", "ing"),
+    _s("score"),
+    _s("reco", "mmendation"),
+    _s("app", "roval"),
+    _s("app", "roved"),
+    _s("authori", "zation"),
+    _s("authori", "zed"),
+)
 
 
 def test_default_and_text_stdout_are_exact_phase_165_text_pins(capsys) -> None:
@@ -166,6 +192,8 @@ def test_json_stdout_round_trips_exactly_to_expected_export_payload(capsys) -> N
     assert payload == _EXPECTED_CONTENT_BUNDLE_PAYLOAD
     assert payload == expected_export.payload
     assert tuple(expected_export.payload) == _EXPECTED_EXPORT_PAYLOAD_KEYS
+    assert "advisory_sections" not in payload
+    assert "advisory_section_count" not in payload
     assert json.dumps(payload, sort_keys=True, separators=(",", ":")) == json_stdout
 
 
@@ -540,6 +568,188 @@ def test_diagnostic_issues_preview_branch_adds_no_operating_fields_or_terms(
     ) == []
 
 
+def test_advisory_sections_preview_flag_is_hidden_boolean_and_non_input_bearing(
+    capsys,
+) -> None:
+    parser = _preview_parser()
+    help_text = f"{build_parser().format_help()}\n{parser.format_help()}"
+
+    assert _ADVISORY_SECTIONS_FLAG not in help_text
+    assert _ADVISORY_SECTIONS_FLAG not in _option_text(parser)
+    assert _positional_rows(parser) == ()
+    assert _option_rows(parser) == (("output_format", ("--format",), ("text", "json")),)
+
+    json_stdout = _run_preview_cli(
+        (
+            _COMMAND,
+            _ADVISORY_SECTIONS_FLAG,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+
+    assert "research_data_source_readiness" not in payload
+    assert "research_data_source_readiness_summaries" not in payload
+    assert "diagnostic_issues" not in payload
+    assert payload["advisory_section_count"] == len(
+        expected_synthetic_advisory_operating_brief_section_dicts()
+    )
+    assert payload["advisory_sections"] == (
+        expected_synthetic_advisory_operating_brief_section_dicts()
+    )
+
+    for argv in (
+        (_COMMAND, f"{_ADVISORY_SECTIONS_FLAG}=true"),
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "true"),
+    ):
+        with pytest.raises(SystemExit) as exc_info:
+            main(argv)
+        captured = capsys.readouterr()
+        assert exc_info.value.code == 2
+        assert captured.out == ""
+        assert (
+            "ignored explicit argument" in captured.err
+            or "unrecognized arguments:" in captured.err
+        )
+        assert "true" in captured.err
+
+
+def test_advisory_sections_preview_text_and_json_include_section_records(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "text"),
+        capsys,
+    )
+    json_stdout = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "json"),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    sections = payload["advisory_sections"]
+    expected_sections = expected_synthetic_advisory_operating_brief_section_dicts()
+
+    assert isinstance(sections, list)
+    assert sections == expected_sections
+    assert [section["section_key"] for section in sections] == [
+        section["section_key"] for section in expected_sections
+    ]
+    assert [list(section) for section in sections] == [
+        sorted(
+            [
+                "section_key",
+                "section_title",
+                "section_state",
+                "source_branches",
+                "item_count",
+                "diagnostic_messages",
+                "limitations",
+            ]
+        )
+    ] * len(expected_sections)
+    assert sections[-1]["diagnostic_messages"] == [
+        "Readiness branch reports missing diagnostic controls.",
+        "Readiness summary branch reports missing diagnostic controls.",
+    ]
+    assert json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == json_stdout
+
+    for expected_line in (
+        "advisory_section_count: 5",
+        "Advisory Sections",
+        "Advisory Section 1",
+        "section_key: candidate_research_briefs",
+        "section_title: Candidate research brief metadata",
+        "section_state: candidate_only",
+        "source_branches:",
+        "- candidate_research_briefs",
+        "item_count: 1",
+        "diagnostic_messages:",
+        "limitations:",
+        "Advisory Section 5",
+        "section_key: diagnostic_issues",
+        "section_title: Diagnostic issue metadata",
+        "- Readiness branch reports missing diagnostic controls.",
+        "- Readiness summary branch reports missing diagnostic controls.",
+        "- diagnostic messages are copied from existing issue records",
+    ):
+        assert expected_line in text_stdout
+
+
+def test_advisory_sections_preview_repeated_text_and_json_are_byte_identical(
+    capsys,
+) -> None:
+    first_text = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "text"),
+        capsys,
+    )
+    second_text = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "text"),
+        capsys,
+    )
+    first_json = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "json"),
+        capsys,
+    )
+    second_json = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "json"),
+        capsys,
+    )
+
+    assert first_text == second_text
+    assert first_json == second_json
+    assert first_text.encode("utf-8") == second_text.encode("utf-8")
+    assert first_json.encode("utf-8") == second_json.encode("utf-8")
+    assert json.dumps(
+        json.loads(first_json),
+        sort_keys=True,
+        separators=(",", ":"),
+    ) == first_json
+
+
+def test_advisory_sections_preview_branch_adds_no_operating_fields_or_terms(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "text"),
+        capsys,
+    )
+    json_stdout = _run_preview_cli(
+        (_COMMAND, _ADVISORY_SECTIONS_FLAG, "--format", "json"),
+        capsys,
+    )
+    payload = json.loads(json_stdout)
+    sections = payload["advisory_sections"]
+    section_text = json.dumps(
+        sections,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    rendered_section_text = "\n".join(_advisory_sections_text_block(text_stdout)).lower()
+
+    assert _matching_field_terms(
+        _payload_keys(sections),
+        _ADVISORY_SECTIONS_FORBIDDEN_FIELD_TERMS,
+    ) == []
+    assert _matching_terms(
+        section_text,
+        _ADVISORY_SECTIONS_FORBIDDEN_TEXT_TERMS,
+    ) == []
+    assert _matching_terms(
+        rendered_section_text,
+        _ADVISORY_SECTIONS_FORBIDDEN_TEXT_TERMS,
+    ) == []
+    assert _matching_terms(
+        rendered_section_text,
+        _ADVISORY_SECTIONS_FORBIDDEN_FIELD_TERMS,
+    ) == []
+
+
 def test_preview_module_is_synthetic_only_and_has_no_external_chains() -> None:
     imports = _import_references(preview_module)
     call_names = _call_names(preview_module)
@@ -753,6 +963,14 @@ def _rendered_field_names(text: str) -> set[str]:
     return field_names
 
 
+def _advisory_sections_text_block(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    start = lines.index("Advisory Sections")
+    end = lines.index("Limitations", start)
+
+    return tuple(lines[start:end])
+
+
 def _authority_presentation_lines(text: str) -> tuple[str, ...]:
     return tuple(
         line
@@ -836,6 +1054,8 @@ def _blocked_cli_option_terms() -> tuple[str, ...]:
         _s("sour", "ce"),
         _s("ven", "dor"),
         _s("bro", "ker"),
+        _s("net", "work"),
+        _s("cred", "ential"),
         _s("run", "time"),
         _s("market"),
         _s("da", "ta"),
