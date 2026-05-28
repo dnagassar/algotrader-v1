@@ -13491,6 +13491,23 @@ Safe next tasks include:
   phase changes no production source and adds no real data ingestion, source
   selection, source/vendor approval, persistence, runtime, broker, network,
   backtest, or trading behavior.
+- Phase 295 - Advisory Operating Brief View Records adds
+  `src/algotrader/research/advisory_operating_brief_view.py`, a tiny
+  metadata-only advisory view model over existing
+  `AdvisoryOperatingBriefSection` records. The builder accepts either one exact
+  section record or a tuple of exact section records, rejects subclasses and
+  lookalikes, preserves supplied section order, and emits frozen/slotted
+  `AdvisoryOperatingBriefView` records with only view key/title/state, section
+  count, section keys, metadata summary lines, diagnostic messages, and
+  limitations. `to_dict()` returns fresh primitive-only deterministic payloads
+  without wrapper/timestamp/digest/raw-payload fields. Focused unit coverage
+  pins synthetic section fixture composition, exact-type validation,
+  immutability, source-section non-mutation, repeated-build equality,
+  diagnostic-only wording, and no broker/order/fill/portfolio/backtest/runtime/
+  vendor/network/credential fields or ranking/scoring/recommendation/approval/
+  trading vocabulary. This phase adds no renderer, CLI, package, dashboard,
+  scheduler, persistence, runtime, broker, vendor, network, backtest, or
+  trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

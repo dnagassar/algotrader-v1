@@ -7922,6 +7922,23 @@ no production source and adds no real data ingestion, source selection,
 source/vendor approval, runtime, persistence, broker, network, backtest, or
 trading behavior.
 
+Phase 295 - Advisory Operating Brief View Records adds
+`src/algotrader/research/advisory_operating_brief_view.py`, a tiny
+metadata-only advisory view model over existing
+`AdvisoryOperatingBriefSection` records. The builder accepts either one exact
+section record or a tuple of exact section records, rejects subclasses and
+lookalikes, preserves supplied section order, and emits frozen/slotted
+`AdvisoryOperatingBriefView` records with only view key/title/state, section
+count, section keys, metadata summary lines, diagnostic messages, and
+limitations. `to_dict()` returns fresh primitive-only deterministic payloads
+without wrapper/timestamp/digest/raw-payload fields. Focused unit coverage pins
+synthetic section fixture composition, exact-type validation, immutability,
+source-section non-mutation, repeated-build equality, diagnostic-only wording,
+and absence of broker/order/fill/portfolio/backtest/runtime/vendor/network/
+credential fields or ranking/scoring/recommendation/approval/trading
+vocabulary. Phase 295 adds no renderer, CLI, package, dashboard, scheduler,
+runtime, persistence, broker, vendor, network, backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
