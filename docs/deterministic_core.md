@@ -7896,6 +7896,19 @@ scoring, recommendation, or approval vocabulary in the advisory sections
 branch. Phase 292 adds no real data ingestion, source selection, source/vendor
 approval, runtime, persistence, broker, network, backtest, or trading behavior.
 
+Phase 293 - Advisory Package CLI Sections Regression adds test-only package
+preview coverage proving the existing synthetic `advisory_sections` branch is
+carried through the canonical advisory package path. The regression pins text
+output for section key, title, state, source branches, item count, diagnostic
+messages, and metadata-only limitations; compact sorted-key JSON output;
+nested content-bundle export payload inclusion; repeated byte-for-byte text and
+JSON determinism; unchanged package input-bearing options; and absence of
+broker/order/fill/portfolio/backtest/runtime/vendor/network/credential fields
+or ranking/scoring/recommendation/approval vocabulary in the section branch.
+Phase 293 changes no production source and adds no real data ingestion, source
+selection, source/vendor approval, runtime, persistence, broker, network,
+backtest, or trading behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

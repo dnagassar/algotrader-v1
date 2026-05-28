@@ -13467,6 +13467,18 @@ Safe next tasks include:
   vocabulary in the advisory sections branch. This phase adds no real data
   ingestion, source selection, source/vendor approval, persistence, runtime,
   broker, network, backtest, or trading behavior.
+- Phase 293 - Advisory Package CLI Sections Regression adds test-only
+  package-preview coverage proving the existing synthetic `advisory_sections`
+  branch is carried through the canonical advisory package path. It pins text
+  output for section key/title/state, source branches, item count, diagnostic
+  messages, and metadata-only limitations; compact sorted-key JSON output;
+  nested content-bundle export payload inclusion; repeated byte-for-byte text
+  and JSON determinism; unchanged package input-bearing options; and no
+  broker/order/fill/portfolio/backtest/runtime/vendor/network/credential fields
+  or ranking/scoring/recommendation/approval vocabulary in the section branch.
+  This phase changes no production source and adds no real data ingestion,
+  source selection, source/vendor approval, persistence, runtime, broker,
+  network, backtest, or trading behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

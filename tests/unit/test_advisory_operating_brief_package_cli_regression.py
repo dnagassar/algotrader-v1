@@ -174,6 +174,18 @@ _EXPECTED_PAYLOAD = _EXPECTED_EXPORT.payload
 _EXPECTED_ADVISORY_SECTIONS = _EXPECTED_PAYLOAD["content_bundle"][
     "advisory_sections"
 ]
+_EXPECTED_ADVISORY_SECTION_KEYS = (
+    "section_key",
+    "section_title",
+    "section_state",
+    "source_branches",
+    "item_count",
+    "diagnostic_messages",
+    "limitations",
+)
+_EXPECTED_ADVISORY_SECTION_JSON_KEYS = tuple(
+    sorted(_EXPECTED_ADVISORY_SECTION_KEYS)
+)
 _EXPECTED_DIAGNOSTIC_ISSUES = (
     expected_synthetic_advisory_operating_brief_diagnostic_issue_dicts()
 )
@@ -255,6 +267,33 @@ _FORBIDDEN_DIAGNOSTIC_ISSUE_FIELD_NAMES = {
     "wrapper",
 }
 _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY = (
+    "approval",
+    "approved",
+    "ranking",
+    "recommend",
+    "recommendation",
+    "scoring",
+)
+_FORBIDDEN_ADVISORY_SECTION_FIELD_NAMES = {
+    "account",
+    "allocation",
+    "backtest",
+    "benchmark",
+    "broker",
+    "credential",
+    "digest",
+    "fill",
+    "network",
+    "order",
+    "portfolio",
+    "raw_data",
+    "raw_payload",
+    "runtime",
+    "timestamp",
+    "vendor",
+    "wrapper",
+}
+_FORBIDDEN_ADVISORY_SECTION_VOCABULARY = (
     "approval",
     "approved",
     "ranking",
@@ -510,6 +549,53 @@ def test_package_cli_text_output_includes_diagnostic_issues(
     assert text_stdout.count("blocking_controls:") == 2
 
 
+def test_package_cli_text_output_includes_advisory_sections_branch(
+    capsys,
+) -> None:
+    text_stdout = _run_preview_cli((_COMMAND,), capsys)
+    explicit_text_stdout = _run_preview_cli((_COMMAND, "--format", "text"), capsys)
+    expected_block = _expected_advisory_sections_text_block(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    text_block = _advisory_sections_text_block(text_stdout)
+
+    assert text_stdout == explicit_text_stdout == _EXPECTED_TEXT
+    assert text_block == expected_block
+    assert _advisory_sections_text_block(explicit_text_stdout) == expected_block
+    assert text_stdout.count("Advisory Sections") == 1
+    assert _line_prefix_count(text_block, "Advisory Section ") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert _line_prefix_count(text_block, "section_key:") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert _line_prefix_count(text_block, "section_title:") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert _line_prefix_count(text_block, "section_state:") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert text_block.count("source_branches:") == len(_EXPECTED_ADVISORY_SECTIONS)
+    assert _line_prefix_count(text_block, "item_count:") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert text_block.count("diagnostic_messages:") == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert text_block.count("limitations:") == len(_EXPECTED_ADVISORY_SECTIONS)
+    assert "section_key: diagnostic_issues" in text_block
+    assert "- diagnostic_issues" in text_block
+    assert "- Readiness branch reports missing diagnostic controls." in text_block
+    assert (
+        "- Readiness summary branch reports missing diagnostic controls."
+        in text_block
+    )
+    assert (
+        "- metadata-only section record for present advisory content branch"
+        in text_block
+    )
+
+
 def test_package_cli_text_output_includes_readiness_diagnostic_controls(
     capsys,
 ) -> None:
@@ -590,6 +676,54 @@ def test_package_cli_json_output_includes_diagnostic_issues_branch(
         assert "payload" not in issue_payload
         assert "digest" not in issue_payload
         assert "raw_data" not in issue_payload
+
+
+def test_package_cli_json_output_includes_advisory_sections_branch(
+    capsys,
+) -> None:
+    json_stdout = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    payload = json.loads(json_stdout)
+    package = preview_module.build_synthetic_advisory_operating_brief_package()
+    content_bundle = _dict(payload["content_bundle"])
+    section_payloads = _advisory_section_payloads(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_sections = _advisory_section_payloads(
+        {"content_bundle": nested_export_payload}
+    )
+
+    assert json_stdout == _EXPECTED_JSON
+    assert json_stdout == _compact_sorted_json(_EXPECTED_PAYLOAD)
+    assert content_bundle["advisory_section_count"] == len(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+    assert section_payloads == _EXPECTED_ADVISORY_SECTIONS
+    assert section_payloads == [
+        section.to_dict() for section in package.content_bundle.advisory_sections
+    ]
+    assert nested_export_payload["advisory_section_count"] == len(section_payloads)
+    assert nested_export_sections == section_payloads
+    assert [tuple(section_payload) for section_payload in section_payloads] == [
+        _EXPECTED_ADVISORY_SECTION_JSON_KEYS for _section in section_payloads
+    ]
+    assert [section["section_key"] for section in section_payloads] == [
+        section.section_key for section in package.content_bundle.advisory_sections
+    ]
+    assert [section["source_branches"] for section in section_payloads] == [
+        [section["section_key"]] for section in section_payloads
+    ]
+    assert [section["section_state"] for section in section_payloads] == [
+        "candidate_only" for _section in section_payloads
+    ]
+    assert [section["item_count"] for section in section_payloads] == [
+        section.item_count for section in package.content_bundle.advisory_sections
+    ]
+    for section_payload in section_payloads:
+        assert set(section_payload) == set(_EXPECTED_ADVISORY_SECTION_KEYS)
+        assert "json_text" not in section_payload
+        assert "rendered_text" not in section_payload
+        assert "payload" not in section_payload
+        assert "digest" not in section_payload
+        assert "raw_data" not in section_payload
 
 
 def test_package_cli_json_output_preserves_builder_computed_missing_controls(
@@ -722,6 +856,37 @@ def test_repeated_package_cli_readiness_outputs_are_byte_for_byte_identical(
     assert _compact_sorted_json(first_payload) == _compact_sorted_json(second_payload)
 
 
+def test_repeated_package_cli_advisory_section_outputs_are_byte_for_byte_identical(
+    capsys,
+) -> None:
+    first_text = _run_preview_cli((_COMMAND,), capsys)
+    second_text = _run_preview_cli((_COMMAND,), capsys)
+    first_json = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    second_json = _run_preview_cli((_COMMAND, "--format", "json"), capsys)
+    first_payload = json.loads(first_json)
+    second_payload = json.loads(second_json)
+    first_sections = _advisory_section_payloads(first_payload)
+    second_sections = _advisory_section_payloads(second_payload)
+    expected_text_block = _expected_advisory_sections_text_block(
+        _EXPECTED_ADVISORY_SECTIONS
+    )
+
+    assert first_text == second_text == _EXPECTED_TEXT
+    assert first_json == second_json == _EXPECTED_JSON
+    assert first_text.encode("utf-8") == second_text.encode("utf-8")
+    assert first_json.encode("utf-8") == second_json.encode("utf-8")
+    assert _advisory_sections_text_block(first_text) == expected_text_block
+    assert _advisory_sections_text_block(second_text) == expected_text_block
+    assert first_sections == second_sections == _EXPECTED_ADVISORY_SECTIONS
+    assert _compact_sorted_json(first_sections) == _compact_sorted_json(
+        second_sections
+    )
+    assert _compact_sorted_json(first_sections).encode("utf-8") == (
+        _compact_sorted_json(second_sections).encode("utf-8")
+    )
+    assert _compact_sorted_json(first_payload) == _compact_sorted_json(second_payload)
+
+
 def test_package_preview_exposes_only_format_text_or_json() -> None:
     parser = _preview_parser()
     package_commands = tuple(
@@ -851,6 +1016,24 @@ def test_diagnostic_issue_branch_adds_no_forbidden_fields_or_vocabulary(
     assert issue_payloads == nested_export_issues == _EXPECTED_DIAGNOSTIC_ISSUES
     assert field_names.isdisjoint(_FORBIDDEN_DIAGNOSTIC_ISSUE_FIELD_NAMES)
     for term in _FORBIDDEN_DIAGNOSTIC_ISSUE_VOCABULARY:
+        assert term not in compact
+
+
+def test_advisory_sections_branch_adds_no_forbidden_fields_or_vocabulary(
+    capsys,
+) -> None:
+    payload = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+    section_payloads = _advisory_section_payloads(payload)
+    nested_export_payload = _dict(_dict(payload["content_bundle_export"])["payload"])
+    nested_export_sections = _advisory_section_payloads(
+        {"content_bundle": nested_export_payload}
+    )
+    field_names = _payload_keys(section_payloads)
+    compact = _compact_sorted_json({"advisory_sections": section_payloads}).lower()
+
+    assert section_payloads == nested_export_sections == _EXPECTED_ADVISORY_SECTIONS
+    assert field_names.isdisjoint(_FORBIDDEN_ADVISORY_SECTION_FIELD_NAMES)
+    for term in _FORBIDDEN_ADVISORY_SECTION_VOCABULARY:
         assert term not in compact
 
 
@@ -1008,6 +1191,16 @@ def _diagnostic_issue_payloads(
     return [_dict(issue_value) for issue_value in issue_values]
 
 
+def _advisory_section_payloads(
+    payload: dict[str, object],
+) -> list[dict[str, object]]:
+    content_bundle = _dict(payload["content_bundle"])
+    section_values = _list(content_bundle["advisory_sections"])
+
+    assert len(section_values) == len(_EXPECTED_ADVISORY_SECTIONS)
+    return [_dict(section_value) for section_value in section_values]
+
+
 def _readiness_text_block(text: str) -> tuple[str, ...]:
     lines = text.splitlines()
     start = lines.index("Research Data Source Readiness Diagnostics")
@@ -1030,6 +1223,51 @@ def _diagnostic_issues_text_block(text: str) -> tuple[str, ...]:
     end = lines.index("Advisory Sections", start)
 
     return tuple(lines[start:end])
+
+
+def _advisory_sections_text_block(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    start = lines.index("Advisory Sections")
+    end = lines.index("Limitations", start)
+
+    return tuple(lines[start:end])
+
+
+def _expected_advisory_sections_text_block(
+    section_payloads: object,
+) -> tuple[str, ...]:
+    lines = ["Advisory Sections"]
+    for section_index, section_value in enumerate(_list(section_payloads), start=1):
+        section = _dict(section_value)
+        lines.extend(
+            (
+                "",
+                f"Advisory Section {section_index}",
+                f"section_key: {section['section_key']}",
+                f"section_title: {section['section_title']}",
+                f"section_state: {section['section_state']}",
+                "source_branches:",
+            )
+        )
+        lines.extend(f"- {branch}" for branch in _list(section["source_branches"]))
+        lines.extend(
+            (
+                f"item_count: {section['item_count']}",
+                "diagnostic_messages:",
+            )
+        )
+        lines.extend(
+            f"- {message}" for message in _list(section["diagnostic_messages"])
+        )
+        lines.extend(("limitations:",))
+        lines.extend(f"- {limitation}" for limitation in _list(section["limitations"]))
+    lines.append("")
+
+    return tuple(lines)
+
+
+def _line_prefix_count(lines: tuple[str, ...], prefix: str) -> int:
+    return sum(1 for line in lines if line.startswith(prefix))
 
 
 def _payload_keys(value: object) -> set[str]:
