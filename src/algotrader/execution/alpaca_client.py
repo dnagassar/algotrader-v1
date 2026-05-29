@@ -84,9 +84,10 @@ class AlpacaOrderSubmissionResponse:
     client_order_id: str
     symbol: str
     side: str
-    qty: Decimal
+    qty: Optional[Decimal]
     status: str
     submitted_at: datetime
+    notional: Optional[Decimal] = None
 
 
 class AlpacaClient(Protocol):

@@ -616,10 +616,15 @@ def _build_paper_order_probe_payload(
         "requested_qty": _decimal_text(quantity) if quantity is not None else "",
         "requested_submit": bool(args.submit),
         "sizing_mode": sizing_mode,
+        "accepted": None,
+        "broker_response_parsed": False,
+        "broker_response_received": False,
+        "filled": None,
         "submitted": False,
         "submission_disabled_reason": (
             _PAPER_ORDER_PROBE_QTY_DISABLED_REASON if sizing_mode == "qty" else ""
         ),
+        "submit_attempted": False,
         "submit_requested": submit_requested,
     }
 
@@ -648,32 +653,80 @@ def _submit_paper_order_probe(
         broker = _build_paper_broker(config.alpaca_paper)
 
         from .risk.state import RiskVerdict
+    except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        return {
+            **payload,
+            "broker_error": True,
+            "error": "paper_order_probe_submit_failed",
+            "error_type": exc.__class__.__name__,
+            "message": redacted_message,
+            "redacted_exception_message": redacted_message,
+            "ok": False,
+            "preview_only": False,
+            "submitted": False,
+            "submit_attempted": False,
+        }
 
+    try:
         result = broker.submit_order_request(
             request,
             risk_verdict=RiskVerdict.allow(order_notional=request.notional),
         )
     except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        from .execution.alpaca_translator import AlpacaTranslationError
+
+        if isinstance(exc, AlpacaTranslationError):
+            return {
+                **payload,
+                "accepted": None,
+                "broker_error": True,
+                "broker_response_parsed": False,
+                "broker_response_received": True,
+                "error": "broker_response_parse_failed",
+                "error_type": exc.__class__.__name__,
+                "filled": None,
+                "message": redacted_message,
+                "ok": False,
+                "preview_only": False,
+                "redacted_exception_message": redacted_message,
+                "submitted": True,
+                "submit_attempted": True,
+            }
+
         return {
             **payload,
+            "accepted": None,
             "broker_error": True,
+            "broker_response_parsed": False,
+            "broker_response_received": False,
             "error": "paper_order_probe_submit_failed",
-            "message": _redact_config_secrets(str(exc), config),
+            "error_type": exc.__class__.__name__,
+            "filled": None,
+            "message": redacted_message,
             "ok": False,
             "preview_only": False,
-            "submitted": False,
+            "redacted_exception_message": redacted_message,
+            "submitted": True,
+            "submit_attempted": True,
         }
 
     return {
         **payload,
+        "accepted": result.accepted,
+        "broker_response_parsed": True,
+        "broker_response_received": True,
         "broker_result": {
             "accepted": result.accepted,
             "reason": result.reason,
         },
         "error": "" if result.accepted else "paper_order_probe_rejected",
+        "filled": result.filled,
         "ok": result.accepted,
         "preview_only": False,
-        "submitted": result.accepted,
+        "submitted": True,
+        "submit_attempted": True,
     }
 
 
@@ -880,7 +933,15 @@ def _render_paper_order_probe_payload(
         "Paper order probe",
         f"ok: {_bool_text(payload['ok'])}",
         f"preview_only: {_bool_text(payload['preview_only'])}",
+        f"submit_requested: {_bool_text(payload['submit_requested'])}",
+        f"submit_attempted: {_bool_text(payload['submit_attempted'])}",
+        "broker_response_received: "
+        f"{_bool_text(payload['broker_response_received'])}",
+        "broker_response_parsed: "
+        f"{_bool_text(payload['broker_response_parsed'])}",
         f"submitted: {_bool_text(payload['submitted'])}",
+        f"accepted: {_optional_bool_text(payload['accepted'])}",
+        f"filled: {_optional_bool_text(payload['filled'])}",
     ]
     if payload.get("error"):
         lines.append(f"error: {payload['error']}")
@@ -938,6 +999,13 @@ def _decimal_text(value: Decimal) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if bool(value) else "false"
+
+
+def _optional_bool_text(value: object) -> str:
+    if value is None:
+        return "unknown"
+
+    return _bool_text(value)
 
 
 def _redact_config_secrets(message: str, config) -> str:

@@ -44,9 +44,10 @@ class TranslatedAlpacaOrderResult:
     client_order_id: str
     symbol: str
     side: str
-    quantity: Decimal
+    quantity: Optional[Decimal]
     status: str
     accepted: bool
+    notional: Optional[Decimal] = None
     message: Optional[str] = None
     submitted_at: Optional[datetime] = None
 
@@ -86,6 +87,7 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
     """Translate a fake Alpaca-like order response into a pinned DTO."""
 
     data = _response_data(response)
+    quantity, notional = _order_receipt_sizing(data)
     status = _required_text(data, "status").lower()
     accepted = status in {
         "accepted",
@@ -101,9 +103,10 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
         client_order_id=_optional_text(data, "client_order_id", default="") or "",
         symbol=_required_text(data, "symbol").upper(),
         side=_required_text(data, "side").lower(),
-        quantity=_required_decimal(data, "qty", aliases=("quantity",)),
+        quantity=quantity,
         status=status,
         accepted=accepted,
+        notional=notional,
         message=_optional_text(
             data,
             "message",
@@ -143,6 +146,7 @@ def _response_data(response: Any) -> dict[str, Any]:
         "side",
         "order_id",
         "client_order_id",
+        "notional",
         "message",
         "reason",
         "error",
@@ -155,6 +159,19 @@ def _response_data(response: Any) -> dict[str, Any]:
         for name in names
         if hasattr(response, name)
     }
+
+
+def _order_receipt_sizing(
+    data: Mapping[str, Any],
+) -> tuple[Optional[Decimal], Optional[Decimal]]:
+    quantity = _optional_decimal(data, "qty", aliases=("quantity",))
+    notional = _optional_decimal(data, "notional")
+    if quantity is None and notional is None:
+        raise AlpacaTranslationError(
+            "Missing required field in Alpaca response: qty, quantity, notional."
+        )
+
+    return quantity, notional
 
 
 def _required_decimal(
@@ -170,6 +187,29 @@ def _required_decimal(
         raise AlpacaTranslationError(
             f"Invalid decimal field in Alpaca response: {field_name}."
         ) from None
+
+
+def _optional_decimal(
+    data: Mapping[str, Any],
+    field_name: str,
+    aliases: tuple[str, ...] = (),
+) -> Optional[Decimal]:
+    for name in (field_name, *aliases):
+        if name not in data or data[name] is None:
+            continue
+
+        value = data[name]
+        if isinstance(value, str) and not value.strip():
+            continue
+
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError):
+            raise AlpacaTranslationError(
+                f"Invalid decimal field in Alpaca response: {name}."
+            ) from None
+
+    return None
 
 
 def _required_text(

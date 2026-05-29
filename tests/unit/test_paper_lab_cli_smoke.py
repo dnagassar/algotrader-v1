@@ -339,8 +339,50 @@ def test_order_probe_fake_successful_notional_submit_is_redacted_and_determinist
     assert fake_client.submitted_requests[0].qty is None
     assert fake_client.submitted_requests[0].notional == Decimal("5")
     assert first_payload["preview_only"] is False
+    assert first_payload["submit_requested"] is True
+    assert first_payload["submit_attempted"] is True
+    assert first_payload["broker_response_received"] is True
+    assert first_payload["broker_response_parsed"] is True
     assert first_payload["submitted"] is True
+    assert first_payload["accepted"] is True
+    assert first_payload["filled"] is False
     assert first_payload["broker_result"] == {"accepted": True, "reason": ""}
+
+
+def test_order_probe_parse_failure_reports_attempted_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeMalformedAlpacaClient())
+
+    exit_code, payload = _run_json(
+        (*_valid_notional_probe_args(notional="5"), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    rendered = json.dumps(payload, sort_keys=True)
+    assert exit_code == 1
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+    assert fake_client.calls == ["submit_order"]
+    assert fake_client.submitted_requests[0].qty is None
+    assert fake_client.submitted_requests[0].notional == Decimal("5")
+    assert payload["ok"] is False
+    assert payload["broker_error"] is True
+    assert payload["error"] == "broker_response_parse_failed"
+    assert payload["error_type"] == "AlpacaTranslationError"
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is True
+    assert payload["broker_response_received"] is True
+    assert payload["broker_response_parsed"] is False
+    assert payload["submitted"] is True
+    assert payload["accepted"] is None
+    assert payload["filled"] is None
+    assert (
+        payload["redacted_exception_message"]
+        == "Missing required field in Alpaca response: qty, quantity, notional."
+    )
 
 
 def test_order_probe_qty_submit_remains_disabled_without_quote_cap(
@@ -464,7 +506,20 @@ class FakeNotionalAlpacaClient(FakeAlpacaClient):
             "client_order_id": request.client_order_id,
             "symbol": request.symbol,
             "side": request.side,
-            "qty": "0",
+            "notional": str(request.notional),
+            "status": "accepted",
+        }
+
+
+class FakeMalformedAlpacaClient(FakeAlpacaClient):
+    def submit_order(self, request):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_requests.append(request)
+        return {
+            "order_id": "broker-order-1",
+            "client_order_id": request.client_order_id,
+            "symbol": request.symbol,
+            "side": request.side,
             "status": "accepted",
         }
 
