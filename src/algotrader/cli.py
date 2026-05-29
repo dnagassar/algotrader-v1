@@ -114,6 +114,7 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Smoke output format.",
     )
+    _add_paper_lab_run_log_options(paper_account_parser)
     paper_order_probe_parser = subparsers.add_parser(
         "paper-order-probe",
         help="Preview a guarded Alpaca paper order request without submitting.",
@@ -145,6 +146,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Acknowledge a future submit path. Disabled for this milestone."
         ),
     )
+    _add_paper_lab_run_log_options(paper_order_probe_parser)
     _add_hidden_option(
         content_bundle_preview_parser,
         "--include-risk-authority",
@@ -344,7 +346,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         return _run_demo_core(args.scenario)
     if command == "paper-account-smoke":
-        return _run_paper_account_smoke(config, args.output_format)
+        return _run_paper_account_smoke(
+            config,
+            args.output_format,
+            run_log_path=args.run_log,
+            run_id=args.run_id,
+        )
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
 
@@ -423,7 +430,17 @@ def _fill_summary(result) -> str:
     return "filled" if result.execution.fill is not None else "none"
 
 
-def _run_paper_account_smoke(config, output_format: str) -> int:
+def _run_paper_account_smoke(
+    config,
+    output_format: str,
+    *,
+    run_log_path: str | None = None,
+    run_id: str | None = None,
+) -> int:
+    resolved_run_id = _paper_lab_run_id(run_id) if run_log_path else ""
+    if run_log_path and not _ensure_paper_lab_run_log(run_log_path):
+        return 1
+
     profile_gate = _paper_profile_gate(config)
     if not profile_gate["passed"]:
         payload = {
@@ -436,6 +453,13 @@ def _run_paper_account_smoke(config, output_format: str) -> int:
             "positions": [],
             "submitted": False,
         }
+        if run_log_path and not _write_paper_account_run_log(
+            run_log_path,
+            resolved_run_id,
+            payload,
+            config,
+        ):
+            return 1
         print(_render_paper_account_payload(payload, output_format))
         return 2
 
@@ -456,6 +480,13 @@ def _run_paper_account_smoke(config, output_format: str) -> int:
             "positions": [],
             "submitted": False,
         }
+        if run_log_path and not _write_paper_account_run_log(
+            run_log_path,
+            resolved_run_id,
+            payload,
+            config,
+        ):
+            return 1
         print(_render_paper_account_payload(payload, output_format))
         return 1
 
@@ -480,14 +511,78 @@ def _run_paper_account_smoke(config, output_format: str) -> int:
         "redaction": "credentials_redacted",
         "submitted": False,
     }
+    if run_log_path and not _write_paper_account_run_log(
+        run_log_path,
+        resolved_run_id,
+        payload,
+        config,
+    ):
+        return 1
     print(_render_paper_account_payload(payload, output_format))
     return 0
 
 
+def _paper_post_submit_observation(broker, config) -> dict[str, object]:
+    try:
+        account = broker.get_account()
+        positions = broker.get_positions()
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        redacted_message = _redact_config_secrets(str(exc), config)
+        return {
+            "post_submit_observation_error": (
+                "paper_order_post_submit_observation_failed"
+            ),
+            "post_submit_observation_error_type": exc.__class__.__name__,
+            "post_submit_observation_message": redacted_message,
+        }
+
+    position_rows = [
+        {
+            "average_price": _decimal_text(position.average_price),
+            "quantity": _decimal_text(position.quantity),
+            "symbol": position.symbol,
+        }
+        for position in sorted(positions, key=lambda item: item.symbol)
+    ]
+    return {
+        "post_submit_account": {
+            "cash": _decimal_text(account.cash),
+            "currency": account.currency,
+        },
+        "post_submit_position_count": len(position_rows),
+        "post_submit_positions": position_rows,
+    }
+
+
 def _run_paper_order_probe(config, args: argparse.Namespace) -> int:
+    run_log_path = args.run_log
+    resolved_run_id = _paper_lab_run_id(args.run_id) if run_log_path else ""
+    if run_log_path and not _ensure_paper_lab_run_log(run_log_path):
+        return 1
+
     payload = _build_paper_order_probe_payload(config, args)
+    if run_log_path and not _write_paper_order_initial_run_log(
+        run_log_path,
+        resolved_run_id,
+        payload,
+        config,
+    ):
+        return 1
+
     if payload["ok"] and payload["submit_requested"]:
-        payload = _submit_paper_order_probe(config, payload)
+        payload = _submit_paper_order_probe(
+            config,
+            payload,
+            observe_post_submit=bool(run_log_path),
+        )
+        if run_log_path and not _write_paper_order_submit_run_log(
+            run_log_path,
+            resolved_run_id,
+            payload,
+            config,
+        ):
+            print(_render_paper_order_probe_payload(payload, args.output_format))
+            return 1
     print(_render_paper_order_probe_payload(payload, args.output_format))
     if payload.get("broker_error"):
         return 1
@@ -632,6 +727,8 @@ def _build_paper_order_probe_payload(
 def _submit_paper_order_probe(
     config,
     payload: dict[str, object],
+    *,
+    observe_post_submit: bool = False,
 ) -> dict[str, object]:
     request_payload = payload.get("proposed_order_request")
     if not isinstance(request_payload, dict):
@@ -678,6 +775,11 @@ def _submit_paper_order_probe(
         from .execution.alpaca_translator import AlpacaTranslationError
 
         if isinstance(exc, AlpacaTranslationError):
+            post_submit_observation = (
+                _paper_post_submit_observation(broker, config)
+                if observe_post_submit
+                else {}
+            )
             return {
                 **payload,
                 "accepted": None,
@@ -693,6 +795,7 @@ def _submit_paper_order_probe(
                 "redacted_exception_message": redacted_message,
                 "submitted": True,
                 "submit_attempted": True,
+                **post_submit_observation,
             }
 
         return {
@@ -712,6 +815,11 @@ def _submit_paper_order_probe(
             "submit_attempted": True,
         }
 
+    post_submit_observation = (
+        _paper_post_submit_observation(broker, config)
+        if observe_post_submit
+        else {}
+    )
     return {
         **payload,
         "accepted": result.accepted,
@@ -727,6 +835,7 @@ def _submit_paper_order_probe(
         "preview_only": False,
         "submitted": True,
         "submit_attempted": True,
+        **post_submit_observation,
     }
 
 
@@ -1010,13 +1119,105 @@ def _optional_bool_text(value: object) -> str:
 
 def _redact_config_secrets(message: str, config) -> str:
     redacted = message
-    for value in (
-        config.alpaca_paper.alpaca_api_key,
-        config.alpaca_paper.alpaca_secret_key,
-    ):
+    for value in _paper_lab_sensitive_values(config):
         if value:
             redacted = redacted.replace(value, "<redacted>")
     return redacted
+
+
+def _paper_lab_sensitive_values(config) -> tuple[str | None, ...]:
+    return (
+        config.alpaca_paper.alpaca_api_key,
+        config.alpaca_paper.alpaca_secret_key,
+        config.alpaca_paper.alpaca_paper_base_url,
+    )
+
+
+def _paper_lab_run_id(run_id: str | None) -> str:
+    from .execution.paper_lab_observation_log import resolve_run_id
+
+    return resolve_run_id(run_id)
+
+
+def _ensure_paper_lab_run_log(run_log_path: str) -> bool:
+    from .execution.paper_lab_observation_log import (
+        PaperLabRunLogError,
+        ensure_run_log_path,
+    )
+
+    try:
+        ensure_run_log_path(run_log_path)
+    except PaperLabRunLogError as exc:
+        print(str(exc), file=sys.stderr)
+        return False
+
+    return True
+
+
+def _write_paper_account_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+    config,
+) -> bool:
+    from .execution.paper_lab_observation_log import make_account_smoke_events
+
+    events = make_account_smoke_events(
+        run_id=run_id,
+        payload=payload,
+        secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _write_paper_order_initial_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+    config,
+) -> bool:
+    from .execution.paper_lab_observation_log import make_order_probe_initial_events
+
+    events = make_order_probe_initial_events(
+        run_id=run_id,
+        payload=payload,
+        secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _write_paper_order_submit_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+    config,
+) -> bool:
+    from .execution.paper_lab_observation_log import make_order_probe_submit_events
+
+    events = make_order_probe_submit_events(
+        run_id=run_id,
+        payload=payload,
+        secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _append_paper_lab_run_log(
+    run_log_path: str,
+    events: tuple[dict[str, object], ...],
+) -> bool:
+    from .execution.paper_lab_observation_log import (
+        PaperLabRunLogError,
+        append_jsonl_records,
+    )
+
+    try:
+        append_jsonl_records(run_log_path, events)
+    except PaperLabRunLogError as exc:
+        print(str(exc), file=sys.stderr)
+        return False
+
+    return True
 
 
 def _run_advisory_operating_brief_preview(output_format: str) -> int:
@@ -1284,3 +1485,16 @@ def _add_hidden_option(
         if action in group._group_actions:
             group._group_actions.remove(action)
     return action
+
+
+def _add_paper_lab_run_log_options(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--run-log",
+        default=None,
+        help="Append deterministic paper-lab observation JSONL records to PATH.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Run/session id to include in paper-lab observation records.",
+    )

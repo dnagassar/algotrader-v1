@@ -97,6 +97,61 @@ def test_account_smoke_is_read_only_and_does_not_submit(monkeypatch, capsys) -> 
     assert payload["submitted"] is False
 
 
+def test_account_smoke_writes_observation_log_when_requested(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch)
+    run_log = tmp_path / "runs" / "paper_lab" / "smoke.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            "paper-account-smoke",
+            "--format",
+            "json",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "account-smoke-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 0
+    assert fake_client.calls == ["get_account", "get_positions"]
+    assert [record["event_type"] for record in records] == [
+        "paper_account_observed",
+        "paper_positions_observed",
+    ]
+    assert records[0]["run_id"] == "account-smoke-run"
+    assert records[0]["command"] == "paper-account-smoke"
+    assert records[0]["account"] == payload["account"]
+    assert records[1]["positions"] == payload["positions"]
+    assert records[1]["submitted"] is False
+
+
+def test_account_smoke_does_not_write_without_run_log(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _install_fake_broker(monkeypatch)
+    unexpected_log = tmp_path / "runs" / "paper_lab" / "smoke.jsonl"
+
+    exit_code, payload = _run_json(
+        ("paper-account-smoke", "--format", "json"),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert payload["submitted"] is False
+    assert not unexpected_log.exists()
+
+
 def test_account_smoke_json_is_deterministic_and_credential_free(
     monkeypatch,
     capsys,
@@ -165,6 +220,48 @@ def test_order_probe_notional_preview_does_not_submit(
         "symbol": "SPY",
         "time_in_force": "day",
     }
+
+
+def test_order_probe_preview_writes_run_log_with_gates_and_no_submit(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    run_log = tmp_path / "runs" / "paper_lab" / "probe.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(),
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "preview-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 0
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed"
+    ]
+    preview = records[0]
+    assert preview["run_id"] == "preview-run"
+    assert preview["symbol"] == "SPY"
+    assert preview["side"] == "buy"
+    assert preview["sizing_mode"] == "notional"
+    assert preview["notional"] == "5"
+    assert preview["qty"] == ""
+    assert set(preview["gate_summary"]) == set(payload["gates"])
+    assert preview["submit_requested"] is False
+    assert preview["submit_attempted"] is False
+    assert preview["broker_response_received"] is False
+    assert preview["broker_response_parsed"] is False
+    assert preview["submitted"] is False
+    assert preview["accepted"] is None
+    assert preview["filled"] is None
 
 
 def test_order_probe_submit_flag_without_i_mean_it_rejects_notional_submit(
@@ -349,6 +446,56 @@ def test_order_probe_fake_successful_notional_submit_is_redacted_and_determinist
     assert first_payload["broker_result"] == {"accepted": True, "reason": ""}
 
 
+def test_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeNotionalAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "submit.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(notional="5"),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "submit-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 0
+    assert fake_client.calls == ["submit_order", "get_account", "get_positions"]
+    assert payload["submitted"] is True
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_receipt_observed",
+        "paper_order_post_submit_account_observed",
+    ]
+    attempted = records[2]
+    receipt = records[3]
+    post_submit = records[4]
+    assert attempted["submit_attempted"] is True
+    assert attempted["submitted"] is True
+    assert receipt["broker_response_received"] is True
+    assert receipt["broker_response_parsed"] is True
+    assert receipt["accepted"] is True
+    assert receipt["filled"] is False
+    assert receipt["broker_result"] == {"accepted": True, "reason": ""}
+    assert post_submit["account"] == {"cash": "100000", "currency": "USD"}
+    assert post_submit["position_count"] == 1
+    assert post_submit["positions"] == [
+        {"average_price": "100.10", "quantity": "3", "symbol": "MSFT"}
+    ]
+
+
 def test_order_probe_parse_failure_reports_attempted_submit(
     monkeypatch,
     capsys,
@@ -383,6 +530,55 @@ def test_order_probe_parse_failure_reports_attempted_submit(
         payload["redacted_exception_message"]
         == "Missing required field in Alpaca response: qty, quantity, notional."
     )
+
+
+def test_order_probe_parse_failure_writes_parse_failure_observation(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeMalformedAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "parse_failure.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(notional="5"),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "parse-failure-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    parse_failure = next(
+        record
+        for record in records
+        if record["event_type"] == "paper_order_response_parse_failed"
+    )
+    post_submit = records[-1]
+    assert exit_code == 1
+    assert fake_client.calls == ["submit_order", "get_account", "get_positions"]
+    assert payload["error"] == "broker_response_parse_failed"
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_response_parse_failed",
+        "paper_order_post_submit_account_observed",
+    ]
+    assert parse_failure["submit_attempted"] is True
+    assert parse_failure["broker_response_received"] is True
+    assert parse_failure["broker_response_parsed"] is False
+    assert parse_failure["submitted"] is True
+    assert parse_failure["accepted"] is None
+    assert parse_failure["filled"] is None
+    assert post_submit["account"] == {"cash": "100000", "currency": "USD"}
+    assert post_submit["position_count"] == 1
 
 
 def test_order_probe_qty_submit_remains_disabled_without_quote_cap(
@@ -443,6 +639,97 @@ def test_order_probe_json_output_is_deterministic(monkeypatch, capsys) -> None:
     assert first == second
     assert json.loads(first)["preview_only"] is True
     assert json.loads(first)["submitted"] is False
+
+
+def test_run_log_records_are_credential_and_env_value_free(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    run_log = tmp_path / "probe.jsonl"
+
+    _run_raw_json(
+        (
+            *_valid_notional_probe_args(),
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "redaction-run",
+        ),
+        capsys,
+    )
+
+    rendered = run_log.read_text(encoding="utf-8")
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+    assert "https://paper.example.test" not in rendered
+    assert "credentials_redacted" in rendered
+
+
+def test_run_log_is_byte_identical_for_repeated_deterministic_inputs(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    first_log = tmp_path / "first.jsonl"
+    second_log = tmp_path / "second.jsonl"
+
+    _run_raw_json(
+        (
+            *_valid_notional_probe_args(),
+            "--run-log",
+            str(first_log),
+            "--run-id",
+            "deterministic-run",
+        ),
+        capsys,
+    )
+    _run_raw_json(
+        (
+            *_valid_notional_probe_args(),
+            "--run-log",
+            str(second_log),
+            "--run-id",
+            "deterministic-run",
+        ),
+        capsys,
+    )
+
+    assert first_log.read_bytes() == second_log.read_bytes()
+
+
+def test_invalid_run_log_path_reports_cleanly(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    directory_path = tmp_path / "not-a-file"
+    directory_path.mkdir()
+
+    exit_code = main(
+        (
+            *_valid_notional_probe_args(),
+            "--run-log",
+            str(directory_path),
+            "--run-id",
+            "bad-path-run",
+        )
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert captured.out == ""
+    assert "paper_lab_run_log_write_failed:" in captured.err
+    assert "Traceback" not in captured.err
+    assert SENSITIVE_API_KEY not in captured.err
+    assert SENSITIVE_SECRET_KEY not in captured.err
+    assert "https://paper.example.test" not in captured.err
 
 
 def _valid_probe_args(
@@ -558,6 +845,14 @@ def _run_raw_json(argv: tuple[str, ...], capsys) -> str:
     captured = capsys.readouterr()
     assert captured.err == ""
     return captured.out.strip()
+
+
+def _read_jsonl(path) -> list[dict[str, object]]:  # noqa: ANN001
+    return [
+        json.loads(line)
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
 
 
 _LAST_EXIT_CODE = 0
