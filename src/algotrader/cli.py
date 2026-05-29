@@ -12,16 +12,18 @@ _PROFILE_NAMES = ("dev", "paper", "live")
 _PREVIEW_FORMATS = ("text", "json")
 _PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST = ("SPY",)
 _PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP = Decimal("10")
-_PAPER_ORDER_PROBE_DISABLED_REASON = (
-    "submission_disabled_until_true_notional_cap_is_supported"
+_PAPER_ORDER_PROBE_QTY_DISABLED_REASON = (
+    "qty_submission_disabled_until_quote_based_cap_is_supported"
 )
-_PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-preview-only"
+_PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-notional-1"
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
     "halt_gate",
     "allowlist_gate",
     "side_gate",
+    "sizing_gate",
     "quantity_gate",
+    "notional_value_gate",
     "notional_cap_gate",
     "submit_confirmation_gate",
 )
@@ -118,7 +120,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     paper_order_probe_parser.add_argument("--symbol", required=True)
     paper_order_probe_parser.add_argument("--side", required=True)
-    paper_order_probe_parser.add_argument("--qty", required=True)
+    paper_order_probe_parser.add_argument("--qty", default=None)
+    paper_order_probe_parser.add_argument("--notional", default=None)
     paper_order_probe_parser.add_argument("--max-notional", required=True)
     paper_order_probe_parser.add_argument(
         "--format",
@@ -483,7 +486,12 @@ def _run_paper_account_smoke(config, output_format: str) -> int:
 
 def _run_paper_order_probe(config, args: argparse.Namespace) -> int:
     payload = _build_paper_order_probe_payload(config, args)
+    if payload["ok"] and payload["submit_requested"]:
+        payload = _submit_paper_order_probe(config, payload)
     print(_render_paper_order_probe_payload(payload, args.output_format))
+    if payload.get("broker_error"):
+        return 1
+
     return 0 if payload["ok"] else 2
 
 
@@ -493,12 +501,24 @@ def _build_paper_order_probe_payload(
 ) -> dict[str, object]:
     symbol = args.symbol.strip().upper()
     side = args.side.strip().lower()
-    quantity, quantity_error = _positive_whole_decimal(args.qty, "qty")
+    has_qty_arg = args.qty is not None
+    has_notional_arg = args.notional is not None
+    quantity, quantity_error = (
+        _positive_whole_decimal(args.qty, "qty")
+        if has_qty_arg
+        else (None, "")
+    )
+    notional, notional_error = (
+        _positive_decimal(args.notional, "notional")
+        if has_notional_arg
+        else (None, "")
+    )
     max_notional, max_notional_error = _positive_decimal(
         args.max_notional,
         "max_notional",
     )
-    submit_requested = bool(args.submit or args.i_mean_it)
+    sizing_mode = _paper_order_sizing_mode(has_qty_arg, has_notional_arg)
+    submit_requested = bool(args.submit and args.i_mean_it)
 
     profile_gate = _paper_profile_gate(config)
     halt_gate = _gate(
@@ -512,10 +532,20 @@ def _build_paper_order_probe_payload(
         "symbol_not_allowlisted",
     )
     side_gate = _gate(side == "buy", "buy_only", "side_must_be_buy")
+    sizing_gate = _gate(
+        sizing_mode in ("qty", "notional"),
+        sizing_mode,
+        "exactly_one_of_qty_or_notional_required",
+    )
     quantity_gate = _gate(
-        quantity is not None,
+        sizing_mode != "qty" or quantity is not None,
         "positive_whole_share_quantity",
         quantity_error or "invalid_quantity",
+    )
+    notional_value_gate = _gate(
+        sizing_mode != "notional" or notional is not None,
+        "positive_notional",
+        notional_error or "invalid_notional",
     )
     notional_cap_gate = _gate(
         max_notional is not None
@@ -523,25 +553,53 @@ def _build_paper_order_probe_payload(
         f"max_notional_cap={_decimal_text(_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP)}",
         max_notional_error or "max_notional_cap_exceeded",
     )
+    if notional_cap_gate["passed"] and sizing_mode == "notional":
+        notional_cap_gate = _gate(
+            notional is not None and max_notional is not None and notional <= max_notional,
+            "notional_within_max_notional",
+            "notional_exceeds_max_notional",
+        )
     submit_confirmation_gate = _gate(
-        not submit_requested,
-        "preview_only_no_submission_requested",
-        _PAPER_ORDER_PROBE_DISABLED_REASON,
+        _paper_order_submit_confirmation_passes(
+            submit_flag=bool(args.submit),
+            i_mean_it_flag=bool(args.i_mean_it),
+            sizing_mode=sizing_mode,
+        ),
+        _paper_order_submit_confirmation_detail(
+            submit_flag=bool(args.submit),
+            i_mean_it_flag=bool(args.i_mean_it),
+            sizing_mode=sizing_mode,
+        ),
+        _paper_order_submit_confirmation_failure_detail(
+            submit_flag=bool(args.submit),
+            i_mean_it_flag=bool(args.i_mean_it),
+            sizing_mode=sizing_mode,
+        ),
     )
     gates = {
         "profile_gate": profile_gate,
         "halt_gate": halt_gate,
         "allowlist_gate": allowlist_gate,
         "side_gate": side_gate,
+        "sizing_gate": sizing_gate,
         "quantity_gate": quantity_gate,
+        "notional_value_gate": notional_value_gate,
         "notional_cap_gate": notional_cap_gate,
         "submit_confirmation_gate": submit_confirmation_gate,
     }
     ok = all(bool(gate["passed"]) for gate in gates.values())
 
     request_payload = None
-    if symbol and side == "buy" and quantity is not None:
-        request_payload = _paper_order_request_payload(symbol, quantity)
+    if symbol and side == "buy" and sizing_mode in ("qty", "notional"):
+        try:
+            request = _paper_order_request(
+                symbol,
+                quantity=quantity if sizing_mode == "qty" else None,
+                notional=notional if sizing_mode == "notional" else None,
+            )
+            request_payload = _paper_order_request_payload(request)
+        except ValueError:
+            request_payload = None
 
     return {
         "command": "paper-order-probe",
@@ -551,31 +609,102 @@ def _build_paper_order_probe_payload(
             _decimal_text(max_notional) if max_notional is not None else args.max_notional
         ),
         "ok": ok,
-        "preview_only": True,
+        "preview_only": not submit_requested,
         "proposed_order_request": request_payload,
-        "requested_submit": bool(args.submit),
         "requested_i_mean_it": bool(args.i_mean_it),
+        "requested_notional": _decimal_text(notional) if notional is not None else "",
+        "requested_qty": _decimal_text(quantity) if quantity is not None else "",
+        "requested_submit": bool(args.submit),
+        "sizing_mode": sizing_mode,
         "submitted": False,
-        "submission_disabled_reason": _PAPER_ORDER_PROBE_DISABLED_REASON,
+        "submission_disabled_reason": (
+            _PAPER_ORDER_PROBE_QTY_DISABLED_REASON if sizing_mode == "qty" else ""
+        ),
+        "submit_requested": submit_requested,
     }
 
 
-def _paper_order_request_payload(symbol: str, quantity: Decimal) -> dict[str, str]:
+def _submit_paper_order_probe(
+    config,
+    payload: dict[str, object],
+) -> dict[str, object]:
+    request_payload = payload.get("proposed_order_request")
+    if not isinstance(request_payload, dict):
+        return {
+            **payload,
+            "broker_error": True,
+            "error": "paper_order_probe_submit_failed",
+            "message": "missing_notional_order_request",
+            "ok": False,
+            "preview_only": False,
+            "submitted": False,
+        }
+
+    try:
+        request = _paper_order_request(
+            str(request_payload["symbol"]),
+            notional=Decimal(str(request_payload["notional"])),
+        )
+        broker = _build_paper_broker(config.alpaca_paper)
+
+        from .risk.state import RiskVerdict
+
+        result = broker.submit_order_request(
+            request,
+            risk_verdict=RiskVerdict.allow(order_notional=request.notional),
+        )
+    except Exception as exc:
+        return {
+            **payload,
+            "broker_error": True,
+            "error": "paper_order_probe_submit_failed",
+            "message": _redact_config_secrets(str(exc), config),
+            "ok": False,
+            "preview_only": False,
+            "submitted": False,
+        }
+
+    return {
+        **payload,
+        "broker_result": {
+            "accepted": result.accepted,
+            "reason": result.reason,
+        },
+        "error": "" if result.accepted else "paper_order_probe_rejected",
+        "ok": result.accepted,
+        "preview_only": False,
+        "submitted": result.accepted,
+    }
+
+
+def _paper_order_request(
+    symbol: str,
+    *,
+    quantity: Decimal | None = None,
+    notional: Decimal | None = None,
+):
     from .execution.alpaca_client import AlpacaOrderRequest
 
-    request = AlpacaOrderRequest(
+    return AlpacaOrderRequest(
         client_order_id=_PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
         symbol=symbol,
         side="buy",
         qty=quantity,
+        notional=notional,
         order_type="market",
         time_in_force="day",
     )
+
+
+def _paper_order_request_payload(request) -> dict[str, str]:
     return {
         "client_order_id": request.client_order_id,
         "limit_price": "",
+        "notional": (
+            _decimal_text(request.notional) if request.notional is not None else ""
+        ),
         "order_type": request.order_type,
-        "qty": _decimal_text(request.qty),
+        "qty": _decimal_text(request.qty) if request.qty is not None else "",
         "request_model": "AlpacaOrderRequest",
         "side": request.side,
         "symbol": request.symbol,
@@ -608,6 +737,57 @@ def _paper_halt_not_set() -> bool:
     import os
 
     return os.environ.get("ALGOTRADER_PAPER_HALT") != "1"
+
+
+def _paper_order_sizing_mode(has_qty_arg: bool, has_notional_arg: bool) -> str:
+    if has_qty_arg and has_notional_arg:
+        return "both_qty_and_notional"
+    if not has_qty_arg and not has_notional_arg:
+        return "missing_qty_or_notional"
+    if has_notional_arg:
+        return "notional"
+
+    return "qty"
+
+
+def _paper_order_submit_confirmation_passes(
+    *,
+    submit_flag: bool,
+    i_mean_it_flag: bool,
+    sizing_mode: str,
+) -> bool:
+    if not submit_flag and not i_mean_it_flag:
+        return True
+    if submit_flag and i_mean_it_flag and sizing_mode == "notional":
+        return True
+
+    return False
+
+
+def _paper_order_submit_confirmation_detail(
+    *,
+    submit_flag: bool,
+    i_mean_it_flag: bool,
+    sizing_mode: str,
+) -> str:
+    if not submit_flag and not i_mean_it_flag:
+        return "preview_only_no_submission_requested"
+    if submit_flag and i_mean_it_flag and sizing_mode == "notional":
+        return "explicit_notional_submit_confirmed"
+
+    return ""
+
+
+def _paper_order_submit_confirmation_failure_detail(
+    *,
+    submit_flag: bool,
+    i_mean_it_flag: bool,
+    sizing_mode: str,
+) -> str:
+    if submit_flag and i_mean_it_flag and sizing_mode == "qty":
+        return _PAPER_ORDER_PROBE_QTY_DISABLED_REASON
+
+    return "submit_requires_submit_and_i_mean_it"
 
 
 def _positive_decimal(
@@ -713,15 +893,24 @@ def _render_paper_order_probe_payload(
                 f"symbol: {request['symbol']}",
                 f"side: {request['side']}",
                 f"qty: {request['qty']}",
+                f"notional: {request['notional']}",
                 f"order_type: {request['order_type']}",
                 f"time_in_force: {request['time_in_force']}",
                 f"client_order_id: {request['client_order_id']}",
             ]
         )
+    lines.append(f"requested_notional: {payload['requested_notional']}")
     lines.append(f"max_notional: {payload['max_notional']}")
-    lines.append(
-        f"submission_disabled_reason: {payload['submission_disabled_reason']}"
-    )
+    if payload.get("broker_result"):
+        broker_result = payload["broker_result"]
+        lines.append(f"broker_accepted: {_bool_text(broker_result['accepted'])}")
+        lines.append(f"broker_reason: {broker_result['reason']}")
+    if payload.get("message"):
+        lines.append(f"message: {payload['message']}")
+    if payload.get("submission_disabled_reason"):
+        lines.append(
+            f"submission_disabled_reason: {payload['submission_disabled_reason']}"
+        )
     return "\n".join(lines)
 
 

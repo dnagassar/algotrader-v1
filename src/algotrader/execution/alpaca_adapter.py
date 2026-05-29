@@ -93,6 +93,25 @@ class AlpacaClientAdapter:
             )
 
         request = self._order_request(order, order_id)
+        return self.submit_order_request(request, risk_verdict=risk_verdict)
+
+    def submit_order_request(
+        self,
+        request: AlpacaOrderRequest,
+        risk_verdict: RiskVerdict | None = None,
+    ) -> BrokerOrderResult:
+        if self._require_risk_approval and risk_verdict is None:
+            return BrokerOrderResult(
+                accepted=False,
+                reason="risk_approval_required",
+            )
+
+        if risk_verdict is not None and not risk_verdict.allowed:
+            return BrokerOrderResult(
+                accepted=False,
+                reason=risk_verdict.reason or "risk_rejected",
+            )
+
         if request.client_order_id in self._seen_order_ids:
             return BrokerOrderResult(
                 accepted=False,

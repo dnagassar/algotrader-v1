@@ -47,6 +47,10 @@ class AlpacaSdkClient(AlpacaClient):
                 "Provide either sdk_client or sdk_client_factory, not both."
             )
 
+        self._uses_alpaca_sdk_request_shape = (
+            sdk_client is None and sdk_client_factory is None
+        )
+
         if sdk_client is not None:
             self._sdk_client = sdk_client
             return
@@ -69,9 +73,14 @@ class AlpacaSdkClient(AlpacaClient):
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:
+        sdk_request = (
+            _to_sdk_order_request(request)
+            if self._uses_alpaca_sdk_request_shape
+            else request
+        )
         return cast(
             AlpacaOrderSubmissionResponse,
-            self._sdk_client.submit_order(request),
+            self._sdk_client.submit_order(sdk_request),
         )
 
 
@@ -84,6 +93,24 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
         paper=True,
         url_override=config.alpaca_paper_base_url,
     )
+
+
+def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
+    from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.requests import MarketOrderRequest
+
+    kwargs: dict[str, Any] = {
+        "client_order_id": request.client_order_id,
+        "side": OrderSide.BUY,
+        "symbol": request.symbol,
+        "time_in_force": TimeInForce.DAY,
+    }
+    if request.notional is not None:
+        kwargs["notional"] = request.notional
+    else:
+        kwargs["qty"] = request.qty
+
+    return MarketOrderRequest(**kwargs)
 
 
 __all__ = ["AlpacaSdkClient"]

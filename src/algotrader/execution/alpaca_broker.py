@@ -11,6 +11,7 @@ from typing import Any, Optional
 
 from algotrader.core.types import ProposedOrder, Quote
 from algotrader.errors import BrokerNotImplementedError
+from algotrader.execution.alpaca_client import AlpacaOrderRequest
 from algotrader.execution.broker_base import BrokerOrderResult
 from algotrader.portfolio.state import Account, Position
 from algotrader.risk.state import RiskVerdict
@@ -66,6 +67,22 @@ class AlpacaPaperBroker:
             quote,
             risk_verdict,
             order_id=order_id,
+        )
+
+    def submit_order_request(
+        self,
+        request: AlpacaOrderRequest,
+        risk_verdict: RiskVerdict | None = None,
+    ) -> BrokerOrderResult:
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; submit_order_request is not "
+                "implemented and performs no network calls."
+            )
+
+        return self._adapter.submit_order_request(
+            request,
+            risk_verdict=risk_verdict,
         )
 
 
