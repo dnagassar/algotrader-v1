@@ -4,10 +4,27 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Sequence
+from decimal import Decimal, InvalidOperation
+import json
 import sys
 
 _PROFILE_NAMES = ("dev", "paper", "live")
 _PREVIEW_FORMATS = ("text", "json")
+_PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST = ("SPY",)
+_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP = Decimal("10")
+_PAPER_ORDER_PROBE_DISABLED_REASON = (
+    "submission_disabled_until_true_notional_cap_is_supported"
+)
+_PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-preview-only"
+_PAPER_SAFETY_GATE_ORDER = (
+    "profile_gate",
+    "halt_gate",
+    "allowlist_gate",
+    "side_gate",
+    "quantity_gate",
+    "notional_cap_gate",
+    "submit_confirmation_gate",
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -83,6 +100,47 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         dest="output_format",
         help="Preview output format.",
+    )
+    paper_account_parser = subparsers.add_parser(
+        "paper-account-smoke",
+        help="Read Alpaca paper account and positions through the paper boundary.",
+    )
+    paper_account_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Smoke output format.",
+    )
+    paper_order_probe_parser = subparsers.add_parser(
+        "paper-order-probe",
+        help="Preview a guarded Alpaca paper order request without submitting.",
+    )
+    paper_order_probe_parser.add_argument("--symbol", required=True)
+    paper_order_probe_parser.add_argument("--side", required=True)
+    paper_order_probe_parser.add_argument("--qty", required=True)
+    paper_order_probe_parser.add_argument("--max-notional", required=True)
+    paper_order_probe_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Probe output format.",
+    )
+    paper_order_probe_parser.add_argument(
+        "--submit",
+        action="store_true",
+        help=(
+            "Request submission. Disabled until true notional-cap support exists."
+        ),
+    )
+    paper_order_probe_parser.add_argument(
+        "--i-mean-it",
+        action="store_true",
+        dest="i_mean_it",
+        help=(
+            "Acknowledge a future submit path. Disabled for this milestone."
+        ),
     )
     _add_hidden_option(
         content_bundle_preview_parser,
@@ -282,6 +340,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             _list_demo_core_scenarios()
             return 0
         return _run_demo_core(args.scenario)
+    if command == "paper-account-smoke":
+        return _run_paper_account_smoke(config, args.output_format)
+    if command == "paper-order-probe":
+        return _run_paper_order_probe(config, args)
 
     if hasattr(args, "list_scenarios") and args.list_scenarios:
         _list_demo_core_scenarios()
@@ -356,6 +418,348 @@ def _fill_summary(result) -> str:
     if result.execution is None:
         return "not_applicable"
     return "filled" if result.execution.fill is not None else "none"
+
+
+def _run_paper_account_smoke(config, output_format: str) -> int:
+    profile_gate = _paper_profile_gate(config)
+    if not profile_gate["passed"]:
+        payload = {
+            "account": None,
+            "command": "paper-account-smoke",
+            "error": "paper_profile_required",
+            "gates": {"profile_gate": profile_gate},
+            "ok": False,
+            "position_count": 0,
+            "positions": [],
+            "submitted": False,
+        }
+        print(_render_paper_account_payload(payload, output_format))
+        return 2
+
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+        account = broker.get_account()
+        positions = broker.get_positions()
+    except Exception as exc:  # pragma: no cover - exercised through fake failures
+        payload = {
+            "account": None,
+            "command": "paper-account-smoke",
+            "error": "paper_account_smoke_failed",
+            "error_type": exc.__class__.__name__,
+            "gates": {"profile_gate": profile_gate},
+            "message": _redact_config_secrets(str(exc), config),
+            "ok": False,
+            "position_count": 0,
+            "positions": [],
+            "submitted": False,
+        }
+        print(_render_paper_account_payload(payload, output_format))
+        return 1
+
+    position_rows = [
+        {
+            "average_price": _decimal_text(position.average_price),
+            "quantity": _decimal_text(position.quantity),
+            "symbol": position.symbol,
+        }
+        for position in sorted(positions, key=lambda item: item.symbol)
+    ]
+    payload = {
+        "account": {
+            "cash": _decimal_text(account.cash),
+            "currency": account.currency,
+        },
+        "command": "paper-account-smoke",
+        "gates": {"profile_gate": profile_gate},
+        "ok": True,
+        "position_count": len(position_rows),
+        "positions": position_rows,
+        "redaction": "credentials_redacted",
+        "submitted": False,
+    }
+    print(_render_paper_account_payload(payload, output_format))
+    return 0
+
+
+def _run_paper_order_probe(config, args: argparse.Namespace) -> int:
+    payload = _build_paper_order_probe_payload(config, args)
+    print(_render_paper_order_probe_payload(payload, args.output_format))
+    return 0 if payload["ok"] else 2
+
+
+def _build_paper_order_probe_payload(
+    config,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    symbol = args.symbol.strip().upper()
+    side = args.side.strip().lower()
+    quantity, quantity_error = _positive_whole_decimal(args.qty, "qty")
+    max_notional, max_notional_error = _positive_decimal(
+        args.max_notional,
+        "max_notional",
+    )
+    submit_requested = bool(args.submit or args.i_mean_it)
+
+    profile_gate = _paper_profile_gate(config)
+    halt_gate = _gate(
+        _paper_halt_not_set(),
+        "halt_not_set",
+        "ALGOTRADER_PAPER_HALT=1",
+    )
+    allowlist_gate = _gate(
+        symbol in _PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST,
+        f"symbol={symbol} allowlist={','.join(_PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST)}",
+        "symbol_not_allowlisted",
+    )
+    side_gate = _gate(side == "buy", "buy_only", "side_must_be_buy")
+    quantity_gate = _gate(
+        quantity is not None,
+        "positive_whole_share_quantity",
+        quantity_error or "invalid_quantity",
+    )
+    notional_cap_gate = _gate(
+        max_notional is not None
+        and max_notional <= _PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP,
+        f"max_notional_cap={_decimal_text(_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP)}",
+        max_notional_error or "max_notional_cap_exceeded",
+    )
+    submit_confirmation_gate = _gate(
+        not submit_requested,
+        "preview_only_no_submission_requested",
+        _PAPER_ORDER_PROBE_DISABLED_REASON,
+    )
+    gates = {
+        "profile_gate": profile_gate,
+        "halt_gate": halt_gate,
+        "allowlist_gate": allowlist_gate,
+        "side_gate": side_gate,
+        "quantity_gate": quantity_gate,
+        "notional_cap_gate": notional_cap_gate,
+        "submit_confirmation_gate": submit_confirmation_gate,
+    }
+    ok = all(bool(gate["passed"]) for gate in gates.values())
+
+    request_payload = None
+    if symbol and side == "buy" and quantity is not None:
+        request_payload = _paper_order_request_payload(symbol, quantity)
+
+    return {
+        "command": "paper-order-probe",
+        "error": "" if ok else _first_failed_gate(gates),
+        "gates": gates,
+        "max_notional": (
+            _decimal_text(max_notional) if max_notional is not None else args.max_notional
+        ),
+        "ok": ok,
+        "preview_only": True,
+        "proposed_order_request": request_payload,
+        "requested_submit": bool(args.submit),
+        "requested_i_mean_it": bool(args.i_mean_it),
+        "submitted": False,
+        "submission_disabled_reason": _PAPER_ORDER_PROBE_DISABLED_REASON,
+    }
+
+
+def _paper_order_request_payload(symbol: str, quantity: Decimal) -> dict[str, str]:
+    from .execution.alpaca_client import AlpacaOrderRequest
+
+    request = AlpacaOrderRequest(
+        client_order_id=_PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
+        symbol=symbol,
+        side="buy",
+        qty=quantity,
+        order_type="market",
+        time_in_force="day",
+    )
+    return {
+        "client_order_id": request.client_order_id,
+        "limit_price": "",
+        "order_type": request.order_type,
+        "qty": _decimal_text(request.qty),
+        "request_model": "AlpacaOrderRequest",
+        "side": request.side,
+        "symbol": request.symbol,
+        "time_in_force": request.time_in_force,
+    }
+
+
+def _paper_profile_gate(config) -> dict[str, object]:
+    from .config import ConfigValidationError, require_paper_profile
+
+    try:
+        require_paper_profile(config.alpaca_paper)
+    except ConfigValidationError as exc:
+        return _gate(False, "paper_profile_ready", _redact_config_secrets(str(exc), config))
+
+    return _gate(True, "paper_profile_ready", "")
+
+
+def _build_paper_broker(paper_config):
+    from .execution.alpaca_adapter import AlpacaClientAdapter
+    from .execution.alpaca_broker import AlpacaPaperBroker
+    from .execution.alpaca_sdk_client import AlpacaSdkClient
+
+    client = AlpacaSdkClient(paper_config)
+    adapter = AlpacaClientAdapter(client)
+    return AlpacaPaperBroker(adapter=adapter, config=paper_config)
+
+
+def _paper_halt_not_set() -> bool:
+    import os
+
+    return os.environ.get("ALGOTRADER_PAPER_HALT") != "1"
+
+
+def _positive_decimal(
+    raw_value: str,
+    field_name: str,
+) -> tuple[Decimal | None, str]:
+    try:
+        value = Decimal(str(raw_value))
+    except (InvalidOperation, ValueError):
+        return None, f"{field_name}_must_be_decimal"
+
+    if value <= 0:
+        return None, f"{field_name}_must_be_positive"
+
+    return value, ""
+
+
+def _positive_whole_decimal(
+    raw_value: str,
+    field_name: str,
+) -> tuple[Decimal | None, str]:
+    value, error = _positive_decimal(raw_value, field_name)
+    if value is None:
+        return None, error
+
+    if value != value.to_integral_value():
+        return None, f"{field_name}_must_be_whole_shares"
+
+    return value, ""
+
+
+def _gate(
+    passed: bool,
+    detail: str,
+    failure_detail: str,
+) -> dict[str, object]:
+    return {
+        "detail": detail if passed else failure_detail,
+        "passed": passed,
+    }
+
+
+def _first_failed_gate(gates: dict[str, dict[str, object]]) -> str:
+    for gate_name in _PAPER_SAFETY_GATE_ORDER:
+        gate = gates[gate_name]
+        if not gate["passed"]:
+            return f"{gate_name}_failed"
+
+    return ""
+
+
+def _render_paper_account_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper account smoke",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"submitted: {_bool_text(payload['submitted'])}",
+    ]
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+    if payload.get("message"):
+        lines.append(f"message: {payload['message']}")
+    lines.extend(_gate_lines(payload["gates"]))
+    account = payload.get("account")
+    if isinstance(account, dict):
+        lines.append(f"account_cash: {account['cash']} {account['currency']}")
+    lines.append(f"position_count: {payload['position_count']}")
+    for position in payload["positions"]:
+        lines.append(
+            "position: "
+            f"{position['symbol']} qty={position['quantity']} "
+            f"average_price={position['average_price']}"
+        )
+    return "\n".join(lines)
+
+
+def _render_paper_order_probe_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper order probe",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"preview_only: {_bool_text(payload['preview_only'])}",
+        f"submitted: {_bool_text(payload['submitted'])}",
+    ]
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+    lines.extend(_gate_lines(payload["gates"]))
+    request = payload.get("proposed_order_request")
+    if isinstance(request, dict):
+        lines.extend(
+            [
+                f"request_model: {request['request_model']}",
+                f"symbol: {request['symbol']}",
+                f"side: {request['side']}",
+                f"qty: {request['qty']}",
+                f"order_type: {request['order_type']}",
+                f"time_in_force: {request['time_in_force']}",
+                f"client_order_id: {request['client_order_id']}",
+            ]
+        )
+    lines.append(f"max_notional: {payload['max_notional']}")
+    lines.append(
+        f"submission_disabled_reason: {payload['submission_disabled_reason']}"
+    )
+    return "\n".join(lines)
+
+
+def _gate_lines(gates: object) -> list[str]:
+    if not isinstance(gates, dict):
+        return []
+
+    lines: list[str] = []
+    for gate_name in _PAPER_SAFETY_GATE_ORDER:
+        if gate_name not in gates:
+            continue
+        gate = gates[gate_name]
+        state = "passed" if gate["passed"] else "blocked"
+        lines.append(f"{gate_name}: {state} - {gate['detail']}")
+    return lines
+
+
+def _compact_json(payload: dict[str, object]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _decimal_text(value: Decimal) -> str:
+    return str(value)
+
+
+def _bool_text(value: object) -> str:
+    return "true" if bool(value) else "false"
+
+
+def _redact_config_secrets(message: str, config) -> str:
+    redacted = message
+    for value in (
+        config.alpaca_paper.alpaca_api_key,
+        config.alpaca_paper.alpaca_secret_key,
+    ):
+        if value:
+            redacted = redacted.replace(value, "<redacted>")
+    return redacted
 
 
 def _run_advisory_operating_brief_preview(output_format: str) -> int:
