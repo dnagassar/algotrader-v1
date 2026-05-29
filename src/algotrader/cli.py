@@ -16,6 +16,8 @@ _PAPER_ORDER_PROBE_QTY_DISABLED_REASON = (
     "qty_submission_disabled_until_quote_based_cap_is_supported"
 )
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-notional-1"
+_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX = "paper-order-probe"
+_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH = 30
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
     "halt_gate",
@@ -689,6 +691,7 @@ def _build_paper_order_probe_payload(
         try:
             request = _paper_order_request(
                 symbol,
+                client_order_id=_paper_order_client_order_id(args.run_id),
                 quantity=quantity if sizing_mode == "qty" else None,
                 notional=notional if sizing_mode == "notional" else None,
             )
@@ -745,6 +748,12 @@ def _submit_paper_order_probe(
     try:
         request = _paper_order_request(
             str(request_payload["symbol"]),
+            client_order_id=str(
+                request_payload.get(
+                    "client_order_id",
+                    _PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
+                )
+            ),
             notional=Decimal(str(request_payload["notional"])),
         )
         broker = _build_paper_broker(config.alpaca_paper)
@@ -811,7 +820,7 @@ def _submit_paper_order_probe(
             "ok": False,
             "preview_only": False,
             "redacted_exception_message": redacted_message,
-            "submitted": True,
+            "submitted": None,
             "submit_attempted": True,
         }
 
@@ -842,13 +851,14 @@ def _submit_paper_order_probe(
 def _paper_order_request(
     symbol: str,
     *,
+    client_order_id: str = _PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
     quantity: Decimal | None = None,
     notional: Decimal | None = None,
 ):
     from .execution.alpaca_client import AlpacaOrderRequest
 
     return AlpacaOrderRequest(
-        client_order_id=_PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
+        client_order_id=client_order_id,
         symbol=symbol,
         side="buy",
         qty=quantity,
@@ -872,6 +882,18 @@ def _paper_order_request_payload(request) -> dict[str, str]:
         "symbol": request.symbol,
         "time_in_force": request.time_in_force,
     }
+
+
+def _paper_order_client_order_id(run_id: str | None) -> str:
+    if run_id is None or not str(run_id).strip():
+        return _PAPER_ORDER_PROBE_CLIENT_ORDER_ID
+
+    safe_run_id = _paper_lab_run_id(run_id)[:_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH]
+    safe_run_id = safe_run_id.strip("._:-")
+    if not safe_run_id:
+        return _PAPER_ORDER_PROBE_CLIENT_ORDER_ID
+
+    return f"{_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX}-{safe_run_id}"
 
 
 def _paper_profile_gate(config) -> dict[str, object]:

@@ -222,6 +222,29 @@ def test_order_probe_notional_preview_does_not_submit(
     }
 
 
+def test_order_probe_run_id_scopes_client_order_id_without_submitting(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(),
+            "--run-id",
+            "m306-logged-paper-probe",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert payload["submitted"] is False
+    assert payload["proposed_order_request"]["client_order_id"] == (
+        "paper-order-probe-m306-logged-paper-probe"
+    )
+
+
 def test_order_probe_preview_writes_run_log_with_gates_and_no_submit(
     monkeypatch,
     capsys,
@@ -471,6 +494,9 @@ def test_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
     records = _read_jsonl(run_log)
     assert exit_code == 0
     assert fake_client.calls == ["submit_order", "get_account", "get_positions"]
+    assert fake_client.submitted_requests[0].client_order_id == (
+        "paper-order-probe-submit-run"
+    )
     assert payload["submitted"] is True
     assert [record["event_type"] for record in records] == [
         "paper_order_previewed",
@@ -532,6 +558,40 @@ def test_order_probe_parse_failure_reports_attempted_submit(
     )
 
 
+def test_order_probe_adapter_failure_before_response_does_not_report_submitted(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FailingSubmitAlpacaClient())
+
+    exit_code, payload = _run_json(
+        (*_valid_notional_probe_args(notional="5"), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    rendered = json.dumps(payload, sort_keys=True)
+    assert exit_code == 1
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+    assert fake_client.calls == ["submit_order"]
+    assert payload["ok"] is False
+    assert payload["broker_error"] is True
+    assert payload["error"] == "paper_order_probe_submit_failed"
+    assert payload["error_type"] == "AlpacaAdapterError"
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is True
+    assert payload["broker_response_received"] is False
+    assert payload["broker_response_parsed"] is False
+    assert payload["submitted"] is None
+    assert payload["accepted"] is None
+    assert payload["filled"] is None
+    assert (
+        payload["redacted_exception_message"]
+        == "Injected Alpaca-like client call failed: submit_order()."
+    )
+
+
 def test_order_probe_parse_failure_writes_parse_failure_observation(
     monkeypatch,
     capsys,
@@ -579,6 +639,56 @@ def test_order_probe_parse_failure_writes_parse_failure_observation(
     assert parse_failure["filled"] is None
     assert post_submit["account"] == {"cash": "100000", "currency": "USD"}
     assert post_submit["position_count"] == 1
+
+
+def test_order_probe_adapter_failure_writes_failure_log_without_receipt(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FailingSubmitAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "adapter_failure.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(notional="5"),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "adapter-failure-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    rendered_log = run_log.read_text(encoding="utf-8")
+    failure = records[-1]
+    assert exit_code == 1
+    assert fake_client.calls == ["submit_order"]
+    assert fake_client.submitted_requests[0].client_order_id == (
+        "paper-order-probe-adapter-failure-run"
+    )
+    assert payload["submitted"] is None
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_submit_failed",
+    ]
+    assert "paper_order_receipt_observed" not in {
+        record["event_type"] for record in records
+    }
+    assert failure["submit_attempted"] is True
+    assert failure["broker_response_received"] is False
+    assert failure["broker_response_parsed"] is False
+    assert failure["submitted"] is None
+    assert failure["accepted"] is None
+    assert failure["filled"] is None
+    assert SENSITIVE_API_KEY not in rendered_log
+    assert SENSITIVE_SECRET_KEY not in rendered_log
 
 
 def test_order_probe_qty_submit_remains_disabled_without_quote_cap(
@@ -809,6 +919,13 @@ class FakeMalformedAlpacaClient(FakeAlpacaClient):
             "side": request.side,
             "status": "accepted",
         }
+
+
+class FailingSubmitAlpacaClient(FakeAlpacaClient):
+    def submit_order(self, request):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_requests.append(request)
+        raise RuntimeError(f"{SENSITIVE_API_KEY} submit failed locally")
 
 
 def _install_fake_broker(

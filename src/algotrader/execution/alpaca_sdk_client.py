@@ -47,9 +47,7 @@ class AlpacaSdkClient(AlpacaClient):
                 "Provide either sdk_client or sdk_client_factory, not both."
             )
 
-        self._uses_alpaca_sdk_request_shape = (
-            sdk_client is None and sdk_client_factory is None
-        )
+        self._uses_alpaca_sdk_request_shape = sdk_client is None
 
         if sdk_client is not None:
             self._sdk_client = sdk_client

@@ -3,6 +3,9 @@ import socket
 
 import pytest
 
+from algotrader.config import AlpacaPaperConfig
+from algotrader.execution.alpaca_client import AlpacaOrderRequest
+from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 from algotrader.execution.alpaca_translator import (
     AlpacaTranslationError,
     translate_alpaca_order_result,
@@ -104,3 +107,51 @@ def test_notional_receipt_translation_is_offline_and_credential_free(
     )
 
     assert receipt.notional == Decimal("5.00")
+
+
+def test_factory_created_sdk_client_uses_real_market_order_request_shape() -> None:
+    fake_sdk_client = _FakeRealSdkTradingClient()
+    config = AlpacaPaperConfig(
+        app_profile="paper",
+        alpaca_api_key="test-api-key",
+        alpaca_secret_key="test-secret-key",
+        alpaca_paper_base_url="https://paper.example.test",
+    )
+    client = AlpacaSdkClient(
+        config,
+        sdk_client_factory=lambda _: fake_sdk_client,
+    )
+
+    response = client.submit_order(
+        AlpacaOrderRequest(
+            client_order_id="paper-order-probe-notional-1",
+            symbol="SPY",
+            side="buy",
+            notional=Decimal("5.00"),
+        )
+    )
+
+    assert fake_sdk_client.calls == ["submit_order"]
+    assert fake_sdk_client.submitted_orders[0].__class__.__name__ == (
+        "MarketOrderRequest"
+    )
+    assert not isinstance(fake_sdk_client.submitted_orders[0], AlpacaOrderRequest)
+    assert response["notional"] == "5.0"
+
+
+class _FakeRealSdkTradingClient:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.submitted_orders: list[object] = []
+
+    def submit_order(self, order_data):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_orders.append(order_data)
+        return {
+            "id": "broker-order-1",
+            "client_order_id": str(order_data.client_order_id),
+            "notional": str(order_data.notional),
+            "side": str(order_data.side.value),
+            "status": "accepted",
+            "symbol": str(order_data.symbol),
+        }

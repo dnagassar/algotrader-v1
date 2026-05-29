@@ -17,6 +17,7 @@ PAPER_POSITIONS_OBSERVED = "paper_positions_observed"
 PAPER_ORDER_PREVIEWED = "paper_order_previewed"
 PAPER_ORDER_SUBMIT_REQUESTED = "paper_order_submit_requested"
 PAPER_ORDER_SUBMIT_ATTEMPTED = "paper_order_submit_attempted"
+PAPER_ORDER_SUBMIT_FAILED = "paper_order_submit_failed"
 PAPER_ORDER_RECEIPT_OBSERVED = "paper_order_receipt_observed"
 PAPER_ORDER_RESPONSE_PARSE_FAILED = "paper_order_response_parse_failed"
 PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED = (
@@ -29,6 +30,7 @@ EVENT_TYPES = (
     PAPER_ORDER_PREVIEWED,
     PAPER_ORDER_SUBMIT_REQUESTED,
     PAPER_ORDER_SUBMIT_ATTEMPTED,
+    PAPER_ORDER_SUBMIT_FAILED,
     PAPER_ORDER_RECEIPT_OBSERVED,
     PAPER_ORDER_RESPONSE_PARSE_FAILED,
     PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED,
@@ -242,6 +244,15 @@ def make_order_probe_submit_events(
                 fields=_order_fields(payload),
             ).to_record(secret_values=secret_values)
         )
+    elif payload.get("broker_error") and payload.get("error"):
+        events.append(
+            PaperLabObservationEvent(
+                run_id=run_id,
+                command=command,
+                event_type=PAPER_ORDER_SUBMIT_FAILED,
+                fields=_order_fields(payload),
+            ).to_record(secret_values=secret_values)
+        )
 
     post_submit_account = payload.get("post_submit_account")
     if isinstance(post_submit_account, Mapping):
@@ -298,7 +309,7 @@ def _state_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
             payload.get("broker_response_received", False)
         ),
         "filled": payload.get("filled"),
-        "submitted": bool(payload.get("submitted", False)),
+        "submitted": payload.get("submitted", False),
         "submit_attempted": bool(payload.get("submit_attempted", False)),
         "submit_requested": bool(payload.get("submit_requested", False)),
     }
@@ -369,6 +380,7 @@ __all__ = [
     "PAPER_ORDER_PREVIEWED",
     "PAPER_ORDER_RECEIPT_OBSERVED",
     "PAPER_ORDER_RESPONSE_PARSE_FAILED",
+    "PAPER_ORDER_SUBMIT_FAILED",
     "PAPER_ORDER_SUBMIT_ATTEMPTED",
     "PAPER_ORDER_SUBMIT_REQUESTED",
     "PAPER_POSITIONS_OBSERVED",

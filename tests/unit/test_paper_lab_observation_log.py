@@ -13,6 +13,7 @@ from algotrader.execution.paper_lab_observation_log import (
     PAPER_ORDER_RECEIPT_OBSERVED,
     PAPER_ORDER_RESPONSE_PARSE_FAILED,
     PAPER_ORDER_SUBMIT_ATTEMPTED,
+    PAPER_ORDER_SUBMIT_FAILED,
     PAPER_ORDER_SUBMIT_REQUESTED,
     PAPER_POSITIONS_OBSERVED,
     PaperLabObservationEvent,
@@ -36,6 +37,7 @@ def test_event_model_lists_paper_lab_observation_types() -> None:
         PAPER_ORDER_PREVIEWED,
         PAPER_ORDER_SUBMIT_REQUESTED,
         PAPER_ORDER_SUBMIT_ATTEMPTED,
+        PAPER_ORDER_SUBMIT_FAILED,
         PAPER_ORDER_RECEIPT_OBSERVED,
         PAPER_ORDER_RESPONSE_PARSE_FAILED,
         "paper_order_post_submit_account_observed",
@@ -168,6 +170,43 @@ def test_order_probe_parse_failure_event_captures_attempted_submit() -> None:
     assert SECRET_VALUE not in render_jsonl_records(records)
 
 
+def test_order_probe_adapter_failure_event_has_unknown_submitted_state() -> None:
+    payload = {
+        **_order_payload(
+            submit_requested=True,
+            submit_attempted=True,
+            broker_response_received=False,
+            broker_response_parsed=False,
+            submitted=None,
+        ),
+        "accepted": None,
+        "broker_error": True,
+        "error": "paper_order_probe_submit_failed",
+        "error_type": "AlpacaAdapterError",
+        "filled": None,
+        "message": f"local submit failed {SECRET_VALUE}",
+    }
+
+    records = make_order_probe_submit_events(
+        run_id="adapter-failure-run",
+        payload=payload,
+        secret_values=(SECRET_VALUE,),
+    )
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_ORDER_SUBMIT_ATTEMPTED,
+        PAPER_ORDER_SUBMIT_FAILED,
+    ]
+    failure = records[-1]
+    assert failure["submit_attempted"] is True
+    assert failure["broker_response_received"] is False
+    assert failure["broker_response_parsed"] is False
+    assert failure["submitted"] is None
+    assert failure["accepted"] is None
+    assert failure["filled"] is None
+    assert SECRET_VALUE not in render_jsonl_records(records)
+
+
 def test_jsonl_append_creates_parent_and_appends(tmp_path) -> None:
     path = tmp_path / "runs" / "paper_lab" / "probe.jsonl"
     record = PaperLabObservationEvent(
@@ -227,7 +266,7 @@ def _order_payload(
     submit_attempted: bool,
     broker_response_received: bool,
     broker_response_parsed: bool,
-    submitted: bool,
+    submitted: bool | None,
 ) -> dict[str, object]:
     return {
         "accepted": None,
