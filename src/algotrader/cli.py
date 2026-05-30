@@ -623,7 +623,6 @@ def _run_paper_lab_revalidation_brief(
     run_id: str | None = None,
 ) -> int:
     from .execution.paper_lab_revalidation_brief import (
-        STATE_USABLE_FOR_MANUAL_REVIEW,
         build_paper_lab_revalidation_brief,
         render_paper_lab_revalidation_brief_text,
     )
@@ -634,7 +633,7 @@ def _run_paper_lab_revalidation_brief(
     else:
         print(render_paper_lab_revalidation_brief_text(payload))
 
-    return 0 if payload["state"] == STATE_USABLE_FOR_MANUAL_REVIEW else 1
+    return 0 if payload["usable_for_manual_review"] else 1
 
 
 def _build_paper_lab_snapshot_payload(config) -> dict[str, object]:

@@ -8094,6 +8094,29 @@ market/GTC, notional-only, `BTCUSD` allowlist, disabled options submit, SPY
 equity behavior, no retries, no scheduler, and offline credential-free normal
 pytest behavior. No real order is submitted by this local-policy milestone.
 
+Phase 319 / Milestone 319 - Crypto Paper Receipt + Position/Reconciliation
+Observation extends the local-file-only `paper-lab-revalidation-brief` so a
+successful crypto paper probe can be classified without another broker call.
+The brief now reports a deterministic `submit_observation` summary across the
+existing run log: submit attempt count, receipt presence, broker response flags,
+submitted/accepted/filled fields, raw and normalized status/reason, order shape,
+pre/post cash, Decimal cash delta, pre/post position counts, target position
+quantity and average price, recent-order target visibility, order-list gap,
+unavailable observations, and redaction markers. The manual-review taxonomy now
+distinguishes `receipt_and_position_observed`,
+`receipt_and_position_observed_with_order_list_gap`,
+`receipt_observed_without_position`, `position_observed_without_receipt`,
+`broker_rejected`, `submit_failed_before_response`,
+`observation_unavailable`, `insufficient_observation`, and `invalid_run_log`.
+The M318 BTCUSD log classifies as
+`receipt_and_position_observed_with_order_list_gap`: one accepted `BTCUSD`
+crypto buy receipt at `notional=10.00`, post-submit cash moved from `2000` to
+`1990.19`, a `BTCUSD` position appeared, and the recent order list remained
+empty. This milestone adds no submit command, Alpaca call, live profile/live
+URL behavior, credential access, broker write path, scheduler, autonomous
+trading behavior, research-layer submission, or non-deterministic pytest
+behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

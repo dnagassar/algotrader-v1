@@ -1623,6 +1623,42 @@ def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
     }
 
 
+def test_revalidation_brief_cli_reports_submit_receipt_observation(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "m319.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_revalidation_m319_submit_run_log(run_log)
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("revalidation brief must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-lab-revalidation-brief",
+            "--run-log",
+            str(run_log),
+            "--format",
+            "json",
+        )
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["state"] == "receipt_and_position_observed_with_order_list_gap"
+    assert payload["usable_for_manual_review"] is True
+    assert payload["submit_observation"]["submit_attempt_count"] == 1
+    assert payload["submit_observation"]["cash_delta"] == "-9.81"
+    assert payload["submit_observation"]["order_list_observation_gap"] is True
+
+
 def test_invalid_run_log_path_reports_cleanly(
     monkeypatch,
     capsys,
@@ -1921,6 +1957,124 @@ def _write_revalidation_snapshot_run_log(path) -> None:  # noqa: ANN001
             for record in records
         ),
         encoding="utf-8",
+    )
+
+
+def _write_revalidation_m319_submit_run_log(path) -> None:  # noqa: ANN001
+    order_fields = {
+        "accepted": True,
+        "asset_class": "crypto",
+        "broker_response_parsed": True,
+        "broker_response_received": True,
+        "command": "paper-order-probe",
+        "filled": False,
+        "max_notional": "10.00",
+        "min_notional": "10.00",
+        "normalized_status": "pending_new",
+        "notional": "10.00",
+        "order_type": "market",
+        "raw_reason": "",
+        "raw_status": "OrderStatus.PENDING_NEW",
+        "redaction": "credentials_redacted",
+        "side": "buy",
+        "submitted": True,
+        "submit_requested": True,
+        "symbol": "BTCUSD",
+        "time_in_force": "gtc",
+    }
+    position = {
+        "average_price": "73886.11",
+        "quantity": "0.000132386",
+        "symbol": "BTCUSD",
+    }
+    records = [
+        *_revalidation_snapshot_records(
+            run_id="m319-pre-submit",
+            cash="2000",
+            position_count=0,
+            position_symbols=[],
+            positions=[],
+            recent_order_count=0,
+            recent_orders=[],
+        ),
+        {
+            **order_fields,
+            "event_type": "paper_order_submit_attempted",
+            "run_id": "m319-probe",
+            "submit_attempted": True,
+        },
+        {
+            **order_fields,
+            "event_type": "paper_order_receipt_observed",
+            "run_id": "m319-probe",
+            "submit_attempted": True,
+        },
+        {
+            **order_fields,
+            "account": {"cash": "1990.19", "currency": "USD"},
+            "event_type": "paper_order_post_submit_account_observed",
+            "position_count": 1,
+            "positions": [position],
+            "run_id": "m319-probe",
+            "submit_attempted": True,
+        },
+        *_revalidation_snapshot_records(
+            run_id="m319-post-submit",
+            cash="1990.19",
+            position_count=1,
+            position_symbols=["BTCUSD"],
+            positions=[position],
+            recent_order_count=0,
+            recent_orders=[],
+        ),
+    ]
+    path.write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in records
+        ),
+        encoding="utf-8",
+    )
+
+
+def _revalidation_snapshot_records(
+    *,
+    run_id: str,
+    cash: str,
+    position_count: int,
+    position_symbols: list[str],
+    positions: list[dict[str, object]],
+    recent_order_count: int,
+    recent_orders: list[dict[str, object]],
+) -> tuple[dict[str, object], ...]:
+    base = {
+        "command": "paper-lab-snapshot",
+        "redaction": "credentials_redacted",
+        "run_id": run_id,
+    }
+    return (
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_requested",
+        },
+        {
+            **base,
+            "account": {"cash": cash, "currency": "USD"},
+            "event_type": "paper_lab_snapshot_account_observed",
+        },
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_positions_observed",
+            "position_count": position_count,
+            "position_symbols": position_symbols,
+            "positions": positions,
+        },
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_orders_observed",
+            "recent_order_count": recent_order_count,
+            "recent_orders": recent_orders,
+        },
     )
 
 

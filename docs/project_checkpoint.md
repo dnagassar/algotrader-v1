@@ -13645,6 +13645,25 @@ Safe next tasks include:
   options submit, SPY equity behavior, no retries, no scheduler, and
   offline/credential-free normal pytest behavior are preserved; M317 submits no
   real orders.
+- Phase 319 / Milestone 319 - Crypto Paper Receipt + Position/Reconciliation
+  Observation extends the local-file-only `paper-lab-revalidation-brief` with a
+  deterministic `submit_observation` summary for paper-order probe run logs. It
+  connects submit attempt count, receipt presence, broker response flags,
+  submitted/accepted/filled, raw and normalized status/reason, order shape,
+  pre/post cash, Decimal cash delta, pre/post position counts, target BTCUSD
+  position details, recent-order target visibility, order-list gap,
+  unavailable observations, and redaction markers. The added taxonomy separates
+  accepted receipt + position, accepted receipt + position with an order-list
+  gap, receipt without position, position without receipt, broker rejection,
+  submit failed before response, unavailable observation, insufficient
+  observation, and invalid run-log states. The M318 BTCUSD log now classifies
+  as `receipt_and_position_observed_with_order_list_gap`: one accepted
+  `BTCUSD` crypto buy receipt at `notional=10.00`, cash moved from `2000` to
+  `1990.19`, a BTCUSD position appeared, and `recent_orders` stayed empty. This
+  milestone is analysis/local-summary only and adds no submit command, Alpaca
+  call, live profile/live URL behavior, credential access, broker write path,
+  scheduler, autonomous loop, research-layer submission, or unsafe pytest
+  behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
