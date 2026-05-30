@@ -10,6 +10,8 @@ import sys
 
 from .execution.paper_order_policy import (
     ASSET_CLASS_CHOICES as _PAPER_ORDER_ASSET_CLASSES,
+    ASSET_CLASS_CRYPTO as _PAPER_ORDER_ASSET_CLASS_CRYPTO,
+    ASSET_CLASS_EQUITY as _PAPER_ORDER_ASSET_CLASS_EQUITY,
     ASSET_CLASS_OPTION as _PAPER_ORDER_ASSET_CLASS_OPTION,
     PAPER_MARKET_SESSION_NOTE as _PAPER_MARKET_SESSION_NOTE,
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON as _PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
@@ -186,7 +188,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--submit",
         action="store_true",
         help=(
-            "Request submission. Disabled until true notional-cap support exists."
+            "Request a gated paper submit for submit-enabled paper-lab lanes."
         ),
     )
     paper_order_probe_parser.add_argument(
@@ -194,7 +196,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="i_mean_it",
         help=(
-            "Acknowledge a future submit path. Disabled for this milestone."
+            "Confirm the gated paper submit request."
         ),
     )
     _add_paper_lab_run_log_options(paper_order_probe_parser)
@@ -1016,6 +1018,12 @@ def _build_paper_order_probe_payload(
         "broker_response_received": False,
         "filled": None,
         "market_session_note": policy.market_session_note,
+        "normalized_status": "",
+        "notional": _decimal_text(notional) if notional is not None else "",
+        "order_type": "market",
+        "raw_reason": "",
+        "raw_status": "",
+        "side": side,
         "submitted": False,
         "submission_disabled_reason": _paper_order_submission_disabled_reason(
             policy,
@@ -1023,6 +1031,8 @@ def _build_paper_order_probe_payload(
         ),
         "submit_attempted": False,
         "submit_requested": submit_requested,
+        "symbol": symbol,
+        "time_in_force": policy.time_in_force,
     }
 
 
@@ -1032,7 +1042,10 @@ def _submit_paper_order_probe(
     *,
     observe_post_submit: bool = False,
 ) -> dict[str, object]:
-    if payload.get("asset_class") != "equity":
+    if payload.get("asset_class") not in {
+        _PAPER_ORDER_ASSET_CLASS_EQUITY,
+        _PAPER_ORDER_ASSET_CLASS_CRYPTO,
+    }:
         return {
             **payload,
             "error": "paper_order_probe_submit_disabled",
@@ -1153,8 +1166,11 @@ def _submit_paper_order_probe(
         "broker_result": broker_result,
         "error": "" if result.accepted else "paper_order_probe_rejected",
         "filled": result.filled,
+        "normalized_status": broker_result["normalized_status"],
         "ok": result.accepted,
         "preview_only": False,
+        "raw_reason": broker_result["raw_reason"],
+        "raw_status": broker_result["raw_status"],
         "submitted": True,
         "submit_attempted": True,
         **post_submit_observation,

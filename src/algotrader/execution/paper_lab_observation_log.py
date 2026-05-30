@@ -377,6 +377,10 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "market_session_note": _optional_text(payload.get("market_session_note")),
         "max_notional": _text(payload.get("max_notional")),
         "message": _optional_text(payload.get("message")),
+        "normalized_status": _optional_text(
+            payload.get("normalized_status")
+            or broker_result_payload.get("normalized_status")
+        ),
         "notional": _text(
             request_payload.get("notional") or payload.get("requested_notional")
         ),
@@ -385,6 +389,12 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "qty": _text(request_payload.get("qty") or payload.get("requested_qty")),
         "redacted_exception_message": _optional_text(
             payload.get("redacted_exception_message")
+        ),
+        "raw_reason": _optional_text(
+            payload.get("raw_reason") or broker_result_payload.get("raw_reason")
+        ),
+        "raw_status": _optional_text(
+            payload.get("raw_status") or broker_result_payload.get("raw_status")
         ),
         "side": _text(request_payload.get("side") or payload.get("side")),
         "sizing_mode": _text(payload.get("sizing_mode")),

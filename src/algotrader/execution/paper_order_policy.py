@@ -22,8 +22,9 @@ PAPER_MARKET_SESSION_NOTE = (
 PAPER_ORDER_PROBE_QTY_DISABLED_REASON = (
     "qty_submission_disabled_until_quote_based_cap_is_supported"
 )
-CRYPTO_SUBMIT_DISABLED_REASON = (
-    "crypto_submit_disabled_until_logged_probe_milestone"
+PAPER_CRYPTO_SESSION_NOTE = (
+    "Crypto paper observations are a shared broker-path harness only and do "
+    "not prove equity behavior."
 )
 OPTIONS_SUBMIT_DISABLED_REASON = (
     "options_submit_disabled_until_options_risk_contract_exists"
@@ -103,10 +104,11 @@ _POLICIES = {
         asset_class=ASSET_CLASS_CRYPTO,
         symbol_allowlist=("BTCUSD",),
         allowed_sizing_modes=("notional",),
-        max_notional_cap=Decimal("5"),
+        max_notional_cap=Decimal("5.00"),
         time_in_force="gtc",
-        submit_enabled=False,
-        submit_disabled_reason=CRYPTO_SUBMIT_DISABLED_REASON,
+        submit_enabled=True,
+        submit_disabled_reason="",
+        market_session_note=PAPER_CRYPTO_SESSION_NOTE,
     ),
     ASSET_CLASS_OPTION: PaperOrderPolicy(
         asset_class=ASSET_CLASS_OPTION,
@@ -137,8 +139,8 @@ __all__ = [
     "ASSET_CLASS_CRYPTO",
     "ASSET_CLASS_EQUITY",
     "ASSET_CLASS_OPTION",
-    "CRYPTO_SUBMIT_DISABLED_REASON",
     "OPTIONS_SUBMIT_DISABLED_REASON",
+    "PAPER_CRYPTO_SESSION_NOTE",
     "PAPER_MARKET_SESSION_NOTE",
     "PAPER_ORDER_PROBE_QTY_DISABLED_REASON",
     "PaperOrderPolicy",

@@ -13595,6 +13595,18 @@ Safe next tasks include:
   profile behavior, credentials, network access, scheduler, autonomous loop,
   market-data ingestion, portfolio/reconciliation mutation, ranking, scoring,
   recommendation, trading authority, or trading hot-path LLM behavior.
+- Phase 311 / Milestone 311 - Crypto Paper Submit Gate Enablement opens only
+  the tiny BTCUSD crypto paper-lab submit harness through the existing
+  `paper-order-probe` machinery. Crypto submit is paper-profile-only,
+  buy-only, market-only, `time_in_force=gtc`, notional-only, capped by
+  `notional <= max_notional` and `max_notional <= 5.00`, and requires both
+  `--submit` and `--i-mean-it`; live profile and live URL remain rejected.
+  The SPY equity paper submit contract is preserved and still waits for market
+  hours, options submit remains disabled, and crypto paper observations are a
+  shared broker-path harness only, not proof of equity behavior. This
+  milestone uses fake-only deterministic coverage and does not run a real
+  broker submit; normal pytest remains offline, credential-free,
+  deterministic, and safe.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

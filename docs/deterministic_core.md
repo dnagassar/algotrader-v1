@@ -8035,6 +8035,19 @@ live profile behavior, credentials, network access, scheduler, autonomous loop,
 market-data ingestion, portfolio/reconciliation mutation, ranking, scoring,
 recommendation, trading authority, or trading hot-path LLM behavior.
 
+Phase 311 / Milestone 311 - Crypto Paper Submit Gate Enablement opens only the
+tiny BTCUSD crypto paper-lab submit harness through the existing
+`paper-order-probe` path. The enabled crypto lane remains paper-profile-only,
+buy-only, market-only, `time_in_force=gtc`, notional-only, capped by
+`notional <= max_notional` and `max_notional <= 5.00`, and requires both
+`--submit` and `--i-mean-it`; live profile and live URL remain rejected. The
+SPY equity paper submit contract is preserved and the SPY paper probe still
+waits for market hours, options submit remains disabled, and crypto paper
+observations are a shared broker-path harness only, not evidence of equity
+behavior. This milestone runs fake-only deterministic tests and does not run a
+real broker submit; normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

@@ -9,10 +9,7 @@ from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import AlpacaOrderRequest
-from algotrader.execution.paper_order_policy import (
-    CRYPTO_SUBMIT_DISABLED_REASON,
-    OPTIONS_SUBMIT_DISABLED_REASON,
-)
+from algotrader.execution.paper_order_policy import OPTIONS_SUBMIT_DISABLED_REASON
 from tests.fakes.alpaca import FakeAlpacaClient
 
 
@@ -862,7 +859,14 @@ def test_crypto_order_probe_preview_uses_crypto_policy_without_submit(
     assert payload["ok"] is True
     assert payload["preview_only"] is True
     assert payload["submitted"] is False
-    assert payload["submission_disabled_reason"] == CRYPTO_SUBMIT_DISABLED_REASON
+    assert payload["submission_disabled_reason"] == ""
+    assert payload["symbol"] == "BTCUSD"
+    assert payload["side"] == "buy"
+    assert payload["notional"] == "5"
+    assert payload["max_notional"] == "5"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "gtc"
+    assert payload["market_session_note"].startswith("Crypto paper observations")
     assert request["symbol"] == "BTCUSD"
     assert request["side"] == "buy"
     assert request["notional"] == "5"
@@ -871,24 +875,24 @@ def test_crypto_order_probe_preview_uses_crypto_policy_without_submit(
     assert request["time_in_force"] != "day"
 
 
-def test_crypto_order_probe_submit_remains_disabled_and_logs_no_receipt(
+def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
     monkeypatch,
     capsys,
     tmp_path,
 ) -> None:
     _set_env(monkeypatch)
-    _forbid_broker_build(monkeypatch)
-    run_log = tmp_path / "runs" / "paper_lab" / "crypto_disabled.jsonl"
+    fake_client = _install_fake_broker(monkeypatch, FakeNotionalAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "crypto_submit.jsonl"
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(),
+            *_valid_crypto_notional_probe_args(notional="2"),
             "--submit",
             "--i-mean-it",
             "--run-log",
             str(run_log),
             "--run-id",
-            "crypto-disabled-run",
+            "crypto-submit-run",
         ),
         capsys,
     )
@@ -897,31 +901,173 @@ def test_crypto_order_probe_submit_remains_disabled_and_logs_no_receipt(
     rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
         encoding="utf-8"
     )
-    assert exit_code == 2
+    assert exit_code == 0
+    assert fake_client.calls == ["submit_order", "get_account", "get_positions"]
+    assert fake_client.submitted_requests[0].asset_class == "crypto"
+    assert fake_client.submitted_requests[0].symbol == "BTCUSD"
+    assert fake_client.submitted_requests[0].qty is None
+    assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert fake_client.submitted_requests[0].time_in_force == "gtc"
     assert payload["asset_class"] == "crypto"
-    assert payload["submitted"] is False
+    assert payload["submitted"] is True
     assert payload["submit_requested"] is True
-    assert payload["submit_attempted"] is False
-    assert payload["preview_only"] is True
-    assert payload["error"] == "submit_confirmation_gate_failed"
-    assert payload["gates"]["submit_confirmation_gate"] == {
-        "detail": CRYPTO_SUBMIT_DISABLED_REASON,
-        "passed": False,
-    }
-    assert payload["submission_disabled_reason"] == CRYPTO_SUBMIT_DISABLED_REASON
+    assert payload["submit_attempted"] is True
+    assert payload["preview_only"] is False
+    assert payload["broker_response_received"] is True
+    assert payload["broker_response_parsed"] is True
+    assert payload["accepted"] is True
+    assert payload["filled"] is False
+    assert payload["broker_result"] == _expected_broker_result("accepted")
+    assert payload["normalized_status"] == "accepted"
+    assert payload["raw_status"] == "accepted"
+    assert payload["raw_reason"] == ""
+    assert payload["broker_normalized_status"] == "accepted"
+    assert payload["broker_raw_status"] == "accepted"
+    assert payload["broker_raw_reason"] == ""
+    assert payload["submission_disabled_reason"] == ""
     assert [record["event_type"] for record in records] == [
         "paper_order_previewed",
         "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_receipt_observed",
+        "paper_order_post_submit_account_observed",
     ]
     assert {record["asset_class"] for record in records} == {"crypto"}
-    assert {
-        record["submission_disabled_reason"] for record in records
-    } == {CRYPTO_SUBMIT_DISABLED_REASON}
+    receipt = records[3]
+    assert receipt["symbol"] == "BTCUSD"
+    assert receipt["notional"] == "2"
+    assert receipt["max_notional"] == "5"
+    assert receipt["order_type"] == "market"
+    assert receipt["time_in_force"] == "gtc"
+    assert receipt["submit_attempted"] is True
+    assert receipt["submitted"] is True
+    assert receipt["broker_response_received"] is True
+    assert receipt["broker_response_parsed"] is True
+    assert receipt["normalized_status"] == "accepted"
+    assert receipt["raw_status"] == "accepted"
+    assert receipt["raw_reason"] == ""
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+
+
+def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FailingSubmitAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "crypto_adapter_failure.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(notional="2"),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "crypto-adapter-failure-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 1
+    assert fake_client.calls == ["submit_order"]
+    assert fake_client.submitted_requests[0].asset_class == "crypto"
+    assert fake_client.submitted_requests[0].symbol == "BTCUSD"
+    assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert payload["asset_class"] == "crypto"
+    assert payload["ok"] is False
+    assert payload["broker_error"] is True
+    assert payload["error"] == "paper_order_probe_submit_failed"
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is True
+    assert payload["broker_response_received"] is False
+    assert payload["broker_response_parsed"] is False
+    assert payload["submitted"] is None
+    assert payload["accepted"] is None
+    assert payload["filled"] is None
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_submit_failed",
+    ]
+    failure = records[-1]
+    assert failure["asset_class"] == "crypto"
+    assert failure["submit_attempted"] is True
+    assert failure["broker_response_received"] is False
+    assert failure["broker_response_parsed"] is False
+    assert failure["submitted"] is None
+    assert failure["accepted"] is None
+    assert failure["filled"] is None
     assert "paper_order_receipt_observed" not in {
         record["event_type"] for record in records
     }
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
+
+
+def test_crypto_order_probe_rejects_live_profile_before_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch, profile="live")
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(notional="2"),
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["asset_class"] == "crypto"
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "profile_gate_failed"
+    assert payload["gates"]["profile_gate"]["passed"] is False
+
+
+def test_crypto_order_probe_rejects_live_base_url_before_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://api.alpaca.markets")
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(notional="2"),
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["asset_class"] == "crypto"
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "profile_gate_failed"
+    assert payload["gates"]["profile_gate"] == {
+        "detail": (
+            "Alpaca paper operations require ALPACA_PAPER_BASE_URL to point "
+            "to a paper endpoint."
+        ),
+        "passed": False,
+    }
 
 
 def test_crypto_order_probe_rejects_non_allowlisted_symbol(
@@ -932,13 +1078,19 @@ def test_crypto_order_probe_rejects_non_allowlisted_symbol(
     _forbid_broker_build(monkeypatch)
 
     exit_code, payload = _run_json(
-        _valid_crypto_notional_probe_args(symbol="ETHUSD"),
+        (
+            *_valid_crypto_notional_probe_args(symbol="ETHUSD"),
+            "--submit",
+            "--i-mean-it",
+        ),
         capsys,
     )
 
     assert exit_code == 2
     assert payload["asset_class"] == "crypto"
     assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
     assert payload["error"] == "allowlist_gate_failed"
     assert payload["gates"]["allowlist_gate"] == {
         "detail": "symbol_not_allowlisted",
@@ -954,13 +1106,19 @@ def test_crypto_order_probe_rejects_max_notional_above_crypto_cap(
     _forbid_broker_build(monkeypatch)
 
     exit_code, payload = _run_json(
-        _valid_crypto_notional_probe_args(max_notional="5.01"),
+        (
+            *_valid_crypto_notional_probe_args(max_notional="5.01"),
+            "--submit",
+            "--i-mean-it",
+        ),
         capsys,
     )
 
     assert exit_code == 2
     assert payload["asset_class"] == "crypto"
     assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
     assert payload["error"] == "notional_cap_gate_failed"
     assert payload["gates"]["notional_cap_gate"] == {
         "detail": "max_notional_cap_exceeded",
@@ -968,18 +1126,96 @@ def test_crypto_order_probe_rejects_max_notional_above_crypto_cap(
     }
 
 
-def test_crypto_order_probe_rejects_sell_side(monkeypatch, capsys) -> None:
+def test_crypto_order_probe_rejects_notional_above_max_notional(
+    monkeypatch,
+    capsys,
+) -> None:
     _set_env(monkeypatch)
     _forbid_broker_build(monkeypatch)
 
     exit_code, payload = _run_json(
-        _valid_crypto_notional_probe_args(side="sell"),
+        (
+            *_valid_crypto_notional_probe_args(notional="5.01", max_notional="5"),
+            "--submit",
+            "--i-mean-it",
+        ),
         capsys,
     )
 
     assert exit_code == 2
     assert payload["asset_class"] == "crypto"
     assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "notional_cap_gate_failed"
+    assert payload["gates"]["notional_cap_gate"] == {
+        "detail": "notional_exceeds_max_notional",
+        "passed": False,
+    }
+
+
+def test_crypto_order_probe_rejects_qty_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            "paper-order-probe",
+            "--asset-class",
+            "crypto",
+            "--symbol",
+            "BTCUSD",
+            "--side",
+            "buy",
+            "--qty",
+            "1",
+            "--max-notional",
+            "5",
+            "--format",
+            "json",
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["asset_class"] == "crypto"
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "sizing_gate_failed"
+    assert payload["gates"]["sizing_gate"] == {
+        "detail": "crypto_notional_required",
+        "passed": False,
+    }
+    assert (
+        payload["submission_disabled_reason"]
+        == "qty_submission_disabled_until_quote_based_cap_is_supported"
+    )
+
+
+def test_crypto_order_probe_rejects_sell_side(monkeypatch, capsys) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(side="sell"),
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["asset_class"] == "crypto"
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
     assert payload["error"] == "side_gate_failed"
     assert payload["gates"]["side_gate"] == {
         "detail": "side_must_be_buy",

@@ -31,7 +31,7 @@ from algotrader.execution.paper_lab_observation_log import (
     render_jsonl_records,
     resolve_run_id,
 )
-from algotrader.execution.paper_order_policy import CRYPTO_SUBMIT_DISABLED_REASON
+from algotrader.execution.paper_order_policy import OPTIONS_SUBMIT_DISABLED_REASON
 
 
 SECRET_VALUE = "paper-lab-secret-value"
@@ -258,12 +258,15 @@ def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> Non
     assert receipt["broker_normalized_status"] == "accepted"
     assert receipt["broker_raw_status"] == "orderstatus.accepted"
     assert receipt["broker_raw_reason"] == "broker accepted"
+    assert receipt["normalized_status"] == "accepted"
+    assert receipt["raw_status"] == "orderstatus.accepted"
+    assert receipt["raw_reason"] == "broker accepted"
     assert receipt["market_session_note"].startswith("Market DAY equity orders")
     assert post_submit["account"] == {"cash": "99995", "currency": "USD"}
     assert post_submit["position_count"] == 1
 
 
-def test_disabled_asset_submit_request_records_asset_class_and_reason() -> None:
+def test_disabled_option_submit_request_records_asset_class_and_reason() -> None:
     payload = {
         **_order_payload(
             submit_requested=True,
@@ -272,22 +275,22 @@ def test_disabled_asset_submit_request_records_asset_class_and_reason() -> None:
             broker_response_parsed=False,
             submitted=False,
         ),
-        "asset_class": "crypto",
+        "asset_class": "option",
         "preview_only": True,
-        "submission_disabled_reason": CRYPTO_SUBMIT_DISABLED_REASON,
+        "submission_disabled_reason": OPTIONS_SUBMIT_DISABLED_REASON,
         "proposed_order_request": {
-            "client_order_id": "paper-order-probe-notional-1",
-            "notional": "5",
+            "client_order_id": "paper-order-probe-option-disabled-run",
+            "notional": "",
             "order_type": "market",
-            "qty": "",
+            "qty": "1",
             "side": "buy",
-            "symbol": "BTCUSD",
-            "time_in_force": "gtc",
+            "symbol": "SPY260117C00600000",
+            "time_in_force": "day",
         },
     }
 
     records = make_order_probe_initial_events(
-        run_id="crypto-disabled-run",
+        run_id="option-disabled-run",
         payload=payload,
     )
 
@@ -295,10 +298,10 @@ def test_disabled_asset_submit_request_records_asset_class_and_reason() -> None:
         PAPER_ORDER_PREVIEWED,
         PAPER_ORDER_SUBMIT_REQUESTED,
     ]
-    assert {record["asset_class"] for record in records} == {"crypto"}
+    assert {record["asset_class"] for record in records} == {"option"}
     assert {
         record["submission_disabled_reason"] for record in records
-    } == {CRYPTO_SUBMIT_DISABLED_REASON}
+    } == {OPTIONS_SUBMIT_DISABLED_REASON}
 
 
 def test_order_probe_parse_failure_event_captures_attempted_submit() -> None:

@@ -6,7 +6,6 @@ import pytest
 
 from algotrader.execution.paper_order_policy import (
     ASSET_CLASS_CHOICES,
-    CRYPTO_SUBMIT_DISABLED_REASON,
     OPTIONS_SUBMIT_DISABLED_REASON,
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
     paper_order_policy_for_asset_class,
@@ -30,8 +29,9 @@ def test_policy_matrix_separates_equity_crypto_and_options_lanes() -> None:
     assert crypto.allowed_sizing_modes == ("notional",)
     assert crypto.max_notional_cap == Decimal("5")
     assert crypto.time_in_force == "gtc"
-    assert crypto.submit_enabled is False
-    assert crypto.submit_disabled_reason == CRYPTO_SUBMIT_DISABLED_REASON
+    assert crypto.submit_enabled is True
+    assert crypto.submit_disabled_reason == ""
+    assert crypto.market_session_note.startswith("Crypto paper observations")
 
     assert option.symbol_allowlist is None
     assert option.allowed_sizing_modes == ("qty",)

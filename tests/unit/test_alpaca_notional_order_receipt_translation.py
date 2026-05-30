@@ -110,6 +110,28 @@ def test_notional_is_preserved_and_empty_qty_stays_optional() -> None:
     assert receipt.quantity is None
 
 
+def test_crypto_notional_receipt_does_not_require_quantity() -> None:
+    receipt = translate_alpaca_order_result(
+        {
+            "order_id": "broker-order-crypto-1",
+            "client_order_id": "paper-order-probe-crypto-submit",
+            "symbol": "btcusd",
+            "side": "buy",
+            "notional": "2.00",
+            "status": "accepted",
+        }
+    )
+
+    assert receipt.symbol == "BTCUSD"
+    assert receipt.side == "buy"
+    assert receipt.quantity is None
+    assert receipt.notional == Decimal("2.00")
+    assert receipt.status == "accepted"
+    assert receipt.raw_status == "accepted"
+    assert receipt.accepted is True
+    assert receipt.filled is False
+
+
 def test_qty_order_response_still_parses_as_before() -> None:
     receipt = translate_alpaca_order_result(
         {
