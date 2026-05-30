@@ -29,8 +29,68 @@ def test_notional_order_response_without_qty_parses_successfully() -> None:
     assert receipt.symbol == "SPY"
     assert receipt.side == "buy"
     assert receipt.status == "filled"
+    assert receipt.raw_status == "filled"
     assert receipt.accepted is True
+    assert receipt.filled is True
     assert receipt.quantity is None
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "normalized_status", "accepted", "filled"),
+    (
+        ("accepted", "accepted", True, False),
+        ("new", "new", True, False),
+        ("pending_new", "pending_new", True, False),
+        ("partially_filled", "partially_filled", True, False),
+        ("filled", "filled", True, True),
+        ("orderstatus.accepted", "accepted", True, False),
+        ("OrderStatus.ACCEPTED", "accepted", True, False),
+        ("rejected", "rejected", False, False),
+        ("canceled", "canceled", False, False),
+        ("expired", "expired", False, False),
+    ),
+)
+def test_order_status_is_normalized_before_acceptance_decision(
+    raw_status: str,
+    normalized_status: str,
+    accepted: bool,
+    filled: bool,
+) -> None:
+    receipt = translate_alpaca_order_result(
+        {
+            "order_id": "broker-order-1",
+            "client_order_id": "paper-order-probe-notional-1",
+            "symbol": "SPY",
+            "side": "buy",
+            "notional": "5.00",
+            "status": raw_status,
+        }
+    )
+
+    assert receipt.raw_status == raw_status
+    assert receipt.status == normalized_status
+    assert receipt.accepted is accepted
+    assert receipt.filled is filled
+
+
+def test_order_rejection_preserves_raw_reason_for_diagnostics() -> None:
+    receipt = translate_alpaca_order_result(
+        {
+            "order_id": "broker-order-1",
+            "client_order_id": "paper-order-probe-notional-1",
+            "symbol": "SPY",
+            "side": "buy",
+            "notional": "5.00",
+            "status": "rejected",
+            "reject_reason": "insufficient buying power",
+        }
+    )
+
+    assert receipt.accepted is False
+    assert receipt.filled is False
+    assert receipt.status == "rejected"
+    assert receipt.raw_status == "rejected"
+    assert receipt.raw_reason == "insufficient buying power"
 
 
 def test_notional_is_preserved_and_empty_qty_stays_optional() -> None:

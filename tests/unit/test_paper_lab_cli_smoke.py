@@ -466,7 +466,97 @@ def test_order_probe_fake_successful_notional_submit_is_redacted_and_determinist
     assert first_payload["submitted"] is True
     assert first_payload["accepted"] is True
     assert first_payload["filled"] is False
-    assert first_payload["broker_result"] == {"accepted": True, "reason": ""}
+    assert first_payload["broker_result"] == _expected_broker_result("accepted")
+    assert first_payload["broker_normalized_status"] == "accepted"
+    assert first_payload["broker_raw_status"] == "accepted"
+    assert first_payload["broker_raw_reason"] == ""
+    assert first_payload["market_session_note"] == cli_module._PAPER_MARKET_SESSION_NOTE
+
+
+@pytest.mark.parametrize(
+    ("raw_status", "normalized_status"),
+    (
+        ("orderstatus.accepted", "accepted"),
+        ("OrderStatus.ACCEPTED", "accepted"),
+        ("new", "new"),
+        ("pending_new", "pending_new"),
+    ),
+)
+def test_order_probe_normalizes_active_broker_status_as_accepted(
+    monkeypatch,
+    capsys,
+    raw_status: str,
+    normalized_status: str,
+) -> None:
+    _set_env(monkeypatch)
+    _install_fake_broker(monkeypatch, FakeNotionalAlpacaClient(raw_status))
+
+    exit_code, payload = _run_json(
+        (*_valid_notional_probe_args(notional="5"), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["error"] == ""
+    assert payload["submitted"] is True
+    assert payload["accepted"] is True
+    assert payload["filled"] is False
+    assert payload["broker_result"] == _expected_broker_result(
+        normalized_status,
+        raw_status=raw_status,
+    )
+
+
+def test_order_probe_filled_broker_status_reports_filled(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _install_fake_broker(monkeypatch, FakeNotionalAlpacaClient("filled"))
+
+    exit_code, payload = _run_json(
+        (*_valid_notional_probe_args(notional="5"), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["accepted"] is True
+    assert payload["filled"] is True
+    assert payload["broker_result"] == _expected_broker_result("filled")
+
+
+def test_order_probe_rejected_broker_status_reports_rejection(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _install_fake_broker(
+        monkeypatch,
+        FakeNotionalAlpacaClient(
+            "rejected",
+            reject_reason="insufficient buying power",
+        ),
+    )
+
+    exit_code, payload = _run_json(
+        (*_valid_notional_probe_args(notional="5"), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["error"] == "paper_order_probe_rejected"
+    assert payload["submitted"] is True
+    assert payload["accepted"] is False
+    assert payload["filled"] is False
+    assert payload["broker_result"] == _expected_broker_result(
+        "rejected",
+        accepted=False,
+        raw_reason="insufficient buying power",
+        reason="insufficient buying power",
+    )
 
 
 def test_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
@@ -514,7 +604,11 @@ def test_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
     assert receipt["broker_response_parsed"] is True
     assert receipt["accepted"] is True
     assert receipt["filled"] is False
-    assert receipt["broker_result"] == {"accepted": True, "reason": ""}
+    assert receipt["broker_result"] == _expected_broker_result("accepted")
+    assert receipt["broker_normalized_status"] == "accepted"
+    assert receipt["broker_raw_status"] == "accepted"
+    assert receipt["broker_raw_reason"] == ""
+    assert receipt["market_session_note"] == cli_module._PAPER_MARKET_SESSION_NOTE
     assert post_submit["account"] == {"cash": "100000", "currency": "USD"}
     assert post_submit["position_count"] == 1
     assert post_submit["positions"] == [
@@ -895,17 +989,30 @@ def _set_env(monkeypatch, *, profile: str = "paper") -> None:
 
 
 class FakeNotionalAlpacaClient(FakeAlpacaClient):
+    def __init__(
+        self,
+        status: str = "accepted",
+        *,
+        reject_reason: str = "",
+    ) -> None:
+        super().__init__()
+        self.status = status
+        self.reject_reason = reject_reason
+
     def submit_order(self, request):  # noqa: ANN001
         self.calls.append("submit_order")
         self.submitted_requests.append(request)
-        return {
+        response = {
             "order_id": "broker-order-1",
             "client_order_id": request.client_order_id,
             "symbol": request.symbol,
             "side": request.side,
             "notional": str(request.notional),
-            "status": "accepted",
+            "status": self.status,
         }
+        if self.reject_reason:
+            response["reject_reason"] = self.reject_reason
+        return response
 
 
 class FakeMalformedAlpacaClient(FakeAlpacaClient):
@@ -942,6 +1049,23 @@ def _install_fake_broker(
 
     monkeypatch.setattr(cli_module, "_build_paper_broker", build_broker)
     return fake_client
+
+
+def _expected_broker_result(
+    normalized_status: str,
+    *,
+    accepted: bool = True,
+    raw_reason: str = "",
+    raw_status: str | None = None,
+    reason: str = "",
+) -> dict[str, object]:
+    return {
+        "accepted": accepted,
+        "normalized_status": normalized_status,
+        "raw_reason": raw_reason,
+        "raw_status": raw_status if raw_status is not None else normalized_status,
+        "reason": reason,
+    }
 
 
 def _forbid_broker_build(monkeypatch) -> None:

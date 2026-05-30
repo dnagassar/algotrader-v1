@@ -18,6 +18,10 @@ _PAPER_ORDER_PROBE_QTY_DISABLED_REASON = (
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-notional-1"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX = "paper-order-probe"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH = 30
+_PAPER_MARKET_SESSION_NOTE = (
+    "Market DAY equity orders submitted after hours may be accepted or queued "
+    "by the broker and may not fill until the next regular session."
+)
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
     "halt_gate",
@@ -715,9 +719,13 @@ def _build_paper_order_probe_payload(
         "requested_submit": bool(args.submit),
         "sizing_mode": sizing_mode,
         "accepted": None,
+        "broker_normalized_status": "",
+        "broker_raw_reason": "",
+        "broker_raw_status": "",
         "broker_response_parsed": False,
         "broker_response_received": False,
         "filled": None,
+        "market_session_note": _PAPER_MARKET_SESSION_NOTE,
         "submitted": False,
         "submission_disabled_reason": (
             _PAPER_ORDER_PROBE_QTY_DISABLED_REASON if sizing_mode == "qty" else ""
@@ -829,15 +837,16 @@ def _submit_paper_order_probe(
         if observe_post_submit
         else {}
     )
+    broker_result = _paper_order_broker_result_payload(result)
     return {
         **payload,
         "accepted": result.accepted,
+        "broker_normalized_status": broker_result["normalized_status"],
+        "broker_raw_reason": broker_result["raw_reason"],
+        "broker_raw_status": broker_result["raw_status"],
         "broker_response_parsed": True,
         "broker_response_received": True,
-        "broker_result": {
-            "accepted": result.accepted,
-            "reason": result.reason,
-        },
+        "broker_result": broker_result,
         "error": "" if result.accepted else "paper_order_probe_rejected",
         "filled": result.filled,
         "ok": result.accepted,
@@ -845,6 +854,22 @@ def _submit_paper_order_probe(
         "submitted": True,
         "submit_attempted": True,
         **post_submit_observation,
+    }
+
+
+def _paper_order_broker_result_payload(result) -> dict[str, object]:  # noqa: ANN001
+    from .execution.alpaca_mapper import broker_order_result_receipt_metadata
+
+    metadata = broker_order_result_receipt_metadata(result)
+    normalized_status = metadata["normalized_status"]
+    raw_reason = metadata["raw_reason"]
+    raw_status = metadata["raw_status"]
+    return {
+        "accepted": result.accepted,
+        "normalized_status": normalized_status,
+        "raw_reason": raw_reason,
+        "raw_status": raw_status,
+        "reason": result.reason,
     }
 
 
@@ -1074,6 +1099,8 @@ def _render_paper_order_probe_payload(
         f"accepted: {_optional_bool_text(payload['accepted'])}",
         f"filled: {_optional_bool_text(payload['filled'])}",
     ]
+    if payload.get("market_session_note"):
+        lines.append(f"market_session_note: {payload['market_session_note']}")
     if payload.get("error"):
         lines.append(f"error: {payload['error']}")
     lines.extend(_gate_lines(payload["gates"]))
@@ -1097,6 +1124,9 @@ def _render_paper_order_probe_payload(
         broker_result = payload["broker_result"]
         lines.append(f"broker_accepted: {_bool_text(broker_result['accepted'])}")
         lines.append(f"broker_reason: {broker_result['reason']}")
+        lines.append(f"broker_normalized_status: {broker_result['normalized_status']}")
+        lines.append(f"broker_raw_status: {broker_result['raw_status']}")
+        lines.append(f"broker_raw_reason: {broker_result['raw_reason']}")
     if payload.get("message"):
         lines.append(f"message: {payload['message']}")
     if payload.get("submission_disabled_reason"):

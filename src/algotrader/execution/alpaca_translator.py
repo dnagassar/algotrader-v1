@@ -9,7 +9,7 @@ or construct internal domain models.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Optional
@@ -47,8 +47,11 @@ class TranslatedAlpacaOrderResult:
     quantity: Optional[Decimal]
     status: str
     accepted: bool
+    raw_status: str = field(default="", compare=False)
+    filled: bool = field(default=False, compare=False)
     notional: Optional[Decimal] = None
     message: Optional[str] = None
+    raw_reason: Optional[str] = field(default=None, compare=False)
     submitted_at: Optional[datetime] = None
 
 
@@ -88,7 +91,9 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
 
     data = _response_data(response)
     quantity, notional = _order_receipt_sizing(data)
-    status = _required_text(data, "status").lower()
+    raw_status = _required_text(data, "status")
+    status = _normalize_alpaca_order_status(_required_value(data, "status"))
+    filled = status == "filled"
     accepted = status in {
         "accepted",
         "new",
@@ -97,6 +102,12 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
         "filled",
         "partially_filled",
     }
+    raw_reason = _optional_text(
+        data,
+        "message",
+        aliases=("reason", "error", "reject_reason"),
+        default=None,
+    )
 
     return TranslatedAlpacaOrderResult(
         order_id=_optional_text(data, "order_id", aliases=("id",), default="") or "",
@@ -105,14 +116,12 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
         side=_required_text(data, "side").lower(),
         quantity=quantity,
         status=status,
+        raw_status=raw_status,
         accepted=accepted,
+        filled=filled,
         notional=notional,
-        message=_optional_text(
-            data,
-            "message",
-            aliases=("reason", "error", "reject_reason"),
-            default=None,
-        ),
+        message=raw_reason,
+        raw_reason=raw_reason,
         submitted_at=_optional_value(
             data, "submitted_at", aliases=("created_at",), default=None
         ),
@@ -172,6 +181,26 @@ def _order_receipt_sizing(
         )
 
     return quantity, notional
+
+
+def _normalize_alpaca_order_status(value: Any) -> str:
+    candidates = []
+    enum_value = getattr(value, "value", None)
+    if enum_value is not None:
+        candidates.append(enum_value)
+    candidates.append(value)
+
+    for candidate in candidates:
+        text = str(candidate).strip()
+        if not text:
+            continue
+
+        normalized = text.lower()
+        if "." in normalized:
+            normalized = normalized.rsplit(".", 1)[-1]
+        return normalized.replace("-", "_").replace(" ", "_")
+
+    return ""
 
 
 def _required_decimal(

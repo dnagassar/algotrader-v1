@@ -95,8 +95,19 @@ def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> Non
         "accepted": True,
         "broker_response_parsed": True,
         "broker_response_received": True,
-        "broker_result": {"accepted": True, "reason": ""},
+        "broker_result": {
+            "accepted": True,
+            "normalized_status": "accepted",
+            "raw_reason": "broker accepted",
+            "raw_status": "orderstatus.accepted",
+            "reason": "",
+        },
         "filled": False,
+        "market_session_note": (
+            "Market DAY equity orders submitted after hours may be accepted "
+            "or queued by the broker and may not fill until the next regular "
+            "session."
+        ),
         "post_submit_account": {"cash": "99995", "currency": "USD"},
         "post_submit_position_count": 1,
         "post_submit_positions": [
@@ -134,6 +145,10 @@ def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> Non
     assert receipt["submitted"] is True
     assert receipt["accepted"] is True
     assert receipt["filled"] is False
+    assert receipt["broker_normalized_status"] == "accepted"
+    assert receipt["broker_raw_status"] == "orderstatus.accepted"
+    assert receipt["broker_raw_reason"] == "broker accepted"
+    assert receipt["market_session_note"].startswith("Market DAY equity orders")
     assert post_submit["account"] == {"cash": "99995", "currency": "USD"}
     assert post_submit["position_count"] == 1
 

@@ -276,12 +276,25 @@ def make_order_probe_submit_events(
 def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     request = payload.get("proposed_order_request")
     request_payload = request if isinstance(request, Mapping) else {}
+    broker_result = payload.get("broker_result")
+    broker_result_payload = broker_result if isinstance(broker_result, Mapping) else {}
     fields = {
         **_state_fields(payload),
         "client_order_id": _text(request_payload.get("client_order_id")),
+        "broker_normalized_status": _optional_text(
+            payload.get("broker_normalized_status")
+            or broker_result_payload.get("normalized_status")
+        ),
+        "broker_raw_reason": _optional_text(
+            payload.get("broker_raw_reason") or broker_result_payload.get("raw_reason")
+        ),
+        "broker_raw_status": _optional_text(
+            payload.get("broker_raw_status") or broker_result_payload.get("raw_status")
+        ),
         "error": _optional_text(payload.get("error")),
         "error_type": _optional_text(payload.get("error_type")),
         "gate_summary": _gate_summary(payload.get("gates")),
+        "market_session_note": _optional_text(payload.get("market_session_note")),
         "max_notional": _text(payload.get("max_notional")),
         "message": _optional_text(payload.get("message")),
         "notional": _text(
@@ -296,8 +309,8 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "sizing_mode": _text(payload.get("sizing_mode")),
         "symbol": _text(request_payload.get("symbol") or payload.get("symbol")),
     }
-    if payload.get("broker_result") is not None:
-        fields["broker_result"] = payload.get("broker_result")
+    if broker_result is not None:
+        fields["broker_result"] = broker_result
     return fields
 
 
