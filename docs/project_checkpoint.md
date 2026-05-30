@@ -13607,6 +13607,19 @@ Safe next tasks include:
   milestone uses fake-only deterministic coverage and does not run a real
   broker submit; normal pytest remains offline, credential-free,
   deterministic, and safe.
+- Phase 313 / Milestone 313 - Crypto Paper Submit Adapter Diagnostic records
+  M312 as a failed-safe BTCUSD tiny probe: read-only snapshots observed
+  `2000 USD` cash, zero positions, zero recent orders, no broker receipt, and
+  an `observation_unavailable` revalidation state after two failed submit
+  sequences. The M312 run log is contaminated and must not be reused for
+  another submit. The fake-backed hotfix preserves the SPY equity path and
+  disabled options submit, keeps crypto as a broker-path harness rather than
+  proof of equity behavior, improves sanitized adapter/SDK diagnostics for
+  request construction versus pre-response submit failures, fixes crypto
+  notional quantity gate wording, and adds no network, credentials, live URL,
+  scheduler, autonomous trading, research-layer direct submission, or broker
+  retry behavior. No confirmed broker-side crypto order exists from M312; the
+  next broker action should wait for a fresh run id/log after the hotfix.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

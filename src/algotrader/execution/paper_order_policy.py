@@ -68,7 +68,9 @@ class PaperOrderPolicy:
 
         return "exactly_one_of_qty_or_notional_required"
 
-    def quantity_detail(self) -> str:
+    def quantity_detail(self, sizing_mode: str = "qty") -> str:
+        if self.asset_class == ASSET_CLASS_CRYPTO and sizing_mode == "notional":
+            return "not_applicable_for_notional"
         if self.required_qty is not None:
             return f"qty={self.required_qty}_contract_only"
 

@@ -62,6 +62,8 @@ def test_policy_exposes_deterministic_failure_details() -> None:
     assert PAPER_ORDER_PROBE_QTY_DISABLED_REASON.endswith(
         "quote_based_cap_is_supported"
     )
+    assert equity.quantity_detail("notional") == "positive_whole_share_quantity"
+    assert crypto.quantity_detail("notional") == "not_applicable_for_notional"
     assert crypto.sizing_failure_detail() == "crypto_notional_required"
     assert option.sizing_failure_detail() == "option_qty_1_contract_required"
     assert option.quantity_failure_detail("") == "qty_must_equal_1_contract"

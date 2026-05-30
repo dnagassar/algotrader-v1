@@ -23,6 +23,22 @@ from algotrader.execution.alpaca_client import (
 SdkClientFactory = Callable[[AlpacaPaperConfig], Any]
 
 
+class AlpacaSdkClientError(RuntimeError):
+    """Raised with sanitized SDK submit-boundary diagnostics."""
+
+    def __init__(self, stage: str, request: AlpacaOrderRequest, cause: Exception):
+        self.error_stage = stage
+        self.cause_type = cause.__class__.__name__
+        sizing_mode = "notional" if request.notional is not None else "qty"
+        super().__init__(
+            "Alpaca SDK "
+            f"{stage}: asset_class={request.asset_class} symbol={request.symbol} "
+            f"side={request.side} order_type={request.order_type} "
+            f"time_in_force={request.time_in_force} sizing_mode={sizing_mode} "
+            f"cause_type={self.cause_type}."
+        )
+
+
 class AlpacaSdkClient(AlpacaClient):
     """Thin SDK boundary over alpaca-py's trading client.
 
@@ -75,15 +91,30 @@ class AlpacaSdkClient(AlpacaClient):
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:
-        sdk_request = (
-            _to_sdk_order_request(request)
-            if self._uses_alpaca_sdk_request_shape
-            else request
-        )
-        return cast(
-            AlpacaOrderSubmissionResponse,
-            self._sdk_client.submit_order(sdk_request),
-        )
+        try:
+            sdk_request = (
+                _to_sdk_order_request(request)
+                if self._uses_alpaca_sdk_request_shape
+                else request
+            )
+        except Exception as exc:
+            raise AlpacaSdkClientError(
+                "request_construction_failed",
+                request,
+                exc,
+            ) from exc
+
+        try:
+            return cast(
+                AlpacaOrderSubmissionResponse,
+                self._sdk_client.submit_order(sdk_request),
+            )
+        except Exception as exc:
+            raise AlpacaSdkClientError(
+                "submit_call_failed_before_response",
+                request,
+                exc,
+            ) from exc
 
 
 def _create_trading_client(config: AlpacaPaperConfig) -> Any:
@@ -98,7 +129,7 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
 
 
 def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
-    from alpaca.trading.enums import OrderSide, TimeInForce
+    from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
     from alpaca.trading.requests import MarketOrderRequest
 
     time_in_force_by_value = {
@@ -111,6 +142,7 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
         "side": OrderSide.BUY,
         "symbol": request.symbol,
         "time_in_force": time_in_force_by_value[request.time_in_force],
+        "type": OrderType.MARKET,
     }
     if request.notional is not None:
         kwargs["notional"] = request.notional
@@ -120,4 +152,4 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
     return MarketOrderRequest(**kwargs)
 
 
-__all__ = ["AlpacaSdkClient"]
+__all__ = ["AlpacaSdkClient", "AlpacaSdkClientError"]

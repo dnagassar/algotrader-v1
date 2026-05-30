@@ -918,7 +918,7 @@ def _build_paper_order_probe_payload(
         quantity_passes = quantity == policy.required_qty
     quantity_gate = _gate(
         quantity_passes,
-        policy.quantity_detail(),
+        policy.quantity_detail(sizing_mode),
         policy.quantity_failure_detail(quantity_error),
     )
     notional_value_gate = _gate(
@@ -1218,6 +1218,7 @@ def _paper_order_request(
 
 def _paper_order_request_payload(request) -> dict[str, str]:
     return {
+        "asset_class": request.asset_class,
         "client_order_id": request.client_order_id,
         "limit_price": "",
         "notional": (

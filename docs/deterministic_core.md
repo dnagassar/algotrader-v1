@@ -8048,6 +8048,19 @@ behavior. This milestone runs fake-only deterministic tests and does not run a
 real broker submit; normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Phase 313 / Milestone 313 - Crypto Paper Submit Adapter Diagnostic records the
+M312 BTCUSD tiny probe as failed safe: read-only snapshots observed `2000 USD`
+cash, zero positions, zero recent orders, no broker receipt, and an
+`observation_unavailable` revalidation state after two failed submit sequences.
+The M312 run log is contaminated for future probes and must not be reused for
+another submit. The hotfix keeps crypto as a broker-path harness only, preserves
+the SPY equity path and disabled options submit, improves fake-backed sanitized
+adapter/SDK submit-boundary diagnostics, and fixes crypto notional quantity
+gate wording without adding network, credential, scheduler, autonomous trading,
+research-layer submission, or broker retry behavior. No confirmed broker-side
+crypto order exists from M312; no retry should occur until this hotfix is
+complete and a fresh run id/log is used.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

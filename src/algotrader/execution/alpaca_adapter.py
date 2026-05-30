@@ -191,8 +191,26 @@ class AlpacaClientAdapter:
             return method(*args)
         except Exception as exc:
             raise AlpacaAdapterError(
-                f"Injected Alpaca-like client call failed: {method_name}()."
+                _sanitized_client_call_failure(method_name, exc)
             ) from exc
+
+
+def _sanitized_client_call_failure(method_name: str, exc: Exception) -> str:
+    if exc.__class__.__name__ == "AlpacaSdkClientError" and getattr(
+        exc,
+        "error_stage",
+        "",
+    ):
+        return (
+            "Injected Alpaca-like client call failed before response: "
+            f"{method_name}(); cause_type={exc.__class__.__name__}; "
+            f"detail={exc}"
+        )
+
+    return (
+        "Injected Alpaca-like client call failed before response: "
+        f"{method_name}(); cause_type={exc.__class__.__name__}."
+    )
 
 
 __all__ = [

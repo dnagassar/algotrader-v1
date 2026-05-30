@@ -212,6 +212,7 @@ def test_order_probe_defaults_to_preview_and_does_not_submit(
     assert payload["preview_only"] is True
     assert payload["submitted"] is False
     assert payload["proposed_order_request"] == {
+        "asset_class": "equity",
         "client_order_id": "paper-order-probe-notional-1",
         "limit_price": "",
         "notional": "",
@@ -241,6 +242,7 @@ def test_order_probe_notional_preview_does_not_submit(
     assert payload["requested_notional"] == "5"
     assert payload["max_notional"] == "10"
     assert payload["proposed_order_request"] == {
+        "asset_class": "equity",
         "client_order_id": "paper-order-probe-notional-1",
         "limit_price": "",
         "notional": "5",
@@ -714,9 +716,9 @@ def test_order_probe_adapter_failure_before_response_does_not_report_submitted(
     assert payload["submitted"] is None
     assert payload["accepted"] is None
     assert payload["filled"] is None
-    assert (
-        payload["redacted_exception_message"]
-        == "Injected Alpaca-like client call failed: submit_order()."
+    assert payload["redacted_exception_message"] == (
+        "Injected Alpaca-like client call failed before response: "
+        "submit_order(); cause_type=RuntimeError."
     )
 
 
@@ -815,6 +817,10 @@ def test_order_probe_adapter_failure_writes_failure_log_without_receipt(
     assert failure["submitted"] is None
     assert failure["accepted"] is None
     assert failure["filled"] is None
+    assert failure["redacted_exception_message"] == (
+        "Injected Alpaca-like client call failed before response: "
+        "submit_order(); cause_type=RuntimeError."
+    )
     assert SENSITIVE_API_KEY not in rendered_log
     assert SENSITIVE_SECRET_KEY not in rendered_log
 
@@ -867,8 +873,14 @@ def test_crypto_order_probe_preview_uses_crypto_policy_without_submit(
     assert payload["order_type"] == "market"
     assert payload["time_in_force"] == "gtc"
     assert payload["market_session_note"].startswith("Crypto paper observations")
+    assert payload["gates"]["quantity_gate"] == {
+        "detail": "not_applicable_for_notional",
+        "passed": True,
+    }
+    assert request["asset_class"] == "crypto"
     assert request["symbol"] == "BTCUSD"
     assert request["side"] == "buy"
+    assert request["qty"] == ""
     assert request["notional"] == "5"
     assert request["order_type"] == "market"
     assert request["time_in_force"] == "gtc"
@@ -907,6 +919,7 @@ def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_re
     assert fake_client.submitted_requests[0].symbol == "BTCUSD"
     assert fake_client.submitted_requests[0].qty is None
     assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert fake_client.submitted_requests[0].order_type == "market"
     assert fake_client.submitted_requests[0].time_in_force == "gtc"
     assert payload["asset_class"] == "crypto"
     assert payload["submitted"] is True
@@ -980,7 +993,10 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
     assert fake_client.calls == ["submit_order"]
     assert fake_client.submitted_requests[0].asset_class == "crypto"
     assert fake_client.submitted_requests[0].symbol == "BTCUSD"
+    assert fake_client.submitted_requests[0].qty is None
     assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert fake_client.submitted_requests[0].order_type == "market"
+    assert fake_client.submitted_requests[0].time_in_force == "gtc"
     assert payload["asset_class"] == "crypto"
     assert payload["ok"] is False
     assert payload["broker_error"] is True
@@ -992,6 +1008,10 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
     assert payload["submitted"] is None
     assert payload["accepted"] is None
     assert payload["filled"] is None
+    assert payload["redacted_exception_message"] == (
+        "Injected Alpaca-like client call failed before response: "
+        "submit_order(); cause_type=RuntimeError."
+    )
     assert [record["event_type"] for record in records] == [
         "paper_order_previewed",
         "paper_order_submit_requested",
@@ -1006,6 +1026,10 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
     assert failure["submitted"] is None
     assert failure["accepted"] is None
     assert failure["filled"] is None
+    assert failure["redacted_exception_message"] == (
+        "Injected Alpaca-like client call failed before response: "
+        "submit_order(); cause_type=RuntimeError."
+    )
     assert "paper_order_receipt_observed" not in {
         record["event_type"] for record in records
     }

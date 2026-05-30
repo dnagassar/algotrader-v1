@@ -8,15 +8,25 @@ import pytest
 
 from algotrader.config import AlpacaPaperConfig, ConfigValidationError
 from algotrader.core.types import OrderSide, OrderType, ProposedOrder, Quote
-from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
+from algotrader.execution.alpaca_adapter import (
+    AlpacaAdapterError,
+    AlpacaClientAdapter,
+)
 from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
     AlpacaOrderRequest,
     AlpacaOrderSubmissionResponse,
     AlpacaPositionResponse,
 )
-from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
-from algotrader.execution.alpaca_sdk_client import _create_trading_client
+import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
+from algotrader.execution.alpaca_sdk_client import (
+    AlpacaSdkClient,
+    AlpacaSdkClientError,
+)
+from algotrader.execution.alpaca_sdk_client import (
+    _create_trading_client,
+    _to_sdk_order_request,
+)
 from algotrader.risk.state import RiskVerdict
 
 
@@ -65,6 +75,13 @@ class FakeSdkTradingClient:
             status="accepted",
             submitted_at=NOW,
         )
+
+
+class FailingSdkTradingClient(FakeSdkTradingClient):
+    def submit_order(self, request: AlpacaOrderRequest):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_orders.append(request)
+        raise RuntimeError(f"{SENSITIVE_API_KEY} submit failed locally")
 
 
 def valid_config(
@@ -163,6 +180,124 @@ def test_alpaca_sdk_client_remains_compatible_with_existing_adapter() -> None:
     assert positions[0].symbol == "MSFT"
     assert result.accepted is True
     assert fake_sdk_client.submitted_orders[0].client_order_id == "adapter-order-1"
+
+
+def test_crypto_notional_request_uses_sdk_market_shape_without_qty() -> None:
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-shape",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    sdk_request = _to_sdk_order_request(request)
+
+    assert sdk_request.__class__.__name__ == "MarketOrderRequest"
+    assert sdk_request.symbol == "BTCUSD"
+    assert sdk_request.client_order_id == "paper-order-probe-crypto-shape"
+    assert sdk_request.qty is None
+    assert Decimal(str(sdk_request.notional)) == Decimal("1.0")
+    assert sdk_request.side.value == "buy"
+    assert sdk_request.type.value == "market"
+    assert sdk_request.time_in_force.value == "gtc"
+
+
+def test_alpaca_sdk_client_reports_sanitized_submit_stage() -> None:
+    fake_sdk_client = FailingSdkTradingClient()
+    client = AlpacaSdkClient(
+        valid_config(api_key=SENSITIVE_API_KEY),
+        sdk_client_factory=lambda _: fake_sdk_client,
+    )
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-submit-failure",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    with pytest.raises(AlpacaSdkClientError) as exc_info:
+        client.submit_order(request)
+
+    message = str(exc_info.value)
+    assert exc_info.value.error_stage == "submit_call_failed_before_response"
+    assert "asset_class=crypto" in message
+    assert "symbol=BTCUSD" in message
+    assert "time_in_force=gtc" in message
+    assert "sizing_mode=notional" in message
+    assert "cause_type=RuntimeError" in message
+    assert SENSITIVE_API_KEY not in message
+
+
+def test_alpaca_sdk_client_reports_sanitized_request_construction_stage(
+    monkeypatch,
+) -> None:
+    fake_sdk_client = FakeSdkTradingClient()
+    client = AlpacaSdkClient(
+        valid_config(api_key=SENSITIVE_API_KEY),
+        sdk_client_factory=lambda _: fake_sdk_client,
+    )
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-build-failure",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    def fail_request_build(request: AlpacaOrderRequest):  # noqa: ANN001
+        raise ValueError(f"{SENSITIVE_API_KEY} build failed locally")
+
+    monkeypatch.setattr(
+        alpaca_sdk_client_module,
+        "_to_sdk_order_request",
+        fail_request_build,
+    )
+
+    with pytest.raises(AlpacaSdkClientError) as exc_info:
+        client.submit_order(request)
+
+    message = str(exc_info.value)
+    assert exc_info.value.error_stage == "request_construction_failed"
+    assert "asset_class=crypto" in message
+    assert "symbol=BTCUSD" in message
+    assert "cause_type=ValueError" in message
+    assert SENSITIVE_API_KEY not in message
+    assert fake_sdk_client.calls == []
+
+
+def test_adapter_surfaces_sanitized_sdk_submit_stage_without_response() -> None:
+    client = AlpacaSdkClient(
+        valid_config(api_key=SENSITIVE_API_KEY),
+        sdk_client_factory=lambda _: FailingSdkTradingClient(),
+    )
+    adapter = AlpacaClientAdapter(client)
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-adapter-failure",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    with pytest.raises(AlpacaAdapterError) as exc_info:
+        adapter.submit_order_request(
+            request,
+            risk_verdict=RiskVerdict.allow(order_notional=request.notional),
+        )
+
+    message = str(exc_info.value)
+    assert "failed before response: submit_order()" in message
+    assert "cause_type=AlpacaSdkClientError" in message
+    assert "submit_call_failed_before_response" in message
+    assert "asset_class=crypto" in message
+    assert "symbol=BTCUSD" in message
+    assert SENSITIVE_API_KEY not in message
 
 
 def test_alpaca_sdk_client_construction_makes_no_network_calls(monkeypatch) -> None:
