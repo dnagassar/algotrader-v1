@@ -26,6 +26,7 @@ PAPER_CRYPTO_SESSION_NOTE = (
     "Crypto paper observations are a shared broker-path harness only and do "
     "not prove equity behavior."
 )
+PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL = Decimal("10.00")
 OPTIONS_SUBMIT_DISABLED_REASON = (
     "options_submit_disabled_until_options_risk_contract_exists"
 )
@@ -40,6 +41,7 @@ class PaperOrderPolicy:
     submit_enabled: bool
     submit_disabled_reason: str
     max_notional_cap: Decimal | None = None
+    min_notional: Decimal | None = None
     required_qty: Decimal | None = None
     market_session_note: str = ""
 
@@ -90,6 +92,18 @@ class PaperOrderPolicy:
 
         return f"max_notional_cap={self.max_notional_cap}"
 
+    def notional_minimum_detail(self) -> str:
+        if self.min_notional is None:
+            return "min_notional_not_applicable"
+
+        return f"min_notional={self.min_notional}"
+
+    def notional_minimum_failure_detail(self) -> str:
+        if self.asset_class == ASSET_CLASS_CRYPTO:
+            return "notional_below_crypto_min_notional"
+
+        return "notional_below_min_notional"
+
 
 _POLICIES = {
     ASSET_CLASS_EQUITY: PaperOrderPolicy(
@@ -106,7 +120,8 @@ _POLICIES = {
         asset_class=ASSET_CLASS_CRYPTO,
         symbol_allowlist=("BTCUSD",),
         allowed_sizing_modes=("notional",),
-        max_notional_cap=Decimal("5.00"),
+        max_notional_cap=Decimal("10.00"),
+        min_notional=PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL,
         time_in_force="gtc",
         submit_enabled=True,
         submit_disabled_reason="",
@@ -142,6 +157,7 @@ __all__ = [
     "ASSET_CLASS_EQUITY",
     "ASSET_CLASS_OPTION",
     "OPTIONS_SUBMIT_DISABLED_REASON",
+    "PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL",
     "PAPER_CRYPTO_SESSION_NOTE",
     "PAPER_MARKET_SESSION_NOTE",
     "PAPER_ORDER_PROBE_QTY_DISABLED_REASON",

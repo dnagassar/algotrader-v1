@@ -898,8 +898,9 @@ def test_crypto_order_probe_preview_uses_crypto_policy_without_submit(
     assert payload["submission_disabled_reason"] == ""
     assert payload["symbol"] == "BTCUSD"
     assert payload["side"] == "buy"
-    assert payload["notional"] == "5"
-    assert payload["max_notional"] == "5"
+    assert payload["notional"] == "10.00"
+    assert payload["min_notional"] == "10.00"
+    assert payload["max_notional"] == "10.00"
     assert payload["order_type"] == "market"
     assert payload["time_in_force"] == "gtc"
     assert payload["market_session_note"].startswith("Crypto paper observations")
@@ -911,10 +912,74 @@ def test_crypto_order_probe_preview_uses_crypto_policy_without_submit(
     assert request["symbol"] == "BTCUSD"
     assert request["side"] == "buy"
     assert request["qty"] == ""
-    assert request["notional"] == "5"
+    assert request["notional"] == "10.00"
     assert request["order_type"] == "market"
     assert request["time_in_force"] == "gtc"
     assert request["time_in_force"] != "day"
+
+
+def test_crypto_order_probe_blocks_btcusd_below_min_notional_before_submit(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    run_log = tmp_path / "runs" / "paper_lab" / "crypto_min_notional.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(
+                notional="1.00",
+                max_notional="5.00",
+            ),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "crypto-min-notional-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 2
+    assert payload["asset_class"] == "crypto"
+    assert payload["ok"] is False
+    assert payload["error"] == "notional_min_gate_failed"
+    assert payload["notional"] == "1.00"
+    assert payload["min_notional"] == "10.00"
+    assert payload["max_notional"] == "5.00"
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["broker_response_received"] is False
+    assert payload["broker_response_parsed"] is False
+    assert payload["submitted"] is False
+    assert payload["accepted"] is None
+    assert payload["filled"] is None
+    assert "broker_result" not in payload
+    assert payload["gates"]["notional_min_gate"] == {
+        "detail": "notional_below_crypto_min_notional",
+        "passed": False,
+    }
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+    ]
+    assert {record["submit_attempted"] for record in records} == {False}
+    assert {record["broker_response_received"] for record in records} == {False}
+    assert {record["min_notional"] for record in records} == {"10.00"}
+    assert records[-1]["gate_summary"]["notional_min_gate"] == {
+        "detail": "notional_below_crypto_min_notional",
+        "passed": False,
+    }
+    assert "paper_order_submit_attempted" not in {
+        record["event_type"] for record in records
+    }
+    assert "paper_order_receipt_observed" not in {
+        record["event_type"] for record in records
+    }
 
 
 def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_records(
@@ -928,7 +993,7 @@ def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_re
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="2"),
+            *_valid_crypto_notional_probe_args(),
             "--submit",
             "--i-mean-it",
             "--run-log",
@@ -948,7 +1013,7 @@ def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_re
     assert fake_client.submitted_requests[0].asset_class == "crypto"
     assert fake_client.submitted_requests[0].symbol == "BTCUSD"
     assert fake_client.submitted_requests[0].qty is None
-    assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert fake_client.submitted_requests[0].notional == Decimal("10.00")
     assert fake_client.submitted_requests[0].order_type == "market"
     assert fake_client.submitted_requests[0].time_in_force == "gtc"
     assert payload["asset_class"] == "crypto"
@@ -978,8 +1043,9 @@ def test_crypto_order_probe_fake_successful_submit_writes_attempt_and_receipt_re
     assert {record["asset_class"] for record in records} == {"crypto"}
     receipt = records[3]
     assert receipt["symbol"] == "BTCUSD"
-    assert receipt["notional"] == "2"
-    assert receipt["max_notional"] == "5"
+    assert receipt["notional"] == "10.00"
+    assert receipt["min_notional"] == "10.00"
+    assert receipt["max_notional"] == "10.00"
     assert receipt["order_type"] == "market"
     assert receipt["time_in_force"] == "gtc"
     assert receipt["submit_attempted"] is True
@@ -1004,7 +1070,7 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="2"),
+            *_valid_crypto_notional_probe_args(),
             "--submit",
             "--i-mean-it",
             "--run-log",
@@ -1024,7 +1090,7 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
     assert fake_client.submitted_requests[0].asset_class == "crypto"
     assert fake_client.submitted_requests[0].symbol == "BTCUSD"
     assert fake_client.submitted_requests[0].qty is None
-    assert fake_client.submitted_requests[0].notional == Decimal("2")
+    assert fake_client.submitted_requests[0].notional == Decimal("10.00")
     assert fake_client.submitted_requests[0].order_type == "market"
     assert fake_client.submitted_requests[0].time_in_force == "gtc"
     assert payload["asset_class"] == "crypto"
@@ -1078,7 +1144,7 @@ def test_crypto_order_probe_api_error_reports_sanitized_submit_diagnostics(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="2"),
+            *_valid_crypto_notional_probe_args(),
             "--submit",
             "--i-mean-it",
             "--run-log",
@@ -1160,7 +1226,7 @@ def test_crypto_order_probe_rejects_live_profile_before_submit(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="2"),
+            *_valid_crypto_notional_probe_args(),
             "--submit",
             "--i-mean-it",
         ),
@@ -1186,7 +1252,7 @@ def test_crypto_order_probe_rejects_live_base_url_before_submit(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="2"),
+            *_valid_crypto_notional_probe_args(),
             "--submit",
             "--i-mean-it",
         ),
@@ -1245,7 +1311,7 @@ def test_crypto_order_probe_rejects_max_notional_above_crypto_cap(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(max_notional="5.01"),
+            *_valid_crypto_notional_probe_args(max_notional="10.01"),
             "--submit",
             "--i-mean-it",
         ),
@@ -1273,7 +1339,7 @@ def test_crypto_order_probe_rejects_notional_above_max_notional(
 
     exit_code, payload = _run_json(
         (
-            *_valid_crypto_notional_probe_args(notional="5.01", max_notional="5"),
+            *_valid_crypto_notional_probe_args(notional="10.01", max_notional="10"),
             "--submit",
             "--i-mean-it",
         ),
@@ -1635,8 +1701,8 @@ def _valid_crypto_notional_probe_args(
     *,
     symbol: str = "BTCUSD",
     side: str = "buy",
-    notional: str = "5",
-    max_notional: str = "5",
+    notional: str = "10.00",
+    max_notional: str = "10.00",
 ) -> tuple[str, ...]:
     return (
         "paper-order-probe",

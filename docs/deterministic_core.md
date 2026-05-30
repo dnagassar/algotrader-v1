@@ -8078,6 +8078,22 @@ does not place another BTCUSD order, use a live profile or live URL, add
 network access to normal pytest, weaken paper gates, add retries, or introduce
 autonomous submit behavior.
 
+Phase 317 / Milestone 317 - Crypto Minimum Notional Policy Gate turns the M316
+BTCUSD paper observation into a deterministic local policy. The M316 fresh log
+shows one guarded `BTCUSD` crypto paper submit attempt with `notional=1.00` and
+`max_notional=5.00`; all prior local gates passed, then Alpaca returned
+`APIError` status `403`, code `40310000`, and the sanitized message `cost basis
+must be >= minimal amount of order 10` before any broker receipt. The crypto
+paper policy now requires `min_notional=10.00` for `BTCUSD`, reports
+`notional_below_crypto_min_notional` when a smaller notional is requested, logs
+the gate result and required minimum in JSON/JSONL output, and raises the crypto
+paper cap to `max_notional <= 10.00` so a future user-approved paper-only
+`BTCUSD` probe has exactly one safe notional path: `notional=10.00` with
+`max_notional=10.00`. The milestone preserves paper profile, paper URL, buy-only,
+market/GTC, notional-only, `BTCUSD` allowlist, disabled options submit, SPY
+equity behavior, no retries, no scheduler, and offline credential-free normal
+pytest behavior. No real order is submitted by this local-policy milestone.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

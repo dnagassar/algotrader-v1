@@ -304,6 +304,57 @@ def test_disabled_option_submit_request_records_asset_class_and_reason() -> None
     } == {OPTIONS_SUBMIT_DISABLED_REASON}
 
 
+def test_local_crypto_min_notional_block_records_gate_without_attempt() -> None:
+    payload = {
+        **_order_payload(
+            submit_requested=True,
+            submit_attempted=False,
+            broker_response_received=False,
+            broker_response_parsed=False,
+            submitted=False,
+        ),
+        "asset_class": "crypto",
+        "error": "notional_min_gate_failed",
+        "gates": {
+            "profile_gate": {"detail": "paper_profile_ready", "passed": True},
+            "notional_min_gate": {
+                "detail": "notional_below_crypto_min_notional",
+                "passed": False,
+            },
+        },
+        "max_notional": "5.00",
+        "min_notional": "10.00",
+        "proposed_order_request": {
+            "client_order_id": "paper-order-probe-crypto-min-run",
+            "notional": "1.00",
+            "order_type": "market",
+            "qty": "",
+            "side": "buy",
+            "symbol": "BTCUSD",
+            "time_in_force": "gtc",
+        },
+        "requested_notional": "1.00",
+    }
+
+    records = make_order_probe_initial_events(
+        run_id="crypto-min-run",
+        payload=payload,
+    )
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_ORDER_PREVIEWED,
+        PAPER_ORDER_SUBMIT_REQUESTED,
+    ]
+    assert {record["asset_class"] for record in records} == {"crypto"}
+    assert {record["submit_attempted"] for record in records} == {False}
+    assert {record["broker_response_received"] for record in records} == {False}
+    assert {record["min_notional"] for record in records} == {"10.00"}
+    assert records[-1]["gate_summary"]["notional_min_gate"] == {
+        "detail": "notional_below_crypto_min_notional",
+        "passed": False,
+    }
+
+
 def test_order_probe_parse_failure_event_captures_attempted_submit() -> None:
     payload = {
         **_order_payload(

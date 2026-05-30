@@ -13631,6 +13631,20 @@ Safe next tasks include:
   It preserves false broker-response flags and unknown submitted/accepted/filled
   state, adds only fake-backed deterministic tests, and performs no real
   BTCUSD, equity, crypto, or options submit.
+- Phase 317 / Milestone 317 - Crypto Minimum Notional Policy Gate converts the
+  M316 `BTCUSD` paper observation into deterministic local policy. The fresh
+  M316 log shows one `BTCUSD` crypto submit attempt with `notional=1.00` and
+  `max_notional=5.00`; all local gates passed, then Alpaca returned sanitized
+  `APIError` status `403`, code `40310000`, and `cost basis must be >= minimal
+  amount of order 10` before any broker receipt. The crypto paper lane now
+  requires `min_notional=10.00`, reports
+  `notional_below_crypto_min_notional` locally before submit, includes the
+  required minimum in JSON/JSONL output, and supports the future user-approved
+  safe path `notional=10.00` with `max_notional=10.00`. Paper profile, paper
+  URL, buy-only, market/GTC, notional-only, `BTCUSD` allowlist, disabled
+  options submit, SPY equity behavior, no retries, no scheduler, and
+  offline/credential-free normal pytest behavior are preserved; M317 submits no
+  real orders.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

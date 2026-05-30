@@ -376,6 +376,7 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "gate_summary": _gate_summary(payload.get("gates")),
         "market_session_note": _optional_text(payload.get("market_session_note")),
         "max_notional": _text(payload.get("max_notional")),
+        "min_notional": _text(payload.get("min_notional")),
         "message": _optional_text(payload.get("message")),
         "normalized_status": _optional_text(
             payload.get("normalized_status")

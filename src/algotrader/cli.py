@@ -38,6 +38,7 @@ _PAPER_SAFETY_GATE_ORDER = (
     "sizing_gate",
     "quantity_gate",
     "notional_value_gate",
+    "notional_min_gate",
     "notional_cap_gate",
     "submit_confirmation_gate",
 )
@@ -926,6 +927,13 @@ def _build_paper_order_probe_payload(
         "positive_notional",
         notional_error or "invalid_notional",
     )
+    notional_min_gate = _gate(
+        sizing_mode != "notional"
+        or policy.min_notional is None
+        or (notional is not None and notional >= policy.min_notional),
+        policy.notional_minimum_detail(),
+        policy.notional_minimum_failure_detail(),
+    )
     notional_cap_gate = _gate(
         max_notional is not None
         and (
@@ -969,6 +977,7 @@ def _build_paper_order_probe_payload(
         "sizing_gate": sizing_gate,
         "quantity_gate": quantity_gate,
         "notional_value_gate": notional_value_gate,
+        "notional_min_gate": notional_min_gate,
         "notional_cap_gate": notional_cap_gate,
         "submit_confirmation_gate": submit_confirmation_gate,
     }
@@ -1018,6 +1027,9 @@ def _build_paper_order_probe_payload(
         "broker_response_received": False,
         "filled": None,
         "market_session_note": policy.market_session_note,
+        "min_notional": (
+            _decimal_text(policy.min_notional) if policy.min_notional is not None else ""
+        ),
         "normalized_status": "",
         "notional": _decimal_text(notional) if notional is not None else "",
         "order_type": "market",
@@ -1518,6 +1530,8 @@ def _render_paper_order_probe_payload(
             ]
         )
     lines.append(f"requested_notional: {payload['requested_notional']}")
+    if payload.get("min_notional"):
+        lines.append(f"min_notional: {payload['min_notional']}")
     lines.append(f"max_notional: {payload['max_notional']}")
     if payload.get("broker_result"):
         broker_result = payload["broker_result"]

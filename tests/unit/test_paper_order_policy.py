@@ -7,6 +7,7 @@ import pytest
 from algotrader.execution.paper_order_policy import (
     ASSET_CLASS_CHOICES,
     OPTIONS_SUBMIT_DISABLED_REASON,
+    PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL,
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
     paper_order_policy_for_asset_class,
 )
@@ -27,7 +28,9 @@ def test_policy_matrix_separates_equity_crypto_and_options_lanes() -> None:
 
     assert crypto.symbol_allowlist == ("BTCUSD",)
     assert crypto.allowed_sizing_modes == ("notional",)
-    assert crypto.max_notional_cap == Decimal("5")
+    assert crypto.max_notional_cap == Decimal("10.00")
+    assert crypto.min_notional == PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL
+    assert crypto.min_notional == Decimal("10.00")
     assert crypto.time_in_force == "gtc"
     assert crypto.submit_enabled is True
     assert crypto.submit_disabled_reason == ""
@@ -63,7 +66,13 @@ def test_policy_exposes_deterministic_failure_details() -> None:
         "quote_based_cap_is_supported"
     )
     assert equity.quantity_detail("notional") == "positive_whole_share_quantity"
+    assert equity.notional_minimum_detail() == "min_notional_not_applicable"
     assert crypto.quantity_detail("notional") == "not_applicable_for_notional"
+    assert crypto.notional_minimum_detail() == "min_notional=10.00"
+    assert (
+        crypto.notional_minimum_failure_detail()
+        == "notional_below_crypto_min_notional"
+    )
     assert crypto.sizing_failure_detail() == "crypto_notional_required"
     assert option.sizing_failure_detail() == "option_qty_1_contract_required"
     assert option.quantity_failure_detail("") == "qty_must_equal_1_contract"
