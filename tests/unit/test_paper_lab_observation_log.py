@@ -351,6 +351,19 @@ def test_order_probe_adapter_failure_event_has_unknown_submitted_state() -> None
         "error_type": "AlpacaAdapterError",
         "filled": None,
         "message": f"local submit failed {SECRET_VALUE}",
+        "submit_error_stage": "submit_call_failed_before_response",
+        "submit_error_exception_class": "APIError",
+        "submit_error_status_code": 422,
+        "submit_error_code": "42210000",
+        "submit_error_message": f"invalid order {SECRET_VALUE}",
+        "submit_error_request_shape": {
+            "asset_class": "crypto",
+            "symbol": "BTCUSD",
+            "side": "buy",
+            "order_type": "market",
+            "time_in_force": "gtc",
+            "sizing_mode": "notional",
+        },
     }
 
     records = make_order_probe_submit_events(
@@ -370,6 +383,19 @@ def test_order_probe_adapter_failure_event_has_unknown_submitted_state() -> None
     assert failure["submitted"] is None
     assert failure["accepted"] is None
     assert failure["filled"] is None
+    assert failure["submit_error_stage"] == "submit_call_failed_before_response"
+    assert failure["submit_error_exception_class"] == "APIError"
+    assert failure["submit_error_status_code"] == 422
+    assert failure["submit_error_code"] == "42210000"
+    assert failure["submit_error_message"] == "invalid order <redacted>"
+    assert failure["submit_error_request_shape"] == {
+        "asset_class": "crypto",
+        "symbol": "BTCUSD",
+        "side": "buy",
+        "order_type": "market",
+        "time_in_force": "gtc",
+        "sizing_mode": "notional",
+    }
     assert SECRET_VALUE not in render_jsonl_records(records)
 
 

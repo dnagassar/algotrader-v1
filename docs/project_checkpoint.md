@@ -13620,6 +13620,17 @@ Safe next tasks include:
   scheduler, autonomous trading, research-layer direct submission, or broker
   retry behavior. No confirmed broker-side crypto order exists from M312; the
   next broker action should wait for a fresh run id/log after the hotfix.
+- Phase 315 / Milestone 315 - BTCUSD Crypto Paper Submit APIError Diagnostic
+  inspects the M314 loaded-env BTCUSD run log without reusing it for another
+  submit. M314 shows one guarded submit attempt, no broker response, and a
+  pre-response SDK `APIError` after paper profile and policy gates passed. The
+  hotfix keeps the paper policy unchanged and carries sanitized APIError
+  diagnostics through SDK, adapter, CLI JSON, and paper-lab JSONL failure rows:
+  submit stage, exception class, HTTP status code when exposed, Alpaca error
+  code when exposed, URL/token-redacted message text, and request shape summary.
+  It preserves false broker-response flags and unknown submitted/accepted/filled
+  state, adds only fake-backed deterministic tests, and performs no real
+  BTCUSD, equity, crypto, or options submit.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import argparse
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 import json
 import sys
@@ -1147,6 +1147,7 @@ def _submit_paper_order_probe(
             "redacted_exception_message": redacted_message,
             "submitted": None,
             "submit_attempted": True,
+            **_paper_submit_error_diagnostic_fields(exc),
         }
 
     post_submit_observation = (
@@ -1573,6 +1574,37 @@ def _redact_config_secrets(message: str, config) -> str:
         if value:
             redacted = redacted.replace(value, "<redacted>")
     return redacted
+
+
+def _paper_submit_error_diagnostic_fields(exc: Exception) -> dict[str, object]:
+    diagnostics = getattr(exc, "diagnostics", None)
+    if not isinstance(diagnostics, Mapping):
+        return {}
+
+    fields: dict[str, object] = {}
+    for source_key, target_key in (
+        ("submit_stage", "submit_error_stage"),
+        ("exception_class", "submit_error_exception_class"),
+        ("status_code", "submit_error_status_code"),
+        ("alpaca_error_code", "submit_error_code"),
+        ("sanitized_message", "submit_error_message"),
+    ):
+        value = diagnostics.get(source_key)
+        if value not in (None, ""):
+            fields[target_key] = value
+
+    request_shape = diagnostics.get("request_shape")
+    if isinstance(request_shape, Mapping):
+        fields["submit_error_request_shape"] = {
+            "asset_class": str(request_shape.get("asset_class", "")),
+            "symbol": str(request_shape.get("symbol", "")),
+            "side": str(request_shape.get("side", "")),
+            "order_type": str(request_shape.get("order_type", "")),
+            "time_in_force": str(request_shape.get("time_in_force", "")),
+            "sizing_mode": str(request_shape.get("sizing_mode", "")),
+        }
+
+    return fields
 
 
 def _paper_lab_sensitive_values(config) -> tuple[str | None, ...]:

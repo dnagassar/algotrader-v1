@@ -404,8 +404,32 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "time_in_force": _text(request_payload.get("time_in_force")),
     }
+    fields.update(_submit_error_fields(payload))
     if broker_result is not None:
         fields["broker_result"] = broker_result
+    return fields
+
+
+def _submit_error_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    for key in (
+        "submit_error_stage",
+        "submit_error_exception_class",
+        "submit_error_code",
+        "submit_error_message",
+    ):
+        value = payload.get(key)
+        if value not in (None, ""):
+            fields[key] = _optional_text(value)
+
+    status_code = payload.get("submit_error_status_code")
+    if status_code not in (None, ""):
+        fields["submit_error_status_code"] = _json_safe(status_code)
+
+    request_shape = payload.get("submit_error_request_shape")
+    if isinstance(request_shape, Mapping):
+        fields["submit_error_request_shape"] = _json_safe(request_shape)
+
     return fields
 
 

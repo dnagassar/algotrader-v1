@@ -9,12 +9,42 @@ from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import AlpacaOrderRequest
+from algotrader.execution.alpaca_sdk_client import AlpacaSdkClientError
 from algotrader.execution.paper_order_policy import OPTIONS_SUBMIT_DISABLED_REASON
 from tests.fakes.alpaca import FakeAlpacaClient
 
 
 SENSITIVE_API_KEY = "paper-lab-sensitive-api-key"
 SENSITIVE_SECRET_KEY = "paper-lab-sensitive-secret-key"
+API_ERROR_URL = "https://paper.example.test/v2/orders"
+
+
+class APIError(Exception):
+    """Fake Alpaca APIError shape for offline paper-lab diagnostics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 422,
+        code: str = "42210000",
+    ) -> None:
+        super().__init__(message)
+        self._message = message
+        self._status_code = status_code
+        self._code = code
+
+    @property
+    def message(self) -> str:
+        return self._message
+
+    @property
+    def status_code(self) -> int:
+        return self._status_code
+
+    @property
+    def code(self) -> str:
+        return self._code
 
 
 def test_notional_order_request_accepts_positive_notional() -> None:
@@ -1037,6 +1067,90 @@ def test_crypto_order_probe_adapter_failure_reports_unknown_submission(
     assert SENSITIVE_SECRET_KEY not in rendered
 
 
+def test_crypto_order_probe_api_error_reports_sanitized_submit_diagnostics(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FailingApiErrorAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "crypto_api_error.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_crypto_notional_probe_args(notional="2"),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "crypto-api-error-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    failure = records[-1]
+    expected_shape = {
+        "asset_class": "crypto",
+        "symbol": "BTCUSD",
+        "side": "buy",
+        "order_type": "market",
+        "time_in_force": "gtc",
+        "sizing_mode": "notional",
+    }
+    assert exit_code == 1
+    assert fake_client.calls == ["submit_order"]
+    assert payload["ok"] is False
+    assert payload["broker_error"] is True
+    assert payload["error"] == "paper_order_probe_submit_failed"
+    assert payload["error_type"] == "AlpacaAdapterError"
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is True
+    assert payload["broker_response_received"] is False
+    assert payload["broker_response_parsed"] is False
+    assert payload["submitted"] is None
+    assert payload["accepted"] is None
+    assert payload["filled"] is None
+    assert payload["submit_error_stage"] == "submit_call_failed_before_response"
+    assert payload["submit_error_exception_class"] == "APIError"
+    assert payload["submit_error_status_code"] == 422
+    assert payload["submit_error_code"] == "42210000"
+    assert payload["submit_error_message"] == (
+        "invalid crypto order at <redacted_url> token=<redacted>"
+    )
+    assert payload["submit_error_request_shape"] == expected_shape
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_submit_failed",
+    ]
+    assert failure["submit_attempted"] is True
+    assert failure["broker_response_received"] is False
+    assert failure["broker_response_parsed"] is False
+    assert failure["submitted"] is None
+    assert failure["accepted"] is None
+    assert failure["filled"] is None
+    assert failure["submit_error_stage"] == "submit_call_failed_before_response"
+    assert failure["submit_error_exception_class"] == "APIError"
+    assert failure["submit_error_status_code"] == 422
+    assert failure["submit_error_code"] == "42210000"
+    assert failure["submit_error_message"] == (
+        "invalid crypto order at <redacted_url> token=<redacted>"
+    )
+    assert failure["submit_error_request_shape"] == expected_shape
+    assert "paper_order_receipt_observed" not in {
+        record["event_type"] for record in records
+    }
+    assert API_ERROR_URL not in rendered
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+
+
 def test_crypto_order_probe_rejects_live_profile_before_submit(
     monkeypatch,
     capsys,
@@ -1618,6 +1732,20 @@ class FailingSubmitAlpacaClient(FakeAlpacaClient):
         self.calls.append("submit_order")
         self.submitted_requests.append(request)
         raise RuntimeError(f"{SENSITIVE_API_KEY} submit failed locally")
+
+
+class FailingApiErrorAlpacaClient(FakeAlpacaClient):
+    def submit_order(self, request):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_requests.append(request)
+        raise AlpacaSdkClientError(
+            "submit_call_failed_before_response",
+            request,
+            APIError(
+                f"invalid crypto order at {API_ERROR_URL} "
+                f"token={SENSITIVE_SECRET_KEY}"
+            ),
+        )
 
 
 def _install_fake_broker(

@@ -33,6 +33,35 @@ from algotrader.risk.state import RiskVerdict
 NOW = datetime(2026, 4, 30, tzinfo=UTC)
 SENSITIVE_API_KEY = "sensitive-test-api-key-NEVER-LOG"
 SENSITIVE_SECRET_KEY = "sensitive-test-secret-key-NEVER-LOG"
+API_ERROR_URL = "https://paper.example.test/v2/orders"
+
+
+class APIError(Exception):
+    """Fake Alpaca APIError shape for offline diagnostics."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int = 422,
+        code: str = "42210000",
+    ) -> None:
+        super().__init__(message)
+        self._message = message
+        self._status_code = status_code
+        self._code = code
+
+    @property
+    def message(self) -> str:
+        return self._message
+
+    @property
+    def status_code(self) -> int:
+        return self._status_code
+
+    @property
+    def code(self) -> str:
+        return self._code
 
 
 class FakeSdkTradingClient:
@@ -82,6 +111,15 @@ class FailingSdkTradingClient(FakeSdkTradingClient):
         self.calls.append("submit_order")
         self.submitted_orders.append(request)
         raise RuntimeError(f"{SENSITIVE_API_KEY} submit failed locally")
+
+
+class FailingApiErrorSdkTradingClient(FakeSdkTradingClient):
+    def submit_order(self, request):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_orders.append(request)
+        raise APIError(
+            f"invalid crypto order at {API_ERROR_URL} token={SENSITIVE_SECRET_KEY}"
+        )
 
 
 def valid_config(
@@ -232,6 +270,50 @@ def test_alpaca_sdk_client_reports_sanitized_submit_stage() -> None:
     assert SENSITIVE_API_KEY not in message
 
 
+def test_alpaca_sdk_client_reports_sanitized_api_error_diagnostics() -> None:
+    fake_sdk_client = FailingApiErrorSdkTradingClient()
+    client = AlpacaSdkClient(
+        valid_config(api_key=SENSITIVE_API_KEY, secret_key=SENSITIVE_SECRET_KEY),
+        sdk_client_factory=lambda _: fake_sdk_client,
+    )
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-api-error",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    with pytest.raises(AlpacaSdkClientError) as exc_info:
+        client.submit_order(request)
+
+    message = str(exc_info.value)
+    diagnostics = exc_info.value.diagnostics
+    assert exc_info.value.error_stage == "submit_call_failed_before_response"
+    assert diagnostics["submit_stage"] == "submit_call_failed_before_response"
+    assert diagnostics["exception_class"] == "APIError"
+    assert diagnostics["status_code"] == 422
+    assert diagnostics["alpaca_error_code"] == "42210000"
+    assert diagnostics["sanitized_message"] == (
+        "invalid crypto order at <redacted_url> token=<redacted>"
+    )
+    assert diagnostics["request_shape"] == {
+        "asset_class": "crypto",
+        "symbol": "BTCUSD",
+        "side": "buy",
+        "order_type": "market",
+        "time_in_force": "gtc",
+        "sizing_mode": "notional",
+    }
+    assert "api_status_code=422" in message
+    assert "alpaca_error_code=42210000" in message
+    assert "api_error_message=invalid crypto order" in message
+    assert API_ERROR_URL not in message
+    assert SENSITIVE_API_KEY not in message
+    assert SENSITIVE_SECRET_KEY not in message
+
+
 def test_alpaca_sdk_client_reports_sanitized_request_construction_stage(
     monkeypatch,
 ) -> None:
@@ -298,6 +380,42 @@ def test_adapter_surfaces_sanitized_sdk_submit_stage_without_response() -> None:
     assert "asset_class=crypto" in message
     assert "symbol=BTCUSD" in message
     assert SENSITIVE_API_KEY not in message
+
+
+def test_adapter_preserves_sdk_api_error_diagnostics_without_response() -> None:
+    client = AlpacaSdkClient(
+        valid_config(api_key=SENSITIVE_API_KEY, secret_key=SENSITIVE_SECRET_KEY),
+        sdk_client_factory=lambda _: FailingApiErrorSdkTradingClient(),
+    )
+    adapter = AlpacaClientAdapter(client)
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-probe-crypto-adapter-api-error",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        notional=Decimal("1.00"),
+        time_in_force="gtc",
+    )
+
+    with pytest.raises(AlpacaAdapterError) as exc_info:
+        adapter.submit_order_request(
+            request,
+            risk_verdict=RiskVerdict.allow(order_notional=request.notional),
+        )
+
+    message = str(exc_info.value)
+    diagnostics = exc_info.value.diagnostics
+    assert "failed before response: submit_order()" in message
+    assert diagnostics["submit_stage"] == "submit_call_failed_before_response"
+    assert diagnostics["exception_class"] == "APIError"
+    assert diagnostics["status_code"] == 422
+    assert diagnostics["alpaca_error_code"] == "42210000"
+    assert diagnostics["sanitized_message"] == (
+        "invalid crypto order at <redacted_url> token=<redacted>"
+    )
+    assert API_ERROR_URL not in message
+    assert SENSITIVE_API_KEY not in message
+    assert SENSITIVE_SECRET_KEY not in message
 
 
 def test_alpaca_sdk_client_construction_makes_no_network_calls(monkeypatch) -> None:

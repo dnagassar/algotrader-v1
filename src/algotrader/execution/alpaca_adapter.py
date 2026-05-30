@@ -7,7 +7,7 @@ credentials, instantiate clients, or perform network calls.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from algotrader.core.types import ProposedOrder, Quote
@@ -32,6 +32,15 @@ from .alpaca_translator import (
 
 class AlpacaAdapterError(RuntimeError):
     """Raised when the injected Alpaca-like client cannot be used."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        diagnostics: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.diagnostics = dict(diagnostics or {})
 
 
 class AlpacaClientAdapter:
@@ -190,12 +199,15 @@ class AlpacaClientAdapter:
         try:
             return method(*args)
         except Exception as exc:
-            raise AlpacaAdapterError(
-                _sanitized_client_call_failure(method_name, exc)
-            ) from exc
+            message, diagnostics = _sanitized_client_call_failure(method_name, exc)
+            raise AlpacaAdapterError(message, diagnostics=diagnostics) from exc
 
 
-def _sanitized_client_call_failure(method_name: str, exc: Exception) -> str:
+def _sanitized_client_call_failure(
+    method_name: str,
+    exc: Exception,
+) -> tuple[str, dict[str, Any]]:
+    diagnostics = _exception_diagnostics(exc)
     if exc.__class__.__name__ == "AlpacaSdkClientError" and getattr(
         exc,
         "error_stage",
@@ -204,13 +216,23 @@ def _sanitized_client_call_failure(method_name: str, exc: Exception) -> str:
         return (
             "Injected Alpaca-like client call failed before response: "
             f"{method_name}(); cause_type={exc.__class__.__name__}; "
-            f"detail={exc}"
+            f"detail={exc}",
+            diagnostics,
         )
 
     return (
         "Injected Alpaca-like client call failed before response: "
-        f"{method_name}(); cause_type={exc.__class__.__name__}."
+        f"{method_name}(); cause_type={exc.__class__.__name__}.",
+        diagnostics,
     )
+
+
+def _exception_diagnostics(exc: Exception) -> dict[str, Any]:
+    diagnostics = getattr(exc, "diagnostics", None)
+    if isinstance(diagnostics, Mapping):
+        return dict(diagnostics)
+
+    return {}
 
 
 __all__ = [

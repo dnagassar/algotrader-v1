@@ -7,6 +7,7 @@ requires an explicitly valid paper profile and does not perform network calls.
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+import re
 from typing import Any, cast
 
 from algotrader.config import AlpacaPaperConfig, require_paper_profile
@@ -29,13 +30,17 @@ class AlpacaSdkClientError(RuntimeError):
     def __init__(self, stage: str, request: AlpacaOrderRequest, cause: Exception):
         self.error_stage = stage
         self.cause_type = cause.__class__.__name__
-        sizing_mode = "notional" if request.notional is not None else "qty"
+        self.diagnostics = _submit_error_diagnostics(stage, request, cause)
+        request_shape = self.diagnostics["request_shape"]
         super().__init__(
             "Alpaca SDK "
-            f"{stage}: asset_class={request.asset_class} symbol={request.symbol} "
-            f"side={request.side} order_type={request.order_type} "
-            f"time_in_force={request.time_in_force} sizing_mode={sizing_mode} "
-            f"cause_type={self.cause_type}."
+            f"{stage}: asset_class={request_shape['asset_class']} "
+            f"symbol={request_shape['symbol']} side={request_shape['side']} "
+            f"order_type={request_shape['order_type']} "
+            f"time_in_force={request_shape['time_in_force']} "
+            f"sizing_mode={request_shape['sizing_mode']} "
+            f"cause_type={self.cause_type}"
+            f"{_diagnostic_message_suffix(self.diagnostics)}."
         )
 
 
@@ -150,6 +155,95 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
         kwargs["qty"] = request.qty
 
     return MarketOrderRequest(**kwargs)
+
+
+_BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
+_SECRET_ASSIGNMENT_PATTERN = re.compile(
+    r"(?i)\b(api[_-]?key|authorization|secret(?:[_-]?key)?|token)\b"
+    r"\s*[:=]\s*[^,\s;)]+"
+)
+_URL_PATTERN = re.compile(r"https?://[^\s)>\]\"']+")
+_SAFE_MESSAGE_LIMIT = 240
+
+
+def _submit_error_diagnostics(
+    stage: str,
+    request: AlpacaOrderRequest,
+    cause: Exception,
+) -> dict[str, Any]:
+    return {
+        "submit_stage": stage,
+        "exception_class": cause.__class__.__name__,
+        "status_code": _safe_exception_attr(cause, "status_code"),
+        "alpaca_error_code": _safe_text(_safe_exception_attr(cause, "code")),
+        "sanitized_message": _sanitized_exception_message(cause),
+        "request_shape": _request_shape_summary(request),
+    }
+
+
+def _request_shape_summary(request: AlpacaOrderRequest) -> dict[str, str]:
+    sizing_mode = "notional" if request.notional is not None else "qty"
+    return {
+        "asset_class": request.asset_class,
+        "symbol": request.symbol,
+        "side": request.side,
+        "order_type": request.order_type,
+        "time_in_force": request.time_in_force,
+        "sizing_mode": sizing_mode,
+    }
+
+
+def _diagnostic_message_suffix(diagnostics: dict[str, Any]) -> str:
+    parts = []
+    if diagnostics.get("status_code") is not None:
+        parts.append(f"api_status_code={diagnostics['status_code']}")
+    if diagnostics.get("alpaca_error_code"):
+        parts.append(f"alpaca_error_code={diagnostics['alpaca_error_code']}")
+    if diagnostics.get("sanitized_message"):
+        parts.append(f"api_error_message={diagnostics['sanitized_message']}")
+
+    if not parts:
+        return ""
+
+    return " " + " ".join(parts)
+
+
+def _safe_exception_attr(exc: Exception, name: str) -> Any:
+    try:
+        return getattr(exc, name)
+    except Exception:
+        return None
+
+
+def _sanitized_exception_message(exc: Exception) -> str:
+    message = _safe_exception_attr(exc, "message")
+    if message is None and exc.__class__.__name__ == "APIError":
+        message = str(exc)
+    if message is None:
+        return ""
+
+    return _sanitize_exception_text(str(message))
+
+
+def _sanitize_exception_text(message: str) -> str:
+    sanitized = _URL_PATTERN.sub("<redacted_url>", message)
+    sanitized = _BEARER_TOKEN_PATTERN.sub("Bearer <redacted>", sanitized)
+    sanitized = _SECRET_ASSIGNMENT_PATTERN.sub(
+        lambda match: f"{match.group(1)}=<redacted>",
+        sanitized,
+    )
+    sanitized = " ".join(sanitized.split())
+    if len(sanitized) > _SAFE_MESSAGE_LIMIT:
+        return f"{sanitized[:_SAFE_MESSAGE_LIMIT].rstrip()}..."
+
+    return sanitized
+
+
+def _safe_text(value: Any) -> str:
+    if value is None:
+        return ""
+
+    return str(value)
 
 
 __all__ = ["AlpacaSdkClient", "AlpacaSdkClientError"]

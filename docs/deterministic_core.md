@@ -8061,6 +8061,23 @@ research-layer submission, or broker retry behavior. No confirmed broker-side
 crypto order exists from M312; no retry should occur until this hotfix is
 complete and a fresh run id/log is used.
 
+Phase 315 / Milestone 315 - BTCUSD Crypto Paper Submit APIError Diagnostic
+inspects the M314 loaded-env BTCUSD run log without reusing it for another
+submit. The log shows one guarded submit attempt, no broker response, and a
+pre-response SDK `APIError` surfaced through the Alpaca adapter after the
+paper profile, cash/position/order observations, and submit gates passed. The
+SDK wrapper now preserves sanitized pre-response diagnostics for APIError-like
+failures: submit stage, exception class, HTTP status code when exposed, Alpaca
+error code when exposed, URL/token-redacted message text, and the request
+shape summary (`asset_class`, `symbol`, `side`, `order_type`,
+`time_in_force`, `sizing_mode`). The CLI and paper-lab JSONL failure rows carry
+those fields while preserving `broker_response_received = false`,
+`broker_response_parsed = false`, and unknown submitted/accepted/filled state.
+This milestone adds only fake-backed deterministic tests and documentation; it
+does not place another BTCUSD order, use a live profile or live URL, add
+network access to normal pytest, weaken paper gates, add retries, or introduce
+autonomous submit behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
