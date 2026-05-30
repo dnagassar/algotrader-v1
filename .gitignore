@@ -17,3 +17,5 @@ src/algotrader.egg-info/
 .env
 .env.*
 !.env.example
+
+runs/
