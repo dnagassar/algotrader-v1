@@ -139,6 +139,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Snapshot output format.",
     )
     _add_paper_lab_run_log_options(paper_lab_snapshot_parser)
+    paper_lab_revalidation_brief_parser = subparsers.add_parser(
+        "paper-lab-revalidation-brief",
+        help="Summarize a local paper-lab snapshot JSONL run log.",
+    )
+    paper_lab_revalidation_brief_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Read a deterministic paper-lab observation JSONL run log from PATH.",
+    )
+    paper_lab_revalidation_brief_parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional run/session id to summarize. Defaults to the latest run.",
+    )
+    paper_lab_revalidation_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Brief output format.",
+    )
     paper_order_probe_parser = subparsers.add_parser(
         "paper-order-probe",
         help="Preview a guarded Alpaca paper order request without submitting.",
@@ -349,6 +370,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_advisory_operating_brief_package_preview(args.output_format)
     if command == "advisory-operating-brief-mvp-preview":
         return _run_advisory_operating_brief_mvp_preview(args.output_format)
+    if command == "paper-lab-revalidation-brief":
+        return _run_paper_lab_revalidation_brief(
+            args.run_log,
+            args.output_format,
+            run_id=args.run_id,
+        )
 
     config = _load_runtime_config(profile=args.profile)
     log_level = args.log_level or config.log_level
@@ -584,6 +611,27 @@ def _run_paper_lab_snapshot(
         return 2
 
     return 0 if payload["ok"] else 1
+
+
+def _run_paper_lab_revalidation_brief(
+    run_log_path: str,
+    output_format: str,
+    *,
+    run_id: str | None = None,
+) -> int:
+    from .execution.paper_lab_revalidation_brief import (
+        STATE_USABLE_FOR_MANUAL_REVIEW,
+        build_paper_lab_revalidation_brief,
+        render_paper_lab_revalidation_brief_text,
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log_path, run_id=run_id)
+    if output_format == "json":
+        print(_compact_json(payload))
+    else:
+        print(render_paper_lab_revalidation_brief_text(payload))
+
+    return 0 if payload["state"] == STATE_USABLE_FOR_MANUAL_REVIEW else 1
 
 
 def _build_paper_lab_snapshot_payload(config) -> dict[str, object]:

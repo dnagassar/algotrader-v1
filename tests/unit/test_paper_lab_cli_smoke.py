@@ -1144,6 +1144,45 @@ def test_run_log_is_byte_identical_for_repeated_deterministic_inputs(
     assert first_log.read_bytes() == second_log.read_bytes()
 
 
+def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "snapshot.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_revalidation_snapshot_run_log(run_log)
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("revalidation brief must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-lab-revalidation-brief",
+            "--run-log",
+            str(run_log),
+            "--format",
+            "json",
+        )
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["state"] == "usable_for_manual_review"
+    assert payload["usable_for_manual_review"] is True
+    assert payload["selected_run_id"] == "snapshot-run"
+    assert payload["account"] == {
+        "cash": "100000",
+        "currency": "USD",
+        "observed": True,
+    }
+
+
 def test_invalid_run_log_path_reports_cleanly(
     monkeypatch,
     capsys,
@@ -1380,6 +1419,55 @@ def _read_jsonl(path) -> list[dict[str, object]]:  # noqa: ANN001
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def _write_revalidation_snapshot_run_log(path) -> None:  # noqa: ANN001
+    records = [
+        {
+            "command": "paper-lab-snapshot",
+            "event_type": "paper_lab_snapshot_requested",
+            "redaction": "credentials_redacted",
+            "run_id": "snapshot-run",
+        },
+        {
+            "account": {"cash": "100000", "currency": "USD"},
+            "command": "paper-lab-snapshot",
+            "event_type": "paper_lab_snapshot_account_observed",
+            "redaction": "credentials_redacted",
+            "run_id": "snapshot-run",
+        },
+        {
+            "command": "paper-lab-snapshot",
+            "event_type": "paper_lab_snapshot_positions_observed",
+            "position_count": 1,
+            "position_symbols": ["MSFT"],
+            "redaction": "credentials_redacted",
+            "run_id": "snapshot-run",
+        },
+        {
+            "command": "paper-lab-snapshot",
+            "event_type": "paper_lab_snapshot_orders_observed",
+            "recent_order_count": 1,
+            "recent_orders": [
+                {
+                    "asset_class": "equity",
+                    "normalized_status": "accepted",
+                    "raw_status": "OrderStatus.ACCEPTED",
+                    "side": "buy",
+                    "symbol": "SPY",
+                }
+            ],
+            "redaction": "credentials_redacted",
+            "run_id": "snapshot-run",
+        },
+    ]
+    path.write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in records
+        ),
+        encoding="utf-8",
+    )
 
 
 _LAST_EXIT_CODE = 0

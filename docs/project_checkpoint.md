@@ -13571,6 +13571,30 @@ Safe next tasks include:
   adds no real data ingestion, persistence, scheduler, dashboard, broker,
   orders, fills, portfolio/reconciliation mutation, ranking, scoring,
   recommendation, approval, actual backtest execution, or trading authority.
+- Phase 303 / Milestone 303 - Synthetic Strategy Candidate Dossier Report
+  extends the MVP preview with a deterministic `Strategy Candidate Dossier`
+  section and compact JSON `strategy_candidate_dossiers` records for the
+  synthetic broad ETF SMA trend-following pipeline-validation candidate. The
+  dossier is synthetic-only and advisory-only, records research purpose,
+  synthetic observation state, missing evidence and controls, blocked/not-ready
+  backtest state, not-approved strategy state, no trading authority, and the
+  next non-trading control step, and adds no real data ingestion, persistence,
+  scheduler, dashboard, broker, orders, fills, portfolio/reconciliation
+  mutation, ranking, scoring, recommendation, approval, actual backtest
+  execution, or trading authority.
+- Phase 309 / Milestone 309 - Logged Paper Lab Revalidation Brief adds
+  `paper-lab-revalidation-brief` as a deterministic local read-only CLI command
+  for summarizing an existing paper-lab snapshot JSONL run log. It reports run
+  ids, selected/latest run event counts, account cash/currency availability,
+  position count and symbols, recent order count and safe order-status fields,
+  missing observations, unavailable/error events with secret-safe details,
+  redaction markers, advisory labels, `profit_claim = none`, and the states
+  `usable_for_manual_review`, `insufficient_observation`,
+  `observation_unavailable`, and `invalid_run_log`. This milestone adds no
+  real equity, crypto, or options order submission, broker write path, live
+  profile behavior, credentials, network access, scheduler, autonomous loop,
+  market-data ingestion, portfolio/reconciliation mutation, ranking, scoring,
+  recommendation, trading authority, or trading hot-path LLM behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

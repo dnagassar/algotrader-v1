@@ -8009,6 +8009,32 @@ persistence, scheduler, dashboard, broker, orders, fills, portfolio/
 reconciliation mutation, ranking, scoring, recommendation, approval, actual
 backtest execution, or trading authority.
 
+Phase 303 / Milestone 303 - Synthetic Strategy Candidate Dossier Report extends
+the MVP preview with a deterministic `Strategy Candidate Dossier` section and
+compact JSON `strategy_candidate_dossiers` records for the synthetic broad ETF
+SMA trend-following pipeline-validation candidate. The dossier is
+synthetic-only and advisory-only; it records research purpose, synthetic
+observation state, missing evidence and controls, blocked/not-ready backtest
+state, not-approved strategy state, no trading authority, and the next
+non-trading control step without adding real data ingestion, persistence,
+scheduler, dashboard, broker, orders, fills, portfolio/reconciliation mutation,
+ranking, scoring, recommendation, approval, actual backtest execution, or
+trading authority.
+
+Phase 309 / Milestone 309 - Logged Paper Lab Revalidation Brief adds
+`paper-lab-revalidation-brief` as a deterministic local read-only CLI command
+for summarizing an existing paper-lab snapshot JSONL run log. The brief reports
+run ids, selected/latest run event counts, account cash/currency availability,
+position count and symbols, recent order count and safe order-status fields,
+missing observations, unavailable/error events with secret-safe details,
+redaction markers, advisory labels, `profit_claim = none`, and one of
+`usable_for_manual_review`, `insufficient_observation`,
+`observation_unavailable`, or `invalid_run_log`. It is local-file-only and
+adds no real equity, crypto, or options order submission, broker write path,
+live profile behavior, credentials, network access, scheduler, autonomous loop,
+market-data ingestion, portfolio/reconciliation mutation, ranking, scoring,
+recommendation, trading authority, or trading hot-path LLM behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
