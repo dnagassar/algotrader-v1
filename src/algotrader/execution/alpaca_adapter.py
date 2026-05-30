@@ -22,7 +22,9 @@ from .alpaca_mapper import (
     map_translated_position_to_position,
 )
 from .alpaca_translator import (
+    TranslatedAlpacaOrderObservation,
     translate_alpaca_account,
+    translate_alpaca_order_observation,
     translate_alpaca_order_result,
     translate_alpaca_position,
 )
@@ -70,6 +72,22 @@ class AlpacaClientAdapter:
 
         return tuple(
             map_translated_position_to_position(translate_alpaca_position(response))
+            for response in responses
+        )
+
+    def list_recent_orders(self) -> tuple[TranslatedAlpacaOrderObservation, ...]:
+        responses = self._call_client(self._orders_method_name())
+
+        if responses is None:
+            return ()
+
+        if not isinstance(responses, Iterable):
+            raise AlpacaAdapterError(
+                "Injected Alpaca-like client returned non-iterable orders."
+            )
+
+        return tuple(
+            translate_alpaca_order_observation(response)
             for response in responses
         )
 
@@ -152,6 +170,14 @@ class AlpacaClientAdapter:
         raise AlpacaAdapterError(
             "Injected Alpaca-like client must define get_positions() "
             "or get_all_positions()."
+        )
+
+    def _orders_method_name(self) -> str:
+        if hasattr(self._client, "get_orders"):
+            return "get_orders"
+
+        raise AlpacaAdapterError(
+            "Injected Alpaca-like client must define get_orders()."
         )
 
     def _call_client(self, method_name: str, *args: Any) -> Any:

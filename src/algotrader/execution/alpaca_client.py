@@ -14,6 +14,13 @@ from decimal import Decimal, InvalidOperation
 from typing import Optional, Protocol
 
 
+_TIME_IN_FORCE_BY_ASSET_CLASS = {
+    "equity": ("day",),
+    "crypto": ("gtc", "ioc"),
+    "option": ("day",),
+}
+
+
 @dataclass(frozen=True)
 class AlpacaAccountResponse:
     account_id: str
@@ -34,10 +41,27 @@ class AlpacaPositionResponse:
 
 
 @dataclass(frozen=True)
+class AlpacaOrderResponse:
+    order_id: str
+    client_order_id: str
+    symbol: str
+    side: str
+    status: str
+    qty: Optional[Decimal] = None
+    notional: Optional[Decimal] = None
+    asset_class: str = ""
+    order_type: str = "market"
+    time_in_force: str = ""
+    submitted_at: Optional[datetime] = None
+    filled_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
 class AlpacaOrderRequest:
     client_order_id: str
     symbol: str
     side: str
+    asset_class: str = "equity"
     qty: Optional[Decimal] = None
     notional: Optional[Decimal] = None
     order_type: str = "market"
@@ -49,12 +73,20 @@ class AlpacaOrderRequest:
             raise ValueError("client_order_id is required.")
         if not self.symbol.strip():
             raise ValueError("symbol is required.")
-        if self.side.strip().lower() != "buy":
+        side = self.side.strip().lower()
+        asset_class = self.asset_class.strip().lower()
+        order_type = self.order_type.strip().lower()
+        time_in_force = self.time_in_force.strip().lower()
+        if asset_class not in _TIME_IN_FORCE_BY_ASSET_CLASS:
+            raise ValueError("Alpaca paper order requests require a supported asset_class.")
+        if side != "buy":
             raise ValueError("Alpaca paper order requests are buy-only.")
-        if self.order_type.strip().lower() != "market":
+        if order_type != "market":
             raise ValueError("Alpaca paper order requests are market-only.")
-        if self.time_in_force.strip().lower() != "day":
-            raise ValueError("Alpaca paper order requests are day-only.")
+        if time_in_force not in _TIME_IN_FORCE_BY_ASSET_CLASS[asset_class]:
+            raise ValueError(
+                "Alpaca paper order requests use asset-class-specific time_in_force."
+            )
         if self.limit_price is not None:
             raise ValueError("Alpaca paper market order requests must not use limit_price.")
 
@@ -66,9 +98,10 @@ class AlpacaOrderRequest:
             )
 
         object.__setattr__(self, "symbol", self.symbol.strip().upper())
-        object.__setattr__(self, "side", self.side.strip().lower())
-        object.__setattr__(self, "order_type", self.order_type.strip().lower())
-        object.__setattr__(self, "time_in_force", self.time_in_force.strip().lower())
+        object.__setattr__(self, "side", side)
+        object.__setattr__(self, "asset_class", asset_class)
+        object.__setattr__(self, "order_type", order_type)
+        object.__setattr__(self, "time_in_force", time_in_force)
 
         if self.qty is not None:
             qty = _positive_decimal(self.qty, "qty")
@@ -99,6 +132,9 @@ class AlpacaClient(Protocol):
     def get_positions(self) -> Sequence[AlpacaPositionResponse]:
         ...
 
+    def get_orders(self) -> Sequence[AlpacaOrderResponse]:
+        ...
+
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:
@@ -120,6 +156,7 @@ def _positive_decimal(value: Decimal, field_name: str) -> Decimal:
 __all__ = [
     "AlpacaAccountResponse",
     "AlpacaClient",
+    "AlpacaOrderResponse",
     "AlpacaOrderRequest",
     "AlpacaOrderSubmissionResponse",
     "AlpacaPositionResponse",

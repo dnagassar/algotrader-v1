@@ -13,6 +13,7 @@ from algotrader.config import AlpacaPaperConfig, require_paper_profile
 from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
     AlpacaClient,
+    AlpacaOrderResponse,
     AlpacaOrderRequest,
     AlpacaOrderSubmissionResponse,
     AlpacaPositionResponse,
@@ -68,6 +69,9 @@ class AlpacaSdkClient(AlpacaClient):
 
         return cast(Sequence[AlpacaPositionResponse], self._sdk_client.get_positions())
 
+    def get_orders(self) -> Sequence[AlpacaOrderResponse]:
+        return cast(Sequence[AlpacaOrderResponse], self._sdk_client.get_orders())
+
     def submit_order(
         self, request: AlpacaOrderRequest
     ) -> AlpacaOrderSubmissionResponse:
@@ -97,11 +101,16 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
     from alpaca.trading.enums import OrderSide, TimeInForce
     from alpaca.trading.requests import MarketOrderRequest
 
+    time_in_force_by_value = {
+        "day": TimeInForce.DAY,
+        "gtc": TimeInForce.GTC,
+        "ioc": TimeInForce.IOC,
+    }
     kwargs: dict[str, Any] = {
         "client_order_id": request.client_order_id,
         "side": OrderSide.BUY,
         "symbol": request.symbol,
-        "time_in_force": TimeInForce.DAY,
+        "time_in_force": time_in_force_by_value[request.time_in_force],
     }
     if request.notional is not None:
         kwargs["notional"] = request.notional

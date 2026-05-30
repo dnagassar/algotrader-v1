@@ -49,6 +49,15 @@ class AlpacaPaperBroker:
     def list_positions(self) -> tuple[Position, ...]:
         return self.get_positions()
 
+    def get_recent_orders(self) -> tuple[Any, ...]:
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; get_recent_orders is not "
+                "implemented and performs no network calls."
+            )
+
+        return self._adapter.list_recent_orders()
+
     def submit_order(
         self,
         order: ProposedOrder,

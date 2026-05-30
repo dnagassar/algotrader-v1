@@ -55,6 +55,21 @@ class TranslatedAlpacaOrderResult:
     submitted_at: Optional[datetime] = None
 
 
+@dataclass(frozen=True)
+class TranslatedAlpacaOrderObservation:
+    symbol: str
+    asset_class: str
+    side: str
+    order_type: str
+    time_in_force: str
+    quantity: Optional[Decimal]
+    notional: Optional[Decimal]
+    raw_status: str
+    normalized_status: str
+    submitted_at: Any = None
+    filled_at: Any = None
+
+
 def translate_alpaca_account(response: Any) -> TranslatedAlpacaAccount:
     """Translate a fake Alpaca-like account response into a pinned DTO."""
 
@@ -128,6 +143,38 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
     )
 
 
+def translate_alpaca_order_observation(
+    response: Any,
+) -> TranslatedAlpacaOrderObservation:
+    """Translate a fake Alpaca-like recent/open order into an observation DTO."""
+
+    data = _response_data(response)
+    raw_status = _optional_text(data, "status", default="") or ""
+    return TranslatedAlpacaOrderObservation(
+        symbol=(_optional_text(data, "symbol", default="") or "").upper(),
+        asset_class=_normalized_optional_enum_text(data, "asset_class"),
+        side=_normalized_optional_enum_text(data, "side"),
+        order_type=_normalized_optional_enum_text(
+            data,
+            "order_type",
+            aliases=("type",),
+        ),
+        time_in_force=_normalized_optional_enum_text(data, "time_in_force"),
+        quantity=_optional_decimal(data, "qty", aliases=("quantity",)),
+        notional=_optional_decimal(data, "notional"),
+        raw_status=raw_status,
+        normalized_status=normalize_alpaca_order_status(raw_status),
+        submitted_at=_optional_value(
+            data, "submitted_at", aliases=("created_at",), default=None
+        ),
+        filled_at=_optional_value(data, "filled_at", default=None),
+    )
+
+
+def normalize_alpaca_order_status(value: Any) -> str:
+    return _normalize_alpaca_order_status(value)
+
+
 def _response_data(response: Any) -> dict[str, Any]:
     if isinstance(response, Mapping):
         return dict(response)
@@ -139,6 +186,7 @@ def _response_data(response: Any) -> dict[str, Any]:
         "account_id",
         "id",
         "status",
+        "asset_class",
         "cash",
         "buying_power",
         "equity",
@@ -153,6 +201,9 @@ def _response_data(response: Any) -> dict[str, Any]:
         "avg_price",
         "average_price",
         "side",
+        "order_type",
+        "type",
+        "time_in_force",
         "order_id",
         "client_order_id",
         "notional",
@@ -162,6 +213,7 @@ def _response_data(response: Any) -> dict[str, Any]:
         "reject_reason",
         "submitted_at",
         "created_at",
+        "filled_at",
     )
     return {
         name: getattr(response, name)
@@ -271,6 +323,23 @@ def _optional_text(
     return text if text else default
 
 
+def _normalized_optional_enum_text(
+    data: Mapping[str, Any],
+    field_name: str,
+    aliases: tuple[str, ...] = (),
+) -> str:
+    value = _optional_value(data, field_name, aliases, default=None)
+    if value is None:
+        return ""
+
+    enum_value = getattr(value, "value", None)
+    text = str(enum_value if enum_value is not None else value).strip().lower()
+    if "." in text:
+        text = text.rsplit(".", 1)[-1]
+
+    return text.replace("-", "_").replace(" ", "_")
+
+
 def _optional_value(
     data: Mapping[str, Any],
     field_name: str,
@@ -302,9 +371,12 @@ def _required_value(
 __all__ = [
     "AlpacaTranslationError",
     "TranslatedAlpacaAccount",
+    "TranslatedAlpacaOrderObservation",
     "TranslatedAlpacaOrderResult",
     "TranslatedAlpacaPosition",
+    "normalize_alpaca_order_status",
     "translate_alpaca_account",
+    "translate_alpaca_order_observation",
     "translate_alpaca_order_result",
     "translate_alpaca_position",
 ]

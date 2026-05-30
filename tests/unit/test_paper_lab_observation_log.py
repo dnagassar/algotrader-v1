@@ -8,6 +8,11 @@ import pytest
 from algotrader.execution.paper_lab_observation_log import (
     EVENT_TYPES,
     PAPER_ACCOUNT_OBSERVED,
+    PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+    PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+    PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+    PAPER_LAB_SNAPSHOT_REQUESTED,
+    PAPER_LAB_SNAPSHOT_UNAVAILABLE,
     PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED,
     PAPER_ORDER_PREVIEWED,
     PAPER_ORDER_RECEIPT_OBSERVED,
@@ -22,9 +27,11 @@ from algotrader.execution.paper_lab_observation_log import (
     make_account_smoke_events,
     make_order_probe_initial_events,
     make_order_probe_submit_events,
+    make_paper_lab_snapshot_events,
     render_jsonl_records,
     resolve_run_id,
 )
+from algotrader.execution.paper_order_policy import CRYPTO_SUBMIT_DISABLED_REASON
 
 
 SECRET_VALUE = "paper-lab-secret-value"
@@ -41,6 +48,11 @@ def test_event_model_lists_paper_lab_observation_types() -> None:
         PAPER_ORDER_RECEIPT_OBSERVED,
         PAPER_ORDER_RESPONSE_PARSE_FAILED,
         "paper_order_post_submit_account_observed",
+        PAPER_LAB_SNAPSHOT_REQUESTED,
+        PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+        PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+        PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+        PAPER_LAB_SNAPSHOT_UNAVAILABLE,
     )
 
 
@@ -80,6 +92,103 @@ def test_account_smoke_events_are_json_safe_and_redacted() -> None:
     assert SECRET_VALUE not in rendered
     assert "<redacted>" in rendered
     assert json.loads(rendered.splitlines()[0])["account"]["cash"] == "100000"
+
+
+def test_paper_lab_snapshot_events_capture_account_positions_orders() -> None:
+    payload = {
+        "account": {"cash": "100000", "currency": "USD"},
+        "account_observation_available": True,
+        "command": "paper-lab-snapshot",
+        "error": "",
+        "gates": {
+            "profile_gate": {"detail": "paper_profile_ready", "passed": True}
+        },
+        "mutated": False,
+        "ok": True,
+        "orders_observation_available": True,
+        "position_count": 1,
+        "position_symbols": ["MSFT"],
+        "positions": [
+            {"average_price": "100.10", "quantity": "3", "symbol": "MSFT"}
+        ],
+        "positions_observation_available": True,
+        "recent_order_count": 1,
+        "recent_orders": [
+            {
+                "asset_class": "equity",
+                "filled_at": "",
+                "normalized_status": "accepted",
+                "notional": "5.00",
+                "order_type": "market",
+                "quantity": "",
+                "raw_status": "OrderStatus.ACCEPTED",
+                "side": "buy",
+                "submitted_at": "2026-05-29T14:30:00+00:00",
+                "symbol": "SPY",
+                "time_in_force": "day",
+            }
+        ],
+        "submitted": False,
+        "unavailable_observations": [],
+        "unavailable_reasons": {},
+    }
+
+    records = make_paper_lab_snapshot_events(
+        run_id="snapshot-run",
+        payload=payload,
+    )
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_LAB_SNAPSHOT_REQUESTED,
+        PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+        PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+        PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+    ]
+    assert records[0]["ok"] is True
+    assert records[1]["account"] == {"cash": "100000", "currency": "USD"}
+    assert records[2]["position_symbols"] == ["MSFT"]
+    assert records[3]["recent_orders"] == payload["recent_orders"]
+
+
+def test_paper_lab_snapshot_unavailable_event_is_redacted() -> None:
+    payload = {
+        "account_observation_available": False,
+        "command": "paper-lab-snapshot",
+        "error": "paper_lab_snapshot_unavailable",
+        "gates": {
+            "profile_gate": {"detail": "paper_profile_ready", "passed": True}
+        },
+        "mutated": False,
+        "ok": False,
+        "orders_observation_available": False,
+        "position_count": 0,
+        "position_symbols": [],
+        "positions_observation_available": False,
+        "recent_order_count": 0,
+        "submitted": False,
+        "unavailable_observations": ["orders"],
+        "unavailable_reasons": {
+            "orders": {
+                "error_type": "AlpacaAdapterError",
+                "message": f"failed with {SECRET_VALUE}",
+            }
+        },
+    }
+
+    records = make_paper_lab_snapshot_events(
+        run_id="snapshot-unavailable-run",
+        payload=payload,
+        secret_values=(SECRET_VALUE,),
+    )
+    rendered = render_jsonl_records(records)
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_LAB_SNAPSHOT_REQUESTED,
+        PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+    ]
+    assert records[-1]["unavailable_observations"] == ["orders"]
+    assert SECRET_VALUE not in rendered
+    assert "<redacted>" in rendered
 
 
 def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> None:
@@ -138,6 +247,7 @@ def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> Non
     ]
     receipt = records[-2]
     post_submit = records[-1]
+    assert receipt["asset_class"] == "equity"
     assert receipt["symbol"] == "SPY"
     assert receipt["side"] == "buy"
     assert receipt["sizing_mode"] == "notional"
@@ -151,6 +261,44 @@ def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> Non
     assert receipt["market_session_note"].startswith("Market DAY equity orders")
     assert post_submit["account"] == {"cash": "99995", "currency": "USD"}
     assert post_submit["position_count"] == 1
+
+
+def test_disabled_asset_submit_request_records_asset_class_and_reason() -> None:
+    payload = {
+        **_order_payload(
+            submit_requested=True,
+            submit_attempted=False,
+            broker_response_received=False,
+            broker_response_parsed=False,
+            submitted=False,
+        ),
+        "asset_class": "crypto",
+        "preview_only": True,
+        "submission_disabled_reason": CRYPTO_SUBMIT_DISABLED_REASON,
+        "proposed_order_request": {
+            "client_order_id": "paper-order-probe-notional-1",
+            "notional": "5",
+            "order_type": "market",
+            "qty": "",
+            "side": "buy",
+            "symbol": "BTCUSD",
+            "time_in_force": "gtc",
+        },
+    }
+
+    records = make_order_probe_initial_events(
+        run_id="crypto-disabled-run",
+        payload=payload,
+    )
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_ORDER_PREVIEWED,
+        PAPER_ORDER_SUBMIT_REQUESTED,
+    ]
+    assert {record["asset_class"] for record in records} == {"crypto"}
+    assert {
+        record["submission_disabled_reason"] for record in records
+    } == {CRYPTO_SUBMIT_DISABLED_REASON}
 
 
 def test_order_probe_parse_failure_event_captures_attempted_submit() -> None:
@@ -285,6 +433,7 @@ def _order_payload(
 ) -> dict[str, object]:
     return {
         "accepted": None,
+        "asset_class": "equity",
         "broker_response_parsed": broker_response_parsed,
         "broker_response_received": broker_response_received,
         "command": "paper-order-probe",

@@ -23,6 +23,11 @@ PAPER_ORDER_RESPONSE_PARSE_FAILED = "paper_order_response_parse_failed"
 PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED = (
     "paper_order_post_submit_account_observed"
 )
+PAPER_LAB_SNAPSHOT_REQUESTED = "paper_lab_snapshot_requested"
+PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED = "paper_lab_snapshot_account_observed"
+PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED = "paper_lab_snapshot_positions_observed"
+PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED = "paper_lab_snapshot_orders_observed"
+PAPER_LAB_SNAPSHOT_UNAVAILABLE = "paper_lab_snapshot_unavailable"
 
 EVENT_TYPES = (
     PAPER_ACCOUNT_OBSERVED,
@@ -34,6 +39,11 @@ EVENT_TYPES = (
     PAPER_ORDER_RECEIPT_OBSERVED,
     PAPER_ORDER_RESPONSE_PARSE_FAILED,
     PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED,
+    PAPER_LAB_SNAPSHOT_REQUESTED,
+    PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+    PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+    PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+    PAPER_LAB_SNAPSHOT_UNAVAILABLE,
 )
 
 REDACTION_MARKER = "credentials_redacted"
@@ -273,6 +283,73 @@ def make_order_probe_submit_events(
     return tuple(events)
 
 
+def make_paper_lab_snapshot_events(
+    *,
+    run_id: str,
+    payload: Mapping[str, Any],
+    secret_values: Iterable[str | None] = (),
+) -> tuple[dict[str, Any], ...]:
+    command = str(payload.get("command", "paper-lab-snapshot"))
+    events = [
+        PaperLabObservationEvent(
+            run_id=run_id,
+            command=command,
+            event_type=PAPER_LAB_SNAPSHOT_REQUESTED,
+            fields=_snapshot_fields(payload),
+        ).to_record(secret_values=secret_values)
+    ]
+    if payload.get("account_observation_available"):
+        events.append(
+            PaperLabObservationEvent(
+                run_id=run_id,
+                command=command,
+                event_type=PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+                fields={
+                    **_snapshot_fields(payload),
+                    "account": payload.get("account"),
+                },
+            ).to_record(secret_values=secret_values)
+        )
+    if payload.get("positions_observation_available"):
+        events.append(
+            PaperLabObservationEvent(
+                run_id=run_id,
+                command=command,
+                event_type=PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+                fields={
+                    **_snapshot_fields(payload),
+                    "position_count": payload.get("position_count", 0),
+                    "position_symbols": payload.get("position_symbols", ()),
+                    "positions": payload.get("positions", ()),
+                },
+            ).to_record(secret_values=secret_values)
+        )
+    if payload.get("orders_observation_available"):
+        events.append(
+            PaperLabObservationEvent(
+                run_id=run_id,
+                command=command,
+                event_type=PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+                fields={
+                    **_snapshot_fields(payload),
+                    "recent_order_count": payload.get("recent_order_count", 0),
+                    "recent_orders": payload.get("recent_orders", ()),
+                },
+            ).to_record(secret_values=secret_values)
+        )
+    if payload.get("unavailable_observations"):
+        events.append(
+            PaperLabObservationEvent(
+                run_id=run_id,
+                command=command,
+                event_type=PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+                fields=_snapshot_fields(payload),
+            ).to_record(secret_values=secret_values)
+        )
+
+    return tuple(events)
+
+
 def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     request = payload.get("proposed_order_request")
     request_payload = request if isinstance(request, Mapping) else {}
@@ -280,6 +357,9 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     broker_result_payload = broker_result if isinstance(broker_result, Mapping) else {}
     fields = {
         **_state_fields(payload),
+        "asset_class": _text(
+            payload.get("asset_class") or request_payload.get("asset_class") or "equity"
+        ),
         "client_order_id": _text(request_payload.get("client_order_id")),
         "broker_normalized_status": _optional_text(
             payload.get("broker_normalized_status")
@@ -300,6 +380,7 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "notional": _text(
             request_payload.get("notional") or payload.get("requested_notional")
         ),
+        "order_type": _text(request_payload.get("order_type")),
         "preview_only": bool(payload.get("preview_only", False)),
         "qty": _text(request_payload.get("qty") or payload.get("requested_qty")),
         "redacted_exception_message": _optional_text(
@@ -308,10 +389,38 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "side": _text(request_payload.get("side") or payload.get("side")),
         "sizing_mode": _text(payload.get("sizing_mode")),
         "symbol": _text(request_payload.get("symbol") or payload.get("symbol")),
+        "submission_disabled_reason": _optional_text(
+            payload.get("submission_disabled_reason")
+        ),
+        "time_in_force": _text(request_payload.get("time_in_force")),
     }
     if broker_result is not None:
         fields["broker_result"] = broker_result
     return fields
+
+
+def _snapshot_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "account_observation_available": bool(
+            payload.get("account_observation_available", False)
+        ),
+        "error": _optional_text(payload.get("error")),
+        "gate_summary": _gate_summary(payload.get("gates")),
+        "mutated": bool(payload.get("mutated", False)),
+        "ok": bool(payload.get("ok", False)),
+        "orders_observation_available": bool(
+            payload.get("orders_observation_available", False)
+        ),
+        "position_count": payload.get("position_count", 0),
+        "position_symbols": payload.get("position_symbols", ()),
+        "positions_observation_available": bool(
+            payload.get("positions_observation_available", False)
+        ),
+        "recent_order_count": payload.get("recent_order_count", 0),
+        "submitted": bool(payload.get("submitted", False)),
+        "unavailable_observations": payload.get("unavailable_observations", ()),
+        "unavailable_reasons": payload.get("unavailable_reasons", {}),
+    }
 
 
 def _state_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -389,6 +498,11 @@ def _text(value: Any) -> str:
 __all__ = [
     "EVENT_TYPES",
     "PAPER_ACCOUNT_OBSERVED",
+    "PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED",
+    "PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED",
+    "PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED",
+    "PAPER_LAB_SNAPSHOT_REQUESTED",
+    "PAPER_LAB_SNAPSHOT_UNAVAILABLE",
     "PAPER_ORDER_POST_SUBMIT_ACCOUNT_OBSERVED",
     "PAPER_ORDER_PREVIEWED",
     "PAPER_ORDER_RECEIPT_OBSERVED",
@@ -405,6 +519,7 @@ __all__ = [
     "make_account_smoke_events",
     "make_order_probe_initial_events",
     "make_order_probe_submit_events",
+    "make_paper_lab_snapshot_events",
     "render_jsonl_records",
     "resolve_run_id",
 ]

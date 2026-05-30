@@ -8,20 +8,26 @@ from decimal import Decimal, InvalidOperation
 import json
 import sys
 
+from .execution.paper_order_policy import (
+    ASSET_CLASS_CHOICES as _PAPER_ORDER_ASSET_CLASSES,
+    ASSET_CLASS_OPTION as _PAPER_ORDER_ASSET_CLASS_OPTION,
+    PAPER_MARKET_SESSION_NOTE as _PAPER_MARKET_SESSION_NOTE,
+    PAPER_ORDER_PROBE_QTY_DISABLED_REASON as _PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
+    paper_order_policy_for_asset_class,
+)
+
 _PROFILE_NAMES = ("dev", "paper", "live")
 _PREVIEW_FORMATS = ("text", "json")
-_PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST = ("SPY",)
-_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP = Decimal("10")
-_PAPER_ORDER_PROBE_QTY_DISABLED_REASON = (
-    "qty_submission_disabled_until_quote_based_cap_is_supported"
+_PAPER_ORDER_EQUITY_POLICY = paper_order_policy_for_asset_class("equity")
+_PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST = (
+    _PAPER_ORDER_EQUITY_POLICY.symbol_allowlist or ()
+)
+_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP = (
+    _PAPER_ORDER_EQUITY_POLICY.max_notional_cap or Decimal("0")
 )
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-notional-1"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX = "paper-order-probe"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH = 30
-_PAPER_MARKET_SESSION_NOTE = (
-    "Market DAY equity orders submitted after hours may be accepted or queued "
-    "by the broker and may not fill until the next regular session."
-)
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
     "halt_gate",
@@ -121,9 +127,27 @@ def build_parser() -> argparse.ArgumentParser:
         help="Smoke output format.",
     )
     _add_paper_lab_run_log_options(paper_account_parser)
+    paper_lab_snapshot_parser = subparsers.add_parser(
+        "paper-lab-snapshot",
+        help="Read a deterministic Alpaca paper account, positions, and orders snapshot.",
+    )
+    paper_lab_snapshot_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Snapshot output format.",
+    )
+    _add_paper_lab_run_log_options(paper_lab_snapshot_parser)
     paper_order_probe_parser = subparsers.add_parser(
         "paper-order-probe",
         help="Preview a guarded Alpaca paper order request without submitting.",
+    )
+    paper_order_probe_parser.add_argument(
+        "--asset-class",
+        choices=_PAPER_ORDER_ASSET_CLASSES,
+        default="equity",
+        dest="asset_class",
     )
     paper_order_probe_parser.add_argument("--symbol", required=True)
     paper_order_probe_parser.add_argument("--side", required=True)
@@ -358,6 +382,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             run_log_path=args.run_log,
             run_id=args.run_id,
         )
+    if command == "paper-lab-snapshot":
+        return _run_paper_lab_snapshot(
+            config,
+            args.output_format,
+            run_log_path=args.run_log,
+            run_id=args.run_id,
+        )
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
 
@@ -528,6 +559,199 @@ def _run_paper_account_smoke(
     return 0
 
 
+def _run_paper_lab_snapshot(
+    config,
+    output_format: str,
+    *,
+    run_log_path: str | None = None,
+    run_id: str | None = None,
+) -> int:
+    resolved_run_id = _paper_lab_run_id(run_id) if run_log_path else ""
+    if run_log_path and not _ensure_paper_lab_run_log(run_log_path):
+        return 1
+
+    payload = _build_paper_lab_snapshot_payload(config)
+    if run_log_path and not _write_paper_lab_snapshot_run_log(
+        run_log_path,
+        resolved_run_id,
+        payload,
+        config,
+    ):
+        return 1
+
+    print(_render_paper_lab_snapshot_payload(payload, output_format))
+    if payload.get("error") == "profile_gate_failed":
+        return 2
+
+    return 0 if payload["ok"] else 1
+
+
+def _build_paper_lab_snapshot_payload(config) -> dict[str, object]:
+    profile_gate = _paper_profile_gate(config)
+    payload = _paper_lab_snapshot_base_payload(profile_gate)
+    if not profile_gate["passed"]:
+        return {
+            **payload,
+            "error": "profile_gate_failed",
+            "unavailable_observations": [
+                "account",
+                "positions",
+                "orders",
+            ],
+        }
+
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return _paper_lab_snapshot_unavailable_payload(
+            payload,
+            "broker",
+            exc,
+            config,
+        )
+
+    payload = _observe_paper_lab_snapshot_account(payload, broker, config)
+    payload = _observe_paper_lab_snapshot_positions(payload, broker, config)
+    payload = _observe_paper_lab_snapshot_orders(payload, broker, config)
+    ok = (
+        payload["account_observation_available"]
+        and payload["positions_observation_available"]
+        and payload["orders_observation_available"]
+    )
+    return {
+        **payload,
+        "error": "" if ok else "paper_lab_snapshot_unavailable",
+        "ok": ok,
+    }
+
+
+def _paper_lab_snapshot_base_payload(
+    profile_gate: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "account": None,
+        "account_observation_available": False,
+        "command": "paper-lab-snapshot",
+        "error": "",
+        "gates": {"profile_gate": profile_gate},
+        "mutated": False,
+        "ok": False,
+        "orders_observation_available": False,
+        "position_count": 0,
+        "position_symbols": [],
+        "positions": [],
+        "positions_observation_available": False,
+        "recent_order_count": 0,
+        "recent_orders": [],
+        "redaction": "credentials_redacted",
+        "submitted": False,
+        "unavailable_observations": [],
+        "unavailable_reasons": {},
+    }
+
+
+def _observe_paper_lab_snapshot_account(
+    payload: dict[str, object],
+    broker,
+    config,
+) -> dict[str, object]:
+    from .execution.paper_lab_snapshot import account_observation_payload
+
+    try:
+        account = broker.get_account()
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return _paper_lab_snapshot_unavailable_payload(
+            payload,
+            "account",
+            exc,
+            config,
+        )
+
+    return {
+        **payload,
+        "account": account_observation_payload(account),
+        "account_observation_available": True,
+    }
+
+
+def _observe_paper_lab_snapshot_positions(
+    payload: dict[str, object],
+    broker,
+    config,
+) -> dict[str, object]:
+    from .execution.paper_lab_snapshot import (
+        position_observation_payloads,
+        position_symbols,
+    )
+
+    try:
+        positions = position_observation_payloads(broker.get_positions())
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return _paper_lab_snapshot_unavailable_payload(
+            payload,
+            "positions",
+            exc,
+            config,
+        )
+
+    return {
+        **payload,
+        "position_count": len(positions),
+        "position_symbols": list(position_symbols(positions)),
+        "positions": list(positions),
+        "positions_observation_available": True,
+    }
+
+
+def _observe_paper_lab_snapshot_orders(
+    payload: dict[str, object],
+    broker,
+    config,
+) -> dict[str, object]:
+    from .execution.paper_lab_snapshot import order_observation_payloads
+
+    try:
+        orders = order_observation_payloads(broker.get_recent_orders())
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return _paper_lab_snapshot_unavailable_payload(
+            payload,
+            "orders",
+            exc,
+            config,
+        )
+
+    return {
+        **payload,
+        "orders_observation_available": True,
+        "recent_order_count": len(orders),
+        "recent_orders": list(orders),
+    }
+
+
+def _paper_lab_snapshot_unavailable_payload(
+    payload: dict[str, object],
+    observation_name: str,
+    exc: Exception,
+    config,
+) -> dict[str, object]:
+    unavailable_observations = list(payload.get("unavailable_observations", []))
+    if observation_name not in unavailable_observations:
+        unavailable_observations.append(observation_name)
+
+    unavailable_reasons = dict(payload.get("unavailable_reasons", {}))
+    unavailable_reasons[observation_name] = {
+        "error_type": exc.__class__.__name__,
+        "message": _redact_config_secrets(str(exc), config),
+    }
+    return {
+        **payload,
+        "error": "paper_lab_snapshot_unavailable",
+        "ok": False,
+        "unavailable_observations": unavailable_observations,
+        "unavailable_reasons": unavailable_reasons,
+    }
+
+
 def _paper_post_submit_observation(broker, config) -> dict[str, object]:
     try:
         account = broker.get_account()
@@ -600,6 +824,7 @@ def _build_paper_order_probe_payload(
     config,
     args: argparse.Namespace,
 ) -> dict[str, object]:
+    policy = paper_order_policy_for_asset_class(args.asset_class)
     symbol = args.symbol.strip().upper()
     side = args.side.strip().lower()
     has_qty_arg = args.qty is not None
@@ -628,20 +853,23 @@ def _build_paper_order_probe_payload(
         "ALGOTRADER_PAPER_HALT=1",
     )
     allowlist_gate = _gate(
-        symbol in _PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST,
-        f"symbol={symbol} allowlist={','.join(_PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST)}",
+        policy.allows_symbol(symbol),
+        policy.allowlist_detail(symbol),
         "symbol_not_allowlisted",
     )
     side_gate = _gate(side == "buy", "buy_only", "side_must_be_buy")
     sizing_gate = _gate(
-        sizing_mode in ("qty", "notional"),
+        sizing_mode in policy.allowed_sizing_modes,
         sizing_mode,
-        "exactly_one_of_qty_or_notional_required",
+        policy.sizing_failure_detail(),
     )
+    quantity_passes = sizing_mode != "qty" or quantity is not None
+    if quantity_passes and sizing_mode == "qty" and policy.required_qty is not None:
+        quantity_passes = quantity == policy.required_qty
     quantity_gate = _gate(
-        sizing_mode != "qty" or quantity is not None,
-        "positive_whole_share_quantity",
-        quantity_error or "invalid_quantity",
+        quantity_passes,
+        policy.quantity_detail(),
+        policy.quantity_failure_detail(quantity_error),
     )
     notional_value_gate = _gate(
         sizing_mode != "notional" or notional is not None,
@@ -650,8 +878,11 @@ def _build_paper_order_probe_payload(
     )
     notional_cap_gate = _gate(
         max_notional is not None
-        and max_notional <= _PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP,
-        f"max_notional_cap={_decimal_text(_PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP)}",
+        and (
+            policy.max_notional_cap is None
+            or max_notional <= policy.max_notional_cap
+        ),
+        policy.notional_cap_detail(),
         max_notional_error or "max_notional_cap_exceeded",
     )
     if notional_cap_gate["passed"] and sizing_mode == "notional":
@@ -665,16 +896,19 @@ def _build_paper_order_probe_payload(
             submit_flag=bool(args.submit),
             i_mean_it_flag=bool(args.i_mean_it),
             sizing_mode=sizing_mode,
+            policy=policy,
         ),
         _paper_order_submit_confirmation_detail(
             submit_flag=bool(args.submit),
             i_mean_it_flag=bool(args.i_mean_it),
             sizing_mode=sizing_mode,
+            policy=policy,
         ),
         _paper_order_submit_confirmation_failure_detail(
             submit_flag=bool(args.submit),
             i_mean_it_flag=bool(args.i_mean_it),
             sizing_mode=sizing_mode,
+            policy=policy,
         ),
     )
     gates = {
@@ -691,19 +925,27 @@ def _build_paper_order_probe_payload(
     ok = all(bool(gate["passed"]) for gate in gates.values())
 
     request_payload = None
-    if symbol and side == "buy" and sizing_mode in ("qty", "notional"):
+    if (
+        symbol
+        and side == "buy"
+        and sizing_mode in policy.allowed_sizing_modes
+        and (sizing_mode != "qty" or quantity_passes)
+    ):
         try:
             request = _paper_order_request(
                 symbol,
+                asset_class=policy.asset_class,
                 client_order_id=_paper_order_client_order_id(args.run_id),
                 quantity=quantity if sizing_mode == "qty" else None,
                 notional=notional if sizing_mode == "notional" else None,
+                time_in_force=policy.time_in_force,
             )
             request_payload = _paper_order_request_payload(request)
         except ValueError:
             request_payload = None
 
     return {
+        "asset_class": policy.asset_class,
         "command": "paper-order-probe",
         "error": "" if ok else _first_failed_gate(gates),
         "gates": gates,
@@ -711,7 +953,7 @@ def _build_paper_order_probe_payload(
             _decimal_text(max_notional) if max_notional is not None else args.max_notional
         ),
         "ok": ok,
-        "preview_only": not submit_requested,
+        "preview_only": not submit_requested or not policy.submit_enabled,
         "proposed_order_request": request_payload,
         "requested_i_mean_it": bool(args.i_mean_it),
         "requested_notional": _decimal_text(notional) if notional is not None else "",
@@ -725,10 +967,11 @@ def _build_paper_order_probe_payload(
         "broker_response_parsed": False,
         "broker_response_received": False,
         "filled": None,
-        "market_session_note": _PAPER_MARKET_SESSION_NOTE,
+        "market_session_note": policy.market_session_note,
         "submitted": False,
-        "submission_disabled_reason": (
-            _PAPER_ORDER_PROBE_QTY_DISABLED_REASON if sizing_mode == "qty" else ""
+        "submission_disabled_reason": _paper_order_submission_disabled_reason(
+            policy,
+            sizing_mode,
         ),
         "submit_attempted": False,
         "submit_requested": submit_requested,
@@ -741,6 +984,17 @@ def _submit_paper_order_probe(
     *,
     observe_post_submit: bool = False,
 ) -> dict[str, object]:
+    if payload.get("asset_class") != "equity":
+        return {
+            **payload,
+            "error": "paper_order_probe_submit_disabled",
+            "message": str(payload.get("submission_disabled_reason", "")),
+            "ok": False,
+            "preview_only": True,
+            "submitted": False,
+            "submit_attempted": False,
+        }
+
     request_payload = payload.get("proposed_order_request")
     if not isinstance(request_payload, dict):
         return {
@@ -756,6 +1010,7 @@ def _submit_paper_order_probe(
     try:
         request = _paper_order_request(
             str(request_payload["symbol"]),
+            asset_class=str(payload.get("asset_class", "equity")),
             client_order_id=str(
                 request_payload.get(
                     "client_order_id",
@@ -763,6 +1018,7 @@ def _submit_paper_order_probe(
                 )
             ),
             notional=Decimal(str(request_payload["notional"])),
+            time_in_force=str(request_payload.get("time_in_force", "day")),
         )
         broker = _build_paper_broker(config.alpaca_paper)
 
@@ -876,9 +1132,11 @@ def _paper_order_broker_result_payload(result) -> dict[str, object]:  # noqa: AN
 def _paper_order_request(
     symbol: str,
     *,
+    asset_class: str = "equity",
     client_order_id: str = _PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
     quantity: Decimal | None = None,
     notional: Decimal | None = None,
+    time_in_force: str = "day",
 ):
     from .execution.alpaca_client import AlpacaOrderRequest
 
@@ -886,10 +1144,11 @@ def _paper_order_request(
         client_order_id=client_order_id,
         symbol=symbol,
         side="buy",
+        asset_class=asset_class,
         qty=quantity,
         notional=notional,
         order_type="market",
-        time_in_force="day",
+        time_in_force=time_in_force,
     )
 
 
@@ -964,9 +1223,14 @@ def _paper_order_submit_confirmation_passes(
     submit_flag: bool,
     i_mean_it_flag: bool,
     sizing_mode: str,
+    policy,
 ) -> bool:
+    if policy.asset_class == _PAPER_ORDER_ASSET_CLASS_OPTION:
+        return False
     if not submit_flag and not i_mean_it_flag:
         return True
+    if submit_flag and i_mean_it_flag and not policy.submit_enabled:
+        return False
     if submit_flag and i_mean_it_flag and sizing_mode == "notional":
         return True
 
@@ -978,9 +1242,14 @@ def _paper_order_submit_confirmation_detail(
     submit_flag: bool,
     i_mean_it_flag: bool,
     sizing_mode: str,
+    policy,
 ) -> str:
+    if policy.asset_class == _PAPER_ORDER_ASSET_CLASS_OPTION:
+        return ""
     if not submit_flag and not i_mean_it_flag:
         return "preview_only_no_submission_requested"
+    if submit_flag and i_mean_it_flag and not policy.submit_enabled:
+        return ""
     if submit_flag and i_mean_it_flag and sizing_mode == "notional":
         return "explicit_notional_submit_confirmed"
 
@@ -992,11 +1261,25 @@ def _paper_order_submit_confirmation_failure_detail(
     submit_flag: bool,
     i_mean_it_flag: bool,
     sizing_mode: str,
+    policy,
 ) -> str:
+    if policy.asset_class == _PAPER_ORDER_ASSET_CLASS_OPTION:
+        return policy.submit_disabled_reason
+    if submit_flag and i_mean_it_flag and not policy.submit_enabled:
+        return policy.submit_disabled_reason
     if submit_flag and i_mean_it_flag and sizing_mode == "qty":
         return _PAPER_ORDER_PROBE_QTY_DISABLED_REASON
 
     return "submit_requires_submit_and_i_mean_it"
+
+
+def _paper_order_submission_disabled_reason(policy, sizing_mode: str) -> str:
+    if not policy.submit_enabled:
+        return policy.submit_disabled_reason
+    if sizing_mode == "qty":
+        return _PAPER_ORDER_PROBE_QTY_DISABLED_REASON
+
+    return ""
 
 
 def _positive_decimal(
@@ -1078,6 +1361,55 @@ def _render_paper_account_payload(
     return "\n".join(lines)
 
 
+def _render_paper_lab_snapshot_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper lab snapshot",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"submitted: {_bool_text(payload['submitted'])}",
+        f"mutated: {_bool_text(payload['mutated'])}",
+    ]
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+    lines.extend(_gate_lines(payload["gates"]))
+    lines.append(
+        "account_observation_available: "
+        f"{_bool_text(payload['account_observation_available'])}"
+    )
+    lines.append(
+        "positions_observation_available: "
+        f"{_bool_text(payload['positions_observation_available'])}"
+    )
+    lines.append(
+        "orders_observation_available: "
+        f"{_bool_text(payload['orders_observation_available'])}"
+    )
+    account = payload.get("account")
+    if isinstance(account, dict):
+        lines.append(f"account_cash: {account['cash']} {account['currency']}")
+    lines.append(f"position_count: {payload['position_count']}")
+    lines.append(f"position_symbols: {','.join(payload['position_symbols'])}")
+    lines.append(f"recent_order_count: {payload['recent_order_count']}")
+    for order in payload["recent_orders"]:
+        lines.append(
+            "recent_order: "
+            f"{order['symbol']} {order['side']} "
+            f"{order['normalized_status']} qty={order['quantity']} "
+            f"notional={order['notional']}"
+        )
+    if payload.get("unavailable_observations"):
+        lines.append(
+            "unavailable_observations: "
+            f"{','.join(payload['unavailable_observations'])}"
+        )
+    return "\n".join(lines)
+
+
 def _render_paper_order_probe_payload(
     payload: dict[str, object],
     output_format: str,
@@ -1087,6 +1419,7 @@ def _render_paper_order_probe_payload(
 
     lines = [
         "Paper order probe",
+        f"asset_class: {payload['asset_class']}",
         f"ok: {_bool_text(payload['ok'])}",
         f"preview_only: {_bool_text(payload['preview_only'])}",
         f"submit_requested: {_bool_text(payload['submit_requested'])}",
@@ -1215,6 +1548,22 @@ def _write_paper_account_run_log(
     from .execution.paper_lab_observation_log import make_account_smoke_events
 
     events = make_account_smoke_events(
+        run_id=run_id,
+        payload=payload,
+        secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _write_paper_lab_snapshot_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+    config,
+) -> bool:
+    from .execution.paper_lab_observation_log import make_paper_lab_snapshot_events
+
+    events = make_paper_lab_snapshot_events(
         run_id=run_id,
         payload=payload,
         secret_values=_paper_lab_sensitive_values(config),
