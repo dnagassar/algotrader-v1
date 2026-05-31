@@ -156,7 +156,7 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
     }
     kwargs: dict[str, Any] = {
         "client_order_id": request.client_order_id,
-        "side": OrderSide.BUY,
+        "side": OrderSide(request.side),
         "symbol": request.symbol,
         "time_in_force": time_in_force_by_value[request.time_in_force],
         "type": OrderType.MARKET,

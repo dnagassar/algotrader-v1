@@ -125,8 +125,16 @@ class AlpacaOrderRequest:
         time_in_force = self.time_in_force.strip().lower()
         if asset_class not in _TIME_IN_FORCE_BY_ASSET_CLASS:
             raise ValueError("Alpaca paper order requests require a supported asset_class.")
-        if side != "buy":
-            raise ValueError("Alpaca paper order requests are buy-only.")
+        normalized_symbol = self.symbol.strip().upper()
+        if side not in {"buy", "sell"}:
+            raise ValueError("Alpaca paper order requests require buy or sell side.")
+        if side == "sell" and not (
+            asset_class == "crypto" and normalized_symbol == "BTCUSD"
+        ):
+            raise ValueError(
+                "Alpaca paper sell requests are restricted to BTCUSD crypto "
+                "close probes."
+            )
         if order_type != "market":
             raise ValueError("Alpaca paper order requests are market-only.")
         if time_in_force not in _TIME_IN_FORCE_BY_ASSET_CLASS[asset_class]:
@@ -143,7 +151,7 @@ class AlpacaOrderRequest:
                 "Alpaca paper order requests require exactly one of qty or notional."
             )
 
-        object.__setattr__(self, "symbol", self.symbol.strip().upper())
+        object.__setattr__(self, "symbol", normalized_symbol)
         object.__setattr__(self, "side", side)
         object.__setattr__(self, "asset_class", asset_class)
         object.__setattr__(self, "order_type", order_type)

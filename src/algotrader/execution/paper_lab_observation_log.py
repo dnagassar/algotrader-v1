@@ -394,6 +394,7 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "error_type": _optional_text(payload.get("error_type")),
         "gate_summary": _gate_summary(payload.get("gates")),
         "market_session_note": _optional_text(payload.get("market_session_note")),
+        "max_quantity": _text(payload.get("max_quantity")),
         "max_notional": _text(payload.get("max_notional")),
         "min_notional": _text(payload.get("min_notional")),
         "message": _optional_text(payload.get("message")),
@@ -422,11 +423,53 @@ def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "submission_disabled_reason": _optional_text(
             payload.get("submission_disabled_reason")
         ),
+        "target_position_average_price": _text(
+            payload.get("target_position_average_price")
+        ),
+        "target_position_observed": payload.get("target_position_observed"),
+        "target_position_quantity": _text(payload.get("target_position_quantity")),
         "time_in_force": _text(request_payload.get("time_in_force")),
     }
+    fields.update(_order_pre_submit_observation_fields(payload))
     fields.update(_submit_error_fields(payload))
     if broker_result is not None:
         fields["broker_result"] = broker_result
+    return fields
+
+
+def _order_pre_submit_observation_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
+    for key in (
+        "account_observation_available",
+        "orders_observation_available",
+        "position_count",
+        "position_symbols",
+        "positions_observation_available",
+        "pre_submit_position_count",
+        "recent_order_count",
+        "recent_order_query_after",
+        "recent_order_query_asset_class_filter",
+        "recent_order_query_attempted",
+        "recent_order_query_available",
+        "recent_order_query_contract_version",
+        "recent_order_query_direction",
+        "recent_order_query_limit",
+        "recent_order_query_metadata_complete",
+        "recent_order_query_metadata_missing_fields",
+        "recent_order_query_nested",
+        "recent_order_query_returned_count",
+        "recent_order_query_side_filter",
+        "recent_order_query_sort",
+        "recent_order_query_source",
+        "recent_order_query_status_filter",
+        "recent_order_query_symbol_filter",
+        "recent_order_query_until",
+        "unavailable_observations",
+        "unavailable_reasons",
+    ):
+        if key in payload:
+            fields[key] = _json_safe(payload.get(key))
+
     return fields
 
 

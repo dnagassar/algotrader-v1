@@ -8,8 +8,14 @@ import algotrader.cli as cli_module
 from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
-from algotrader.execution.alpaca_client import AlpacaOrderRequest
-from algotrader.execution.alpaca_sdk_client import AlpacaSdkClientError
+from algotrader.execution.alpaca_client import (
+    AlpacaOrderRequest,
+    AlpacaPositionResponse,
+)
+from algotrader.execution.alpaca_sdk_client import (
+    AlpacaSdkClientError,
+    _to_sdk_order_request,
+)
 from algotrader.execution.paper_lab_observation_log import (
     PAPER_CLOSE_PREVIEW_DESIGNED,
     make_paper_close_preview_events,
@@ -83,6 +89,30 @@ def test_crypto_order_request_accepts_asset_specific_time_in_force() -> None:
     assert request.asset_class == "crypto"
     assert request.symbol == "BTCUSD"
     assert request.time_in_force == "gtc"
+
+
+def test_btcusd_close_order_request_accepts_sell_quantity_sdk_shape() -> None:
+    request = AlpacaOrderRequest(
+        client_order_id="deterministic-btcusd-close",
+        symbol="btcusd",
+        side="sell",
+        asset_class="crypto",
+        qty=Decimal("0.000132386"),
+        time_in_force="gtc",
+    )
+
+    sdk_request = _to_sdk_order_request(request)
+
+    assert request.asset_class == "crypto"
+    assert request.symbol == "BTCUSD"
+    assert request.side == "sell"
+    assert request.qty == Decimal("0.000132386")
+    assert request.notional is None
+    assert sdk_request.side.value == "sell"
+    assert sdk_request.symbol == "BTCUSD"
+    assert Decimal(str(sdk_request.qty)) == Decimal("0.000132386")
+    assert sdk_request.notional is None
+    assert sdk_request.time_in_force.value == "gtc"
 
 
 def test_equity_order_request_rejects_crypto_time_in_force() -> None:
@@ -1434,6 +1464,259 @@ def test_crypto_order_probe_rejects_sell_side(monkeypatch, capsys) -> None:
     }
 
 
+def test_paper_close_probe_requires_submit_and_i_mean_it_before_broker_build(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (*_valid_close_probe_args(), "--submit"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["command"] == "paper-close-probe"
+    assert payload["asset_class"] == "crypto"
+    assert payload["symbol"] == "BTCUSD"
+    assert payload["side"] == "sell"
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is False
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "submit_confirmation_gate_failed"
+    assert payload["gates"]["submit_confirmation_gate"] == {
+        "detail": "submit_requires_submit_and_i_mean_it",
+        "passed": False,
+    }
+
+
+def test_paper_close_probe_rejects_live_profile_before_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch, profile="live")
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (*_valid_close_probe_args(), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "profile_gate_failed"
+    assert payload["gates"]["profile_gate"]["passed"] is False
+
+
+def test_paper_close_probe_rejects_live_base_url_before_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://api.alpaca.markets")
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (*_valid_close_probe_args(), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["submitted"] is False
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "profile_gate_failed"
+    assert payload["gates"]["profile_gate"]["passed"] is False
+
+
+def test_paper_close_probe_rejects_quantity_above_max_before_broker_build(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_close_probe_args(max_quantity="0.000132385"),
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["submitted"] is False
+    assert payload["submit_attempted"] is False
+    assert payload["error"] == "quantity_within_max_gate_failed"
+    assert payload["gates"]["quantity_within_max_gate"] == {
+        "detail": "quantity_exceeds_max_quantity",
+        "passed": False,
+    }
+
+
+def test_paper_close_probe_rejects_quantity_above_observed_position(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeCloseAlpacaClient(position_qty="0.000132385"),
+    )
+
+    exit_code, payload = _run_json(
+        (*_valid_close_probe_args(), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert fake_client.calls == ["get_account", "get_positions", "get_orders"]
+    assert fake_client.submitted_requests == []
+    assert payload["submitted"] is False
+    assert payload["submit_attempted"] is False
+    assert payload["target_position_observed"] is True
+    assert payload["target_position_quantity"] == "0.000132385"
+    assert payload["error"] == "observed_position_quantity_gate_failed"
+    assert payload["gates"]["observed_position_quantity_gate"] == {
+        "detail": "observed_BTCUSD_quantity_must_equal_max_quantity",
+        "passed": False,
+    }
+    assert payload["gates"]["no_shorting_gate"]["passed"] is False
+
+
+def test_paper_close_probe_rejects_open_orders_before_submit(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeCloseAlpacaClient(
+            orders=(
+                {
+                    "asset_class": "crypto",
+                    "client_order_id": "other-open-order",
+                    "order_id": "open-order-1",
+                    "order_type": "market",
+                    "qty": "0.000132386",
+                    "side": "sell",
+                    "status": "accepted",
+                    "symbol": "BTCUSD",
+                    "time_in_force": "gtc",
+                },
+            )
+        ),
+    )
+
+    exit_code, payload = _run_json(
+        (*_valid_close_probe_args(), "--submit", "--i-mean-it"),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert fake_client.calls == ["get_account", "get_positions", "get_orders"]
+    assert fake_client.submitted_requests == []
+    assert payload["submitted"] is False
+    assert payload["submit_attempted"] is False
+    assert payload["recent_order_count"] == 1
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert payload["error"] == "recent_open_order_gate_failed"
+    assert payload["gates"]["recent_open_order_gate"] == {
+        "detail": "recent_open_orders_must_be_zero",
+        "passed": False,
+    }
+
+
+def test_paper_close_probe_fake_successful_submit_writes_one_attempt(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeCloseAlpacaClient())
+    run_log = tmp_path / "runs" / "paper_lab" / "close_submit.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_close_probe_args(),
+            "--submit",
+            "--i-mean-it",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "close-submit-run",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 0
+    assert fake_client.calls == [
+        "get_account",
+        "get_positions",
+        "get_orders",
+        "submit_order",
+        "get_account",
+        "get_positions",
+    ]
+    assert len(fake_client.submitted_requests) == 1
+    request = fake_client.submitted_requests[0]
+    assert request.client_order_id == "paper-close-probe-close-submit-run"
+    assert request.asset_class == "crypto"
+    assert request.symbol == "BTCUSD"
+    assert request.side == "sell"
+    assert request.qty == Decimal("0.000132386")
+    assert request.notional is None
+    assert request.order_type == "market"
+    assert request.time_in_force == "gtc"
+    assert payload["submitted"] is True
+    assert payload["mutated"] is True
+    assert payload["submit_requested"] is True
+    assert payload["submit_attempted"] is True
+    assert payload["preview_only"] is False
+    assert payload["broker_response_received"] is True
+    assert payload["broker_response_parsed"] is True
+    assert payload["broker_result_classification"] == "accepted"
+    assert payload["accepted"] is True
+    assert payload["filled"] is False
+    assert payload["normalized_status"] == "accepted"
+    assert payload["target_position_observed"] is True
+    assert payload["target_position_quantity"] == "0.000132386"
+    assert payload["recent_order_count"] == 0
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert payload["unavailable_observations"] == []
+    assert [record["event_type"] for record in records] == [
+        "paper_order_previewed",
+        "paper_order_submit_requested",
+        "paper_order_submit_attempted",
+        "paper_order_receipt_observed",
+        "paper_order_post_submit_account_observed",
+    ]
+    assert {record["command"] for record in records} == {"paper-close-probe"}
+    receipt = records[3]
+    assert receipt["asset_class"] == "crypto"
+    assert receipt["symbol"] == "BTCUSD"
+    assert receipt["side"] == "sell"
+    assert receipt["qty"] == "0.000132386"
+    assert receipt["max_quantity"] == "0.000132386"
+    assert receipt["target_position_quantity"] == "0.000132386"
+    assert receipt["recent_order_count"] == 0
+    assert receipt["recent_order_query_metadata_complete"] is True
+    assert receipt["submitted"] is True
+    assert receipt["submit_attempted"] is True
+    assert receipt["broker_response_received"] is True
+    assert receipt["broker_response_parsed"] is True
+    assert SENSITIVE_API_KEY not in rendered
+    assert SENSITIVE_SECRET_KEY not in rendered
+
+
 def test_options_order_probe_branch_is_disabled(monkeypatch, capsys) -> None:
     _set_env(monkeypatch)
     _forbid_broker_build(monkeypatch)
@@ -2069,6 +2352,31 @@ def _valid_crypto_notional_probe_args(
     )
 
 
+def _valid_close_probe_args(
+    *,
+    asset_class: str = "crypto",
+    symbol: str = "BTCUSD",
+    side: str = "sell",
+    quantity: str = "0.000132386",
+    max_quantity: str = "0.000132386",
+) -> tuple[str, ...]:
+    return (
+        "paper-close-probe",
+        "--asset-class",
+        asset_class,
+        "--symbol",
+        symbol,
+        "--side",
+        side,
+        "--quantity",
+        quantity,
+        "--max-quantity",
+        max_quantity,
+        "--format",
+        "json",
+    )
+
+
 def _valid_option_probe_args(
     *,
     symbol: str = "SPY260117C00600000",
@@ -2126,6 +2434,52 @@ class FakeNotionalAlpacaClient(FakeAlpacaClient):
         if self.reject_reason:
             response["reject_reason"] = self.reject_reason
         return response
+
+
+class FakeCloseAlpacaClient(FakeAlpacaClient):
+    def __init__(
+        self,
+        *,
+        position_qty: str = "0.000132386",
+        orders: tuple[dict[str, object], ...] = (),
+        status: str = "accepted",
+        post_position_qty: str = "",
+    ) -> None:
+        super().__init__()
+        self.position_qty = position_qty
+        self.orders = orders
+        self.status = status
+        self.post_position_qty = post_position_qty
+
+    def get_positions(self) -> list[AlpacaPositionResponse]:
+        self.calls.append("get_positions")
+        qty = self.post_position_qty if self.submitted_requests else self.position_qty
+        if not qty:
+            return []
+        return [
+            AlpacaPositionResponse(
+                symbol="BTCUSD",
+                qty=Decimal(qty),
+                market_value=Decimal("9.78"),
+                average_entry_price=Decimal("73886.11"),
+            )
+        ]
+
+    def get_orders(self, query=None):  # noqa: ANN001
+        self.calls.append("get_orders")
+        return list(self.orders)
+
+    def submit_order(self, request):  # noqa: ANN001
+        self.calls.append("submit_order")
+        self.submitted_requests.append(request)
+        return {
+            "order_id": "broker-close-order-1",
+            "client_order_id": request.client_order_id,
+            "symbol": request.symbol,
+            "side": request.side,
+            "qty": str(request.qty),
+            "status": self.status,
+        }
 
 
 class FakeMalformedAlpacaClient(FakeAlpacaClient):

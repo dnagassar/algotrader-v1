@@ -32,6 +32,7 @@ _PAPER_ORDER_PROBE_MAX_NOTIONAL_CAP = (
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID = "paper-order-probe-notional-1"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX = "paper-order-probe"
 _PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH = 30
+_PAPER_CLOSE_PROBE_CLIENT_ORDER_ID_PREFIX = "paper-close-probe"
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
     "halt_gate",
@@ -43,6 +44,24 @@ _PAPER_SAFETY_GATE_ORDER = (
     "notional_min_gate",
     "notional_cap_gate",
     "submit_confirmation_gate",
+)
+_PAPER_CLOSE_PROBE_GATE_ORDER = (
+    "profile_gate",
+    "halt_gate",
+    "asset_class_gate",
+    "symbol_gate",
+    "side_gate",
+    "quantity_gate",
+    "max_quantity_gate",
+    "quantity_within_max_gate",
+    "submit_confirmation_gate",
+    "pre_submit_observation_gate",
+    "observed_position_gate",
+    "observed_position_quantity_gate",
+    "close_quantity_within_observed_position_gate",
+    "no_shorting_gate",
+    "recent_order_query_metadata_gate",
+    "recent_open_order_gate",
 )
 
 
@@ -241,6 +260,39 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     _add_paper_lab_run_log_options(paper_order_probe_parser)
+    paper_close_probe_parser = subparsers.add_parser(
+        "paper-close-probe",
+        help="Submit one explicitly gated BTCUSD Alpaca paper close order.",
+    )
+    paper_close_probe_parser.add_argument(
+        "--asset-class",
+        choices=_PAPER_ORDER_ASSET_CLASSES,
+        required=True,
+        dest="asset_class",
+    )
+    paper_close_probe_parser.add_argument("--symbol", required=True)
+    paper_close_probe_parser.add_argument("--side", required=True)
+    paper_close_probe_parser.add_argument("--quantity", required=True)
+    paper_close_probe_parser.add_argument("--max-quantity", required=True)
+    paper_close_probe_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Probe output format.",
+    )
+    paper_close_probe_parser.add_argument(
+        "--submit",
+        action="store_true",
+        help="Request the one-shot gated paper close submit.",
+    )
+    paper_close_probe_parser.add_argument(
+        "--i-mean-it",
+        action="store_true",
+        dest="i_mean_it",
+        help="Confirm the one-shot gated paper close submit.",
+    )
+    _add_paper_lab_run_log_options(paper_close_probe_parser)
     _add_hidden_option(
         content_bundle_preview_parser,
         "--include-risk-authority",
@@ -471,6 +523,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
+    if command == "paper-close-probe":
+        return _run_paper_close_probe(config, args)
 
     if hasattr(args, "list_scenarios") and args.list_scenarios:
         _list_demo_core_scenarios()
@@ -1021,6 +1075,610 @@ def _run_paper_order_probe(config, args: argparse.Namespace) -> int:
     return 0 if payload["ok"] else 2
 
 
+def _run_paper_close_probe(config, args: argparse.Namespace) -> int:
+    run_log_path = args.run_log
+    resolved_run_id = _paper_lab_run_id(args.run_id) if run_log_path else ""
+    if run_log_path and not _ensure_paper_lab_run_log(run_log_path):
+        return 1
+
+    broker = None
+    payload = _build_paper_close_probe_payload(config, args)
+    if payload["ok"] and payload["submit_requested"]:
+        payload, broker = _attach_paper_close_pre_submit_observation(
+            config,
+            payload,
+        )
+
+    if run_log_path and not _write_paper_order_initial_run_log(
+        run_log_path,
+        resolved_run_id,
+        payload,
+        config,
+    ):
+        return 1
+
+    if payload["ok"] and payload["submit_requested"]:
+        payload = _submit_paper_close_probe(
+            config,
+            payload,
+            broker=broker,
+            observe_post_submit=bool(run_log_path),
+        )
+        if run_log_path and not _write_paper_order_submit_run_log(
+            run_log_path,
+            resolved_run_id,
+            payload,
+            config,
+        ):
+            print(_render_paper_close_probe_payload(payload, args.output_format))
+            return 1
+
+    print(_render_paper_close_probe_payload(payload, args.output_format))
+    if payload.get("broker_error"):
+        return 1
+
+    return 0 if payload["ok"] else 2
+
+
+def _build_paper_close_probe_payload(
+    config,
+    args: argparse.Namespace,
+) -> dict[str, object]:
+    asset_class = args.asset_class.strip().lower()
+    symbol = args.symbol.strip().upper()
+    side = args.side.strip().lower()
+    quantity, quantity_error = _positive_decimal(args.quantity, "quantity")
+    max_quantity, max_quantity_error = _positive_decimal(
+        args.max_quantity,
+        "max_quantity",
+    )
+    quantity_within_max = (
+        quantity is not None
+        and max_quantity is not None
+        and quantity <= max_quantity
+    )
+    submit_requested = bool(args.submit and args.i_mean_it)
+
+    profile_gate = _paper_profile_gate(config)
+    halt_gate = _gate(
+        _paper_halt_not_set(),
+        "halt_not_set",
+        "ALGOTRADER_PAPER_HALT=1",
+    )
+    gates = {
+        "profile_gate": profile_gate,
+        "halt_gate": halt_gate,
+        "asset_class_gate": _gate(
+            asset_class == _PAPER_ORDER_ASSET_CLASS_CRYPTO,
+            "crypto",
+            "asset_class_must_be_crypto",
+        ),
+        "symbol_gate": _gate(
+            symbol == "BTCUSD",
+            "symbol=BTCUSD",
+            "symbol_must_be_BTCUSD",
+        ),
+        "side_gate": _gate(side == "sell", "sell_only", "side_must_be_sell"),
+        "quantity_gate": _gate(
+            quantity is not None,
+            "quantity_positive",
+            quantity_error or "quantity_required",
+        ),
+        "max_quantity_gate": _gate(
+            max_quantity is not None,
+            "max_quantity_positive",
+            max_quantity_error or "max_quantity_required",
+        ),
+        "quantity_within_max_gate": _gate(
+            quantity_within_max,
+            "quantity_within_max_quantity",
+            "quantity_exceeds_max_quantity",
+        ),
+        "submit_confirmation_gate": _paper_close_submit_confirmation_gate(
+            submit_flag=bool(args.submit),
+            i_mean_it_flag=bool(args.i_mean_it),
+        ),
+        "pre_submit_observation_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "pre_submit_observation_required",
+        ),
+        "observed_position_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "observed_BTCUSD_position_required",
+        ),
+        "observed_position_quantity_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "observed_BTCUSD_quantity_must_equal_max_quantity",
+        ),
+        "close_quantity_within_observed_position_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "requested_close_quantity_exceeds_observed_position",
+        ),
+        "no_shorting_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "requested_close_quantity_would_short_BTCUSD",
+        ),
+        "recent_order_query_metadata_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "recent_order_query_metadata_must_be_complete",
+        ),
+        "recent_open_order_gate": _gate(
+            True,
+            "pending_pre_submit_observation" if submit_requested else "not_requested",
+            "recent_open_orders_must_be_zero",
+        ),
+    }
+    ok = all(bool(gate["passed"]) for gate in gates.values())
+
+    request_payload = None
+    if (
+        asset_class == _PAPER_ORDER_ASSET_CLASS_CRYPTO
+        and symbol == "BTCUSD"
+        and side == "sell"
+        and quantity is not None
+    ):
+        try:
+            request = _paper_order_request(
+                symbol,
+                asset_class=asset_class,
+                client_order_id=_paper_close_probe_client_order_id(args.run_id),
+                quantity=quantity,
+                side=side,
+                time_in_force="gtc",
+            )
+            request_payload = _paper_order_request_payload(request)
+        except ValueError:
+            request_payload = None
+
+    return {
+        "accepted": None,
+        "asset_class": asset_class,
+        "broker_normalized_status": "",
+        "broker_raw_reason": "",
+        "broker_raw_status": "",
+        "broker_response_parsed": False,
+        "broker_response_received": False,
+        "broker_result_classification": "not_submitted",
+        "command": "paper-close-probe",
+        "error": "" if ok else _first_failed_close_gate(gates),
+        "filled": None,
+        "gates": gates,
+        "max_notional": "",
+        "max_quantity": (
+            _decimal_text(max_quantity)
+            if max_quantity is not None
+            else args.max_quantity
+        ),
+        "min_notional": "",
+        "mutated": False,
+        "normalized_status": "",
+        "notional": "",
+        "ok": ok,
+        "order_type": "market",
+        "preview_only": not submit_requested,
+        "proposed_order_request": request_payload,
+        "raw_reason": "",
+        "raw_status": "",
+        "redaction": "credentials_redacted",
+        "requested_i_mean_it": bool(args.i_mean_it),
+        "requested_notional": "",
+        "requested_qty": _decimal_text(quantity) if quantity is not None else "",
+        "requested_quantity": _decimal_text(quantity) if quantity is not None else "",
+        "requested_submit": bool(args.submit),
+        "side": side,
+        "sizing_mode": "qty",
+        "submitted": False,
+        "submission_disabled_reason": "",
+        "submit_attempted": False,
+        "submit_requested": submit_requested,
+        "symbol": symbol,
+        "time_in_force": "gtc",
+    }
+
+
+def _attach_paper_close_pre_submit_observation(
+    config,
+    payload: dict[str, object],
+) -> tuple[dict[str, object], object | None]:
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.paper_lab_snapshot import (
+        account_observation_payload,
+        empty_recent_order_query_payload,
+        order_observation_payloads,
+        position_observation_payloads,
+        recent_order_query_payload,
+    )
+
+    unavailable: list[str] = []
+    unavailable_reasons: dict[str, object] = {}
+    observation: dict[str, object] = {
+        "account": None,
+        "account_observation_available": False,
+        "orders_observation_available": False,
+        "position_count": 0,
+        "position_symbols": [],
+        "positions": [],
+        "positions_observation_available": False,
+        "pre_submit_position_count": 0,
+        "recent_order_count": 0,
+        "recent_order_query_attempted": False,
+        "recent_order_query_available": False,
+        "recent_order_query_returned_count": 0,
+        **empty_recent_order_query_payload(),
+        "recent_orders": [],
+        "target_position_average_price": "",
+        "target_position_observed": False,
+        "target_position_quantity": "",
+        "unavailable_observations": unavailable,
+        "unavailable_reasons": unavailable_reasons,
+    }
+
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        redacted_message = _redact_config_secrets(str(exc), config)
+        unavailable.extend(["account", "positions", "orders"])
+        unavailable_reasons["broker"] = {
+            "error_type": exc.__class__.__name__,
+            "message": redacted_message,
+        }
+        return _paper_close_observation_blocked_payload(
+            payload,
+            observation,
+            broker_error=True,
+            message=redacted_message,
+        ), None
+
+    try:
+        account = broker.get_account()
+        observation.update(
+            {
+                "account": account_observation_payload(account),
+                "account_observation_available": True,
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("account")
+        unavailable_reasons["account"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    try:
+        positions = position_observation_payloads(broker.get_positions())
+        target_position = next(
+            (position for position in positions if position["symbol"] == "BTCUSD"),
+            None,
+        )
+        observation.update(
+            {
+                "position_count": len(positions),
+                "position_symbols": [position["symbol"] for position in positions],
+                "positions": list(positions),
+                "positions_observation_available": True,
+                "pre_submit_position_count": len(positions),
+                "target_position_average_price": (
+                    target_position["average_price"] if target_position else ""
+                ),
+                "target_position_observed": target_position is not None,
+                "target_position_quantity": (
+                    target_position["quantity"] if target_position else ""
+                ),
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("positions")
+        unavailable_reasons["positions"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    query = AlpacaRecentOrderQuery()
+    query_payload = {
+        **recent_order_query_payload(query),
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": False,
+        "recent_order_query_returned_count": 0,
+    }
+    observation.update(query_payload)
+    try:
+        orders = order_observation_payloads(broker.get_recent_orders())
+        observation.update(
+            {
+                "orders_observation_available": True,
+                "recent_order_count": len(orders),
+                "recent_order_query_available": True,
+                "recent_order_query_returned_count": len(orders),
+                "recent_orders": list(orders),
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("orders")
+        unavailable_reasons["orders"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    observed_quantity = _optional_decimal_value(
+        observation.get("target_position_quantity")
+    )
+    requested_quantity = _optional_decimal_value(payload.get("requested_quantity"))
+    max_quantity = _optional_decimal_value(payload.get("max_quantity"))
+    observations_available = (
+        observation["account_observation_available"]
+        and observation["positions_observation_available"]
+        and observation["orders_observation_available"]
+        and not unavailable
+    )
+    observed_matches_max = (
+        observed_quantity is not None
+        and max_quantity is not None
+        and observed_quantity == max_quantity
+    )
+    within_observed = (
+        requested_quantity is not None
+        and observed_quantity is not None
+        and requested_quantity <= observed_quantity
+    )
+    gates = dict(payload["gates"])
+    gates.update(
+        {
+            "pre_submit_observation_gate": _gate(
+                bool(observations_available),
+                "account_positions_orders_observed",
+                "account_positions_orders_must_be_observed",
+            ),
+            "observed_position_gate": _gate(
+                bool(observation["target_position_observed"]),
+                "BTCUSD_position_observed",
+                "BTCUSD_position_required",
+            ),
+            "observed_position_quantity_gate": _gate(
+                observed_matches_max,
+                "observed_BTCUSD_quantity_equals_max_quantity",
+                "observed_BTCUSD_quantity_must_equal_max_quantity",
+            ),
+            "close_quantity_within_observed_position_gate": _gate(
+                within_observed,
+                "requested_close_quantity_within_observed_position",
+                "requested_close_quantity_exceeds_observed_position",
+            ),
+            "no_shorting_gate": _gate(
+                within_observed,
+                "no_shorting_requested",
+                "requested_close_quantity_would_short_BTCUSD",
+            ),
+            "recent_order_query_metadata_gate": _gate(
+                observation.get("recent_order_query_metadata_complete") is True,
+                "recent_order_query_metadata_complete",
+                "recent_order_query_metadata_must_be_complete",
+            ),
+            "recent_open_order_gate": _gate(
+                observation.get("recent_order_count") == 0,
+                "recent_open_orders_zero",
+                "recent_open_orders_must_be_zero",
+            ),
+        }
+    )
+    ok = all(bool(gate["passed"]) for gate in gates.values())
+    return {
+        **payload,
+        **observation,
+        "broker_error": False,
+        "error": "" if ok else _first_failed_close_gate(gates),
+        "gates": gates,
+        "ok": ok,
+        "preview_only": not ok,
+        "submitted": False,
+    }, broker
+
+
+def _paper_close_observation_blocked_payload(
+    payload: dict[str, object],
+    observation: dict[str, object],
+    *,
+    broker_error: bool,
+    message: str = "",
+) -> dict[str, object]:
+    gates = dict(payload["gates"])
+    gates.update(
+        {
+            "pre_submit_observation_gate": _gate(
+                False,
+                "account_positions_orders_observed",
+                "account_positions_orders_must_be_observed",
+            ),
+            "observed_position_gate": _gate(
+                False,
+                "BTCUSD_position_observed",
+                "BTCUSD_position_required",
+            ),
+            "observed_position_quantity_gate": _gate(
+                False,
+                "observed_BTCUSD_quantity_equals_max_quantity",
+                "observed_BTCUSD_quantity_must_equal_max_quantity",
+            ),
+            "close_quantity_within_observed_position_gate": _gate(
+                False,
+                "requested_close_quantity_within_observed_position",
+                "requested_close_quantity_exceeds_observed_position",
+            ),
+            "no_shorting_gate": _gate(
+                False,
+                "no_shorting_requested",
+                "requested_close_quantity_would_short_BTCUSD",
+            ),
+            "recent_order_query_metadata_gate": _gate(
+                False,
+                "recent_order_query_metadata_complete",
+                "recent_order_query_metadata_must_be_complete",
+            ),
+            "recent_open_order_gate": _gate(
+                False,
+                "recent_open_orders_zero",
+                "recent_open_orders_must_be_zero",
+            ),
+        }
+    )
+    return {
+        **payload,
+        **observation,
+        "broker_error": broker_error,
+        "error": "pre_submit_observation_gate_failed",
+        "gates": gates,
+        "message": message,
+        "ok": False,
+        "preview_only": True,
+        "submitted": False,
+    }
+
+
+def _submit_paper_close_probe(
+    config,
+    payload: dict[str, object],
+    *,
+    broker,
+    observe_post_submit: bool = False,
+) -> dict[str, object]:
+    request_payload = payload.get("proposed_order_request")
+    if broker is None or not isinstance(request_payload, dict):
+        return {
+            **payload,
+            "broker_error": True,
+            "broker_result_classification": "ambiguous",
+            "error": "paper_close_probe_submit_failed",
+            "message": "missing_close_order_request",
+            "ok": False,
+            "preview_only": False,
+            "submitted": False,
+        }
+
+    try:
+        request = _paper_order_request(
+            str(request_payload["symbol"]),
+            asset_class=str(payload.get("asset_class", "crypto")),
+            client_order_id=str(
+                request_payload.get(
+                    "client_order_id",
+                    _paper_close_probe_client_order_id(None),
+                )
+            ),
+            quantity=Decimal(str(request_payload["qty"])),
+            side="sell",
+            time_in_force=str(request_payload.get("time_in_force", "gtc")),
+        )
+        from .risk.state import RiskVerdict
+    except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        return {
+            **payload,
+            "broker_error": True,
+            "broker_result_classification": "ambiguous",
+            "error": "paper_close_probe_submit_failed",
+            "error_type": exc.__class__.__name__,
+            "message": redacted_message,
+            "ok": False,
+            "preview_only": False,
+            "redacted_exception_message": redacted_message,
+            "submitted": False,
+            "submit_attempted": False,
+        }
+
+    try:
+        result = broker.submit_order_request(
+            request,
+            risk_verdict=RiskVerdict(
+                allowed=True,
+                reason="explicit_btcusd_paper_close_probe",
+                detail="quantity_close",
+            ),
+        )
+    except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        from .execution.alpaca_translator import AlpacaTranslationError
+
+        if isinstance(exc, AlpacaTranslationError):
+            post_submit_observation = (
+                _paper_post_submit_observation(broker, config)
+                if observe_post_submit
+                else {}
+            )
+            return {
+                **payload,
+                "accepted": None,
+                "broker_error": True,
+                "broker_response_parsed": False,
+                "broker_response_received": True,
+                "broker_result_classification": "ambiguous",
+                "error": "broker_response_parse_failed",
+                "error_type": exc.__class__.__name__,
+                "filled": None,
+                "message": redacted_message,
+                "ok": False,
+                "preview_only": False,
+                "redacted_exception_message": redacted_message,
+                "submitted": True,
+                "submit_attempted": True,
+                **post_submit_observation,
+            }
+
+        return {
+            **payload,
+            "accepted": None,
+            "broker_error": True,
+            "broker_response_parsed": False,
+            "broker_response_received": False,
+            "broker_result_classification": "ambiguous",
+            "error": "paper_close_probe_submit_failed",
+            "error_type": exc.__class__.__name__,
+            "filled": None,
+            "message": redacted_message,
+            "ok": False,
+            "preview_only": False,
+            "redacted_exception_message": redacted_message,
+            "submitted": None,
+            "submit_attempted": True,
+            **_paper_submit_error_diagnostic_fields(exc),
+        }
+
+    post_submit_observation = (
+        _paper_post_submit_observation(broker, config)
+        if observe_post_submit
+        else {}
+    )
+    broker_result = _paper_order_broker_result_payload(result)
+    return {
+        **payload,
+        "accepted": result.accepted,
+        "broker_normalized_status": broker_result["normalized_status"],
+        "broker_raw_reason": broker_result["raw_reason"],
+        "broker_raw_status": broker_result["raw_status"],
+        "broker_response_parsed": True,
+        "broker_response_received": True,
+        "broker_result": broker_result,
+        "broker_result_classification": (
+            "accepted" if result.accepted else "rejected"
+        ),
+        "error": "" if result.accepted else "paper_close_probe_rejected",
+        "filled": result.filled,
+        "mutated": True,
+        "normalized_status": broker_result["normalized_status"],
+        "ok": result.accepted,
+        "preview_only": False,
+        "raw_reason": broker_result["raw_reason"],
+        "raw_status": broker_result["raw_status"],
+        "submitted": True,
+        "submit_attempted": True,
+        **post_submit_observation,
+    }
+
+
 def _build_paper_order_probe_payload(
     config,
     args: argparse.Namespace,
@@ -1363,6 +2021,7 @@ def _paper_order_request(
     client_order_id: str = _PAPER_ORDER_PROBE_CLIENT_ORDER_ID,
     quantity: Decimal | None = None,
     notional: Decimal | None = None,
+    side: str = "buy",
     time_in_force: str = "day",
 ):
     from .execution.alpaca_client import AlpacaOrderRequest
@@ -1370,7 +2029,7 @@ def _paper_order_request(
     return AlpacaOrderRequest(
         client_order_id=client_order_id,
         symbol=symbol,
-        side="buy",
+        side=side,
         asset_class=asset_class,
         qty=quantity,
         notional=notional,
@@ -1406,6 +2065,16 @@ def _paper_order_client_order_id(run_id: str | None) -> str:
         return _PAPER_ORDER_PROBE_CLIENT_ORDER_ID
 
     return f"{_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_PREFIX}-{safe_run_id}"
+
+
+def _paper_close_probe_client_order_id(run_id: str | None) -> str:
+    safe_run_id = (
+        _paper_lab_run_id(run_id)[:_PAPER_ORDER_PROBE_CLIENT_ORDER_ID_RUN_ID_LENGTH]
+        if run_id is not None and str(run_id).strip()
+        else "manual"
+    )
+    safe_run_id = safe_run_id.strip("._:-") or "manual"
+    return f"{_PAPER_CLOSE_PROBE_CLIENT_ORDER_ID_PREFIX}-{safe_run_id}"
 
 
 def _paper_profile_gate(config) -> dict[str, object]:
@@ -1501,6 +2170,31 @@ def _paper_order_submit_confirmation_failure_detail(
     return "submit_requires_submit_and_i_mean_it"
 
 
+def _paper_close_submit_confirmation_gate(
+    *,
+    submit_flag: bool,
+    i_mean_it_flag: bool,
+) -> dict[str, object]:
+    if not submit_flag and not i_mean_it_flag:
+        return _gate(
+            True,
+            "preview_only_no_submission_requested",
+            "",
+        )
+    if submit_flag and i_mean_it_flag:
+        return _gate(
+            True,
+            "explicit_close_submit_confirmed",
+            "",
+        )
+
+    return _gate(
+        False,
+        "",
+        "submit_requires_submit_and_i_mean_it",
+    )
+
+
 def _paper_order_submission_disabled_reason(policy, sizing_mode: str) -> str:
     if not policy.submit_enabled:
         return policy.submit_disabled_reason
@@ -1523,6 +2217,15 @@ def _positive_decimal(
         return None, f"{field_name}_must_be_positive"
 
     return value, ""
+
+
+def _optional_decimal_value(raw_value: object) -> Decimal | None:
+    if raw_value in (None, ""):
+        return None
+    try:
+        return Decimal(str(raw_value))
+    except (InvalidOperation, ValueError):
+        return None
 
 
 def _positive_whole_decimal(
@@ -1552,6 +2255,15 @@ def _gate(
 
 def _first_failed_gate(gates: dict[str, dict[str, object]]) -> str:
     for gate_name in _PAPER_SAFETY_GATE_ORDER:
+        gate = gates[gate_name]
+        if not gate["passed"]:
+            return f"{gate_name}_failed"
+
+    return ""
+
+
+def _first_failed_close_gate(gates: dict[str, dict[str, object]]) -> str:
+    for gate_name in _PAPER_CLOSE_PROBE_GATE_ORDER:
         gate = gates[gate_name]
         if not gate["passed"]:
             return f"{gate_name}_failed"
@@ -1806,6 +2518,83 @@ def _render_paper_order_probe_payload(
             f"submission_disabled_reason: {payload['submission_disabled_reason']}"
         )
     return "\n".join(lines)
+
+
+def _render_paper_close_probe_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper close probe",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"preview_only: {_bool_text(payload['preview_only'])}",
+        f"submit_requested: {_bool_text(payload['submit_requested'])}",
+        f"submit_attempted: {_bool_text(payload['submit_attempted'])}",
+        "broker_response_received: "
+        f"{_bool_text(payload['broker_response_received'])}",
+        "broker_response_parsed: "
+        f"{_bool_text(payload['broker_response_parsed'])}",
+        f"submitted: {_optional_bool_text(payload['submitted'])}",
+        f"accepted: {_optional_bool_text(payload['accepted'])}",
+        f"filled: {_optional_bool_text(payload['filled'])}",
+        f"classification: {payload['broker_result_classification']}",
+        f"asset_class: {payload['asset_class']}",
+        f"symbol: {payload['symbol']}",
+        f"side: {payload['side']}",
+        f"quantity: {payload['requested_quantity']}",
+        f"max_quantity: {payload['max_quantity']}",
+        f"order_type: {payload['order_type']}",
+        f"time_in_force: {payload['time_in_force']}",
+    ]
+    if payload.get("target_position_observed") is not None:
+        lines.append(
+            "target_position_observed: "
+            f"{_bool_text(bool(payload['target_position_observed']))}"
+        )
+    if payload.get("target_position_quantity"):
+        lines.append(
+            f"target_position_quantity: {payload['target_position_quantity']}"
+        )
+    if payload.get("recent_order_count") is not None:
+        lines.append(f"recent_order_count: {payload['recent_order_count']}")
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+    lines.extend(_close_probe_gate_lines(payload["gates"]))
+    request = payload.get("proposed_order_request")
+    if isinstance(request, dict):
+        lines.extend(
+            [
+                f"request_model: {request['request_model']}",
+                f"client_order_id: {request['client_order_id']}",
+            ]
+        )
+    if payload.get("broker_result"):
+        broker_result = payload["broker_result"]
+        lines.append(f"broker_accepted: {_bool_text(broker_result['accepted'])}")
+        lines.append(f"broker_reason: {broker_result['reason']}")
+        lines.append(f"broker_normalized_status: {broker_result['normalized_status']}")
+        lines.append(f"broker_raw_status: {broker_result['raw_status']}")
+        lines.append(f"broker_raw_reason: {broker_result['raw_reason']}")
+    if payload.get("message"):
+        lines.append(f"message: {payload['message']}")
+    return "\n".join(lines)
+
+
+def _close_probe_gate_lines(gates: object) -> list[str]:
+    if not isinstance(gates, dict):
+        return []
+
+    lines: list[str] = []
+    for gate_name in _PAPER_CLOSE_PROBE_GATE_ORDER:
+        if gate_name not in gates:
+            continue
+        gate = gates[gate_name]
+        state = "passed" if gate["passed"] else "blocked"
+        lines.append(f"{gate_name}: {state} - {gate['detail']}")
+    return lines
 
 
 def _close_preview_gate_lines(gates: object) -> list[str]:
