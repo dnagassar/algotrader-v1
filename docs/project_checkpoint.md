@@ -13831,6 +13831,34 @@ Safe next tasks include:
   `submitted=false`, `mutated=false`, `broker_action_performed=false`, and
   `close_order_submitted=false`, so M326/M327/M328 revalidation can consume the
   same evidence without introducing broker-side close behavior.
+- Phase 334 / Milestone 334 - BTCUSD Paper Lifecycle Manual Review records a
+  manual, local-evidence-only review of
+  `runs/paper_lab/m331_btcusd_close_probe.jsonl` and
+  `runs/paper_lab/m333_credentialed_post_close_followup_snapshot.jsonl`. The
+  first BTCUSD paper lifecycle is operationally reviewed as broker-lifecycle
+  evidence only, not strategy performance evidence, not profitability
+  validation, and not a final settlement claim. Broker action count remains
+  exactly one explicit M331 BTCUSD paper close probe. M333 is treated as
+  read-only post-close follow-up evidence with `ok=true`, `mutated=false`,
+  `submitted=false`, BTCUSD absent, remaining BTCUSD quantity `0`, recent open
+  orders `0`, account/positions/orders observed, cash `1999.9 USD`, complete
+  recent-order query metadata, `credentials_redacted`, no unavailable
+  observations, and no credential-leak evidence. The reconciliation state is
+  `accepted_close_response_position_absent_no_open_orders` with
+  `reconciliation_confidence=medium_position_absent_order_lifecycle_incomplete`.
+  The limitations remain binding: the submit response did not report
+  `filled=true`, the broker order id was not exposed by the normalized mapper,
+  reconciliation is position-based only, and final settlement must not be
+  claimed.
+- The next paper-lab operating rule is now explicit: future paper experiments
+  require a fresh read-only snapshot before submit, exactly one explicit broker
+  action per approved probe, and a post-action read-only snapshot after that
+  action. Ambiguous broker response means stop and collect read-only evidence.
+  No retry, cancel, liquidate, close, fix-forward, or other broker/account/
+  portfolio mutation may occur without a separate explicit milestone. M334 adds
+  no broker call, submit, cancel/liquidation/retry/fix-forward behavior, live
+  profile/live URL support, credential access, scheduler/autonomous behavior,
+  research-layer broker authority, profit inference, or unsafe pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

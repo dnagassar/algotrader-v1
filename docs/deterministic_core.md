@@ -8302,6 +8302,39 @@ records the preview-only BTCUSD sell shape, including `quantity`,
 `close_order_submitted=false`, so M326/M327/M328 revalidation can consume the
 same evidence without introducing broker-side close behavior.
 
+Phase 334 / Milestone 334 - BTCUSD Paper Lifecycle Manual Review records a
+manual, local-evidence-only review of the completed M331/M333 BTCUSD paper
+lifecycle. The reviewed sanitized logs are
+`runs/paper_lab/m331_btcusd_close_probe.jsonl` and
+`runs/paper_lab/m333_credentialed_post_close_followup_snapshot.jsonl`. The
+operational conclusion is conservative: the first BTCUSD paper lifecycle is
+operationally reviewed as broker-lifecycle evidence only, not strategy
+performance evidence, not profitability validation, and not a final settlement
+claim. The lifecycle broker action count remains exactly one explicit M331
+BTCUSD paper close probe. M333 provides the read-only post-close follow-up
+snapshot evidence: `ok=true`, `mutated=false`, `submitted=false`, BTCUSD absent,
+remaining BTCUSD quantity `0`, recent open orders `0`, account/positions/orders
+observed, cash `1999.9 USD`, complete recent-order query metadata,
+`credentials_redacted`, no unavailable observations, and no credential-leak
+evidence. The accepted local reconciliation state remains
+`accepted_close_response_position_absent_no_open_orders` with
+`reconciliation_confidence=medium_position_absent_order_lifecycle_incomplete`.
+The limitations remain binding: the submit response did not report
+`filled=true`, the broker order id was not exposed by the normalized mapper,
+reconciliation is position-based only, and operators must not claim final
+settlement.
+
+The next paper-lab operating rule is: every future paper experiment requires a
+fresh read-only snapshot before submit; exactly one explicit broker action is
+allowed per approved probe; a post-action read-only snapshot is required after
+that action; an ambiguous broker response means stop and collect read-only
+evidence; and no retry, cancel, liquidate, close, fix-forward, or other
+broker/account/portfolio mutation may occur without a separate explicit
+milestone. This milestone adds no broker call, submit, cancel, liquidation,
+retry, fix-forward behavior, live profile/live URL support, credential access,
+scheduler/autonomous behavior, research-layer broker authority, profit
+inference, or unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
