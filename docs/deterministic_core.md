@@ -8430,6 +8430,44 @@ market-data fetch, no live profile/live URL, no scheduler/autonomous behavior,
 no LLM or agent runtime dependency, no profit claim, and no
 order/fill/account/portfolio mutation.
 
+Phase 339 / Milestone 339 - ETF/SMA Paper-Lab Preview Design v1 adds a
+deterministic offline preview-design contract that consumes only the M338
+ETF/SMA research-to-paper evidence packet plus static local config. The new
+`etf_sma_paper_lab_preview_design` contract preserves source packet status,
+source eligibility, source required next action, source labels, symbol,
+strategy name, `as_of`, latest posture, bar/signal/exposure/defensive counts,
+posture changes, strategy total return, buy-and-hold benchmark total return,
+max drawdown, source limitations, blocking reasons, required future operator
+checks, and required next action.
+
+M339 preserves `research_only`, `paper_lab_candidate`, `not_live_authorized`,
+and `profit_claim=none`. The best allowed status is
+`ready_for_paper_lab_preview_prompt_review`; blocked inputs produce
+`blocked_from_paper_lab_preview_prompt_review`. Ready designs require the M338
+packet to be `ready_for_paper_lab_preview_design`, preserve the required source
+labels, contain no `live_authorized` label or status, contain no profit claim
+other than `profit_claim=none`, and remain bullish research posture only.
+Source blockers, insufficient history, observe-only posture, defensive posture,
+missing paper-lab-candidate labels, live authorization, and non-none profit
+claims all remain conservative blockers. Required limitations include
+`offline_design_only`, `not_profit_evidence`,
+`no_broker_preview_authorized`, `no_broker_action_authorized`,
+`paper_preview_requires_separate_milestone`,
+`submit_requires_separate_explicit_milestone`, and `not_live_authorized`. The
+ready next action is `draft_separate_paper_lab_preview_prompt`; the blocked next
+action is `resolve_research_to_paper_packet_blockers`.
+
+M339 requires future operator checks for a fresh read-only paper snapshot before
+any future broker-facing preview, paper profile only, explicit operator approval
+before any future broker-facing preview, separate milestone before
+broker-facing preview, separate milestone before any submit, no live trading
+authorization, and no retry/cancel/liquidate/fix-forward behavior from this
+design. M339 adds no broker action, no broker preview or staging, no
+`ExecutionIntent`, no `ExecutionPlan`, no credentials, no network, no
+market-data fetch, no live profile/live URL, no scheduler/autonomous behavior,
+no LLM or agent runtime dependency, no profit claim, and no
+order/fill/account/portfolio mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
