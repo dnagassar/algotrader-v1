@@ -8512,6 +8512,49 @@ no network, no market-data fetch, no live profile/live URL, no scheduler or
 autonomous behavior, no LLM or agent runtime dependency, no profit claim, and
 no order/fill/account/portfolio mutation.
 
+Phase 341 / Milestone 341 - ETF/SMA Paper Preview Operator Review v1 adds a
+deterministic offline operator-review contract that consumes only the M340
+ETF/SMA paper-preview prompt-review output plus static local config. The new
+`etf_sma_paper_preview_operator_review` contract preserves M340 source
+readiness, required next action, source labels, upstream source labels, symbol,
+strategy name, `as_of`, latest posture, strategy and benchmark total returns,
+max drawdown, bar/signal/exposure/defensive/posture-change counts, source
+limitations, source blocking reasons, derived blocking reasons, required future
+operator checks, a non-executable future review template, and required next
+action.
+
+M341 preserves `research_only`, `paper_lab_candidate`, `not_live_authorized`,
+and `profit_claim=none`. The best allowed status is
+`authorize_separate_paper_preview_milestone`; blocked inputs produce
+`blocked_from_separate_paper_preview_milestone`. Ready operator reviews require
+M340 to be `prompt_ready_for_operator_review`, preserve required source labels,
+report source future-prompt readiness, contain no live authorization label or
+status, contain no profit claim other than `profit_claim=none`, contain no M340
+blockers, and remain bullish research posture only. Prompt-review blockers,
+missing `paper_lab_candidate`, insufficient history, defensive posture, live
+authorization, and non-none profit claims remain blockers.
+
+M341 hard-codes `authorize_paper_preview_now=false`,
+`authorize_broker_action=false`, `broker_action_performed=false`,
+`broker_preview_performed=false`, and `submit_allowed=false`. It requires
+manual operator review before any future separate paper-preview milestone and a
+fresh read-only paper snapshot before any later broker-facing preview/probe
+milestone. The ready next action is
+`prepare_separate_etf_sma_paper_preview_milestone`; the blocked next action is
+`resolve_prompt_review_blockers`.
+
+M341 limitations include `offline_operator_review_only`,
+`manual_operator_review_required`,
+`fresh_read_only_paper_snapshot_required_before_later_broker_facing_preview`,
+`not_live_authorization`, `not_profit_evidence`, `not_strategy_validation`,
+`not_execution_authority`, `no_broker_preview_authorized`,
+`no_broker_action_authorized`, `paper_preview_requires_separate_milestone`, and
+`submit_requires_separate_explicit_milestone`. M341 adds no broker action, no
+broker preview or staging, no `ExecutionIntent`, no `ExecutionPlan`, no
+credentials, no network, no market-data fetch, no live profile/live URL, no
+scheduler or autonomous behavior, no LLM dependency, no strategy validation, no
+profit evidence, and no order/fill/account/portfolio mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
