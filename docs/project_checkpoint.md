@@ -13916,6 +13916,29 @@ Safe next tasks include:
   scheduler/autonomous behavior, or order/fill/account/portfolio mutation. The
   next step is local data snapshot validation or a gated preview packet before
   any paper-lab experiment, not broker submission.
+- Phase 338 / Milestone 338 - ETF/SMA Research-to-Paper Evidence Packet v1 adds
+  the first deterministic packet tying together the M335 ETF/SMA research
+  candidate, the M336 paper-lab experiment plan, and the M337 offline backtest
+  summary. The new `etf_sma_research_to_paper_evidence_packet` contract
+  preserves source labels, source eligibility, latest posture, bar/signal/
+  exposure/defensive counts, posture changes, ignored future bar count,
+  strategy total return, buy-and-hold benchmark total return, max drawdown,
+  limitations, blocking reasons, required next action, and evidence summary.
+- M338 preserves `research_only`, `paper_lab_candidate`,
+  `not_live_authorized`, and `profit_claim=none`. The best allowed status is
+  `ready_for_paper_lab_preview_design`; conservative inputs such as missing
+  paper-lab-candidate labels, `live_authorized` source labels, insufficient
+  history, zero bars, zero signal count, observe-only plan posture, or
+  defensive plan posture produce `blocked_from_paper_lab_preview_design`.
+  Required packet limitations are `not_profit_evidence`,
+  `offline_research_only`, `paper_preview_requires_separate_milestone`,
+  `no_broker_action_authorized`, and `not_live_authorized`. The required next
+  action is `draft_separate_paper_lab_preview_plan`, a separate design artifact
+  and not a broker path. M338 authorizes no broker action, broker preview or
+  staging, `ExecutionIntent`, `ExecutionPlan`, credentials, network,
+  market-data fetch, live profile/live URL, scheduler/autonomous behavior, LLM
+  or agent runtime dependency, profit claim, or order/fill/account/portfolio
+  mutation.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
