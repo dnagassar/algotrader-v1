@@ -58,6 +58,35 @@ POST_RECEIPT_RECONCILIATION_FIELDS = {
     "submitted",
     "symbol",
 }
+PAPER_CLOSE_POST_ACTION_RECONCILIATION_FIELDS = {
+    "asset_class",
+    "broker_order_id_available",
+    "broker_response_parsed",
+    "broker_response_received",
+    "broker_result_classification",
+    "client_order_id",
+    "filled_from_submit_response",
+    "followup_position_present",
+    "followup_remaining_quantity",
+    "intended_close_quantity",
+    "limitations",
+    "normalized_status",
+    "post_close_position_present",
+    "post_close_remaining_quantity",
+    "pre_submit_position_quantity",
+    "raw_status",
+    "recent_open_order_count",
+    "recent_order_query_metadata_complete",
+    "reconciliation_confidence",
+    "reconciliation_scope",
+    "reconciliation_state",
+    "recommended_next_operator_action",
+    "redaction_marker_present",
+    "side",
+    "submit_attempt_count",
+    "submitted",
+    "symbol",
+}
 EXPLICIT_CLOSE_PROBE_PROMPT_REVIEW_REQUIRED_FIELDS = {
     "manual_review_only",
     "broker_action_performed",
@@ -1424,6 +1453,158 @@ def test_secret_like_keys_are_not_emitted(tmp_path) -> None:
     assert '"token"' not in rendered
 
 
+def test_paper_close_post_action_reconciliation_classifies_absent_position(
+    tmp_path,
+) -> None:
+    run_log = _write_m331_close_post_action_logs(tmp_path)
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    rendered = render_paper_lab_revalidation_brief_text(payload)
+    reconciliation = payload["paper_close_post_action_reconciliation"]
+
+    assert set(reconciliation) == PAPER_CLOSE_POST_ACTION_RECONCILIATION_FIELDS
+    assert reconciliation["reconciliation_scope"] == "paper_close_post_action"
+    assert reconciliation["symbol"] == "BTCUSD"
+    assert reconciliation["asset_class"] == "crypto"
+    assert reconciliation["side"] == "sell"
+    assert reconciliation["intended_close_quantity"] == "0.000132386"
+    assert reconciliation["pre_submit_position_quantity"] == "0.000132386"
+    assert reconciliation["submitted"] is True
+    assert reconciliation["submit_attempt_count"] == 1
+    assert reconciliation["broker_response_received"] is True
+    assert reconciliation["broker_response_parsed"] is True
+    assert reconciliation["broker_result_classification"] == "accepted"
+    assert reconciliation["normalized_status"] == "pending_new"
+    assert reconciliation["raw_status"] == "OrderStatus.PENDING_NEW"
+    assert reconciliation["filled_from_submit_response"] is False
+    assert (
+        reconciliation["client_order_id"]
+        == "paper-close-probe-m331_btcusd_close_probe"
+    )
+    assert reconciliation["broker_order_id_available"] is False
+    assert reconciliation["post_close_position_present"] is False
+    assert reconciliation["post_close_remaining_quantity"] == "0"
+    assert reconciliation["followup_position_present"] is False
+    assert reconciliation["followup_remaining_quantity"] == "0"
+    assert reconciliation["recent_open_order_count"] == 0
+    assert reconciliation["recent_order_query_metadata_complete"] is True
+    assert reconciliation["redaction_marker_present"] is True
+    assert reconciliation["reconciliation_state"] == (
+        "accepted_close_response_position_absent_no_open_orders"
+    )
+    assert reconciliation["reconciliation_confidence"] == (
+        "medium_position_absent_order_lifecycle_incomplete"
+    )
+    assert "submit response did not report filled=true" in reconciliation[
+        "limitations"
+    ]
+    assert (
+        "broker order id was not exposed by the normalized mapper"
+        in reconciliation["limitations"]
+    )
+    assert "position-based reconciliation only; do not claim final settlement" in (
+        reconciliation["limitations"]
+    )
+    assert reconciliation["recommended_next_operator_action"] == (
+        "read_only_manual_review_no_corrective_order"
+    )
+    assert "paper_close_post_action_reconciliation:" in rendered
+    assert "filled_from_submit_response: false" in rendered
+    assert _forbidden_claims_absent(rendered)
+
+
+def test_paper_close_post_action_reconciliation_uses_filled_evidence(
+    tmp_path,
+) -> None:
+    run_log = _write_m331_close_post_action_logs(
+        tmp_path,
+        filled=True,
+        include_broker_order_id=True,
+    )
+
+    reconciliation = build_paper_lab_revalidation_brief(run_log)[
+        "paper_close_post_action_reconciliation"
+    ]
+
+    assert reconciliation["filled_from_submit_response"] is True
+    assert reconciliation["broker_order_id_available"] is True
+    assert "submit response did not report filled=true" not in reconciliation[
+        "limitations"
+    ]
+    assert (
+        "broker order id was not exposed by the normalized mapper"
+        not in reconciliation["limitations"]
+    )
+
+
+def test_paper_close_post_action_reconciliation_btcusd_reappearing_manual_review(
+    tmp_path,
+) -> None:
+    run_log = _write_m331_close_post_action_logs(
+        tmp_path,
+        followup_position_present=True,
+    )
+
+    reconciliation = build_paper_lab_revalidation_brief(run_log)[
+        "paper_close_post_action_reconciliation"
+    ]
+
+    assert reconciliation["followup_position_present"] is True
+    assert reconciliation["reconciliation_state"] == "requires_manual_review"
+    assert reconciliation["recommended_next_operator_action"] == (
+        "manual_review_required_do_not_submit_corrective_order"
+    )
+    assert "M332 follow-up snapshot showed BTCUSD" in reconciliation["limitations"]
+
+
+def test_paper_close_post_action_reconciliation_open_orders_manual_review(
+    tmp_path,
+) -> None:
+    run_log = _write_m331_close_post_action_logs(
+        tmp_path,
+        followup_recent_open_order_count=1,
+    )
+
+    reconciliation = build_paper_lab_revalidation_brief(run_log)[
+        "paper_close_post_action_reconciliation"
+    ]
+
+    assert reconciliation["recent_open_order_count"] == 1
+    assert reconciliation["reconciliation_state"] == "requires_manual_review"
+    assert "recent open orders were observed" in reconciliation["limitations"]
+
+
+def test_paper_close_post_action_reconciliation_blocks_metadata_or_redaction_gap(
+    tmp_path,
+) -> None:
+    scenarios = (
+        (
+            "metadata",
+            {"followup_include_query_metadata": False},
+            "recent order query metadata is incomplete; local evidence does not "
+            "prove external broker order state",
+        ),
+        (
+            "redaction",
+            {"followup_redaction": False},
+            "redaction marker missing from required local evidence",
+        ),
+    )
+
+    for name, kwargs, expected_limitation in scenarios:
+        case_dir = tmp_path / name
+        case_dir.mkdir()
+        run_log = _write_m331_close_post_action_logs(case_dir, **kwargs)
+
+        reconciliation = build_paper_lab_revalidation_brief(run_log)[
+            "paper_close_post_action_reconciliation"
+        ]
+
+        assert reconciliation["reconciliation_state"] == STATE_OBSERVATION_UNAVAILABLE
+        assert reconciliation["reconciliation_confidence"] == "unavailable"
+        assert expected_limitation in reconciliation["limitations"]
+
+
 def test_latest_run_is_selected_and_all_run_ids_are_reported(tmp_path) -> None:
     earlier = tuple(
         {**record, "run_id": "earlier-run"} for record in _complete_snapshot_records()
@@ -1437,6 +1618,164 @@ def test_latest_run_is_selected_and_all_run_ids_are_reported(tmp_path) -> None:
     assert payload["selected_run_id"] == "latest-run"
     assert payload["selected_record_count"] == 4
     assert payload["state"] == STATE_USABLE_FOR_MANUAL_REVIEW
+
+
+def _write_m331_close_post_action_logs(
+    directory,
+    *,
+    filled: bool = False,
+    followup_include_query_metadata: bool = True,
+    followup_position_present: bool = False,
+    followup_recent_open_order_count: int = 0,
+    followup_redaction: bool = True,
+    include_broker_order_id: bool = False,
+) -> object:  # noqa: ANN001
+    close_quantity = "0.000132386"
+    _write_jsonl(
+        directory / "m331_pre_submit_snapshot.jsonl",
+        _btcusd_snapshot_records(
+            run_id="m331_pre_submit_snapshot",
+            position_present=True,
+            include_query_metadata=True,
+        ),
+    )
+    _write_jsonl(
+        directory / "m331_btcusd_close_probe.jsonl",
+        _m331_btcusd_close_probe_records(
+            close_quantity=close_quantity,
+            filled=filled,
+            include_broker_order_id=include_broker_order_id,
+        ),
+    )
+    _write_jsonl(
+        directory / "m331_post_close_snapshot.jsonl",
+        _btcusd_snapshot_records(
+            run_id="m331_post_close_snapshot",
+            position_present=False,
+            include_query_metadata=True,
+        ),
+    )
+    followup_recent_orders = (
+        [_btcusd_recent_open_order(close_quantity=close_quantity)]
+        if followup_recent_open_order_count
+        else []
+    )
+    return _write_jsonl(
+        directory / "m332_post_close_followup_snapshot.jsonl",
+        _btcusd_snapshot_records(
+            run_id="m332_post_close_followup_snapshot",
+            position_present=followup_position_present,
+            recent_order_count=followup_recent_open_order_count,
+            recent_orders=followup_recent_orders,
+            include_query_metadata=followup_include_query_metadata,
+            redaction=followup_redaction,
+        ),
+    )
+
+
+def _m331_btcusd_close_probe_records(
+    *,
+    close_quantity: str,
+    filled: bool,
+    include_broker_order_id: bool,
+) -> tuple[dict[str, object], ...]:
+    order_fields = {
+        **_crypto_order_fields(
+            accepted=True,
+            broker_response_parsed=True,
+            broker_response_received=True,
+            client_order_id="paper-close-probe-m331_btcusd_close_probe",
+            filled=filled,
+            normalized_status="pending_new",
+            notional="",
+            raw_reason="",
+            raw_status="OrderStatus.PENDING_NEW",
+            receipt_order_id=("alpaca-paper-order-1" if include_broker_order_id else ""),
+            submitted=True,
+        ),
+        "asset_class": "crypto",
+        "command": "paper-close-probe",
+        "max_notional": "",
+        "max_quantity": close_quantity,
+        "min_notional": "",
+        "notional": "",
+        "qty": close_quantity,
+        "side": "sell",
+        "sizing_mode": "qty",
+        "target_position_average_price": "73886.11",
+        "target_position_observed": True,
+        "target_position_quantity": close_quantity,
+    }
+    return (
+        {
+            **order_fields,
+            "accepted": None,
+            "broker_response_parsed": False,
+            "broker_response_received": False,
+            "event_type": "paper_order_submit_requested",
+            "filled": None,
+            "run_id": "m331_btcusd_close_probe",
+            "submit_attempted": False,
+            "submitted": False,
+        },
+        {
+            **order_fields,
+            "event_type": "paper_order_submit_attempted",
+            "run_id": "m331_btcusd_close_probe",
+            "submit_attempted": True,
+        },
+        {
+            **order_fields,
+            "event_type": "paper_order_receipt_observed",
+            "run_id": "m331_btcusd_close_probe",
+            "submit_attempted": True,
+        },
+    )
+
+
+def _btcusd_snapshot_records(
+    *,
+    run_id: str,
+    position_present: bool,
+    recent_order_count: int = 0,
+    recent_orders: list[dict[str, object]] | None = None,
+    include_query_metadata: bool,
+    redaction: bool = True,
+) -> tuple[dict[str, object], ...]:
+    position = {
+        "average_price": "73886.11",
+        "quantity": "0.000132386",
+        "symbol": "BTCUSD",
+    }
+    records = _snapshot_records(
+        run_id=run_id,
+        cash="1999.90",
+        position_count=1 if position_present else 0,
+        position_symbols=["BTCUSD"] if position_present else [],
+        positions=[position] if position_present else [],
+        recent_order_count=recent_order_count,
+        recent_orders=recent_orders or [],
+        include_query_metadata=include_query_metadata,
+    )
+    if redaction:
+        return records
+
+    return _records_without_redaction_marker(records)
+
+
+def _btcusd_recent_open_order(
+    *,
+    close_quantity: str,
+) -> dict[str, object]:
+    return {
+        "asset_class": "crypto",
+        "client_order_id": "paper-close-probe-m331_btcusd_close_probe",
+        "normalized_status": "accepted",
+        "quantity": close_quantity,
+        "raw_status": "OrderStatus.ACCEPTED",
+        "side": "sell",
+        "symbol": "BTCUSD",
+    }
 
 
 def _m318_like_records(

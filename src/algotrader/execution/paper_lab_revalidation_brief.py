@@ -132,6 +132,28 @@ _RECONCILIATION_ACTION_COLLECT_READ_ONLY_OBSERVATIONS = (
 _RECONCILIATION_ACTION_REPAIR_LOCAL_RUN_LOG = (
     "repair_local_run_log_before_revalidation"
 )
+_PAPER_CLOSE_POST_ACTION_RECONCILIATION_SCOPE = "paper_close_post_action"
+_PAPER_CLOSE_POST_ACTION_STATE_ACCEPTED_ABSENT_NO_OPEN_ORDERS = (
+    "accepted_close_response_position_absent_no_open_orders"
+)
+_PAPER_CLOSE_POST_ACTION_STATE_REQUIRES_MANUAL_REVIEW = "requires_manual_review"
+_PAPER_CLOSE_POST_ACTION_CONFIDENCE_MEDIUM_POSITION_ABSENT = (
+    "medium_position_absent_order_lifecycle_incomplete"
+)
+_PAPER_CLOSE_POST_ACTION_CONFIDENCE_UNAVAILABLE = "unavailable"
+_PAPER_CLOSE_POST_ACTION_CONFIDENCE_MANUAL_REVIEW = "low_requires_manual_review"
+_PAPER_CLOSE_POST_ACTION_NEXT_READ_ONLY_REVIEW = (
+    "read_only_manual_review_no_corrective_order"
+)
+_PAPER_CLOSE_POST_ACTION_NEXT_COLLECT_READ_ONLY = (
+    "collect_read_only_observations_before_any_further_action"
+)
+_PAPER_CLOSE_POST_ACTION_NEXT_MANUAL_REVIEW = (
+    "manual_review_required_do_not_submit_corrective_order"
+)
+_PAPER_CLOSE_POST_ACTION_PRE_SUBMIT_LOG = "m331_pre_submit_snapshot.jsonl"
+_PAPER_CLOSE_POST_ACTION_CLOSE_PROBE_LOG = "m331_btcusd_close_probe.jsonl"
+_PAPER_CLOSE_POST_ACTION_POST_CLOSE_LOG = "m331_post_close_snapshot.jsonl"
 CHECKLIST_STATUS_READY_FOR_READ_ONLY_SNAPSHOT = "ready_for_read_only_snapshot"
 CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED = (
     "read_only_snapshot_completed_for_manual_review"
@@ -299,6 +321,7 @@ def build_paper_lab_revalidation_brief(
             selected_run_id=selected_run_id,
             run_ids=run_ids,
             invalid_reasons=invalid_reasons,
+            run_log_path=run_log_path,
         )
 
     submit_observation = _submit_observation(records)
@@ -325,6 +348,7 @@ def build_paper_lab_revalidation_brief(
         invalid_reasons=(),
         observation_records=observation_records,
         submit_observation=submit_observation,
+        run_log_path=run_log_path,
     )
 
 
@@ -341,6 +365,9 @@ def render_paper_lab_revalidation_brief_text(
     submit_observation = _mapping(payload.get("submit_observation"))
     post_receipt_reconciliation = _mapping(
         payload.get("post_receipt_reconciliation")
+    )
+    paper_close_post_action_reconciliation = _mapping(
+        payload.get("paper_close_post_action_reconciliation")
     )
     fresh_snapshot_checklist = _mapping(
         payload.get("fresh_snapshot_operator_checklist")
@@ -404,6 +431,11 @@ def render_paper_lab_revalidation_brief_text(
         lines.extend(_submit_observation_lines(submit_observation))
 
     lines.extend(_post_receipt_reconciliation_lines(post_receipt_reconciliation))
+    lines.extend(
+        _paper_close_post_action_reconciliation_lines(
+            paper_close_post_action_reconciliation
+        )
+    )
     lines.extend(_fresh_snapshot_operator_checklist_lines(fresh_snapshot_checklist))
     lines.extend(_close_exit_probe_design_lines(close_exit_probe_design))
     lines.extend(_close_action_eligibility_checklist_lines(close_action_eligibility))
@@ -444,6 +476,7 @@ def _brief_payload(
     invalid_reasons: Sequence[str],
     observation_records: Sequence[Mapping[str, Any]] | None = None,
     submit_observation: Mapping[str, object] | None = None,
+    run_log_path: str | Path | None = None,
 ) -> dict[str, object]:
     observation_records = selected_records if observation_records is None else observation_records
     submit_observation = (
@@ -502,6 +535,12 @@ def _brief_payload(
         "missing_observations": list(missing_observations),
         "next_probe_note": "next manual paper probe remains outside this command",
         "observations": observations,
+        "paper_close_post_action_reconciliation": (
+            _paper_close_post_action_reconciliation(
+                run_log_path,
+                selected_records=selected_records,
+            )
+        ),
         "positions": _latest_positions(selected_records),
         "post_receipt_reconciliation": _post_receipt_reconciliation(
             state,
@@ -2070,6 +2109,378 @@ def _post_receipt_reconciliation(
     }
 
 
+def _paper_close_post_action_reconciliation(
+    run_log_path: str | Path | None,
+    *,
+    selected_records: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    evidence_records, missing_sources, invalid_sources = (
+        _paper_close_post_action_evidence_records(run_log_path)
+    )
+    pre_submit_records = evidence_records["pre_submit"]
+    close_probe_records = evidence_records["close_probe"]
+    post_close_records = evidence_records["post_close"]
+    followup_records = tuple(selected_records)
+    close_source = _paper_close_submit_source(close_probe_records)
+    submit_attempt_count = len(
+        _event_indices(close_probe_records, PAPER_ORDER_SUBMIT_ATTEMPTED)
+    )
+    symbol = _record_symbol(close_source, "symbol") or "BTCUSD"
+    asset_class = _record_code(close_source, "asset_class") or "crypto"
+    side = _record_code(close_source, "side") or "sell"
+    intended_close_quantity = (
+        _record_money(close_source, "qty")
+        or _record_money(close_source, "quantity")
+        or _record_money(close_source, "max_quantity")
+    )
+    pre_submit_position = _snapshot_position_state(pre_submit_records, symbol)
+    post_close_position = _snapshot_position_state(post_close_records, symbol)
+    followup_position = _snapshot_position_state(followup_records, symbol)
+    followup_orders = _snapshot_recent_order_state(followup_records)
+
+    pre_submit_position_quantity = _value_or_empty(
+        pre_submit_position["remaining_quantity"]
+    ) or _record_money(close_source, "target_position_quantity")
+    broker_order_id_available = bool(_record_receipt_order_id(close_source))
+    broker_result_classification = _broker_result_classification(close_source)
+    filled_from_submit_response = _record_bool(close_source, "filled")
+    recent_open_order_count = followup_orders["recent_open_order_count"]
+    recent_order_query_metadata_complete = (
+        followup_orders["recent_order_query_metadata_complete"] is True
+    )
+    redaction_marker_present = _required_redaction_markers_present(
+        (
+            pre_submit_records,
+            close_probe_records,
+            post_close_records,
+            followup_records,
+        )
+    )
+    unavailable_observations = _unavailable_observations(
+        (
+            *pre_submit_records,
+            *post_close_records,
+            *followup_records,
+        )
+    )
+    required_observations_available = (
+        _required_snapshot_observations_available(pre_submit_records)
+        and _required_snapshot_observations_available(post_close_records)
+        and _required_snapshot_observations_available(followup_records)
+    )
+    evidence_available = bool(close_source) and not (
+        missing_sources
+        or invalid_sources
+        or unavailable_observations
+        or not required_observations_available
+        or not recent_order_query_metadata_complete
+        or not redaction_marker_present
+    )
+
+    submitted = _record_bool(close_source, "submitted")
+    accepted_response = (
+        submitted is True
+        and _record_bool(close_source, "broker_response_received") is True
+        and _record_bool(close_source, "broker_response_parsed") is True
+        and broker_result_classification == "accepted"
+    )
+    post_close_position_present = post_close_position["position_present"]
+    followup_position_present = followup_position["position_present"]
+
+    if not evidence_available:
+        reconciliation_state = STATE_OBSERVATION_UNAVAILABLE
+        reconciliation_confidence = _PAPER_CLOSE_POST_ACTION_CONFIDENCE_UNAVAILABLE
+        recommended_next_operator_action = _PAPER_CLOSE_POST_ACTION_NEXT_COLLECT_READ_ONLY
+    elif (
+        post_close_position_present is True
+        or followup_position_present is True
+        or _positive_count(recent_open_order_count)
+    ):
+        reconciliation_state = _PAPER_CLOSE_POST_ACTION_STATE_REQUIRES_MANUAL_REVIEW
+        reconciliation_confidence = _PAPER_CLOSE_POST_ACTION_CONFIDENCE_MANUAL_REVIEW
+        recommended_next_operator_action = _PAPER_CLOSE_POST_ACTION_NEXT_MANUAL_REVIEW
+    elif (
+        accepted_response
+        and post_close_position_present is False
+        and followup_position_present is False
+        and recent_open_order_count == 0
+    ):
+        reconciliation_state = (
+            _PAPER_CLOSE_POST_ACTION_STATE_ACCEPTED_ABSENT_NO_OPEN_ORDERS
+        )
+        reconciliation_confidence = (
+            _PAPER_CLOSE_POST_ACTION_CONFIDENCE_MEDIUM_POSITION_ABSENT
+        )
+        recommended_next_operator_action = (
+            _PAPER_CLOSE_POST_ACTION_NEXT_READ_ONLY_REVIEW
+        )
+    else:
+        reconciliation_state = STATE_OBSERVATION_UNAVAILABLE
+        reconciliation_confidence = _PAPER_CLOSE_POST_ACTION_CONFIDENCE_UNAVAILABLE
+        recommended_next_operator_action = _PAPER_CLOSE_POST_ACTION_NEXT_COLLECT_READ_ONLY
+
+    return {
+        "reconciliation_scope": _PAPER_CLOSE_POST_ACTION_RECONCILIATION_SCOPE,
+        "symbol": symbol,
+        "asset_class": asset_class,
+        "side": side,
+        "intended_close_quantity": intended_close_quantity,
+        "pre_submit_position_quantity": pre_submit_position_quantity,
+        "submitted": submitted,
+        "submit_attempt_count": submit_attempt_count,
+        "broker_response_received": _record_bool(
+            close_source, "broker_response_received"
+        ),
+        "broker_response_parsed": _record_bool(
+            close_source, "broker_response_parsed"
+        ),
+        "broker_result_classification": broker_result_classification,
+        "normalized_status": _record_status(
+            close_source, "normalized_status", "broker_normalized_status"
+        ),
+        "raw_status": _record_status(
+            close_source, "raw_status", "broker_raw_status"
+        ),
+        "filled_from_submit_response": filled_from_submit_response,
+        "client_order_id": _record_correlation_id(close_source, "client_order_id"),
+        "broker_order_id_available": broker_order_id_available,
+        "post_close_position_present": post_close_position_present,
+        "post_close_remaining_quantity": post_close_position["remaining_quantity"],
+        "followup_position_present": followup_position_present,
+        "followup_remaining_quantity": followup_position["remaining_quantity"],
+        "recent_open_order_count": recent_open_order_count,
+        "recent_order_query_metadata_complete": recent_order_query_metadata_complete,
+        "redaction_marker_present": redaction_marker_present,
+        "reconciliation_state": reconciliation_state,
+        "reconciliation_confidence": reconciliation_confidence,
+        "limitations": _paper_close_post_action_limitations(
+            missing_sources=missing_sources,
+            invalid_sources=invalid_sources,
+            unavailable_observations=unavailable_observations,
+            required_observations_available=required_observations_available,
+            recent_order_query_metadata_complete=(
+                recent_order_query_metadata_complete
+            ),
+            redaction_marker_present=redaction_marker_present,
+            filled_from_submit_response=filled_from_submit_response,
+            broker_order_id_available=broker_order_id_available,
+            post_close_position_present=post_close_position_present,
+            followup_position_present=followup_position_present,
+            recent_open_order_count=recent_open_order_count,
+        ),
+        "recommended_next_operator_action": recommended_next_operator_action,
+    }
+
+
+def _paper_close_post_action_evidence_records(
+    run_log_path: str | Path | None,
+) -> tuple[dict[str, tuple[Mapping[str, Any], ...]], list[str], list[str]]:
+    sources = {
+        "pre_submit": _PAPER_CLOSE_POST_ACTION_PRE_SUBMIT_LOG,
+        "close_probe": _PAPER_CLOSE_POST_ACTION_CLOSE_PROBE_LOG,
+        "post_close": _PAPER_CLOSE_POST_ACTION_POST_CLOSE_LOG,
+    }
+    records_by_source: dict[str, tuple[Mapping[str, Any], ...]] = {}
+    missing_sources: list[str] = []
+    invalid_sources: list[str] = []
+    if run_log_path is None:
+        return (
+            {name: () for name in sources},
+            list(sources),
+            [],
+        )
+
+    evidence_dir = Path(run_log_path).parent
+    for source_name, file_name in sources.items():
+        path = evidence_dir / file_name
+        if not path.exists():
+            records_by_source[source_name] = ()
+            missing_sources.append(source_name)
+            continue
+        records, invalid_reasons = _read_jsonl_records(path)
+        records_by_source[source_name] = tuple(records)
+        if invalid_reasons:
+            invalid_sources.append(source_name)
+
+    return records_by_source, missing_sources, invalid_sources
+
+
+def _paper_close_submit_source(
+    records: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    return _latest_record(records, PAPER_ORDER_RECEIPT_OBSERVED) or _latest_record(
+        records, PAPER_ORDER_SUBMIT_ATTEMPTED
+    )
+
+
+def _snapshot_position_state(
+    records: Sequence[Mapping[str, Any]],
+    symbol: str,
+) -> dict[str, object]:
+    record = _latest_record(records, PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED)
+    if record is None:
+        return {
+            "positions_observed": False,
+            "position_present": None,
+            "remaining_quantity": "",
+        }
+
+    positions = _safe_positions(record.get("positions"))
+    target_position = _target_position(positions, symbol)
+    if target_position is not None:
+        return {
+            "positions_observed": True,
+            "position_present": True,
+            "remaining_quantity": target_position.get("quantity", ""),
+        }
+
+    if symbol in _post_submit_position_symbols(record):
+        return {
+            "positions_observed": True,
+            "position_present": True,
+            "remaining_quantity": "",
+        }
+
+    return {
+        "positions_observed": True,
+        "position_present": False,
+        "remaining_quantity": "0",
+    }
+
+
+def _snapshot_recent_order_state(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    record = _latest_record(records, PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED)
+    if record is None:
+        return {
+            "orders_observed": False,
+            "recent_open_order_count": None,
+            "recent_order_query_metadata_complete": False,
+        }
+
+    recent_orders = [
+        order for order in _sequence(record.get("recent_orders")) if isinstance(order, Mapping)
+    ]
+    missing_metadata = _recent_order_query_metadata_missing_fields(record)
+    return {
+        "orders_observed": True,
+        "recent_open_order_count": _safe_count(
+            record.get("recent_order_count"), len(recent_orders)
+        ),
+        "recent_order_query_metadata_complete": not missing_metadata,
+    }
+
+
+def _broker_result_classification(record: Mapping[str, Any] | None) -> str:
+    explicit = _record_code(record, "broker_result_classification")
+    if explicit:
+        return explicit
+    accepted = _record_bool(record, "accepted")
+    if accepted is True:
+        return "accepted"
+    if accepted is False:
+        return "rejected"
+    normalized_status = _record_status(
+        record, "normalized_status", "broker_normalized_status"
+    ).lower()
+    if normalized_status in _ACCEPTED_RECEIPT_STATUSES:
+        return "accepted"
+    if normalized_status in _REJECTED_RECEIPT_STATUSES:
+        return "rejected"
+
+    return ""
+
+
+def _required_snapshot_observations_available(
+    records: Sequence[Mapping[str, Any]],
+) -> bool:
+    observations = _observations(records)
+    return observations["account"] and observations["positions"] and observations["orders"]
+
+
+def _required_redaction_markers_present(
+    record_groups: Sequence[Sequence[Mapping[str, Any]]],
+) -> bool:
+    return all(_redaction_markers(records) for records in record_groups)
+
+
+def _positive_count(value: object) -> bool:
+    return isinstance(value, int) and value > 0
+
+
+def _value_or_empty(value: object) -> str:
+    text = _text(value)
+    return "" if text == "None" else text
+
+
+def _paper_close_post_action_limitations(
+    *,
+    missing_sources: Sequence[str],
+    invalid_sources: Sequence[str],
+    unavailable_observations: Sequence[str],
+    required_observations_available: bool,
+    recent_order_query_metadata_complete: bool,
+    redaction_marker_present: bool,
+    filled_from_submit_response: bool | None,
+    broker_order_id_available: bool,
+    post_close_position_present: object,
+    followup_position_present: object,
+    recent_open_order_count: object,
+) -> list[str]:
+    limitations: list[str] = []
+    if missing_sources:
+        limitations.append(
+            "required local evidence files are missing: "
+            + ",".join(sorted(missing_sources))
+        )
+    if invalid_sources:
+        limitations.append(
+            "required local evidence files could not be parsed: "
+            + ",".join(sorted(invalid_sources))
+        )
+    if unavailable_observations:
+        limitations.append(
+            "broker observations unavailable: "
+            + ",".join(sorted(unavailable_observations))
+        )
+    if not required_observations_available:
+        limitations.append(
+            "required account, position, or order observations are incomplete"
+        )
+    if filled_from_submit_response is not True:
+        limitations.append("submit response did not report filled=true")
+    if not broker_order_id_available:
+        limitations.append(
+            "broker order id was not exposed by the normalized mapper"
+        )
+    if not recent_order_query_metadata_complete:
+        limitations.append(
+            "recent order query metadata is incomplete; local evidence does not "
+            "prove external broker order state"
+        )
+    if not redaction_marker_present:
+        limitations.append(
+            "redaction marker missing from required local evidence"
+        )
+    if post_close_position_present is True:
+        limitations.append("M331 post-close snapshot still showed BTCUSD")
+    if followup_position_present is True:
+        limitations.append("M332 follow-up snapshot showed BTCUSD")
+    if _positive_count(recent_open_order_count):
+        limitations.append("recent open orders were observed")
+    if (
+        filled_from_submit_response is not True
+        or not broker_order_id_available
+        or not recent_order_query_metadata_complete
+    ):
+        limitations.append(
+            "position-based reconciliation only; do not claim final settlement"
+        )
+
+    return limitations
+
+
 def _reconciliation_confidence(
     state: str,
     submit_observation: Mapping[str, object],
@@ -2938,6 +3349,101 @@ def _post_receipt_reconciliation_lines(
             "  reconciliation_limitations: "
             f"{_joined(reconciliation.get('reconciliation_limitations'))}"
         ),
+        (
+            "  recommended_next_operator_action: "
+            f"{_value_text(reconciliation.get('recommended_next_operator_action'))}"
+        ),
+    ]
+
+
+def _paper_close_post_action_reconciliation_lines(
+    reconciliation: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "paper_close_post_action_reconciliation:",
+        (
+            "  reconciliation_scope: "
+            f"{_value_text(reconciliation.get('reconciliation_scope'))}"
+        ),
+        f"  symbol: {_value_text(reconciliation.get('symbol'))}",
+        f"  asset_class: {_value_text(reconciliation.get('asset_class'))}",
+        f"  side: {_value_text(reconciliation.get('side'))}",
+        (
+            "  intended_close_quantity: "
+            f"{_value_text(reconciliation.get('intended_close_quantity'))}"
+        ),
+        (
+            "  pre_submit_position_quantity: "
+            f"{_value_text(reconciliation.get('pre_submit_position_quantity'))}"
+        ),
+        f"  submitted: {_tri_bool_text(reconciliation.get('submitted'))}",
+        (
+            "  submit_attempt_count: "
+            f"{_value_text(reconciliation.get('submit_attempt_count'))}"
+        ),
+        (
+            "  broker_response_received: "
+            f"{_tri_bool_text(reconciliation.get('broker_response_received'))}"
+        ),
+        (
+            "  broker_response_parsed: "
+            f"{_tri_bool_text(reconciliation.get('broker_response_parsed'))}"
+        ),
+        (
+            "  broker_result_classification: "
+            f"{_value_text(reconciliation.get('broker_result_classification'))}"
+        ),
+        (
+            "  normalized_status: "
+            f"{_value_text(reconciliation.get('normalized_status'))}"
+        ),
+        f"  raw_status: {_value_text(reconciliation.get('raw_status'))}",
+        (
+            "  filled_from_submit_response: "
+            f"{_tri_bool_text(reconciliation.get('filled_from_submit_response'))}"
+        ),
+        f"  client_order_id: {_value_text(reconciliation.get('client_order_id'))}",
+        (
+            "  broker_order_id_available: "
+            f"{_bool_text(reconciliation.get('broker_order_id_available'))}"
+        ),
+        (
+            "  post_close_position_present: "
+            f"{_tri_bool_text(reconciliation.get('post_close_position_present'))}"
+        ),
+        (
+            "  post_close_remaining_quantity: "
+            f"{_value_text(reconciliation.get('post_close_remaining_quantity'))}"
+        ),
+        (
+            "  followup_position_present: "
+            f"{_tri_bool_text(reconciliation.get('followup_position_present'))}"
+        ),
+        (
+            "  followup_remaining_quantity: "
+            f"{_value_text(reconciliation.get('followup_remaining_quantity'))}"
+        ),
+        (
+            "  recent_open_order_count: "
+            f"{_value_text(reconciliation.get('recent_open_order_count'))}"
+        ),
+        (
+            "  recent_order_query_metadata_complete: "
+            f"{_bool_text(reconciliation.get('recent_order_query_metadata_complete'))}"
+        ),
+        (
+            "  redaction_marker_present: "
+            f"{_bool_text(reconciliation.get('redaction_marker_present'))}"
+        ),
+        (
+            "  reconciliation_state: "
+            f"{_value_text(reconciliation.get('reconciliation_state'))}"
+        ),
+        (
+            "  reconciliation_confidence: "
+            f"{_value_text(reconciliation.get('reconciliation_confidence'))}"
+        ),
+        f"  limitations: {_joined(reconciliation.get('limitations'))}",
         (
             "  recommended_next_operator_action: "
             f"{_value_text(reconciliation.get('recommended_next_operator_action'))}"
