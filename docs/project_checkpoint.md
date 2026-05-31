@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 5156-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 5430-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -13970,6 +13970,46 @@ Safe next tasks include:
   `ExecutionIntent`, `ExecutionPlan`, credentials, network, market-data fetch,
   live profile/live URL, scheduler/autonomous behavior, LLM or agent runtime
   dependency, profit claim, or order/fill/account/portfolio mutation.
+- Phase 340 / Milestone 340 - ETF/SMA Paper-Lab Preview Prompt Review v1 adds
+  the deterministic offline prompt-review contract that consumes only the M339
+  ETF/SMA paper-lab preview design plus static local config. The new
+  `etf_sma_paper_lab_preview_prompt_review` contract preserves source design
+  status, source required next action, source labels, symbol, strategy name,
+  `as_of`, latest posture, strategy and benchmark total returns, max drawdown,
+  bar/signal/exposure/defensive/posture-change counts, source limitations,
+  blocking reasons, future operator checklist, future prompt template,
+  future-prompt readiness, and required next action.
+- M340 preserves `research_only`, `paper_lab_candidate`,
+  `not_live_authorized`, and `profit_claim=none`. The best allowed status is
+  `prompt_ready_for_operator_review`; blocked inputs produce
+  `blocked_from_prompt_review`. Ready reviews require a ready M339 design,
+  required source labels, no live authorization label or status, no profit
+  claim other than `profit_claim=none`, and bullish research posture. Source
+  design blockers, insufficient history, observe-only posture, defensive
+  posture, missing paper-lab-candidate labels, live authorization, and non-none
+  profit claims all remain blockers. The ready next action is
+  `operator_review_before_separate_paper_preview_milestone`; the blocked next
+  action is `resolve_paper_preview_design_blockers`.
+- M340 required limitations are `offline_prompt_review_only`,
+  `not_profit_evidence`, `no_broker_preview_authorized`,
+  `no_broker_action_authorized`, `paper_preview_requires_separate_milestone`,
+  `submit_requires_separate_explicit_milestone`, and `not_live_authorized`.
+  Required future operator checklist values include paper profile only, a
+  fresh read-only paper snapshot before any future broker-facing preview, no
+  open conflicting orders before a future preview, explicit operator approval
+  before a broker-facing preview, separate milestones before broker-facing
+  preview and before any submit, no live trading authorization, stop on
+  ambiguous broker response, and no retry/cancel/liquidate/fix-forward without
+  a separate explicit milestone.
+- The M340 future prompt template is review-only and non-executable. It
+  contains `<FUTURE_SEPARATE_MILESTONE_REQUIRED>`,
+  `<BROKER_PREVIEW_COMMAND_NOT_INCLUDED>`, `<SUBMIT_FLAG_NOT_INCLUDED>`,
+  `<PAPER_PROFILE_REQUIRED>`, and `<FRESH_READ_ONLY_SNAPSHOT_REQUIRED>`, and no
+  submit flag or broker execution command. M340 authorizes no broker action,
+  broker preview or staging, `ExecutionIntent`, `ExecutionPlan`, credentials,
+  network, market-data fetch, live profile/live URL, scheduler/autonomous
+  behavior, LLM or agent runtime dependency, profit claim, or order/fill/
+  account/portfolio mutation.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
