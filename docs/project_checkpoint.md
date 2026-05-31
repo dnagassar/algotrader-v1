@@ -13702,6 +13702,27 @@ Safe next tasks include:
   adds no submit command, close/sell order, Alpaca call, network use, live
   profile/live URL behavior, credential access, broker write path, scheduler,
   autonomous loop, research-layer submission, or unsafe pytest behavior.
+- Phase 322 / Milestone 322 - Post-Receipt Paper Reconciliation Brief adds a
+  deterministic `post_receipt_reconciliation` section to the local
+  `paper-lab-revalidation-brief` JSON/text output. It summarizes sanitized
+  receipt flags, status, order shape, pre/post cash, Decimal cash delta, target
+  position quantity and average price, recent-order query contract metadata,
+  target recent-order match basis, order-list gap diagnostics, confidence,
+  limitations, and read-only next operator action. Confidence values are
+  `high_receipt_position_cash_observed`,
+  `medium_receipt_position_observed_order_gap`, `low_receipt_only`,
+  `low_position_only`, `unavailable`, and `invalid`. For the old M318/M321
+  shape, the state remains
+  `receipt_and_position_observed_with_order_list_gap`,
+  `order_list_gap_reason=recent_order_query_returned_empty`,
+  `recent_order_query_metadata_complete=false`,
+  `reconciliation_confidence=medium_receipt_position_observed_order_gap`, and
+  `recommended_next_operator_action=read_only_fresh_snapshot_before_any_close_probe`.
+  The brief preserves `paper_lab_only`, `not_live_authorized`, and
+  `profit_claim=none`, and adds no submit command, close/sell order, Alpaca
+  call, network use, live profile/live URL behavior, credential access, broker
+  write path, scheduler, autonomous loop, research-layer submission, or unsafe
+  pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -1661,6 +1661,52 @@ def test_revalidation_brief_cli_reports_submit_receipt_observation(
         payload["submit_observation"]["order_list_gap_reason"]
         == "recent_order_query_returned_empty"
     )
+    assert payload["post_receipt_reconciliation"]["reconciliation_confidence"] == (
+        "medium_receipt_position_observed_order_gap"
+    )
+    assert payload["post_receipt_reconciliation"][
+        "recommended_next_operator_action"
+    ] == "read_only_fresh_snapshot_before_any_close_probe"
+
+
+def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "m319.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_revalidation_m319_submit_run_log(run_log)
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("revalidation brief must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-lab-revalidation-brief",
+            "--run-log",
+            str(run_log),
+            "--format",
+            "text",
+        )
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert "post_receipt_reconciliation:" in captured.out
+    assert (
+        "reconciliation_confidence: medium_receipt_position_observed_order_gap"
+        in captured.out
+    )
+    assert (
+        "recommended_next_operator_action: "
+        "read_only_fresh_snapshot_before_any_close_probe"
+        in captured.out
+    )
 
 
 def test_invalid_run_log_path_reports_cleanly(

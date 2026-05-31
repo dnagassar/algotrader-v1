@@ -8161,6 +8161,31 @@ network use, live profile/live URL behavior, credential access, broker write
 path, scheduler, autonomous trading, research-layer submission, or unsafe
 pytest behavior.
 
+Phase 322 / Milestone 322 - Post-Receipt Paper Reconciliation Brief adds a
+deterministic `post_receipt_reconciliation` section to the local
+`paper-lab-revalidation-brief` JSON and text output. The section ties the
+sanitized receipt state, broker response flags, submitted/accepted/filled
+fields, raw and normalized status, order shape, pre/post cash, Decimal cash
+delta, target BTCUSD position quantity and average price, recent-order query
+contract metadata, target recent-order match basis, order-list gap diagnostics,
+reconciliation confidence, limitations, and next operator action into one
+read-only summary. Confidence values are deterministic:
+`high_receipt_position_cash_observed`,
+`medium_receipt_position_observed_order_gap`, `low_receipt_only`,
+`low_position_only`, `unavailable`, and `invalid`. The old M318/M321-shaped log
+still classifies as `receipt_and_position_observed_with_order_list_gap` with
+`order_list_gap_reason=recent_order_query_returned_empty`; the new
+post-receipt section reports
+`reconciliation_confidence=medium_receipt_position_observed_order_gap` and
+`recommended_next_operator_action=read_only_fresh_snapshot_before_any_close_probe`
+because the broker receipt, cash movement, and BTCUSD position were observed,
+while the recent-order list did not include the order and the old log lacks
+complete query metadata. This milestone preserves `paper_lab_only`,
+`not_live_authorized`, and `profit_claim=none`, and adds no submit command,
+close/sell order, Alpaca call, network use, live profile/live URL behavior,
+credential access, broker write path, scheduler, autonomous trading,
+research-layer submission, or unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

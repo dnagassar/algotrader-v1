@@ -18,6 +18,40 @@ from algotrader.execution.paper_lab_revalidation_brief import (
 
 
 SECRET_VALUE = "paper-lab-secret-value-that-must-not-leak"
+POST_RECEIPT_RECONCILIATION_FIELDS = {
+    "accepted",
+    "asset_class",
+    "broker_response_parsed",
+    "broker_response_received",
+    "cash_delta",
+    "filled",
+    "max_notional",
+    "min_notional",
+    "normalized_status",
+    "notional",
+    "order_list_gap",
+    "order_list_gap_reason",
+    "position_average_price",
+    "position_observed",
+    "position_quantity",
+    "post_submit_cash",
+    "pre_submit_cash",
+    "raw_status",
+    "receipt_observed",
+    "receipt_state",
+    "recent_order_match_basis",
+    "recent_order_match_observed",
+    "recent_order_query_contract_version",
+    "recent_order_query_metadata_complete",
+    "recent_order_query_metadata_missing_fields",
+    "recent_order_query_returned_count",
+    "reconciliation_confidence",
+    "reconciliation_limitations",
+    "recommended_next_operator_action",
+    "side",
+    "submitted",
+    "symbol",
+}
 
 
 def test_text_output_is_deterministic_for_usable_snapshot_log(tmp_path) -> None:
@@ -70,9 +104,11 @@ def test_m318_like_receipt_cash_position_with_empty_orders_is_order_gap(
     payload = build_paper_lab_revalidation_brief(run_log)
     rendered = render_paper_lab_revalidation_brief_text(payload)
     summary = payload["submit_observation"]
+    reconciliation = payload["post_receipt_reconciliation"]
 
     assert payload["state"] == STATE_RECEIPT_AND_POSITION_OBSERVED_WITH_ORDER_LIST_GAP
     assert payload["usable_for_manual_review"] is True
+    assert set(reconciliation) == POST_RECEIPT_RECONCILIATION_FIELDS
     assert summary["submit_attempt_count"] == 1
     assert summary["receipt_observed"] is True
     assert summary["broker_response_received"] is True
@@ -140,11 +176,63 @@ def test_m318_like_receipt_cash_position_with_empty_orders_is_order_gap(
     assert summary["order_list_observation_gap"] is True
     assert summary["order_list_gap_reason"] == "recent_order_query_returned_empty"
     assert summary["unavailable_observations"] == []
+    assert reconciliation["receipt_observed"] is True
+    assert reconciliation["receipt_state"] == (
+        STATE_RECEIPT_AND_POSITION_OBSERVED_WITH_ORDER_LIST_GAP
+    )
+    assert reconciliation["broker_response_received"] is True
+    assert reconciliation["broker_response_parsed"] is True
+    assert reconciliation["submitted"] is True
+    assert reconciliation["accepted"] is True
+    assert reconciliation["filled"] is False
+    assert reconciliation["raw_status"] == "OrderStatus.PENDING_NEW"
+    assert reconciliation["normalized_status"] == "pending_new"
+    assert reconciliation["asset_class"] == "crypto"
+    assert reconciliation["symbol"] == "BTCUSD"
+    assert reconciliation["side"] == "buy"
+    assert reconciliation["notional"] == "10.00"
+    assert reconciliation["max_notional"] == "10.00"
+    assert reconciliation["min_notional"] == "10.00"
+    assert reconciliation["pre_submit_cash"] == "2000"
+    assert reconciliation["post_submit_cash"] == "1990.19"
+    assert reconciliation["cash_delta"] == "-9.81"
+    assert reconciliation["position_observed"] is True
+    assert reconciliation["position_quantity"] == "0.000132386"
+    assert reconciliation["position_average_price"] == "73886.11"
+    assert reconciliation["recent_order_query_contract_version"] == ""
+    assert reconciliation["recent_order_query_metadata_complete"] is False
+    assert reconciliation["recent_order_query_returned_count"] == 0
+    assert reconciliation["recent_order_match_observed"] is False
+    assert reconciliation["recent_order_match_basis"] == "none"
+    assert reconciliation["order_list_gap"] is True
+    assert reconciliation["order_list_gap_reason"] == (
+        "recent_order_query_returned_empty"
+    )
+    assert reconciliation["reconciliation_confidence"] == (
+        "medium_receipt_position_observed_order_gap"
+    )
+    assert reconciliation["recommended_next_operator_action"] == (
+        "read_only_fresh_snapshot_before_any_close_probe"
+    )
+    assert any(
+        "recent order query metadata is incomplete" in limitation
+        for limitation in reconciliation["reconciliation_limitations"]
+    )
     assert payload["redaction_markers_found"] == ["credentials_redacted"]
     assert "state: receipt_and_position_observed_with_order_list_gap" in rendered
+    assert "post_receipt_reconciliation:" in rendered
     assert "cash_delta: -9.81" in rendered
     assert "order_list_observation_gap: true" in rendered
     assert "order_list_gap_reason: recent_order_query_returned_empty" in rendered
+    assert (
+        "reconciliation_confidence: medium_receipt_position_observed_order_gap"
+        in rendered
+    )
+    assert (
+        "recommended_next_operator_action: "
+        "read_only_fresh_snapshot_before_any_close_probe"
+        in rendered
+    )
     assert "recent_order_query_metadata_complete: false" in rendered
     assert _forbidden_claims_absent(rendered)
 
@@ -157,6 +245,7 @@ def test_complete_recent_order_query_metadata_is_reported(tmp_path) -> None:
 
     payload = build_paper_lab_revalidation_brief(run_log)
     summary = payload["submit_observation"]
+    reconciliation = payload["post_receipt_reconciliation"]
 
     assert payload["state"] == STATE_RECEIPT_AND_POSITION_OBSERVED_WITH_ORDER_LIST_GAP
     assert summary["order_list_gap_reason"] == "recent_order_query_returned_empty"
@@ -176,6 +265,17 @@ def test_complete_recent_order_query_metadata_is_reported(tmp_path) -> None:
     )
     assert summary["recent_order_query_metadata_complete"] is True
     assert summary["recent_order_query_metadata_missing_fields"] == []
+    assert reconciliation["recent_order_query_contract_version"] == (
+        "paper_recent_order_query_v1"
+    )
+    assert reconciliation["recent_order_query_metadata_complete"] is True
+    assert reconciliation["reconciliation_confidence"] == (
+        "medium_receipt_position_observed_order_gap"
+    )
+    assert not any(
+        "recent order query metadata is incomplete" in limitation
+        for limitation in reconciliation["reconciliation_limitations"]
+    )
 
 
 def test_successful_receipt_with_target_recent_order_has_no_order_gap(
@@ -202,6 +302,7 @@ def test_successful_receipt_with_target_recent_order_has_no_order_gap(
 
     payload = build_paper_lab_revalidation_brief(run_log)
     summary = payload["submit_observation"]
+    reconciliation = payload["post_receipt_reconciliation"]
 
     assert payload["state"] == STATE_RECEIPT_AND_POSITION_OBSERVED
     assert summary["recent_order_observed_for_target"] is True
@@ -209,6 +310,12 @@ def test_successful_receipt_with_target_recent_order_has_no_order_gap(
     assert summary["target_recent_order_match_basis"] == "client_order_id"
     assert summary["order_list_observation_gap"] is False
     assert summary["order_list_gap_reason"] == ""
+    assert reconciliation["recent_order_match_observed"] is True
+    assert reconciliation["recent_order_match_basis"] == "client_order_id"
+    assert reconciliation["order_list_gap"] is False
+    assert reconciliation["reconciliation_confidence"] == (
+        "high_receipt_position_cash_observed"
+    )
 
 
 def test_successful_receipt_with_target_recent_order_by_broker_id_has_no_gap(
@@ -398,12 +505,14 @@ def test_position_observed_without_receipt_is_distinct(tmp_path) -> None:
 
     payload = build_paper_lab_revalidation_brief(run_log)
     summary = payload["submit_observation"]
+    reconciliation = payload["post_receipt_reconciliation"]
 
     assert payload["state"] == STATE_POSITION_OBSERVED_WITHOUT_RECEIPT
     assert summary["receipt_observed"] is False
     assert summary["broker_response_received"] is True
     assert summary["broker_response_parsed"] is False
     assert summary["target_position_observed"] is True
+    assert reconciliation["reconciliation_confidence"] == "low_position_only"
 
 
 def test_receipt_without_post_submit_observation_is_insufficient(tmp_path) -> None:
@@ -414,11 +523,13 @@ def test_receipt_without_post_submit_observation_is_insufficient(tmp_path) -> No
 
     payload = build_paper_lab_revalidation_brief(run_log)
     summary = payload["submit_observation"]
+    reconciliation = payload["post_receipt_reconciliation"]
 
     assert payload["state"] == STATE_INSUFFICIENT_OBSERVATION
     assert payload["usable_for_manual_review"] is False
     assert summary["receipt_observed"] is True
     assert summary["has_post_submit_observation"] is False
+    assert reconciliation["reconciliation_confidence"] == "low_receipt_only"
 
 
 def test_submit_context_unavailable_observation_blocks_summary(tmp_path) -> None:
@@ -450,6 +561,9 @@ def test_submit_context_unavailable_observation_blocks_summary(tmp_path) -> None
 
     assert payload["state"] == STATE_OBSERVATION_UNAVAILABLE
     assert payload["usable_for_manual_review"] is False
+    assert payload["post_receipt_reconciliation"]["reconciliation_confidence"] == (
+        "unavailable"
+    )
     assert payload["submit_observation"]["unavailable_observations"] == ["orders"]
     assert SECRET_VALUE not in rendered
 
@@ -495,6 +609,9 @@ def test_order_query_unavailable_reports_gap_reason_without_submit_failure(
     assert summary["recent_order_query_returned_count"] is None
     assert summary["order_list_observation_gap"] is True
     assert summary["order_list_gap_reason"] == "order_query_unavailable"
+    assert payload["post_receipt_reconciliation"]["reconciliation_confidence"] == (
+        "unavailable"
+    )
 
 
 def test_submit_observation_output_excludes_live_and_secret_details(tmp_path) -> None:
@@ -533,6 +650,9 @@ def test_empty_log_is_insufficient_observation(tmp_path) -> None:
     assert payload["usable_for_manual_review"] is False
     assert payload["missing_observations"] == ["account", "positions", "orders"]
     assert payload["record_count"] == 0
+    assert payload["post_receipt_reconciliation"]["reconciliation_confidence"] == (
+        "unavailable"
+    )
 
 
 def test_malformed_jsonl_is_invalid_run_log(tmp_path) -> None:
@@ -544,10 +664,15 @@ def test_malformed_jsonl_is_invalid_run_log(tmp_path) -> None:
     )
 
     payload = build_paper_lab_revalidation_brief(run_log)
+    rendered = render_paper_lab_revalidation_brief_text(payload)
 
     assert payload["state"] == STATE_INVALID_RUN_LOG
     assert payload["usable_for_manual_review"] is False
     assert payload["invalid_reasons"] == ["line 2: JSONDecodeError"]
+    assert payload["post_receipt_reconciliation"]["reconciliation_confidence"] == (
+        "invalid"
+    )
+    assert "Traceback" not in rendered
 
 
 def test_missing_account_observation_is_reported(tmp_path) -> None:
@@ -1062,9 +1187,11 @@ def _forbidden_claims_absent(rendered: str) -> bool:
         for phrase in (
             "ready to trade",
             "approved",
-            "recommended",
             "profitable",
             "live ready",
+            "recommended buy",
+            "recommended sell",
+            "recommended trade",
             "safe to submit",
             "strategy validated",
         )

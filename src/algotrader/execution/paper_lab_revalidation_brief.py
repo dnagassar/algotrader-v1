@@ -107,6 +107,26 @@ _ORDER_LIST_GAP_REASON_INSUFFICIENT_ORDER_QUERY_METADATA = (
     "insufficient_order_query_metadata"
 )
 _ORDER_LIST_GAP_REASON_UNKNOWN = "unknown"
+_RECONCILIATION_CONFIDENCE_HIGH_RECEIPT_POSITION_CASH_OBSERVED = (
+    "high_receipt_position_cash_observed"
+)
+_RECONCILIATION_CONFIDENCE_MEDIUM_RECEIPT_POSITION_OBSERVED_ORDER_GAP = (
+    "medium_receipt_position_observed_order_gap"
+)
+_RECONCILIATION_CONFIDENCE_LOW_RECEIPT_ONLY = "low_receipt_only"
+_RECONCILIATION_CONFIDENCE_LOW_POSITION_ONLY = "low_position_only"
+_RECONCILIATION_CONFIDENCE_UNAVAILABLE = "unavailable"
+_RECONCILIATION_CONFIDENCE_INVALID = "invalid"
+_RECONCILIATION_ACTION_MANUAL_REVIEW_ONLY = "read_only_manual_review_before_any_probe"
+_RECONCILIATION_ACTION_FRESH_SNAPSHOT_BEFORE_CLOSE = (
+    "read_only_fresh_snapshot_before_any_close_probe"
+)
+_RECONCILIATION_ACTION_COLLECT_READ_ONLY_OBSERVATIONS = (
+    "collect_read_only_observations_before_any_probe"
+)
+_RECONCILIATION_ACTION_REPAIR_LOCAL_RUN_LOG = (
+    "repair_local_run_log_before_revalidation"
+)
 _MANUAL_REVIEW_USABLE_STATES = frozenset(
     (
         STATE_RECEIPT_AND_POSITION_OBSERVED,
@@ -180,6 +200,9 @@ def render_paper_lab_revalidation_brief_text(
     positions = _mapping(payload.get("positions"))
     recent_orders = _mapping(payload.get("recent_orders"))
     submit_observation = _mapping(payload.get("submit_observation"))
+    post_receipt_reconciliation = _mapping(
+        payload.get("post_receipt_reconciliation")
+    )
 
     lines = [
         "Paper lab revalidation brief",
@@ -227,6 +250,8 @@ def render_paper_lab_revalidation_brief_text(
 
     if submit_observation.get("has_submit_context"):
         lines.extend(_submit_observation_lines(submit_observation))
+
+    lines.extend(_post_receipt_reconciliation_lines(post_receipt_reconciliation))
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
     if unavailable_events:
@@ -285,6 +310,10 @@ def _brief_payload(
         "next_probe_note": "next manual paper probe remains outside this command",
         "observations": observations,
         "positions": _latest_positions(selected_records),
+        "post_receipt_reconciliation": _post_receipt_reconciliation(
+            state,
+            submit_observation,
+        ),
         "recent_orders": _latest_recent_orders(selected_records),
         "record_count": len(records),
         "redaction_markers_found": _redaction_markers(observation_records),
@@ -671,6 +700,182 @@ def _submit_observation_state(
         return STATE_INSUFFICIENT_OBSERVATION
 
     return STATE_INSUFFICIENT_OBSERVATION
+
+
+def _post_receipt_reconciliation(
+    state: str,
+    submit_observation: Mapping[str, object],
+) -> dict[str, object]:
+    confidence = _reconciliation_confidence(state, submit_observation)
+    return {
+        "receipt_observed": submit_observation.get("receipt_observed"),
+        "receipt_state": state,
+        "broker_response_received": submit_observation.get(
+            "broker_response_received"
+        ),
+        "broker_response_parsed": submit_observation.get("broker_response_parsed"),
+        "submitted": submit_observation.get("submitted"),
+        "accepted": submit_observation.get("accepted"),
+        "filled": submit_observation.get("filled"),
+        "raw_status": submit_observation.get("raw_status"),
+        "normalized_status": submit_observation.get("normalized_status"),
+        "asset_class": submit_observation.get("asset_class"),
+        "symbol": submit_observation.get("symbol"),
+        "side": submit_observation.get("side"),
+        "notional": submit_observation.get("notional"),
+        "max_notional": submit_observation.get("max_notional"),
+        "min_notional": submit_observation.get("min_notional"),
+        "pre_submit_cash": submit_observation.get("pre_submit_cash"),
+        "post_submit_cash": submit_observation.get("post_submit_cash"),
+        "cash_delta": submit_observation.get("cash_delta"),
+        "position_observed": submit_observation.get("target_position_observed"),
+        "position_quantity": submit_observation.get("target_position_quantity"),
+        "position_average_price": submit_observation.get(
+            "target_position_average_price"
+        ),
+        "recent_order_query_contract_version": submit_observation.get(
+            "recent_order_query_contract_version"
+        ),
+        "recent_order_query_metadata_complete": submit_observation.get(
+            "recent_order_query_metadata_complete"
+        ),
+        "recent_order_query_metadata_missing_fields": list(
+            _sequence(
+                submit_observation.get("recent_order_query_metadata_missing_fields")
+            )
+        ),
+        "recent_order_query_returned_count": submit_observation.get(
+            "recent_order_query_returned_count"
+        ),
+        "recent_order_match_observed": submit_observation.get(
+            "target_recent_order_match_observed"
+        ),
+        "recent_order_match_basis": submit_observation.get(
+            "target_recent_order_match_basis"
+        ),
+        "order_list_gap": submit_observation.get("order_list_observation_gap"),
+        "order_list_gap_reason": submit_observation.get("order_list_gap_reason"),
+        "reconciliation_confidence": confidence,
+        "reconciliation_limitations": _reconciliation_limitations(
+            confidence,
+            submit_observation,
+        ),
+        "recommended_next_operator_action": _reconciliation_operator_action(
+            confidence,
+            submit_observation,
+        ),
+    }
+
+
+def _reconciliation_confidence(
+    state: str,
+    submit_observation: Mapping[str, object],
+) -> str:
+    if state == STATE_INVALID_RUN_LOG:
+        return _RECONCILIATION_CONFIDENCE_INVALID
+    if state == STATE_OBSERVATION_UNAVAILABLE:
+        return _RECONCILIATION_CONFIDENCE_UNAVAILABLE
+    if not bool(submit_observation.get("has_submit_context")):
+        return _RECONCILIATION_CONFIDENCE_UNAVAILABLE
+
+    receipt_observed = bool(submit_observation.get("receipt_observed"))
+    position_observed = bool(submit_observation.get("target_position_observed"))
+    cash_observed = _cash_movement_observed(submit_observation)
+    order_list_gap = bool(submit_observation.get("order_list_observation_gap"))
+    recent_order_match_observed = bool(
+        submit_observation.get("target_recent_order_match_observed")
+    )
+
+    if receipt_observed and position_observed:
+        if order_list_gap:
+            return (
+                _RECONCILIATION_CONFIDENCE_MEDIUM_RECEIPT_POSITION_OBSERVED_ORDER_GAP
+            )
+        if cash_observed and recent_order_match_observed:
+            return _RECONCILIATION_CONFIDENCE_HIGH_RECEIPT_POSITION_CASH_OBSERVED
+        return _RECONCILIATION_CONFIDENCE_UNAVAILABLE
+    if receipt_observed:
+        return _RECONCILIATION_CONFIDENCE_LOW_RECEIPT_ONLY
+    if position_observed:
+        return _RECONCILIATION_CONFIDENCE_LOW_POSITION_ONLY
+
+    return _RECONCILIATION_CONFIDENCE_UNAVAILABLE
+
+
+def _cash_movement_observed(submit_observation: Mapping[str, object]) -> bool:
+    pre_cash = _text(submit_observation.get("pre_submit_cash"))
+    post_cash = _text(submit_observation.get("post_submit_cash"))
+    cash_delta = _text(submit_observation.get("cash_delta"))
+    return bool(pre_cash and post_cash and cash_delta and cash_delta != "<redacted>")
+
+
+def _reconciliation_limitations(
+    confidence: str,
+    submit_observation: Mapping[str, object],
+) -> list[str]:
+    limitations: list[str] = []
+    order_gap_reason = _text(submit_observation.get("order_list_gap_reason"))
+    metadata_complete = submit_observation.get("recent_order_query_metadata_complete")
+
+    if confidence == _RECONCILIATION_CONFIDENCE_INVALID:
+        limitations.append(
+            "run log could not be parsed; reconciliation uses invalid state only"
+        )
+        return limitations
+    if confidence == _RECONCILIATION_CONFIDENCE_UNAVAILABLE:
+        limitations.append(
+            "required receipt, position, cash, or order observations are unavailable"
+        )
+    elif confidence == (
+        _RECONCILIATION_CONFIDENCE_MEDIUM_RECEIPT_POSITION_OBSERVED_ORDER_GAP
+    ):
+        if _cash_movement_observed(submit_observation):
+            limitations.append(
+                "broker receipt, cash movement, and target position were observed, "
+                "but the recent-order list did not include the order"
+            )
+        else:
+            limitations.append(
+                "broker receipt and target position were observed, but cash movement "
+                "or recent-order match evidence is incomplete"
+            )
+    elif confidence == _RECONCILIATION_CONFIDENCE_LOW_RECEIPT_ONLY:
+        limitations.append(
+            "broker receipt was observed without a post-submit target position"
+        )
+    elif confidence == _RECONCILIATION_CONFIDENCE_LOW_POSITION_ONLY:
+        limitations.append(
+            "target position was observed without a broker receipt in the run log"
+        )
+
+    if metadata_complete is not True:
+        limitations.append(
+            "recent order query metadata is incomplete; local evidence does not "
+            "prove external broker order state"
+        )
+    if order_gap_reason:
+        limitations.append(f"order-list gap reason: {order_gap_reason}")
+
+    return limitations
+
+
+def _reconciliation_operator_action(
+    confidence: str,
+    submit_observation: Mapping[str, object],
+) -> str:
+    if confidence == _RECONCILIATION_CONFIDENCE_INVALID:
+        return _RECONCILIATION_ACTION_REPAIR_LOCAL_RUN_LOG
+    if confidence == _RECONCILIATION_CONFIDENCE_UNAVAILABLE:
+        return _RECONCILIATION_ACTION_COLLECT_READ_ONLY_OBSERVATIONS
+    if bool(submit_observation.get("order_list_observation_gap")):
+        return _RECONCILIATION_ACTION_FRESH_SNAPSHOT_BEFORE_CLOSE
+    if confidence in {
+        _RECONCILIATION_CONFIDENCE_LOW_RECEIPT_ONLY,
+        _RECONCILIATION_CONFIDENCE_LOW_POSITION_ONLY,
+    }:
+        return _RECONCILIATION_ACTION_COLLECT_READ_ONLY_OBSERVATIONS
+
+    return _RECONCILIATION_ACTION_MANUAL_REVIEW_ONLY
 
 
 def _latest_record(
@@ -1340,6 +1545,100 @@ def _event_count_lines(event_counts: Mapping[str, object]) -> list[str]:
     return [
         f"event_count: {event_type}={event_counts[event_type]}"
         for event_type in event_counts
+    ]
+
+
+def _post_receipt_reconciliation_lines(
+    reconciliation: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "post_receipt_reconciliation:",
+        (
+            "  receipt_observed: "
+            f"{_tri_bool_text(reconciliation.get('receipt_observed'))}"
+        ),
+        f"  receipt_state: {_value_text(reconciliation.get('receipt_state'))}",
+        (
+            "  broker_response_received: "
+            f"{_tri_bool_text(reconciliation.get('broker_response_received'))}"
+        ),
+        (
+            "  broker_response_parsed: "
+            f"{_tri_bool_text(reconciliation.get('broker_response_parsed'))}"
+        ),
+        f"  submitted: {_tri_bool_text(reconciliation.get('submitted'))}",
+        f"  accepted: {_tri_bool_text(reconciliation.get('accepted'))}",
+        f"  filled: {_tri_bool_text(reconciliation.get('filled'))}",
+        f"  raw_status: {_value_text(reconciliation.get('raw_status'))}",
+        (
+            "  normalized_status: "
+            f"{_value_text(reconciliation.get('normalized_status'))}"
+        ),
+        f"  asset_class: {_value_text(reconciliation.get('asset_class'))}",
+        f"  symbol: {_value_text(reconciliation.get('symbol'))}",
+        f"  side: {_value_text(reconciliation.get('side'))}",
+        f"  notional: {_value_text(reconciliation.get('notional'))}",
+        f"  max_notional: {_value_text(reconciliation.get('max_notional'))}",
+        f"  min_notional: {_value_text(reconciliation.get('min_notional'))}",
+        f"  pre_submit_cash: {_value_text(reconciliation.get('pre_submit_cash'))}",
+        f"  post_submit_cash: {_value_text(reconciliation.get('post_submit_cash'))}",
+        f"  cash_delta: {_value_text(reconciliation.get('cash_delta'))}",
+        (
+            "  position_observed: "
+            f"{_tri_bool_text(reconciliation.get('position_observed'))}"
+        ),
+        (
+            "  position_quantity: "
+            f"{_value_text(reconciliation.get('position_quantity'))}"
+        ),
+        (
+            "  position_average_price: "
+            f"{_value_text(reconciliation.get('position_average_price'))}"
+        ),
+        (
+            "  recent_order_query_contract_version: "
+            f"{_value_text(reconciliation.get('recent_order_query_contract_version'))}"
+        ),
+        (
+            "  recent_order_query_metadata_complete: "
+            f"{_tri_bool_text(reconciliation.get('recent_order_query_metadata_complete'))}"
+        ),
+        (
+            "  recent_order_query_metadata_missing_fields: "
+            f"{_joined(reconciliation.get('recent_order_query_metadata_missing_fields'))}"
+        ),
+        (
+            "  recent_order_query_returned_count: "
+            f"{_value_text(reconciliation.get('recent_order_query_returned_count'))}"
+        ),
+        (
+            "  recent_order_match_observed: "
+            f"{_tri_bool_text(reconciliation.get('recent_order_match_observed'))}"
+        ),
+        (
+            "  recent_order_match_basis: "
+            f"{_value_text(reconciliation.get('recent_order_match_basis'))}"
+        ),
+        (
+            "  order_list_gap: "
+            f"{_tri_bool_text(reconciliation.get('order_list_gap'))}"
+        ),
+        (
+            "  order_list_gap_reason: "
+            f"{_value_text(reconciliation.get('order_list_gap_reason'))}"
+        ),
+        (
+            "  reconciliation_confidence: "
+            f"{_value_text(reconciliation.get('reconciliation_confidence'))}"
+        ),
+        (
+            "  reconciliation_limitations: "
+            f"{_joined(reconciliation.get('reconciliation_limitations'))}"
+        ),
+        (
+            "  recommended_next_operator_action: "
+            f"{_value_text(reconciliation.get('recommended_next_operator_action'))}"
+        ),
     ]
 
 
