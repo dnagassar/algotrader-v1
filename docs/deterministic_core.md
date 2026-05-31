@@ -8597,6 +8597,51 @@ credentials, no network, no market-data fetch, no live profile/live URL, no
 scheduler or autonomous behavior, no LLM dependency, no strategy validation, no
 profit evidence, and no order/fill/account/portfolio mutation.
 
+Milestone 343 adds a deterministic offline
+`etf_sma_paper_preview_milestone_draft` contract that consumes only the M342
+ETF/SMA paper-preview evidence packet plus static local config. The draft
+preserves M342 packet status, recommended next action, evidence-packet
+blockers, operator-review blockers, upstream source blockers, evidence-packet
+limitations, operator-review limitations, upstream source limitations,
+evidence labels, operator-review labels, source labels, upstream labels,
+symbol, strategy name, `as_of`, latest posture, strategy and benchmark total
+returns, max drawdown, and bar/signal/exposure/defensive/posture-change
+counts.
+
+M343 emits `ready_for_operator_review_of_paper_preview_milestone` only when
+M342 is `ready_for_separate_paper_preview_preparation`, M342 preparation
+readiness is true, M342 is not broker-facing or executable, all broker/submit
+action flags remain false, required research-only labels are preserved, there
+is no live authorization label or status, the profit claim remains
+`profit_claim=none`, there are no M342/source blockers, and posture is
+bullish. Blocked inputs emit
+`blocked_from_operator_review_of_paper_preview_milestone`. Missing
+`paper_lab_candidate`, non-none profit claims, live authorization, insufficient
+history, defensive posture, source blockers, broker-facing/executable evidence,
+and true broker/submit action flags all block operator review.
+
+M343 hard-codes `paper_preview_performed=false`,
+`broker_action_performed=false`, `broker_preview_performed=false`,
+`submit_allowed=false`, `executable=false`, and `broker_facing=false`.
+Required future prerequisites are committing M343 before any future milestone,
+running a fresh read-only paper snapshot before any broker-facing
+preview/probe, explicit operator approval before any broker-facing preview, a
+market-hours/session check for equities before any broker-facing preview, and
+stopping if market/session/broker behavior is ambiguous. The ready recommended
+next action is
+`operator_review_m343_then_prepare_m344_fresh_read_only_snapshot`; the blocked
+recommended next action is `resolve_evidence_packet_blockers`.
+
+M343 draft text explicitly states `research_only`, `paper_lab_candidate`,
+`not_live_authorized`, `profit_claim=none`, not execution authority, not
+strategy validation, not live authorization, no broker command included, no
+submit flag included, and that normal pytest must remain offline,
+credential-free, deterministic, and safe. M343 adds no broker action, no
+broker preview or staging, no `ExecutionIntent`, no `ExecutionPlan`, no
+credentials, no network, no market-data fetch, no live profile/live URL, no
+scheduler or autonomous behavior, no LLM dependency, no strategy validation,
+no profit evidence, and no order/fill/account/portfolio mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
