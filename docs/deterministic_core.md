@@ -8355,6 +8355,33 @@ behavior, and does not create broker/order/fill/account/credential/portfolio
 mutation fields. The next step is a separate paper-lab experiment plan, not a
 broker action.
 
+Phase 336 / Milestone 336 - ETF/SMA Paper-Lab Experiment Plan v1 adds the
+separate review-only plan contract for the M335 ETF/SMA research candidate. The
+new `etf_sma_paper_experiment_plan` contract accepts the M335 candidate plus a
+small immutable config and drafts deterministic paper-lab experiment metadata:
+symbol, strategy name, `as_of`, SMA windows, latest close, short SMA, long SMA,
+candidate posture, intended paper action posture, metadata-only cap policy,
+required pre-submit checks, limitations, labels, source candidate metadata, and
+next operator action.
+
+The plan preserves `research_only`, `paper_lab_candidate`,
+`not_live_authorized`, and `profit_claim=none`. Its statuses remain
+`paper_experiment_plan_drafted`, `requires_operator_review`, and
+`not_broker_authorized`, with next action
+`review_plan_before_separate_preview_or_paper_probe_milestone`. Bullish
+candidates become review-only `candidate_long_bias`, defensive candidates
+become review-only `candidate_defensive_bias`, and insufficient-history
+candidates become `observe_only`. The plan encodes the M334 paper-lab
+safeguards: fresh read-only snapshot before any future submit, max one broker
+action per separately approved future probe, post-action read-only snapshot,
+stop on ambiguous broker response, and no retry/cancel/liquidate/close/
+fix-forward without a separate explicit milestone. M336 authorizes no broker
+action, no broker preview or staging, no `ExecutionIntent`, no `ExecutionPlan`,
+no credentials, no network, no market-data fetch, no live profile/live URL, no
+scheduler/autonomous behavior, and no order/fill/account/portfolio mutation.
+The next milestone may create a preview-only local policy/checklist; it is not a
+submit path.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

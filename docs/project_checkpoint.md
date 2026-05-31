@@ -13875,6 +13875,27 @@ Safe next tasks include:
   authorized, and adds no Alpaca call, broker adapter call, market-data fetch,
   scheduler/autonomous behavior, order submission, or broker/order/fill/account/
   credential/portfolio mutation fields.
+- Phase 336 / Milestone 336 - ETF/SMA Paper-Lab Experiment Plan v1 adds the
+  separate review-only plan contract for the M335 ETF/SMA candidate. The new
+  `etf_sma_paper_experiment_plan` contract preserves `research_only`,
+  `paper_lab_candidate`, `not_live_authorized`, and `profit_claim=none`, and
+  emits `paper_experiment_plan_drafted`, `requires_operator_review`, and
+  `not_broker_authorized` statuses. It carries forward symbol, strategy name,
+  `as_of`, SMA windows, latest close, short SMA, long SMA, candidate posture,
+  metadata-only cap policy, required pre-submit checks, limitations, source
+  candidate metadata, safeguards, and next operator action. Bullish candidates
+  become review-only `candidate_long_bias`, defensive candidates become
+  review-only `candidate_defensive_bias`, and insufficient-history candidates
+  become `observe_only`.
+- M336 encodes the M334 paper-lab safeguards in the plan: fresh read-only
+  snapshot before any future submit, max one broker action per separately
+  approved future probe, post-action read-only snapshot, stop on ambiguous
+  broker response, and no retry/cancel/liquidate/close/fix-forward without a
+  separate explicit milestone. It authorizes no broker action, broker preview or
+  staging, `ExecutionIntent`, `ExecutionPlan`, credentials, network,
+  market-data fetch, live profile/live URL, scheduler/autonomous behavior, or
+  order/fill/account/portfolio mutation. The next milestone may create a
+  preview-only local policy/checklist, not a submit path.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
