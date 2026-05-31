@@ -1621,6 +1621,15 @@ def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
         "currency": "USD",
         "observed": True,
     }
+    assert payload["fresh_snapshot_operator_checklist"]["status"] == (
+        "blocked_query_metadata_incomplete"
+    )
+    assert payload["fresh_snapshot_operator_checklist"][
+        "fresh_snapshot_command_template"
+    ] == (
+        "python -m algotrader paper-lab-snapshot --run-log "
+        "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
+    )
 
 
 def test_revalidation_brief_cli_reports_submit_receipt_observation(
@@ -1667,6 +1676,9 @@ def test_revalidation_brief_cli_reports_submit_receipt_observation(
     assert payload["post_receipt_reconciliation"][
         "recommended_next_operator_action"
     ] == "read_only_fresh_snapshot_before_any_close_probe"
+    assert payload["fresh_snapshot_operator_checklist"][
+        "recommended_next_operator_action"
+    ] == "read_only_fresh_snapshot_before_any_close_probe"
 
 
 def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
@@ -1705,6 +1717,13 @@ def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
     assert (
         "recommended_next_operator_action: "
         "read_only_fresh_snapshot_before_any_close_probe"
+        in captured.out
+    )
+    assert "fresh_snapshot_operator_checklist:" in captured.out
+    assert (
+        "fresh_snapshot_command_template: "
+        "python -m algotrader paper-lab-snapshot --run-log "
+        "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
         in captured.out
     )
 

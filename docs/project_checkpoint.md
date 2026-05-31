@@ -13723,6 +13723,26 @@ Safe next tasks include:
   call, network use, live profile/live URL behavior, credential access, broker
   write path, scheduler, autonomous loop, research-layer submission, or unsafe
   pytest behavior.
+- Phase 323 / Milestone 323 - Fresh Paper Snapshot Operator Checklist adds a
+  deterministic `fresh_snapshot_operator_checklist` section to the local
+  `paper-lab-revalidation-brief` JSON/text output. It records pre-run operator
+  checks for a separate paper-profile shell, credential-free normal pytest,
+  `APP_PROFILE=paper` only in the snapshot shell, a fresh run log path and run
+  id, and read-only `paper-lab-snapshot` only. It exposes the fixed command
+  template (`python -m algotrader paper-lab-snapshot --run-log runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json`), post-run
+  evidence checks for profile gate, ok/mutated/submitted, account/positions/
+  orders observations, BTCUSD position presence/details, recent-order query
+  metadata, unavailable observations, redaction marker, live-profile evidence,
+  and credential-like evidence. Old M318/M321-shaped logs remain conservative:
+  the checklist reports `blocked_query_metadata_incomplete` and keeps
+  `read_only_fresh_snapshot_before_any_close_probe`. Synthetic future fresh
+  read-only logs with complete query metadata and complete observations report
+  `read_only_snapshot_completed_for_manual_review`. The checklist preserves
+  `paper_lab_only`, `not_live_authorized`, and `profit_claim=none`, and adds no
+  submit command, close/sell order, Alpaca call, network use, live profile/live
+  URL behavior, credential access, broker write path, scheduler, autonomous
+  loop, research-layer submission, close-order design, profit inference, or
+  unsafe pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

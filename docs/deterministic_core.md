@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `5156` tests are passing, with `4` skipped paper-integration tests by default.
+- `5317` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -8185,6 +8185,28 @@ complete query metadata. This milestone preserves `paper_lab_only`,
 close/sell order, Alpaca call, network use, live profile/live URL behavior,
 credential access, broker write path, scheduler, autonomous trading,
 research-layer submission, or unsafe pytest behavior.
+
+Phase 323 / Milestone 323 - Fresh Paper Snapshot Operator Checklist adds a
+deterministic `fresh_snapshot_operator_checklist` section to the local
+`paper-lab-revalidation-brief` JSON and text output. The checklist is an
+operator checklist only: it records the required pre-run paper-profile shell
+setup, the exact read-only fresh snapshot command template (`python -m algotrader paper-lab-snapshot --run-log runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json`), and the
+post-run evidence that must be inspected before any future close/exit probe
+design. The section preserves `paper_lab_only=true`, `not_live_authorized=true`,
+and `profit_claim=none`; reports BTCUSD position presence, quantity, and
+average price when present; requires complete recent-order query metadata for
+new logs; and classifies old M318/M321-shaped logs conservatively with
+`blocked_query_metadata_incomplete` plus
+`read_only_fresh_snapshot_before_any_close_probe`. Future fresh read-only
+snapshot logs with `paper_profile_ready`, `ok=true`, `mutated=false`,
+`submitted=false`, complete account/positions/orders observations, complete
+query metadata, empty unavailable observations, `credentials_redacted`, and no
+live-profile or credential-leak evidence classify as
+`read_only_snapshot_completed_for_manual_review`. This milestone adds no submit
+command, close/sell order, Alpaca call, network use, live profile/live URL
+behavior, credential access, broker write path, scheduler, autonomous trading,
+research-layer submission, close-order design, profit inference, or unsafe
+pytest behavior.
 
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,

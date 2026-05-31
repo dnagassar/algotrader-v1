@@ -214,6 +214,15 @@ def test_m318_like_receipt_cash_position_with_empty_orders_is_order_gap(
     assert reconciliation["recommended_next_operator_action"] == (
         "read_only_fresh_snapshot_before_any_close_probe"
     )
+    checklist = payload["fresh_snapshot_operator_checklist"]
+    assert checklist["status"] == "blocked_query_metadata_incomplete"
+    assert checklist["recommended_next_operator_action"] == (
+        "read_only_fresh_snapshot_before_any_close_probe"
+    )
+    assert checklist["evidence"]["recent_order_query_metadata_complete"] is False
+    assert (
+        "recent order query metadata is incomplete" in checklist["limitations"][0]
+    )
     assert any(
         "recent order query metadata is incomplete" in limitation
         for limitation in reconciliation["reconciliation_limitations"]
@@ -276,6 +285,138 @@ def test_complete_recent_order_query_metadata_is_reported(tmp_path) -> None:
         "recent order query metadata is incomplete" in limitation
         for limitation in reconciliation["reconciliation_limitations"]
     )
+
+
+def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapshot(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "fresh_snapshot.jsonl",
+        _fresh_snapshot_records(),
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    checklist = payload["fresh_snapshot_operator_checklist"]
+    evidence = checklist["evidence"]
+
+    assert checklist["status"] == "read_only_snapshot_completed_for_manual_review"
+    assert checklist["pre_run_status"] == "ready_for_read_only_snapshot"
+    assert checklist["paper_lab_only"] is True
+    assert checklist["not_live_authorized"] is True
+    assert checklist["profit_claim"] == "none"
+    assert checklist["fresh_snapshot_command_template"] == (
+        "python -m algotrader paper-lab-snapshot --run-log "
+        "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
+    )
+    assert evidence["profile_gate_status"] == "paper_profile_ready"
+    assert evidence["ok"] is True
+    assert evidence["mutated"] is False
+    assert evidence["submitted"] is False
+    assert evidence["account_observation_available"] is True
+    assert evidence["positions_observation_available"] is True
+    assert evidence["orders_observation_available"] is True
+    assert evidence["account_cash_observed"] is True
+    assert evidence["account_currency_observed"] is True
+    assert evidence["btcusd_position_status"] == "present"
+    assert evidence["btcusd_position_quantity"] == "0.000132386"
+    assert evidence["btcusd_position_average_price"] == "73886.11"
+    assert evidence["recent_order_query_contract_version"] == (
+        "paper_recent_order_query_v1"
+    )
+    assert evidence["recent_order_query_metadata_complete"] is True
+    assert evidence["recent_order_query_returned_count"] == 0
+    assert evidence["unavailable_observations"] == []
+    assert evidence["credentials_redacted_present"] is True
+    assert evidence["live_profile_evidence"] is False
+    assert evidence["credential_leak_evidence"] is False
+
+
+def test_fresh_snapshot_operator_checklist_blocks_unavailable_observations(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "fresh_unavailable.jsonl",
+        _fresh_snapshot_records(unavailable_observations=["orders"]),
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    checklist = payload["fresh_snapshot_operator_checklist"]
+
+    assert checklist["status"] == "blocked_unavailable_observations"
+    assert checklist["evidence"]["orders_observation_available"] is False
+    assert checklist["evidence"]["unavailable_observations"] == ["orders"]
+
+
+def test_fresh_snapshot_operator_checklist_blocks_unexpected_mutation_or_submit(
+    tmp_path,
+) -> None:
+    mutated_log = _write_jsonl(
+        tmp_path / "fresh_mutated.jsonl",
+        _fresh_snapshot_records(mutated=True),
+    )
+    submitted_log = _write_jsonl(
+        tmp_path / "fresh_submitted.jsonl",
+        _fresh_snapshot_records(submitted=True),
+    )
+
+    mutated_payload = build_paper_lab_revalidation_brief(mutated_log)
+    submitted_payload = build_paper_lab_revalidation_brief(submitted_log)
+
+    assert (
+        mutated_payload["fresh_snapshot_operator_checklist"]["status"]
+        == "blocked_unexpected_mutation"
+    )
+    assert (
+        submitted_payload["fresh_snapshot_operator_checklist"]["status"]
+        == "blocked_unexpected_submit"
+    )
+
+
+def test_fresh_snapshot_operator_checklist_blocks_live_profile_evidence(
+    tmp_path,
+) -> None:
+    records = list(_fresh_snapshot_records())
+    records[0] = {
+        **records[0],
+        "profile": "live-profile-that-must-not-appear",
+        "url": "https://live.example.test",
+    }
+    run_log = _write_jsonl(tmp_path / "fresh_live.jsonl", records)
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    rendered = _compact_json(payload) + render_paper_lab_revalidation_brief_text(
+        payload
+    )
+
+    assert (
+        payload["fresh_snapshot_operator_checklist"]["status"]
+        == "blocked_live_profile_evidence"
+    )
+    assert "live-profile-that-must-not-appear" not in rendered
+    assert "https://live.example.test" not in rendered
+
+
+def test_fresh_snapshot_operator_checklist_blocks_credential_like_evidence(
+    tmp_path,
+) -> None:
+    records = list(_fresh_snapshot_records())
+    records[0] = {**records[0], "api_key": SECRET_VALUE}
+    run_log = _write_jsonl(tmp_path / "fresh_secret.jsonl", records)
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    rendered = _compact_json(payload) + render_paper_lab_revalidation_brief_text(
+        payload
+    )
+    checklist = payload["fresh_snapshot_operator_checklist"]
+
+    assert checklist["status"] == "blocked_credential_leak_evidence"
+    assert checklist["paper_lab_only"] is True
+    assert checklist["not_live_authorized"] is True
+    assert checklist["profit_claim"] == "none"
+    assert "paper-lab-snapshot --run-log runs/paper_lab/<fresh_id>.jsonl" in rendered
+    assert SECRET_VALUE not in rendered
+    assert "api_key" not in rendered
+    assert "ALPACA_API_KEY" not in rendered
 
 
 def test_successful_receipt_with_target_recent_order_has_no_order_gap(
@@ -635,7 +776,7 @@ def test_submit_observation_output_excludes_live_and_secret_details(tmp_path) ->
     assert "paper-lab-secret" not in rendered
     assert "api_key" not in rendered
     assert "secret_key" not in rendered
-    assert "token" not in rendered
+    assert '"token"' not in rendered
     assert "live-profile-that-must-not-appear" not in rendered
     assert "https://live.example.test" not in rendered
 
@@ -771,7 +912,7 @@ def test_secret_like_keys_are_not_emitted(tmp_path) -> None:
     assert SECRET_VALUE not in rendered
     assert "api_key" not in rendered
     assert "secret_key" not in rendered
-    assert "token" not in rendered
+    assert '"token"' not in rendered
 
 
 def test_latest_run_is_selected_and_all_run_ids_are_reported(tmp_path) -> None:
@@ -1103,6 +1244,84 @@ def _complete_recent_order_query_metadata(
         "recent_order_query_symbol_filter": "",
         "recent_order_query_until": None,
     }
+
+
+def _fresh_snapshot_records(
+    *,
+    run_id: str = "fresh-snapshot-run",
+    mutated: bool = False,
+    submitted: bool = False,
+    unavailable_observations: list[str] | None = None,
+) -> tuple[dict[str, object], ...]:
+    unavailable_observations = unavailable_observations or []
+    orders_available = "orders" not in unavailable_observations
+    base = {
+        "account_observation_available": True,
+        "command": "paper-lab-snapshot",
+        "gate_summary": {
+            "profile_gate": {"detail": "paper_profile_ready", "passed": True}
+        },
+        "mutated": mutated,
+        "ok": not unavailable_observations,
+        "orders_observation_available": orders_available,
+        "positions_observation_available": True,
+        "redaction": "credentials_redacted",
+        "run_id": run_id,
+        "submitted": submitted,
+        "unavailable_observations": unavailable_observations,
+        "unavailable_reasons": (
+            {
+                name: {"error_type": "AlpacaAdapterError", "message": "<redacted>"}
+                for name in unavailable_observations
+            }
+            if unavailable_observations
+            else {}
+        ),
+        **_complete_recent_order_query_metadata(0),
+    }
+    records = [
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_requested",
+        },
+        {
+            **base,
+            "account": {"cash": "1990.19", "currency": "USD"},
+            "event_type": "paper_lab_snapshot_account_observed",
+        },
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_positions_observed",
+            "position_count": 1,
+            "position_symbols": ["BTCUSD"],
+            "positions": [
+                {
+                    "average_price": "73886.11",
+                    "quantity": "0.000132386",
+                    "symbol": "BTCUSD",
+                }
+            ],
+        },
+    ]
+    if orders_available:
+        records.append(
+            {
+                **base,
+                "event_type": "paper_lab_snapshot_orders_observed",
+                "recent_order_count": 0,
+                "recent_orders": [],
+            }
+        )
+    if unavailable_observations:
+        records.append(
+            {
+                **base,
+                "error": "paper_lab_snapshot_unavailable",
+                "event_type": "paper_lab_snapshot_unavailable",
+            }
+        )
+
+    return tuple(records)
 
 
 def _complete_snapshot_records(

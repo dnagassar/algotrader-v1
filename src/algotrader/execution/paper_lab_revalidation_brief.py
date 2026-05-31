@@ -127,6 +127,65 @@ _RECONCILIATION_ACTION_COLLECT_READ_ONLY_OBSERVATIONS = (
 _RECONCILIATION_ACTION_REPAIR_LOCAL_RUN_LOG = (
     "repair_local_run_log_before_revalidation"
 )
+CHECKLIST_STATUS_READY_FOR_READ_ONLY_SNAPSHOT = "ready_for_read_only_snapshot"
+CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED = (
+    "read_only_snapshot_completed_for_manual_review"
+)
+CHECKLIST_STATUS_BLOCKED_MISSING_PAPER_PROFILE = "blocked_missing_paper_profile"
+CHECKLIST_STATUS_BLOCKED_MISSING_CREDENTIALS = "blocked_missing_credentials"
+CHECKLIST_STATUS_BLOCKED_UNAVAILABLE_OBSERVATIONS = (
+    "blocked_unavailable_observations"
+)
+CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE = (
+    "blocked_query_metadata_incomplete"
+)
+CHECKLIST_STATUS_BLOCKED_UNEXPECTED_MUTATION = "blocked_unexpected_mutation"
+CHECKLIST_STATUS_BLOCKED_UNEXPECTED_SUBMIT = "blocked_unexpected_submit"
+CHECKLIST_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE = "blocked_live_profile_evidence"
+CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE = (
+    "blocked_credential_leak_evidence"
+)
+CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION = "insufficient_observation"
+_CHECKLIST_VERSION = "fresh_snapshot_operator_checklist_v1"
+_FRESH_SNAPSHOT_COMMAND_TEMPLATE = (
+    "python -m algotrader paper-lab-snapshot --run-log "
+    "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
+)
+_CHECKLIST_ACTION_MANUAL_REVIEW_FRESH_SNAPSHOT = (
+    "manual_review_fresh_snapshot_before_any_close_probe_design"
+)
+_CHECKLIST_ACTION_STOP_AND_REPAIR = "stop_and_repair_evidence_before_any_close_probe"
+_PRE_RUN_CHECKLIST_ITEMS = (
+    "use a separate paper-profile shell, not the normal pytest shell",
+    "verify normal pytest shell remains credential-free",
+    "set APP_PROFILE=paper only in the paper snapshot shell",
+    "load paper-only Alpaca credentials only in the paper snapshot shell",
+    "do not print credential values",
+    "use a fresh run log path",
+    "use a fresh run id",
+    "run read-only paper-lab-snapshot only",
+    "do not run paper-order-probe",
+    "do not use --submit",
+    "do not run any close/sell command",
+)
+_POST_RUN_CHECKLIST_ITEMS = (
+    "profile_gate reports paper_profile_ready",
+    "ok=true",
+    "mutated=false",
+    "submitted=false",
+    "account_observation_available=true",
+    "positions_observation_available=true",
+    "orders_observation_available=true",
+    "account cash/currency observed",
+    "BTCUSD position presence or absence clearly reported",
+    "BTCUSD quantity and average price reported if present",
+    "recent_order_query_contract_version present",
+    "recent_order_query_metadata_complete=true for new logs",
+    "recent_order_query_returned_count recorded",
+    "unavailable_observations empty",
+    "redaction marker credentials_redacted present",
+    "no live profile, live URL, token, key, or credential detail appears",
+)
 _MANUAL_REVIEW_USABLE_STATES = frozenset(
     (
         STATE_RECEIPT_AND_POSITION_OBSERVED,
@@ -203,6 +262,9 @@ def render_paper_lab_revalidation_brief_text(
     post_receipt_reconciliation = _mapping(
         payload.get("post_receipt_reconciliation")
     )
+    fresh_snapshot_checklist = _mapping(
+        payload.get("fresh_snapshot_operator_checklist")
+    )
 
     lines = [
         "Paper lab revalidation brief",
@@ -252,6 +314,7 @@ def render_paper_lab_revalidation_brief_text(
         lines.extend(_submit_observation_lines(submit_observation))
 
     lines.extend(_post_receipt_reconciliation_lines(post_receipt_reconciliation))
+    lines.extend(_fresh_snapshot_operator_checklist_lines(fresh_snapshot_checklist))
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
     if unavailable_events:
@@ -302,6 +365,13 @@ def _brief_payload(
         },
         "command": "paper-lab-revalidation-brief",
         "event_counts": _event_counts(selected_records),
+        "fresh_snapshot_operator_checklist": _fresh_snapshot_operator_checklist(
+            state,
+            records=records,
+            selected_records=selected_records,
+            missing_observations=missing_observations,
+            unavailable_events=unavailable_events,
+        ),
         "invalid_reasons": list(invalid_reasons),
         "manual_review_note": (
             "manual review required before any further paper probe"
@@ -325,6 +395,421 @@ def _brief_payload(
         "unavailable_events": unavailable_events,
         "usable_for_manual_review": usable,
     }
+
+
+def _fresh_snapshot_operator_checklist(
+    state: str,
+    *,
+    records: Sequence[Mapping[str, Any]],
+    selected_records: Sequence[Mapping[str, Any]],
+    missing_observations: Sequence[str],
+    unavailable_events: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    snapshot_records = _snapshot_records_for_checklist(selected_records)
+    evidence = _fresh_snapshot_checklist_evidence(records, snapshot_records)
+    status = _fresh_snapshot_checklist_status(
+        state,
+        evidence=evidence,
+        missing_observations=missing_observations,
+        unavailable_events=unavailable_events,
+    )
+    return {
+        "version": _CHECKLIST_VERSION,
+        "paper_lab_only": True,
+        "not_live_authorized": True,
+        "profit_claim": "none",
+        "pre_run_status": CHECKLIST_STATUS_READY_FOR_READ_ONLY_SNAPSHOT,
+        "status": status,
+        "recommended_next_operator_action": (
+            _fresh_snapshot_checklist_action(status)
+        ),
+        "fresh_snapshot_command_template": _FRESH_SNAPSHOT_COMMAND_TEMPLATE,
+        "pre_run_checklist": list(_PRE_RUN_CHECKLIST_ITEMS),
+        "post_run_checklist": list(_POST_RUN_CHECKLIST_ITEMS),
+        "evidence": evidence,
+        "limitations": _fresh_snapshot_checklist_limitations(
+            status,
+            evidence=evidence,
+            missing_observations=missing_observations,
+        ),
+    }
+
+
+def _snapshot_records_for_checklist(
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[Mapping[str, Any], ...]:
+    return tuple(record for record in records if _is_snapshot_record(record))
+
+
+def _is_snapshot_record(record: Mapping[str, Any]) -> bool:
+    command = _text(record.get("command"))
+    event_type = _safe_event_type(record.get("event_type"))
+    return command == "paper-lab-snapshot" or event_type.startswith(
+        "paper_lab_snapshot_"
+    )
+
+
+def _fresh_snapshot_checklist_evidence(
+    records: Sequence[Mapping[str, Any]],
+    snapshot_records: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    account = _latest_account(snapshot_records)
+    latest_orders = _latest_record(snapshot_records, PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED)
+    profile_gate = _profile_gate_evidence(snapshot_records)
+    btcusd_position = _btcusd_position_evidence(snapshot_records)
+    redaction_markers = _redaction_markers(records)
+    query_missing_fields = _recent_order_query_metadata_missing_fields(latest_orders)
+    query_metadata = _recent_order_query_metadata(latest_orders)
+    return {
+        "snapshot_records_observed": bool(snapshot_records),
+        "profile_gate_reported": profile_gate["reported"],
+        "profile_gate_status": profile_gate["status"],
+        "ok": _snapshot_bool_observation(snapshot_records, "ok"),
+        "mutated": _snapshot_bool_observation(snapshot_records, "mutated"),
+        "submitted": _snapshot_bool_observation(snapshot_records, "submitted"),
+        "account_observation_available": _observation_available(
+            snapshot_records,
+            PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
+            "account_observation_available",
+        ),
+        "positions_observation_available": _observation_available(
+            snapshot_records,
+            PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
+            "positions_observation_available",
+        ),
+        "orders_observation_available": _observation_available(
+            snapshot_records,
+            PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
+            "orders_observation_available",
+        ),
+        "account_cash_observed": bool(account.get("cash")),
+        "account_currency_observed": bool(account.get("currency")),
+        "btcusd_position_status": btcusd_position["status"],
+        "btcusd_position_quantity": btcusd_position["quantity"],
+        "btcusd_position_average_price": btcusd_position["average_price"],
+        "recent_order_query_contract_version": query_metadata[
+            "recent_order_query_contract_version"
+        ],
+        "recent_order_query_metadata_complete": (
+            latest_orders is not None
+            and not query_missing_fields
+            and _record_bool(
+                latest_orders, "recent_order_query_metadata_complete"
+            )
+            is not False
+        ),
+        "recent_order_query_metadata_missing_fields": list(query_missing_fields),
+        "recent_order_query_returned_count": _recent_order_query_returned_count(
+            latest_orders
+        ),
+        "unavailable_observations": list(
+            _unavailable_observations(snapshot_records)
+        ),
+        "credentials_redacted_present": "credentials_redacted" in redaction_markers,
+        "live_profile_evidence": _live_profile_evidence_found(records),
+        "credential_leak_evidence": _credential_leak_evidence_found(records),
+    }
+
+
+def _fresh_snapshot_checklist_status(
+    state: str,
+    *,
+    evidence: Mapping[str, object],
+    missing_observations: Sequence[str],
+    unavailable_events: Sequence[Mapping[str, object]],
+) -> str:
+    if evidence.get("credential_leak_evidence") is True:
+        return CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE
+    if evidence.get("live_profile_evidence") is True:
+        return CHECKLIST_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE
+
+    profile_gate_status = _text(evidence.get("profile_gate_status"))
+    if profile_gate_status == "missing_credentials":
+        return CHECKLIST_STATUS_BLOCKED_MISSING_CREDENTIALS
+    if profile_gate_status in {"missing_paper_profile", "failed"}:
+        return CHECKLIST_STATUS_BLOCKED_MISSING_PAPER_PROFILE
+
+    if evidence.get("mutated") is True:
+        return CHECKLIST_STATUS_BLOCKED_UNEXPECTED_MUTATION
+    if evidence.get("submitted") is True:
+        return CHECKLIST_STATUS_BLOCKED_UNEXPECTED_SUBMIT
+    if (
+        state == STATE_OBSERVATION_UNAVAILABLE
+        or bool(unavailable_events)
+        or bool(_sequence(evidence.get("unavailable_observations")))
+    ):
+        return CHECKLIST_STATUS_BLOCKED_UNAVAILABLE_OBSERVATIONS
+    if not evidence.get("snapshot_records_observed") or missing_observations:
+        return CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION
+    if (
+        evidence.get("account_observation_available") is not True
+        or evidence.get("positions_observation_available") is not True
+        or evidence.get("orders_observation_available") is not True
+    ):
+        return CHECKLIST_STATUS_BLOCKED_UNAVAILABLE_OBSERVATIONS
+    if (
+        evidence.get("account_cash_observed") is not True
+        or evidence.get("account_currency_observed") is not True
+    ):
+        return CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION
+    if evidence.get("ok") is False:
+        return CHECKLIST_STATUS_BLOCKED_UNAVAILABLE_OBSERVATIONS
+    if evidence.get("recent_order_query_metadata_complete") is not True:
+        return CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE
+    if evidence.get("recent_order_query_returned_count") is None:
+        return CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE
+    if evidence.get("profile_gate_reported") is not True:
+        return CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION
+    if evidence.get("credentials_redacted_present") is not True:
+        return CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION
+    if (
+        evidence.get("btcusd_position_status") == "present"
+        and (
+            not _text(evidence.get("btcusd_position_quantity"))
+            or not _text(evidence.get("btcusd_position_average_price"))
+        )
+    ):
+        return CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION
+
+    return CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED
+
+
+def _fresh_snapshot_checklist_action(status: str) -> str:
+    if status == CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED:
+        return _CHECKLIST_ACTION_MANUAL_REVIEW_FRESH_SNAPSHOT
+    if status in {
+        CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE,
+        CHECKLIST_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE,
+        CHECKLIST_STATUS_BLOCKED_UNEXPECTED_MUTATION,
+        CHECKLIST_STATUS_BLOCKED_UNEXPECTED_SUBMIT,
+    }:
+        return _CHECKLIST_ACTION_STOP_AND_REPAIR
+
+    return _RECONCILIATION_ACTION_FRESH_SNAPSHOT_BEFORE_CLOSE
+
+
+def _fresh_snapshot_checklist_limitations(
+    status: str,
+    *,
+    evidence: Mapping[str, object],
+    missing_observations: Sequence[str],
+) -> list[str]:
+    limitations: list[str] = []
+    if status == CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE:
+        limitations.append(
+            "recent order query metadata is incomplete; keep old evidence "
+            "conservative before any close-probe design"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_UNAVAILABLE_OBSERVATIONS:
+        limitations.append(
+            "one or more account, positions, or orders observations are unavailable"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_UNEXPECTED_MUTATION:
+        limitations.append(
+            "snapshot evidence reports mutation; stop before any close-probe design"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_UNEXPECTED_SUBMIT:
+        limitations.append(
+            "snapshot evidence reports submit; stop before any close-probe design"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE:
+        limitations.append(
+            "live profile or live URL evidence appears in the local log"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE:
+        limitations.append(
+            "credential-like evidence appears in the local log"
+        )
+    if status == CHECKLIST_STATUS_BLOCKED_MISSING_PAPER_PROFILE:
+        limitations.append("profile gate did not prove paper_profile_ready")
+    if status == CHECKLIST_STATUS_BLOCKED_MISSING_CREDENTIALS:
+        limitations.append("profile gate reports missing paper-only credentials")
+    if missing_observations:
+        limitations.append(
+            f"missing snapshot observations: {','.join(missing_observations)}"
+        )
+    if (
+        evidence.get("profile_gate_reported") is not True
+        and status != CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE
+    ):
+        limitations.append("profile gate evidence is missing from the snapshot log")
+    if evidence.get("credentials_redacted_present") is not True:
+        limitations.append("credentials_redacted marker is missing")
+    if status == CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED:
+        limitations.append(
+            "fresh read-only snapshot is ready for manual review only"
+        )
+
+    return limitations
+
+
+def _profile_gate_evidence(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    for record in reversed(records):
+        gates = _mapping(record.get("gate_summary")) or _mapping(record.get("gates"))
+        profile_gate = _mapping(gates.get("profile_gate"))
+        if not profile_gate:
+            continue
+        passed = _record_bool(profile_gate, "passed")
+        detail = _text(profile_gate.get("detail"))
+        if passed is True:
+            return {"reported": True, "status": "paper_profile_ready"}
+        if "ALPACA_API_KEY" in detail or "ALPACA_SECRET_KEY" in detail:
+            return {"reported": True, "status": "missing_credentials"}
+        if "APP_PROFILE=paper" in detail or "paper profile" in detail.lower():
+            return {"reported": True, "status": "missing_paper_profile"}
+        return {"reported": True, "status": "failed"}
+
+    return {"reported": False, "status": "missing"}
+
+
+def _btcusd_position_evidence(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, str]:
+    latest_positions = _latest_record(records, PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED)
+    if latest_positions is None:
+        return {"status": "unavailable", "quantity": "", "average_price": ""}
+
+    for position in _safe_positions(latest_positions.get("positions")):
+        if position.get("symbol") == "BTCUSD":
+            return {
+                "status": "present",
+                "quantity": position.get("quantity", ""),
+                "average_price": position.get("average_price", ""),
+            }
+    if "BTCUSD" in _safe_symbols(latest_positions.get("position_symbols")):
+        return {"status": "present", "quantity": "", "average_price": ""}
+
+    return {"status": "absent", "quantity": "", "average_price": ""}
+
+
+def _snapshot_bool_observation(
+    records: Sequence[Mapping[str, Any]],
+    key: str,
+) -> bool | None:
+    observed: bool | None = None
+    for record in records:
+        value = _record_bool(record, key)
+        if value is None:
+            continue
+        observed = value
+        if key in {"mutated", "submitted"} and value is True:
+            return True
+
+    return observed
+
+
+def _observation_available(
+    records: Sequence[Mapping[str, Any]],
+    event_type: str,
+    availability_key: str,
+) -> bool:
+    observed_event = any(
+        _safe_event_type(record.get("event_type")) == event_type for record in records
+    )
+    observed_flag = _snapshot_bool_observation(records, availability_key)
+    if observed_flag is not None:
+        return observed_flag
+
+    return observed_event
+
+
+def _recent_order_query_returned_count(
+    record: Mapping[str, Any] | None,
+) -> int | None:
+    if record is None:
+        return None
+    returned_count = _safe_optional_count(
+        record.get("recent_order_query_returned_count")
+    )
+    if returned_count is not None:
+        return returned_count
+
+    return _safe_optional_count(record.get("recent_order_count"))
+
+
+def _live_profile_evidence_found(value: Any, *, parent_key: str = "") -> bool:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if _live_profile_evidence_found(item, parent_key=str(key)):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_live_profile_evidence_found(item) for item in value)
+    if not isinstance(value, str):
+        return False
+
+    text = value.lower()
+    key_text = parent_key.lower()
+    if "profile" in key_text and "live" in text:
+        return True
+    if "url" in key_text or "endpoint" in key_text:
+        if "live" in text:
+            return True
+        if ("http://" in text or "https://" in text) and "paper" not in text:
+            return True
+    return "app_profile=live" in text or "profile=live" in text
+
+
+def _credential_leak_evidence_found(value: Any, *, parent_key: str = "") -> bool:
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            key_text = str(key).lower()
+            if _credential_key_name(key_text) and _credential_value_is_leaked(item):
+                return True
+            if _credential_leak_evidence_found(item, parent_key=key_text):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_credential_leak_evidence_found(item) for item in value)
+    if not isinstance(value, str):
+        return False
+
+    return _credential_string_evidence(value)
+
+
+def _credential_key_name(key: str) -> bool:
+    return any(
+        token in key
+        for token in (
+            "api_key",
+            "apikey",
+            "secret_key",
+            "secretkey",
+            "password",
+            "token",
+            "authorization",
+            "bearer",
+        )
+    )
+
+
+def _credential_value_is_leaked(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str):
+        text = value.strip().lower()
+        return bool(text) and text not in {"<redacted>", "credentials_redacted"}
+    return True
+
+
+def _credential_string_evidence(value: str) -> bool:
+    text = value.strip().lower()
+    if not text or text in {"<redacted>", "credentials_redacted"}:
+        return False
+    if "credentials_redacted" in text:
+        return False
+    if "paper-lab-secret" in text:
+        return True
+    if "bearer " in text or "authorization:" in text:
+        return True
+    return bool(
+        re.search(
+            r"(api[_-]?key|secret[_-]?key|token|password|credential)\s*[:=]\s*\S+",
+            text,
+        )
+    )
 
 
 def _read_jsonl_records(
@@ -1640,6 +2125,122 @@ def _post_receipt_reconciliation_lines(
             f"{_value_text(reconciliation.get('recommended_next_operator_action'))}"
         ),
     ]
+
+
+def _fresh_snapshot_operator_checklist_lines(
+    checklist: Mapping[str, Any],
+) -> list[str]:
+    evidence = _mapping(checklist.get("evidence"))
+    lines = [
+        "fresh_snapshot_operator_checklist:",
+        f"  version: {_value_text(checklist.get('version'))}",
+        f"  status: {_value_text(checklist.get('status'))}",
+        f"  pre_run_status: {_value_text(checklist.get('pre_run_status'))}",
+        (
+            "  recommended_next_operator_action: "
+            f"{_value_text(checklist.get('recommended_next_operator_action'))}"
+        ),
+        f"  paper_lab_only: {_bool_text(checklist.get('paper_lab_only'))}",
+        f"  not_live_authorized: {_bool_text(checklist.get('not_live_authorized'))}",
+        f"  profit_claim: {_value_text(checklist.get('profit_claim'))}",
+        (
+            "  fresh_snapshot_command_template: "
+            f"{_value_text(checklist.get('fresh_snapshot_command_template'))}"
+        ),
+    ]
+    for item in _sequence(checklist.get("pre_run_checklist")):
+        lines.append(f"  pre_run_check: {_value_text(item)}")
+    for item in _sequence(checklist.get("post_run_checklist")):
+        lines.append(f"  post_run_check: {_value_text(item)}")
+    lines.extend(
+        [
+            "  evidence:",
+            (
+                "    snapshot_records_observed: "
+                f"{_bool_text(evidence.get('snapshot_records_observed'))}"
+            ),
+            (
+                "    profile_gate_reported: "
+                f"{_bool_text(evidence.get('profile_gate_reported'))}"
+            ),
+            (
+                "    profile_gate_status: "
+                f"{_value_text(evidence.get('profile_gate_status'))}"
+            ),
+            f"    ok: {_tri_bool_text(evidence.get('ok'))}",
+            f"    mutated: {_tri_bool_text(evidence.get('mutated'))}",
+            f"    submitted: {_tri_bool_text(evidence.get('submitted'))}",
+            (
+                "    account_observation_available: "
+                f"{_bool_text(evidence.get('account_observation_available'))}"
+            ),
+            (
+                "    positions_observation_available: "
+                f"{_bool_text(evidence.get('positions_observation_available'))}"
+            ),
+            (
+                "    orders_observation_available: "
+                f"{_bool_text(evidence.get('orders_observation_available'))}"
+            ),
+            (
+                "    account_cash_observed: "
+                f"{_bool_text(evidence.get('account_cash_observed'))}"
+            ),
+            (
+                "    account_currency_observed: "
+                f"{_bool_text(evidence.get('account_currency_observed'))}"
+            ),
+            (
+                "    btcusd_position_status: "
+                f"{_value_text(evidence.get('btcusd_position_status'))}"
+            ),
+            (
+                "    btcusd_position_quantity: "
+                f"{_value_text(evidence.get('btcusd_position_quantity'))}"
+            ),
+            (
+                "    btcusd_position_average_price: "
+                f"{_value_text(evidence.get('btcusd_position_average_price'))}"
+            ),
+            (
+                "    recent_order_query_contract_version: "
+                f"{_value_text(evidence.get('recent_order_query_contract_version'))}"
+            ),
+            (
+                "    recent_order_query_metadata_complete: "
+                f"{_bool_text(evidence.get('recent_order_query_metadata_complete'))}"
+            ),
+            (
+                "    recent_order_query_metadata_missing_fields: "
+                f"{_joined(evidence.get('recent_order_query_metadata_missing_fields'))}"
+            ),
+            (
+                "    recent_order_query_returned_count: "
+                f"{_value_text(evidence.get('recent_order_query_returned_count'))}"
+            ),
+            (
+                "    unavailable_observations: "
+                f"{_joined(evidence.get('unavailable_observations'))}"
+            ),
+            (
+                "    credentials_redacted_present: "
+                f"{_bool_text(evidence.get('credentials_redacted_present'))}"
+            ),
+            (
+                "    live_profile_evidence: "
+                f"{_bool_text(evidence.get('live_profile_evidence'))}"
+            ),
+            (
+                "    credential_leak_evidence: "
+                f"{_bool_text(evidence.get('credential_leak_evidence'))}"
+            ),
+            (
+                "  limitations: "
+                f"{_joined(checklist.get('limitations'))}"
+            ),
+        ]
+    )
+    return lines
 
 
 def _submit_observation_lines(
