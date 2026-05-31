@@ -24,6 +24,7 @@ from .paper_lab_observation_log import (
     PAPER_ORDER_SUBMIT_FAILED,
     PAPER_ORDER_SUBMIT_REQUESTED,
 )
+from .paper_order_policy import build_btcusd_paper_close_preview_contract
 
 
 STATE_RECEIPT_AND_POSITION_OBSERVED = "receipt_and_position_observed"
@@ -265,6 +266,7 @@ def render_paper_lab_revalidation_brief_text(
     fresh_snapshot_checklist = _mapping(
         payload.get("fresh_snapshot_operator_checklist")
     )
+    close_exit_probe_design = _mapping(payload.get("close_exit_probe_design"))
 
     lines = [
         "Paper lab revalidation brief",
@@ -315,6 +317,7 @@ def render_paper_lab_revalidation_brief_text(
 
     lines.extend(_post_receipt_reconciliation_lines(post_receipt_reconciliation))
     lines.extend(_fresh_snapshot_operator_checklist_lines(fresh_snapshot_checklist))
+    lines.extend(_close_exit_probe_design_lines(close_exit_probe_design))
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
     if unavailable_events:
@@ -355,6 +358,13 @@ def _brief_payload(
     missing_observations = _missing_observations(selected_records)
     unavailable_events = _unavailable_or_error_events(observation_records)
     usable = state in _MANUAL_REVIEW_USABLE_STATES
+    fresh_snapshot_checklist = _fresh_snapshot_operator_checklist(
+        state,
+        records=records,
+        selected_records=selected_records,
+        missing_observations=missing_observations,
+        unavailable_events=unavailable_events,
+    )
     return {
         "account": _latest_account(selected_records),
         "advisory_labels": {
@@ -363,15 +373,12 @@ def _brief_payload(
             "paper_lab_only": True,
             "profit_claim": "none",
         },
+        "close_exit_probe_design": _close_exit_probe_design(
+            fresh_snapshot_checklist
+        ),
         "command": "paper-lab-revalidation-brief",
         "event_counts": _event_counts(selected_records),
-        "fresh_snapshot_operator_checklist": _fresh_snapshot_operator_checklist(
-            state,
-            records=records,
-            selected_records=selected_records,
-            missing_observations=missing_observations,
-            unavailable_events=unavailable_events,
-        ),
+        "fresh_snapshot_operator_checklist": fresh_snapshot_checklist,
         "invalid_reasons": list(invalid_reasons),
         "manual_review_note": (
             "manual review required before any further paper probe"
@@ -395,6 +402,27 @@ def _brief_payload(
         "unavailable_events": unavailable_events,
         "usable_for_manual_review": usable,
     }
+
+
+def _close_exit_probe_design(
+    fresh_snapshot_checklist: Mapping[str, object],
+) -> dict[str, object]:
+    evidence = _mapping(fresh_snapshot_checklist.get("evidence"))
+    observed_quantity = _text(evidence.get("btcusd_position_quantity"))
+    contract = build_btcusd_paper_close_preview_contract(
+        observed_position_quantity=observed_quantity,
+        requested_close_quantity=observed_quantity,
+        fresh_snapshot_status=_text(fresh_snapshot_checklist.get("status")),
+        recent_order_query_metadata_complete=(
+            evidence.get("recent_order_query_metadata_complete") is True
+        ),
+        source_mutated=_bool_or_none(evidence.get("mutated")),
+        source_submitted=_bool_or_none(evidence.get("submitted")),
+    )
+    payload = contract.to_payload()
+    payload["design_ready"] = payload["ok"]
+    payload["source_evidence"] = "fresh_snapshot_operator_checklist"
+    return payload
 
 
 def _fresh_snapshot_operator_checklist(
@@ -2243,6 +2271,68 @@ def _fresh_snapshot_operator_checklist_lines(
     return lines
 
 
+def _close_exit_probe_design_lines(
+    design: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "close_exit_probe_design:",
+        f"  design_ready: {_bool_text(design.get('design_ready'))}",
+        f"  close_preview_status: {_value_text(design.get('close_preview_status'))}",
+        f"  preview_only: {_bool_text(design.get('preview_only'))}",
+        f"  submitted: {_tri_bool_text(design.get('submitted'))}",
+        f"  mutated: {_tri_bool_text(design.get('mutated'))}",
+        f"  paper_lab_only: {_bool_text(design.get('paper_lab_only'))}",
+        f"  not_live_authorized: {_bool_text(design.get('not_live_authorized'))}",
+        f"  profit_claim: {_value_text(design.get('profit_claim'))}",
+        (
+            "  manual_review_required: "
+            f"{_bool_text(design.get('manual_review_required'))}"
+        ),
+        f"  asset_class: {_value_text(design.get('asset_class'))}",
+        f"  symbol: {_value_text(design.get('symbol'))}",
+        f"  side: {_value_text(design.get('side'))}",
+        f"  order_type: {_value_text(design.get('order_type'))}",
+        f"  time_in_force: {_value_text(design.get('time_in_force'))}",
+        (
+            "  observed_position_quantity: "
+            f"{_value_text(design.get('observed_position_quantity'))}"
+        ),
+        (
+            "  requested_close_quantity: "
+            f"{_value_text(design.get('requested_close_quantity'))}"
+        ),
+        (
+            "  remaining_quantity_after_preview: "
+            f"{_value_text(design.get('remaining_quantity_after_preview'))}"
+        ),
+        (
+            "  close_quantity_within_observed_position: "
+            f"{_bool_text(design.get('close_quantity_within_observed_position'))}"
+        ),
+        f"  no_shorting_gate: {_value_text(design.get('no_shorting_gate'))}",
+        (
+            "  fresh_snapshot_required: "
+            f"{_bool_text(design.get('fresh_snapshot_required'))}"
+        ),
+        (
+            "  fresh_snapshot_status: "
+            f"{_value_text(design.get('fresh_snapshot_status'))}"
+        ),
+        (
+            "  recent_order_query_metadata_complete: "
+            f"{_bool_text(design.get('recent_order_query_metadata_complete'))}"
+        ),
+        (
+            "  submission_disabled_reason: "
+            f"{_value_text(design.get('submission_disabled_reason'))}"
+        ),
+        (
+            "  recommended_next_operator_action: "
+            f"{_value_text(design.get('recommended_next_operator_action'))}"
+        ),
+    ]
+
+
 def _submit_observation_lines(
     submit_observation: Mapping[str, Any],
 ) -> list[str]:
@@ -2469,6 +2559,14 @@ def _sequence(value: Any) -> tuple[Any, ...]:
 
 def _is_secret_like(value: str) -> bool:
     return bool(_SECRET_TEXT_RE.search(value))
+
+
+def _bool_or_none(value: Any) -> bool | None:
+    if value is True:
+        return True
+    if value is False:
+        return False
+    return None
 
 
 def _bool_text(value: Any) -> str:

@@ -8,6 +8,7 @@ import pytest
 from algotrader.execution.paper_lab_observation_log import (
     EVENT_TYPES,
     PAPER_ACCOUNT_OBSERVED,
+    PAPER_CLOSE_PREVIEW_DESIGNED,
     PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
     PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
     PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
@@ -27,11 +28,16 @@ from algotrader.execution.paper_lab_observation_log import (
     make_account_smoke_events,
     make_order_probe_initial_events,
     make_order_probe_submit_events,
+    make_paper_close_preview_events,
     make_paper_lab_snapshot_events,
     render_jsonl_records,
     resolve_run_id,
 )
-from algotrader.execution.paper_order_policy import OPTIONS_SUBMIT_DISABLED_REASON
+from algotrader.execution.paper_order_policy import (
+    OPTIONS_SUBMIT_DISABLED_REASON,
+    PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON,
+    build_btcusd_paper_close_preview_contract,
+)
 
 
 SECRET_VALUE = "paper-lab-secret-value"
@@ -53,6 +59,7 @@ def test_event_model_lists_paper_lab_observation_types() -> None:
         PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
         PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
         PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+        PAPER_CLOSE_PREVIEW_DESIGNED,
     )
 
 
@@ -233,6 +240,41 @@ def test_paper_lab_snapshot_unavailable_event_is_redacted() -> None:
     assert records[-1]["unavailable_observations"] == ["orders"]
     assert SECRET_VALUE not in rendered
     assert "<redacted>" in rendered
+
+
+def test_paper_close_preview_event_is_not_a_broker_receipt() -> None:
+    payload = build_btcusd_paper_close_preview_contract(
+        observed_position_quantity=Decimal("0.000132386"),
+        requested_close_quantity=Decimal("0.000132386"),
+        fresh_snapshot_status="read_only_snapshot_completed_for_manual_review",
+        recent_order_query_metadata_complete=True,
+        source_mutated=False,
+        source_submitted=False,
+    ).to_payload()
+
+    records = make_paper_close_preview_events(
+        run_id="close-preview-run",
+        payload=payload,
+    )
+    rendered = render_jsonl_records(records)
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_CLOSE_PREVIEW_DESIGNED
+    ]
+    assert records[0]["command"] == "paper-close-preview"
+    assert records[0]["preview_only"] is True
+    assert records[0]["submitted"] is False
+    assert records[0]["mutated"] is False
+    assert records[0]["symbol"] == "BTCUSD"
+    assert records[0]["side"] == "sell"
+    assert records[0]["observed_position_quantity"] == "0.000132386"
+    assert records[0]["requested_close_quantity"] == "0.000132386"
+    assert records[0]["remaining_quantity_after_preview"] == "0"
+    assert records[0]["submission_disabled_reason"] == (
+        PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON
+    )
+    assert "broker_result" not in records[0]
+    assert "paper_order_receipt_observed" not in rendered
 
 
 def test_order_probe_events_capture_preview_request_attempt_and_receipt() -> None:

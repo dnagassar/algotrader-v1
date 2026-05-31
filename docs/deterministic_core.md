@@ -8208,6 +8208,24 @@ behavior, credential access, broker write path, scheduler, autonomous trading,
 research-layer submission, close-order design, profit inference, or unsafe
 pytest behavior.
 
+Phase 325 / Milestone 325 - BTCUSD Close/Exit Probe Design Preview adds a
+deterministic local/fake-only `paper_close_preview_v1` contract for designing a
+BTCUSD paper close preview from local fresh read-only snapshot evidence. The
+`paper-close-preview` CLI reads a JSONL run log only, checks `asset_class=crypto`,
+`symbol=BTCUSD`, `side=sell`, `order_type=market`, `time_in_force=gtc`, positive
+requested quantity, requested quantity less than or equal to observed BTCUSD
+quantity, no-shorting, fresh checklist status
+`read_only_snapshot_completed_for_manual_review`, complete recent-order query
+metadata, `mutated=false`, and `submitted=false`. Revalidation output now also
+summarizes `close_exit_probe_design` as design-ready only when the local
+snapshot evidence meets those gates. The preview preserves
+`paper_lab_only=true`, `not_live_authorized=true`, `profit_claim=none`, and
+`manual_review_required=true`; it is not a broker order receipt, does not claim
+the position was closed, and adds no submit command, close/sell order placement,
+Alpaca call, network use, live profile/live URL behavior, credential access,
+broker write path, cancel/replace/liquidate behavior, options behavior,
+portfolio mutation, profit inference, or unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

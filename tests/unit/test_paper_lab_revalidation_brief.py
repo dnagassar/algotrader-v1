@@ -297,7 +297,9 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
 
     payload = build_paper_lab_revalidation_brief(run_log)
     checklist = payload["fresh_snapshot_operator_checklist"]
+    close_design = payload["close_exit_probe_design"]
     evidence = checklist["evidence"]
+    rendered = render_paper_lab_revalidation_brief_text(payload)
 
     assert checklist["status"] == "read_only_snapshot_completed_for_manual_review"
     assert checklist["pre_run_status"] == "ready_for_read_only_snapshot"
@@ -329,6 +331,32 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
     assert evidence["credentials_redacted_present"] is True
     assert evidence["live_profile_evidence"] is False
     assert evidence["credential_leak_evidence"] is False
+    assert close_design["design_ready"] is True
+    assert close_design["preview_only"] is True
+    assert close_design["submitted"] is False
+    assert close_design["mutated"] is False
+    assert close_design["paper_lab_only"] is True
+    assert close_design["not_live_authorized"] is True
+    assert close_design["profit_claim"] == "none"
+    assert close_design["manual_review_required"] is True
+    assert close_design["asset_class"] == "crypto"
+    assert close_design["symbol"] == "BTCUSD"
+    assert close_design["side"] == "sell"
+    assert close_design["order_type"] == "market"
+    assert close_design["time_in_force"] == "gtc"
+    assert close_design["observed_position_quantity"] == "0.000132386"
+    assert close_design["requested_close_quantity"] == "0.000132386"
+    assert close_design["remaining_quantity_after_preview"] == "0"
+    assert close_design["close_quantity_within_observed_position"] is True
+    assert close_design["no_shorting_gate"] == "passed"
+    assert close_design["fresh_snapshot_required"] is True
+    assert close_design["fresh_snapshot_status"] == (
+        "read_only_snapshot_completed_for_manual_review"
+    )
+    assert close_design["recent_order_query_metadata_complete"] is True
+    assert "close_exit_probe_design:" in rendered
+    assert "design_ready: true" in rendered
+    assert "submission_disabled_reason: close_preview_submission_disabled" in rendered
 
 
 def test_fresh_snapshot_operator_checklist_blocks_unavailable_observations(
@@ -370,6 +398,8 @@ def test_fresh_snapshot_operator_checklist_blocks_unexpected_mutation_or_submit(
         submitted_payload["fresh_snapshot_operator_checklist"]["status"]
         == "blocked_unexpected_submit"
     )
+    assert mutated_payload["close_exit_probe_design"]["design_ready"] is False
+    assert submitted_payload["close_exit_probe_design"]["design_ready"] is False
 
 
 def test_fresh_snapshot_operator_checklist_blocks_live_profile_evidence(

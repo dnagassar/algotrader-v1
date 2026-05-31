@@ -28,6 +28,7 @@ PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED = "paper_lab_snapshot_account_observed"
 PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED = "paper_lab_snapshot_positions_observed"
 PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED = "paper_lab_snapshot_orders_observed"
 PAPER_LAB_SNAPSHOT_UNAVAILABLE = "paper_lab_snapshot_unavailable"
+PAPER_CLOSE_PREVIEW_DESIGNED = "paper_close_preview_designed"
 
 EVENT_TYPES = (
     PAPER_ACCOUNT_OBSERVED,
@@ -44,6 +45,7 @@ EVENT_TYPES = (
     PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
     PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
     PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+    PAPER_CLOSE_PREVIEW_DESIGNED,
 )
 
 REDACTION_MARKER = "credentials_redacted"
@@ -350,6 +352,23 @@ def make_paper_lab_snapshot_events(
     return tuple(events)
 
 
+def make_paper_close_preview_events(
+    *,
+    run_id: str,
+    payload: Mapping[str, Any],
+    secret_values: Iterable[str | None] = (),
+) -> tuple[dict[str, Any], ...]:
+    command = str(payload.get("command", "paper-close-preview"))
+    return (
+        PaperLabObservationEvent(
+            run_id=run_id,
+            command=command,
+            event_type=PAPER_CLOSE_PREVIEW_DESIGNED,
+            fields=_close_preview_fields(payload),
+        ).to_record(secret_values=secret_values),
+    )
+
+
 def _order_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     request = payload.get("proposed_order_request")
     request_payload = request if isinstance(request, Mapping) else {}
@@ -501,6 +520,58 @@ def _snapshot_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _close_preview_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "asset_class": _text(payload.get("asset_class")),
+        "close_preview_status": _optional_text(
+            payload.get("close_preview_status")
+        ),
+        "close_quantity_within_observed_position": bool(
+            payload.get("close_quantity_within_observed_position", False)
+        ),
+        "fresh_snapshot_required": bool(
+            payload.get("fresh_snapshot_required", True)
+        ),
+        "fresh_snapshot_status": _optional_text(
+            payload.get("fresh_snapshot_status")
+        ),
+        "gate_summary": _gate_summary(payload.get("gates")),
+        "manual_review_required": bool(
+            payload.get("manual_review_required", True)
+        ),
+        "mutated": payload.get("mutated"),
+        "no_shorting_gate": _optional_text(payload.get("no_shorting_gate")),
+        "not_live_authorized": bool(payload.get("not_live_authorized", True)),
+        "observed_position_quantity": _text(
+            payload.get("observed_position_quantity")
+        ),
+        "ok": bool(payload.get("ok", False)),
+        "order_type": _text(payload.get("order_type")),
+        "paper_lab_only": bool(payload.get("paper_lab_only", True)),
+        "preview_only": bool(payload.get("preview_only", True)),
+        "profit_claim": _optional_text(payload.get("profit_claim")),
+        "recent_order_query_metadata_complete": bool(
+            payload.get("recent_order_query_metadata_complete", False)
+        ),
+        "recommended_next_operator_action": _optional_text(
+            payload.get("recommended_next_operator_action")
+        ),
+        "remaining_quantity_after_preview": _text(
+            payload.get("remaining_quantity_after_preview")
+        ),
+        "requested_close_quantity": _text(
+            payload.get("requested_close_quantity")
+        ),
+        "side": _text(payload.get("side")),
+        "submission_disabled_reason": _optional_text(
+            payload.get("submission_disabled_reason")
+        ),
+        "submitted": payload.get("submitted"),
+        "symbol": _text(payload.get("symbol")),
+        "time_in_force": _text(payload.get("time_in_force")),
+    }
+
+
 def _state_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "accepted": payload.get("accepted"),
@@ -577,6 +648,7 @@ __all__ = [
     "EVENT_TYPES",
     "PAPER_ACCOUNT_OBSERVED",
     "PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED",
+    "PAPER_CLOSE_PREVIEW_DESIGNED",
     "PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED",
     "PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED",
     "PAPER_LAB_SNAPSHOT_REQUESTED",
@@ -595,6 +667,7 @@ __all__ = [
     "ensure_run_log_path",
     "generate_run_id",
     "make_account_smoke_events",
+    "make_paper_close_preview_events",
     "make_order_probe_initial_events",
     "make_order_probe_submit_events",
     "make_paper_lab_snapshot_events",

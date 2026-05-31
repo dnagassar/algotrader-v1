@@ -1728,6 +1728,67 @@ def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
     )
 
 
+def test_paper_close_preview_cli_reads_local_snapshot_without_runtime_config(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "m324.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_close_preview_fresh_snapshot_run_log(run_log)
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("paper close preview must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-close-preview",
+            "--run-log",
+            str(run_log),
+            "--symbol",
+            "BTCUSD",
+            "--quantity",
+            "0.000132386",
+            "--format",
+            "json",
+        )
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["command"] == "paper-close-preview"
+    assert payload["ok"] is True
+    assert payload["preview_only"] is True
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["paper_lab_only"] is True
+    assert payload["not_live_authorized"] is True
+    assert payload["profit_claim"] == "none"
+    assert payload["manual_review_required"] is True
+    assert payload["asset_class"] == "crypto"
+    assert payload["symbol"] == "BTCUSD"
+    assert payload["side"] == "sell"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "gtc"
+    assert payload["observed_position_quantity"] == "0.000132386"
+    assert payload["requested_close_quantity"] == "0.000132386"
+    assert payload["remaining_quantity_after_preview"] == "0"
+    assert payload["close_quantity_within_observed_position"] is True
+    assert payload["no_shorting_gate"] == "passed"
+    assert payload["fresh_snapshot_required"] is True
+    assert payload["fresh_snapshot_status"] == (
+        "read_only_snapshot_completed_for_manual_review"
+    )
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert "broker_result" not in payload
+    assert payload["source_selected_run_id"] == "m324-fresh-read-only"
+
+
 def test_invalid_run_log_path_reports_cleanly(
     monkeypatch,
     capsys,
@@ -2097,6 +2158,78 @@ def _write_revalidation_m319_submit_run_log(path) -> None:  # noqa: ANN001
             recent_order_count=0,
             recent_orders=[],
         ),
+    ]
+    path.write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in records
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_close_preview_fresh_snapshot_run_log(path) -> None:  # noqa: ANN001
+    position = {
+        "average_price": "73886.11",
+        "quantity": "0.000132386",
+        "symbol": "BTCUSD",
+    }
+    base = {
+        "account_observation_available": True,
+        "command": "paper-lab-snapshot",
+        "gate_summary": {
+            "profile_gate": {"detail": "paper_profile_ready", "passed": True}
+        },
+        "mutated": False,
+        "ok": True,
+        "orders_observation_available": True,
+        "positions_observation_available": True,
+        "redaction": "credentials_redacted",
+        "run_id": "m324-fresh-read-only",
+        "submitted": False,
+        "unavailable_observations": [],
+        "unavailable_reasons": {},
+        "recent_order_query_after": None,
+        "recent_order_query_asset_class_filter": "",
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": True,
+        "recent_order_query_contract_version": "paper_recent_order_query_v1",
+        "recent_order_query_direction": "desc",
+        "recent_order_query_limit": 100,
+        "recent_order_query_metadata_complete": True,
+        "recent_order_query_metadata_missing_fields": [],
+        "recent_order_query_nested": False,
+        "recent_order_query_returned_count": 0,
+        "recent_order_query_side_filter": "",
+        "recent_order_query_sort": "",
+        "recent_order_query_source": "alpaca_sdk_client.get_orders",
+        "recent_order_query_status_filter": "open",
+        "recent_order_query_symbol_filter": "",
+        "recent_order_query_until": None,
+    }
+    records = [
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_requested",
+        },
+        {
+            **base,
+            "account": {"cash": "1990.19", "currency": "USD"},
+            "event_type": "paper_lab_snapshot_account_observed",
+        },
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_positions_observed",
+            "position_count": 1,
+            "position_symbols": ["BTCUSD"],
+            "positions": [position],
+        },
+        {
+            **base,
+            "event_type": "paper_lab_snapshot_orders_observed",
+            "recent_order_count": 0,
+            "recent_orders": [],
+        },
     ]
     path.write_text(
         "".join(

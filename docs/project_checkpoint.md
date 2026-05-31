@@ -13743,6 +13743,23 @@ Safe next tasks include:
   URL behavior, credential access, broker write path, scheduler, autonomous
   loop, research-layer submission, close-order design, profit inference, or
   unsafe pytest behavior.
+- Phase 325 / Milestone 325 - BTCUSD Close/Exit Probe Design Preview adds a
+  deterministic local/fake-only `paper_close_preview_v1` contract and
+  `paper-close-preview` CLI for designing a BTCUSD paper close preview from a
+  local fresh read-only snapshot run log. It gates the design on
+  `asset_class=crypto`, `symbol=BTCUSD`, `side=sell`, market/GTC order shape,
+  positive requested quantity, requested quantity within the observed BTCUSD
+  position, no-shorting, fresh checklist status
+  `read_only_snapshot_completed_for_manual_review`, complete recent-order query
+  metadata, `mutated=false`, and `submitted=false`. The revalidation brief now
+  reports `close_exit_probe_design` as design-ready only for manual review. This
+  milestone preserves `paper_lab_only`, `not_live_authorized`,
+  `profit_claim=none`, and `manual_review_required`; it is not a broker order
+  receipt, does not claim a close, and adds no submit command, close/sell order
+  placement, Alpaca call, network use, live profile/live URL behavior,
+  credential access, broker write path, cancel/replace/liquidate behavior,
+  options behavior, portfolio mutation, profit inference, or unsafe pytest
+  behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

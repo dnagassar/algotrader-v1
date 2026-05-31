@@ -13,8 +13,10 @@ from .execution.paper_order_policy import (
     ASSET_CLASS_CRYPTO as _PAPER_ORDER_ASSET_CLASS_CRYPTO,
     ASSET_CLASS_EQUITY as _PAPER_ORDER_ASSET_CLASS_EQUITY,
     ASSET_CLASS_OPTION as _PAPER_ORDER_ASSET_CLASS_OPTION,
+    PAPER_CLOSE_PREVIEW_GATE_ORDER as _PAPER_CLOSE_PREVIEW_GATE_ORDER,
     PAPER_MARKET_SESSION_NOTE as _PAPER_MARKET_SESSION_NOTE,
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON as _PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
+    build_btcusd_paper_close_preview_contract,
     paper_order_policy_for_asset_class,
 )
 
@@ -162,6 +164,29 @@ def build_parser() -> argparse.ArgumentParser:
         default="text",
         dest="output_format",
         help="Brief output format.",
+    )
+    paper_close_preview_parser = subparsers.add_parser(
+        "paper-close-preview",
+        help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
+    )
+    paper_close_preview_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Read source paper-lab snapshot JSONL evidence from PATH.",
+    )
+    paper_close_preview_parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional source run/session id. Defaults to the latest run.",
+    )
+    paper_close_preview_parser.add_argument("--symbol", required=True)
+    paper_close_preview_parser.add_argument("--quantity", required=True)
+    paper_close_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
     )
     paper_order_probe_parser = subparsers.add_parser(
         "paper-order-probe",
@@ -376,6 +401,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if command == "paper-lab-revalidation-brief":
         return _run_paper_lab_revalidation_brief(
             args.run_log,
+            args.output_format,
+            run_id=args.run_id,
+        )
+    if command == "paper-close-preview":
+        return _run_paper_close_preview(
+            args.run_log,
+            args.symbol,
+            args.quantity,
             args.output_format,
             run_id=args.run_id,
         )
@@ -634,6 +667,70 @@ def _run_paper_lab_revalidation_brief(
         print(render_paper_lab_revalidation_brief_text(payload))
 
     return 0 if payload["usable_for_manual_review"] else 1
+
+
+def _run_paper_close_preview(
+    run_log_path: str,
+    symbol: str,
+    quantity: str,
+    output_format: str,
+    *,
+    run_id: str | None = None,
+) -> int:
+    from .execution.paper_lab_revalidation_brief import (
+        build_paper_lab_revalidation_brief,
+    )
+
+    revalidation_payload = build_paper_lab_revalidation_brief(
+        run_log_path,
+        run_id=run_id,
+    )
+    payload = _build_paper_close_preview_payload(
+        revalidation_payload,
+        symbol=symbol,
+        quantity=quantity,
+        source_run_log=run_log_path,
+    )
+    print(_render_paper_close_preview_payload(payload, output_format))
+    return 0 if payload["ok"] else 2
+
+
+def _build_paper_close_preview_payload(
+    revalidation_payload: Mapping[str, object],
+    *,
+    symbol: str,
+    quantity: str,
+    source_run_log: str,
+) -> dict[str, object]:
+    checklist = _payload_mapping(
+        revalidation_payload.get("fresh_snapshot_operator_checklist")
+    )
+    evidence = _payload_mapping(checklist.get("evidence"))
+    contract = build_btcusd_paper_close_preview_contract(
+        observed_position_quantity=evidence.get("btcusd_position_quantity"),
+        requested_close_quantity=quantity,
+        fresh_snapshot_status=str(checklist.get("status", "")),
+        recent_order_query_metadata_complete=(
+            evidence.get("recent_order_query_metadata_complete") is True
+        ),
+        source_mutated=_payload_bool_or_none(evidence.get("mutated")),
+        source_submitted=_payload_bool_or_none(evidence.get("submitted")),
+        symbol=symbol,
+    )
+    payload = contract.to_payload()
+    payload.update(
+        {
+            "source_command": "paper-lab-revalidation-brief",
+            "source_record_count": revalidation_payload.get("record_count", 0),
+            "source_run_log": source_run_log,
+            "source_selected_run_id": revalidation_payload.get(
+                "selected_run_id",
+                "",
+            ),
+            "source_state": revalidation_payload.get("state", ""),
+        }
+    )
+    return payload
 
 
 def _build_paper_lab_snapshot_payload(config) -> dict[str, object]:
@@ -1563,6 +1660,56 @@ def _render_paper_lab_snapshot_payload(
     return "\n".join(lines)
 
 
+def _render_paper_close_preview_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper close preview",
+        f"command: {payload['command']}",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"preview_only: {_bool_text(payload['preview_only'])}",
+        f"submitted: {_optional_bool_text(payload['submitted'])}",
+        f"mutated: {_optional_bool_text(payload['mutated'])}",
+        f"paper_lab_only: {_bool_text(payload['paper_lab_only'])}",
+        f"not_live_authorized: {_bool_text(payload['not_live_authorized'])}",
+        f"profit_claim: {payload['profit_claim']}",
+        f"manual_review_required: {_bool_text(payload['manual_review_required'])}",
+        f"asset_class: {payload['asset_class']}",
+        f"symbol: {payload['symbol']}",
+        f"side: {payload['side']}",
+        f"order_type: {payload['order_type']}",
+        f"time_in_force: {payload['time_in_force']}",
+        f"observed_position_quantity: {payload['observed_position_quantity']}",
+        f"requested_close_quantity: {payload['requested_close_quantity']}",
+        (
+            "remaining_quantity_after_preview: "
+            f"{payload['remaining_quantity_after_preview']}"
+        ),
+        (
+            "close_quantity_within_observed_position: "
+            f"{_bool_text(payload['close_quantity_within_observed_position'])}"
+        ),
+        f"no_shorting_gate: {payload['no_shorting_gate']}",
+        f"fresh_snapshot_required: {_bool_text(payload['fresh_snapshot_required'])}",
+        f"fresh_snapshot_status: {payload['fresh_snapshot_status']}",
+        (
+            "recent_order_query_metadata_complete: "
+            f"{_bool_text(payload['recent_order_query_metadata_complete'])}"
+        ),
+        f"submission_disabled_reason: {payload['submission_disabled_reason']}",
+        (
+            "recommended_next_operator_action: "
+            f"{payload['recommended_next_operator_action']}"
+        ),
+    ]
+    lines.extend(_close_preview_gate_lines(payload["gates"]))
+    return "\n".join(lines)
+
+
 def _render_paper_order_probe_payload(
     payload: dict[str, object],
     output_format: str,
@@ -1624,6 +1771,20 @@ def _render_paper_order_probe_payload(
     return "\n".join(lines)
 
 
+def _close_preview_gate_lines(gates: object) -> list[str]:
+    if not isinstance(gates, dict):
+        return []
+
+    lines: list[str] = []
+    for gate_name in _PAPER_CLOSE_PREVIEW_GATE_ORDER:
+        if gate_name not in gates:
+            continue
+        gate = gates[gate_name]
+        state = "passed" if gate["passed"] else "blocked"
+        lines.append(f"{gate_name}: {state} - {gate['detail']}")
+    return lines
+
+
 def _gate_lines(gates: object) -> list[str]:
     if not isinstance(gates, dict):
         return []
@@ -1655,6 +1816,21 @@ def _optional_bool_text(value: object) -> str:
         return "unknown"
 
     return _bool_text(value)
+
+
+def _payload_mapping(value: object) -> Mapping[str, object]:
+    if isinstance(value, Mapping):
+        return value
+
+    return {}
+
+
+def _payload_bool_or_none(value: object) -> bool | None:
+    if value is True:
+        return True
+    if value is False:
+        return False
+    return None
 
 
 def _redact_config_secrets(message: str, config) -> str:
