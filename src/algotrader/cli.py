@@ -179,6 +179,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional source run/session id. Defaults to the latest run.",
     )
+    paper_close_preview_parser.add_argument(
+        "--output-run-log",
+        default=None,
+        help=(
+            "Append a deterministic paper_close_preview_designed event to PATH."
+        ),
+    )
+    paper_close_preview_parser.add_argument(
+        "--output-run-id",
+        default=None,
+        help=(
+            "Optional run/session id for the appended close-preview event. "
+            "Defaults to the selected source run id."
+        ),
+    )
     paper_close_preview_parser.add_argument("--symbol", required=True)
     paper_close_preview_parser.add_argument("--quantity", required=True)
     paper_close_preview_parser.add_argument(
@@ -411,6 +426,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.quantity,
             args.output_format,
             run_id=args.run_id,
+            output_run_log=args.output_run_log,
+            output_run_id=args.output_run_id,
         )
 
     config = _load_runtime_config(profile=args.profile)
@@ -676,6 +693,8 @@ def _run_paper_close_preview(
     output_format: str,
     *,
     run_id: str | None = None,
+    output_run_log: str | None = None,
+    output_run_id: str | None = None,
 ) -> int:
     from .execution.paper_lab_revalidation_brief import (
         build_paper_lab_revalidation_brief,
@@ -691,6 +710,21 @@ def _run_paper_close_preview(
         quantity=quantity,
         source_run_log=run_log_path,
     )
+    if output_run_log:
+        resolved_output_run_id = _paper_lab_run_id(
+            output_run_id
+            or str(payload.get("source_selected_run_id", "")).strip()
+            or None
+        )
+        payload["output_run_log"] = output_run_log
+        payload["output_run_id"] = resolved_output_run_id
+        if not _write_paper_close_preview_run_log(
+            output_run_log,
+            resolved_output_run_id,
+            payload,
+        ):
+            return 1
+
     print(_render_paper_close_preview_payload(payload, output_format))
     return 0 if payload["ok"] else 2
 
@@ -1706,6 +1740,9 @@ def _render_paper_close_preview_payload(
             f"{payload['recommended_next_operator_action']}"
         ),
     ]
+    if payload.get("output_run_log"):
+        lines.append(f"output_run_log: {payload['output_run_log']}")
+        lines.append(f"output_run_id: {payload['output_run_id']}")
     lines.extend(_close_preview_gate_lines(payload["gates"]))
     return "\n".join(lines)
 
@@ -1929,6 +1966,20 @@ def _write_paper_lab_snapshot_run_log(
         run_id=run_id,
         payload=payload,
         secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _write_paper_close_preview_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+) -> bool:
+    from .execution.paper_lab_observation_log import make_paper_close_preview_events
+
+    events = make_paper_close_preview_events(
+        run_id=run_id,
+        payload=payload,
     )
     return _append_paper_lab_run_log(run_log_path, events)
 

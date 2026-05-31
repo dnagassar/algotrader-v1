@@ -176,6 +176,8 @@ class PaperClosePreviewContract:
         no_shorting_gate = gate_payload["no_shorting_gate"]
         return {
             "asset_class": self.asset_class,
+            "broker_action_performed": False,
+            "close_order_submitted": False,
             "close_preview_status": (
                 "design_ready_manual_review_only"
                 if self.ok
@@ -189,6 +191,7 @@ class PaperClosePreviewContract:
             "fresh_snapshot_status": self.fresh_snapshot_status,
             "gates": gate_payload,
             "manual_review_required": True,
+            "max_quantity": _decimal_payload_text(self.observed_position_quantity),
             "mutated": self.mutated,
             "no_shorting_gate": _gate_status(no_shorting_gate),
             "not_live_authorized": True,
@@ -203,6 +206,7 @@ class PaperClosePreviewContract:
             "paper_lab_only": True,
             "preview_only": True,
             "profit_claim": "none",
+            "quantity": _decimal_payload_text(self.requested_close_quantity),
             "recent_order_query_metadata_complete": (
                 self.recent_order_query_metadata_complete
             ),

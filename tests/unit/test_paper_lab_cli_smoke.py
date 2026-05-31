@@ -11,6 +11,7 @@ from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import AlpacaOrderRequest
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClientError
 from algotrader.execution.paper_lab_observation_log import (
+    PAPER_CLOSE_PREVIEW_DESIGNED,
     make_paper_close_preview_events,
 )
 from algotrader.execution.paper_order_policy import (
@@ -1892,6 +1893,82 @@ def test_paper_close_preview_cli_reads_local_snapshot_without_runtime_config(
     assert payload["recent_order_query_metadata_complete"] is True
     assert "broker_result" not in payload
     assert payload["source_selected_run_id"] == "m324-fresh-read-only"
+
+
+def test_paper_close_preview_cli_appends_durable_event_without_runtime_config(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "m324_combined.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_close_preview_fresh_snapshot_run_log(run_log)
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("paper close preview must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-close-preview",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "m324-fresh-read-only",
+            "--symbol",
+            "BTCUSD",
+            "--quantity",
+            "0.000132386",
+            "--output-run-log",
+            str(run_log),
+            "--output-run-id",
+            "m329a-close-preview",
+            "--format",
+            "json",
+        )
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    records = [
+        json.loads(line)
+        for line in run_log.read_text(encoding="utf-8").splitlines()
+    ]
+    preview_events = [
+        record
+        for record in records
+        if record["event_type"] == PAPER_CLOSE_PREVIEW_DESIGNED
+    ]
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert payload["output_run_log"] == str(run_log)
+    assert payload["output_run_id"] == "m329a-close-preview"
+    assert payload["preview_only"] is True
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
+    assert [event["run_id"] for event in preview_events] == [
+        "m329a-close-preview"
+    ]
+    event = preview_events[0]
+    assert event["command"] == "paper-close-preview"
+    assert event["preview_only"] is True
+    assert event["asset_class"] == "crypto"
+    assert event["symbol"] == "BTCUSD"
+    assert event["side"] == "sell"
+    assert event["quantity"] == "0.000132386"
+    assert event["max_quantity"] == "0.000132386"
+    assert event["observed_position_quantity"] == "0.000132386"
+    assert event["remaining_quantity_after_preview"] == "0"
+    assert event["no_shorting_gate"] == "passed"
+    assert event["submitted"] is False
+    assert event["mutated"] is False
+    assert event["broker_action_performed"] is False
+    assert event["close_order_submitted"] is False
+    assert "broker_result" not in event
 
 
 def test_invalid_run_log_path_reports_cleanly(

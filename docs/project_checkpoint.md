@@ -13820,6 +13820,17 @@ Safe next tasks include:
   access, broker write path, scheduler, autonomous loop, research-layer
   authorization, portfolio mutation, profit inference, or unsafe pytest
   behavior.
+- Phase 329A / Milestone 329A - Missing BTCUSD Close-Preview Evidence Repair
+  wires the existing local-only `paper-close-preview` command to optionally
+  append a durable `paper_close_preview_designed` JSONL event via
+  `--output-run-log` and `--output-run-id`. The command still reads local
+  run-log evidence only, does not load runtime config, does not build a broker,
+  and has no submit flag. The event records the preview-only BTCUSD sell shape,
+  including `quantity`, `max_quantity`, `observed_position_quantity`,
+  `remaining_quantity_after_preview`, `no_shorting_gate=passed`,
+  `submitted=false`, `mutated=false`, `broker_action_performed=false`, and
+  `close_order_submitted=false`, so M326/M327/M328 revalidation can consume the
+  same evidence without introducing broker-side close behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

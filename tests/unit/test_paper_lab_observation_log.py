@@ -265,9 +265,13 @@ def test_paper_close_preview_event_is_not_a_broker_receipt() -> None:
     assert records[0]["preview_only"] is True
     assert records[0]["submitted"] is False
     assert records[0]["mutated"] is False
+    assert records[0]["broker_action_performed"] is False
+    assert records[0]["close_order_submitted"] is False
     assert records[0]["symbol"] == "BTCUSD"
     assert records[0]["side"] == "sell"
     assert records[0]["observed_position_quantity"] == "0.000132386"
+    assert records[0]["quantity"] == "0.000132386"
+    assert records[0]["max_quantity"] == "0.000132386"
     assert records[0]["requested_close_quantity"] == "0.000132386"
     assert records[0]["remaining_quantity_after_preview"] == "0"
     assert (

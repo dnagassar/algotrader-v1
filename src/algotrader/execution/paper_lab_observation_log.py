@@ -523,6 +523,10 @@ def _snapshot_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
 def _close_preview_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "asset_class": _text(payload.get("asset_class")),
+        "broker_action_performed": bool(
+            payload.get("broker_action_performed", False)
+        ),
+        "close_order_submitted": bool(payload.get("close_order_submitted", False)),
         "close_preview_status": _optional_text(
             payload.get("close_preview_status")
         ),
@@ -539,6 +543,9 @@ def _close_preview_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "manual_review_required": bool(
             payload.get("manual_review_required", True)
         ),
+        "max_quantity": _text(
+            payload.get("max_quantity") or payload.get("observed_position_quantity")
+        ),
         "mutated": payload.get("mutated"),
         "no_shorting_gate": _optional_text(payload.get("no_shorting_gate")),
         "not_live_authorized": bool(payload.get("not_live_authorized", True)),
@@ -553,6 +560,9 @@ def _close_preview_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "paper_lab_only": bool(payload.get("paper_lab_only", True)),
         "preview_only": bool(payload.get("preview_only", True)),
         "profit_claim": _optional_text(payload.get("profit_claim")),
+        "quantity": _text(
+            payload.get("quantity") or payload.get("requested_close_quantity")
+        ),
         "recent_order_query_metadata_complete": bool(
             payload.get("recent_order_query_metadata_complete", False)
         ),

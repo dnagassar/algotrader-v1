@@ -100,6 +100,8 @@ def test_btcusd_close_preview_contract_is_preview_only_and_manual_review() -> No
     assert payload["preview_only"] is True
     assert payload["submitted"] is False
     assert payload["mutated"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
     assert payload["paper_lab_only"] is True
     assert payload["not_live_authorized"] is True
     assert payload["profit_claim"] == "none"
@@ -110,6 +112,8 @@ def test_btcusd_close_preview_contract_is_preview_only_and_manual_review() -> No
     assert payload["order_type"] == "market"
     assert payload["time_in_force"] == "gtc"
     assert payload["observed_position_quantity"] == "0.000132386"
+    assert payload["quantity"] == "0.000132386"
+    assert payload["max_quantity"] == "0.000132386"
     assert payload["requested_close_quantity"] == "0.000132386"
     assert payload["remaining_quantity_after_preview"] == "0"
     assert payload["close_quantity_within_observed_position"] is True
