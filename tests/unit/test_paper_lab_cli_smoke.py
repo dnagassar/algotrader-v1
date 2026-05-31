@@ -10,7 +10,13 @@ from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import AlpacaOrderRequest
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClientError
-from algotrader.execution.paper_order_policy import OPTIONS_SUBMIT_DISABLED_REASON
+from algotrader.execution.paper_lab_observation_log import (
+    make_paper_close_preview_events,
+)
+from algotrader.execution.paper_order_policy import (
+    OPTIONS_SUBMIT_DISABLED_REASON,
+    build_btcusd_paper_close_preview_contract,
+)
 from tests.fakes.alpaca import FakeAlpacaClient
 
 
@@ -1656,6 +1662,79 @@ def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
     )
 
 
+@pytest.mark.parametrize(
+    ("include_close_preview", "output_format", "expected_ready"),
+    (
+        (True, "json", True),
+        (False, "json", False),
+        (True, "text", True),
+        (False, "text", False),
+    ),
+)
+def test_revalidation_brief_cli_reports_explicit_close_probe_prompt_review(
+    monkeypatch,
+    capsys,
+    tmp_path,
+    include_close_preview: bool,
+    output_format: str,
+    expected_ready: bool,
+) -> None:
+    run_log = tmp_path / "runs" / "paper_lab" / "m328.jsonl"
+    run_log.parent.mkdir(parents=True)
+    _write_close_preview_fresh_snapshot_run_log(run_log)
+    if include_close_preview:
+        _append_jsonl_records(run_log, _revalidation_close_preview_records())
+
+    def forbidden_config_load(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("revalidation brief must not load runtime config")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config_load)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code = main(
+        (
+            "paper-lab-revalidation-brief",
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "m324-fresh-read-only",
+            "--format",
+            output_format,
+        )
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    if output_format == "json":
+        payload = json.loads(captured.out)
+        prompt_review = payload["explicit_close_probe_prompt_review"]
+        assert prompt_review["manual_review_only"] is True
+        assert prompt_review["broker_action_performed"] is False
+        assert prompt_review["close_order_submitted"] is False
+        assert (
+            prompt_review["prompt_ready_for_operator_review"]
+            is expected_ready
+        )
+        assert "--submit" not in prompt_review[
+            "future_command_template_review_only"
+        ]
+    else:
+        assert "explicit_close_probe_prompt_review:" in captured.out
+        assert "review_only_label: operator_review_only" in captured.out
+        assert (
+            f"prompt_ready_for_operator_review: {str(expected_ready).lower()}"
+            in captured.out
+        )
+        command_lines = [
+            line
+            for line in captured.out.splitlines()
+            if "future_command_template_review_only:" in line
+        ]
+        assert command_lines
+        assert all("--submit" not in line for line in command_lines)
+
+
 def test_revalidation_brief_cli_reports_submit_receipt_observation(
     monkeypatch,
     capsys,
@@ -2263,6 +2342,33 @@ def _write_close_preview_fresh_snapshot_run_log(path) -> None:  # noqa: ANN001
             for record in records
         ),
         encoding="utf-8",
+    )
+
+
+def _append_jsonl_records(
+    path,  # noqa: ANN001
+    records: tuple[dict[str, object], ...],
+) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        for record in records:
+            stream.write(
+                json.dumps(record, sort_keys=True, separators=(",", ":"))
+                + "\n"
+            )
+
+
+def _revalidation_close_preview_records() -> tuple[dict[str, object], ...]:
+    payload = build_btcusd_paper_close_preview_contract(
+        observed_position_quantity="0.000132386",
+        requested_close_quantity="0.000132386",
+        fresh_snapshot_status="read_only_snapshot_completed_for_manual_review",
+        recent_order_query_metadata_complete=True,
+        source_mutated=False,
+        source_submitted=False,
+    ).to_payload()
+    return make_paper_close_preview_events(
+        run_id="m325-close-preview",
+        payload=payload,
     )
 
 

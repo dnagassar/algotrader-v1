@@ -8267,6 +8267,29 @@ Alpaca call, network use, live profile/live URL support, credential access,
 broker write path, scheduler, autonomous loop, research-layer authorization,
 portfolio mutation, profit inference, or unsafe pytest behavior.
 
+Phase 328 / Milestone 328 - Explicit BTCUSD Paper Close Probe Prompt Review
+adds a deterministic local-only `explicit_close_probe_prompt_review` section to
+`paper-lab-revalidation-brief` JSON and text output. The section is
+operator-review-only and reports `manual_review_only=true`,
+`broker_action_performed=false`, `close_order_submitted=false`,
+`prompt_ready_for_operator_review`, whether it was generated from M327
+`future_close_probe_preparation`, the observed M327 readiness flag, observed
+M326 eligibility status, observed BTCUSD symbol/quantity, recent-order query
+metadata completeness, required final fresh pre-submit snapshot, required final
+operator confirmation, future probe scope, blocking reasons, a recommended
+operator action, review-only prompt text, and a non-submit future command
+template. The prompt review becomes ready only when M327 is ready, M326 reports
+`eligible_for_explicit_operator_approval`, close-preview evidence exists, the
+fresh snapshot checklist is complete, recent-order query metadata is complete,
+and the `credentials_redacted` marker is present. Eligible evidence recommends
+`review_explicit_paper_close_probe_prompt_and_decide_whether_to_authorize_separate_m329`;
+blocked evidence recommends
+`complete_future_close_probe_preparation_before_prompt_review`. This milestone
+adds no submit command, broker-side close/sell/cancel/liquidation behavior,
+Alpaca call, network use, live profile/live URL support, credential access,
+broker write path, scheduler, autonomous loop, research-layer authorization,
+portfolio mutation, profit inference, or unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

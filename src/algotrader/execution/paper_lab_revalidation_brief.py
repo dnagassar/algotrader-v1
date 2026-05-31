@@ -199,6 +199,26 @@ _FUTURE_CLOSE_PROBE_COMMAND_TEMPLATE = (
     "--symbol BTCUSD --quantity <required_position_quantity> "
     "<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>"
 )
+_EXPLICIT_CLOSE_PROBE_PROMPT_REVIEW_VERSION = (
+    "explicit_close_probe_prompt_review_v1"
+)
+_EXPLICIT_CLOSE_PROBE_REVIEW_NEXT_ELIGIBLE = (
+    "review_explicit_paper_close_probe_prompt_and_decide_whether_to_authorize_separate_m329"
+)
+_EXPLICIT_CLOSE_PROBE_REVIEW_NEXT_BLOCKED = (
+    "complete_future_close_probe_preparation_before_prompt_review"
+)
+_EXPLICIT_CLOSE_PROBE_REVIEW_SCOPE = (
+    "btcusd_paper_close_probe_prompt_review_only_no_broker_action"
+)
+_EXPLICIT_CLOSE_PROBE_COMMAND_TEMPLATE = (
+    "python -m algotrader paper-close-probe --asset-class crypto "
+    "--symbol BTCUSD --side sell "
+    "--quantity <OBSERVED_BTCUSD_POSITION_QUANTITY> "
+    "--max-quantity <OBSERVED_BTCUSD_POSITION_QUANTITY> "
+    "--run-log <FRESH_RUN_LOG> --run-id <FRESH_RUN_ID> --format json "
+    "<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>"
+)
 _CLOSE_ACTION_REQUIRED_OPERATOR_CONFIRMATIONS = (
     "I understand this is paper-only.",
     "I understand this is not live-authorized.",
@@ -332,6 +352,9 @@ def render_paper_lab_revalidation_brief_text(
     future_close_probe_preparation = _mapping(
         payload.get("future_close_probe_preparation")
     )
+    explicit_close_probe_prompt_review = _mapping(
+        payload.get("explicit_close_probe_prompt_review")
+    )
 
     lines = [
         "Paper lab revalidation brief",
@@ -386,6 +409,11 @@ def render_paper_lab_revalidation_brief_text(
     lines.extend(_close_action_eligibility_checklist_lines(close_action_eligibility))
     lines.extend(
         _future_close_probe_preparation_lines(future_close_probe_preparation)
+    )
+    lines.extend(
+        _explicit_close_probe_prompt_review_lines(
+            explicit_close_probe_prompt_review
+        )
     )
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
@@ -444,6 +472,12 @@ def _brief_payload(
         fresh_snapshot_checklist,
         close_action_eligibility_checklist,
     )
+    redaction_markers_found = _redaction_markers(observation_records)
+    explicit_close_probe_prompt_review = _explicit_close_probe_prompt_review(
+        future_close_probe_preparation,
+        close_action_eligibility_checklist,
+        redaction_markers_found,
+    )
     return {
         "account": _latest_account(selected_records),
         "advisory_labels": {
@@ -456,6 +490,9 @@ def _brief_payload(
         "close_exit_probe_design": close_exit_probe_design,
         "command": "paper-lab-revalidation-brief",
         "event_counts": _event_counts(selected_records),
+        "explicit_close_probe_prompt_review": (
+            explicit_close_probe_prompt_review
+        ),
         "fresh_snapshot_operator_checklist": fresh_snapshot_checklist,
         "future_close_probe_preparation": future_close_probe_preparation,
         "invalid_reasons": list(invalid_reasons),
@@ -472,7 +509,7 @@ def _brief_payload(
         ),
         "recent_orders": _latest_recent_orders(selected_records),
         "record_count": len(records),
-        "redaction_markers_found": _redaction_markers(observation_records),
+        "redaction_markers_found": redaction_markers_found,
         "run_ids": list(run_ids),
         "selected_record_count": len(selected_records),
         "selected_run_id": _safe_run_id(selected_run_id),
@@ -670,6 +707,148 @@ def _future_close_probe_preparation_blocking_reasons(
         )
     )
     return _deduped_text_items(reasons)
+
+
+def _explicit_close_probe_prompt_review(
+    future_preparation: Mapping[str, object],
+    close_action_eligibility: Mapping[str, object],
+    redaction_markers_found: Sequence[str],
+) -> dict[str, object]:
+    pre_submit_snapshot = _mapping(
+        future_preparation.get("required_pre_submit_snapshot")
+    )
+    position_quantity = _mapping(
+        future_preparation.get("required_position_quantity")
+    )
+    query_metadata = _mapping(
+        future_preparation.get("required_recent_order_query_metadata")
+    )
+    close_preview = _mapping(
+        future_preparation.get("required_close_preview_evidence")
+    )
+    generated_from_preparation = (
+        future_preparation.get("version")
+        == _FUTURE_CLOSE_PROBE_PREPARATION_VERSION
+    )
+    observed_preparation_ready = (
+        future_preparation.get("ready_for_future_prompt_generation") is True
+    )
+    observed_eligibility_status = _text(
+        future_preparation.get("observed_eligibility_status")
+    ) or _text(close_action_eligibility.get("status"))
+    close_preview_evidence_exists = close_preview.get("event_observed") is True
+    fresh_snapshot_complete = (
+        pre_submit_snapshot.get("observed_status")
+        == CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED
+        and pre_submit_snapshot.get("snapshot_records_observed") is True
+    )
+    recent_order_query_metadata_complete = (
+        query_metadata.get("metadata_complete") is True
+    )
+    redaction_marker_present = "credentials_redacted" in set(
+        redaction_markers_found
+    )
+    observed_position_symbol = _text(position_quantity.get("symbol"))
+    observed_position_quantity = _text(position_quantity.get("quantity"))
+    prompt_ready = (
+        generated_from_preparation
+        and observed_preparation_ready
+        and observed_eligibility_status == _CLOSE_ACTION_STATUS_ELIGIBLE
+        and close_preview_evidence_exists
+        and fresh_snapshot_complete
+        and recent_order_query_metadata_complete
+        and redaction_marker_present
+    )
+    blocking_reasons = _explicit_close_probe_prompt_review_blocking_reasons(
+        generated_from_preparation=generated_from_preparation,
+        observed_preparation_ready=observed_preparation_ready,
+        observed_eligibility_status=observed_eligibility_status,
+        close_preview_evidence_exists=close_preview_evidence_exists,
+        fresh_snapshot_complete=fresh_snapshot_complete,
+        recent_order_query_metadata_complete=(
+            recent_order_query_metadata_complete
+        ),
+        redaction_marker_present=redaction_marker_present,
+    )
+    return {
+        "version": _EXPLICIT_CLOSE_PROBE_PROMPT_REVIEW_VERSION,
+        "manual_review_only": True,
+        "broker_action_performed": False,
+        "close_order_submitted": False,
+        "prompt_ready_for_operator_review": prompt_ready,
+        "generated_from_future_close_probe_preparation": (
+            generated_from_preparation
+        ),
+        "observed_preparation_ready": observed_preparation_ready,
+        "observed_eligibility_status": observed_eligibility_status,
+        "observed_position_symbol": observed_position_symbol,
+        "observed_position_quantity": observed_position_quantity,
+        "observed_recent_order_query_metadata_complete": (
+            recent_order_query_metadata_complete
+        ),
+        "required_final_pre_submit_snapshot": True,
+        "required_final_operator_confirmation": True,
+        "future_probe_scope": _EXPLICIT_CLOSE_PROBE_REVIEW_SCOPE,
+        "blocking_reasons": blocking_reasons,
+        "recommended_next_operator_action": (
+            _EXPLICIT_CLOSE_PROBE_REVIEW_NEXT_ELIGIBLE
+            if prompt_ready
+            else _EXPLICIT_CLOSE_PROBE_REVIEW_NEXT_BLOCKED
+        ),
+        "review_only_prompt_text": _explicit_close_probe_review_prompt_text(
+            observed_position_symbol,
+            observed_position_quantity,
+        ),
+        "future_command_template_review_only": (
+            _EXPLICIT_CLOSE_PROBE_COMMAND_TEMPLATE
+        ),
+    }
+
+
+def _explicit_close_probe_prompt_review_blocking_reasons(
+    *,
+    generated_from_preparation: bool,
+    observed_preparation_ready: bool,
+    observed_eligibility_status: str,
+    close_preview_evidence_exists: bool,
+    fresh_snapshot_complete: bool,
+    recent_order_query_metadata_complete: bool,
+    redaction_marker_present: bool,
+) -> list[str]:
+    reasons: list[str] = []
+    if not generated_from_preparation:
+        reasons.append("future_close_probe_preparation_missing")
+    if not observed_preparation_ready:
+        reasons.append("future_close_probe_preparation_not_ready")
+    if observed_eligibility_status != _CLOSE_ACTION_STATUS_ELIGIBLE:
+        reasons.append(
+            f"m326_eligibility_status_{observed_eligibility_status or 'missing'}"
+        )
+    if not close_preview_evidence_exists:
+        reasons.append("close_preview_evidence_missing")
+    if not fresh_snapshot_complete:
+        reasons.append("fresh_snapshot_checklist_incomplete")
+    if not recent_order_query_metadata_complete:
+        reasons.append("recent_order_query_metadata_incomplete")
+    if not redaction_marker_present:
+        reasons.append("redaction_marker_missing")
+    return _deduped_text_items(reasons)
+
+
+def _explicit_close_probe_review_prompt_text(
+    observed_position_symbol: str,
+    observed_position_quantity: str,
+) -> str:
+    symbol = observed_position_symbol or "BTCUSD"
+    quantity = observed_position_quantity or "<OBSERVED_BTCUSD_POSITION_QUANTITY>"
+    return (
+        "OPERATOR REVIEW ONLY: draft a possible separate M329 approval packet "
+        f"for a future {symbol} paper close probe. This review does not "
+        "execute, authorize, simulate, or submit any broker-side action. "
+        f"Observed {symbol} position quantity: {quantity}. A future action, if "
+        "separately authorized, must first require a final fresh read-only "
+        "paper snapshot and explicit final operator confirmation."
+    )
 
 
 def _close_preview_evidence(
@@ -3140,6 +3319,78 @@ def _future_close_probe_preparation_lines(
         ]
     )
     return lines
+
+
+def _explicit_close_probe_prompt_review_lines(
+    review: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "explicit_close_probe_prompt_review:",
+        "  review_only_label: operator_review_only",
+        f"  version: {_value_text(review.get('version'))}",
+        (
+            "  manual_review_only: "
+            f"{_bool_text(review.get('manual_review_only'))}"
+        ),
+        (
+            "  broker_action_performed: "
+            f"{_bool_text(review.get('broker_action_performed'))}"
+        ),
+        (
+            "  close_order_submitted: "
+            f"{_bool_text(review.get('close_order_submitted'))}"
+        ),
+        (
+            "  prompt_ready_for_operator_review: "
+            f"{_bool_text(review.get('prompt_ready_for_operator_review'))}"
+        ),
+        (
+            "  generated_from_future_close_probe_preparation: "
+            f"{_bool_text(review.get('generated_from_future_close_probe_preparation'))}"
+        ),
+        (
+            "  observed_preparation_ready: "
+            f"{_bool_text(review.get('observed_preparation_ready'))}"
+        ),
+        (
+            "  observed_eligibility_status: "
+            f"{_value_text(review.get('observed_eligibility_status'))}"
+        ),
+        (
+            "  observed_position_symbol: "
+            f"{_value_text(review.get('observed_position_symbol'))}"
+        ),
+        (
+            "  observed_position_quantity: "
+            f"{_value_text(review.get('observed_position_quantity'))}"
+        ),
+        (
+            "  observed_recent_order_query_metadata_complete: "
+            f"{_bool_text(review.get('observed_recent_order_query_metadata_complete'))}"
+        ),
+        (
+            "  required_final_pre_submit_snapshot: "
+            f"{_bool_text(review.get('required_final_pre_submit_snapshot'))}"
+        ),
+        (
+            "  required_final_operator_confirmation: "
+            f"{_bool_text(review.get('required_final_operator_confirmation'))}"
+        ),
+        f"  future_probe_scope: {_value_text(review.get('future_probe_scope'))}",
+        f"  blocking_reasons: {_joined(review.get('blocking_reasons'))}",
+        (
+            "  recommended_next_operator_action: "
+            f"{_value_text(review.get('recommended_next_operator_action'))}"
+        ),
+        (
+            "  review_only_prompt_text: "
+            f"{_value_text(review.get('review_only_prompt_text'))}"
+        ),
+        (
+            "  future_command_template_review_only: "
+            f"{_value_text(review.get('future_command_template_review_only'))}"
+        ),
+    ]
 
 
 def _submit_observation_lines(

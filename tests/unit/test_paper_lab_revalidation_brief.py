@@ -58,6 +58,25 @@ POST_RECEIPT_RECONCILIATION_FIELDS = {
     "submitted",
     "symbol",
 }
+EXPLICIT_CLOSE_PROBE_PROMPT_REVIEW_REQUIRED_FIELDS = {
+    "manual_review_only",
+    "broker_action_performed",
+    "close_order_submitted",
+    "prompt_ready_for_operator_review",
+    "generated_from_future_close_probe_preparation",
+    "observed_preparation_ready",
+    "observed_eligibility_status",
+    "observed_position_symbol",
+    "observed_position_quantity",
+    "observed_recent_order_query_metadata_complete",
+    "required_final_pre_submit_snapshot",
+    "required_final_operator_confirmation",
+    "future_probe_scope",
+    "blocking_reasons",
+    "recommended_next_operator_action",
+    "review_only_prompt_text",
+    "future_command_template_review_only",
+}
 
 
 def test_text_output_is_deterministic_for_usable_snapshot_log(tmp_path) -> None:
@@ -518,6 +537,173 @@ def test_close_action_eligibility_checklist_allows_later_operator_approval(
         "draft_explicit_paper_close_probe_command_for_operator_review_only"
         in rendered
     )
+
+
+def test_explicit_close_probe_prompt_review_ready_for_operator_review(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "explicit_close_prompt_review_ready.jsonl",
+        _eligible_close_probe_records(),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+    rendered = render_paper_lab_revalidation_brief_text(payload)
+
+    assert set(prompt_review) >= EXPLICIT_CLOSE_PROBE_PROMPT_REVIEW_REQUIRED_FIELDS
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is True
+    assert (
+        prompt_review["generated_from_future_close_probe_preparation"] is True
+    )
+    assert prompt_review["observed_preparation_ready"] is True
+    assert prompt_review["observed_eligibility_status"] == (
+        "eligible_for_explicit_operator_approval"
+    )
+    assert prompt_review["observed_position_symbol"] == "BTCUSD"
+    assert prompt_review["observed_position_quantity"] == "0.000132386"
+    assert (
+        prompt_review["observed_recent_order_query_metadata_complete"] is True
+    )
+    assert prompt_review["required_final_pre_submit_snapshot"] is True
+    assert prompt_review["required_final_operator_confirmation"] is True
+    assert prompt_review["blocking_reasons"] == []
+    assert prompt_review["recommended_next_operator_action"] == (
+        "review_explicit_paper_close_probe_prompt_and_decide_whether_to_authorize_separate_m329"
+    )
+    assert "OPERATOR REVIEW ONLY" in prompt_review["review_only_prompt_text"]
+    assert "<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>" in prompt_review[
+        "future_command_template_review_only"
+    ]
+    assert "--submit" not in prompt_review["future_command_template_review_only"]
+    assert all("--submit" not in command for command in _generated_command_values(payload))
+    assert "explicit_close_probe_prompt_review:" in rendered
+    assert "review_only_label: operator_review_only" in rendered
+    assert "prompt_ready_for_operator_review: true" in rendered
+
+
+def test_explicit_close_probe_prompt_review_blocks_snapshot_only_evidence(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "snapshot_only_prompt_review.jsonl",
+        _complete_snapshot_records(),
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is False
+    assert "future_close_probe_preparation_not_ready" in prompt_review[
+        "blocking_reasons"
+    ]
+    assert "fresh_snapshot_checklist_incomplete" in prompt_review[
+        "blocking_reasons"
+    ]
+    assert prompt_review["recommended_next_operator_action"] == (
+        "complete_future_close_probe_preparation_before_prompt_review"
+    )
+
+
+def test_explicit_close_probe_prompt_review_blocks_missing_close_preview(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "missing_close_preview_prompt_review.jsonl",
+        _fresh_snapshot_records(run_id="m324-fresh-read-only"),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is False
+    assert prompt_review["observed_preparation_ready"] is False
+    assert prompt_review["observed_eligibility_status"] == (
+        "blocked_missing_close_preview"
+    )
+    assert "close_preview_evidence_missing" in prompt_review[
+        "blocking_reasons"
+    ]
+
+
+def test_explicit_close_probe_prompt_review_blocks_missing_recent_order_metadata(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "missing_query_metadata_prompt_review.jsonl",
+        (
+            *_records_without_recent_order_query_metadata(
+                _fresh_snapshot_records(run_id="m324-fresh-read-only")
+            ),
+            *_close_preview_records(run_id="m325-close-preview"),
+        ),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is False
+    assert (
+        prompt_review["observed_recent_order_query_metadata_complete"] is False
+    )
+    assert "recent_order_query_metadata_incomplete" in prompt_review[
+        "blocking_reasons"
+    ]
+
+
+def test_explicit_close_probe_prompt_review_blocks_missing_fresh_snapshot(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "missing_fresh_snapshot_prompt_review.jsonl",
+        _close_preview_records(run_id="m325-close-preview"),
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is False
+    assert "fresh_snapshot_checklist_incomplete" in prompt_review[
+        "blocking_reasons"
+    ]
+
+
+def test_explicit_close_probe_prompt_review_blocks_missing_redaction_marker(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "missing_redaction_prompt_review.jsonl",
+        _records_without_redaction_marker(_eligible_close_probe_records()),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    close_action = payload["close_action_eligibility_checklist"]
+    prompt_review = payload["explicit_close_probe_prompt_review"]
+
+    assert "credentials_redacted_marker_missing" in close_action[
+        "blocking_reasons"
+    ]
+    _assert_prompt_review_safe_defaults(prompt_review)
+    assert prompt_review["prompt_ready_for_operator_review"] is False
+    assert prompt_review["observed_preparation_ready"] is False
+    assert "redaction_marker_missing" in prompt_review["blocking_reasons"]
 
 
 def test_close_action_eligibility_checklist_blocks_no_shorting_failure(
@@ -1585,6 +1771,32 @@ def _close_preview_records(
     return make_paper_close_preview_events(run_id=run_id, payload=payload)
 
 
+def _eligible_close_probe_records() -> tuple[dict[str, object], ...]:
+    return (
+        *_fresh_snapshot_records(run_id="m324-fresh-read-only"),
+        *_close_preview_records(run_id="m325-close-preview"),
+    )
+
+
+def _records_without_recent_order_query_metadata(
+    records: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    metadata_keys = set(_complete_recent_order_query_metadata(0))
+    return tuple(
+        {key: value for key, value in record.items() if key not in metadata_keys}
+        for record in records
+    )
+
+
+def _records_without_redaction_marker(
+    records: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object], ...]:
+    return tuple(
+        {key: value for key, value in record.items() if key != "redaction"}
+        for record in records
+    )
+
+
 def _fresh_snapshot_records(
     *,
     run_id: str = "fresh-snapshot-run",
@@ -1753,6 +1965,13 @@ def _generated_command_values(value) -> list[str]:  # noqa: ANN001
         for item in value:
             values.extend(_generated_command_values(item))
     return values
+
+
+def _assert_prompt_review_safe_defaults(review: dict[str, object]) -> None:
+    assert review["manual_review_only"] is True
+    assert review["broker_action_performed"] is False
+    assert review["close_order_submitted"] is False
+    assert "--submit" not in str(review["future_command_template_review_only"])
 
 
 def _forbidden_claims_absent(rendered: str) -> bool:

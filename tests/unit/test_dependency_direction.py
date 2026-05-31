@@ -398,6 +398,47 @@ def test_execution_planning_modules_do_not_call_runtime_or_broker_boundaries() -
         )
 
 
+def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
+    path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    forbidden_import_prefixes = (
+        "alpaca",
+        "alpaca_trade_api",
+        "httpx",
+        "requests",
+        "socket",
+        "urllib",
+    )
+    import_violations = [
+        f"{import_reference.path}:{import_reference.line}: "
+        f"revalidation brief must not import {import_reference.module}"
+        for import_reference in _import_references(path)
+        if _matches_forbidden_prefix(
+            import_reference.module,
+            forbidden_import_prefixes,
+        )
+    ]
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+    forbidden_calls = {
+        "cancel_order",
+        "close_position",
+        "connect",
+        "create_order",
+        "liquidate",
+        "request",
+        "socket.socket",
+        "submit_order",
+        "urlopen",
+    }
+
+    assert import_violations == []
+    assert call_names.isdisjoint(forbidden_calls)
+
+
 def _assert_execution_planning_module_has_no_runtime_or_broker_boundaries(
     module_name: str,
 ) -> None:
