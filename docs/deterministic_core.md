@@ -8382,6 +8382,28 @@ scheduler/autonomous behavior, and no order/fill/account/portfolio mutation.
 The next milestone may create a preview-only local policy/checklist; it is not a
 submit path.
 
+Phase 337 / Milestone 337 - ETF/SMA Offline Backtest Summary v1 adds the first
+deterministic measurement artifact for the M335/M336 ETF/SMA path. The new
+`etf_sma_offline_backtest_summary` contract accepts caller-supplied
+deterministic local or synthetic bars, an immutable config, and an explicit
+`as_of` date. It ignores future bars, computes SMA signals only from closes
+available at or before each signal bar, applies exposure with a one-bar delay to
+avoid same-bar lookahead, and reports summary metrics including bar counts,
+signal/exposure/defensive counts, posture changes, strategy total return,
+buy-and-hold benchmark total return, max drawdown, and latest posture.
+
+The summary preserves `research_only`, `paper_lab_candidate`,
+`not_live_authorized`, and `profit_claim=none`, while eligibility remains
+`research_measurement_only`. Its limitations are explicitly
+`synthetic_or_local_input_only`, `zero_cost_or_declared_cost_model`,
+`no_slippage_model_unless_explicitly_added`, `no_live_or_paper_authorization`,
+and `not_profit_evidence`. M337 adds no broker action, no broker preview or
+staging, no `ExecutionIntent`, no `ExecutionPlan`, no credentials, no network,
+no market-data fetch, no live profile/live URL, no scheduler/autonomous
+behavior, and no order/fill/account/portfolio mutation. The next step is local
+data snapshot validation or a gated preview packet before any paper-lab
+experiment, not broker submission.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
