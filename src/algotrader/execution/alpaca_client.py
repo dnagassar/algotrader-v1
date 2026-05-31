@@ -19,6 +19,10 @@ _TIME_IN_FORCE_BY_ASSET_CLASS = {
     "crypto": ("gtc", "ioc"),
     "option": ("day",),
 }
+RECENT_ORDER_QUERY_CONTRACT_VERSION = "paper_recent_order_query_v1"
+_RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
+_RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
+_RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
 
 
 @dataclass(frozen=True)
@@ -54,6 +58,48 @@ class AlpacaOrderResponse:
     time_in_force: str = ""
     submitted_at: Optional[datetime] = None
     filled_at: Optional[datetime] = None
+
+
+@dataclass(frozen=True)
+class AlpacaRecentOrderQuery:
+    status_filter: str = "open"
+    limit: Optional[int] = 100
+    asset_class_filter: str = ""
+    symbol_filter: str = ""
+    side_filter: str = ""
+    after: Optional[datetime] = None
+    until: Optional[datetime] = None
+    sort: str = ""
+    direction: str = "desc"
+    nested: Optional[bool] = False
+    source: str = "alpaca_sdk_client.get_orders"
+    contract_version: str = RECENT_ORDER_QUERY_CONTRACT_VERSION
+
+    def __post_init__(self) -> None:
+        status_filter = self.status_filter.strip().lower()
+        asset_class_filter = self.asset_class_filter.strip().lower()
+        symbol_filter = self.symbol_filter.strip().upper()
+        side_filter = self.side_filter.strip().lower()
+        sort = self.sort.strip().lower()
+        direction = self.direction.strip().lower()
+
+        if status_filter not in _RECENT_ORDER_QUERY_STATUSES:
+            raise ValueError("recent order query status_filter is unsupported.")
+        if side_filter not in _RECENT_ORDER_QUERY_SIDES:
+            raise ValueError("recent order query side_filter is unsupported.")
+        if direction not in _RECENT_ORDER_QUERY_DIRECTIONS:
+            raise ValueError("recent order query direction is unsupported.")
+        if self.limit is not None and self.limit <= 0:
+            raise ValueError("recent order query limit must be positive.")
+        if self.nested is not None and not isinstance(self.nested, bool):
+            raise ValueError("recent order query nested must be bool or None.")
+
+        object.__setattr__(self, "status_filter", status_filter)
+        object.__setattr__(self, "asset_class_filter", asset_class_filter)
+        object.__setattr__(self, "symbol_filter", symbol_filter)
+        object.__setattr__(self, "side_filter", side_filter)
+        object.__setattr__(self, "sort", sort)
+        object.__setattr__(self, "direction", direction)
 
 
 @dataclass(frozen=True)
@@ -132,7 +178,10 @@ class AlpacaClient(Protocol):
     def get_positions(self) -> Sequence[AlpacaPositionResponse]:
         ...
 
-    def get_orders(self) -> Sequence[AlpacaOrderResponse]:
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery | None = None,
+    ) -> Sequence[AlpacaOrderResponse]:
         ...
 
     def submit_order(
@@ -159,5 +208,7 @@ __all__ = [
     "AlpacaOrderResponse",
     "AlpacaOrderRequest",
     "AlpacaOrderSubmissionResponse",
+    "AlpacaRecentOrderQuery",
     "AlpacaPositionResponse",
+    "RECENT_ORDER_QUERY_CONTRACT_VERSION",
 ]

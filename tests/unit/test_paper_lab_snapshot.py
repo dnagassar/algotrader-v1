@@ -8,7 +8,10 @@ import algotrader.cli as cli_module
 from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
-from algotrader.execution.alpaca_client import AlpacaOrderResponse
+from algotrader.execution.alpaca_client import (
+    AlpacaOrderResponse,
+    AlpacaRecentOrderQuery,
+)
 from tests.fakes.alpaca import FakeAlpacaClient
 
 
@@ -38,13 +41,35 @@ def test_paper_lab_snapshot_observes_account_positions_and_orders_read_only(
     assert payload["account"] == {"cash": "100000", "currency": "USD"}
     assert payload["position_count"] == 1
     assert payload["position_symbols"] == ["MSFT"]
+    assert payload["recent_order_query_attempted"] is True
+    assert payload["recent_order_query_available"] is True
+    assert payload["recent_order_query_limit"] == 100
+    assert payload["recent_order_query_status_filter"] == "open"
+    assert payload["recent_order_query_asset_class_filter"] == ""
+    assert payload["recent_order_query_symbol_filter"] == ""
+    assert payload["recent_order_query_side_filter"] == ""
+    assert payload["recent_order_query_after"] is None
+    assert payload["recent_order_query_until"] is None
+    assert payload["recent_order_query_sort"] == ""
+    assert payload["recent_order_query_direction"] == "desc"
+    assert payload["recent_order_query_nested"] is False
+    assert payload["recent_order_query_source"] == "alpaca_sdk_client.get_orders"
+    assert payload["recent_order_query_contract_version"] == (
+        "paper_recent_order_query_v1"
+    )
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert payload["recent_order_query_metadata_missing_fields"] == []
+    assert payload["recent_order_query_returned_count"] == 1
     assert payload["recent_order_count"] == 1
+    assert fake_client.recent_order_queries == [AlpacaRecentOrderQuery()]
     assert payload["recent_orders"] == [
         {
             "asset_class": "equity",
+            "client_order_id": "paper-order-probe-notional-1",
             "filled_at": "",
             "normalized_status": "accepted",
             "notional": "5.00",
+            "order_id": "broker-order-1",
             "order_type": "market",
             "quantity": "",
             "raw_status": "OrderStatus.ACCEPTED",
@@ -92,6 +117,16 @@ def test_paper_lab_snapshot_writes_append_only_observation_log(
     assert records[1]["account"] == payload["account"]
     assert records[2]["position_symbols"] == ["MSFT"]
     assert records[3]["recent_orders"] == payload["recent_orders"]
+    assert records[3]["recent_order_query_attempted"] is True
+    assert records[3]["recent_order_query_available"] is True
+    assert records[3]["recent_order_query_limit"] == 100
+    assert records[3]["recent_order_query_status_filter"] == "open"
+    assert records[3]["recent_order_query_contract_version"] == (
+        "paper_recent_order_query_v1"
+    )
+    assert records[3]["recent_order_query_metadata_complete"] is True
+    assert records[3]["recent_order_query_metadata_missing_fields"] == []
+    assert records[3]["recent_order_query_returned_count"] == 1
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
 
@@ -150,6 +185,12 @@ def test_paper_lab_snapshot_marks_orders_unavailable_without_submitting(
     assert payload["account_observation_available"] is True
     assert payload["positions_observation_available"] is True
     assert payload["orders_observation_available"] is False
+    assert payload["recent_order_query_attempted"] is True
+    assert payload["recent_order_query_available"] is False
+    assert payload["recent_order_query_limit"] == 100
+    assert payload["recent_order_query_status_filter"] == "open"
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert payload["recent_order_query_returned_count"] == 0
     assert payload["unavailable_observations"] == ["orders"]
     assert payload["unavailable_reasons"]["orders"]["error_type"] == (
         "AlpacaAdapterError"
@@ -174,8 +215,13 @@ def _set_env(monkeypatch, *, profile: str = "paper") -> None:
 
 
 class FakeSnapshotAlpacaClient(FakeAlpacaClient):
-    def get_orders(self) -> list[AlpacaOrderResponse]:
+    def __init__(self) -> None:
+        super().__init__()
+        self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
+
+    def get_orders(self, query: AlpacaRecentOrderQuery) -> list[AlpacaOrderResponse]:
         self.calls.append("get_orders")
+        self.recent_order_queries.append(query)
         return [
             AlpacaOrderResponse(
                 order_id="broker-order-1",

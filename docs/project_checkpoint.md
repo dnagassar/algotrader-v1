@@ -13664,6 +13664,44 @@ Safe next tasks include:
   call, live profile/live URL behavior, credential access, broker write path,
   scheduler, autonomous loop, research-layer submission, or unsafe pytest
   behavior.
+- Phase 320 / Milestone 320 - Crypto Paper Order-List Gap Diagnostics keeps
+  the M319 `receipt_and_position_observed_with_order_list_gap` classification
+  and adds deterministic local reasons for the M318 order-list gap. Snapshot
+  output now records recent-order query attempted/available flags, returned
+  count, and currently unspecified limit/status/asset/symbol/time-window
+  filters. Recent-order observations preserve safe `order_id` and
+  `client_order_id` fields when exposed by the fake/SDK boundary. The
+  revalidation brief now reports target receipt correlation fields, target
+  recent-order match status, match basis (`client_order_id`, `broker_order_id`,
+  `symbol_side_notional`, or `none`), and `order_list_gap_reason` values such
+  as `recent_order_query_returned_empty`,
+  `target_order_not_in_recent_order_results`,
+  `receipt_missing_correlation_id`, `order_query_unavailable`, and
+  `insufficient_order_query_metadata`. For the M318 shape, the state remains
+  `receipt_and_position_observed_with_order_list_gap` and the local reason is
+  `recent_order_query_returned_empty`. This milestone adds no submit command,
+  close/sell order, Alpaca call, network use, live profile/live URL behavior,
+  credential access, broker write path, scheduler, autonomous loop,
+  research-layer submission, or unsafe pytest behavior.
+- Phase 321 / Milestone 321 - Paper Recent-Order Query Contract adds a
+  deterministic fake/local-only query contract before any future paper close or
+  exit probe. `AlpacaRecentOrderQuery` is versioned as
+  `paper_recent_order_query_v1` and defaults to open orders, limit `100`,
+  descending direction, `nested=false`, no symbol/asset-class/side filters, no
+  after/until window, no sort key, and source
+  `alpaca_sdk_client.get_orders`. Only the approved SDK boundary converts that
+  internal contract to alpaca-py's `GetOrdersRequest`; fake clients receive the
+  internal query object directly. Snapshot JSON/JSONL/text and revalidation
+  output now record the contract fields plus
+  `recent_order_query_metadata_complete` and
+  `recent_order_query_metadata_missing_fields`. M318/M320-shaped logs still
+  classify as `receipt_and_position_observed_with_order_list_gap` with
+  `order_list_gap_reason=recent_order_query_returned_empty`, but incomplete
+  metadata is explicit: local query metadata proves only what the snapshot
+  layer requested or recorded, not external broker order state. This milestone
+  adds no submit command, close/sell order, Alpaca call, network use, live
+  profile/live URL behavior, credential access, broker write path, scheduler,
+  autonomous loop, research-layer submission, or unsafe pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

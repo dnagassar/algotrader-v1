@@ -15,7 +15,7 @@ from algotrader.execution.broker_base import BrokerOrderResult
 from algotrader.portfolio.state import Account, Position
 from algotrader.risk.state import RiskVerdict
 
-from .alpaca_client import AlpacaOrderRequest
+from .alpaca_client import AlpacaOrderRequest, AlpacaRecentOrderQuery
 from .alpaca_mapper import (
     map_translated_account_to_account,
     map_translated_order_result_to_broker_result,
@@ -84,8 +84,12 @@ class AlpacaClientAdapter:
             for response in responses
         )
 
-    def list_recent_orders(self) -> tuple[TranslatedAlpacaOrderObservation, ...]:
-        responses = self._call_client(self._orders_method_name())
+    def list_recent_orders(
+        self,
+        query: AlpacaRecentOrderQuery | None = None,
+    ) -> tuple[TranslatedAlpacaOrderObservation, ...]:
+        resolved_query = query or AlpacaRecentOrderQuery()
+        responses = self._call_client(self._orders_method_name(), resolved_query)
 
         if responses is None:
             return ()

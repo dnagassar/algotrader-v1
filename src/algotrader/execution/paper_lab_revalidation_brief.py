@@ -45,8 +45,13 @@ _OBSERVATION_EVENT_TYPES = {
     "orders": PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
 }
 _SAFE_ORDER_STATUS_FIELDS = (
+    "order_id",
+    "broker_order_id",
+    "client_order_id",
     "symbol",
     "side",
+    "notional",
+    "quantity",
     "normalized_status",
     "raw_status",
     "asset_class",
@@ -66,6 +71,42 @@ _ACCEPTED_RECEIPT_STATUSES = frozenset(
     ("accepted", "new", "pending_new", "submitted", "partially_filled", "filled")
 )
 _REJECTED_RECEIPT_STATUSES = frozenset(("rejected",))
+_RECENT_ORDER_QUERY_METADATA_FIELDS = (
+    "recent_order_query_limit",
+    "recent_order_query_status_filter",
+    "recent_order_query_asset_class_filter",
+    "recent_order_query_symbol_filter",
+    "recent_order_query_side_filter",
+    "recent_order_query_after",
+    "recent_order_query_until",
+    "recent_order_query_sort",
+    "recent_order_query_direction",
+    "recent_order_query_nested",
+    "recent_order_query_source",
+    "recent_order_query_contract_version",
+)
+_RECENT_ORDER_QUERY_REQUIRED_METADATA_FIELDS = (
+    "recent_order_query_limit",
+    "recent_order_query_status_filter",
+    "recent_order_query_direction",
+    "recent_order_query_nested",
+    "recent_order_query_source",
+    "recent_order_query_contract_version",
+)
+_ORDER_LIST_GAP_REASON_RECENT_ORDER_QUERY_RETURNED_EMPTY = (
+    "recent_order_query_returned_empty"
+)
+_ORDER_LIST_GAP_REASON_TARGET_ORDER_NOT_IN_RECENT_ORDER_RESULTS = (
+    "target_order_not_in_recent_order_results"
+)
+_ORDER_LIST_GAP_REASON_RECEIPT_MISSING_CORRELATION_ID = (
+    "receipt_missing_correlation_id"
+)
+_ORDER_LIST_GAP_REASON_ORDER_QUERY_UNAVAILABLE = "order_query_unavailable"
+_ORDER_LIST_GAP_REASON_INSUFFICIENT_ORDER_QUERY_METADATA = (
+    "insufficient_order_query_metadata"
+)
+_ORDER_LIST_GAP_REASON_UNKNOWN = "unknown"
 _MANUAL_REVIEW_USABLE_STATES = frozenset(
     (
         STATE_RECEIPT_AND_POSITION_OBSERVED,
@@ -440,23 +481,59 @@ def _submit_observation(records: Sequence[Mapping[str, Any]]) -> dict[str, objec
         if post_orders
         else None
     )
-    target_recent_order_observed = (
-        _target_recent_order_observed(recent_order_statuses, target_symbol)
-        if post_orders
-        else None
-    )
+    unavailable_observations = _unavailable_observations(records)
+    order_query_unavailable = "orders" in unavailable_observations and post_orders is None
     accepted = _record_bool(source_record, "accepted")
     normalized_status = _record_status(
         source_record, "normalized_status", "broker_normalized_status"
     )
     receipt_observed = receipt_record is not None
+    receipt_client_order_id = _record_correlation_id(
+        source_record, "client_order_id"
+    )
+    receipt_order_id = _record_receipt_order_id(source_record)
+    target_recent_order_match_basis = (
+        _target_recent_order_match_basis(
+            recent_order_statuses,
+            target_symbol=target_symbol,
+            target_side=_record_code(source_record, "side"),
+            target_notional=_record_money(source_record, "notional"),
+            receipt_client_order_id=receipt_client_order_id,
+            receipt_order_id=receipt_order_id,
+        )
+        if post_orders
+        else "none"
+    )
+    target_recent_order_observed = (
+        target_recent_order_match_basis != "none" if post_orders else None
+    )
     receipt_successful = _receipt_successful(
         receipt_observed=receipt_observed,
         accepted=accepted,
         normalized_status=normalized_status,
     )
     order_list_observation_gap = bool(
-        receipt_successful and post_orders is not None and not target_recent_order_observed
+        receipt_successful
+        and (
+            (post_orders is not None and not target_recent_order_observed)
+            or order_query_unavailable
+        )
+    )
+    order_list_gap_reason = _order_list_gap_reason(
+        order_list_observation_gap=order_list_observation_gap,
+        order_query_unavailable=order_query_unavailable,
+        recent_order_count=recent_order_count,
+        recent_order_statuses=recent_order_statuses,
+        receipt_client_order_id=receipt_client_order_id,
+        receipt_order_id=receipt_order_id,
+        target_notional=_record_money(source_record, "notional"),
+        target_recent_order_match_basis=target_recent_order_match_basis,
+        target_side=_record_code(source_record, "side"),
+        target_symbol=target_symbol,
+    )
+    recent_order_query_metadata = _recent_order_query_metadata(post_orders)
+    recent_order_query_missing_fields = (
+        _recent_order_query_metadata_missing_fields(post_orders)
     )
 
     return {
@@ -482,6 +559,7 @@ def _submit_observation(records: Sequence[Mapping[str, Any]]) -> dict[str, objec
         "normalized_status": normalized_status,
         "notional": _record_money(source_record, "notional"),
         "order_list_observation_gap": order_list_observation_gap,
+        "order_list_gap_reason": order_list_gap_reason,
         "order_type": _record_code(source_record, "order_type"),
         "post_submit_cash": post_cash,
         "post_submit_position_count": _position_count(post_positions),
@@ -493,6 +571,55 @@ def _submit_observation(records: Sequence[Mapping[str, Any]]) -> dict[str, objec
         "receipt_observed": receipt_observed,
         "receipt_successful": receipt_successful,
         "recent_order_count": recent_order_count,
+        "recent_order_query_after": recent_order_query_metadata[
+            "recent_order_query_after"
+        ],
+        "recent_order_query_asset_class_filter": recent_order_query_metadata[
+            "recent_order_query_asset_class_filter"
+        ],
+        "recent_order_query_attempted": _recent_order_query_attempted(
+            post_orders, order_query_unavailable
+        ),
+        "recent_order_query_available": _recent_order_query_available(
+            post_orders, order_query_unavailable
+        ),
+        "recent_order_query_contract_version": recent_order_query_metadata[
+            "recent_order_query_contract_version"
+        ],
+        "recent_order_query_direction": recent_order_query_metadata[
+            "recent_order_query_direction"
+        ],
+        "recent_order_query_limit": recent_order_query_metadata[
+            "recent_order_query_limit"
+        ],
+        "recent_order_query_metadata_complete": not recent_order_query_missing_fields,
+        "recent_order_query_metadata_missing_fields": list(
+            recent_order_query_missing_fields
+        ),
+        "recent_order_query_nested": recent_order_query_metadata[
+            "recent_order_query_nested"
+        ],
+        "recent_order_query_returned_count": (
+            recent_order_count if post_orders else None
+        ),
+        "recent_order_query_side_filter": recent_order_query_metadata[
+            "recent_order_query_side_filter"
+        ],
+        "recent_order_query_sort": recent_order_query_metadata[
+            "recent_order_query_sort"
+        ],
+        "recent_order_query_source": recent_order_query_metadata[
+            "recent_order_query_source"
+        ],
+        "recent_order_query_status_filter": recent_order_query_metadata[
+            "recent_order_query_status_filter"
+        ],
+        "recent_order_query_symbol_filter": recent_order_query_metadata[
+            "recent_order_query_symbol_filter"
+        ],
+        "recent_order_query_until": recent_order_query_metadata[
+            "recent_order_query_until"
+        ],
         "recent_order_observed_for_target": target_recent_order_observed,
         "side": _record_code(source_record, "side"),
         "submit_attempt_count": len(submit_attempt_indices),
@@ -510,8 +637,15 @@ def _submit_observation(records: Sequence[Mapping[str, Any]]) -> dict[str, objec
         "target_position_quantity": (
             target_position.get("quantity") if target_position else ""
         ),
+        "target_receipt_client_order_id": receipt_client_order_id,
+        "target_receipt_observed": receipt_observed,
+        "target_receipt_order_id": receipt_order_id,
+        "target_recent_order_match_basis": target_recent_order_match_basis,
+        "target_recent_order_match_observed": (
+            target_recent_order_match_basis != "none"
+        ),
         "time_in_force": _record_code(source_record, "time_in_force"),
-        "unavailable_observations": list(_unavailable_observations(records)),
+        "unavailable_observations": list(unavailable_observations),
     }
 
 
@@ -660,13 +794,198 @@ def _target_position(
     return None
 
 
-def _target_recent_order_observed(
+def _target_recent_order_match_basis(
     statuses: Sequence[Mapping[str, str]],
+    *,
+    target_symbol: str,
+    target_side: str,
+    target_notional: str,
+    receipt_client_order_id: str,
+    receipt_order_id: str,
+) -> str:
+    if receipt_client_order_id and any(
+        status.get("client_order_id") == receipt_client_order_id
+        for status in statuses
+    ):
+        return "client_order_id"
+    if receipt_order_id and any(
+        _status_order_id(status) == receipt_order_id for status in statuses
+    ):
+        return "broker_order_id"
+    if target_symbol and target_side and target_notional and any(
+        status.get("symbol") == target_symbol
+        and status.get("side") == target_side
+        and status.get("notional") == target_notional
+        for status in statuses
+    ):
+        return "symbol_side_notional"
+
+    return "none"
+
+
+def _status_order_id(status: Mapping[str, str]) -> str:
+    return status.get("order_id") or status.get("broker_order_id") or ""
+
+
+def _order_list_gap_reason(
+    *,
+    order_list_observation_gap: bool,
+    order_query_unavailable: bool,
+    recent_order_count: int | None,
+    recent_order_statuses: Sequence[Mapping[str, str]],
+    receipt_client_order_id: str,
+    receipt_order_id: str,
+    target_notional: str,
+    target_recent_order_match_basis: str,
+    target_side: str,
+    target_symbol: str,
+) -> str:
+    if not order_list_observation_gap:
+        return ""
+    if order_query_unavailable:
+        return _ORDER_LIST_GAP_REASON_ORDER_QUERY_UNAVAILABLE
+    if target_recent_order_match_basis != "none":
+        return ""
+    if recent_order_count == 0:
+        return _ORDER_LIST_GAP_REASON_RECENT_ORDER_QUERY_RETURNED_EMPTY
+    if not receipt_client_order_id and not receipt_order_id:
+        return _ORDER_LIST_GAP_REASON_RECEIPT_MISSING_CORRELATION_ID
+    if not _has_recent_order_match_metadata(
+        recent_order_statuses,
+        target_notional=target_notional,
+        target_side=target_side,
+        target_symbol=target_symbol,
+    ):
+        return _ORDER_LIST_GAP_REASON_INSUFFICIENT_ORDER_QUERY_METADATA
+
+    return _ORDER_LIST_GAP_REASON_TARGET_ORDER_NOT_IN_RECENT_ORDER_RESULTS
+
+
+def _has_recent_order_match_metadata(
+    statuses: Sequence[Mapping[str, str]],
+    *,
+    target_notional: str,
+    target_side: str,
     target_symbol: str,
 ) -> bool:
-    if not target_symbol:
-        return False
-    return any(status.get("symbol") == target_symbol for status in statuses)
+    for status in statuses:
+        if status.get("client_order_id") or _status_order_id(status):
+            return True
+        if (
+            target_symbol
+            and target_side
+            and target_notional
+            and status.get("symbol")
+            and status.get("side")
+            and status.get("notional")
+        ):
+            return True
+
+    return False
+
+
+def _recent_order_query_attempted(
+    post_orders: Mapping[str, Any] | None,
+    order_query_unavailable: bool,
+) -> bool | None:
+    if post_orders is None:
+        return True if order_query_unavailable else None
+    attempted = _record_bool(post_orders, "recent_order_query_attempted")
+    return True if attempted is None else attempted
+
+
+def _recent_order_query_available(
+    post_orders: Mapping[str, Any] | None,
+    order_query_unavailable: bool,
+) -> bool | None:
+    if post_orders is None:
+        return False if order_query_unavailable else None
+    available = _record_bool(post_orders, "recent_order_query_available")
+    return True if available is None else available
+
+
+def _recent_order_query_metadata(
+    post_orders: Mapping[str, Any] | None,
+) -> dict[str, object]:
+    return {
+        field: _recent_order_query_metadata_value(post_orders, field)
+        for field in _RECENT_ORDER_QUERY_METADATA_FIELDS
+    }
+
+
+def _recent_order_query_metadata_value(
+    post_orders: Mapping[str, Any] | None,
+    field: str,
+) -> object:
+    if post_orders is None:
+        return None if field in _RECENT_ORDER_QUERY_NULLABLE_FIELDS else ""
+    if field == "recent_order_query_asset_class_filter":
+        value = post_orders.get(field)
+        if value in (None, ""):
+            value = post_orders.get("recent_order_query_asset_filter")
+        return _safe_status_value(value)
+    if field == "recent_order_query_limit":
+        return _safe_optional_count(post_orders.get(field))
+    if field == "recent_order_query_nested":
+        return _record_bool(post_orders, field)
+    if field in _RECENT_ORDER_QUERY_NULLABLE_FIELDS:
+        value = post_orders.get(field)
+        return None if value in (None, "") else _safe_status_value(value)
+
+    return _safe_status_value(post_orders.get(field))
+
+
+_RECENT_ORDER_QUERY_NULLABLE_FIELDS = frozenset(
+    ("recent_order_query_after", "recent_order_query_until")
+)
+
+
+def _recent_order_query_metadata_missing_fields(
+    post_orders: Mapping[str, Any] | None,
+) -> tuple[str, ...]:
+    if post_orders is None:
+        return _RECENT_ORDER_QUERY_METADATA_FIELDS
+
+    missing_fields: list[str] = []
+    for field in _RECENT_ORDER_QUERY_METADATA_FIELDS:
+        if field not in post_orders:
+            missing_fields.append(field)
+            continue
+        if field in _RECENT_ORDER_QUERY_REQUIRED_METADATA_FIELDS and _is_missing_query_metadata(
+            post_orders.get(field)
+        ):
+            missing_fields.append(field)
+
+    return tuple(missing_fields)
+
+
+def _is_missing_query_metadata(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str):
+        text = value.strip()
+        return not text or text == "unspecified"
+    return False
+
+
+def _record_correlation_id(record: Mapping[str, Any] | None, key: str) -> str:
+    return _safe_status_value(record.get(key) if record else None)
+
+
+def _record_receipt_order_id(record: Mapping[str, Any] | None) -> str:
+    if record is None:
+        return ""
+    for key in ("order_id", "broker_order_id"):
+        value = _safe_status_value(record.get(key))
+        if value:
+            return value
+    broker_result = _mapping(record.get("broker_result"))
+    for key in ("order_id", "broker_order_id", "id"):
+        value = _safe_status_value(broker_result.get(key))
+        if value:
+            return value
+
+    return ""
 
 
 def _receipt_successful(
@@ -920,6 +1239,18 @@ def _safe_count(value: Any, fallback: int) -> int:
     return fallback
 
 
+def _safe_optional_count(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int) and value >= 0:
+        return value
+    text = _text(value)
+    if text.isdigit():
+        return int(text)
+
+    return None
+
+
 def _safe_run_id(value: Any) -> str:
     text = _text(value)
     if not text:
@@ -1075,12 +1406,104 @@ def _submit_observation_lines(
             f"{_value_text(submit_observation.get('recent_order_count'))}"
         ),
         (
+            "recent_order_query_attempted: "
+            f"{_tri_bool_text(submit_observation.get('recent_order_query_attempted'))}"
+        ),
+        (
+            "recent_order_query_available: "
+            f"{_tri_bool_text(submit_observation.get('recent_order_query_available'))}"
+        ),
+        (
+            "recent_order_query_limit: "
+            f"{_value_text(submit_observation.get('recent_order_query_limit'))}"
+        ),
+        (
+            "recent_order_query_status_filter: "
+            f"{_value_text(submit_observation.get('recent_order_query_status_filter'))}"
+        ),
+        (
+            "recent_order_query_asset_class_filter: "
+            f"{_value_text(submit_observation.get('recent_order_query_asset_class_filter'))}"
+        ),
+        (
+            "recent_order_query_symbol_filter: "
+            f"{_value_text(submit_observation.get('recent_order_query_symbol_filter'))}"
+        ),
+        (
+            "recent_order_query_side_filter: "
+            f"{_value_text(submit_observation.get('recent_order_query_side_filter'))}"
+        ),
+        (
+            "recent_order_query_after: "
+            f"{_value_text(submit_observation.get('recent_order_query_after'))}"
+        ),
+        (
+            "recent_order_query_until: "
+            f"{_value_text(submit_observation.get('recent_order_query_until'))}"
+        ),
+        (
+            "recent_order_query_sort: "
+            f"{_value_text(submit_observation.get('recent_order_query_sort'))}"
+        ),
+        (
+            "recent_order_query_direction: "
+            f"{_value_text(submit_observation.get('recent_order_query_direction'))}"
+        ),
+        (
+            "recent_order_query_nested: "
+            f"{_tri_bool_text(submit_observation.get('recent_order_query_nested'))}"
+        ),
+        (
+            "recent_order_query_source: "
+            f"{_value_text(submit_observation.get('recent_order_query_source'))}"
+        ),
+        (
+            "recent_order_query_contract_version: "
+            f"{_value_text(submit_observation.get('recent_order_query_contract_version'))}"
+        ),
+        (
+            "recent_order_query_returned_count: "
+            f"{_value_text(submit_observation.get('recent_order_query_returned_count'))}"
+        ),
+        (
+            "recent_order_query_metadata_complete: "
+            f"{_tri_bool_text(submit_observation.get('recent_order_query_metadata_complete'))}"
+        ),
+        (
+            "recent_order_query_metadata_missing_fields: "
+            f"{_joined(submit_observation.get('recent_order_query_metadata_missing_fields'))}"
+        ),
+        (
+            "target_receipt_observed: "
+            f"{_tri_bool_text(submit_observation.get('target_receipt_observed'))}"
+        ),
+        (
+            "target_receipt_client_order_id: "
+            f"{_value_text(submit_observation.get('target_receipt_client_order_id'))}"
+        ),
+        (
+            "target_receipt_order_id: "
+            f"{_value_text(submit_observation.get('target_receipt_order_id'))}"
+        ),
+        (
             "recent_order_observed_for_target: "
             f"{_tri_bool_text(submit_observation.get('recent_order_observed_for_target'))}"
         ),
         (
+            "target_recent_order_match_observed: "
+            f"{_tri_bool_text(submit_observation.get('target_recent_order_match_observed'))}"
+        ),
+        (
+            "target_recent_order_match_basis: "
+            f"{_value_text(submit_observation.get('target_recent_order_match_basis'))}"
+        ),
+        (
             "order_list_observation_gap: "
             f"{_tri_bool_text(submit_observation.get('order_list_observation_gap'))}"
+        ),
+        (
+            "order_list_gap_reason: "
+            f"{_value_text(submit_observation.get('order_list_gap_reason'))}"
         ),
         (
             "unavailable_observations: "

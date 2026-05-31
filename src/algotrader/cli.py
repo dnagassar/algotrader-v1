@@ -678,6 +678,8 @@ def _build_paper_lab_snapshot_payload(config) -> dict[str, object]:
 def _paper_lab_snapshot_base_payload(
     profile_gate: dict[str, object],
 ) -> dict[str, object]:
+    from .execution.paper_lab_snapshot import empty_recent_order_query_payload
+
     return {
         "account": None,
         "account_observation_available": False,
@@ -692,6 +694,10 @@ def _paper_lab_snapshot_base_payload(
         "positions": [],
         "positions_observation_available": False,
         "recent_order_count": 0,
+        "recent_order_query_attempted": False,
+        "recent_order_query_available": False,
+        "recent_order_query_returned_count": 0,
+        **empty_recent_order_query_payload(),
         "recent_orders": [],
         "redaction": "credentials_redacted",
         "submitted": False,
@@ -758,21 +764,35 @@ def _observe_paper_lab_snapshot_orders(
     broker,
     config,
 ) -> dict[str, object]:
-    from .execution.paper_lab_snapshot import order_observation_payloads
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.paper_lab_snapshot import (
+        order_observation_payloads,
+        recent_order_query_payload,
+    )
 
+    query = AlpacaRecentOrderQuery()
+    query_payload = {
+        **payload,
+        **recent_order_query_payload(query),
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": False,
+        "recent_order_query_returned_count": 0,
+    }
     try:
         orders = order_observation_payloads(broker.get_recent_orders())
     except Exception as exc:  # pragma: no cover - fake failure safety path
         return _paper_lab_snapshot_unavailable_payload(
-            payload,
+            query_payload,
             "orders",
             exc,
             config,
         )
 
     return {
-        **payload,
+        **query_payload,
         "orders_observation_available": True,
+        "recent_order_query_available": True,
+        "recent_order_query_returned_count": len(orders),
         "recent_order_count": len(orders),
         "recent_orders": list(orders),
     }
@@ -1465,6 +1485,62 @@ def _render_paper_lab_snapshot_payload(
     lines.append(
         "orders_observation_available: "
         f"{_bool_text(payload['orders_observation_available'])}"
+    )
+    lines.append(
+        "recent_order_query_attempted: "
+        f"{_bool_text(payload['recent_order_query_attempted'])}"
+    )
+    lines.append(
+        "recent_order_query_available: "
+        f"{_bool_text(payload['recent_order_query_available'])}"
+    )
+    lines.append(f"recent_order_query_limit: {payload['recent_order_query_limit']}")
+    lines.append(
+        "recent_order_query_status_filter: "
+        f"{payload['recent_order_query_status_filter']}"
+    )
+    lines.append(
+        "recent_order_query_asset_class_filter: "
+        f"{payload['recent_order_query_asset_class_filter']}"
+    )
+    lines.append(
+        "recent_order_query_symbol_filter: "
+        f"{payload['recent_order_query_symbol_filter']}"
+    )
+    lines.append(
+        "recent_order_query_side_filter: "
+        f"{payload['recent_order_query_side_filter']}"
+    )
+    lines.append(f"recent_order_query_after: {payload['recent_order_query_after']}")
+    lines.append(f"recent_order_query_until: {payload['recent_order_query_until']}")
+    lines.append(f"recent_order_query_sort: {payload['recent_order_query_sort']}")
+    lines.append(
+        "recent_order_query_direction: "
+        f"{payload['recent_order_query_direction']}"
+    )
+    lines.append(
+        "recent_order_query_nested: "
+        f"{_optional_bool_text(payload['recent_order_query_nested'])}"
+    )
+    lines.append(
+        "recent_order_query_source: "
+        f"{payload['recent_order_query_source']}"
+    )
+    lines.append(
+        "recent_order_query_contract_version: "
+        f"{payload['recent_order_query_contract_version']}"
+    )
+    lines.append(
+        "recent_order_query_returned_count: "
+        f"{payload['recent_order_query_returned_count']}"
+    )
+    lines.append(
+        "recent_order_query_metadata_complete: "
+        f"{_bool_text(payload['recent_order_query_metadata_complete'])}"
+    )
+    lines.append(
+        "recent_order_query_metadata_missing_fields: "
+        f"{','.join(payload['recent_order_query_metadata_missing_fields'])}"
     )
     account = payload.get("account")
     if isinstance(account, dict):

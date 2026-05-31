@@ -451,6 +451,49 @@ def _snapshot_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         "positions_observation_available": bool(
             payload.get("positions_observation_available", False)
         ),
+        "recent_order_query_after": payload.get("recent_order_query_after"),
+        "recent_order_query_asset_class_filter": _optional_text(
+            payload.get("recent_order_query_asset_class_filter")
+        ),
+        "recent_order_query_attempted": bool(
+            payload.get("recent_order_query_attempted", False)
+        ),
+        "recent_order_query_available": bool(
+            payload.get("recent_order_query_available", False)
+        ),
+        "recent_order_query_contract_version": _optional_text(
+            payload.get("recent_order_query_contract_version")
+        ),
+        "recent_order_query_direction": _optional_text(
+            payload.get("recent_order_query_direction")
+        ),
+        "recent_order_query_limit": payload.get("recent_order_query_limit"),
+        "recent_order_query_metadata_complete": bool(
+            payload.get("recent_order_query_metadata_complete", False)
+        ),
+        "recent_order_query_metadata_missing_fields": payload.get(
+            "recent_order_query_metadata_missing_fields", ()
+        ),
+        "recent_order_query_nested": payload.get("recent_order_query_nested"),
+        "recent_order_query_returned_count": payload.get(
+            "recent_order_query_returned_count", 0
+        ),
+        "recent_order_query_side_filter": _optional_text(
+            payload.get("recent_order_query_side_filter")
+        ),
+        "recent_order_query_sort": _optional_text(
+            payload.get("recent_order_query_sort")
+        ),
+        "recent_order_query_source": _optional_text(
+            payload.get("recent_order_query_source")
+        ),
+        "recent_order_query_status_filter": _optional_text(
+            payload.get("recent_order_query_status_filter")
+        ),
+        "recent_order_query_symbol_filter": _optional_text(
+            payload.get("recent_order_query_symbol_filter")
+        ),
+        "recent_order_query_until": payload.get("recent_order_query_until"),
         "recent_order_count": payload.get("recent_order_count", 0),
         "submitted": bool(payload.get("submitted", False)),
         "unavailable_observations": payload.get("unavailable_observations", ()),

@@ -113,6 +113,23 @@ def test_paper_lab_snapshot_events_capture_account_positions_orders() -> None:
         ],
         "positions_observation_available": True,
         "recent_order_count": 1,
+        "recent_order_query_after": None,
+        "recent_order_query_asset_class_filter": "",
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": True,
+        "recent_order_query_contract_version": "paper_recent_order_query_v1",
+        "recent_order_query_direction": "desc",
+        "recent_order_query_limit": 100,
+        "recent_order_query_metadata_complete": True,
+        "recent_order_query_metadata_missing_fields": [],
+        "recent_order_query_nested": False,
+        "recent_order_query_returned_count": 1,
+        "recent_order_query_side_filter": "",
+        "recent_order_query_sort": "",
+        "recent_order_query_source": "alpaca_sdk_client.get_orders",
+        "recent_order_query_status_filter": "open",
+        "recent_order_query_symbol_filter": "",
+        "recent_order_query_until": None,
         "recent_orders": [
             {
                 "asset_class": "equity",
@@ -148,6 +165,16 @@ def test_paper_lab_snapshot_events_capture_account_positions_orders() -> None:
     assert records[1]["account"] == {"cash": "100000", "currency": "USD"}
     assert records[2]["position_symbols"] == ["MSFT"]
     assert records[3]["recent_orders"] == payload["recent_orders"]
+    assert records[3]["recent_order_query_attempted"] is True
+    assert records[3]["recent_order_query_available"] is True
+    assert records[3]["recent_order_query_limit"] == 100
+    assert records[3]["recent_order_query_status_filter"] == "open"
+    assert records[3]["recent_order_query_contract_version"] == (
+        "paper_recent_order_query_v1"
+    )
+    assert records[3]["recent_order_query_metadata_complete"] is True
+    assert records[3]["recent_order_query_metadata_missing_fields"] == []
+    assert records[3]["recent_order_query_returned_count"] == 1
 
 
 def test_paper_lab_snapshot_unavailable_event_is_redacted() -> None:
@@ -165,6 +192,23 @@ def test_paper_lab_snapshot_unavailable_event_is_redacted() -> None:
         "position_symbols": [],
         "positions_observation_available": False,
         "recent_order_count": 0,
+        "recent_order_query_after": None,
+        "recent_order_query_asset_class_filter": "",
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": False,
+        "recent_order_query_contract_version": "paper_recent_order_query_v1",
+        "recent_order_query_direction": "desc",
+        "recent_order_query_limit": 100,
+        "recent_order_query_metadata_complete": True,
+        "recent_order_query_metadata_missing_fields": [],
+        "recent_order_query_nested": False,
+        "recent_order_query_returned_count": 0,
+        "recent_order_query_side_filter": "",
+        "recent_order_query_sort": "",
+        "recent_order_query_source": "alpaca_sdk_client.get_orders",
+        "recent_order_query_status_filter": "open",
+        "recent_order_query_symbol_filter": "",
+        "recent_order_query_until": None,
         "submitted": False,
         "unavailable_observations": ["orders"],
         "unavailable_reasons": {

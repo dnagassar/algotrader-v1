@@ -68,6 +68,8 @@ class TranslatedAlpacaOrderObservation:
     normalized_status: str
     submitted_at: Any = None
     filled_at: Any = None
+    order_id: str = ""
+    client_order_id: str = ""
 
 
 def translate_alpaca_account(response: Any) -> TranslatedAlpacaAccount:
@@ -168,6 +170,8 @@ def translate_alpaca_order_observation(
             data, "submitted_at", aliases=("created_at",), default=None
         ),
         filled_at=_optional_value(data, "filled_at", default=None),
+        order_id=_optional_text(data, "order_id", aliases=("id",), default="") or "",
+        client_order_id=_optional_text(data, "client_order_id", default="") or "",
     )
 
 

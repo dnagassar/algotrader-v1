@@ -9,7 +9,11 @@ from algotrader.execution.alpaca_adapter import (
     AlpacaAdapterError,
     AlpacaClientAdapter,
 )
-from algotrader.execution.alpaca_client import AlpacaOrderRequest
+from algotrader.execution.alpaca_client import (
+    AlpacaOrderRequest,
+    AlpacaOrderResponse,
+    AlpacaRecentOrderQuery,
+)
 from algotrader.execution.broker_base import BrokerOrderResult
 from algotrader.portfolio.state import Account, Position
 from algotrader.risk.state import RiskVerdict
@@ -44,6 +48,27 @@ class FakeGetAllPositionsClient:
                 "market_value": "800",
                 "average_entry_price": "390",
             }
+        ]
+
+
+class FakeRecentOrdersClient(FakeAlpacaClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
+
+    def get_orders(self, query: AlpacaRecentOrderQuery) -> list[AlpacaOrderResponse]:
+        self.calls.append("get_orders")
+        self.recent_order_queries.append(query)
+        return [
+            AlpacaOrderResponse(
+                order_id="broker-order-1",
+                client_order_id="client-order-1",
+                symbol="AAPL",
+                side="buy",
+                status="accepted",
+                qty=Decimal("1"),
+                asset_class="equity",
+            )
         ]
 
 
@@ -86,6 +111,18 @@ def test_adapter_list_positions_can_use_get_all_positions_fake_method():
     assert positions[0].symbol == "MSFT"
     assert positions[0].quantity == Decimal("2")
     assert positions[0].average_price == Decimal("390")
+
+
+def test_adapter_forwards_default_recent_order_query_to_fake_client():
+    fake_client = FakeRecentOrdersClient()
+    adapter = AlpacaClientAdapter(fake_client)
+
+    orders = adapter.list_recent_orders()
+
+    assert fake_client.calls == ["get_orders"]
+    assert fake_client.recent_order_queries == [AlpacaRecentOrderQuery()]
+    assert orders[0].order_id == "broker-order-1"
+    assert orders[0].client_order_id == "client-order-1"
 
 
 def test_adapter_submit_order_uses_canonical_broker_shape():

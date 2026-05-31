@@ -14,8 +14,10 @@ from algotrader.execution.alpaca_adapter import (
 )
 from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
+    AlpacaOrderResponse,
     AlpacaOrderRequest,
     AlpacaOrderSubmissionResponse,
+    AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
 )
 import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
@@ -25,6 +27,7 @@ from algotrader.execution.alpaca_sdk_client import (
 )
 from algotrader.execution.alpaca_sdk_client import (
     _create_trading_client,
+    _to_sdk_get_orders_request,
     _to_sdk_order_request,
 )
 from algotrader.risk.state import RiskVerdict
@@ -67,6 +70,7 @@ class APIError(Exception):
 class FakeSdkTradingClient:
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.order_queries: list[AlpacaRecentOrderQuery] = []
         self.submitted_orders: list[AlpacaOrderRequest] = []
 
     def get_account(self) -> AlpacaAccountResponse:
@@ -104,6 +108,24 @@ class FakeSdkTradingClient:
             status="accepted",
             submitted_at=NOW,
         )
+
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery,
+    ) -> list[AlpacaOrderResponse]:
+        self.calls.append("get_orders")
+        self.order_queries.append(query)
+        return [
+            AlpacaOrderResponse(
+                order_id="broker-order-1",
+                client_order_id="client-order-1",
+                symbol="MSFT",
+                side="buy",
+                status="accepted",
+                qty=Decimal("1"),
+                asset_class="equity",
+            )
+        ]
 
 
 class FailingSdkTradingClient(FakeSdkTradingClient):
@@ -218,6 +240,32 @@ def test_alpaca_sdk_client_remains_compatible_with_existing_adapter() -> None:
     assert positions[0].symbol == "MSFT"
     assert result.accepted is True
     assert fake_sdk_client.submitted_orders[0].client_order_id == "adapter-order-1"
+
+
+def test_alpaca_sdk_client_forwards_internal_recent_order_query_to_fake_client() -> None:
+    fake_sdk_client = FakeSdkTradingClient()
+    client = AlpacaSdkClient(valid_config(), sdk_client=fake_sdk_client)
+    query = AlpacaRecentOrderQuery(symbol_filter="msft")
+
+    orders = client.get_orders(query)
+
+    assert orders[0].symbol == "MSFT"
+    assert fake_sdk_client.calls == ["get_orders"]
+    assert fake_sdk_client.order_queries == [query]
+
+
+def test_recent_order_query_uses_sdk_get_orders_request_shape() -> None:
+    query = AlpacaRecentOrderQuery(symbol_filter="BTCUSD", side_filter="buy")
+
+    sdk_query = _to_sdk_get_orders_request(query)
+
+    assert sdk_query.__class__.__name__ == "GetOrdersRequest"
+    assert sdk_query.status.value == "open"
+    assert sdk_query.limit == 100
+    assert sdk_query.direction.value == "desc"
+    assert sdk_query.nested is False
+    assert sdk_query.side.value == "buy"
+    assert sdk_query.symbols == ["BTCUSD"]
 
 
 def test_crypto_notional_request_uses_sdk_market_shape_without_qty() -> None:

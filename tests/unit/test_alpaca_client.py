@@ -10,13 +10,16 @@ from algotrader.execution.alpaca_client import (
     AlpacaAccountResponse,
     AlpacaOrderRequest,
     AlpacaOrderSubmissionResponse,
+    AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
+    RECENT_ORDER_QUERY_CONTRACT_VERSION,
 )
 
 
 class FakeAlpacaClient:
     def __init__(self) -> None:
         self.submitted_orders: list[AlpacaOrderRequest] = []
+        self.order_queries: list[AlpacaRecentOrderQuery | None] = []
 
     def get_account(self) -> AlpacaAccountResponse:
         return AlpacaAccountResponse(
@@ -50,6 +53,13 @@ class FakeAlpacaClient:
             status="accepted",
             submitted_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
+
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery | None = None,
+    ) -> list[dict[str, object]]:
+        self.order_queries.append(query)
+        return []
 
 
 def test_fake_alpaca_client_can_return_account_like_data():
@@ -98,6 +108,34 @@ def test_fake_alpaca_client_can_return_order_submission_like_data():
     assert client.submitted_orders == [request]
 
 
+def test_recent_order_query_defaults_are_deterministic_contract():
+    query = AlpacaRecentOrderQuery()
+
+    assert query.contract_version == RECENT_ORDER_QUERY_CONTRACT_VERSION
+    assert query.status_filter == "open"
+    assert query.limit == 100
+    assert query.direction == "desc"
+    assert query.nested is False
+    assert query.symbol_filter == ""
+    assert query.asset_class_filter == ""
+    assert query.side_filter == ""
+    assert query.after is None
+    assert query.until is None
+    assert query.sort == ""
+    assert query.source == "alpaca_sdk_client.get_orders"
+
+
+def test_fake_alpaca_client_accepts_recent_order_query_without_credentials():
+    client = FakeAlpacaClient()
+    query = AlpacaRecentOrderQuery(symbol_filter="spy")
+
+    orders = client.get_orders(query)
+
+    assert orders == []
+    assert query.symbol_filter == "SPY"
+    assert client.order_queries == [query]
+
+
 def test_fake_alpaca_client_requires_no_credentials(monkeypatch):
     monkeypatch.delenv("ALPACA_API_KEY", raising=False)
     monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
@@ -117,6 +155,7 @@ def test_fake_alpaca_client_makes_no_network_calls(monkeypatch):
 
     client.get_account()
     client.get_positions()
+    client.get_orders(AlpacaRecentOrderQuery())
     client.submit_order(
         AlpacaOrderRequest(
             client_order_id="deterministic-order-1",

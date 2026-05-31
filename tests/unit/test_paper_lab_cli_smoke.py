@@ -1657,6 +1657,10 @@ def test_revalidation_brief_cli_reports_submit_receipt_observation(
     assert payload["submit_observation"]["submit_attempt_count"] == 1
     assert payload["submit_observation"]["cash_delta"] == "-9.81"
     assert payload["submit_observation"]["order_list_observation_gap"] is True
+    assert (
+        payload["submit_observation"]["order_list_gap_reason"]
+        == "recent_order_query_returned_empty"
+    )
 
 
 def test_invalid_run_log_path_reports_cleanly(
@@ -1966,6 +1970,7 @@ def _write_revalidation_m319_submit_run_log(path) -> None:  # noqa: ANN001
         "asset_class": "crypto",
         "broker_response_parsed": True,
         "broker_response_received": True,
+        "client_order_id": "paper-order-probe-m319",
         "command": "paper-order-probe",
         "filled": False,
         "max_notional": "10.00",

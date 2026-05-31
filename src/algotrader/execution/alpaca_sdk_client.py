@@ -17,6 +17,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaOrderResponse,
     AlpacaOrderRequest,
     AlpacaOrderSubmissionResponse,
+    AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
 )
 
@@ -90,8 +91,19 @@ class AlpacaSdkClient(AlpacaClient):
 
         return cast(Sequence[AlpacaPositionResponse], self._sdk_client.get_positions())
 
-    def get_orders(self) -> Sequence[AlpacaOrderResponse]:
-        return cast(Sequence[AlpacaOrderResponse], self._sdk_client.get_orders())
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery | None = None,
+    ) -> Sequence[AlpacaOrderResponse]:
+        resolved_query = query or AlpacaRecentOrderQuery()
+        if self._uses_alpaca_sdk_request_shape:
+            sdk_query = _to_sdk_get_orders_request(resolved_query)
+            return cast(Sequence[AlpacaOrderResponse], self._sdk_client.get_orders(sdk_query))
+
+        return cast(
+            Sequence[AlpacaOrderResponse],
+            self._sdk_client.get_orders(resolved_query),
+        )
 
     def submit_order(
         self, request: AlpacaOrderRequest
@@ -155,6 +167,32 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
         kwargs["qty"] = request.qty
 
     return MarketOrderRequest(**kwargs)
+
+
+def _to_sdk_get_orders_request(query: AlpacaRecentOrderQuery) -> Any:
+    from alpaca.common.enums import Sort
+    from alpaca.trading.enums import OrderSide, QueryOrderStatus
+    from alpaca.trading.requests import GetOrdersRequest
+
+    kwargs: dict[str, Any] = {}
+    if query.status_filter:
+        kwargs["status"] = QueryOrderStatus(query.status_filter)
+    if query.limit is not None:
+        kwargs["limit"] = query.limit
+    if query.after is not None:
+        kwargs["after"] = query.after
+    if query.until is not None:
+        kwargs["until"] = query.until
+    if query.direction:
+        kwargs["direction"] = Sort(query.direction)
+    if query.nested is not None:
+        kwargs["nested"] = query.nested
+    if query.side_filter:
+        kwargs["side"] = OrderSide(query.side_filter)
+    if query.symbol_filter:
+        kwargs["symbols"] = [query.symbol_filter]
+
+    return GetOrdersRequest(**kwargs)
 
 
 _BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
