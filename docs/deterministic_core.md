@@ -8335,6 +8335,26 @@ retry, fix-forward behavior, live profile/live URL support, credential access,
 scheduler/autonomous behavior, research-layer broker authority, profit
 inference, or unsafe pytest behavior.
 
+Phase 335 / Milestone 335 - Simple ETF/SMA Research-to-Paper Candidate v1 adds
+the first deliberately boring strategy-producing artifact after the BTCUSD
+paper lifecycle review. The new `etf_sma_research_to_paper_candidate` contract
+is a pure research-layer SMA trend/crossover candidate for broad ETF symbols
+such as SPY or QQQ. It accepts deterministic caller-supplied local bars,
+requires an explicit `as_of` date, sorts and de-duplicates bars, ignores future
+bars before computing the latest close, short SMA, long SMA, and posture, and
+emits immutable review metadata labeled `research_only`,
+`paper_lab_candidate`, `not_live_authorized`, and `profit_claim=none`.
+
+The candidate is offline-only, credential-free, and incapable of submitting
+orders. Its eligibility remains conservative:
+`separate_plan_required_before_paper_experiment`, with the next operator action
+limited to drafting a separate paper-lab experiment plan. It does not approve
+paper submission, does not authorize live use, does not fetch market data, does
+not call Alpaca or any broker adapter, does not add scheduler/autonomous
+behavior, and does not create broker/order/fill/account/credential/portfolio
+mutation fields. The next step is a separate paper-lab experiment plan, not a
+broker action.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

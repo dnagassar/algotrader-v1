@@ -13859,6 +13859,22 @@ Safe next tasks include:
   no broker call, submit, cancel/liquidation/retry/fix-forward behavior, live
   profile/live URL support, credential access, scheduler/autonomous behavior,
   research-layer broker authority, profit inference, or unsafe pytest behavior.
+- Phase 335 / Milestone 335 - Simple ETF/SMA Research-to-Paper Candidate v1
+  adds the first strategy-producing artifact after the BTCUSD paper lifecycle
+  review. The new `etf_sma_research_to_paper_candidate` contract is a pure
+  research-layer broad ETF SMA trend/crossover candidate using deterministic
+  caller-supplied local bars and an explicit `as_of` date. It computes only from
+  bars available at or before `as_of`, reports latest close, short SMA, long
+  SMA, posture, evidence summary, limitations, labels, eligibility, and next
+  operator action, and labels the artifact `research_only`,
+  `paper_lab_candidate`, `not_live_authorized`, and `profit_claim=none`.
+  Eligibility remains
+  `separate_plan_required_before_paper_experiment`; the next action is a
+  separate paper-lab experiment plan, not a broker action. The artifact is
+  offline-only, credential-free, not paper-submission authorized, not live
+  authorized, and adds no Alpaca call, broker adapter call, market-data fetch,
+  scheduler/autonomous behavior, order submission, or broker/order/fill/account/
+  credential/portfolio mutation fields.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
