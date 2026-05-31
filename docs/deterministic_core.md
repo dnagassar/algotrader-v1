@@ -8555,6 +8555,48 @@ credentials, no network, no market-data fetch, no live profile/live URL, no
 scheduler or autonomous behavior, no LLM dependency, no strategy validation, no
 profit evidence, and no order/fill/account/portfolio mutation.
 
+Milestone 342 adds a deterministic offline
+`etf_sma_paper_preview_evidence_packet` contract that consumes only the M341
+operator-review output plus static local config. The packet preserves M341
+status, required next action, operator-review blockers, upstream source
+blockers, operator-review limitations, upstream source limitations, operator
+labels, source labels, upstream labels, symbol, strategy name, `as_of`, latest
+posture, strategy and benchmark total returns, max drawdown, and
+bar/signal/exposure/defensive/posture-change counts.
+
+M342 emits `ready_for_separate_paper_preview_preparation` only when M341 is
+`authorize_separate_paper_preview_milestone`, the M341 readiness flag is true,
+there are no M341 or upstream source blockers, all required research-only
+labels are preserved, there is no live authorization label or status, the
+profit claim remains `profit_claim=none`, and the posture is bullish. Blocked
+inputs emit `blocked_from_separate_paper_preview_preparation`. Missing
+`paper_lab_candidate`, non-none profit claims, live authorization, insufficient
+history, defensive posture, source blockers, and false M341 readiness all block
+preparation.
+
+M342 hard-codes `evidence_packet_version` to
+`etf_sma_paper_preview_evidence_packet_v1`, `evidence_scope` to
+`local_research_to_paper_preview_preparation_only`, `broker_facing=false`, and
+`executable=false`. It also preserves `authorize_paper_preview_now=false`,
+`authorize_broker_action=false`, `broker_action_performed=false`,
+`broker_preview_performed=false`, and `submit_allowed=false`. Future
+prerequisites are manual operator review, a fresh read-only paper snapshot, a
+separate paper-preview milestone, and explicit operator approval before any
+broker-facing preview. The ready recommended next action is
+`draft_separate_etf_sma_paper_preview_milestone`; the blocked recommended next
+action is `resolve_operator_review_blockers`.
+
+M342 limitations include `local_advisory_evidence_only`,
+`not_live_authorized`, `not_profit_evidence`, `not_strategy_validation`,
+`not_execution_authority`, `not_broker_order_fill_account_portfolio_evidence`,
+`paper_preview_requires_separate_milestone`,
+`broker_facing_preview_requires_separate_milestone`, and
+`submit_requires_separate_explicit_milestone`. M342 adds no broker action, no
+broker preview or staging, no `ExecutionIntent`, no `ExecutionPlan`, no
+credentials, no network, no market-data fetch, no live profile/live URL, no
+scheduler or autonomous behavior, no LLM dependency, no strategy validation, no
+profit evidence, and no order/fill/account/portfolio mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
