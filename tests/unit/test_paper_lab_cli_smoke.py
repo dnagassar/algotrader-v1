@@ -1639,6 +1639,21 @@ def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
         ]
         is False
     )
+    assert payload["future_close_probe_preparation"]["manual_review_only"] is True
+    assert (
+        payload["future_close_probe_preparation"]["broker_action_performed"]
+        is False
+    )
+    assert (
+        payload["future_close_probe_preparation"]["close_order_submitted"]
+        is False
+    )
+    assert (
+        payload["future_close_probe_preparation"][
+            "ready_for_future_prompt_generation"
+        ]
+        is False
+    )
 
 
 def test_revalidation_brief_cli_reports_submit_receipt_observation(
@@ -1730,6 +1745,7 @@ def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
     )
     assert "fresh_snapshot_operator_checklist:" in captured.out
     assert "close_action_eligibility_checklist:" in captured.out
+    assert "future_close_probe_preparation:" in captured.out
     assert (
         "fresh_snapshot_command_template: "
         "python -m algotrader paper-lab-snapshot --run-log "

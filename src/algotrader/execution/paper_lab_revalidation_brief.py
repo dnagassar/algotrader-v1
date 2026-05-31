@@ -183,6 +183,22 @@ _CLOSE_ACTION_NEXT_ELIGIBLE = (
 _CLOSE_ACTION_NEXT_BLOCKED = (
     "collect_required_read_only_or_preview_evidence_before_close_probe"
 )
+_FUTURE_CLOSE_PROBE_PREPARATION_VERSION = "future_close_probe_preparation_v1"
+_FUTURE_CLOSE_PROBE_NEXT_ELIGIBLE = (
+    "draft_explicit_paper_close_probe_command_for_operator_review_only"
+)
+_FUTURE_CLOSE_PROBE_NEXT_BLOCKED = (
+    "complete_m326_close_action_eligibility_evidence_before_prompt_generation"
+)
+_FUTURE_CLOSE_PROBE_TEMPLATE_SAFETY_NOTE = (
+    "review_only_template_unsafe_to_run_until_separate_manual_authorization"
+)
+_FUTURE_CLOSE_PROBE_COMMAND_TEMPLATE = (
+    "python -m algotrader paper-close-probe --run-log "
+    "runs/paper_lab/<future_close_id>.jsonl --run-id <future_close_id> "
+    "--symbol BTCUSD --quantity <required_position_quantity> "
+    "<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>"
+)
 _CLOSE_ACTION_REQUIRED_OPERATOR_CONFIRMATIONS = (
     "I understand this is paper-only.",
     "I understand this is not live-authorized.",
@@ -313,6 +329,9 @@ def render_paper_lab_revalidation_brief_text(
     close_action_eligibility = _mapping(
         payload.get("close_action_eligibility_checklist")
     )
+    future_close_probe_preparation = _mapping(
+        payload.get("future_close_probe_preparation")
+    )
 
     lines = [
         "Paper lab revalidation brief",
@@ -365,6 +384,9 @@ def render_paper_lab_revalidation_brief_text(
     lines.extend(_fresh_snapshot_operator_checklist_lines(fresh_snapshot_checklist))
     lines.extend(_close_exit_probe_design_lines(close_exit_probe_design))
     lines.extend(_close_action_eligibility_checklist_lines(close_action_eligibility))
+    lines.extend(
+        _future_close_probe_preparation_lines(future_close_probe_preparation)
+    )
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
     if unavailable_events:
@@ -418,6 +440,10 @@ def _brief_payload(
         records=records,
         selected_run_id=selected_run_id,
     )
+    future_close_probe_preparation = _future_close_probe_preparation(
+        fresh_snapshot_checklist,
+        close_action_eligibility_checklist,
+    )
     return {
         "account": _latest_account(selected_records),
         "advisory_labels": {
@@ -431,6 +457,7 @@ def _brief_payload(
         "command": "paper-lab-revalidation-brief",
         "event_counts": _event_counts(selected_records),
         "fresh_snapshot_operator_checklist": fresh_snapshot_checklist,
+        "future_close_probe_preparation": future_close_probe_preparation,
         "invalid_reasons": list(invalid_reasons),
         "manual_review_note": (
             "manual review required before any further paper probe"
@@ -527,6 +554,122 @@ def _close_action_eligibility_checklist(
             _CLOSE_ACTION_NEXT_ELIGIBLE if eligible else _CLOSE_ACTION_NEXT_BLOCKED
         ),
     }
+
+
+def _future_close_probe_preparation(
+    fresh_snapshot_checklist: Mapping[str, object],
+    close_action_eligibility: Mapping[str, object],
+) -> dict[str, object]:
+    snapshot_evidence = _mapping(fresh_snapshot_checklist.get("evidence"))
+    eligibility_status = _text(close_action_eligibility.get("status"))
+    ready = eligibility_status == _CLOSE_ACTION_STATUS_ELIGIBLE
+    operator_confirmations = _deduped_text_items(
+        _sequence(close_action_eligibility.get("required_operator_confirmations"))
+    )
+    if not operator_confirmations:
+        operator_confirmations = list(_CLOSE_ACTION_REQUIRED_OPERATOR_CONFIRMATIONS)
+
+    return {
+        "version": _FUTURE_CLOSE_PROBE_PREPARATION_VERSION,
+        "manual_review_only": True,
+        "broker_action_performed": False,
+        "close_order_submitted": False,
+        "ready_for_future_prompt_generation": ready,
+        "required_operator_confirmation": operator_confirmations,
+        "required_pre_submit_snapshot": {
+            "required_status": CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED,
+            "observed_status": _text(fresh_snapshot_checklist.get("status")),
+            "snapshot_records_observed": (
+                snapshot_evidence.get("snapshot_records_observed") is True
+            ),
+            "snapshot_run_id": _text(
+                close_action_eligibility.get("snapshot_run_id")
+            ),
+            "mutated": _bool_or_none(snapshot_evidence.get("mutated")),
+            "submitted": _bool_or_none(snapshot_evidence.get("submitted")),
+        },
+        "required_position_quantity": {
+            "symbol": "BTCUSD",
+            "quantity": _text(
+                close_action_eligibility.get("observed_position_quantity")
+            ),
+            "requested_close_quantity": _text(
+                close_action_eligibility.get("requested_close_quantity")
+            ),
+            "positive_quantity_required": True,
+        },
+        "required_recent_order_query_metadata": {
+            "metadata_complete": (
+                snapshot_evidence.get("recent_order_query_metadata_complete")
+                is True
+            ),
+            "contract_version": _text(
+                snapshot_evidence.get("recent_order_query_contract_version")
+            ),
+            "returned_count": snapshot_evidence.get(
+                "recent_order_query_returned_count"
+            ),
+            "missing_fields": list(
+                _sequence(
+                    snapshot_evidence.get(
+                        "recent_order_query_metadata_missing_fields"
+                    )
+                )
+            ),
+        },
+        "required_close_preview_evidence": {
+            "event_observed": (
+                close_action_eligibility.get("close_preview_event_observed")
+                is True
+            ),
+            "preview_only_required": True,
+            "submitted_required": False,
+            "mutated_required": False,
+            "requested_close_quantity": _text(
+                close_action_eligibility.get("requested_close_quantity")
+            ),
+            "remaining_quantity_after_preview": _text(
+                close_action_eligibility.get(
+                    "remaining_quantity_after_preview"
+                )
+            ),
+        },
+        "required_eligibility_status": _CLOSE_ACTION_STATUS_ELIGIBLE,
+        "observed_eligibility_status": eligibility_status,
+        "blocking_reasons": _future_close_probe_preparation_blocking_reasons(
+            eligibility_status,
+            close_action_eligibility,
+        ),
+        "recommended_next_operator_action": (
+            _FUTURE_CLOSE_PROBE_NEXT_ELIGIBLE
+            if ready
+            else _FUTURE_CLOSE_PROBE_NEXT_BLOCKED
+        ),
+        "future_command_template_review_only": (
+            _FUTURE_CLOSE_PROBE_COMMAND_TEMPLATE
+        ),
+        "future_command_template_safety_note": (
+            _FUTURE_CLOSE_PROBE_TEMPLATE_SAFETY_NOTE
+        ),
+    }
+
+
+def _future_close_probe_preparation_blocking_reasons(
+    eligibility_status: str,
+    close_action_eligibility: Mapping[str, object],
+) -> list[str]:
+    if eligibility_status == _CLOSE_ACTION_STATUS_ELIGIBLE:
+        return []
+
+    reasons = [
+        f"m326_eligibility_status_{eligibility_status or 'missing'}",
+    ]
+    reasons.extend(
+        _deduped_text_items(
+            _sequence(close_action_eligibility.get("blocking_reasons"))
+        )
+    )
+    return _deduped_text_items(reasons)
 
 
 def _close_preview_evidence(
@@ -849,6 +992,15 @@ def _add_close_action_finding(
 ) -> None:
     if reason not in {existing_reason for _, existing_reason in findings}:
         findings.append((status, reason))
+
+
+def _deduped_text_items(values: Sequence[Any]) -> list[str]:
+    items: list[str] = []
+    for value in values:
+        text = _text(value)
+        if text and text not in items:
+            items.append(text)
+    return items
 
 
 def _positive_decimal_or_none(value: Any) -> Decimal | None:
@@ -2848,6 +3000,142 @@ def _close_action_eligibility_checklist_lines(
             (
                 "  recommended_next_operator_action: "
                 f"{_value_text(checklist.get('recommended_next_operator_action'))}"
+            ),
+        ]
+    )
+    return lines
+
+
+def _future_close_probe_preparation_lines(
+    preparation: Mapping[str, Any],
+) -> list[str]:
+    pre_submit_snapshot = _mapping(
+        preparation.get("required_pre_submit_snapshot")
+    )
+    position_quantity = _mapping(preparation.get("required_position_quantity"))
+    query_metadata = _mapping(
+        preparation.get("required_recent_order_query_metadata")
+    )
+    close_preview = _mapping(preparation.get("required_close_preview_evidence"))
+    lines = [
+        "future_close_probe_preparation:",
+        f"  version: {_value_text(preparation.get('version'))}",
+        (
+            "  manual_review_only: "
+            f"{_bool_text(preparation.get('manual_review_only'))}"
+        ),
+        (
+            "  broker_action_performed: "
+            f"{_bool_text(preparation.get('broker_action_performed'))}"
+        ),
+        (
+            "  close_order_submitted: "
+            f"{_bool_text(preparation.get('close_order_submitted'))}"
+        ),
+        (
+            "  ready_for_future_prompt_generation: "
+            f"{_bool_text(preparation.get('ready_for_future_prompt_generation'))}"
+        ),
+    ]
+    for item in _sequence(preparation.get("required_operator_confirmation")):
+        lines.append(f"  required_operator_confirmation: {_value_text(item)}")
+    lines.extend(
+        [
+            "  required_pre_submit_snapshot:",
+            (
+                "    required_status: "
+                f"{_value_text(pre_submit_snapshot.get('required_status'))}"
+            ),
+            (
+                "    observed_status: "
+                f"{_value_text(pre_submit_snapshot.get('observed_status'))}"
+            ),
+            (
+                "    snapshot_records_observed: "
+                f"{_bool_text(pre_submit_snapshot.get('snapshot_records_observed'))}"
+            ),
+            (
+                "    snapshot_run_id: "
+                f"{_value_text(pre_submit_snapshot.get('snapshot_run_id'))}"
+            ),
+            f"    mutated: {_tri_bool_text(pre_submit_snapshot.get('mutated'))}",
+            f"    submitted: {_tri_bool_text(pre_submit_snapshot.get('submitted'))}",
+            "  required_position_quantity:",
+            f"    symbol: {_value_text(position_quantity.get('symbol'))}",
+            f"    quantity: {_value_text(position_quantity.get('quantity'))}",
+            (
+                "    requested_close_quantity: "
+                f"{_value_text(position_quantity.get('requested_close_quantity'))}"
+            ),
+            (
+                "    positive_quantity_required: "
+                f"{_bool_text(position_quantity.get('positive_quantity_required'))}"
+            ),
+            "  required_recent_order_query_metadata:",
+            (
+                "    metadata_complete: "
+                f"{_bool_text(query_metadata.get('metadata_complete'))}"
+            ),
+            (
+                "    contract_version: "
+                f"{_value_text(query_metadata.get('contract_version'))}"
+            ),
+            (
+                "    returned_count: "
+                f"{_value_text(query_metadata.get('returned_count'))}"
+            ),
+            (
+                "    missing_fields: "
+                f"{_joined(query_metadata.get('missing_fields'))}"
+            ),
+            "  required_close_preview_evidence:",
+            (
+                "    event_observed: "
+                f"{_bool_text(close_preview.get('event_observed'))}"
+            ),
+            (
+                "    preview_only_required: "
+                f"{_bool_text(close_preview.get('preview_only_required'))}"
+            ),
+            (
+                "    submitted_required: "
+                f"{_bool_text(close_preview.get('submitted_required'))}"
+            ),
+            (
+                "    mutated_required: "
+                f"{_bool_text(close_preview.get('mutated_required'))}"
+            ),
+            (
+                "    requested_close_quantity: "
+                f"{_value_text(close_preview.get('requested_close_quantity'))}"
+            ),
+            (
+                "    remaining_quantity_after_preview: "
+                f"{_value_text(close_preview.get('remaining_quantity_after_preview'))}"
+            ),
+            (
+                "  required_eligibility_status: "
+                f"{_value_text(preparation.get('required_eligibility_status'))}"
+            ),
+            (
+                "  observed_eligibility_status: "
+                f"{_value_text(preparation.get('observed_eligibility_status'))}"
+            ),
+            (
+                "  blocking_reasons: "
+                f"{_joined(preparation.get('blocking_reasons'))}"
+            ),
+            (
+                "  recommended_next_operator_action: "
+                f"{_value_text(preparation.get('recommended_next_operator_action'))}"
+            ),
+            (
+                "  future_command_template_review_only: "
+                f"{_value_text(preparation.get('future_command_template_review_only'))}"
+            ),
+            (
+                "  future_command_template_safety_note: "
+                f"{_value_text(preparation.get('future_command_template_safety_note'))}"
             ),
         ]
     )

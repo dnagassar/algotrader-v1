@@ -13778,6 +13778,24 @@ Safe next tasks include:
   call, network use, live profile/live URL behavior, credential access, broker
   write path, cancel/replace/liquidate behavior, options behavior, portfolio
   mutation, profit inference, or unsafe pytest behavior.
+- Phase 327 / Milestone 327 - Explicit BTCUSD Paper Close Probe Preparation
+  adds a deterministic local-only `future_close_probe_preparation` section to
+  `paper-lab-revalidation-brief` JSON/text output. It is manual-review-only,
+  preserves `manual_review_only=true`, `broker_action_performed=false`, and
+  `close_order_submitted=false`, and reports whether the evidence is ready for
+  future prompt generation. The section lists required operator confirmations,
+  required pre-submit snapshot evidence, required BTCUSD position quantity,
+  required recent-order query metadata, required close-preview evidence,
+  required M326 eligibility status, blocking reasons, and the recommended next
+  operator action. It remains blocked unless M326 reports
+  `eligible_for_explicit_operator_approval`; eligible evidence recommends
+  `draft_explicit_paper_close_probe_command_for_operator_review_only`. Any
+  future template is review-only/unsafe until separate manual authorization and
+  uses `<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>` instead of a submit flag. This
+  milestone adds no submit command, close/sell/cancel/liquidation behavior,
+  Alpaca call, network use, live profile/live URL support, credential access,
+  broker write path, scheduler, autonomous loop, research-layer authorization,
+  portfolio mutation, profit inference, or unsafe pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

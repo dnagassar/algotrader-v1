@@ -8248,6 +8248,25 @@ Alpaca call, network use, live profile/live URL support, credential access,
 broker write path, options behavior, portfolio mutation, profit inference, or
 unsafe pytest behavior.
 
+Phase 327 / Milestone 327 - Explicit BTCUSD Paper Close Probe Preparation adds
+a deterministic local-only `future_close_probe_preparation` section to
+`paper-lab-revalidation-brief` JSON and text output. The section is
+manual-review-only and reports `manual_review_only=true`,
+`broker_action_performed=false`, `close_order_submitted=false`,
+`ready_for_future_prompt_generation`, required operator confirmations, required
+pre-submit snapshot evidence, required BTCUSD position quantity, required
+recent-order query metadata, required close-preview evidence, required M326
+eligibility status, blocking reasons, and the recommended next operator action.
+It remains blocked unless M326 reports
+`eligible_for_explicit_operator_approval`; only then does it recommend
+`draft_explicit_paper_close_probe_command_for_operator_review_only`. Any future
+template is marked review-only/unsafe until separate manual authorization and
+uses `<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>` instead of a submit flag. This
+milestone adds no submit command, close/sell/cancel/liquidation behavior,
+Alpaca call, network use, live profile/live URL support, credential access,
+broker write path, scheduler, autonomous loop, research-layer authorization,
+portfolio mutation, profit inference, or unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

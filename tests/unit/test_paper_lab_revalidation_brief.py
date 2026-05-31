@@ -305,6 +305,7 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
     checklist = payload["fresh_snapshot_operator_checklist"]
     close_design = payload["close_exit_probe_design"]
     close_action = payload["close_action_eligibility_checklist"]
+    future_preparation = payload["future_close_probe_preparation"]
     evidence = checklist["evidence"]
     rendered = render_paper_lab_revalidation_brief_text(payload)
 
@@ -374,8 +375,37 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
     assert close_action["recommended_next_operator_action"] == (
         "collect_required_read_only_or_preview_evidence_before_close_probe"
     )
+    assert future_preparation["manual_review_only"] is True
+    assert future_preparation["broker_action_performed"] is False
+    assert future_preparation["close_order_submitted"] is False
+    assert future_preparation["ready_for_future_prompt_generation"] is False
+    assert future_preparation["observed_eligibility_status"] == (
+        "blocked_missing_close_preview"
+    )
+    assert "close_preview_evidence_missing" in future_preparation[
+        "blocking_reasons"
+    ]
+    assert future_preparation["required_pre_submit_snapshot"] == {
+        "required_status": "read_only_snapshot_completed_for_manual_review",
+        "observed_status": "read_only_snapshot_completed_for_manual_review",
+        "snapshot_records_observed": True,
+        "snapshot_run_id": "fresh-snapshot-run",
+        "mutated": False,
+        "submitted": False,
+    }
+    assert future_preparation["required_close_preview_evidence"][
+        "event_observed"
+    ] is False
+    assert (
+        future_preparation["recommended_next_operator_action"]
+        == "complete_m326_close_action_eligibility_evidence_before_prompt_generation"
+    )
+    assert "--submit" not in future_preparation[
+        "future_command_template_review_only"
+    ]
     assert "close_exit_probe_design:" in rendered
     assert "close_action_eligibility_checklist:" in rendered
+    assert "future_close_probe_preparation:" in rendered
     assert "design_ready: true" in rendered
     assert "submission_disabled_reason: close_preview_submission_disabled" in rendered
 
@@ -396,6 +426,7 @@ def test_close_action_eligibility_checklist_allows_later_operator_approval(
         run_id="m324-fresh-read-only",
     )
     checklist = payload["close_action_eligibility_checklist"]
+    future_preparation = payload["future_close_probe_preparation"]
     rendered = render_paper_lab_revalidation_brief_text(payload)
 
     assert checklist["version"] == "close_action_eligibility_checklist_v1"
@@ -424,6 +455,55 @@ def test_close_action_eligibility_checklist_allows_later_operator_approval(
     assert checklist["recommended_next_operator_action"] == (
         "prepare_explicit_paper_close_probe_prompt_but_do_not_submit"
     )
+    assert future_preparation["version"] == "future_close_probe_preparation_v1"
+    assert future_preparation["manual_review_only"] is True
+    assert future_preparation["broker_action_performed"] is False
+    assert future_preparation["close_order_submitted"] is False
+    assert future_preparation["ready_for_future_prompt_generation"] is True
+    assert future_preparation["required_operator_confirmation"] == checklist[
+        "required_operator_confirmations"
+    ]
+    assert future_preparation["required_position_quantity"] == {
+        "symbol": "BTCUSD",
+        "quantity": "0.000132386",
+        "requested_close_quantity": "0.000132386",
+        "positive_quantity_required": True,
+    }
+    assert future_preparation["required_recent_order_query_metadata"] == {
+        "metadata_complete": True,
+        "contract_version": "paper_recent_order_query_v1",
+        "returned_count": 0,
+        "missing_fields": [],
+    }
+    assert future_preparation["required_close_preview_evidence"] == {
+        "event_observed": True,
+        "preview_only_required": True,
+        "submitted_required": False,
+        "mutated_required": False,
+        "requested_close_quantity": "0.000132386",
+        "remaining_quantity_after_preview": "0",
+    }
+    assert future_preparation["required_eligibility_status"] == (
+        "eligible_for_explicit_operator_approval"
+    )
+    assert future_preparation["observed_eligibility_status"] == (
+        "eligible_for_explicit_operator_approval"
+    )
+    assert future_preparation["blocking_reasons"] == []
+    assert future_preparation["recommended_next_operator_action"] == (
+        "draft_explicit_paper_close_probe_command_for_operator_review_only"
+    )
+    assert (
+        future_preparation["future_command_template_safety_note"]
+        == "review_only_template_unsafe_to_run_until_separate_manual_authorization"
+    )
+    assert "<EXPLICIT_SUBMIT_FLAG_NOT_INCLUDED>" in future_preparation[
+        "future_command_template_review_only"
+    ]
+    assert "--submit" not in future_preparation[
+        "future_command_template_review_only"
+    ]
+    assert all("--submit" not in command for command in _generated_command_values(payload))
     assert (
         "status: eligible_for_explicit_operator_approval"
         in rendered
@@ -431,6 +511,11 @@ def test_close_action_eligibility_checklist_allows_later_operator_approval(
     assert (
         "recommended_next_operator_action: "
         "prepare_explicit_paper_close_probe_prompt_but_do_not_submit"
+        in rendered
+    )
+    assert (
+        "recommended_next_operator_action: "
+        "draft_explicit_paper_close_probe_command_for_operator_review_only"
         in rendered
     )
 
@@ -462,6 +547,109 @@ def test_close_action_eligibility_checklist_blocks_no_shorting_failure(
         "blocking_reasons"
     ]
     assert "no_shorting_gate_not_passed" in checklist["blocking_reasons"]
+    assert payload["future_close_probe_preparation"][
+        "ready_for_future_prompt_generation"
+    ] is False
+
+
+def test_future_close_probe_preparation_blocks_missing_recent_order_metadata(
+    tmp_path,
+) -> None:
+    snapshot_records = tuple(
+        {
+            key: value
+            for key, value in record.items()
+            if not key.startswith("recent_order_query_")
+        }
+        for record in _fresh_snapshot_records(run_id="metadata-missing")
+    )
+    run_log = _write_jsonl(
+        tmp_path / "future_close_metadata_missing.jsonl",
+        (
+            *snapshot_records,
+            *_close_preview_records(run_id="m325-close-preview"),
+        ),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="metadata-missing",
+    )
+    preparation = payload["future_close_probe_preparation"]
+
+    assert preparation["ready_for_future_prompt_generation"] is False
+    assert preparation["manual_review_only"] is True
+    assert preparation["broker_action_performed"] is False
+    assert preparation["close_order_submitted"] is False
+    assert preparation["observed_eligibility_status"] == (
+        "blocked_query_metadata_incomplete"
+    )
+    assert preparation["required_recent_order_query_metadata"][
+        "metadata_complete"
+    ] is False
+    assert "recent_order_query_metadata_incomplete" in preparation[
+        "blocking_reasons"
+    ]
+
+
+def test_future_close_probe_preparation_blocks_missing_fresh_snapshot(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "future_close_missing_snapshot.jsonl",
+        _close_preview_records(run_id="m325-close-preview"),
+    )
+
+    payload = build_paper_lab_revalidation_brief(run_log)
+    preparation = payload["future_close_probe_preparation"]
+
+    assert preparation["ready_for_future_prompt_generation"] is False
+    assert preparation["manual_review_only"] is True
+    assert preparation["broker_action_performed"] is False
+    assert preparation["close_order_submitted"] is False
+    assert preparation["observed_eligibility_status"] == (
+        "blocked_missing_fresh_snapshot"
+    )
+    assert preparation["required_pre_submit_snapshot"][
+        "snapshot_records_observed"
+    ] is False
+    assert "fresh_snapshot_evidence_missing" in preparation[
+        "blocking_reasons"
+    ]
+
+
+def test_future_close_probe_preparation_keeps_redaction_and_hides_secrets(
+    tmp_path,
+) -> None:
+    records = list(_fresh_snapshot_records(run_id="secret-prep"))
+    records[0] = {**records[0], "api_key": SECRET_VALUE}
+    run_log = _write_jsonl(
+        tmp_path / "future_close_secret_evidence.jsonl",
+        (
+            *records,
+            *_close_preview_records(run_id="m325-close-preview"),
+        ),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="secret-prep",
+    )
+    rendered = _compact_json(payload) + render_paper_lab_revalidation_brief_text(
+        payload
+    )
+    preparation = payload["future_close_probe_preparation"]
+
+    assert payload["redaction_markers_found"] == ["credentials_redacted"]
+    assert preparation["ready_for_future_prompt_generation"] is False
+    assert preparation["observed_eligibility_status"] == (
+        "blocked_credential_leak_evidence"
+    )
+    assert "credential_leak_evidence_found" in preparation["blocking_reasons"]
+    assert "credentials_redacted" in rendered
+    assert SECRET_VALUE not in rendered
+    assert "api_key" not in rendered
+    assert "ALPACA_API_KEY" not in rendered
 
 
 def test_fresh_snapshot_operator_checklist_blocks_unavailable_observations(
@@ -1548,6 +1736,23 @@ def _write_jsonl(path, records) -> object:  # noqa: ANN001
 
 def _compact_json(payload: dict[str, object]) -> str:
     return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _generated_command_values(value) -> list[str]:  # noqa: ANN001
+    values: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            key_text = str(key)
+            if key_text.endswith("command_template") or (
+                "command_template" in key_text
+            ):
+                values.append(str(item))
+            else:
+                values.extend(_generated_command_values(item))
+    elif isinstance(value, list):
+        for item in value:
+            values.extend(_generated_command_values(item))
+    return values
 
 
 def _forbidden_claims_absent(rendered: str) -> bool:
