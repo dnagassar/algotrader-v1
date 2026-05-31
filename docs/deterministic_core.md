@@ -8226,6 +8226,28 @@ Alpaca call, network use, live profile/live URL behavior, credential access,
 broker write path, cancel/replace/liquidate behavior, options behavior,
 portfolio mutation, profit inference, or unsafe pytest behavior.
 
+Phase 326 / Milestone 326 - BTCUSD Close Action Eligibility Checklist adds a
+deterministic local-only `close_action_eligibility_checklist` section to the
+`paper-lab-revalidation-brief` JSON and text output. The checklist classifies
+whether a later broker-side BTCUSD paper close probe may be considered for
+explicit operator approval, but it never submits, closes, sells, cancels,
+replaces, liquidates, or mutates anything. Eligibility requires both a completed
+fresh read-only snapshot checklist
+(`read_only_snapshot_completed_for_manual_review`) and an observed
+`paper_close_preview_designed` event whose preview remains `preview_only=true`,
+`submitted=false`, `mutated=false`, crypto/BTCUSD/sell, positive quantity within
+the observed BTCUSD position, no-shorting passed, submission disabled, and
+manual review required. Snapshot-only evidence now remains blocked with
+`blocked_missing_close_preview`; successful complete evidence reports
+`eligible_for_explicit_operator_approval` and recommends
+`prepare_explicit_paper_close_probe_prompt_but_do_not_submit`. The section
+preserves `paper_lab_only=true`, `not_live_authorized=true`,
+`profit_claim=none`, `manual_review_required=true`,
+`broker_action_performed=false`, and `close_order_submitted=false`, and adds no
+Alpaca call, network use, live profile/live URL support, credential access,
+broker write path, options behavior, portfolio mutation, profit inference, or
+unsafe pytest behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

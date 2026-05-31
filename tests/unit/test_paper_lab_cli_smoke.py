@@ -1630,6 +1630,15 @@ def test_revalidation_brief_cli_reads_local_log_without_runtime_config(
         "python -m algotrader paper-lab-snapshot --run-log "
         "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
     )
+    assert payload["close_action_eligibility_checklist"]["status"] == (
+        "blocked_query_metadata_incomplete"
+    )
+    assert (
+        payload["close_action_eligibility_checklist"][
+            "eligible_for_future_close_probe_consideration"
+        ]
+        is False
+    )
 
 
 def test_revalidation_brief_cli_reports_submit_receipt_observation(
@@ -1720,6 +1729,7 @@ def test_revalidation_brief_cli_text_renders_post_receipt_reconciliation(
         in captured.out
     )
     assert "fresh_snapshot_operator_checklist:" in captured.out
+    assert "close_action_eligibility_checklist:" in captured.out
     assert (
         "fresh_snapshot_command_template: "
         "python -m algotrader paper-lab-snapshot --run-log "

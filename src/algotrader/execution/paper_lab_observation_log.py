@@ -547,6 +547,9 @@ def _close_preview_fields(payload: Mapping[str, Any]) -> dict[str, Any]:
         ),
         "ok": bool(payload.get("ok", False)),
         "order_type": _text(payload.get("order_type")),
+        "paper_close_preview_contract_version": _optional_text(
+            payload.get("paper_close_preview_contract_version")
+        ),
         "paper_lab_only": bool(payload.get("paper_lab_only", True)),
         "preview_only": bool(payload.get("preview_only", True)),
         "profit_claim": _optional_text(payload.get("profit_claim")),

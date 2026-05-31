@@ -13,6 +13,7 @@ from typing import Any
 
 from .paper_lab_observation_log import (
     EVENT_TYPES,
+    PAPER_CLOSE_PREVIEW_DESIGNED,
     PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
     PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
     PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
@@ -24,7 +25,10 @@ from .paper_lab_observation_log import (
     PAPER_ORDER_SUBMIT_FAILED,
     PAPER_ORDER_SUBMIT_REQUESTED,
 )
-from .paper_order_policy import build_btcusd_paper_close_preview_contract
+from .paper_order_policy import (
+    PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON,
+    build_btcusd_paper_close_preview_contract,
+)
 
 
 STATE_RECEIPT_AND_POSITION_OBSERVED = "receipt_and_position_observed"
@@ -148,6 +152,45 @@ CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE = (
 )
 CHECKLIST_STATUS_INSUFFICIENT_OBSERVATION = "insufficient_observation"
 _CHECKLIST_VERSION = "fresh_snapshot_operator_checklist_v1"
+_CLOSE_ACTION_ELIGIBILITY_VERSION = "close_action_eligibility_checklist_v1"
+_CLOSE_ACTION_STATUS_ELIGIBLE = "eligible_for_explicit_operator_approval"
+_CLOSE_ACTION_STATUS_BLOCKED_MISSING_FRESH_SNAPSHOT = (
+    "blocked_missing_fresh_snapshot"
+)
+_CLOSE_ACTION_STATUS_BLOCKED_MISSING_CLOSE_PREVIEW = (
+    "blocked_missing_close_preview"
+)
+_CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_MUTATION = "blocked_unexpected_mutation"
+_CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_SUBMIT = "blocked_unexpected_submit"
+_CLOSE_ACTION_STATUS_BLOCKED_MISSING_POSITION = "blocked_missing_position"
+_CLOSE_ACTION_STATUS_BLOCKED_INVALID_QUANTITY = "blocked_invalid_quantity"
+_CLOSE_ACTION_STATUS_BLOCKED_NO_SHORTING_GATE_FAILED = (
+    "blocked_no_shorting_gate_failed"
+)
+_CLOSE_ACTION_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE = (
+    "blocked_query_metadata_incomplete"
+)
+_CLOSE_ACTION_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE = (
+    "blocked_live_profile_evidence"
+)
+_CLOSE_ACTION_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE = (
+    "blocked_credential_leak_evidence"
+)
+_CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION = "insufficient_observation"
+_CLOSE_ACTION_NEXT_ELIGIBLE = (
+    "prepare_explicit_paper_close_probe_prompt_but_do_not_submit"
+)
+_CLOSE_ACTION_NEXT_BLOCKED = (
+    "collect_required_read_only_or_preview_evidence_before_close_probe"
+)
+_CLOSE_ACTION_REQUIRED_OPERATOR_CONFIRMATIONS = (
+    "I understand this is paper-only.",
+    "I understand this is not live-authorized.",
+    "I understand this may close the BTCUSD paper position.",
+    "I understand the action must be manually triggered.",
+    "I understand normal pytest must remain credential-free.",
+    "I understand this does not imply profitability.",
+)
 _FRESH_SNAPSHOT_COMMAND_TEMPLATE = (
     "python -m algotrader paper-lab-snapshot --run-log "
     "runs/paper_lab/<fresh_id>.jsonl --run-id <fresh_id> --format json"
@@ -267,6 +310,9 @@ def render_paper_lab_revalidation_brief_text(
         payload.get("fresh_snapshot_operator_checklist")
     )
     close_exit_probe_design = _mapping(payload.get("close_exit_probe_design"))
+    close_action_eligibility = _mapping(
+        payload.get("close_action_eligibility_checklist")
+    )
 
     lines = [
         "Paper lab revalidation brief",
@@ -318,6 +364,7 @@ def render_paper_lab_revalidation_brief_text(
     lines.extend(_post_receipt_reconciliation_lines(post_receipt_reconciliation))
     lines.extend(_fresh_snapshot_operator_checklist_lines(fresh_snapshot_checklist))
     lines.extend(_close_exit_probe_design_lines(close_exit_probe_design))
+    lines.extend(_close_action_eligibility_checklist_lines(close_action_eligibility))
 
     unavailable_events = _sequence(payload.get("unavailable_events"))
     if unavailable_events:
@@ -365,6 +412,12 @@ def _brief_payload(
         missing_observations=missing_observations,
         unavailable_events=unavailable_events,
     )
+    close_exit_probe_design = _close_exit_probe_design(fresh_snapshot_checklist)
+    close_action_eligibility_checklist = _close_action_eligibility_checklist(
+        fresh_snapshot_checklist,
+        records=records,
+        selected_run_id=selected_run_id,
+    )
     return {
         "account": _latest_account(selected_records),
         "advisory_labels": {
@@ -373,9 +426,8 @@ def _brief_payload(
             "paper_lab_only": True,
             "profit_claim": "none",
         },
-        "close_exit_probe_design": _close_exit_probe_design(
-            fresh_snapshot_checklist
-        ),
+        "close_action_eligibility_checklist": close_action_eligibility_checklist,
+        "close_exit_probe_design": close_exit_probe_design,
         "command": "paper-lab-revalidation-brief",
         "event_counts": _event_counts(selected_records),
         "fresh_snapshot_operator_checklist": fresh_snapshot_checklist,
@@ -423,6 +475,413 @@ def _close_exit_probe_design(
     payload["design_ready"] = payload["ok"]
     payload["source_evidence"] = "fresh_snapshot_operator_checklist"
     return payload
+
+
+def _close_action_eligibility_checklist(
+    fresh_snapshot_checklist: Mapping[str, object],
+    *,
+    records: Sequence[Mapping[str, Any]],
+    selected_run_id: str,
+) -> dict[str, object]:
+    evidence = _mapping(fresh_snapshot_checklist.get("evidence"))
+    close_preview = _close_preview_evidence(records)
+    observed_quantity_text = _text(evidence.get("btcusd_position_quantity"))
+    requested_quantity_text = _text(close_preview.get("requested_close_quantity"))
+    remaining_quantity_text = _text(
+        close_preview.get("remaining_quantity_after_preview")
+    )
+    findings = _close_action_blocking_findings(
+        fresh_snapshot_checklist,
+        evidence=evidence,
+        close_preview=close_preview,
+    )
+    status = _close_action_status(findings)
+    eligible = status == _CLOSE_ACTION_STATUS_ELIGIBLE
+    return {
+        "version": _CLOSE_ACTION_ELIGIBILITY_VERSION,
+        "status": status,
+        "paper_lab_only": True,
+        "not_live_authorized": True,
+        "profit_claim": "none",
+        "manual_review_required": True,
+        "eligible_for_future_close_probe_consideration": eligible,
+        "broker_action_performed": False,
+        "close_order_submitted": False,
+        "snapshot_run_id": (
+            _safe_run_id(selected_run_id)
+            if evidence.get("snapshot_records_observed") is True
+            else ""
+        ),
+        "close_preview_event_observed": (
+            close_preview.get("event_observed") is True
+        ),
+        "observed_position_quantity": observed_quantity_text,
+        "requested_close_quantity": requested_quantity_text,
+        "remaining_quantity_after_preview": remaining_quantity_text,
+        "required_operator_confirmations": list(
+            _CLOSE_ACTION_REQUIRED_OPERATOR_CONFIRMATIONS
+        ),
+        "blocking_reasons": [reason for _, reason in findings],
+        "limitations": _close_action_limitations(status, findings),
+        "recommended_next_operator_action": (
+            _CLOSE_ACTION_NEXT_ELIGIBLE if eligible else _CLOSE_ACTION_NEXT_BLOCKED
+        ),
+    }
+
+
+def _close_preview_evidence(
+    records: Sequence[Mapping[str, Any]],
+) -> dict[str, object]:
+    record = _latest_record(records, PAPER_CLOSE_PREVIEW_DESIGNED)
+    if record is None:
+        return {"event_observed": False}
+
+    return {
+        "event_observed": True,
+        "run_id": _safe_run_id(record.get("run_id")),
+        "asset_class": _text(record.get("asset_class")).lower(),
+        "symbol": _text(record.get("symbol")).upper(),
+        "side": _text(record.get("side")).lower(),
+        "ok": _record_bool(record, "ok"),
+        "preview_only": _record_bool(record, "preview_only"),
+        "submitted": _record_bool(record, "submitted"),
+        "mutated": _record_bool(record, "mutated"),
+        "paper_lab_only": _record_bool(record, "paper_lab_only"),
+        "not_live_authorized": _record_bool(record, "not_live_authorized"),
+        "manual_review_required": _record_bool(record, "manual_review_required"),
+        "profit_claim": _text(record.get("profit_claim")),
+        "observed_position_quantity": _text(
+            record.get("observed_position_quantity")
+        ),
+        "requested_close_quantity": _text(record.get("requested_close_quantity")),
+        "remaining_quantity_after_preview": _text(
+            record.get("remaining_quantity_after_preview")
+        ),
+        "no_shorting_gate": _text(record.get("no_shorting_gate")),
+        "submission_disabled_reason": _text(
+            record.get("submission_disabled_reason")
+        ),
+    }
+
+
+def _close_action_blocking_findings(
+    fresh_snapshot_checklist: Mapping[str, object],
+    *,
+    evidence: Mapping[str, object],
+    close_preview: Mapping[str, object],
+) -> list[tuple[str, str]]:
+    findings: list[tuple[str, str]] = []
+    snapshot_status = _text(fresh_snapshot_checklist.get("status"))
+    observed_quantity = _positive_decimal_or_none(
+        evidence.get("btcusd_position_quantity")
+    )
+    requested_quantity = _positive_decimal_or_none(
+        close_preview.get("requested_close_quantity")
+    )
+
+    if evidence.get("credential_leak_evidence") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE,
+            "credential_leak_evidence_found",
+        )
+    if evidence.get("live_profile_evidence") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE,
+            "live_profile_evidence_found",
+        )
+
+    if evidence.get("snapshot_records_observed") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_MISSING_FRESH_SNAPSHOT,
+            "fresh_snapshot_evidence_missing",
+        )
+    elif snapshot_status != CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED:
+        _add_close_action_finding(
+            findings,
+            _close_action_status_for_snapshot_status(snapshot_status),
+            f"fresh_snapshot_checklist_status_{snapshot_status or 'missing'}",
+        )
+
+    if evidence.get("ok") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "fresh_snapshot_ok_not_true",
+        )
+    if evidence.get("mutated") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_MUTATION,
+            "fresh_snapshot_mutated_true",
+        )
+    elif evidence.get("mutated") is not False:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "fresh_snapshot_mutated_not_observed_false",
+        )
+    if evidence.get("submitted") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_SUBMIT,
+            "fresh_snapshot_submitted_true",
+        )
+    elif evidence.get("submitted") is not False:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "fresh_snapshot_submitted_not_observed_false",
+        )
+
+    for field_name, reason in (
+        ("account_observation_available", "account_observation_missing"),
+        ("positions_observation_available", "positions_observation_missing"),
+        ("orders_observation_available", "orders_observation_missing"),
+    ):
+        if evidence.get(field_name) is not True:
+            _add_close_action_finding(
+                findings,
+                _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+                reason,
+            )
+
+    if evidence.get("btcusd_position_status") != "present":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_MISSING_POSITION,
+            "btcusd_position_not_present",
+        )
+    if observed_quantity is None:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_INVALID_QUANTITY,
+            "observed_btcusd_quantity_not_positive",
+        )
+    if evidence.get("recent_order_query_metadata_complete") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE,
+            "recent_order_query_metadata_incomplete",
+        )
+    if evidence.get("recent_order_query_returned_count") is None:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE,
+            "recent_open_order_count_not_observed",
+        )
+    if evidence.get("credentials_redacted_present") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "credentials_redacted_marker_missing",
+        )
+
+    if close_preview.get("event_observed") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_MISSING_CLOSE_PREVIEW,
+            "close_preview_evidence_missing",
+        )
+        return findings
+
+    if close_preview.get("preview_only") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_preview_only_not_true",
+        )
+    if close_preview.get("submitted") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_SUBMIT,
+            "close_preview_submitted_true",
+        )
+    elif close_preview.get("submitted") is not False:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_submitted_not_observed_false",
+        )
+    if close_preview.get("mutated") is True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_MUTATION,
+            "close_preview_mutated_true",
+        )
+    elif close_preview.get("mutated") is not False:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_mutated_not_observed_false",
+        )
+    if close_preview.get("asset_class") != "crypto":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_asset_class_not_crypto",
+        )
+    if close_preview.get("symbol") != "BTCUSD":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_symbol_not_BTCUSD",
+        )
+    if close_preview.get("side") != "sell":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_side_not_sell",
+        )
+    if requested_quantity is None:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_INVALID_QUANTITY,
+            "requested_close_quantity_not_positive",
+        )
+    elif observed_quantity is not None and requested_quantity > observed_quantity:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_NO_SHORTING_GATE_FAILED,
+            "requested_close_quantity_exceeds_observed_position",
+        )
+    if close_preview.get("no_shorting_gate") != "passed":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_BLOCKED_NO_SHORTING_GATE_FAILED,
+            "no_shorting_gate_not_passed",
+        )
+    if (
+        close_preview.get("submission_disabled_reason")
+        != PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON
+    ):
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "submission_disabled_reason_missing",
+        )
+    if close_preview.get("manual_review_required") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "manual_review_required_not_true",
+        )
+    if close_preview.get("paper_lab_only") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_paper_lab_only_not_true",
+        )
+    if close_preview.get("not_live_authorized") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_not_live_authorized_not_true",
+        )
+    if close_preview.get("profit_claim") != "none":
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_profit_claim_not_none",
+        )
+    if close_preview.get("ok") is not True:
+        _add_close_action_finding(
+            findings,
+            _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+            "close_preview_ok_not_true",
+        )
+
+    return findings
+
+
+def _close_action_status(
+    findings: Sequence[tuple[str, str]],
+) -> str:
+    if not findings:
+        return _CLOSE_ACTION_STATUS_ELIGIBLE
+
+    priority = (
+        _CLOSE_ACTION_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE,
+        _CLOSE_ACTION_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE,
+        _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_MUTATION,
+        _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_SUBMIT,
+        _CLOSE_ACTION_STATUS_BLOCKED_MISSING_FRESH_SNAPSHOT,
+        _CLOSE_ACTION_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE,
+        _CLOSE_ACTION_STATUS_BLOCKED_MISSING_POSITION,
+        _CLOSE_ACTION_STATUS_BLOCKED_INVALID_QUANTITY,
+        _CLOSE_ACTION_STATUS_BLOCKED_NO_SHORTING_GATE_FAILED,
+        _CLOSE_ACTION_STATUS_BLOCKED_MISSING_CLOSE_PREVIEW,
+        _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION,
+    )
+    statuses = {status for status, _ in findings}
+    for status in priority:
+        if status in statuses:
+            return status
+
+    return _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION
+
+
+def _close_action_status_for_snapshot_status(snapshot_status: str) -> str:
+    if snapshot_status == CHECKLIST_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE:
+        return _CLOSE_ACTION_STATUS_BLOCKED_CREDENTIAL_LEAK_EVIDENCE
+    if snapshot_status == CHECKLIST_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE:
+        return _CLOSE_ACTION_STATUS_BLOCKED_LIVE_PROFILE_EVIDENCE
+    if snapshot_status == CHECKLIST_STATUS_BLOCKED_UNEXPECTED_MUTATION:
+        return _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_MUTATION
+    if snapshot_status == CHECKLIST_STATUS_BLOCKED_UNEXPECTED_SUBMIT:
+        return _CLOSE_ACTION_STATUS_BLOCKED_UNEXPECTED_SUBMIT
+    if snapshot_status == CHECKLIST_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE:
+        return _CLOSE_ACTION_STATUS_BLOCKED_QUERY_METADATA_INCOMPLETE
+    if snapshot_status == CHECKLIST_STATUS_READ_ONLY_SNAPSHOT_COMPLETED:
+        return _CLOSE_ACTION_STATUS_ELIGIBLE
+    if not snapshot_status:
+        return _CLOSE_ACTION_STATUS_BLOCKED_MISSING_FRESH_SNAPSHOT
+
+    return _CLOSE_ACTION_STATUS_INSUFFICIENT_OBSERVATION
+
+
+def _add_close_action_finding(
+    findings: list[tuple[str, str]],
+    status: str,
+    reason: str,
+) -> None:
+    if reason not in {existing_reason for _, existing_reason in findings}:
+        findings.append((status, reason))
+
+
+def _positive_decimal_or_none(value: Any) -> Decimal | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        decimal_value = Decimal(text)
+    except (InvalidOperation, ValueError):
+        return None
+
+    if decimal_value <= 0:
+        return None
+
+    return decimal_value
+
+
+def _close_action_limitations(
+    status: str,
+    findings: Sequence[tuple[str, str]],
+) -> list[str]:
+    if status == _CLOSE_ACTION_STATUS_ELIGIBLE:
+        return [
+            "eligibility only supports preparing a later explicit operator prompt",
+            "no broker action is authorized or performed by this checklist",
+        ]
+
+    reasons = ", ".join(reason for _, reason in findings)
+    return [
+        "close action eligibility is blocked until required read-only and "
+        "preview evidence is complete",
+        f"blocking reasons: {reasons}" if reasons else "blocking reasons: none",
+    ]
 
 
 def _fresh_snapshot_operator_checklist(
@@ -2331,6 +2790,68 @@ def _close_exit_probe_design_lines(
             f"{_value_text(design.get('recommended_next_operator_action'))}"
         ),
     ]
+
+
+def _close_action_eligibility_checklist_lines(
+    checklist: Mapping[str, Any],
+) -> list[str]:
+    lines = [
+        "close_action_eligibility_checklist:",
+        f"  version: {_value_text(checklist.get('version'))}",
+        f"  status: {_value_text(checklist.get('status'))}",
+        f"  paper_lab_only: {_bool_text(checklist.get('paper_lab_only'))}",
+        f"  not_live_authorized: {_bool_text(checklist.get('not_live_authorized'))}",
+        f"  profit_claim: {_value_text(checklist.get('profit_claim'))}",
+        (
+            "  manual_review_required: "
+            f"{_bool_text(checklist.get('manual_review_required'))}"
+        ),
+        (
+            "  eligible_for_future_close_probe_consideration: "
+            f"{_bool_text(checklist.get('eligible_for_future_close_probe_consideration'))}"
+        ),
+        (
+            "  broker_action_performed: "
+            f"{_bool_text(checklist.get('broker_action_performed'))}"
+        ),
+        (
+            "  close_order_submitted: "
+            f"{_bool_text(checklist.get('close_order_submitted'))}"
+        ),
+        f"  snapshot_run_id: {_value_text(checklist.get('snapshot_run_id'))}",
+        (
+            "  close_preview_event_observed: "
+            f"{_bool_text(checklist.get('close_preview_event_observed'))}"
+        ),
+        (
+            "  observed_position_quantity: "
+            f"{_value_text(checklist.get('observed_position_quantity'))}"
+        ),
+        (
+            "  requested_close_quantity: "
+            f"{_value_text(checklist.get('requested_close_quantity'))}"
+        ),
+        (
+            "  remaining_quantity_after_preview: "
+            f"{_value_text(checklist.get('remaining_quantity_after_preview'))}"
+        ),
+    ]
+    for item in _sequence(checklist.get("required_operator_confirmations")):
+        lines.append(f"  required_operator_confirmation: {_value_text(item)}")
+    lines.extend(
+        [
+            (
+                "  blocking_reasons: "
+                f"{_joined(checklist.get('blocking_reasons'))}"
+            ),
+            f"  limitations: {_joined(checklist.get('limitations'))}",
+            (
+                "  recommended_next_operator_action: "
+                f"{_value_text(checklist.get('recommended_next_operator_action'))}"
+            ),
+        ]
+    )
+    return lines
 
 
 def _submit_observation_lines(

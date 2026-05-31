@@ -13760,6 +13760,24 @@ Safe next tasks include:
   credential access, broker write path, cancel/replace/liquidate behavior,
   options behavior, portfolio mutation, profit inference, or unsafe pytest
   behavior.
+- Phase 326 / Milestone 326 - BTCUSD Close Action Eligibility Checklist adds a
+  deterministic local-only `close_action_eligibility_checklist` section to
+  `paper-lab-revalidation-brief` JSON/text output. It classifies whether a
+  later broker-side BTCUSD paper close probe may be considered for explicit
+  operator approval, while preserving `broker_action_performed=false` and
+  `close_order_submitted=false`. Eligibility requires a completed fresh
+  read-only snapshot checklist and an observed successful
+  `paper_close_preview_designed` event with preview-only/manual-review labels,
+  crypto/BTCUSD/sell shape, positive quantity within the observed BTCUSD
+  position, no-shorting passed, no mutation, no submit, complete query metadata,
+  redaction evidence, no live-profile evidence, and no credential-leak evidence.
+  Snapshot-only evidence remains blocked with `blocked_missing_close_preview`;
+  complete evidence reports `eligible_for_explicit_operator_approval` and
+  recommends `prepare_explicit_paper_close_probe_prompt_but_do_not_submit`.
+  This milestone adds no submit command, close/sell order placement, Alpaca
+  call, network use, live profile/live URL behavior, credential access, broker
+  write path, cancel/replace/liquidate behavior, options behavior, portfolio
+  mutation, profit inference, or unsafe pytest behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

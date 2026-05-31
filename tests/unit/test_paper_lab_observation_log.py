@@ -270,6 +270,10 @@ def test_paper_close_preview_event_is_not_a_broker_receipt() -> None:
     assert records[0]["observed_position_quantity"] == "0.000132386"
     assert records[0]["requested_close_quantity"] == "0.000132386"
     assert records[0]["remaining_quantity_after_preview"] == "0"
+    assert (
+        records[0]["paper_close_preview_contract_version"]
+        == "paper_close_preview_v1"
+    )
     assert records[0]["submission_disabled_reason"] == (
         PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON
     )

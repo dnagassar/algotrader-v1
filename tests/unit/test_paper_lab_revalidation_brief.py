@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import json
 
+from algotrader.execution.paper_lab_observation_log import (
+    make_paper_close_preview_events,
+)
 from algotrader.execution.paper_lab_revalidation_brief import (
     STATE_BROKER_REJECTED,
     STATE_INSUFFICIENT_OBSERVATION,
@@ -14,6 +17,9 @@ from algotrader.execution.paper_lab_revalidation_brief import (
     STATE_USABLE_FOR_MANUAL_REVIEW,
     build_paper_lab_revalidation_brief,
     render_paper_lab_revalidation_brief_text,
+)
+from algotrader.execution.paper_order_policy import (
+    build_btcusd_paper_close_preview_contract,
 )
 
 
@@ -298,6 +304,7 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
     payload = build_paper_lab_revalidation_brief(run_log)
     checklist = payload["fresh_snapshot_operator_checklist"]
     close_design = payload["close_exit_probe_design"]
+    close_action = payload["close_action_eligibility_checklist"]
     evidence = checklist["evidence"]
     rendered = render_paper_lab_revalidation_brief_text(payload)
 
@@ -354,9 +361,107 @@ def test_fresh_snapshot_operator_checklist_completes_for_fresh_read_only_snapsho
         "read_only_snapshot_completed_for_manual_review"
     )
     assert close_design["recent_order_query_metadata_complete"] is True
+    assert close_action["status"] == "blocked_missing_close_preview"
+    assert close_action["eligible_for_future_close_probe_consideration"] is False
+    assert close_action["broker_action_performed"] is False
+    assert close_action["close_order_submitted"] is False
+    assert close_action["snapshot_run_id"] == "fresh-snapshot-run"
+    assert close_action["close_preview_event_observed"] is False
+    assert close_action["observed_position_quantity"] == "0.000132386"
+    assert close_action["requested_close_quantity"] == ""
+    assert close_action["remaining_quantity_after_preview"] == ""
+    assert close_action["blocking_reasons"] == ["close_preview_evidence_missing"]
+    assert close_action["recommended_next_operator_action"] == (
+        "collect_required_read_only_or_preview_evidence_before_close_probe"
+    )
     assert "close_exit_probe_design:" in rendered
+    assert "close_action_eligibility_checklist:" in rendered
     assert "design_ready: true" in rendered
     assert "submission_disabled_reason: close_preview_submission_disabled" in rendered
+
+
+def test_close_action_eligibility_checklist_allows_later_operator_approval(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "close_eligible.jsonl",
+        (
+            *_fresh_snapshot_records(run_id="m324-fresh-read-only"),
+            *_close_preview_records(run_id="m325-close-preview"),
+        ),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    checklist = payload["close_action_eligibility_checklist"]
+    rendered = render_paper_lab_revalidation_brief_text(payload)
+
+    assert checklist["version"] == "close_action_eligibility_checklist_v1"
+    assert checklist["status"] == "eligible_for_explicit_operator_approval"
+    assert checklist["paper_lab_only"] is True
+    assert checklist["not_live_authorized"] is True
+    assert checklist["profit_claim"] == "none"
+    assert checklist["manual_review_required"] is True
+    assert checklist["eligible_for_future_close_probe_consideration"] is True
+    assert checklist["broker_action_performed"] is False
+    assert checklist["close_order_submitted"] is False
+    assert checklist["snapshot_run_id"] == "m324-fresh-read-only"
+    assert checklist["close_preview_event_observed"] is True
+    assert checklist["observed_position_quantity"] == "0.000132386"
+    assert checklist["requested_close_quantity"] == "0.000132386"
+    assert checklist["remaining_quantity_after_preview"] == "0"
+    assert checklist["required_operator_confirmations"] == [
+        "I understand this is paper-only.",
+        "I understand this is not live-authorized.",
+        "I understand this may close the BTCUSD paper position.",
+        "I understand the action must be manually triggered.",
+        "I understand normal pytest must remain credential-free.",
+        "I understand this does not imply profitability.",
+    ]
+    assert checklist["blocking_reasons"] == []
+    assert checklist["recommended_next_operator_action"] == (
+        "prepare_explicit_paper_close_probe_prompt_but_do_not_submit"
+    )
+    assert (
+        "status: eligible_for_explicit_operator_approval"
+        in rendered
+    )
+    assert (
+        "recommended_next_operator_action: "
+        "prepare_explicit_paper_close_probe_prompt_but_do_not_submit"
+        in rendered
+    )
+
+
+def test_close_action_eligibility_checklist_blocks_no_shorting_failure(
+    tmp_path,
+) -> None:
+    run_log = _write_jsonl(
+        tmp_path / "close_no_shorting_blocked.jsonl",
+        (
+            *_fresh_snapshot_records(run_id="m324-fresh-read-only"),
+            *_close_preview_records(
+                run_id="m325-close-preview",
+                requested_close_quantity="0.000132387",
+            ),
+        ),
+    )
+
+    payload = build_paper_lab_revalidation_brief(
+        run_log,
+        run_id="m324-fresh-read-only",
+    )
+    checklist = payload["close_action_eligibility_checklist"]
+
+    assert checklist["status"] == "blocked_no_shorting_gate_failed"
+    assert checklist["eligible_for_future_close_probe_consideration"] is False
+    assert checklist["requested_close_quantity"] == "0.000132387"
+    assert "requested_close_quantity_exceeds_observed_position" in checklist[
+        "blocking_reasons"
+    ]
+    assert "no_shorting_gate_not_passed" in checklist["blocking_reasons"]
 
 
 def test_fresh_snapshot_operator_checklist_blocks_unavailable_observations(
@@ -1274,6 +1379,22 @@ def _complete_recent_order_query_metadata(
         "recent_order_query_symbol_filter": "",
         "recent_order_query_until": None,
     }
+
+
+def _close_preview_records(
+    *,
+    run_id: str,
+    requested_close_quantity: str = "0.000132386",
+) -> tuple[dict[str, object], ...]:
+    payload = build_btcusd_paper_close_preview_contract(
+        observed_position_quantity="0.000132386",
+        requested_close_quantity=requested_close_quantity,
+        fresh_snapshot_status="read_only_snapshot_completed_for_manual_review",
+        recent_order_query_metadata_complete=True,
+        source_mutated=False,
+        source_submitted=False,
+    ).to_payload()
+    return make_paper_close_preview_events(run_id=run_id, payload=payload)
 
 
 def _fresh_snapshot_records(
