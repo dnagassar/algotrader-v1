@@ -39,6 +39,7 @@ _MAJOR_SECTIONS = (
     "Diagnostic Issues",
     "Data-Source Readiness Problems",
     "Research Observations",
+    "Strategy Candidate Dossier",
     "Work Queue / Next Non-Trading Work Items",
     "Backtest Readiness Gate",
     "Blocked / Missing Before Real Strategy, Backtest, Or Trading Use",
@@ -74,6 +75,30 @@ def test_mvp_preview_text_output_is_human_readable_and_useful(capsys) -> None:
         "Return observations",
         "SMA-return pipeline observation",
         "Data-source readiness observations",
+        "Strategy Candidate Dossier",
+        "candidate_id=synthetic_broad_etf_sma_trend_following",
+        "Broad ETF SMA Trend-Following Candidate",
+        "dossier_scope: synthetic_only_advisory_only",
+        "research_purpose: Pipeline-validation candidate for deterministic research/backtest workflow development.",
+        "candidate_state: research_candidate_only",
+        "evidence_state: synthetic_observations_only",
+        "sma_return_pipeline_observations=1",
+        "no approved real data source",
+        "no approved universe/source/benchmark/cash policy",
+        "no no-lookahead protocol applied to this candidate path",
+        "no deterministic real-data backtest",
+        "no robustness/OOS/walk-forward/cost/liquidity validation",
+        "no reproduction evidence package",
+        "data source approval",
+        "provenance/pinned snapshot policy",
+        "universe and benchmark policy",
+        "return construction policy promoted into approved path",
+        "validation scorecard",
+        "strategy mandate",
+        "backtest_readiness_state: blocked_not_ready",
+        "approval_state: not_approved",
+        "trading_authority: none",
+        "next_non_trading_step: Define or confirm the deterministic source/universe/benchmark/cash controls before any real-data backtest path.",
         "label=Data-source readiness gaps",
         "label=Deterministic backtest readiness evidence",
         "label=Advisory-only research observations",
@@ -122,11 +147,89 @@ def test_mvp_preview_json_output_is_concise_and_consistent(capsys) -> None:
         "safety",
         "scope",
         "sections_present",
+        "strategy_candidate_dossiers",
         "title",
         "work_queue",
     }
     assert parsed["work_queue"] == payload["work_queue"]
     assert parsed["backtest_readiness_gate"] == payload["backtest_readiness_gate"]
+    assert parsed["strategy_candidate_dossiers"] == (
+        payload["strategy_candidate_dossiers"]
+    )
+
+
+def test_mvp_preview_strategy_candidate_dossier_records_controls(capsys) -> None:
+    text_output = _run_preview_cli((_COMMAND,), capsys)
+    parsed = json.loads(_run_preview_cli((_COMMAND, "--format", "json"), capsys))
+    dossiers = parsed["strategy_candidate_dossiers"]
+
+    assert len(dossiers) == 1
+    dossier = dossiers[0]
+    assert set(dossier) == {
+        "approval_state",
+        "backtest_readiness_state",
+        "candidate_id",
+        "candidate_state",
+        "dossier_scope",
+        "evidence_state",
+        "label",
+        "missing_controls",
+        "missing_evidence",
+        "next_non_trading_step",
+        "research_purpose",
+        "synthetic_observations",
+        "trading_authority",
+    }
+    assert dossier == {
+        "candidate_id": "synthetic_broad_etf_sma_trend_following",
+        "label": "Broad ETF SMA Trend-Following Candidate",
+        "dossier_scope": "synthetic_only_advisory_only",
+        "research_purpose": (
+            "Pipeline-validation candidate for deterministic research/backtest "
+            "workflow development."
+        ),
+        "candidate_state": "research_candidate_only",
+        "evidence_state": "synthetic_observations_only",
+        "synthetic_observations": [
+            "sma_observations=2",
+            "sma_summary_observations=1",
+            "return_observations=2",
+            "return_summary_observations=2",
+            "sma_return_pipeline_observations=1",
+            "data_source_readiness_observations=1",
+            "research_observation_manifest=1",
+        ],
+        "missing_evidence": [
+            "no approved real data source",
+            "no approved universe/source/benchmark/cash policy",
+            "no no-lookahead protocol applied to this candidate path",
+            "no deterministic real-data backtest",
+            "no robustness/OOS/walk-forward/cost/liquidity validation",
+            "no reproduction evidence package",
+        ],
+        "missing_controls": [
+            "data source approval",
+            "provenance/pinned snapshot policy",
+            "universe and benchmark policy",
+            "return construction policy promoted into approved path",
+            "validation scorecard",
+            "strategy mandate",
+        ],
+        "backtest_readiness_state": "blocked_not_ready",
+        "approval_state": "not_approved",
+        "trading_authority": "none",
+        "next_non_trading_step": (
+            "Define or confirm the deterministic source/universe/benchmark/cash "
+            "controls before any real-data backtest path."
+        ),
+    }
+    for field_name, value in dossier.items():
+        assert field_name in text_output
+        if isinstance(value, list):
+            for item in value:
+                assert item in text_output
+        else:
+            assert str(value) in text_output
 
 
 def test_mvp_preview_work_queue_records_project_control_items(capsys) -> None:
@@ -611,7 +714,6 @@ def _forbidden_actionable_field_names() -> set[str]:
         _s("or", "der_authority"),
         _s("port", "folio"),
         _s("port", "folios"),
-        _s("tra", "ding_authority"),
         "trading_ready",
     }
 

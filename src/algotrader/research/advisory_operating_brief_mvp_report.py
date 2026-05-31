@@ -94,6 +94,10 @@ def render_advisory_operating_brief_mvp_report_text(
     issues = _list(report["diagnostic_issues"], "diagnostic_issues")
     readiness = _dict(report["data_source_readiness"], "data_source_readiness")
     observations = _dict(report["research_observations"], "research_observations")
+    strategy_dossiers = _list(
+        report["strategy_candidate_dossiers"],
+        "strategy_candidate_dossiers",
+    )
     work_queue = _list(report["work_queue"], "work_queue")
     backtest_gate = _list(report["backtest_readiness_gate"], "backtest_readiness_gate")
     blocked = _dict(
@@ -305,6 +309,58 @@ def render_advisory_operating_brief_mvp_report_text(
         "approval, ranking, scoring, recommendation, or trade authority."
     )
 
+    lines.extend(("", "Strategy Candidate Dossier"))
+    for index, dossier in enumerate(strategy_dossiers, start=1):
+        item = _dict(dossier, f"strategy_candidate_dossiers[{index}]")
+        lines.append(
+            f"{index}. candidate_id={_string(item['candidate_id'], 'candidate_id')} | "
+            f"label={_string(item['label'], 'label')}"
+        )
+        lines.append(
+            f"   dossier_scope: {_string(item['dossier_scope'], 'dossier_scope')}"
+        )
+        lines.append(
+            f"   research_purpose: {_string(item['research_purpose'], 'research_purpose')}"
+        )
+        lines.append(
+            f"   candidate_state: {_string(item['candidate_state'], 'candidate_state')}"
+        )
+        lines.append(
+            f"   evidence_state: {_string(item['evidence_state'], 'evidence_state')}"
+        )
+        lines.append("   synthetic_observations:")
+        _append_values(
+            lines,
+            _list(item["synthetic_observations"], "synthetic_observations"),
+            indent="     ",
+        )
+        lines.append("   missing_evidence:")
+        _append_values(
+            lines,
+            _list(item["missing_evidence"], "missing_evidence"),
+            indent="     ",
+        )
+        lines.append("   missing_controls:")
+        _append_values(
+            lines,
+            _list(item["missing_controls"], "missing_controls"),
+            indent="     ",
+        )
+        lines.append(
+            "   backtest_readiness_state: "
+            f"{_string(item['backtest_readiness_state'], 'backtest_readiness_state')}"
+        )
+        lines.append(
+            f"   approval_state: {_string(item['approval_state'], 'approval_state')}"
+        )
+        lines.append(
+            f"   trading_authority: {_string(item['trading_authority'], 'trading_authority')}"
+        )
+        lines.append(
+            "   next_non_trading_step: "
+            f"{_string(item['next_non_trading_step'], 'next_non_trading_step')}"
+        )
+
     lines.extend(("", "Work Queue / Next Non-Trading Work Items"))
     for index, work_item in enumerate(work_queue, start=1):
         item = _dict(work_item, f"work_queue[{index}]")
@@ -473,6 +529,9 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
         "diagnostic_issues": issues,
         "data_source_readiness": data_source_readiness,
         "research_observations": research_observations,
+        "strategy_candidate_dossiers": _strategy_candidate_dossier_rows(
+            research_observations
+        ),
         "work_queue": _work_queue_rows(
             readiness_items=readiness_items,
             diagnostic_issues=issues,
@@ -490,6 +549,50 @@ def _build_report_payload(package: AdvisoryOperatingBriefPackage) -> dict[str, o
             "no ranking, scoring, recommendation, approval, or trading authority is represented",
         ),
     }
+
+
+def _strategy_candidate_dossier_rows(
+    research_observations: dict[str, object],
+) -> tuple[dict[str, object], ...]:
+    return (
+        {
+            "candidate_id": "synthetic_broad_etf_sma_trend_following",
+            "label": "Broad ETF SMA Trend-Following Candidate",
+            "dossier_scope": "synthetic_only_advisory_only",
+            "research_purpose": (
+                "Pipeline-validation candidate for deterministic research/backtest "
+                "workflow development."
+            ),
+            "candidate_state": "research_candidate_only",
+            "evidence_state": "synthetic_observations_only",
+            "synthetic_observations": list(
+                _observation_counts(research_observations)
+            ),
+            "missing_evidence": [
+                "no approved real data source",
+                "no approved universe/source/benchmark/cash policy",
+                "no no-lookahead protocol applied to this candidate path",
+                "no deterministic real-data backtest",
+                "no robustness/OOS/walk-forward/cost/liquidity validation",
+                "no reproduction evidence package",
+            ],
+            "missing_controls": [
+                "data source approval",
+                "provenance/pinned snapshot policy",
+                "universe and benchmark policy",
+                "return construction policy promoted into approved path",
+                "validation scorecard",
+                "strategy mandate",
+            ],
+            "backtest_readiness_state": "blocked_not_ready",
+            "approval_state": "not_approved",
+            "trading_authority": "none",
+            "next_non_trading_step": (
+                "Define or confirm the deterministic source/universe/benchmark/cash "
+                "controls before any real-data backtest path."
+            ),
+        },
+    )
 
 
 def _backtest_readiness_gate_rows() -> tuple[dict[str, str], ...]:
