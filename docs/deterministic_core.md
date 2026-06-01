@@ -8686,6 +8686,29 @@ order, fill, or position state. The preview hard-codes
 as runtime input. The recommended next milestone is M347 local ETF/SMA preview
 JSONL artifact - no broker action.
 
+Milestone 347 adds a local offline ETF/SMA preview JSONL artifact layer in
+`algotrader.orchestration.etf_sma_preview_jsonl_artifact`.
+`build_etf_sma_preview_jsonl_record` consumes only the M346
+`EtfSmaExecutionPreview` output and projects it into a frozen/slotted
+`EtfSmaPreviewJsonlRecord`; `write_etf_sma_preview_jsonl_artifact` writes one
+newline-terminated deterministic JSON object to an explicit caller-provided
+path. Default mode creates a new file only, append mode must be explicitly
+configured, and parent directory creation is opt-in through local config.
+
+M347 preserves source signal symbol, asset class, `as_of`, M345 posture, SMA
+windows, M346 preview status, skip reason, max notional, allowlist decision,
+source labels, source preview payload, `not_live_authorized`, and
+`profit_claim=none`. It hard-codes `broker_action_performed=false`,
+`broker_preview_performed=false`, `submit_allowed=false`,
+`capital_mutated=false`, and `broker_mutated=false`, rejects live-authorized
+labels and non-none profit claims at the artifact boundary, and points
+`next_action` to
+`m348_fresh_read_only_paper_snapshot_before_broker_facing_preview`. It performs
+no broker action, broker preview or staging, submit/cancel/close/liquidate
+behavior, credential loading, network or market-data fetch, `ExecutionIntent`
+or `ExecutionPlan` creation, scheduler/autonomous behavior, or portfolio,
+account, order, fill, or position mutation.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

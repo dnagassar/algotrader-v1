@@ -14164,6 +14164,30 @@ Safe next tasks include:
   `submit_allowed=false`, and `mutated=false`; `profit_claim=none`,
   `not_live_authorized`, SPY-only, and `max_notional <= 25.00` stay fixed.
   M344 remains prior paper context only and is not consumed as runtime input.
+- M347 adds the local offline ETF/SMA preview JSONL artifact layer in
+  `algotrader.orchestration.etf_sma_preview_jsonl_artifact`. It consumes only
+  M346 `EtfSmaExecutionPreview` output, builds frozen/slotted
+  `EtfSmaPreviewJsonlRecord` objects, and writes one deterministic
+  newline-terminated JSON object per call to an explicit caller-provided path.
+  Default mode creates a new file only; appending and parent directory creation
+  are opt-in configuration choices.
+- M347 records preserve source signal symbol, asset class, `as_of`, M345
+  posture, SMA windows, M346 accepted/skipped preview status, deterministic
+  skip reason, max notional, allowlist decision, source labels, and source
+  preview payload. Labels preserve `paper_lab_only`,
+  `offline_execution_preview_only`, `not_live_authorized`, and
+  `profit_claim=none`; source signal labels preserve `signal_evaluation_only`.
+  The artifact hard-codes `broker_action_performed=false`,
+  `broker_preview_performed=false`, `submit_allowed=false`,
+  `capital_mutated=false`, and `broker_mutated=false`, rejects live-authorized
+  labels and non-none profit claims, and points next action to
+  `m348_fresh_read_only_paper_snapshot_before_broker_facing_preview`.
+- M347 performs no broker action, broker preview or staging, submit/cancel/
+  close/liquidate behavior, credential loading, network or market-data fetch,
+  `ExecutionIntent` or `ExecutionPlan` creation, scheduler/autonomous behavior,
+  LLM trading-path work, or portfolio/account/order/fill mutation. Tests use
+  `tmp_path` for file writes and normal pytest remains offline,
+  credential-free, deterministic, and safe.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
@@ -14177,7 +14201,7 @@ Safe next tasks include:
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
-- M347 local ETF/SMA preview JSONL artifact - no broker action
+- M348 fresh read-only paper snapshot before any broker-facing preview
 
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,
