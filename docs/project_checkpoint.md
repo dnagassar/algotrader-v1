@@ -14210,6 +14210,30 @@ Safe next tasks include:
   persistence/printing, LLM trading-path work, or portfolio/account/order/fill
   mutation. The next action is
   `m350_operator_review_before_any_tiny_spy_paper_probe`.
+- M350 adds
+  `algotrader.orchestration.etf_sma_paper_probe_operator_review`, a frozen
+  deterministic operator-review checkpoint for the M349 SPY preview evidence.
+  It reads one local M349 JSONL preview record, reviews the embedded M348
+  fresh read-only snapshot evidence, and emits either
+  `ready_for_separate_tiny_spy_paper_probe_milestone` or
+  `blocked_from_tiny_spy_paper_probe_milestone`.
+- M350 requires M348 `usable_for_manual_review`, observed account/positions/
+  recent orders, zero positions, zero recent open orders, complete recent-order
+  metadata, no unavailable observations, and no live-profile, credential-leak,
+  submit, or mutation evidence. It requires M349 SPY/equity/buy,
+  `market`/`day`, `notional <= 25.00`, `not_live_authorized`,
+  `profit_claim=none`, no live-authorized status, no non-none profit claim,
+  and all submit/broker/mutation flags false.
+- M350 is review-only and authorizes only scoping a separate future M351 tiny
+  SPY paper probe milestone; it does not authorize submit now. It hard-codes
+  `operator_review_required=true`,
+  `separate_future_probe_milestone_required=true`, `submit_allowed=false`,
+  `submitted=false`, `mutated=false`, `broker_action_performed=false`,
+  `broker_preview_performed=false`, `paper_probe_performed=false`, and
+  `live_authorized=false`. The checked M349 evidence reviews as
+  `ready_for_separate_tiny_spy_paper_probe_milestone` with no blockers and
+  next action
+  `m351_separate_tiny_spy_paper_probe_scope_if_operator_approves`.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
@@ -14223,7 +14247,7 @@ Safe next tasks include:
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
-- M350 operator review before any tiny SPY paper probe
+- M351 separate tiny SPY paper probe scope, only if operator approves
 
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,

@@ -8733,6 +8733,33 @@ broker preview API is available it performs only a local payload render. The
 next action is
 `m350_operator_review_before_any_tiny_spy_paper_probe`.
 
+Milestone 350 adds the deterministic operator-review checkpoint in
+`algotrader.orchestration.etf_sma_paper_probe_operator_review`. It consumes one
+local M349 JSONL preview record, including the embedded M348 fresh read-only
+snapshot evidence, and emits either
+`ready_for_separate_tiny_spy_paper_probe_milestone` or
+`blocked_from_tiny_spy_paper_probe_milestone`. The review checks that M348 is
+`usable_for_manual_review`, account/position/order observations were present,
+position count and recent open order count are zero, recent-order metadata is
+complete, and no live-profile, credential-leak, submit, or mutation evidence is
+present. It also verifies the M349 SPY equity buy `market`/`day` local payload,
+`notional <= 25.00`, `not_live_authorized`, `profit_claim=none`, no
+live-authorized status, no non-none profit claim, and all broker/submit/mutation
+flags false.
+
+M350 is review-only. It authorizes only scoping a separate future M351 tiny SPY
+paper probe milestone, not submit authority now. Its output hard-codes
+`operator_review_required=true`,
+`separate_future_probe_milestone_required=true`, `submit_allowed=false`,
+`submitted=false`, `mutated=false`, `broker_action_performed=false`,
+`broker_preview_performed=false`, `paper_probe_performed=false`, and
+`live_authorized=false`, with next action
+`m351_separate_tiny_spy_paper_probe_scope_if_operator_approves`. The checked
+M349 evidence currently reviews as
+`ready_for_separate_tiny_spy_paper_probe_milestone` with no blockers for source
+run IDs `m348_etf_sma_fresh_read_only_snapshot` and
+`m349_etf_sma_paper_preview_only`.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
