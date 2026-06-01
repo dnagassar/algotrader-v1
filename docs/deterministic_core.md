@@ -8709,6 +8709,30 @@ behavior, credential loading, network or market-data fetch, `ExecutionIntent`
 or `ExecutionPlan` creation, scheduler/autonomous behavior, or portfolio,
 account, order, fill, or position mutation.
 
+Milestone 349 adds an ETF/SMA paper broker-facing preview-only contract in
+`algotrader.orchestration.etf_sma_paper_broker_preview`, with CLI wiring
+through `etf-sma-paper-preview-only`. It consumes a validated M347
+`EtfSmaPreviewJsonlRecord` plus M348 fresh read-only paper snapshot
+revalidation evidence. Bullish/risk-on SPY, equity-only, notional-only,
+`market`/`day`, and `max_notional <= 25.00` can render a local broker-shaped
+payload preview; defensive, insufficient-history, non-SPY, unsafe notional, or
+unsafe source-label cases skip before payload rendering. Unusable M348
+evidence, unexpected positions, recent open orders, incomplete recent-order
+query metadata, unavailable observations, live-profile evidence, credential
+leak evidence, or prior submit/mutation evidence block before preview.
+
+M349 remains submit-disabled and non-mutating. It does not call Alpaca, broker
+SDKs, network libraries, market data, order preview endpoints, staging APIs,
+submit/cancel/close/liquidate/retry behavior, schedulers, runtime loops, risk
+engines, portfolio/account/order/fill mutation, `ExecutionIntent`,
+`ExecutionPlan`, or LLM trading-path logic. It hard-codes
+`submit_allowed=false`, `submitted=false`, `mutated=false`,
+`broker_action_performed=false`, `broker_preview_performed=false`,
+`not_live_authorized`, and `profit_claim=none`; when no true non-mutating
+broker preview API is available it performs only a local payload render. The
+next action is
+`m350_operator_review_before_any_tiny_spy_paper_probe`.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

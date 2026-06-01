@@ -14188,6 +14188,28 @@ Safe next tasks include:
   LLM trading-path work, or portfolio/account/order/fill mutation. Tests use
   `tmp_path` for file writes and normal pytest remains offline,
   credential-free, deterministic, and safe.
+- M349 adds `algotrader.orchestration.etf_sma_paper_broker_preview` plus the
+  `etf-sma-paper-preview-only` CLI. It consumes M347 ETF/SMA preview evidence
+  and an M348 fresh read-only paper snapshot revalidation. Only bullish SPY,
+  equity, notional-only, `market`/`day`, and `max_notional <= 25.00` can render
+  a local broker-shaped payload preview; defensive, insufficient-history,
+  non-SPY, unsafe notional, or unsafe source-label cases skip before payload.
+- M349 blocks before preview if the M348 snapshot is not
+  `usable_for_manual_review`, if positions or recent open orders are present,
+  if recent-order query metadata is incomplete, if observations are
+  unavailable, or if live-profile, credential-leak, prior submit, or prior
+  mutation evidence appears. It hard-codes `submit_allowed=false`,
+  `submitted=false`, `mutated=false`, `broker_action_performed=false`,
+  `broker_preview_performed=false`, `not_live_authorized`, and
+  `profit_claim=none`. Because no true non-mutating broker preview API is
+  available, M349 performs only a local payload render and writes the local
+  JSONL run log when explicitly requested.
+- M349 performs no broker action, broker preview endpoint call, order staging,
+  submit, cancel, close, liquidate, retry, Alpaca/network/market-data call,
+  scheduler/runtime behavior, `ExecutionIntent`, `ExecutionPlan`, credential
+  persistence/printing, LLM trading-path work, or portfolio/account/order/fill
+  mutation. The next action is
+  `m350_operator_review_before_any_tiny_spy_paper_probe`.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
@@ -14201,7 +14223,7 @@ Safe next tasks include:
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
-- M348 fresh read-only paper snapshot before any broker-facing preview
+- M350 operator review before any tiny SPY paper probe
 
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,

@@ -184,6 +184,34 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Brief output format.",
     )
+    etf_sma_paper_preview_parser = subparsers.add_parser(
+        "etf-sma-paper-preview-only",
+        help="Render a SPY ETF/SMA paper broker-facing preview without submitting.",
+    )
+    etf_sma_paper_preview_parser.add_argument(
+        "--prior-snapshot-run-log",
+        required=True,
+        help="Read the M348 paper-lab snapshot evidence JSONL from PATH.",
+    )
+    etf_sma_paper_preview_parser.add_argument(
+        "--prior-snapshot-run-id",
+        default="m348_etf_sma_fresh_read_only_snapshot",
+        help="M348 snapshot run/session id to require.",
+    )
+    etf_sma_paper_preview_parser.add_argument(
+        "--source-scenario",
+        choices=("bullish", "defensive", "insufficient-history"),
+        default="bullish",
+        help="Deterministic local M347 source record scenario.",
+    )
+    etf_sma_paper_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
+    _add_paper_lab_run_log_options(etf_sma_paper_preview_parser)
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -471,6 +499,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output_format,
             run_id=args.run_id,
         )
+    if command == "etf-sma-paper-preview-only":
+        return _run_etf_sma_paper_preview_only(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -738,6 +768,205 @@ def _run_paper_lab_revalidation_brief(
         print(render_paper_lab_revalidation_brief_text(payload))
 
     return 0 if payload["usable_for_manual_review"] else 1
+
+
+def _run_etf_sma_paper_preview_only(args: argparse.Namespace) -> int:
+    from .execution.paper_lab_revalidation_brief import (
+        build_paper_lab_revalidation_brief,
+    )
+    from .orchestration.etf_sma_paper_broker_preview import (
+        EtfSmaPaperBrokerPreviewConfig,
+        EtfSmaPaperBrokerPreviewWriteConfig,
+        build_etf_sma_paper_broker_preview,
+        render_etf_sma_paper_broker_preview_json,
+        render_etf_sma_paper_broker_preview_text,
+        write_etf_sma_paper_broker_preview,
+    )
+
+    resolved_run_id = _etf_sma_paper_preview_run_id(args.run_id)
+    config = _load_runtime_config(profile=args.profile)
+    if config.profile != "paper":
+        payload = _etf_sma_paper_preview_profile_block_payload(resolved_run_id)
+        print(
+            _compact_json(payload)
+            if args.output_format == "json"
+            else _render_etf_sma_paper_preview_profile_block_text(payload)
+        )
+        return 2
+
+    revalidation_payload = build_paper_lab_revalidation_brief(
+        args.prior_snapshot_run_log,
+        run_id=args.prior_snapshot_run_id,
+    )
+    source_record = _build_etf_sma_paper_preview_source_record(
+        args.source_scenario
+    )
+    prior_snapshot = _etf_sma_snapshot_evidence_from_revalidation(
+        revalidation_payload
+    )
+    preview = build_etf_sma_paper_broker_preview(
+        source_record,
+        prior_snapshot,
+        EtfSmaPaperBrokerPreviewConfig(
+            run_id=resolved_run_id,
+            source_record_id=(
+                "m347_etf_sma_preview_jsonl_record:"
+                f"{args.source_scenario}"
+            ),
+        ),
+    )
+
+    if args.run_log:
+        write_etf_sma_paper_broker_preview(
+            preview,
+            EtfSmaPaperBrokerPreviewWriteConfig(
+                output_path=args.run_log,
+                append=False,
+                create_parent_dirs=True,
+            ),
+        )
+
+    if args.output_format == "json":
+        print(render_etf_sma_paper_broker_preview_json(preview))
+    else:
+        print(render_etf_sma_paper_broker_preview_text(preview))
+
+    return 2 if preview.blocked else 0
+
+
+def _build_etf_sma_paper_preview_source_record(source_scenario: str):
+    from datetime import datetime, timedelta, timezone
+
+    from .core.types import Bar
+    from .orchestration.etf_sma_execution_preview_bridge import (
+        EtfSmaExecutionPreviewConfig,
+        build_etf_sma_execution_preview,
+    )
+    from .orchestration.etf_sma_preview_jsonl_artifact import (
+        build_etf_sma_preview_jsonl_record,
+    )
+    from .signals.etf_sma_evaluator import (
+        EtfSmaSignalConfig,
+        evaluate_etf_sma_signal,
+    )
+
+    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
+    as_of = start + timedelta(days=199)
+    closes_by_scenario = {
+        "bullish": 150 * ("10",) + 50 * ("20",),
+        "defensive": 200 * ("10",),
+        "insufficient-history": 149 * ("10",) + 50 * ("20",),
+    }
+    closes = closes_by_scenario[source_scenario]
+    bars = tuple(
+        Bar(
+            symbol="SPY",
+            timestamp=start + timedelta(days=index),
+            open=Decimal(close),
+            high=Decimal(close),
+            low=Decimal(close),
+            close=Decimal(close),
+            volume=Decimal("100"),
+        )
+        for index, close in enumerate(closes)
+    )
+    signal = evaluate_etf_sma_signal(
+        bars,
+        EtfSmaSignalConfig(as_of=as_of),
+    )
+    preview = build_etf_sma_execution_preview(
+        signal,
+        EtfSmaExecutionPreviewConfig(as_of=as_of),
+    )
+    return build_etf_sma_preview_jsonl_record(preview)
+
+
+def _etf_sma_snapshot_evidence_from_revalidation(payload: Mapping[str, object]):
+    from .orchestration.etf_sma_paper_broker_preview import (
+        EtfSmaPaperSnapshotEvidence,
+    )
+
+    checklist = _payload_mapping(payload.get("fresh_snapshot_operator_checklist"))
+    evidence = _payload_mapping(checklist.get("evidence"))
+    positions = _payload_mapping(payload.get("positions"))
+    recent_orders = _payload_mapping(payload.get("recent_orders"))
+    return EtfSmaPaperSnapshotEvidence(
+        prior_snapshot_run_id=str(payload.get("selected_run_id", "")),
+        prior_snapshot_revalidation_state=str(payload.get("state", "")),
+        fresh_snapshot_status=str(checklist.get("status", "")),
+        usable_for_manual_review=payload.get("usable_for_manual_review") is True,
+        snapshot_records_observed=evidence.get("snapshot_records_observed") is True,
+        account_observation_available=(
+            evidence.get("account_observation_available") is True
+        ),
+        positions_observation_available=(
+            evidence.get("positions_observation_available") is True
+        ),
+        orders_observation_available=(
+            evidence.get("orders_observation_available") is True
+        ),
+        position_count=_int_payload_value(positions.get("position_count")),
+        position_symbols=_payload_string_tuple(positions.get("symbols")),
+        recent_open_order_count=_int_payload_value(recent_orders.get("count")),
+        recent_order_query_metadata_complete=(
+            evidence.get("recent_order_query_metadata_complete") is True
+        ),
+        unavailable_observations=_payload_string_tuple(
+            evidence.get("unavailable_observations")
+        ),
+        submitted=evidence.get("submitted") is True,
+        mutated=evidence.get("mutated") is True,
+        credentials_redacted_present=(
+            evidence.get("credentials_redacted_present") is True
+        ),
+        live_profile_evidence=evidence.get("live_profile_evidence") is True,
+        credential_leak_evidence=evidence.get("credential_leak_evidence") is True,
+    )
+
+
+def _etf_sma_paper_preview_run_id(run_id: str | None) -> str:
+    return _paper_lab_run_id(run_id) if run_id else "m349_etf_sma_paper_preview_only"
+
+
+def _etf_sma_paper_preview_profile_block_payload(
+    run_id: str,
+) -> dict[str, object]:
+    return {
+        "preview_version": "etf_sma_paper_broker_preview_v1",
+        "record_type": "etf_sma_paper_broker_preview",
+        "run_id": run_id,
+        "preview_status": "blocked_before_broker_facing_preview",
+        "blocked": True,
+        "block_reason": "paper_profile_required",
+        "submitted": False,
+        "mutated": False,
+        "broker_action_performed": False,
+        "broker_preview_performed": False,
+        "local_payload_preview_performed": False,
+        "next_action": "m350_operator_review_before_any_tiny_spy_paper_probe",
+    }
+
+
+def _render_etf_sma_paper_preview_profile_block_text(
+    payload: Mapping[str, object],
+) -> str:
+    return "\n".join(
+        (
+            "ETF/SMA paper broker-facing preview",
+            f"run_id: {payload.get('run_id', '')}",
+            f"preview_status: {payload.get('preview_status', '')}",
+            f"submitted: {_bool_text(payload.get('submitted'))}",
+            f"mutated: {_bool_text(payload.get('mutated'))}",
+            "broker_action_performed: "
+            f"{_bool_text(payload.get('broker_action_performed'))}",
+            "broker_preview_performed: "
+            f"{_bool_text(payload.get('broker_preview_performed'))}",
+            "local_payload_preview_performed: "
+            f"{_bool_text(payload.get('local_payload_preview_performed'))}",
+            f"block_reason: {payload.get('block_reason', '')}",
+            f"next_action: {payload.get('next_action', '')}",
+        )
+    )
 
 
 def _run_paper_close_preview(
@@ -2649,6 +2878,22 @@ def _payload_mapping(value: object) -> Mapping[str, object]:
         return value
 
     return {}
+
+
+def _payload_string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return ()
+
+    return tuple(str(item) for item in value if str(item))
+
+
+def _int_payload_value(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _payload_bool_or_none(value: object) -> bool | None:
