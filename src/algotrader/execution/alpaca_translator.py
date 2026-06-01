@@ -53,6 +53,8 @@ class TranslatedAlpacaOrderResult:
     message: Optional[str] = None
     raw_reason: Optional[str] = field(default=None, compare=False)
     submitted_at: Optional[datetime] = None
+    filled_quantity: Optional[Decimal] = None
+    filled_average_price: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)
@@ -144,6 +146,16 @@ def translate_alpaca_order_result(response: Any) -> TranslatedAlpacaOrderResult:
         raw_reason=raw_reason,
         submitted_at=_optional_value(
             data, "submitted_at", aliases=("created_at",), default=None
+        ),
+        filled_quantity=_optional_decimal(
+            data,
+            "filled_qty",
+            aliases=("filled_quantity",),
+        ),
+        filled_average_price=_optional_decimal(
+            data,
+            "filled_avg_price",
+            aliases=("filled_average_price",),
         ),
     )
 

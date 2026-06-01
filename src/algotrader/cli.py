@@ -18,8 +18,15 @@ from .execution.paper_order_policy import (
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON as _PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
     PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION as _PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION,
     PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS as _PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+    PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE as _PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE,
+    PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID as _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+    PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY as _PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY,
+    PAPER_SPY_CLOSE_SUBMIT_GATE_ORDER as _PAPER_SPY_CLOSE_SUBMIT_GATE_ORDER,
+    PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE as _PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE,
+    PAPER_SPY_CLOSE_SUBMIT_READY_STATE as _PAPER_SPY_CLOSE_SUBMIT_READY_STATE,
     build_btcusd_paper_close_preview_contract,
     build_spy_paper_close_preview_contract,
+    build_spy_paper_close_submit_contract,
     paper_order_policy_for_asset_class,
 )
 
@@ -215,6 +222,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Close-preview readiness output format.",
     )
     _add_paper_lab_run_log_options(paper_lab_spy_close_preview_parser)
+    paper_lab_spy_close_submit_parser = subparsers.add_parser(
+        "paper-lab-spy-close-submit",
+        help="Submit the explicitly gated M355 SPY paper cleanup close.",
+    )
+    paper_lab_spy_close_submit_parser.add_argument(
+        "--m354-run-log",
+        default="runs/paper_lab/m354_spy_cleanup_close_preview.jsonl",
+        help="Local M354 SPY close-preview JSONL authorization evidence path.",
+    )
+    paper_lab_spy_close_submit_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Close-submit output format.",
+    )
+    paper_lab_spy_close_submit_parser.add_argument(
+        "--submit",
+        action="store_true",
+        help="Request the one-shot M355 SPY paper close submit.",
+    )
+    paper_lab_spy_close_submit_parser.add_argument(
+        "--i-mean-it",
+        action="store_true",
+        dest="i_mean_it",
+        help="Confirm the one-shot M355 SPY paper close submit.",
+    )
+    _add_paper_lab_run_log_options(paper_lab_spy_close_submit_parser)
     paper_lab_revalidation_brief_parser = subparsers.add_parser(
         "paper-lab-revalidation-brief",
         help="Summarize a local paper-lab snapshot JSONL run log.",
@@ -607,6 +642,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_order_traceability_review(config, args)
     if command == "paper-lab-spy-close-preview":
         return _run_paper_lab_spy_close_preview(config, args)
+    if command == "paper-lab-spy-close-submit":
+        return _run_paper_lab_spy_close_submit(config, args)
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
     if command == "paper-close-probe":
@@ -871,6 +908,934 @@ def _run_paper_lab_spy_close_preview(
         return 2
 
     return 0 if payload["ok"] else 1
+
+
+def _run_paper_lab_spy_close_submit(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    run_log_path = args.run_log
+    resolved_run_id = _paper_lab_run_id(
+        args.run_id or "m355_spy_paper_close_submit"
+    )
+    if run_log_path and not _ensure_paper_lab_run_log(run_log_path):
+        return 1
+
+    payload, broker = _build_paper_lab_spy_close_submit_payload(config, args)
+    if payload["ok"] and payload["submit_requested"]:
+        payload = _submit_paper_lab_spy_close_submit(
+            config,
+            payload,
+            broker=broker,
+            observe_post_submit=True,
+        )
+
+    if run_log_path and not _write_paper_lab_spy_close_submit_run_log(
+        run_log_path,
+        resolved_run_id,
+        payload,
+        config,
+    ):
+        print(_render_paper_lab_spy_close_submit_payload(payload, args.output_format))
+        return 1
+
+    print(_render_paper_lab_spy_close_submit_payload(payload, args.output_format))
+    if payload.get("broker_error"):
+        return 1
+
+    return 0 if payload["ok"] else 2
+
+
+def _build_paper_lab_spy_close_submit_payload(
+    config,
+    args: argparse.Namespace,
+) -> tuple[dict[str, object], object | None]:
+    profile_gate = _paper_profile_gate(config)
+    halt_gate = _gate(
+        _paper_halt_not_set(),
+        "halt_not_set",
+        "ALGOTRADER_PAPER_HALT=1",
+    )
+    payload = _paper_lab_spy_close_submit_base_payload(
+        profile_gate,
+        halt_gate,
+        run_id=_paper_lab_run_id(args.run_id or "m355_spy_paper_close_submit"),
+        m354_run_log=args.m354_run_log,
+        submit_flag=bool(args.submit),
+        i_mean_it_flag=bool(args.i_mean_it),
+    )
+    payload = _paper_lab_spy_close_submit_source_payload(payload)
+    payload = _finalize_paper_lab_spy_close_submit_contract(payload)
+    if not _paper_lab_spy_close_submit_should_observe(payload):
+        return payload, None
+
+    payload, broker = _attach_paper_lab_spy_close_submit_pre_submit_observation(
+        config,
+        payload,
+    )
+    return _finalize_paper_lab_spy_close_submit_contract(payload), broker
+
+
+def _paper_lab_spy_close_submit_base_payload(
+    profile_gate: dict[str, object],
+    halt_gate: dict[str, object],
+    *,
+    run_id: str,
+    m354_run_log: str,
+    submit_flag: bool,
+    i_mean_it_flag: bool,
+) -> dict[str, object]:
+    empty_query = _empty_traceability_order_query_payload()
+    submit_requested = bool(submit_flag and i_mean_it_flag)
+    return {
+        "accepted": None,
+        "account": None,
+        "account_cash": "",
+        "account_currency": "",
+        "account_observation_available": False,
+        "asset_class": "equity",
+        "blockers": [],
+        "broker_action_performed": False,
+        "broker_error": False,
+        "broker_normalized_status": "",
+        "broker_order_id": "",
+        "broker_order_id_available": False,
+        "broker_raw_reason": "",
+        "broker_raw_status": "",
+        "broker_response_parsed": False,
+        "broker_response_received": False,
+        "broker_result": None,
+        "broker_result_classification": "not_submitted",
+        "client_order_id": _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+        "close_order_submitted": False,
+        "command": "paper-lab-spy-close-submit",
+        "duplicate_m355_client_order_id_found": False,
+        "duplicate_m355_client_order_matches": [],
+        "error": "",
+        "filled": None,
+        "filled_average_price": "",
+        "filled_quantity": "",
+        "gates": {
+            "profile_gate": profile_gate,
+            "halt_gate": halt_gate,
+        },
+        "halt_gate_result": halt_gate,
+        "live_authorized": False,
+        "m354_artifact_available": False,
+        "m354_broker_action_performed": None,
+        "m354_close_order_submitted": None,
+        "m354_event_type": "",
+        "m354_live_authorized": None,
+        "m354_mutated": None,
+        "m354_ok": False,
+        "m354_requested_close_quantity": "",
+        "m354_run_id": "",
+        "m354_run_log": m354_run_log,
+        "m354_state": "",
+        "m354_submitted": None,
+        "market_session_note": _PAPER_MARKET_SESSION_NOTE,
+        "mutated": False,
+        "normalized_status": "",
+        "order_type": "market",
+        "orders_observation_available": False,
+        "paper_lab_only": True,
+        "paper_only": True,
+        "paper_profile_gate_result": profile_gate,
+        "position_count": 0,
+        "position_symbols": [],
+        "positions": [],
+        "positions_observation_available": False,
+        "post_close_position_present": None,
+        "post_close_remaining_quantity": "",
+        "post_submit_account": None,
+        "post_submit_account_cash": "",
+        "post_submit_account_currency": "",
+        "post_submit_account_observation_available": False,
+        "post_submit_matching_recent_order": None,
+        "post_submit_matching_recent_order_found": False,
+        "post_submit_position_count": 0,
+        "post_submit_position_symbols": [],
+        "post_submit_positions": [],
+        "post_submit_positions_observation_available": False,
+        "post_submit_recent_all_order_count": 0,
+        "post_submit_recent_all_order_query": empty_query,
+        "post_submit_recent_all_orders": [],
+        "post_submit_recent_closed_order_count": 0,
+        "post_submit_recent_closed_order_query": empty_query,
+        "post_submit_recent_closed_orders": [],
+        "post_submit_recent_open_order_count": 0,
+        "post_submit_recent_open_order_query": empty_query,
+        "post_submit_recent_open_orders": [],
+        "post_submit_recent_open_spy_order_count": 0,
+        "post_submit_recent_order_query_metadata_complete": False,
+        "post_submit_recent_order_query_metadata_missing_fields": [],
+        "post_submit_unavailable_observations": [],
+        "post_submit_unavailable_reasons": {},
+        "pre_submit_recent_all_order_count": 0,
+        "pre_submit_recent_all_order_query": empty_query,
+        "pre_submit_recent_all_orders": [],
+        "pre_submit_recent_closed_order_count": 0,
+        "pre_submit_recent_closed_order_query": empty_query,
+        "pre_submit_recent_closed_orders": [],
+        "pre_submit_recent_open_order_count": 0,
+        "pre_submit_recent_open_order_query": empty_query,
+        "pre_submit_recent_open_orders": [],
+        "pre_submit_recent_order_query_metadata_complete": False,
+        "pre_submit_recent_order_query_metadata_missing_fields": [],
+        "preview_only": not submit_requested,
+        "profit_claim": "none",
+        "proposed_order_request": None,
+        "raw_reason": "",
+        "raw_status": "",
+        "recent_open_spy_order_count": 0,
+        "redaction": "credentials_redacted",
+        "requested_close_quantity": str(_PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY),
+        "requested_i_mean_it": bool(i_mean_it_flag),
+        "requested_submit": bool(submit_flag),
+        "run_id": run_id,
+        "side": "sell",
+        "sizing_mode": "qty",
+        "spy_position_observed": False,
+        "spy_quantity": "",
+        "state": _PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE,
+        "submitted": False,
+        "submit_attempt_count": 0,
+        "submit_attempted": False,
+        "submit_requested": submit_requested,
+        "symbol": "SPY",
+        "time_in_force": "day",
+        "unavailable_observations": [],
+        "unavailable_reasons": {},
+        "unexpected_position_symbols": [],
+    }
+
+
+def _paper_lab_spy_close_submit_source_payload(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    records = _load_jsonl_records(str(payload["m354_run_log"]))
+    record = _latest_m354_spy_close_preview_record(records)
+    if not record:
+        return payload
+
+    return {
+        **payload,
+        "m354_artifact_available": True,
+        "m354_broker_action_performed": record.get("broker_action_performed"),
+        "m354_close_order_submitted": record.get("close_order_submitted"),
+        "m354_event_type": record.get("event_type", ""),
+        "m354_live_authorized": record.get("live_authorized"),
+        "m354_mutated": record.get("mutated"),
+        "m354_ok": record.get("ok") is True,
+        "m354_requested_close_quantity": str(
+            record.get("requested_close_quantity", "")
+        ),
+        "m354_run_id": record.get("run_id", ""),
+        "m354_state": record.get("state", ""),
+        "m354_submitted": record.get("submitted"),
+    }
+
+
+def _latest_m354_spy_close_preview_record(
+    records: list[dict[str, object]],
+) -> dict[str, object]:
+    for record in reversed(records):
+        if record.get("event_type") != "paper_lab_spy_close_preview_reviewed":
+            continue
+        if record.get("command") != "paper-lab-spy-close-preview":
+            continue
+        if record.get("symbol") == "SPY":
+            return dict(record)
+
+    return {}
+
+
+def _paper_lab_spy_close_submit_should_observe(
+    payload: Mapping[str, object],
+) -> bool:
+    return (
+        payload.get("submit_requested") is True
+        and _payload_mapping(payload.get("paper_profile_gate_result")).get("passed")
+        is True
+        and _payload_mapping(payload.get("halt_gate_result")).get("passed") is True
+        and payload.get("m354_state") == _PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE
+        and payload.get("m354_ok") is True
+        and payload.get("m354_submitted") is False
+        and payload.get("m354_mutated") is False
+        and payload.get("m354_broker_action_performed") is False
+        and payload.get("m354_close_order_submitted") is False
+        and payload.get("m354_live_authorized") is False
+        and str(payload.get("m354_requested_close_quantity", ""))
+        == str(_PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY)
+    )
+
+
+def _attach_paper_lab_spy_close_submit_pre_submit_observation(
+    config,
+    payload: dict[str, object],
+) -> tuple[dict[str, object], object | None]:
+    from .execution.paper_lab_snapshot import (
+        account_observation_payload,
+        position_observation_payloads,
+        position_symbols,
+    )
+
+    unavailable: list[str] = []
+    unavailable_reasons: dict[str, object] = {}
+    updated = {
+        **payload,
+        "unavailable_observations": unavailable,
+        "unavailable_reasons": unavailable_reasons,
+    }
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        redacted_message = _redact_config_secrets(str(exc), config)
+        unavailable.extend(["account", "positions", "orders"])
+        unavailable_reasons["broker"] = {
+            "error_type": exc.__class__.__name__,
+            "message": redacted_message,
+        }
+        return {
+            **updated,
+            "broker_error": True,
+            "message": redacted_message,
+        }, None
+
+    try:
+        account = account_observation_payload(broker.get_account())
+        updated.update(
+            {
+                "account": account,
+                "account_cash": account.get("cash", ""),
+                "account_currency": account.get("currency", ""),
+                "account_observation_available": True,
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("account")
+        unavailable_reasons["account"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    try:
+        positions = position_observation_payloads(broker.get_positions())
+        position = _position_for_symbol(list(positions), "SPY")
+        updated.update(
+            {
+                "position_count": len(positions),
+                "position_symbols": list(position_symbols(positions)),
+                "positions": list(positions),
+                "positions_observation_available": True,
+                "spy_position_observed": bool(position),
+                "spy_quantity": position.get("quantity", ""),
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("positions")
+        unavailable_reasons["positions"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    updated = _observe_spy_close_submit_order_sets(
+        updated,
+        broker,
+        config,
+        prefix="pre_submit",
+        unavailable=unavailable,
+        unavailable_reasons=unavailable_reasons,
+    )
+    order_sets = _paper_lab_spy_close_submit_order_sets(updated, "pre_submit")
+    duplicate_matches = _orders_matching_client_order_id(
+        order_sets,
+        _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+    )
+    metadata_missing = _paper_lab_spy_close_submit_query_missing_fields(
+        updated,
+        "pre_submit",
+    )
+    return {
+        **updated,
+        "duplicate_m355_client_order_id_found": bool(duplicate_matches),
+        "duplicate_m355_client_order_matches": duplicate_matches,
+        "orders_observation_available": (
+            _payload_mapping(updated.get("pre_submit_recent_open_order_query")).get(
+                "recent_order_query_available"
+            )
+            is True
+            and _payload_mapping(updated.get("pre_submit_recent_all_order_query")).get(
+                "recent_order_query_available"
+            )
+            is True
+            and _payload_mapping(
+                updated.get("pre_submit_recent_closed_order_query")
+            ).get("recent_order_query_available")
+            is True
+        ),
+        "pre_submit_recent_order_query_metadata_complete": not metadata_missing,
+        "pre_submit_recent_order_query_metadata_missing_fields": metadata_missing,
+        "proposed_order_request": _paper_lab_spy_close_submit_request_payload(),
+    }, broker
+
+
+def _paper_lab_spy_close_submit_request_payload() -> dict[str, str]:
+    request = _paper_order_request(
+        "SPY",
+        asset_class="equity",
+        client_order_id=_PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+        quantity=_PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY,
+        side="sell",
+        time_in_force="day",
+    )
+    return _paper_order_request_payload(request)
+
+
+def _observe_spy_close_submit_order_sets(
+    payload: dict[str, object],
+    broker,
+    config,
+    *,
+    prefix: str,
+    unavailable: list[str],
+    unavailable_reasons: dict[str, object],
+) -> dict[str, object]:
+    updated = dict(payload)
+    for status_filter, label in (
+        ("open", "open"),
+        ("all", "all"),
+        ("closed", "closed"),
+    ):
+        updated = _observe_spy_close_submit_orders(
+            updated,
+            broker,
+            config,
+            prefix=prefix,
+            label=label,
+            status_filter=status_filter,
+            unavailable=unavailable,
+            unavailable_reasons=unavailable_reasons,
+        )
+
+    return updated
+
+
+def _observe_spy_close_submit_orders(
+    payload: dict[str, object],
+    broker,
+    config,
+    *,
+    prefix: str,
+    label: str,
+    status_filter: str,
+    unavailable: list[str],
+    unavailable_reasons: dict[str, object],
+) -> dict[str, object]:
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.paper_lab_snapshot import (
+        order_observation_payloads,
+        recent_order_query_payload,
+    )
+
+    query = AlpacaRecentOrderQuery(
+        status_filter=status_filter,
+        symbol_filter="SPY",
+    )
+    query_key = f"{prefix}_recent_{label}_order_query"
+    orders_key = f"{prefix}_recent_{label}_orders"
+    count_key = f"{prefix}_recent_{label}_order_count"
+    query_payload = {
+        **recent_order_query_payload(query),
+        "recent_order_query_attempted": True,
+        "recent_order_query_available": False,
+        "recent_order_query_returned_count": 0,
+    }
+    try:
+        orders = order_observation_payloads(broker.get_recent_orders(query))
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        observation_name = f"{prefix}_{label}_orders"
+        unavailable.append(observation_name)
+        unavailable_reasons[observation_name] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+        return {
+            **payload,
+            query_key: query_payload,
+            orders_key: [],
+            count_key: 0,
+        }
+
+    complete_query_payload = {
+        **query_payload,
+        "recent_order_query_available": True,
+        "recent_order_query_returned_count": len(orders),
+    }
+    return {
+        **payload,
+        query_key: complete_query_payload,
+        orders_key: list(orders),
+        count_key: len(orders),
+    }
+
+
+def _paper_lab_spy_close_submit_order_sets(
+    payload: Mapping[str, object],
+    prefix: str,
+) -> tuple[Mapping[str, object], ...]:
+    orders: list[Mapping[str, object]] = []
+    for label in ("open", "all", "closed"):
+        value = payload.get(f"{prefix}_recent_{label}_orders")
+        if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+            continue
+        for order in value:
+            if isinstance(order, Mapping):
+                orders.append(order)
+
+    return tuple(orders)
+
+
+def _orders_matching_client_order_id(
+    orders: Sequence[Mapping[str, object]],
+    client_order_id: str,
+) -> list[dict[str, object]]:
+    matches: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for order in orders:
+        if order.get("client_order_id") != client_order_id:
+            continue
+        identity = (
+            str(order.get("order_id", "")),
+            str(order.get("client_order_id", "")),
+        )
+        if identity in seen:
+            continue
+        seen.add(identity)
+        matches.append(dict(order))
+
+    return matches
+
+
+def _paper_lab_spy_close_submit_query_missing_fields(
+    payload: Mapping[str, object],
+    prefix: str,
+) -> list[str]:
+    missing_fields: list[str] = []
+    for label in ("open", "all", "closed"):
+        query_payload = _payload_mapping(
+            payload.get(f"{prefix}_recent_{label}_order_query")
+        )
+        if query_payload.get("recent_order_query_metadata_complete") is not True:
+            missing_fields.append(f"{prefix}_{label}_order_query")
+        for field in query_payload.get("recent_order_query_metadata_missing_fields", []):
+            missing_fields.append(f"{prefix}_{label}.{field}")
+
+    return missing_fields
+
+
+def _finalize_paper_lab_spy_close_submit_contract(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    positions = payload.get("positions")
+    position = _position_for_symbol(positions if isinstance(positions, list) else [], "SPY")
+    observed_quantity = position.get("quantity", "")
+    unexpected_position_symbols = tuple(
+        str(item)
+        for item in payload.get("position_symbols", [])
+        if str(item) != "SPY"
+    )
+    unavailable = tuple(_payload_string_tuple(payload.get("unavailable_observations")))
+    metadata_complete = (
+        payload.get("pre_submit_recent_order_query_metadata_complete") is True
+    )
+    recent_open_order_count = (
+        _int_payload_value(payload.get("pre_submit_recent_open_order_count"))
+        if payload.get("orders_observation_available") is True
+        else None
+    )
+    contract = build_spy_paper_close_submit_contract(
+        m354_state=str(payload.get("m354_state", "")),
+        m354_ok=payload.get("m354_ok") is True,
+        m354_submitted=_payload_bool_or_none(payload.get("m354_submitted")),
+        m354_mutated=_payload_bool_or_none(payload.get("m354_mutated")),
+        m354_broker_action_performed=_payload_bool_or_none(
+            payload.get("m354_broker_action_performed")
+        ),
+        m354_close_order_submitted=_payload_bool_or_none(
+            payload.get("m354_close_order_submitted")
+        ),
+        m354_live_authorized=_payload_bool_or_none(
+            payload.get("m354_live_authorized")
+        ),
+        m354_requested_close_quantity=payload.get("m354_requested_close_quantity"),
+        observed_position_quantity=observed_quantity,
+        account_observed=payload.get("account_observation_available") is True,
+        positions_observed=payload.get("positions_observation_available") is True,
+        orders_observed=payload.get("orders_observation_available") is True,
+        recent_order_query_metadata_complete=metadata_complete,
+        recent_open_order_count=recent_open_order_count,
+        duplicate_client_order_id_found=(
+            payload.get("duplicate_m355_client_order_id_found") is True
+        ),
+        profile_gate_passed=_payload_mapping(
+            payload.get("paper_profile_gate_result")
+        ).get("passed") is True,
+        halt_not_set=_payload_mapping(payload.get("halt_gate_result")).get("passed")
+        is True,
+        submit_flag=payload.get("requested_submit") is True,
+        i_mean_it_flag=payload.get("requested_i_mean_it") is True,
+        unexpected_position_symbols=unexpected_position_symbols,
+        unavailable_observations=unavailable,
+    )
+    contract_payload = contract.to_payload()
+    gates = _payload_mapping(contract_payload.get("gates"))
+    gates = {
+        **gates,
+        "profile_gate": payload["paper_profile_gate_result"],
+        "halt_gate": payload["halt_gate_result"],
+    }
+    ready = all(_payload_mapping(gate).get("passed") is True for gate in gates.values())
+    request_payload = (
+        _paper_lab_spy_close_submit_request_payload()
+        if _paper_lab_spy_close_submit_request_shape_available(payload)
+        else payload.get("proposed_order_request")
+    )
+    return {
+        **payload,
+        **contract_payload,
+        "blockers": _paper_lab_spy_close_submit_blockers(gates),
+        "close_order_submitted": False,
+        "error": "" if ready else _first_failed_spy_close_submit_gate(gates),
+        "gates": gates,
+        "live_authorized": False,
+        "mutated": False,
+        "observed_spy_quantity": observed_quantity,
+        "ok": ready,
+        "orders_observation_available": (
+            payload.get("orders_observation_available") is True
+        ),
+        "paper_profile_gate_result": gates["profile_gate"],
+        "preview_only": not ready,
+        "proposed_order_request": request_payload,
+        "recent_open_spy_order_count": (
+            recent_open_order_count if recent_open_order_count is not None else 0
+        ),
+        "requested_close_quantity": str(_PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY),
+        "state": (
+            _PAPER_SPY_CLOSE_SUBMIT_READY_STATE
+            if ready
+            else _PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE
+        ),
+        "submitted": False,
+        "unexpected_position_symbols": list(unexpected_position_symbols),
+    }
+
+
+def _paper_lab_spy_close_submit_request_shape_available(
+    payload: Mapping[str, object],
+) -> bool:
+    return (
+        payload.get("m354_state") == _PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE
+        and str(payload.get("m354_requested_close_quantity", ""))
+        == str(_PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY)
+    )
+
+
+def _paper_lab_spy_close_submit_blockers(
+    gates: Mapping[str, object],
+) -> list[str]:
+    blockers: list[str] = []
+    for gate_name in _PAPER_SPY_CLOSE_SUBMIT_GATE_ORDER:
+        gate_payload = _payload_mapping(gates.get(gate_name))
+        if gate_payload.get("passed") is True:
+            continue
+        detail = str(gate_payload.get("detail", ""))
+        blockers.append(f"{gate_name}_failed:{detail}")
+
+    return blockers
+
+
+def _first_failed_spy_close_submit_gate(
+    gates: Mapping[str, object],
+) -> str:
+    for gate_name in _PAPER_SPY_CLOSE_SUBMIT_GATE_ORDER:
+        gate = _payload_mapping(gates.get(gate_name))
+        if gate.get("passed") is not True:
+            return f"{gate_name}_failed"
+
+    return ""
+
+
+def _submit_paper_lab_spy_close_submit(
+    config,
+    payload: dict[str, object],
+    *,
+    broker,
+    observe_post_submit: bool,
+) -> dict[str, object]:
+    request_payload = payload.get("proposed_order_request")
+    if broker is None or not isinstance(request_payload, Mapping):
+        return {
+            **payload,
+            "broker_error": True,
+            "broker_result_classification": "ambiguous",
+            "error": "paper_lab_spy_close_submit_failed",
+            "message": "missing_spy_close_order_request",
+            "ok": False,
+            "preview_only": False,
+            "submitted": False,
+        }
+
+    try:
+        request = _paper_order_request(
+            "SPY",
+            asset_class="equity",
+            client_order_id=_PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+            quantity=Decimal(str(request_payload["qty"])),
+            side="sell",
+            time_in_force="day",
+        )
+        from .risk.state import RiskVerdict
+    except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        return {
+            **payload,
+            "broker_error": True,
+            "broker_result_classification": "ambiguous",
+            "error": "paper_lab_spy_close_submit_failed",
+            "error_type": exc.__class__.__name__,
+            "message": redacted_message,
+            "ok": False,
+            "preview_only": False,
+            "redacted_exception_message": redacted_message,
+            "submitted": False,
+            "submit_attempt_count": 0,
+            "submit_attempted": False,
+        }
+
+    submit_attempt_fields = {
+        "broker_action_performed": True,
+        "close_order_submitted": True,
+        "mutated": True,
+        "preview_only": False,
+        "submitted": True,
+        "submit_attempt_count": 1,
+        "submit_attempted": True,
+    }
+    try:
+        result = broker.submit_order_request(
+            request,
+            risk_verdict=RiskVerdict(
+                allowed=True,
+                reason="explicit_spy_paper_close_submit_m355",
+                detail="quantity_close",
+            ),
+        )
+    except Exception as exc:
+        redacted_message = _redact_config_secrets(str(exc), config)
+        from .execution.alpaca_translator import AlpacaTranslationError
+
+        response_received = isinstance(exc, AlpacaTranslationError)
+        ambiguous_payload = {
+            **payload,
+            **submit_attempt_fields,
+            "accepted": None,
+            "broker_error": True,
+            "broker_response_parsed": False,
+            "broker_response_received": response_received,
+            "broker_result_classification": "ambiguous",
+            "error": (
+                "broker_response_parse_failed"
+                if response_received
+                else "paper_lab_spy_close_submit_failed"
+            ),
+            "error_type": exc.__class__.__name__,
+            "filled": None,
+            "message": redacted_message,
+            "ok": False,
+            "redacted_exception_message": redacted_message,
+            "state": "ambiguous_after_single_submit_stop_no_retry",
+            **_paper_submit_error_diagnostic_fields(exc),
+        }
+        return (
+            _attach_paper_lab_spy_close_submit_post_submit_observation(
+                ambiguous_payload,
+                broker,
+                config,
+            )
+            if observe_post_submit
+            else ambiguous_payload
+        )
+
+    broker_result = _paper_order_broker_result_payload(result)
+    receipt_metadata = _paper_order_broker_receipt_metadata_payload(result)
+    accepted = bool(result.accepted)
+    submitted_payload = {
+        **payload,
+        **submit_attempt_fields,
+        "accepted": accepted,
+        "broker_error": False,
+        "broker_normalized_status": broker_result["normalized_status"],
+        "broker_order_id": receipt_metadata["order_id"],
+        "broker_order_id_available": bool(receipt_metadata["order_id"]),
+        "broker_raw_reason": broker_result["raw_reason"],
+        "broker_raw_status": broker_result["raw_status"],
+        "broker_response_parsed": True,
+        "broker_response_received": True,
+        "broker_result": broker_result,
+        "broker_result_classification": "accepted" if accepted else "rejected",
+        "client_order_id": (
+            receipt_metadata["client_order_id"]
+            or _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID
+        ),
+        "error": "" if accepted else "paper_lab_spy_close_submit_rejected",
+        "filled": result.filled,
+        "filled_average_price": receipt_metadata["filled_average_price"],
+        "filled_quantity": receipt_metadata["filled_quantity"],
+        "normalized_status": broker_result["normalized_status"],
+        "ok": accepted,
+        "raw_reason": broker_result["raw_reason"],
+        "raw_status": broker_result["raw_status"],
+        "state": (
+            "close_submit_accepted_pending_reconciliation"
+            if accepted
+            else "close_submit_rejected_no_retry"
+        ),
+    }
+    if observe_post_submit:
+        submitted_payload = _attach_paper_lab_spy_close_submit_post_submit_observation(
+            submitted_payload,
+            broker,
+            config,
+        )
+
+    return _finalize_paper_lab_spy_close_submit_post_state(submitted_payload)
+
+
+def _attach_paper_lab_spy_close_submit_post_submit_observation(
+    payload: dict[str, object],
+    broker,
+    config,
+) -> dict[str, object]:
+    from .execution.paper_lab_snapshot import (
+        account_observation_payload,
+        position_observation_payloads,
+        position_symbols,
+    )
+
+    unavailable: list[str] = []
+    unavailable_reasons: dict[str, object] = {}
+    updated = {
+        **payload,
+        "post_submit_unavailable_observations": unavailable,
+        "post_submit_unavailable_reasons": unavailable_reasons,
+    }
+    try:
+        account = account_observation_payload(broker.get_account())
+        updated.update(
+            {
+                "post_submit_account": account,
+                "post_submit_account_cash": account.get("cash", ""),
+                "post_submit_account_currency": account.get("currency", ""),
+                "post_submit_account_observation_available": True,
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("post_submit_account")
+        unavailable_reasons["post_submit_account"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    try:
+        positions = position_observation_payloads(broker.get_positions())
+        position = _position_for_symbol(list(positions), "SPY")
+        remaining_quantity = position.get("quantity", "0") if position else "0"
+        remaining_decimal = _optional_decimal_value(remaining_quantity)
+        updated.update(
+            {
+                "post_close_position_present": bool(position)
+                and remaining_decimal not in (None, Decimal("0")),
+                "post_close_remaining_quantity": remaining_quantity,
+                "post_submit_position_count": len(positions),
+                "post_submit_position_symbols": list(position_symbols(positions)),
+                "post_submit_positions": list(positions),
+                "post_submit_positions_observation_available": True,
+            }
+        )
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("post_submit_positions")
+        unavailable_reasons["post_submit_positions"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    updated = _observe_spy_close_submit_order_sets(
+        updated,
+        broker,
+        config,
+        prefix="post_submit",
+        unavailable=unavailable,
+        unavailable_reasons=unavailable_reasons,
+    )
+    metadata_missing = _paper_lab_spy_close_submit_query_missing_fields(
+        updated,
+        "post_submit",
+    )
+    order_sets = _paper_lab_spy_close_submit_order_sets(updated, "post_submit")
+    matches = _orders_matching_client_order_id(
+        order_sets,
+        _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+    )
+    matching_order = matches[0] if matches else None
+    return {
+        **updated,
+        "post_submit_matching_recent_order": matching_order,
+        "post_submit_matching_recent_order_found": matching_order is not None,
+        "post_submit_recent_order_query_metadata_complete": not metadata_missing,
+        "post_submit_recent_order_query_metadata_missing_fields": metadata_missing,
+        "post_submit_recent_open_spy_order_count": _int_payload_value(
+            updated.get("post_submit_recent_open_order_count")
+        ),
+    }
+
+
+def _finalize_paper_lab_spy_close_submit_post_state(
+    payload: dict[str, object],
+) -> dict[str, object]:
+    if payload.get("broker_result_classification") == "ambiguous":
+        return {
+            **payload,
+            "ok": False,
+            "state": "ambiguous_after_single_submit_stop_no_retry",
+        }
+    if payload.get("accepted") is not True:
+        return {
+            **payload,
+            "ok": False,
+            "state": "close_submit_rejected_no_retry",
+        }
+
+    remaining_quantity = _optional_decimal_value(
+        payload.get("post_close_remaining_quantity")
+    )
+    position_closed = (
+        payload.get("post_close_position_present") is False
+        or remaining_quantity == Decimal("0")
+    )
+    if payload.get("filled") is True and position_closed:
+        return {
+            **payload,
+            "ok": True,
+            "state": "close_fill_observed_position_closed",
+        }
+
+    return {
+        **payload,
+        "ok": True,
+        "state": "close_submit_accepted_pending_reconciliation",
+    }
 
 
 def _run_paper_lab_revalidation_brief(
@@ -3476,6 +4441,19 @@ def _paper_order_broker_result_payload(result) -> dict[str, object]:  # noqa: AN
     }
 
 
+def _paper_order_broker_receipt_metadata_payload(result) -> dict[str, str]:  # noqa: ANN001
+    from .execution.alpaca_mapper import broker_order_result_receipt_metadata
+
+    metadata = broker_order_result_receipt_metadata(result)
+    return {
+        "client_order_id": metadata.get("client_order_id", ""),
+        "filled_average_price": metadata.get("filled_average_price", ""),
+        "filled_quantity": metadata.get("filled_quantity", ""),
+        "order_id": metadata.get("order_id", ""),
+        "quantity": metadata.get("quantity", ""),
+    }
+
+
 def _paper_order_request(
     symbol: str,
     *,
@@ -4185,6 +5163,74 @@ def _render_paper_close_probe_payload(
     return "\n".join(lines)
 
 
+def _render_paper_lab_spy_close_submit_payload(
+    payload: dict[str, object],
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return _compact_json(payload)
+
+    lines = [
+        "Paper lab SPY close submit",
+        f"state: {payload['state']}",
+        f"ok: {_bool_text(payload['ok'])}",
+        f"paper_only: {_bool_text(payload['paper_only'])}",
+        f"live_authorized: {_bool_text(payload['live_authorized'])}",
+        f"submitted: {_optional_bool_text(payload['submitted'])}",
+        f"broker_action_performed: {_bool_text(payload['broker_action_performed'])}",
+        f"close_order_submitted: {_bool_text(payload['close_order_submitted'])}",
+        f"submit_attempt_count: {payload['submit_attempt_count']}",
+        f"client_order_id: {payload['client_order_id']}",
+        f"asset_class: {payload['asset_class']}",
+        f"symbol: {payload['symbol']}",
+        f"side: {payload['side']}",
+        f"quantity: {payload['requested_close_quantity']}",
+        f"order_type: {payload['order_type']}",
+        f"time_in_force: {payload['time_in_force']}",
+        f"m354_state: {payload['m354_state']}",
+        f"m354_requested_close_quantity: {payload['m354_requested_close_quantity']}",
+        f"account_observed: {_bool_text(payload['account_observation_available'])}",
+        f"positions_observed: {_bool_text(payload['positions_observation_available'])}",
+        f"orders_observed: {_bool_text(payload['orders_observation_available'])}",
+        f"spy_quantity: {payload['spy_quantity']}",
+        f"recent_open_spy_order_count: {payload['recent_open_spy_order_count']}",
+        "duplicate_m355_client_order_id_found: "
+        f"{_bool_text(payload['duplicate_m355_client_order_id_found'])}",
+        f"classification: {payload['broker_result_classification']}",
+        f"accepted: {_optional_bool_text(payload['accepted'])}",
+        f"filled: {_optional_bool_text(payload['filled'])}",
+        f"normalized_status: {payload['normalized_status']}",
+        f"raw_status: {payload['raw_status']}",
+        f"broker_order_id: {payload['broker_order_id']}",
+        f"filled_quantity: {payload['filled_quantity']}",
+        f"filled_average_price: {payload['filled_average_price']}",
+        f"post_submit_cash: {payload['post_submit_account_cash']}",
+        f"post_close_remaining_quantity: {payload['post_close_remaining_quantity']}",
+        "post_submit_recent_open_spy_order_count: "
+        f"{payload['post_submit_recent_open_spy_order_count']}",
+    ]
+    if payload.get("error"):
+        lines.append(f"error: {payload['error']}")
+    lines.extend(_spy_close_submit_gate_lines(payload["gates"]))
+    if payload.get("message"):
+        lines.append(f"message: {payload['message']}")
+    return "\n".join(lines)
+
+
+def _spy_close_submit_gate_lines(gates: object) -> list[str]:
+    if not isinstance(gates, dict):
+        return []
+
+    lines: list[str] = []
+    for gate_name in _PAPER_SPY_CLOSE_SUBMIT_GATE_ORDER:
+        if gate_name not in gates:
+            continue
+        gate = gates[gate_name]
+        state = "passed" if gate["passed"] else "blocked"
+        lines.append(f"{gate_name}: {state} - {gate['detail']}")
+    return lines
+
+
 def _close_probe_gate_lines(gates: object) -> list[str]:
     if not isinstance(gates, dict):
         return []
@@ -4406,6 +5452,24 @@ def _write_paper_lab_spy_close_preview_run_log(
     )
 
     events = make_paper_lab_spy_close_preview_events(
+        run_id=run_id,
+        payload=payload,
+        secret_values=_paper_lab_sensitive_values(config),
+    )
+    return _append_paper_lab_run_log(run_log_path, events)
+
+
+def _write_paper_lab_spy_close_submit_run_log(
+    run_log_path: str,
+    run_id: str,
+    payload: dict[str, object],
+    config,
+) -> bool:
+    from .execution.paper_lab_observation_log import (
+        make_paper_lab_spy_close_submit_events,
+    )
+
+    events = make_paper_lab_spy_close_submit_events(
         run_id=run_id,
         payload=payload,
         secret_values=_paper_lab_sensitive_values(config),

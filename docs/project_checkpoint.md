@@ -14270,6 +14270,22 @@ Safe next tasks include:
   behavior, autonomous scheduling, credential printing, or live trading. The
   next milestone is M355 explicit operator-approved SPY paper close submit and
   immediate read-only reconciliation, only if M354 is ready.
+- M355 adds `paper-lab-spy-close-submit`, the explicit paper-only SPY cleanup
+  close command. It consumes the ready M354 artifact, performs fresh read-only
+  account, position, and open/all/closed SPY order observations, blocks
+  duplicate `paper-order-close-m355_spy_paper_close_submit` evidence, and
+  submits exactly one SPY equity sell `market`/`day` quantity order only when
+  all gates pass.
+- The M355 paper run wrote
+  `runs/paper_lab/m355_spy_paper_close_submit.jsonl`, submitted exactly once
+  with quantity `0.032905647`, and received broker status `accepted` for order
+  `56a2f690-f4ad-4572-bcf4-1a479398fe55`. Immediate post-submit read-only
+  observation found the SPY position still present at `0.032905647`, one open
+  SPY sell order for the M355 client order id, no fill from the submit
+  response, and final state `close_submit_accepted_pending_reconciliation`.
+  M355 authorizes no retry, cancel, replace, liquidate, close-position endpoint
+  usage, additional orders, live trading, or autonomous follow-up. The next
+  milestone should be M356 read-only cleanup/revalidation.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

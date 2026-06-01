@@ -34,6 +34,9 @@ PAPER_LAB_ORDER_TRACEABILITY_REVIEWED = (
 PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED = (
     "paper_lab_spy_close_preview_reviewed"
 )
+PAPER_LAB_SPY_CLOSE_SUBMIT_OBSERVED = (
+    "paper_lab_spy_close_submit_observed"
+)
 PAPER_CLOSE_PREVIEW_DESIGNED = "paper_close_preview_designed"
 
 EVENT_TYPES = (
@@ -53,6 +56,7 @@ EVENT_TYPES = (
     PAPER_LAB_SNAPSHOT_UNAVAILABLE,
     PAPER_LAB_ORDER_TRACEABILITY_REVIEWED,
     PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
+    PAPER_LAB_SPY_CLOSE_SUBMIT_OBSERVED,
     PAPER_CLOSE_PREVIEW_DESIGNED,
 )
 
@@ -389,6 +393,23 @@ def make_paper_lab_spy_close_preview_events(
             run_id=run_id,
             command=command,
             event_type=PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
+            fields=dict(payload),
+        ).to_record(secret_values=secret_values),
+    )
+
+
+def make_paper_lab_spy_close_submit_events(
+    *,
+    run_id: str,
+    payload: Mapping[str, Any],
+    secret_values: Iterable[str | None] = (),
+) -> tuple[dict[str, Any], ...]:
+    command = str(payload.get("command", "paper-lab-spy-close-submit"))
+    return (
+        PaperLabObservationEvent(
+            run_id=run_id,
+            command=command,
+            event_type=PAPER_LAB_SPY_CLOSE_SUBMIT_OBSERVED,
             fields=dict(payload),
         ).to_record(secret_values=secret_values),
     )
@@ -747,6 +768,7 @@ __all__ = [
     "PAPER_ACCOUNT_OBSERVED",
     "PAPER_LAB_ORDER_TRACEABILITY_REVIEWED",
     "PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED",
+    "PAPER_LAB_SPY_CLOSE_SUBMIT_OBSERVED",
     "PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED",
     "PAPER_CLOSE_PREVIEW_DESIGNED",
     "PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED",
@@ -770,6 +792,7 @@ __all__ = [
     "make_paper_close_preview_events",
     "make_paper_lab_order_traceability_review_events",
     "make_paper_lab_spy_close_preview_events",
+    "make_paper_lab_spy_close_submit_events",
     "make_order_probe_initial_events",
     "make_order_probe_submit_events",
     "make_paper_lab_snapshot_events",

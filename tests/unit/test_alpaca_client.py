@@ -108,6 +108,47 @@ def test_fake_alpaca_client_can_return_order_submission_like_data():
     assert client.submitted_orders == [request]
 
 
+def test_m355_spy_close_request_is_the_only_allowed_equity_sell_shape():
+    request = AlpacaOrderRequest(
+        client_order_id="paper-order-close-m355_spy_paper_close_submit",
+        symbol="SPY",
+        side="sell",
+        asset_class="equity",
+        qty=Decimal("0.032905647"),
+        order_type="market",
+        time_in_force="day",
+    )
+
+    assert request.symbol == "SPY"
+    assert request.side == "sell"
+    assert request.asset_class == "equity"
+    assert request.qty == Decimal("0.032905647")
+    assert request.notional is None
+    assert request.time_in_force == "day"
+
+    with pytest.raises(ValueError, match="explicit M355 SPY paper close"):
+        AlpacaOrderRequest(
+            client_order_id="paper-order-close-other",
+            symbol="SPY",
+            side="sell",
+            asset_class="equity",
+            qty=Decimal("0.032905647"),
+            order_type="market",
+            time_in_force="day",
+        )
+
+    with pytest.raises(ValueError, match="explicit M355 SPY paper close"):
+        AlpacaOrderRequest(
+            client_order_id="paper-order-close-m355_spy_paper_close_submit",
+            symbol="SPY",
+            side="sell",
+            asset_class="equity",
+            notional=Decimal("25.00"),
+            order_type="market",
+            time_in_force="day",
+        )
+
+
 def test_recent_order_query_defaults_are_deterministic_contract():
     query = AlpacaRecentOrderQuery()
 

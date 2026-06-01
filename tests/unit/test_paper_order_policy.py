@@ -14,8 +14,12 @@ from algotrader.execution.paper_order_policy import (
     PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION,
     PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION,
     PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+    PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
+    PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE,
+    PAPER_SPY_CLOSE_SUBMIT_READY_STATE,
     build_btcusd_paper_close_preview_contract,
     build_spy_paper_close_preview_contract,
+    build_spy_paper_close_submit_contract,
     paper_order_policy_for_asset_class,
 )
 
@@ -225,3 +229,93 @@ def test_spy_close_preview_contract_blocks_open_orders() -> None:
         "detail": "recent_open_spy_orders_must_be_zero",
         "passed": False,
     }
+
+
+def test_spy_close_submit_contract_accepts_exact_m355_shape() -> None:
+    payload = _spy_close_submit_payload()
+
+    assert payload["ok"] is True
+    assert payload["state"] == PAPER_SPY_CLOSE_SUBMIT_READY_STATE
+    assert payload["paper_only"] is True
+    assert payload["paper_lab_only"] is True
+    assert payload["live_authorized"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
+    assert payload["client_order_id"] == PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID
+    assert payload["asset_class"] == "equity"
+    assert payload["symbol"] == "SPY"
+    assert payload["side"] == "sell"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "day"
+    assert payload["requested_close_quantity"] == "0.032905647"
+    assert payload["observed_position_quantity"] == "0.032905647"
+    assert payload["remaining_quantity_after_submit"] == "0"
+    assert payload["no_shorting_gate"] == "passed"
+    assert payload["gates"]["duplicate_client_order_id_gate"]["passed"] is True
+
+
+@pytest.mark.parametrize(
+    ("override", "gate_name"),
+    (
+        ({"symbol": "AAPL"}, "allowlist_gate"),
+        ({"side": "buy"}, "side_gate"),
+        ({"asset_class": "crypto"}, "asset_class_gate"),
+        ({"order_type": "limit"}, "order_type_gate"),
+        ({"time_in_force": "gtc"}, "time_in_force_gate"),
+        ({"requested_close_quantity": "0.01"}, "quantity_gate"),
+        ({"requested_close_quantity": None}, "quantity_gate"),
+        ({"observed_position_quantity": "0"}, "observed_position_gate"),
+        (
+            {"observed_position_quantity": "0.032905646"},
+            "close_quantity_within_observed_position_gate",
+        ),
+        ({"recent_open_order_count": 1}, "recent_open_order_gate"),
+        ({"duplicate_client_order_id_found": True}, "duplicate_client_order_id_gate"),
+        ({"m354_state": "blocked"}, "m354_state_gate"),
+        ({"m354_requested_close_quantity": "0.01"}, "m354_requested_quantity_gate"),
+        ({"m354_live_authorized": True}, "m354_not_live_gate"),
+        ({"account_observed": False}, "account_observation_gate"),
+        ({"positions_observed": False}, "positions_observation_gate"),
+        ({"orders_observed": False}, "orders_observation_gate"),
+        ({"recent_order_query_metadata_complete": False}, "recent_order_query_metadata_gate"),
+        ({"unexpected_position_symbols": ("AAPL",)}, "unexpected_position_gate"),
+        ({"unavailable_observations": ("orders",)}, "unavailable_observation_gate"),
+        ({"submit_flag": False}, "submit_confirmation_gate"),
+    ),
+)
+def test_spy_close_submit_contract_blocks_required_m355_gates(
+    override: dict[str, object],
+    gate_name: str,
+) -> None:
+    payload = _spy_close_submit_payload(**override)
+
+    assert payload["ok"] is False
+    assert payload["live_authorized"] is False
+    assert payload["submitted"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
+    assert payload["gates"][gate_name]["passed"] is False
+
+
+def _spy_close_submit_payload(**overrides: object) -> dict[str, object]:
+    params = {
+        "m354_state": PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE,
+        "m354_ok": True,
+        "m354_submitted": False,
+        "m354_mutated": False,
+        "m354_broker_action_performed": False,
+        "m354_close_order_submitted": False,
+        "m354_live_authorized": False,
+        "m354_requested_close_quantity": Decimal("0.032905647"),
+        "observed_position_quantity": Decimal("0.032905647"),
+        "account_observed": True,
+        "positions_observed": True,
+        "orders_observed": True,
+        "recent_order_query_metadata_complete": True,
+        "recent_open_order_count": 0,
+        "duplicate_client_order_id_found": False,
+    }
+    params.update(overrides)
+    return build_spy_paper_close_submit_contract(**params).to_payload()

@@ -20,6 +20,7 @@ _TIME_IN_FORCE_BY_ASSET_CLASS = {
     "option": ("day",),
 }
 RECENT_ORDER_QUERY_CONTRACT_VERSION = "paper_recent_order_query_v1"
+_M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit"
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
 _RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
@@ -129,14 +130,24 @@ class AlpacaOrderRequest:
         if asset_class not in _TIME_IN_FORCE_BY_ASSET_CLASS:
             raise ValueError("Alpaca paper order requests require a supported asset_class.")
         normalized_symbol = self.symbol.strip().upper()
+        has_qty = self.qty is not None
+        has_notional = self.notional is not None
+        m355_spy_close = (
+            asset_class == "equity"
+            and normalized_symbol == "SPY"
+            and self.client_order_id == _M355_SPY_CLOSE_CLIENT_ORDER_ID
+            and has_qty
+            and not has_notional
+        )
         if side not in {"buy", "sell"}:
             raise ValueError("Alpaca paper order requests require buy or sell side.")
         if side == "sell" and not (
             asset_class == "crypto" and normalized_symbol == "BTCUSD"
+            or m355_spy_close
         ):
             raise ValueError(
                 "Alpaca paper sell requests are restricted to BTCUSD crypto "
-                "close probes."
+                "close probes or the explicit M355 SPY paper close."
             )
         if order_type != "market":
             raise ValueError("Alpaca paper order requests are market-only.")
@@ -147,8 +158,6 @@ class AlpacaOrderRequest:
         if self.limit_price is not None:
             raise ValueError("Alpaca paper market order requests must not use limit_price.")
 
-        has_qty = self.qty is not None
-        has_notional = self.notional is not None
         if has_qty == has_notional:
             raise ValueError(
                 "Alpaca paper order requests require exactly one of qty or notional."
@@ -178,6 +187,8 @@ class AlpacaOrderSubmissionResponse:
     status: str
     submitted_at: datetime
     notional: Optional[Decimal] = None
+    filled_qty: Optional[Decimal] = None
+    filled_avg_price: Optional[Decimal] = None
 
 
 class AlpacaClient(Protocol):
