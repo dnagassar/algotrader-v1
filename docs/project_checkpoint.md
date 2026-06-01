@@ -14147,6 +14147,23 @@ Safe next tasks include:
   no scheduler/autonomous behavior, no live profile/live URL, and no LLM
   trading-path dependency. M344 remains prior paper-lab evidence only; M345
   did not run a fresh paper snapshot.
+- M346 adds the first offline ETF/SMA signal-to-execution-preview bridge in
+  `algotrader.orchestration.etf_sma_execution_preview_bridge`. It consumes
+  only an M345 `EtfSmaSignalResult` plus immutable local preview config and
+  emits a frozen/slotted `EtfSmaExecutionPreview` artifact. Bullish/risk-on SPY
+  within the SPY-only allowlist and `max_notional <= 25.00` is accepted as an
+  offline paper-lab preview candidate; defensive, insufficient-history, and
+  non-allowlisted signals skip deterministically.
+- M346 remains fully offline and pre-broker. It calls no broker, Alpaca,
+  network, credential reader, paper snapshot command, paper order probe, risk
+  engine, execution-planning policy, scheduler/runtime loop, or LLM trading
+  path. It authorizes no paper submit, creates no broker order,
+  `ExecutionIntent`, or `ExecutionPlan`, and mutates no portfolio, account,
+  order, fill, or position state. Its hard-false flags are
+  `broker_action_performed=false`, `broker_preview_performed=false`,
+  `submit_allowed=false`, and `mutated=false`; `profit_claim=none`,
+  `not_live_authorized`, SPY-only, and `max_notional <= 25.00` stay fixed.
+  M344 remains prior paper context only and is not consumed as runtime input.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
@@ -14160,8 +14177,7 @@ Safe next tasks include:
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
-- M346 offline ETF/SMA signal-to-risk/execution preview bridge with no broker
-  action
+- M347 local ETF/SMA preview JSONL artifact - no broker action
 
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,

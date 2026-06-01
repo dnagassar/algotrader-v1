@@ -8662,6 +8662,30 @@ scheduler/autonomous behavior, live profile/live URL behavior, and LLM trading
 path dependencies remain forbidden. M344 remains prior paper-lab evidence only;
 M345 does not run a fresh paper snapshot.
 
+Milestone 346 adds the first offline ETF/SMA signal-to-execution-preview
+bridge in `algotrader.orchestration.etf_sma_execution_preview_bridge`.
+`build_etf_sma_execution_preview` consumes only an M345
+`EtfSmaSignalResult` plus immutable local preview config and emits a
+frozen/slotted `EtfSmaExecutionPreview` artifact. A bullish/risk-on SPY signal
+within the SPY-only allowlist and `max_notional <= 25.00` becomes an accepted
+offline candidate with `intended_side=buy`, `intended_order_style` set to a
+non-broker notional-market preview descriptor, and `preview_notional` capped by
+the config. Defensive signals skip with `signal_posture_not_bullish`,
+insufficient-history signals skip with `signal_insufficient_history`, and
+non-allowlisted symbols skip with `symbol_not_allowed`.
+
+M346 remains fully offline and pre-broker. It does not call brokers, Alpaca,
+network libraries, credential readers, paper snapshot commands, paper order
+probes, risk engines, planning policies, scheduler/runtime loops, or LLM
+trading-path logic. It does not authorize paper submit, create broker orders,
+create `ExecutionIntent` or `ExecutionPlan`, or mutate portfolio, account,
+order, fill, or position state. The preview hard-codes
+`broker_action_performed=false`, `broker_preview_performed=false`,
+`submit_allowed=false`, `mutated=false`, `profit_claim=none`, and
+`not_live_authorized`; M344 remains prior paper context only and is not consumed
+as runtime input. The recommended next milestone is M347 local ETF/SMA preview
+JSONL artifact - no broker action.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

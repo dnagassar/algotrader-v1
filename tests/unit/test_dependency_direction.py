@@ -184,6 +184,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.risk_execution_flow",
     "algotrader.orchestration.execution_planning_flow",
     "algotrader.orchestration.execution_planning_policy",
+    "algotrader.orchestration.etf_sma_execution_preview_bridge",
 )
 
 ORCHESTRATION_BOUNDARY_RULES = tuple(
