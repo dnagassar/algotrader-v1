@@ -125,6 +125,18 @@ def _order_observation_payload(order: Any) -> dict[str, str]:
         "symbol": _text(_field(order, "symbol")).upper(),
         "time_in_force": _text(_field(order, "time_in_force")),
     }
+    for field_name, output_name in (
+        ("created_at", "created_at"),
+        ("filled_quantity", "filled_quantity"),
+        ("filled_average_price", "filled_average_price"),
+    ):
+        value = (
+            _time_text(_field(order, field_name))
+            if field_name == "created_at"
+            else _text(_field(order, field_name))
+        )
+        if value:
+            payload[output_name] = value
     for field_name in ("order_id", "client_order_id"):
         value = _text(_field(order, field_name))
         if value:

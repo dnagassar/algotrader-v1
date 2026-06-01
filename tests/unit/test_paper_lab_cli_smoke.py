@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
@@ -9,7 +10,10 @@ from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import (
+    AlpacaAccountResponse,
+    AlpacaOrderResponse,
     AlpacaOrderRequest,
+    AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
 )
 from algotrader.execution.alpaca_sdk_client import (
@@ -262,6 +266,256 @@ def test_account_smoke_json_is_deterministic_and_credential_free(
     assert SENSITIVE_API_KEY not in first
     assert SENSITIVE_SECRET_KEY not in first
     assert json.loads(first)["redaction"] == "credentials_redacted"
+
+
+def test_order_traceability_review_reads_spy_all_and_closed_orders_only(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeTraceabilityAlpacaClient())
+    source_order_log, source_snapshot_log = _write_traceability_source_logs(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "traceability.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            "paper-lab-order-traceability-review",
+            "--source-order-run-log",
+            str(source_order_log),
+            "--source-snapshot-run-log",
+            str(source_snapshot_log),
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "traceability-run",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 0
+    assert fake_client.calls == [
+        "get_account",
+        "get_positions",
+        "get_orders",
+        "get_orders",
+        "get_orders",
+    ]
+    assert fake_client.submitted_requests == []
+    assert [query.status_filter for query in fake_client.recent_order_queries] == [
+        "open",
+        "all",
+        "closed",
+    ]
+    assert {query.symbol_filter for query in fake_client.recent_order_queries} == {
+        "SPY"
+    }
+    assert {query.side_filter for query in fake_client.recent_order_queries} == {
+        "buy"
+    }
+    assert payload["ok"] is True
+    assert payload["review_state"] == "ready_for_spy_paper_cleanup_preview_milestone"
+    assert payload["mutated"] is False
+    assert payload["submitted"] is False
+    assert payload["redaction"] == "credentials_redacted"
+    assert payload["spy_position_observed"] is True
+    assert payload["spy_quantity"] == "0.032905647"
+    assert payload["spy_average_price"] == "759.748"
+    assert payload["recent_open_order_count"] == 0
+    assert payload["recent_all_order_count"] == 1
+    assert payload["recent_closed_order_count"] == 1
+    assert payload["recent_filled_order_count"] == 1
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert payload["filled_spy_order_found"] is True
+    assert payload["broker_order_id_exposed"] is True
+    assert payload["client_order_id_exposed"] is True
+    assert payload["m351_correlation_basis"] == "client_order_id"
+    assert records == [
+        {
+            **payload,
+            "event_type": "paper_lab_order_traceability_reviewed",
+            "run_id": "traceability-run",
+        }
+    ]
+
+
+def test_spy_close_preview_reads_open_orders_and_writes_readiness_artifact(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyClosePreviewAlpacaClient(),
+    )
+    source_traceability_log = _write_m353_traceability_log(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m354.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            "paper-lab-spy-close-preview",
+            "--source-traceability-run-log",
+            str(source_traceability_log),
+            "--run-log",
+            str(run_log),
+            "--run-id",
+            "m354_spy_cleanup_close_preview",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    records = _read_jsonl(run_log)
+    assert exit_code == 0
+    assert fake_client.calls == ["get_account", "get_positions", "get_orders"]
+    assert fake_client.submitted_requests == []
+    assert len(fake_client.recent_order_queries) == 1
+    assert fake_client.recent_order_queries[0].status_filter == "open"
+    assert fake_client.recent_order_queries[0].symbol_filter == "SPY"
+    assert fake_client.recent_order_queries[0].side_filter == ""
+    assert payload["run_id"] == "m354_spy_cleanup_close_preview"
+    assert payload["state"] == "ready_for_separate_spy_paper_close_submit_milestone"
+    assert payload["ok"] is True
+    assert payload["mutated"] is False
+    assert payload["submitted"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
+    assert payload["live_authorized"] is False
+    assert payload["asset_class"] == "equity"
+    assert payload["symbol"] == "SPY"
+    assert payload["side"] == "sell"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "day"
+    assert payload["quantity"] == "0.032905647"
+    assert payload["preview_quantity"] == "0.032905647"
+    assert payload["observed_spy_quantity"] == "0.032905647"
+    assert payload["observed_spy_average_price"] == "759.748"
+    assert payload["account_cash"] == "1974.9"
+    assert payload["account_currency"] == "USD"
+    assert payload["recent_open_order_count"] == 0
+    assert payload["m353_evidence_available"] is True
+    assert payload["m353_ready"] is True
+    assert payload["m353_traceability_summary"][
+        "recent_all_spy_buy_order_count"
+    ] == 1
+    assert payload["m353_traceability_summary"][
+        "recent_closed_spy_buy_order_count"
+    ] == 1
+    assert payload["m353_traceability_summary"][
+        "recent_filled_spy_buy_order_count"
+    ] == 1
+    assert payload["m351_correlation_basis"] == "client_order_id"
+    assert (
+        payload["m351_client_order_id"]
+        == "paper-order-probe-m351_spy_tiny_paper_probe"
+    )
+    assert payload["max_cleanup_quantity"] == "0.032905647"
+    assert payload["allowlist_result"]["passed"] is True
+    assert payload["paper_profile_gate_result"]["passed"] is True
+    assert payload["notional_quantity_validation_result"] == {
+        "notional_used": False,
+        "observed_quantity": "0.032905647",
+        "quantity_positive": True,
+        "quantity_within_observed_position": True,
+        "requested_quantity": "0.032905647",
+        "sizing_mode": "quantity",
+        "would_short": False,
+    }
+    assert payload["stale_evidence_blockers"] == []
+    assert payload["open_order_blockers"] == []
+    assert payload["unexpected_position_blockers"] == []
+    assert payload["unavailable_observation_blockers"] == []
+    assert payload["blockers"] == []
+    assert payload["final_operator_instruction"] == (
+        "Review only. Do not submit in M354. Use M355 for explicit close "
+        "submit if approved."
+    )
+    assert records == [
+        {
+            **payload,
+            "event_type": "paper_lab_spy_close_preview_reviewed",
+            "run_id": "m354_spy_cleanup_close_preview",
+        }
+    ]
+
+
+def test_spy_close_preview_blocks_missing_m353_evidence(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyClosePreviewAlpacaClient(),
+    )
+
+    exit_code, payload = _run_json(
+        (
+            "paper-lab-spy-close-preview",
+            "--source-traceability-run-log",
+            str(tmp_path / "missing_m353.jsonl"),
+            "--run-id",
+            "m354_spy_cleanup_close_preview",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert fake_client.submitted_requests == []
+    assert payload["state"] == "blocked_from_spy_paper_close_submit_milestone"
+    assert payload["quantity"] == ""
+    assert payload["m353_evidence_available"] is False
+    assert payload["m353_ready"] is False
+    assert payload["stale_evidence_blockers"] == [
+        "m353_traceability_evidence_missing"
+    ]
+    assert "source_traceability_gate_failed:m353_traceability_must_be_ready" in (
+        payload["blockers"]
+    )
+
+
+def test_spy_close_preview_blocks_open_spy_orders(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeSpyClosePreviewAlpacaClient(open_order_count=1),
+    )
+    source_traceability_log = _write_m353_traceability_log(tmp_path)
+
+    exit_code, payload = _run_json(
+        (
+            "paper-lab-spy-close-preview",
+            "--source-traceability-run-log",
+            str(source_traceability_log),
+            "--run-id",
+            "m354_spy_cleanup_close_preview",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert fake_client.submitted_requests == []
+    assert payload["state"] == "blocked_from_spy_paper_close_submit_milestone"
+    assert payload["quantity"] == ""
+    assert payload["recent_open_order_count"] == 1
+    assert payload["open_order_blockers"] == ["recent_open_spy_order_count_nonzero"]
+    assert "recent_open_order_gate_failed:recent_open_spy_orders_must_be_zero" in (
+        payload["blockers"]
+    )
 
 
 def test_order_probe_defaults_to_preview_and_does_not_submit(
@@ -2543,6 +2797,108 @@ class FakeCloseAlpacaClient(FakeAlpacaClient):
         }
 
 
+class FakeTraceabilityAlpacaClient(FakeAlpacaClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
+
+    def get_positions(self) -> list[AlpacaPositionResponse]:
+        self.calls.append("get_positions")
+        return [
+            AlpacaPositionResponse(
+                symbol="SPY",
+                qty=Decimal("0.032905647"),
+                market_value=Decimal("25.00"),
+                average_entry_price=Decimal("759.748"),
+            )
+        ]
+
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery,
+    ) -> list[AlpacaOrderResponse]:
+        self.calls.append("get_orders")
+        self.recent_order_queries.append(query)
+        if query.status_filter == "open":
+            return []
+
+        observed_at = datetime(2026, 6, 1, 18, 30, tzinfo=UTC)
+        return [
+            AlpacaOrderResponse(
+                order_id="broker-spy-order-1",
+                client_order_id="paper-order-probe-m351_spy_tiny_paper_probe",
+                symbol="SPY",
+                side="buy",
+                status="OrderStatus.FILLED",
+                qty=Decimal("0.032905647"),
+                notional=Decimal("25.00"),
+                asset_class="equity",
+                order_type="market",
+                time_in_force="day",
+                created_at=observed_at,
+                submitted_at=observed_at,
+                filled_at=observed_at,
+                filled_qty=Decimal("0.032905647"),
+                filled_avg_price=Decimal("759.748"),
+            )
+        ]
+
+
+class FakeSpyClosePreviewAlpacaClient(FakeAlpacaClient):
+    def __init__(self, *, open_order_count: int = 0) -> None:
+        super().__init__()
+        self.open_order_count = open_order_count
+        self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
+
+    def get_account(self) -> AlpacaAccountResponse:
+        self.calls.append("get_account")
+        return AlpacaAccountResponse(
+            account_id="paper-account-1",
+            status="ACTIVE",
+            cash=Decimal("1974.9"),
+            buying_power=Decimal("1974.9"),
+            equity=Decimal("1999.9"),
+        )
+
+    def get_positions(self) -> list[AlpacaPositionResponse]:
+        self.calls.append("get_positions")
+        return [
+            AlpacaPositionResponse(
+                symbol="SPY",
+                qty=Decimal("0.032905647"),
+                market_value=Decimal("25.00"),
+                average_entry_price=Decimal("759.748"),
+            )
+        ]
+
+    def get_orders(
+        self,
+        query: AlpacaRecentOrderQuery,
+    ) -> list[AlpacaOrderResponse]:
+        self.calls.append("get_orders")
+        self.recent_order_queries.append(query)
+        if self.open_order_count == 0:
+            return []
+
+        observed_at = datetime(2026, 6, 1, 19, 30, tzinfo=UTC)
+        return [
+            AlpacaOrderResponse(
+                order_id=f"open-spy-order-{index}",
+                client_order_id=f"open-spy-order-{index}",
+                symbol="SPY",
+                side="sell",
+                status="OrderStatus.ACCEPTED",
+                qty=Decimal("0.032905647"),
+                asset_class="equity",
+                order_type="market",
+                time_in_force="day",
+                created_at=observed_at,
+                submitted_at=observed_at,
+            )
+            for index in range(self.open_order_count)
+        ]
+
+
 class FakeMalformedAlpacaClient(FakeAlpacaClient):
     def submit_order(self, request):  # noqa: ANN001
         self.calls.append("submit_order")
@@ -2636,6 +2992,134 @@ def _read_jsonl(path) -> list[dict[str, object]]:  # noqa: ANN001
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def _write_m353_traceability_log(tmp_path):  # noqa: ANN001
+    source_traceability_log = tmp_path / "m353_spy_order_traceability_review.jsonl"
+    record = {
+        "account": {"cash": "1974.9", "currency": "USD"},
+        "account_observation_available": True,
+        "asset_class": "equity",
+        "broker_order_id_exposed": True,
+        "client_order_id_exposed": True,
+        "command": "paper-lab-order-traceability-review",
+        "error": "",
+        "event_type": "paper_lab_order_traceability_reviewed",
+        "filled_spy_order": {
+            "asset_class": "us_equity",
+            "client_order_id": "paper-order-probe-m351_spy_tiny_paper_probe",
+            "filled_at": "2026-06-01T18:48:14.890443+00:00",
+            "normalized_status": "filled",
+            "order_id": "broker-spy-order-1",
+            "order_type": "market",
+            "side": "buy",
+            "symbol": "SPY",
+            "time_in_force": "day",
+        },
+        "filled_spy_order_found": True,
+        "m351_correlation_basis": "client_order_id",
+        "mutated": False,
+        "ok": True,
+        "order_traceability_observation_available": True,
+        "position_count": 1,
+        "position_symbols": ["SPY"],
+        "positions": [
+            {
+                "average_price": "759.748",
+                "quantity": "0.032905647",
+                "symbol": "SPY",
+            }
+        ],
+        "positions_observation_available": True,
+        "recent_all_order_count": 1,
+        "recent_closed_order_count": 1,
+        "recent_filled_order_count": 1,
+        "recent_open_order_count": 0,
+        "recent_order_query_metadata_complete": True,
+        "redaction": "credentials_redacted",
+        "review_state": "ready_for_spy_paper_cleanup_preview_milestone",
+        "run_id": "m353_spy_order_traceability_review",
+        "side": "buy",
+        "source_m351_evidence_available": True,
+        "source_m351_reference": {
+            "client_order_id": "paper-order-probe-m351_spy_tiny_paper_probe",
+            "submitted": True,
+        },
+        "source_m352_evidence_available": True,
+        "spy_average_price": "759.748",
+        "spy_position_observed": True,
+        "spy_quantity": "0.032905647",
+        "submitted": False,
+        "symbol": "SPY",
+        "traceability_gap": "",
+    }
+    source_traceability_log.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    return source_traceability_log
+
+
+def _write_traceability_source_logs(tmp_path):  # noqa: ANN001
+    source_order_log = tmp_path / "m351_spy_tiny_paper_probe.jsonl"
+    source_snapshot_log = tmp_path / "m352_spy_settlement_review_snapshot.jsonl"
+    m351_record = {
+        "accepted": True,
+        "asset_class": "equity",
+        "client_order_id": "paper-order-probe-m351_spy_tiny_paper_probe",
+        "command": "paper-order-probe",
+        "event_type": "paper_order_receipt_observed",
+        "filled": False,
+        "normalized_status": "pending_new",
+        "notional": "25.00",
+        "order_type": "market",
+        "raw_status": "OrderStatus.PENDING_NEW",
+        "redaction": "credentials_redacted",
+        "run_id": "m351_spy_tiny_paper_probe",
+        "side": "buy",
+        "submitted": True,
+        "symbol": "SPY",
+        "time_in_force": "day",
+    }
+    m352_positions = {
+        "command": "paper-lab-snapshot",
+        "event_type": "paper_lab_snapshot_positions_observed",
+        "mutated": False,
+        "position_count": 1,
+        "position_symbols": ["SPY"],
+        "positions": [
+            {
+                "average_price": "759.748",
+                "quantity": "0.032905647",
+                "symbol": "SPY",
+            }
+        ],
+        "redaction": "credentials_redacted",
+        "run_id": "m352_spy_settlement_review_snapshot",
+        "submitted": False,
+    }
+    m352_orders = {
+        "command": "paper-lab-snapshot",
+        "event_type": "paper_lab_snapshot_orders_observed",
+        "mutated": False,
+        "recent_order_count": 0,
+        "recent_orders": [],
+        "redaction": "credentials_redacted",
+        "run_id": "m352_spy_settlement_review_snapshot",
+        "submitted": False,
+    }
+    source_order_log.write_text(
+        json.dumps(m351_record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    source_snapshot_log.write_text(
+        "".join(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
+            for record in (m352_positions, m352_orders)
+        ),
+        encoding="utf-8",
+    )
+    return source_order_log, source_snapshot_log
 
 
 def _write_revalidation_snapshot_run_log(path) -> None:  # noqa: ANN001

@@ -66,8 +66,11 @@ class TranslatedAlpacaOrderObservation:
     notional: Optional[Decimal]
     raw_status: str
     normalized_status: str
+    created_at: Any = None
     submitted_at: Any = None
     filled_at: Any = None
+    filled_quantity: Optional[Decimal] = None
+    filled_average_price: Optional[Decimal] = None
     order_id: str = ""
     client_order_id: str = ""
 
@@ -166,10 +169,21 @@ def translate_alpaca_order_observation(
         notional=_optional_decimal(data, "notional"),
         raw_status=raw_status,
         normalized_status=normalize_alpaca_order_status(raw_status),
+        created_at=_optional_value(data, "created_at", default=None),
         submitted_at=_optional_value(
             data, "submitted_at", aliases=("created_at",), default=None
         ),
         filled_at=_optional_value(data, "filled_at", default=None),
+        filled_quantity=_optional_decimal(
+            data,
+            "filled_qty",
+            aliases=("filled_quantity",),
+        ),
+        filled_average_price=_optional_decimal(
+            data,
+            "filled_avg_price",
+            aliases=("filled_average_price",),
+        ),
         order_id=_optional_text(data, "order_id", aliases=("id",), default="") or "",
         client_order_id=_optional_text(data, "client_order_id", default="") or "",
     )
@@ -215,9 +229,13 @@ def _response_data(response: Any) -> dict[str, Any]:
         "reason",
         "error",
         "reject_reason",
-        "submitted_at",
         "created_at",
+        "submitted_at",
         "filled_at",
+        "filled_qty",
+        "filled_quantity",
+        "filled_avg_price",
+        "filled_average_price",
     )
     return {
         name: getattr(response, name)

@@ -46,6 +46,19 @@ PAPER_CLOSE_PREVIEW_REPAIR_ACTION = (
 PAPER_CLOSE_PREVIEW_ADJUST_QUANTITY_ACTION = (
     "adjust_close_quantity_within_observed_position_before_manual_review"
 )
+PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS = (
+    "fresh_read_only_spy_position_observation_completed"
+)
+PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION = (
+    "review_m354_close_preview_then_scope_m355_explicit_close_submit_if_approved"
+)
+PAPER_SPY_CLOSE_PREVIEW_REPAIR_ACTION = (
+    "resolve_spy_close_preview_blockers_before_m355"
+)
+PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION = (
+    "Review only. Do not submit in M354. Use M355 for explicit close submit if "
+    "approved."
+)
 PAPER_CLOSE_PREVIEW_GATE_ORDER = (
     "asset_class_gate",
     "symbol_gate",
@@ -429,6 +442,209 @@ def build_btcusd_paper_close_preview_contract(
     )
 
 
+def build_spy_paper_close_preview_contract(
+    *,
+    observed_position_quantity: Decimal | str | None,
+    requested_close_quantity: Decimal | str | None,
+    fresh_observation_status: str,
+    recent_order_query_metadata_complete: bool,
+    source_mutated: bool | None,
+    source_submitted: bool | None,
+    source_traceability_ready: bool,
+    recent_open_order_count: int | None,
+    unexpected_position_symbols: tuple[str, ...] = (),
+    unavailable_observations: tuple[str, ...] = (),
+    asset_class: str = ASSET_CLASS_EQUITY,
+    symbol: str = "SPY",
+    side: str = "sell",
+    order_type: str = "market",
+    time_in_force: str | None = None,
+    command: str = "paper-lab-spy-close-preview",
+) -> PaperClosePreviewContract:
+    """Build a local SPY close/cleanup preview contract without broker action."""
+
+    equity_policy = paper_order_policy_for_asset_class(ASSET_CLASS_EQUITY)
+    normalized_asset_class = str(asset_class).strip().lower()
+    normalized_symbol = str(symbol).strip().upper()
+    normalized_side = str(side).strip().lower()
+    normalized_order_type = str(order_type).strip().lower()
+    normalized_time_in_force = str(
+        equity_policy.time_in_force if time_in_force is None else time_in_force
+    ).strip().lower()
+    requested_quantity, requested_quantity_error = _positive_decimal_value(
+        requested_close_quantity,
+        "requested_close_quantity",
+    )
+    observed_quantity, observed_quantity_error = _positive_decimal_value(
+        observed_position_quantity,
+        "observed_position_quantity",
+    )
+    within_observed_position = (
+        observed_quantity is not None
+        and requested_quantity is not None
+        and requested_quantity <= observed_quantity
+    )
+    remaining_quantity = (
+        observed_quantity - requested_quantity
+        if within_observed_position
+        else None
+    )
+    open_order_count_zero = recent_open_order_count == 0
+    gates = tuple(
+        [
+            _close_preview_gate(
+                "asset_class_gate",
+                normalized_asset_class == ASSET_CLASS_EQUITY,
+                ASSET_CLASS_EQUITY,
+                "asset_class_must_be_equity",
+            ),
+            _close_preview_gate(
+                "allowlist_gate",
+                equity_policy.allows_symbol(normalized_symbol),
+                equity_policy.allowlist_detail(normalized_symbol),
+                "symbol_not_in_SPY_allowlist",
+            ),
+            _close_preview_gate(
+                "symbol_gate",
+                normalized_symbol == "SPY",
+                "symbol=SPY",
+                "symbol_must_be_SPY",
+            ),
+            _close_preview_gate(
+                "side_gate",
+                normalized_side == "sell",
+                "sell_only_close_preview",
+                "side_must_be_sell",
+            ),
+            _close_preview_gate(
+                "order_type_gate",
+                normalized_order_type == "market",
+                "market",
+                "order_type_must_be_market",
+            ),
+            _close_preview_gate(
+                "time_in_force_gate",
+                normalized_time_in_force == equity_policy.time_in_force,
+                equity_policy.time_in_force,
+                f"time_in_force_must_be_{equity_policy.time_in_force}",
+            ),
+            _close_preview_gate(
+                "fresh_observation_gate",
+                fresh_observation_status
+                == PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+                PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+                "fresh_read_only_spy_observation_required",
+            ),
+            _close_preview_gate(
+                "source_traceability_gate",
+                source_traceability_ready is True,
+                "m353_traceability_ready",
+                "m353_traceability_must_be_ready",
+            ),
+            _close_preview_gate(
+                "observed_position_gate",
+                observed_quantity is not None,
+                "observed_SPY_position_quantity_positive",
+                observed_quantity_error or "observed_SPY_position_required",
+            ),
+            _close_preview_gate(
+                "quantity_gate",
+                requested_quantity is not None,
+                "requested_close_quantity_positive",
+                requested_quantity_error or "requested_close_quantity_required",
+            ),
+            _close_preview_gate(
+                "close_quantity_within_observed_position_gate",
+                within_observed_position,
+                "requested_close_quantity_within_observed_position",
+                "requested_close_quantity_exceeds_observed_position",
+            ),
+            _close_preview_gate(
+                "no_shorting_gate",
+                within_observed_position,
+                "no_shorting_requested",
+                "requested_close_quantity_would_short_SPY",
+            ),
+            _close_preview_gate(
+                "recent_order_query_metadata_gate",
+                recent_order_query_metadata_complete is True,
+                "recent_order_query_metadata_complete",
+                "recent_order_query_metadata_must_be_complete",
+            ),
+            _close_preview_gate(
+                "recent_open_order_gate",
+                open_order_count_zero,
+                "recent_open_spy_order_count_zero",
+                "recent_open_spy_orders_must_be_zero",
+            ),
+            _close_preview_gate(
+                "unexpected_position_gate",
+                not unexpected_position_symbols,
+                "only_SPY_position_observed",
+                "unexpected_non_SPY_positions_observed",
+            ),
+            _close_preview_gate(
+                "unavailable_observation_gate",
+                not unavailable_observations,
+                "account_positions_and_orders_available",
+                "required_observations_unavailable",
+            ),
+            _close_preview_gate(
+                "source_mutation_gate",
+                source_mutated is False,
+                "mutated_false",
+                "source_evidence_mutated_must_be_false",
+            ),
+            _close_preview_gate(
+                "source_submission_gate",
+                source_submitted is False,
+                "submitted_false",
+                "source_evidence_submitted_must_be_false",
+            ),
+            _close_preview_gate(
+                "submit_disabled_gate",
+                True,
+                PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON,
+                "",
+            ),
+            _close_preview_gate(
+                "manual_review_gate",
+                True,
+                "manual_review_required",
+                "",
+            ),
+        ]
+    )
+    ok = all(gate.passed for gate in gates)
+    failed_gate_names = tuple(gate.name for gate in gates if not gate.passed)
+    recommended_action = (
+        PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION
+        if ok
+        else _spy_close_preview_action(failed_gate_names)
+    )
+    return PaperClosePreviewContract(
+        command=command,
+        ok=ok,
+        asset_class=normalized_asset_class,
+        symbol=normalized_symbol,
+        side=normalized_side,
+        order_type=normalized_order_type,
+        time_in_force=normalized_time_in_force,
+        observed_position_quantity=observed_quantity,
+        requested_close_quantity=requested_quantity,
+        remaining_quantity_after_preview=remaining_quantity,
+        fresh_snapshot_status=str(fresh_observation_status),
+        recent_order_query_metadata_complete=(
+            recent_order_query_metadata_complete is True
+        ),
+        mutated=source_mutated,
+        submitted=source_submitted,
+        gates=gates,
+        recommended_next_operator_action=recommended_action,
+        limitations=_close_preview_limitations(gates),
+    )
+
+
 def paper_order_policy_for_asset_class(asset_class: str) -> PaperOrderPolicy:
     normalized_asset_class = asset_class.strip().lower()
     try:
@@ -497,6 +713,19 @@ def _close_preview_action(failed_gate_names: tuple[str, ...]) -> str:
     return PAPER_CLOSE_PREVIEW_REPAIR_ACTION
 
 
+def _spy_close_preview_action(failed_gate_names: tuple[str, ...]) -> str:
+    if not failed_gate_names:
+        return PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION
+    if failed_gate_names[0] in {
+        "quantity_gate",
+        "close_quantity_within_observed_position_gate",
+        "no_shorting_gate",
+    }:
+        return PAPER_CLOSE_PREVIEW_ADJUST_QUANTITY_ACTION
+
+    return PAPER_SPY_CLOSE_PREVIEW_REPAIR_ACTION
+
+
 def _close_preview_limitations(
     gates: tuple[PaperClosePreviewGate, ...],
 ) -> tuple[str, ...]:
@@ -527,9 +756,14 @@ __all__ = [
     "PAPER_CRYPTO_SESSION_NOTE",
     "PAPER_MARKET_SESSION_NOTE",
     "PAPER_ORDER_PROBE_QTY_DISABLED_REASON",
+    "PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION",
+    "PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION",
+    "PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS",
+    "PAPER_SPY_CLOSE_PREVIEW_REPAIR_ACTION",
     "PaperClosePreviewContract",
     "PaperClosePreviewGate",
     "PaperOrderPolicy",
     "build_btcusd_paper_close_preview_contract",
+    "build_spy_paper_close_preview_contract",
     "paper_order_policy_for_asset_class",
 ]

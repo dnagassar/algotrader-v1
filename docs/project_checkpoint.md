@@ -14234,6 +14234,42 @@ Safe next tasks include:
   `ready_for_separate_tiny_spy_paper_probe_milestone` with no blockers and
   next action
   `m351_separate_tiny_spy_paper_probe_scope_if_operator_approves`.
+- M351 is the explicit operator-approved tiny SPY paper probe. It remains
+  paper-profile gated, SPY allowlisted, equity-only, `market`/`day`, notional
+  sized, and capped at `25.00`. It records deterministic local JSONL evidence
+  for the single SPY buy and does not authorize another buy, retry,
+  cancellation, liquidation, scheduler behavior, live endpoint, or live order.
+- M352 is a read-only SPY settlement snapshot after M351. It records account,
+  positions, recent orders, SPY fractional quantity and average price, recent
+  open order count, `mutated=false`, `submitted=false`, and credential
+  redaction without broker mutation.
+- M353 adds `paper-lab-order-traceability-review`, a read-only SPY
+  traceability command that loads M351/M352 local evidence and reads account,
+  positions, and bounded SPY buy order lists for open, all, and closed
+  statuses. The ready state requires the SPY position, zero recent open SPY
+  buy orders, one filled M351-correlated SPY buy order, complete recent-order
+  metadata, `mutated=false`, `submitted=false`, and credential redaction.
+- M354 adds `paper-lab-spy-close-preview`, a broker-facing close-preview
+  readiness command for the observed fractional SPY paper position. It consumes
+  M353 traceability evidence, then performs fresh read-only account, position,
+  and open-SPY-order observations and writes a deterministic JSONL artifact
+  such as `runs/paper_lab/m354_spy_cleanup_close_preview.jsonl`.
+- M354 emits `ready_for_separate_spy_paper_close_submit_milestone` only when
+  M353 evidence is present and ready, fresh SPY position quantity and average
+  price still match M353, SPY is the only position, recent open SPY orders are
+  zero across sides, account/position/order observations are available,
+  order-query metadata is complete, SPY/equity/sell/market/day metadata is
+  complete, quantity is positive and within the observed SPY position, the
+  paper-profile gate passes, and all submit/broker/mutation/live flags remain
+  false. Otherwise it emits
+  `blocked_from_spy_paper_close_submit_milestone`.
+- M354 is preview/readiness only. Blocked artifacts list stale-evidence,
+  open-order, unexpected-position, and unavailable-observation blockers and
+  leave preview `quantity` blank. It performs no submit, cancel, close,
+  liquidate, replace, retry, second SPY buy, live-profile/live-endpoint
+  behavior, autonomous scheduling, credential printing, or live trading. The
+  next milestone is M355 explicit operator-approved SPY paper close submit and
+  immediate read-only reconciliation, only if M354 is ready.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

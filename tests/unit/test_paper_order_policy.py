@@ -11,7 +11,11 @@ from algotrader.execution.paper_order_policy import (
     PAPER_CLOSE_PREVIEW_SUBMISSION_DISABLED_REASON,
     PAPER_CRYPTO_BTCUSD_MIN_NOTIONAL,
     PAPER_ORDER_PROBE_QTY_DISABLED_REASON,
+    PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION,
+    PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION,
+    PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
     build_btcusd_paper_close_preview_contract,
+    build_spy_paper_close_preview_contract,
     paper_order_policy_for_asset_class,
 )
 
@@ -153,5 +157,71 @@ def test_btcusd_close_preview_contract_blocks_shorting() -> None:
     assert payload["remaining_quantity_after_preview"] == ""
     assert payload["gates"]["no_shorting_gate"] == {
         "detail": "requested_close_quantity_would_short_BTCUSD",
+        "passed": False,
+    }
+
+
+def test_spy_close_preview_contract_is_preview_only_and_manual_review() -> None:
+    payload = build_spy_paper_close_preview_contract(
+        observed_position_quantity=Decimal("0.032905647"),
+        requested_close_quantity=Decimal("0.032905647"),
+        fresh_observation_status=PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+        recent_order_query_metadata_complete=True,
+        source_mutated=False,
+        source_submitted=False,
+        source_traceability_ready=True,
+        recent_open_order_count=0,
+    ).to_payload()
+
+    assert payload["ok"] is True
+    assert payload["preview_only"] is True
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["broker_action_performed"] is False
+    assert payload["close_order_submitted"] is False
+    assert payload["paper_lab_only"] is True
+    assert payload["not_live_authorized"] is True
+    assert payload["profit_claim"] == "none"
+    assert payload["manual_review_required"] is True
+    assert payload["asset_class"] == "equity"
+    assert payload["symbol"] == "SPY"
+    assert payload["side"] == "sell"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "day"
+    assert payload["observed_position_quantity"] == "0.032905647"
+    assert payload["quantity"] == "0.032905647"
+    assert payload["max_quantity"] == "0.032905647"
+    assert payload["requested_close_quantity"] == "0.032905647"
+    assert payload["remaining_quantity_after_preview"] == "0"
+    assert payload["close_quantity_within_observed_position"] is True
+    assert payload["no_shorting_gate"] == "passed"
+    assert payload["recent_order_query_metadata_complete"] is True
+    assert (
+        payload["recommended_next_operator_action"]
+        == PAPER_SPY_CLOSE_PREVIEW_RECOMMENDED_ACTION
+    )
+    assert PAPER_SPY_CLOSE_PREVIEW_OPERATOR_INSTRUCTION.startswith("Review only")
+    assert payload["gates"]["allowlist_gate"]["passed"] is True
+    assert payload["gates"]["recent_open_order_gate"]["passed"] is True
+
+
+def test_spy_close_preview_contract_blocks_open_orders() -> None:
+    payload = build_spy_paper_close_preview_contract(
+        observed_position_quantity=Decimal("0.032905647"),
+        requested_close_quantity=Decimal("0.032905647"),
+        fresh_observation_status=PAPER_SPY_CLOSE_PREVIEW_REQUIRED_OBSERVATION_STATUS,
+        recent_order_query_metadata_complete=True,
+        source_mutated=False,
+        source_submitted=False,
+        source_traceability_ready=True,
+        recent_open_order_count=1,
+    ).to_payload()
+
+    assert payload["ok"] is False
+    assert payload["preview_only"] is True
+    assert payload["submitted"] is False
+    assert payload["close_order_submitted"] is False
+    assert payload["gates"]["recent_open_order_gate"] == {
+        "detail": "recent_open_spy_orders_must_be_zero",
         "passed": False,
     }

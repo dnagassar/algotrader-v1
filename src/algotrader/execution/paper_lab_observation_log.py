@@ -28,6 +28,12 @@ PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED = "paper_lab_snapshot_account_observed"
 PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED = "paper_lab_snapshot_positions_observed"
 PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED = "paper_lab_snapshot_orders_observed"
 PAPER_LAB_SNAPSHOT_UNAVAILABLE = "paper_lab_snapshot_unavailable"
+PAPER_LAB_ORDER_TRACEABILITY_REVIEWED = (
+    "paper_lab_order_traceability_reviewed"
+)
+PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED = (
+    "paper_lab_spy_close_preview_reviewed"
+)
 PAPER_CLOSE_PREVIEW_DESIGNED = "paper_close_preview_designed"
 
 EVENT_TYPES = (
@@ -45,6 +51,8 @@ EVENT_TYPES = (
     PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
     PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
     PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+    PAPER_LAB_ORDER_TRACEABILITY_REVIEWED,
+    PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
     PAPER_CLOSE_PREVIEW_DESIGNED,
 )
 
@@ -350,6 +358,40 @@ def make_paper_lab_snapshot_events(
         )
 
     return tuple(events)
+
+
+def make_paper_lab_order_traceability_review_events(
+    *,
+    run_id: str,
+    payload: Mapping[str, Any],
+    secret_values: Iterable[str | None] = (),
+) -> tuple[dict[str, Any], ...]:
+    command = str(payload.get("command", "paper-lab-order-traceability-review"))
+    return (
+        PaperLabObservationEvent(
+            run_id=run_id,
+            command=command,
+            event_type=PAPER_LAB_ORDER_TRACEABILITY_REVIEWED,
+            fields=dict(payload),
+        ).to_record(secret_values=secret_values),
+    )
+
+
+def make_paper_lab_spy_close_preview_events(
+    *,
+    run_id: str,
+    payload: Mapping[str, Any],
+    secret_values: Iterable[str | None] = (),
+) -> tuple[dict[str, Any], ...]:
+    command = str(payload.get("command", "paper-lab-spy-close-preview"))
+    return (
+        PaperLabObservationEvent(
+            run_id=run_id,
+            command=command,
+            event_type=PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
+            fields=dict(payload),
+        ).to_record(secret_values=secret_values),
+    )
 
 
 def make_paper_close_preview_events(
@@ -703,6 +745,8 @@ def _text(value: Any) -> str:
 __all__ = [
     "EVENT_TYPES",
     "PAPER_ACCOUNT_OBSERVED",
+    "PAPER_LAB_ORDER_TRACEABILITY_REVIEWED",
+    "PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED",
     "PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED",
     "PAPER_CLOSE_PREVIEW_DESIGNED",
     "PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED",
@@ -724,6 +768,8 @@ __all__ = [
     "generate_run_id",
     "make_account_smoke_events",
     "make_paper_close_preview_events",
+    "make_paper_lab_order_traceability_review_events",
+    "make_paper_lab_spy_close_preview_events",
     "make_order_probe_initial_events",
     "make_order_probe_submit_events",
     "make_paper_lab_snapshot_events",

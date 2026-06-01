@@ -9,6 +9,8 @@ from algotrader.execution.paper_lab_observation_log import (
     EVENT_TYPES,
     PAPER_ACCOUNT_OBSERVED,
     PAPER_CLOSE_PREVIEW_DESIGNED,
+    PAPER_LAB_ORDER_TRACEABILITY_REVIEWED,
+    PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
     PAPER_LAB_SNAPSHOT_ACCOUNT_OBSERVED,
     PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
     PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
@@ -29,6 +31,8 @@ from algotrader.execution.paper_lab_observation_log import (
     make_order_probe_initial_events,
     make_order_probe_submit_events,
     make_paper_close_preview_events,
+    make_paper_lab_order_traceability_review_events,
+    make_paper_lab_spy_close_preview_events,
     make_paper_lab_snapshot_events,
     render_jsonl_records,
     resolve_run_id,
@@ -59,6 +63,8 @@ def test_event_model_lists_paper_lab_observation_types() -> None:
         PAPER_LAB_SNAPSHOT_POSITIONS_OBSERVED,
         PAPER_LAB_SNAPSHOT_ORDERS_OBSERVED,
         PAPER_LAB_SNAPSHOT_UNAVAILABLE,
+        PAPER_LAB_ORDER_TRACEABILITY_REVIEWED,
+        PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED,
         PAPER_CLOSE_PREVIEW_DESIGNED,
     )
 
@@ -240,6 +246,69 @@ def test_paper_lab_snapshot_unavailable_event_is_redacted() -> None:
     assert records[-1]["unavailable_observations"] == ["orders"]
     assert SECRET_VALUE not in rendered
     assert "<redacted>" in rendered
+
+
+def test_paper_lab_order_traceability_review_event_is_redacted() -> None:
+    payload = {
+        "command": "paper-lab-order-traceability-review",
+        "error": "",
+        "filled_spy_order_found": True,
+        "message": f"matched traceability order {SECRET_VALUE}",
+        "mutated": False,
+        "ok": True,
+        "recent_all_order_count": 1,
+        "submitted": False,
+        "symbol": "SPY",
+    }
+
+    records = make_paper_lab_order_traceability_review_events(
+        run_id="traceability-run",
+        payload=payload,
+        secret_values=(SECRET_VALUE,),
+    )
+    rendered = render_jsonl_records(records)
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_LAB_ORDER_TRACEABILITY_REVIEWED
+    ]
+    assert records[0]["run_id"] == "traceability-run"
+    assert records[0]["command"] == "paper-lab-order-traceability-review"
+    assert records[0]["mutated"] is False
+    assert records[0]["submitted"] is False
+    assert records[0]["filled_spy_order_found"] is True
+    assert SECRET_VALUE not in rendered
+    assert "matched traceability order <redacted>" in rendered
+
+
+def test_paper_lab_spy_close_preview_event_is_redacted() -> None:
+    payload = {
+        "command": "paper-lab-spy-close-preview",
+        "message": f"preview checked {SECRET_VALUE}",
+        "mutated": False,
+        "ok": True,
+        "quantity": "0.032905647",
+        "state": "ready_for_separate_spy_paper_close_submit_milestone",
+        "submitted": False,
+        "symbol": "SPY",
+    }
+
+    records = make_paper_lab_spy_close_preview_events(
+        run_id="m354_spy_cleanup_close_preview",
+        payload=payload,
+        secret_values=(SECRET_VALUE,),
+    )
+    rendered = render_jsonl_records(records)
+
+    assert [record["event_type"] for record in records] == [
+        PAPER_LAB_SPY_CLOSE_PREVIEW_REVIEWED
+    ]
+    assert records[0]["run_id"] == "m354_spy_cleanup_close_preview"
+    assert records[0]["command"] == "paper-lab-spy-close-preview"
+    assert records[0]["mutated"] is False
+    assert records[0]["submitted"] is False
+    assert records[0]["quantity"] == "0.032905647"
+    assert SECRET_VALUE not in rendered
+    assert "preview checked <redacted>" in rendered
 
 
 def test_paper_close_preview_event_is_not_a_broker_receipt() -> None:

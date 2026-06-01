@@ -56,8 +56,11 @@ class AlpacaOrderResponse:
     asset_class: str = ""
     order_type: str = "market"
     time_in_force: str = ""
+    created_at: Optional[datetime] = None
     submitted_at: Optional[datetime] = None
     filled_at: Optional[datetime] = None
+    filled_qty: Optional[Decimal] = None
+    filled_avg_price: Optional[Decimal] = None
 
 
 @dataclass(frozen=True)

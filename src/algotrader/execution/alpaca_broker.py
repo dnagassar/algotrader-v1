@@ -11,7 +11,10 @@ from typing import Any, Optional
 
 from algotrader.core.types import ProposedOrder, Quote
 from algotrader.errors import BrokerNotImplementedError
-from algotrader.execution.alpaca_client import AlpacaOrderRequest
+from algotrader.execution.alpaca_client import (
+    AlpacaOrderRequest,
+    AlpacaRecentOrderQuery,
+)
 from algotrader.execution.broker_base import BrokerOrderResult
 from algotrader.portfolio.state import Account, Position
 from algotrader.risk.state import RiskVerdict
@@ -49,14 +52,17 @@ class AlpacaPaperBroker:
     def list_positions(self) -> tuple[Position, ...]:
         return self.get_positions()
 
-    def get_recent_orders(self) -> tuple[Any, ...]:
+    def get_recent_orders(
+        self,
+        query: AlpacaRecentOrderQuery | None = None,
+    ) -> tuple[Any, ...]:
         if self._adapter is None:
             raise BrokerNotImplementedError(
                 "AlpacaPaperBroker skeleton only; get_recent_orders is not "
                 "implemented and performs no network calls."
             )
 
-        return self._adapter.list_recent_orders()
+        return self._adapter.list_recent_orders(query)
 
     def submit_order(
         self,
