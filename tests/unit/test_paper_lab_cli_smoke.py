@@ -322,6 +322,34 @@ def test_order_probe_notional_preview_does_not_submit(
     }
 
 
+def test_order_probe_accepts_explicit_m351_spy_notional_cap(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+
+    exit_code, payload = _run_json(
+        _valid_notional_probe_args(notional="25.00", max_notional="25.00"),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert payload["asset_class"] == "equity"
+    assert payload["symbol"] == "SPY"
+    assert payload["side"] == "buy"
+    assert payload["order_type"] == "market"
+    assert payload["time_in_force"] == "day"
+    assert payload["requested_notional"] == "25.00"
+    assert payload["max_notional"] == "25.00"
+    assert payload["submitted"] is False
+    assert payload["gates"]["notional_cap_gate"] == {
+        "detail": "notional_within_max_notional",
+        "passed": True,
+    }
+    assert payload["proposed_order_request"]["notional"] == "25.00"
+
+
 def test_order_probe_run_id_scopes_client_order_id_without_submitting(
     monkeypatch,
     capsys,
@@ -499,7 +527,7 @@ def test_order_probe_rejects_notional_above_milestone_cap(
     _forbid_broker_build(monkeypatch)
 
     exit_code, payload = _run_json(
-        _valid_probe_args(max_notional="10.01"),
+        _valid_probe_args(max_notional="25.01"),
         capsys,
     )
 
@@ -574,6 +602,39 @@ def test_order_probe_fake_successful_notional_submit_is_redacted_and_determinist
     assert first_payload["broker_raw_status"] == "accepted"
     assert first_payload["broker_raw_reason"] == ""
     assert first_payload["market_session_note"] == cli_module._PAPER_MARKET_SESSION_NOTE
+
+
+def test_order_probe_fake_submit_accepts_explicit_m351_spy_payload(
+    monkeypatch,
+    capsys,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(monkeypatch, FakeNotionalAlpacaClient())
+
+    exit_code, payload = _run_json(
+        (
+            *_valid_notional_probe_args(notional="25.00", max_notional="25.00"),
+            "--submit",
+            "--i-mean-it",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 0
+    assert fake_client.calls == ["submit_order"]
+    assert len(fake_client.submitted_requests) == 1
+    request = fake_client.submitted_requests[0]
+    assert request.asset_class == "equity"
+    assert request.symbol == "SPY"
+    assert request.side == "buy"
+    assert request.order_type == "market"
+    assert request.time_in_force == "day"
+    assert request.qty is None
+    assert request.notional == Decimal("25.00")
+    assert payload["submitted"] is True
+    assert payload["accepted"] is True
+    assert payload["notional"] == "25.00"
+    assert payload["max_notional"] == "25.00"
 
 
 @pytest.mark.parametrize(

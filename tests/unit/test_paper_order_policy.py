@@ -24,7 +24,7 @@ def test_policy_matrix_separates_equity_crypto_and_options_lanes() -> None:
     assert ASSET_CLASS_CHOICES == ("equity", "crypto", "option")
     assert equity.symbol_allowlist == ("SPY",)
     assert equity.allowed_sizing_modes == ("qty", "notional")
-    assert equity.max_notional_cap == Decimal("10")
+    assert equity.max_notional_cap == Decimal("25.00")
     assert equity.time_in_force == "day"
     assert equity.submit_enabled is True
     assert equity.submit_disabled_reason == ""
