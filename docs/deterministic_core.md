@@ -8642,6 +8642,26 @@ credentials, no network, no market-data fetch, no live profile/live URL, no
 scheduler or autonomous behavior, no LLM dependency, no strategy validation,
 no profit evidence, and no order/fill/account/portfolio mutation.
 
+Milestone 345 adds the first practical offline ETF/SMA signal evaluator in the
+signal layer. `EtfSmaSignalEvaluator` and `evaluate_etf_sma_signal` consume
+only caller-supplied in-memory `Bar` objects plus an immutable
+`EtfSmaSignalConfig`; they sort bars deterministically, ignore and count bars
+after `as_of`, compute 50/200 SMA posture, and return a frozen/slotted
+`EtfSmaSignalResult` with `bullish_risk_on`, `defensive_risk_off`, or
+`insufficient_history`.
+
+M345 remains signal evaluation only. The result carries `paper_lab_only`,
+`signal_evaluation_only`, `not_live_authorized`, and `profit_claim=none`;
+hard-codes `profit_claim=none`, `broker_action_performed=false`, and
+`submit_allowed=false`; and points `next_action` to
+`m346_offline_etf_sma_signal_to_risk_execution_preview_bridge_no_broker_action`.
+It does not authorize paper orders. Broker calls, Alpaca calls, credentials,
+network or market-data fetches, `ExecutionIntent`, `ExecutionPlan`, risk or
+planning policy invocation, portfolio/account/order/fill mutation,
+scheduler/autonomous behavior, live profile/live URL behavior, and LLM trading
+path dependencies remain forbidden. M344 remains prior paper-lab evidence only;
+M345 does not run a fresh paper snapshot.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

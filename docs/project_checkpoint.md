@@ -14128,6 +14128,25 @@ Safe next tasks include:
   network, market-data fetch, live profile/live URL, scheduler/autonomous
   behavior, LLM dependency, strategy validation, profit evidence, or
   order/fill/account/portfolio mutation.
+- M345 adds the first practical offline ETF/SMA signal evaluator in
+  `algotrader.signals.etf_sma_evaluator`. It consumes only deterministic
+  in-memory `Bar` objects plus immutable config through
+  `EtfSmaSignalEvaluator` or `evaluate_etf_sma_signal`, enforces UTC `as_of`
+  and bar timestamps, rejects invalid windows and mixed symbols, sorts bars
+  deterministically, ignores and counts future bars, computes SMA50/SMA200,
+  and emits frozen/slotted `EtfSmaSignalResult` posture:
+  `bullish_risk_on`, `defensive_risk_off`, or `insufficient_history`.
+- M345 is signal evaluation only. Labels are `paper_lab_only`,
+  `signal_evaluation_only`, `not_live_authorized`, and `profit_claim=none`;
+  `profit_claim=none`, `broker_action_performed=false`, and
+  `submit_allowed=false` are fixed; and `next_action` points to
+  `m346_offline_etf_sma_signal_to_risk_execution_preview_bridge_no_broker_action`.
+  It authorizes no paper orders, no broker or Alpaca calls, no credentials, no
+  network or market-data fetch, no `ExecutionIntent`, no `ExecutionPlan`, no
+  risk/planning policy invocation, no portfolio/account/order/fill mutation,
+  no scheduler/autonomous behavior, no live profile/live URL, and no LLM
+  trading-path dependency. M344 remains prior paper-lab evidence only; M345
+  did not run a fresh paper snapshot.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
@@ -14141,6 +14160,8 @@ Safe next tasks include:
   and result semantics are designed
 - deeper broker contract tests around error paths and reconciliation boundaries
 - further fake-only Alpaca contract coverage
+- M346 offline ETF/SMA signal-to-risk/execution preview bridge with no broker
+  action
 
 Any future real SDK integration must be behind explicit opt-in safety gates,
 paper-profile checks, credential redaction, skipped-by-default integration tests,

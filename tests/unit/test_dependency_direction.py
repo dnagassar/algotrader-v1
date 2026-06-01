@@ -293,6 +293,7 @@ def test_signal_modules_do_not_import_downstream_or_screener_layers() -> None:
         source="algotrader.signals.*",
         paths=_package_files("algotrader.signals"),
         forbidden_prefixes=(
+            "algotrader.research",
             "algotrader.screener",
             "algotrader.risk",
             "algotrader.execution",
