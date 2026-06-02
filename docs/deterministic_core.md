@@ -8983,6 +8983,20 @@ needed for M355: the stale-order uncertainty is resolved as a terminal fill,
 and there is no open target order to cancel. Labels remain `paper_lab_only`,
 `read_only`, `not_live_authorized`, and `profit_claim=none`.
 
+Milestone 365 records the SPY filled-close reconciliation and paper-lab reset
+review using only existing local evidence. The M355 stale-order uncertainty is
+closed: the target SPY sell-to-close order filled at the next regular-session
+open on June 2, 2026, with `filled_at`
+`2026-06-02T13:30:00.744662+00:00` and filled quantity `0.032905647`. The SPY
+paper position is absent/zero, the target order is absent from open history,
+and the prior M365 cancel-readiness path is retired for M355 because there is
+no open M355 order left to cancel. M365 added no order mutation capability and
+performed no submit, cancel, replace, close-position, liquidation, retry,
+delete, broker/network command, credential printing, live trading, autonomous
+scheduling, or LLM/agent trading-path behavior. The M364 no-mutation invariant
+remains active. The next safe paper-lab direction is a new operator-reviewed
+paper experiment path, not cleanup, cancel-readiness, or cancel tooling.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

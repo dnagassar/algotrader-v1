@@ -14420,6 +14420,21 @@ Safe next tasks include:
   M355 because the target order is terminal filled and no target open order
   remains to cancel. Labels: `paper_lab_only`, `read_only`,
   `not_live_authorized`, `profit_claim=none`.
+- M365 closes the M355 stale-order investigation as a filled-close
+  reconciliation and paper-lab reset review. Existing M364B-1A evidence shows
+  the target SPY sell-to-close order filled at the next regular-session open
+  on June 2, 2026, with `filled_at`
+  `2026-06-02T13:30:00.744662+00:00` and filled quantity `0.032905647`; SPY
+  paper position remains absent/zero; and the target order is absent from open
+  history.
+- M365 retires the prior M365 cancel-readiness path for M355 because there is
+  no open M355 order left to cancel. It adds no order mutation capability and
+  performs no submit, cancel, replace, close-position, liquidation, retry,
+  delete, broker/network command, credential printing, live trading,
+  autonomous scheduling, or LLM/agent trading-path behavior. The M364
+  no-mutation invariant remains active.
+- The next safe paper-lab direction is a new operator-reviewed paper
+  experiment path, not cleanup, cancel-readiness, or cancel tooling.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
