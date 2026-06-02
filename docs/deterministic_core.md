@@ -8929,6 +8929,29 @@ replace, close-position, liquidation, delete, broker/network command,
 credential printing, live trading, autonomous scheduling, or LLM/agent
 trading-path behavior.
 
+M364B-1 ran one intraday read-only paper snapshot during the June 2, 2026
+regular session with run id `m364b1_intraday_spy_close_snapshot` and ignored
+local run log `runs/paper_lab/m364b1_intraday_spy_close_snapshot.jsonl`. The
+paper profile gate passed, account/orders/positions observations were complete,
+the account observation reported safe cash/currency evidence (`1999.81` USD),
+positions reported `position_count=0` and no SPY position, the recent open-order
+query metadata was complete with `recent_order_query_status_filter=open`, and
+the returned recent open-order count was `0`. The snapshot preserved
+`mutated=false`, `submitted=false`, and `redaction=credentials_redacted`.
+
+M364B-1 did not observe M355 directly: broker order id
+`56a2f690-f4ad-4572-bcf4-1a479398fe55` and client order id
+`paper-order-close-m355_spy_paper_close_submit` were absent from the returned
+open-order set, so status, submitted timestamp, filled quantity, filled
+timestamp, time in force, side, and type were not captured for the target order.
+The offline M364C classifier returned `ambiguous_or_incomplete` with reason
+`target_order_not_found`, `metadata_complete=true`, `target_order_found=false`,
+`target_position_found=false`, `mutated=false`, and `submitted=false`. SPY
+position evidence is absent/zero in the snapshot, but the M355 order state is
+not proven terminal. M365 remains blocked, and M364B-2 post-close read-only
+evidence is still required before any cancel-readiness work. Labels:
+`paper_lab_only`, `read_only`, `not_live_authorized`, `profit_claim=none`.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and

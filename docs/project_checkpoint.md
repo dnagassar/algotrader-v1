@@ -14372,6 +14372,28 @@ Safe next tasks include:
   post-session snapshot remains required after the June 2, 2026 regular-session
   close, and M365 remains blocked until M364B produces complete post-session
   evidence and the M364 no-mutation invariant remains passing.
+- M364B-1 ran exactly one intraday read-only paper snapshot during the
+  June 2, 2026 regular session with run id
+  `m364b1_intraday_spy_close_snapshot` and ignored local run log
+  `runs/paper_lab/m364b1_intraday_spy_close_snapshot.jsonl`. The paper profile
+  gate passed; account, orders, and positions observations were complete; safe
+  account cash/currency evidence was `1999.81` USD; positions reported
+  `position_count=0`, no position symbols, and no SPY position; the recent
+  open-order query metadata was complete with `status_filter=open`; and the
+  returned recent open-order count was `0`.
+- M364B-1 preserved `mutated=false`, `submitted=false`, and
+  `redaction=credentials_redacted`. The M355 broker order id
+  `56a2f690-f4ad-4572-bcf4-1a479398fe55` and client order id
+  `paper-order-close-m355_spy_paper_close_submit` were not present in the
+  returned open-order set, so target order status, submitted timestamp, filled
+  quantity, filled timestamp, time in force, side, and type were not captured.
+  The offline M364C classifier returned `ambiguous_or_incomplete` with reason
+  `target_order_not_found`, `metadata_complete=true`,
+  `target_order_found=false`, and `target_position_found=false`. The SPY
+  position is absent/zero in this snapshot, but M355 terminal state is not
+  proven. M365 remains blocked, and M364B-2 post-close read-only evidence is
+  still required. Labels: `paper_lab_only`, `read_only`,
+  `not_live_authorized`, `profit_claim=none`.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
