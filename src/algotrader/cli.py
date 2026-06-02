@@ -299,6 +299,41 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preview output format.",
     )
     _add_paper_lab_run_log_options(etf_sma_paper_preview_parser)
+    etf_sma_m368_preview_parser = subparsers.add_parser(
+        "etf-sma-m368-broker-preview-only",
+        help="Render the M368 SPY ETF/SMA paper preview without submitting.",
+    )
+    etf_sma_m368_preview_parser.add_argument(
+        "--m368a-run-log",
+        default=(
+            "runs/paper_lab/"
+            "m368a_offline_spy_etf_sma_next_experiment_review.jsonl"
+        ),
+        help="Read the M368A offline ready-review JSONL artifact from PATH.",
+    )
+    etf_sma_m368_preview_parser.add_argument(
+        "--m368a-run-id",
+        default="m368a_offline_spy_etf_sma_next_experiment_review",
+        help="M368A run/session id to require.",
+    )
+    etf_sma_m368_preview_parser.add_argument(
+        "--fresh-snapshot-run-log",
+        required=True,
+        help="Read the fresh read-only paper snapshot JSONL from PATH.",
+    )
+    etf_sma_m368_preview_parser.add_argument(
+        "--fresh-snapshot-run-id",
+        default=None,
+        help="Fresh snapshot run/session id to summarize. Defaults to latest.",
+    )
+    etf_sma_m368_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
+    _add_paper_lab_run_log_options(etf_sma_m368_preview_parser)
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -588,6 +623,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "etf-sma-paper-preview-only":
         return _run_etf_sma_paper_preview_only(args)
+    if command == "etf-sma-m368-broker-preview-only":
+        return _run_etf_sma_m368_broker_preview_only(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -2053,6 +2090,192 @@ def _render_etf_sma_paper_preview_profile_block_text(
             f"{_bool_text(payload.get('local_payload_preview_performed'))}",
             f"block_reason: {payload.get('block_reason', '')}",
             f"next_action: {payload.get('next_action', '')}",
+        )
+    )
+
+
+def _run_etf_sma_m368_broker_preview_only(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.paper_lab_revalidation_brief import (
+        build_paper_lab_revalidation_brief,
+    )
+    from .execution.etf_sma_paper_preview import (
+        EtfSmaM368PaperPreviewConfig,
+        EtfSmaM368PaperPreviewWriteConfig,
+        build_etf_sma_m368_paper_preview,
+        load_m368a_review_artifact_record,
+        render_etf_sma_m368_paper_preview_json,
+        render_etf_sma_m368_paper_preview_text,
+        write_etf_sma_m368_paper_preview,
+    )
+
+    resolved_run_id = _etf_sma_m368_paper_preview_run_id(args.run_id)
+    config = _load_runtime_config(profile=args.profile)
+    if config.profile != "paper":
+        payload = _etf_sma_m368_paper_preview_profile_block_payload(
+            resolved_run_id,
+            args.m368a_run_log,
+        )
+        print(
+            _compact_json(payload)
+            if args.output_format == "json"
+            else _render_etf_sma_m368_paper_preview_block_text(payload)
+        )
+        return 2
+
+    try:
+        m368a_record = load_m368a_review_artifact_record(
+            args.m368a_run_log,
+            run_id=args.m368a_run_id,
+        )
+    except ValidationError as exc:
+        payload = _etf_sma_m368_paper_preview_load_block_payload(
+            resolved_run_id,
+            args.m368a_run_log,
+            str(exc),
+        )
+        print(
+            _compact_json(payload)
+            if args.output_format == "json"
+            else _render_etf_sma_m368_paper_preview_block_text(payload)
+        )
+        return 2
+
+    revalidation_payload = build_paper_lab_revalidation_brief(
+        args.fresh_snapshot_run_log,
+        run_id=args.fresh_snapshot_run_id,
+    )
+    fresh_snapshot = _etf_sma_m368_snapshot_summary_from_revalidation(
+        revalidation_payload
+    )
+    preview = build_etf_sma_m368_paper_preview(
+        m368a_record,
+        fresh_snapshot,
+        EtfSmaM368PaperPreviewConfig(
+            run_id=resolved_run_id,
+            source_m368a_artifact_path=args.m368a_run_log,
+        ),
+    )
+
+    if args.run_log:
+        write_etf_sma_m368_paper_preview(
+            preview,
+            EtfSmaM368PaperPreviewWriteConfig(
+                output_path=args.run_log,
+                append=False,
+                create_parent_dirs=True,
+            ),
+        )
+
+    if args.output_format == "json":
+        print(render_etf_sma_m368_paper_preview_json(preview))
+    else:
+        print(render_etf_sma_m368_paper_preview_text(preview))
+
+    return 0 if preview.decision == "ready_for_operator_review_before_tiny_spy_paper_submit" else 2
+
+
+def _etf_sma_m368_snapshot_summary_from_revalidation(
+    payload: Mapping[str, object],
+):
+    from .execution.etf_sma_paper_preview import (
+        EtfSmaM368PaperSnapshotSummary,
+    )
+
+    checklist = _payload_mapping(payload.get("fresh_snapshot_operator_checklist"))
+    evidence = _payload_mapping(checklist.get("evidence"))
+    account = _payload_mapping(payload.get("account"))
+    positions = _payload_mapping(payload.get("positions"))
+    recent_orders = _payload_mapping(payload.get("recent_orders"))
+    return EtfSmaM368PaperSnapshotSummary(
+        snapshot_source="fresh_read_only_paper_snapshot_run_log",
+        snapshot_evidence_id=str(payload.get("selected_run_id", "")),
+        fresh_snapshot_status=str(checklist.get("status", "")),
+        account_observation_available=(
+            evidence.get("account_observation_available") is True
+        ),
+        positions_observation_available=(
+            evidence.get("positions_observation_available") is True
+        ),
+        orders_observation_available=(
+            evidence.get("orders_observation_available") is True
+        ),
+        cash=_optional_decimal_value(account.get("cash")),
+        currency=str(account.get("currency")) if account.get("currency") else None,
+        position_count=_int_payload_value(positions.get("position_count")),
+        position_symbols=_payload_string_tuple(positions.get("symbols")),
+        open_order_count=_int_payload_value(recent_orders.get("count")),
+        recent_order_query_metadata_complete=(
+            evidence.get("recent_order_query_metadata_complete") is True
+        ),
+        unavailable_observations=_payload_string_tuple(
+            evidence.get("unavailable_observations")
+        ),
+        submitted=evidence.get("submitted") is True,
+        mutated=evidence.get("mutated") is True,
+    )
+
+
+def _etf_sma_m368_paper_preview_run_id(run_id: str | None) -> str:
+    return _paper_lab_run_id(run_id) if run_id else "m368_spy_etf_sma_broker_preview_only"
+
+
+def _etf_sma_m368_paper_preview_profile_block_payload(
+    run_id: str,
+    source_path: str,
+) -> dict[str, object]:
+    return {
+        "preview_version": "etf_sma_m368_paper_broker_preview_v1",
+        "record_type": "etf_sma_m368_paper_broker_preview",
+        "command": "etf-sma-m368-broker-preview-only",
+        "run_id": run_id,
+        "source_m368a_artifact_path": source_path,
+        "decision": "blocked_before_operator_review_for_tiny_spy_paper_submit",
+        "reason": "paper_profile_required",
+        "blockers": ["paper_profile_required"],
+        "required_next_milestone": (
+            "M369 - Explicit operator review for tiny SPY paper submit"
+        ),
+        "submit_authorized": False,
+        "submitted": False,
+        "mutated": False,
+        "broker_action_performed": False,
+        "broker_preview_performed": False,
+        "local_payload_preview_performed": False,
+    }
+
+
+def _etf_sma_m368_paper_preview_load_block_payload(
+    run_id: str,
+    source_path: str,
+    reason: str,
+) -> dict[str, object]:
+    return {
+        **_etf_sma_m368_paper_preview_profile_block_payload(run_id, source_path),
+        "reason": reason,
+        "blockers": ["m368a_artifact_load_failed"],
+    }
+
+
+def _render_etf_sma_m368_paper_preview_block_text(
+    payload: Mapping[str, object],
+) -> str:
+    return "\n".join(
+        (
+            "M368 SPY ETF/SMA paper broker-facing preview",
+            f"run_id: {payload.get('run_id', '')}",
+            f"source_m368a_artifact_path: {payload.get('source_m368a_artifact_path', '')}",
+            f"decision: {payload.get('decision', '')}",
+            f"reason: {payload.get('reason', '')}",
+            f"blockers: {','.join(_payload_string_tuple(payload.get('blockers'))) or 'none'}",
+            f"submit_authorized: {_bool_text(payload.get('submit_authorized'))}",
+            f"submitted: {_bool_text(payload.get('submitted'))}",
+            f"mutated: {_bool_text(payload.get('mutated'))}",
+            "broker_action_performed: "
+            f"{_bool_text(payload.get('broker_action_performed'))}",
+            "broker_preview_performed: "
+            f"{_bool_text(payload.get('broker_preview_performed'))}",
+            f"required_next_milestone: {payload.get('required_next_milestone', '')}",
         )
     )
 

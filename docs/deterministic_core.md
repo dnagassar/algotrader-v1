@@ -9091,6 +9091,41 @@ scheduling, or LLM/agent trading-path behavior. It answers only that the
 offline packet is eligible for a separate future broker-facing preview-only
 milestone; it does not perform or authorize that broker-facing preview.
 
+M368 adds `algotrader.execution.etf_sma_paper_preview` as a local
+broker-facing preview-only artifact builder for the SPY ETF/SMA paper-lab path.
+It reads one local M368A JSONL ready-review record, validates that the M368A
+decision is `ready_for_separate_broker_preview_milestone`,
+`submit_authorized=false`, `mutated=false`, `submitted=false`, SPY/equity scope,
+cap no greater than `25.00`, and no M368A blockers, then combines that source
+authorization with explicit flat/clean paper snapshot evidence.
+
+When the M368A source and snapshot evidence are clean, the M368 preview record
+renders only the local shape of a possible future tiny SPY paper buy:
+`symbol=SPY`, `asset_class=equity`, `side=buy`, `order_type=market`,
+`time_in_force=day`, and notional cap `25.00`. The ready decision is
+`ready_for_operator_review_before_tiny_spy_paper_submit`; the required next
+milestone is `M369 - Explicit operator review for tiny SPY paper submit`.
+The output always records `submit_authorized=false`, `submitted=false`,
+`mutated=false`, `broker_action_performed=false`, and
+`broker_preview_performed=false`.
+
+M368B supplies the fresh read-only paper evidence for that preview path. The
+single M368B paper snapshot artifact is
+`runs/paper_lab/m368b_fresh_read_only_paper_snapshot.jsonl`; the refreshed
+preview artifact is
+`runs/paper_lab/m368b_spy_etf_sma_broker_preview_only.jsonl`. The refreshed
+preview remains preview-only, records no blockers when the snapshot is
+flat/clean, and still requires `M369 - Explicit operator review for tiny SPY
+paper submit` before any submit can be considered.
+
+M368 remains `paper_lab_only`, `preview_only`, `not_live_authorized`, and
+`profit_claim=none`. It adds no submit, cancel, replace, close-position call,
+liquidation, retry, delete, live profile, live trading, broker mutation,
+autonomous scheduling, LLM/agent trading path, or normal-test network
+dependency. The CLI command `etf-sma-m368-broker-preview-only` is explicitly
+paper-profile gated and reads only local JSONL evidence before optionally
+writing `runs/paper_lab/m368_spy_etf_sma_broker_preview_only.jsonl`.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

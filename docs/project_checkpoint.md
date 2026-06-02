@@ -14514,6 +14514,35 @@ Safe next tasks include:
   It performs no broker preview, submit, cancel, replace, close-position call,
   liquidation, retry, delete, broker/network command, credential printing, live
   trading, autonomous scheduling, or LLM/agent trading-path behavior.
+- M368 adds `algotrader.execution.etf_sma_paper_preview` and the
+  `etf-sma-m368-broker-preview-only` CLI command as a local SPY ETF/SMA
+  broker-facing preview-only milestone. It reads local M368A ready-review JSONL
+  evidence and explicit flat/clean paper snapshot evidence, then renders only a
+  deterministic possible future SPY paper buy shape: SPY/equity, buy,
+  market/day, notional cap `25.00`, allowlist `["SPY"]`, and labels
+  `paper_lab_only`, `preview_only`, `not_live_authorized`, and
+  `profit_claim=none`.
+- M368 ready output records
+  `decision=ready_for_operator_review_before_tiny_spy_paper_submit` and
+  `required_next_milestone=M369 - Explicit operator review for tiny SPY paper
+  submit`. It always records `submit_authorized=false`, `submitted=false`,
+  `mutated=false`, `broker_action_performed=false`, and
+  `broker_preview_performed=false`; source or snapshot gaps block before a
+  preview payload is rendered.
+- M368B supplies the fresh read-only paper snapshot evidence for M368. The
+  snapshot artifact is
+  `runs/paper_lab/m368b_fresh_read_only_paper_snapshot.jsonl`, and the
+  refreshed preview artifact is
+  `runs/paper_lab/m368b_spy_etf_sma_broker_preview_only.jsonl`. The refreshed
+  preview remains preview-only and requires
+  `M369 - Explicit operator review for tiny SPY paper submit` before any
+  submit.
+- The local ignored M368 artifact path is
+  `runs/paper_lab/m368_spy_etf_sma_broker_preview_only.jsonl`. M368 adds no
+  submit, cancel, replace, close-position call, liquidation, retry, delete,
+  live profile, live trading, broker mutation, autonomous scheduling,
+  LLM/agent trading path, credential leakage, or normal-test network
+  dependency.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
