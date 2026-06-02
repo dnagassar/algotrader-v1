@@ -334,6 +334,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Preview output format.",
     )
     _add_paper_lab_run_log_options(etf_sma_m368_preview_parser)
+    etf_sma_m370_submit_parser = subparsers.add_parser(
+        "etf-sma-m370-paper-submit",
+        help="Submit the explicitly approved M370 tiny SPY paper buy.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--source-m369-artifact",
+        default=(
+            "runs/paper_lab/"
+            "m369_tiny_spy_paper_submit_operator_review.jsonl"
+        ),
+        help="Read the M369 operator-review JSONL artifact from PATH.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--operator-approval",
+        default="",
+        help="Exact M370 approval phrase required before any submit.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--equity-session-status",
+        choices=("open", "closed", "unavailable"),
+        default="unavailable",
+        help="Regular equity session status. Default fails closed.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--equity-session-source",
+        default="",
+        help="Source used to verify the regular equity session is open.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--equity-session-observed-at",
+        default="",
+        help="Timestamp for the regular equity session status observation.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Submit output format.",
+    )
+    _add_paper_lab_run_log_options(etf_sma_m370_submit_parser)
+    etf_sma_m370_submit_parser.set_defaults(
+        run_log="runs/paper_lab/m370_tiny_spy_paper_submit.jsonl",
+        run_id="m370_tiny_spy_paper_submit",
+    )
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -681,6 +726,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_spy_close_preview(config, args)
     if command == "paper-lab-spy-close-submit":
         return _run_paper_lab_spy_close_submit(config, args)
+    if command == "etf-sma-m370-paper-submit":
+        return _run_etf_sma_m370_paper_submit(config, args)
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
     if command == "paper-close-probe":
@@ -981,6 +1028,54 @@ def _run_paper_lab_spy_close_submit(
         return 1
 
     return 0 if payload["ok"] else 2
+
+
+def _run_etf_sma_m370_paper_submit(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .execution.etf_sma_m370_paper_submit import (
+        M370EquitySessionStatus,
+        render_m370_paper_submit_json,
+        render_m370_paper_submit_text,
+        run_m370_tiny_spy_paper_submit,
+        write_m370_paper_submit_artifact,
+    )
+
+    profile_gate = _paper_profile_gate(config)
+    halt_gate = _gate(
+        _paper_halt_not_set(),
+        "halt_not_set",
+        "ALGOTRADER_PAPER_HALT=1",
+    )
+    session_status = M370EquitySessionStatus(
+        status=args.equity_session_status,
+        source=args.equity_session_source,
+        observed_at=args.equity_session_observed_at,
+    )
+    payload = run_m370_tiny_spy_paper_submit(
+        source_m369_artifact_path=args.source_m369_artifact,
+        output_artifact_path=args.run_log,
+        run_id=args.run_id or "m370_tiny_spy_paper_submit",
+        operator_approval=args.operator_approval,
+        equity_session_status=session_status,
+        paper_profile_gate_passed=profile_gate["passed"] is True,
+        paper_profile_gate_detail=str(profile_gate.get("detail", "")),
+        halt_gate_passed=halt_gate["passed"] is True,
+        halt_gate_detail=str(halt_gate.get("detail", "")),
+        broker_factory=lambda: _build_paper_broker(config.alpaca_paper),
+        redactor=lambda value: _redact_config_secrets(value, config),
+    )
+    if args.run_log:
+        write_m370_paper_submit_artifact(payload, args.run_log)
+
+    if args.output_format == "json":
+        print(render_m370_paper_submit_json(payload))
+    else:
+        print(render_m370_paper_submit_text(payload))
+    if payload.get("broker_error") is True:
+        return 1
+    return 0 if payload.get("ok") is True else 2
 
 
 def _build_paper_lab_spy_close_submit_payload(
