@@ -14354,6 +14354,24 @@ Safe next tasks include:
   no submit, cancel, replace, close-position, liquidation, delete,
   broker/network command, credential printing, live trading, autonomous
   scheduling, or LLM/agent trading-path behavior.
+- M364C adds an offline-only
+  `algotrader.execution.paper_lab_snapshot_classifier` helper for interpreting
+  already-produced paper-lab snapshot records. It classifies target-order
+  records as `terminal_filled`, `terminal_canceled_or_expired`,
+  `still_open_or_accepted_after_full_session`, or
+  `ambiguous_or_incomplete` using only snapshot content: target-order matching,
+  status, filled quantity/timestamp, positions/orders availability, query
+  metadata, `mutated=false`, and `submitted=false`.
+- M364C is pure local interpretation code. It imports no Alpaca SDK, broker
+  clients, network modules, subprocess path, credential/config loader, CLI, or
+  execution mutation module, and it does not submit, cancel, replace,
+  close-position, liquidate, delete, print credentials, call a broker, authorize
+  live trading, or enter the trading hot path. Labels remain `paper_lab_only`,
+  `offline_only`, `not_live_authorized`, and `profit_claim=none`.
+- M364C does not replace M364B. The M364B broker-facing read-only
+  post-session snapshot remains required after the June 2, 2026 regular-session
+  close, and M365 remains blocked until M364B produces complete post-session
+  evidence and the M364 no-mutation invariant remains passing.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

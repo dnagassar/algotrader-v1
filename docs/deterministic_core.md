@@ -8908,6 +8908,27 @@ command, credential printing, live trading, autonomous scheduling, or LLM/agent
 trading-path behavior. Normal pytest remains offline, credential-free,
 deterministic, and safe.
 
+Milestone 364C adds an offline-only
+`algotrader.execution.paper_lab_snapshot_classifier` helper for classifying
+already-produced paper-lab snapshot records. It interprets target-order status,
+filled quantity/timestamp, positions/orders availability, query metadata,
+`mutated=false`, and `submitted=false` into deterministic labels:
+`terminal_filled`, `terminal_canceled_or_expired`,
+`still_open_or_accepted_after_full_session`, or
+`ambiguous_or_incomplete`. The classifier is pure local code and imports no
+Alpaca SDK, broker clients, network modules, subprocess path, credential/config
+loader, CLI, or execution mutation module.
+
+M364C does not replace M364B. The M364B broker-facing read-only post-session
+snapshot evidence is still required after the June 2, 2026 regular-session
+close before any M365 cancel-readiness work can proceed. M365 remains blocked
+until M364B produces complete post-session evidence and the M364 no-mutation
+invariant remains passing. M364C preserves `paper_lab_only`, `offline_only`,
+`not_live_authorized`, and `profit_claim=none`; it performs no submit, cancel,
+replace, close-position, liquidation, delete, broker/network command,
+credential printing, live trading, autonomous scheduling, or LLM/agent
+trading-path behavior.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
