@@ -14286,6 +14286,45 @@ Safe next tasks include:
   M355 authorizes no retry, cancel, replace, liquidate, close-position endpoint
   usage, additional orders, live trading, or autonomous follow-up. The next
   milestone should be M356 read-only cleanup/revalidation.
+- M363 records the operator review decision for the stale accepted M355 SPY
+  paper close order. It reviews repo evidence only and performs no broker
+  mutation, paper-profile command, direct SDK query, Alpaca UI corrective action,
+  cancel, replace, retry, close-position endpoint, liquidation, second sell, or
+  buy.
+- M363 evidence treats M358, M359, M361, and M362 as the valid read-only chain:
+  each observed the same open accepted unfilled SPY sell order matched by both
+  `paper-order-close-m355_spy_paper_close_submit` and
+  `56a2f690-f4ad-4572-bcf4-1a479398fe55`; SPY remained present at
+  `0.032905647`; order status remained `accepted` /
+  `OrderStatus.ACCEPTED`; order quantity remained `0.032905647`; filled
+  quantity remained `0`; and filled timestamp remained blank. M360 is excluded
+  as settlement evidence because it failed the profile gate. M362 is the latest
+  valid diagnostic, had no unavailable observations or blockers, and estimated
+  the accepted order age at about 11.9 hours from the
+  `2026-06-01T21:49:57.297904+00:00` submitted timestamp.
+- M363 inference: the M355 close order is stale enough to require an explicit
+  operator decision before corrective action. The system must not
+  autonomously cancel, replace, retry, liquidate, submit another close order, or
+  mutate broker/account/portfolio state. Any corrective action must be a
+  separate explicitly approved paper-only milestone.
+- M363 operator options are: Option A keep waiting and run another read-only
+  check later; Option B prepare a separate cancel-only preview/review milestone
+  with no immediate cancel in M363; Option C prepare a separate
+  cancel-and-replace design/preview milestone with no immediate cancel or
+  replacement in M363; Option D perform manual Alpaca paper UI
+  broker/account investigation, read-only first; and Option E stop paper-lab
+  progression until the stale-order cause is understood.
+- M363 recommends Option B as the next safest executable path: a separate
+  paper-only cancel-readiness/preview milestone for the stale accepted close
+  order. That next milestone still must not cancel unless it is explicitly
+  scoped as a cancel-submit milestone with hard operator confirmation.
+- M363 hard gate: any future cancel, replace, retry, close-position, or
+  liquidation action requires a new separate milestone. Any future
+  cancel-submit milestone must first run a fresh read-only snapshot and verify
+  paper profile ready, SPY position still present, exactly one matching open
+  stale M355 sell order, no other conflicting open SPY orders, no filled or
+  terminal state since M362, normal shell credential-free before and after, and
+  no live profile or live endpoint.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
