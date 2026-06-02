@@ -14325,6 +14325,35 @@ Safe next tasks include:
   stale M355 sell order, no other conflicting open SPY orders, no filled or
   terminal state since M362, normal shell credential-free before and after, and
   no live profile or live endpoint.
+- M364 corrects the repo-hygiene and no-mutation invariant gate before any
+  M365 work. It adds `.gitattributes` with LF as the text default and CRLF for
+  PowerShell scripts. The pre-work short status and CR-at-EOL ignored diff were
+  empty, so no functional dirty diff was restored or hidden inside line-ending
+  cleanup.
+- M364 adds `tests/unit/test_broker_mutation_surface_invariant.py`, an offline
+  credential-free AST and runtime public-surface test over the Alpaca SDK
+  wrapper, adapter, broker, client protocol, and base broker protocol. It fails
+  on cancel, cancel-order, replace, replace-order, close-position,
+  close-all-positions, liquidate, liquidation, or delete names in checked
+  modules, classes, protocols, methods, properties, assignments, or annotated
+  assignments. The current intentional broker mutation boundary remains the
+  existing `submit_order` path only; those forbidden mutation surfaces require a
+  future explicit operator-approved milestone plus a deliberate safety-test
+  update.
+- M364 records that the M355 SPY paper sell-to-close was an after-hours equity
+  `market`/`day` order submitted after the June 1 regular session close.
+  Existing observations prove only accepted/unfilled overnight and pre-session
+  state, not accepted status after a complete regular session following
+  submission. The M364 post-session read-only diagnostic remains pending unless
+  the operator enters a scoped transient paper shell and runs only the existing
+  read-only snapshot path with run id `m364_post_session_diagnostic` and run
+  log `runs/paper_lab/m364_post_session_diagnostic.jsonl`.
+- M365 cancel-readiness remains blocked until the M364 post-session read-only
+  diagnostic is complete and the no-mutation invariant passes. M364 preserves
+  `paper_lab_only`, `not_live_authorized`, and `profit_claim=none`; it performs
+  no submit, cancel, replace, close-position, liquidation, delete,
+  broker/network command, credential printing, live trading, autonomous
+  scheduling, or LLM/agent trading-path behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

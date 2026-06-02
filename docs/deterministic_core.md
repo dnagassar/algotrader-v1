@@ -8867,6 +8867,47 @@ open stale M355 sell order, no other conflicting open SPY orders, no filled or
 terminal state since M362, normal shell credential-free before and after, and no
 live profile or live endpoint.
 
+Milestone 364 corrects the repo-hygiene and no-mutation invariant gate before
+any M365 work. The repo adds `.gitattributes` with LF as the text default and
+CRLF for PowerShell scripts. The pre-work tree had no short-status entries and
+the CR-at-EOL ignored diff was empty, so there was no functional dirty diff to
+restore and no hidden source change to normalize.
+
+M364 adds an offline, credential-free
+`tests/unit/test_broker_mutation_surface_invariant.py` check over the broker
+boundary source files and runtime public broker-facing surfaces. The invariant
+fails if cancel, cancel-order, replace, replace-order, close-position,
+close-all-positions, liquidate, liquidation, or delete names are added to the
+checked modules, classes, protocols, methods, properties, assignments, or
+annotated assignments. The current intentional broker mutation boundary remains
+the existing `submit_order` path only. Cancel, replace, close-position,
+liquidate, liquidation, and delete behavior remain forbidden unless a future
+explicit operator-approved milestone intentionally changes the invariant and
+updates the safety test.
+
+M364 also records the corrected M355 lifecycle boundary. The M355 SPY paper
+sell-to-close was an after-hours equity `market`/`day` order submitted after
+the June 1 regular session close. Existing observations prove only the
+accepted/unfilled overnight and pre-session state; they do not prove accepted
+status after a complete regular session following submission. The M364
+post-session read-only diagnostic remains pending unless the operator enters a
+scoped transient paper shell and runs only the existing read-only snapshot path
+with run id `m364_post_session_diagnostic` and run log
+`runs/paper_lab/m364_post_session_diagnostic.jsonl`. Required diagnostic fields
+include account, positions, orders, SPY position quantity, M355 order id and
+client order id if visible, status, filled quantity, filled timestamp,
+submitted timestamp, time in force, side, `mutated=false`, `submitted=false`,
+metadata completeness, and whether the result proves terminal state or an
+anomalous still-accepted state.
+
+M365 cancel-readiness remains blocked until that post-session read-only
+diagnostic is complete and the no-mutation invariant is passing. M364 preserves
+`paper_lab_only`, `not_live_authorized`, and `profit_claim=none`; it performs no
+submit, cancel, replace, close-position, liquidation, delete, broker/network
+command, credential printing, live trading, autonomous scheduling, or LLM/agent
+trading-path behavior. Normal pytest remains offline, credential-free,
+deterministic, and safe.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
