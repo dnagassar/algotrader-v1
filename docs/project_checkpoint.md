@@ -14537,6 +14537,28 @@ Safe next tasks include:
   preview remains preview-only and requires
   `M369 - Explicit operator review for tiny SPY paper submit` before any
   submit.
+- M369 adds the explicit offline operator-review artifact for the tiny SPY
+  paper submit path in
+  `algotrader.execution.etf_sma_m369_operator_review`. It consumes only the
+  local M368B preview and fresh read-only snapshot JSONL evidence, verifies the
+  M368A linkage, flat/clean snapshot, SPY/equity buy market/day shape, notional
+  cap `25.00`, zero positions, zero open/recent orders, and non-mutating flags,
+  and writes the ignored local artifact
+  `runs/paper_lab/m369_tiny_spy_paper_submit_operator_review.jsonl`.
+- M369 ready output records
+  `decision=ready_for_separate_tiny_spy_paper_submit_milestone`,
+  `required_next_milestone=M370 - Tiny SPY paper submit only after explicit
+  operator approval`, `operator_review_ready=true`,
+  `separate_submit_milestone_required=true`, `submit_authorized=false`,
+  `submitted=false`, and `mutated=false`. It is `paper_lab_only`,
+  `operator_review_only`, `not_live_authorized`, and `profit_claim=none`; it
+  performs no submit, broker preview, cancel, replace, close, liquidation,
+  retry, delete, live profile, live trading, broker mutation, autonomous
+  scheduling, LLM/agent trading-path behavior, credential access, or network
+  call. M368A signal evidence remains deterministic fixture evidence only, not
+  live market data or profitability/live-authorization evidence. Missing,
+  malformed, ambiguous, stale, blocked, non-SPY, over-cap, positioned,
+  open-order, submitted, or mutated M368B evidence fails closed.
 - The local ignored M368 artifact path is
   `runs/paper_lab/m368_spy_etf_sma_broker_preview_only.jsonl`. M368 adds no
   submit, cancel, replace, close-position call, liquidation, retry, delete,
