@@ -14484,6 +14484,36 @@ Safe next tasks include:
   authorize that broker-facing preview itself and never authorizes a paper
   order. If M367 is blocked, resolve the blocker offline before any
   paper-facing work.
+- M368A adds
+  `algotrader.research.etf_sma_next_experiment_review_artifact` as a pure
+  offline JSONL materialization layer for the M367 review. It uses explicit
+  M366-style reset evidence and explicit offline SPY ETF/SMA signal evidence,
+  imports no broker, Alpaca SDK, network, credential, runtime trading,
+  orchestration, execution, portfolio, risk, screener, or signal module, and
+  writes only a caller-specified local JSONL artifact.
+- The local ignored M368A run log is
+  `runs/paper_lab/m368a_offline_spy_etf_sma_next_experiment_review.jsonl`.
+  It records run id `m368a_offline_spy_etf_sma_next_experiment_review`,
+  evidence ids `m366_fresh_paper_lab_reset_snapshot` and
+  `m368a_offline_spy_etf_sma_fixture_signal`, SPY/equity scope, cap `25.00`,
+  default M367 labels, reset classification `paper_lab_flat_clean`,
+  cash/currency `1999.81` USD, zero positions, zero recent/open orders, SPY
+  absent/zero, `mutated=false`, and `submitted=false`.
+- The offline signal evidence in M368A is deterministic fixture evidence, not
+  live market data and not profitability evidence. It records
+  `status=bullish_risk_on`, `as_of=2025-07-20T00:00:00+00:00`, SMA50
+  available at `20`, SMA200 available at `12.5`, `usable_bar_count=200`,
+  `ignored_future_bar_count=0`, and `actionable_risk_on=true`.
+- M368A answers the offline eligibility question as
+  `ready_for_separate_broker_preview_milestone` with no blockers and required
+  next milestone `M368 - SPY ETF/SMA broker-facing preview-only milestone`.
+  `separate_preview_milestone_required=true`,
+  `separate_broker_preview_milestone_allowed=true`,
+  `submit_authorized=false`, `broker_action_performed=false`,
+  `broker_preview_performed=false`, `mutated=false`, and `submitted=false`.
+  It performs no broker preview, submit, cancel, replace, close-position call,
+  liquidation, retry, delete, broker/network command, credential printing, live
+  trading, autonomous scheduling, or LLM/agent trading-path behavior.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

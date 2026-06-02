@@ -9054,6 +9054,43 @@ that broker-facing preview itself and never authorizes a paper order. If M367 is
 blocked, the required path is to resolve the blocker offline before any
 paper-facing work.
 
+M368A adds
+`algotrader.research.etf_sma_next_experiment_review_artifact` as a pure
+offline JSONL materialization layer for the M367 review. It accepts explicit
+M366-style reset evidence and explicit offline SPY ETF/SMA signal evidence,
+builds the existing M367 review packet, and writes one deterministic local
+record to
+`runs/paper_lab/m368a_offline_spy_etf_sma_next_experiment_review.jsonl`. The
+ignored artifact records run id
+`m368a_offline_spy_etf_sma_next_experiment_review`, evidence ids
+`m366_fresh_paper_lab_reset_snapshot` and
+`m368a_offline_spy_etf_sma_fixture_signal`, `symbol=SPY`,
+`asset_class=equity`, `cap=25.00`, default M367 labels, reset classification
+`paper_lab_flat_clean`, cash/currency `1999.81` USD, zero positions, zero
+recent/open orders, SPY absent/zero, `mutated=false`, and `submitted=false`.
+
+The materialized offline signal evidence is deterministic fixture evidence, not
+live market data and not profitability evidence. It records
+`status=bullish_risk_on`, `as_of=2025-07-20T00:00:00+00:00`, SMA50 available
+at `20`, SMA200 available at `12.5`, `usable_bar_count=200`,
+`ignored_future_bar_count=0`, and `actionable_risk_on=true`. Given that
+evidence and the M366 flat-clean reset, the artifact decision is
+`ready_for_separate_broker_preview_milestone` with no blockers and required
+next milestone `M368 - SPY ETF/SMA broker-facing preview-only milestone`.
+`separate_preview_milestone_required=true`,
+`submit_authorized=false`, `broker_action_performed=false`,
+`broker_preview_performed=false`, `mutated=false`, and `submitted=false`.
+
+M368A remains `paper_lab_only`, `offline_only`, `research_only`,
+`not_live_authorized`, and `profit_claim=none`. It imports no broker, Alpaca
+SDK, network, credential, runtime trading, orchestration, execution, portfolio,
+risk, screener, or signal module. It performs no broker preview, submit,
+cancel, replace, close-position call, liquidation, retry, delete,
+broker/network command, credential printing, live trading, autonomous
+scheduling, or LLM/agent trading-path behavior. It answers only that the
+offline packet is eligible for a separate future broker-facing preview-only
+milestone; it does not perform or authorize that broker-facing preview.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
