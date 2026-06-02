@@ -8952,6 +8952,37 @@ not proven terminal. M365 remains blocked, and M364B-2 post-close read-only
 evidence is still required before any cancel-readiness work. Labels:
 `paper_lab_only`, `read_only`, `not_live_authorized`, `profit_claim=none`.
 
+M364B-1A ran a targeted read-only M355 order-history diagnostic with run id
+`m364b1a_m355_target_order_history` and ignored local run log
+`runs/paper_lab/m364b1a_m355_target_order_history.jsonl`. The operator used a
+scoped transient paper shell, loaded credentials through the local env helper,
+set the paper profile only inside that process, and queried existing read-only
+broker order history for SPY across `open`, `all`, and `closed` scopes. No
+source, test, CLI, adapter, SDK wrapper, policy, credential/config, submit,
+cancel, replace, close-position, liquidation, retry, delete, or live-trading
+behavior changed.
+
+M364B-1A found the target M355 order in `all` and `closed` history and absent
+from `open` history. Broker order id
+`56a2f690-f4ad-4572-bcf4-1a479398fe55` and client order id
+`paper-order-close-m355_spy_paper_close_submit` matched a SPY `sell`
+`market`/`day` order for quantity `0.032905647`, created at
+`2026-06-01T21:49:57.297904+00:00`, broker `submitted_at`
+`2026-06-02T13:23:01.929464+00:00`, `filled_at`
+`2026-06-02T13:30:00.744662+00:00`, `filled_quantity=0.032905647`,
+`filled_average_price=757.16`, and status `filled` / `OrderStatus.FILLED`.
+Account, positions, and order-history observations were available, query
+metadata was complete, `mutated=false`, `submitted=false`,
+`broker_action_performed=false`, `close_order_submitted=false`, and
+`redaction=credentials_redacted`.
+
+The M364C classifier result for M364B-1A is `terminal_filled` with reason
+`filled_order_with_complete_metadata`. SPY position classification is
+absent/zero with `position_count=0`. M365 cancel-readiness is therefore not
+needed for M355: the stale-order uncertainty is resolved as a terminal fill,
+and there is no open target order to cancel. Labels remain `paper_lab_only`,
+`read_only`, `not_live_authorized`, and `profit_claim=none`.
+
 Execution-boundary work should remain pure and synthetic unless explicitly
 approved otherwise. It should still exclude broker wiring, order submission,
 scheduler/runtime behavior, persistence, cash reservation side effects, ML, and
