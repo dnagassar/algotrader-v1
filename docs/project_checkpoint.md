@@ -14435,6 +14435,55 @@ Safe next tasks include:
   no-mutation invariant remains active.
 - The next safe paper-lab direction is a new operator-reviewed paper
   experiment path, not cleanup, cancel-readiness, or cancel tooling.
+- M366 starts that next paper-lab cycle with one fresh read-only paper snapshot
+  after the M355 filled-close reconciliation. The run id is
+  `m366_fresh_paper_lab_reset_snapshot`, and the ignored local run log is
+  `runs/paper_lab/m366_fresh_paper_lab_reset_snapshot.jsonl`.
+- M366 used the existing `paper-lab-snapshot` command only. Account, positions,
+  and recent open orders were all observed; no observations were unavailable;
+  cash/currency were safely reported as `1999.81` USD; buying power was not
+  exposed by the existing snapshot payload; `position_count=0`;
+  `position_symbols=[]`; no SPY position was present; no non-SPY positions were
+  present; and `recent_order_count=0` with complete open-order query metadata.
+- The M366 reset classification is `paper_lab_flat_clean`. The snapshot
+  preserved `mutated=false`, `submitted=false`, and
+  `redaction=credentials_redacted`. M366 remains `paper_lab_only`,
+  `read_only`, `not_live_authorized`, and `profit_claim=none`; it performed no
+  submit, cancel, replace, close-position call, liquidation, retry, delete,
+  broker mutation, live trading, autonomous scheduling, or LLM/agent
+  trading-path behavior.
+- The paper lab is ready only for a separate M367 offline/operator-reviewed SPY
+  ETF/SMA next-experiment preview packet. M366 does not authorize a
+  broker-facing order preview or any new paper order.
+- M367 adds `algotrader.research.etf_sma_next_experiment_review` as a pure
+  offline SPY ETF/SMA next-experiment review packet using only explicit caller
+  inputs. The contract records the M366 source evidence id
+  `m366_fresh_paper_lab_reset_snapshot`, reset classification, optional
+  cash/currency evidence, position and open-order counts, SPY/equity scope,
+  SPY-only allowlist, offline signal status, target cap, safety labels,
+  blockers, required next milestone, whether a separate broker-facing preview
+  milestone is allowed, and `submit_authorized=false`.
+- M367 decisions are `ready_for_separate_broker_preview_milestone`,
+  `blocked_reset_not_clean`, `blocked_symbol_not_allowed`,
+  `blocked_cap_invalid`, `blocked_signal_not_actionable`, and
+  `operator_review_required`. Readiness requires `paper_lab_flat_clean`, zero
+  positions, zero open orders, `symbol=SPY`, `asset_class=equity`, allowlist
+  exactly `("SPY",)`, positive cap no greater than USD 25.00, default M367
+  safety labels, and an actionable offline ETF/SMA risk-on status. Risk-off,
+  insufficient-history, missing, stale, or otherwise non-actionable signal
+  status blocks offline.
+- M367 remains `paper_lab_only`, `offline_only`, `research_only`,
+  `not_live_authorized`, and `profit_claim=none`. It imports no broker, Alpaca
+  SDK, network, credential, runtime trading, orchestration, execution,
+  portfolio, risk, screener, or signal module. It performs no submit, cancel,
+  replace, close-position call, liquidation, retry, delete, broker/network
+  command, credential printing, live trading, autonomous scheduling, or
+  LLM/agent trading-path behavior.
+- If M367 is ready, the only recommended next path is
+  `M368 - SPY ETF/SMA broker-facing preview-only milestone`; M367 does not
+  authorize that broker-facing preview itself and never authorizes a paper
+  order. If M367 is blocked, resolve the blocker offline before any
+  paper-facing work.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
