@@ -7,7 +7,7 @@ state.
 
 ## Current Status
 
-- `5430` tests are passing, with `4` skipped paper-integration tests by default.
+- `5757` tests are passing, with `4` skipped paper-integration tests by default.
 - Phase 35 Step 1 adds a default pytest network kill-switch. Normal
   `python -m pytest` blocks `socket.socket` and `socket.create_connection`
   with a clear offline, credential-free failure message unless
@@ -9148,6 +9148,30 @@ autonomous scheduling, LLM/agent trading path, or normal-test network
 dependency. The CLI command `etf-sma-m368-broker-preview-only` is explicitly
 paper-profile gated and reads only local JSONL evidence before optionally
 writing `runs/paper_lab/m368_spy_etf_sma_broker_preview_only.jsonl`.
+
+M371 adds `algotrader.execution.paper_order_lifecycle_replay` as a compact,
+pure, deterministic offline replay harness for local paper-order lifecycle
+observations. It consumes caller-supplied `PaperOrderLifecycleEvent` values in
+source order, preserves those observations on the result, and classifies the
+local lifecycle as `not_seen`, `submitted_seen`, `accepted_open_unfilled`,
+`partially_filled_open`, `filled_terminal`, `rejected_terminal`,
+`canceled_terminal`, `ambiguous_after_submit`, or `inconsistent_lifecycle`.
+The harness covers the M355-style path where a submit observation is followed
+by accepted/open/unfilled read-only snapshots and then a later filled terminal
+observation.
+
+M371 is capability-only and offline-only. It performs no broker calls, Alpaca
+SDK calls, credential loading, market-hours checks, submit, cancel, replace,
+close-position call, liquidation, retry, delete, broker/network command, live
+trading, autonomous scheduling, or LLM/agent trading-path behavior. It does not
+modify `Broker`, `LocalBroker`, or the broker mutation surface. Ambiguous submit
+exception evidence is treated as blocking repeat submission until later
+read-only order evidence resolves it, terminal filled/rejected/canceled states
+cannot regress to active/open states, filled quantity is monotonic, and unknown
+or contradictory observations produce `inconsistent_lifecycle` blockers. The
+harness makes no profitability, execution-quality, or live-readiness claim.
+M370B remains a separate pending ACTION leaf requiring regular equity-session
+conditions and explicit operator approval.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

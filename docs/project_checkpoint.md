@@ -2,7 +2,7 @@
 
 ## Current Milestone
 
-The project is at the 5430-passed / 4-skipped deterministic core checkpoint. The
+The project is at the 5757-passed / 4-skipped deterministic core checkpoint. The
 current system prioritizes a deterministic trading core before any real broker
 connectivity.
 
@@ -14565,6 +14565,30 @@ Safe next tasks include:
   live profile, live trading, broker mutation, autonomous scheduling,
   LLM/agent trading path, credential leakage, or normal-test network
   dependency.
+- M371 adds `algotrader.execution.paper_order_lifecycle_replay` as a pure
+  deterministic offline replay harness for local paper-order lifecycle events.
+  It consumes caller-supplied `PaperOrderLifecycleEvent` observations in source
+  order, preserves those observations in the result, and classifies
+  `not_seen`, `submitted_seen`, `accepted_open_unfilled`,
+  `partially_filled_open`, `filled_terminal`, `rejected_terminal`,
+  `canceled_terminal`, `ambiguous_after_submit`, and
+  `inconsistent_lifecycle`.
+- The M371 replay harness covers the M355-style path of submit observed,
+  accepted/open/unfilled across one or more read-only snapshots, and later
+  filled terminal. It also blocks missing client-order IDs, unknown statuses,
+  broker-order ID conflicts, filled-quantity decreases, active/open regressions
+  after terminal states, and contradictory filled-quantity/status metadata.
+- M371 is capability-only, offline-only, and credential-free. It performs no
+  broker calls, Alpaca SDK calls, credential loading, paper/live order
+  submission, cancel, replace, close-position call, liquidation, retry, delete,
+  broker mutation, network command, live trading, autonomous scheduling, or
+  LLM/agent trading-path behavior. It does not expand `Broker` or
+  `LocalBroker`; the submit-only broker mutation invariant remains intact.
+  Ambiguous submit exception evidence blocks repeat submission until later
+  read-only order evidence resolves it. The harness makes no profitability,
+  execution-quality, or live-readiness claim. M370B remains a separate pending
+  ACTION leaf requiring regular equity-session conditions and explicit operator
+  approval.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
