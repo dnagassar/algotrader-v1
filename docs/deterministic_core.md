@@ -9239,6 +9239,25 @@ The M370C result is `ok=false`, `submitted=false`, `mutated=false`,
 there was no retry, cancel, replace, close, liquidation, delete, live profile,
 credential printing, scheduler, or trading hot-path change.
 
+M375 adds `etf-sma-m375-spy-close-preview`, a broker-facing preview-only gate
+for the expected M370C SPY paper position. The gate requires the paper profile,
+then performs read-only account, position, and account-wide open-order
+observations through the existing Alpaca paper boundary before writing
+`runs/paper_lab/m375_spy_position_close_preview.jsonl`. The deterministic
+artifact records `milestone=M375`, the paper-lab/not-live/profit-none/
+close-preview-only labels, `submitted=false`, `mutated=false`,
+`submit_authorized=false`, `close_submit_authorized=false`, and
+`broker_mutation_authorized=false`; the expected M370C quantity
+`0.033172072`; observed SPY quantity and average entry price when available;
+non-SPY/open-order flags; query metadata completeness; and one readiness
+classification. A ready classification previews only the later M376 sell
+intent for SPY quantity `0.033172072`; M375 itself does not construct or submit
+an order request. In this local Codex run no Alpaca paper credentials were
+loaded, so the scoped command wrote a `blocked_profile_gate_failed` artifact
+before broker construction. No fresh broker observation, submit, cancel,
+replace, close, liquidation, delete, retry, scheduler, live profile, credential
+printing, or trading hot-path behavior occurred.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

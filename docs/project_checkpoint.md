@@ -14652,6 +14652,23 @@ Safe next tasks include:
   M370 broker submit was attempted, and there was no retry, cancel, replace,
   close, liquidation, delete, live profile, credential printing, scheduler, or
   trading hot-path change.
+- M375 adds `etf-sma-m375-spy-close-preview`, a broker-facing preview-only
+  readiness gate for the expected M370C SPY paper position. It requires the
+  paper profile, performs read-only account, positions, and account-wide open
+  order observations through the existing Alpaca paper boundary, and writes
+  `runs/paper_lab/m375_spy_position_close_preview.jsonl`. The artifact records
+  `milestone=M375`, paper-lab/not-live/profit-none/close-preview-only labels,
+  `submitted=false`, `mutated=false`, `submit_authorized=false`,
+  `close_submit_authorized=false`, `broker_mutation_authorized=false`, the
+  expected M370C quantity `0.033172072`, observed SPY quantity and average
+  entry price when available, non-SPY/open-order flags, order-query metadata
+  completeness, and a readiness classification. A ready record previews only
+  the later M376 SPY sell intent for quantity `0.033172072`; M375 submits
+  nothing. In this local Codex run no Alpaca paper credentials were loaded, so
+  the scoped command wrote `blocked_profile_gate_failed` before broker
+  construction. No fresh broker observation, submit, cancel, replace, close,
+  liquidation, delete, retry, scheduler, live profile, credential printing, or
+  trading hot-path behavior occurred.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

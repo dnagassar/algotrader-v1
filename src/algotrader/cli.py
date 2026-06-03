@@ -384,6 +384,22 @@ def build_parser() -> argparse.ArgumentParser:
         run_log="runs/paper_lab/m370_tiny_spy_paper_submit.jsonl",
         run_id="m370_tiny_spy_paper_submit",
     )
+    etf_sma_m375_close_preview_parser = subparsers.add_parser(
+        "etf-sma-m375-spy-close-preview",
+        help="Preview readiness to close the M370C SPY paper position without mutation.",
+    )
+    etf_sma_m375_close_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Close-preview output format.",
+    )
+    _add_paper_lab_run_log_options(etf_sma_m375_close_preview_parser)
+    etf_sma_m375_close_preview_parser.set_defaults(
+        run_log="runs/paper_lab/m375_spy_position_close_preview.jsonl",
+        run_id="m375_spy_position_close_preview",
+    )
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -733,6 +749,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_spy_close_submit(config, args)
     if command == "etf-sma-m370-paper-submit":
         return _run_etf_sma_m370_paper_submit(config, args)
+    if command == "etf-sma-m375-spy-close-preview":
+        return _run_etf_sma_m375_spy_close_preview(config, args)
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
     if command == "paper-close-probe":
@@ -1081,6 +1099,37 @@ def _run_etf_sma_m370_paper_submit(
         print(render_m370_paper_submit_text(payload))
     if payload.get("broker_error") is True:
         return 1
+    return 0 if payload.get("ok") is True else 2
+
+
+def _run_etf_sma_m375_spy_close_preview(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .execution.etf_sma_m375_spy_close_preview import (
+        M375_DEFAULT_RUN_ID,
+        render_m375_spy_close_preview_json,
+        render_m375_spy_close_preview_text,
+        run_m375_spy_close_preview,
+        write_m375_spy_close_preview_artifact,
+    )
+
+    profile_gate = _paper_profile_gate(config)
+    payload = run_m375_spy_close_preview(
+        run_id=args.run_id or M375_DEFAULT_RUN_ID,
+        output_artifact_path=args.run_log,
+        paper_profile_gate_passed=profile_gate["passed"] is True,
+        paper_profile_gate_detail=str(profile_gate.get("detail", "")),
+        broker_factory=lambda: _build_paper_broker(config.alpaca_paper),
+        redactor=lambda value: _redact_config_secrets(value, config),
+    )
+    if args.run_log:
+        write_m375_spy_close_preview_artifact(payload, args.run_log)
+
+    if args.output_format == "json":
+        print(render_m375_spy_close_preview_json(payload))
+    else:
+        print(render_m375_spy_close_preview_text(payload))
     return 0 if payload.get("ok") is True else 2
 
 
