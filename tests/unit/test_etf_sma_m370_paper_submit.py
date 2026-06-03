@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
+from datetime import datetime, timezone
 from decimal import Decimal
 import json
 from pathlib import Path
@@ -413,6 +414,66 @@ def test_fails_closed_when_pre_submit_snapshot_observed_at_is_future_dated(
     assert "submit_order" not in broker.calls
 
 
+def test_command_owned_pre_submit_observed_at_cannot_be_masked_by_explicit_timestamp(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+    command_owned_observed_at = "2026-06-02T13:58:59+00:00"
+
+    payload = m370.run_m370_tiny_spy_paper_submit(
+        source_m369_artifact_path=source_path,
+        output_artifact_path=tmp_path / "m370-command-owned-stale.jsonl",
+        run_id=m370.M370_DEFAULT_RUN_ID,
+        operator_approval=m370.M370_APPROVAL_PHRASE,
+        equity_session_status=_open_session(),
+        paper_profile_gate_passed=True,
+        evaluated_at=AS_OF,
+        pre_submit_snapshot_observed_at=SNAPSHOT_OBSERVED_AT,
+        paper_profile_gate_detail="paper_profile_ready",
+        halt_gate_passed=True,
+        halt_gate_detail="halt_not_set",
+        snapshot_clock=lambda: command_owned_observed_at,
+        broker_factory=lambda: broker,
+    )
+
+    _assert_freshness_blocked(payload, "pre_submit_snapshot_stale")
+    assert payload["pre_submit_snapshot"]["observed_at"] == command_owned_observed_at
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
+def test_explicit_pre_submit_observed_at_is_validated_without_overriding_snapshot(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = m370.run_m370_tiny_spy_paper_submit(
+        source_m369_artifact_path=source_path,
+        output_artifact_path=tmp_path / "m370-explicit-naive.jsonl",
+        run_id=m370.M370_DEFAULT_RUN_ID,
+        operator_approval=m370.M370_APPROVAL_PHRASE,
+        equity_session_status=_open_session(),
+        paper_profile_gate_passed=True,
+        evaluated_at=AS_OF,
+        pre_submit_snapshot_observed_at="2026-06-02T14:02:00",
+        paper_profile_gate_detail="paper_profile_ready",
+        halt_gate_passed=True,
+        halt_gate_detail="halt_not_set",
+        snapshot_clock=lambda: SNAPSHOT_OBSERVED_AT,
+        broker_factory=lambda: broker,
+    )
+
+    _assert_freshness_blocked(
+        payload,
+        "pre_submit_snapshot_observed_at_timezone_naive",
+    )
+    assert payload["pre_submit_snapshot"]["observed_at"] == SNAPSHOT_OBSERVED_AT
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
 def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> None:
     source_path = _write_source(tmp_path, _ready_m369_record())
     broker = FakeM370Broker(
@@ -579,7 +640,12 @@ def test_cli_m370_submit_path_fails_closed_without_evaluation_clock_and_redacts(
     monkeypatch.setenv("ALPACA_SECRET_KEY", SENSITIVE_SECRET_KEY)
     monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://paper.example.test")
     monkeypatch.delenv("ALGOTRADER_PAPER_HALT", raising=False)
-    monkeypatch.setattr(cli, "_build_paper_broker", lambda paper_config: broker)
+    factory_calls: list[str] = []
+    monkeypatch.setattr(
+        cli,
+        "_build_paper_broker",
+        lambda paper_config: factory_calls.append("called") or broker,
+    )
 
     exit_code = cli.main(
         (
@@ -615,10 +681,136 @@ def test_cli_m370_submit_path_fails_closed_without_evaluation_clock_and_redacts(
     assert "evaluation_clock_missing" in payload["blockers"]
     assert broker.submit_count == 0
     assert broker.calls == []
+    assert factory_calls == []
     assert records == [payload]
     assert m370.M370_APPROVAL_PHRASE not in rendered
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
+
+
+def test_cli_m370_submit_path_fails_closed_with_invalid_evaluation_clock_before_broker_construction(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    import algotrader.cli as cli
+
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    output_path = tmp_path / "m370-cli-invalid.jsonl"
+    broker = FakeM370Broker()
+    factory_calls: list[str] = []
+    _configure_paper_cli_env(monkeypatch)
+    monkeypatch.setattr(
+        cli,
+        "_build_paper_broker",
+        lambda paper_config: factory_calls.append("called") or broker,
+    )
+
+    exit_code = cli.main(
+        _m370_cli_args(
+            source_path=source_path,
+            output_path=output_path,
+            evaluated_at="not-a-timestamp",
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["submit_call_count"] == 0
+    assert "evaluation_clock_invalid" in payload["blockers"]
+    assert broker.calls == []
+    assert factory_calls == []
+
+
+def test_cli_m370_submit_path_fails_closed_with_naive_evaluation_clock_before_broker_construction(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    import algotrader.cli as cli
+
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    output_path = tmp_path / "m370-cli-naive.jsonl"
+    broker = FakeM370Broker()
+    factory_calls: list[str] = []
+    _configure_paper_cli_env(monkeypatch)
+    monkeypatch.setattr(
+        cli,
+        "_build_paper_broker",
+        lambda paper_config: factory_calls.append("called") or broker,
+    )
+
+    exit_code = cli.main(
+        _m370_cli_args(
+            source_path=source_path,
+            output_path=output_path,
+            evaluated_at="2026-06-02T14:04:00",
+        )
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["submit_call_count"] == 0
+    assert "evaluation_clock_timezone_naive" in payload["blockers"]
+    assert broker.calls == []
+    assert factory_calls == []
+
+
+def test_cli_m370_submit_path_accepts_evaluated_at_and_reaches_fake_submit_gate(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    import algotrader.cli as cli
+
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    output_path = tmp_path / "m370-cli-valid.jsonl"
+    broker = FakeM370Broker(
+        post_open_orders=(_order(m370.M370_CLIENT_ORDER_ID, status="accepted"),),
+        post_recent_orders=(_order(m370.M370_CLIENT_ORDER_ID, status="accepted"),),
+    )
+    _configure_paper_cli_env(monkeypatch)
+    monkeypatch.setattr(cli, "_build_paper_broker", lambda paper_config: broker)
+    monkeypatch.setattr(
+        m370,
+        "_system_utc_now",
+        lambda: datetime(2026, 6, 2, 14, 2, tzinfo=timezone.utc),
+    )
+
+    exit_code = cli.main(
+        _m370_cli_args(
+            source_path=source_path,
+            output_path=output_path,
+            evaluated_at=AS_OF,
+        )
+    )
+
+    rendered = capsys.readouterr().out
+    payload = json.loads(rendered)
+    records = [
+        json.loads(line)
+        for line in output_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert exit_code == 0
+    assert payload["ok"] is True
+    assert payload["submitted"] is True
+    assert payload["mutated"] is True
+    assert payload["submit_call_count"] == 1
+    assert payload["evaluated_at"] == AS_OF
+    assert payload["market_session"]["observed_at"] == SESSION_OBSERVED_AT
+    assert payload["pre_submit_snapshot"]["observed_at"] == SNAPSHOT_OBSERVED_AT
+    assert "evaluation_clock_missing" not in payload["blockers"]
+    assert "evaluation_clock_invalid" not in payload["blockers"]
+    assert "evaluation_clock_timezone_naive" not in payload["blockers"]
+    assert broker.submit_count == 1
+    assert records == [payload]
 
 
 def test_m370_module_introduces_no_disallowed_broker_mutation_calls() -> None:
@@ -720,10 +912,10 @@ def _run(
         equity_session_status=session or _open_session(),
         paper_profile_gate_passed=True,
         evaluated_at=evaluated_at,
-        pre_submit_snapshot_observed_at=pre_submit_snapshot_observed_at,
         paper_profile_gate_detail="paper_profile_ready",
         halt_gate_passed=True,
         halt_gate_detail="halt_not_set",
+        snapshot_clock=lambda: pre_submit_snapshot_observed_at,
         broker_factory=broker_factory,
         redactor=redactor,
     )
@@ -747,6 +939,42 @@ def _open_session() -> m370.M370EquitySessionStatus:
 
 def _forbidden_factory():
     raise AssertionError("broker must not be built")
+
+
+def _configure_paper_cli_env(monkeypatch) -> None:
+    monkeypatch.setenv("APP_PROFILE", "paper")
+    monkeypatch.setenv("ALPACA_API_KEY", SENSITIVE_API_KEY)
+    monkeypatch.setenv("ALPACA_SECRET_KEY", SENSITIVE_SECRET_KEY)
+    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://paper.example.test")
+    monkeypatch.delenv("ALGOTRADER_PAPER_HALT", raising=False)
+
+
+def _m370_cli_args(
+    *,
+    source_path: Path,
+    output_path: Path,
+    evaluated_at: str | None = None,
+) -> tuple[str, ...]:
+    args = [
+        "etf-sma-m370-paper-submit",
+        "--source-m369-artifact",
+        str(source_path),
+        "--operator-approval",
+        m370.M370_APPROVAL_PHRASE,
+        "--equity-session-status",
+        "open",
+        "--equity-session-source",
+        "unit_test_market_clock",
+        "--equity-session-observed-at",
+        "2026-06-02T10:00:00-04:00",
+        "--run-log",
+        str(output_path),
+        "--format",
+        "json",
+    ]
+    if evaluated_at is not None:
+        args.extend(("--evaluated-at", evaluated_at))
+    return tuple(args)
 
 
 def _write_source(tmp_path, record: dict[str, object]) -> Path:

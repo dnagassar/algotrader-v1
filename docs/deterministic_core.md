@@ -9191,6 +9191,35 @@ adds no Alpaca SDK call, credential loading, network access, retry, cancel,
 replace, close, liquidation, delete, or broker protocol expansion. M370B
 remains the separate pending regular-session ACTION leaf.
 
+M370B attempted the regular-session tiny SPY paper-submit action in a scoped
+paper shell during an Alpaca paper clock-open window. A fresh read-only
+paper-lab snapshot first observed USD cash `1999.8`, zero positions, zero open
+orders, complete order-query metadata, `mutated=false`, and `submitted=false`
+in `runs/paper_lab/m370b_pre_submit_read_only_snapshot.jsonl`. The installed
+`etf-sma-m370-paper-submit` command then wrote
+`runs/paper_lab/m370b_regular_session_tiny_spy_paper_submit.jsonl` and failed
+closed before broker construction with blockers
+`market_session_gate_failed` and `evaluation_clock_missing`; the command surface
+does not expose the explicit evaluation clock required by M372. No M370 broker
+submit was attempted: `ok=false`, `submitted=false`, `mutated=false`, and
+`submit_call_count=0`.
+
+M373 repairs that command surface offline. `etf-sma-m370-paper-submit` now
+exposes `--evaluated-at` and passes the supplied timezone-aware ISO-8601
+evaluation clock into the M370 paper-submit gate. Missing, invalid, or
+timezone-naive evaluation clocks still fail closed before broker construction.
+When the broker snapshot path is reached, the pre-submit snapshot `observed_at`
+is captured by the command-owned snapshot clock, validated by the existing
+freshness rules, and rendered in JSON and operator text alongside
+`evaluated_at` and market-session `observed_at`. Legacy explicit pre-submit
+timestamp evidence, when supplied, is validated as additional evidence but
+cannot override the command-owned snapshot timestamp. The existing
+market-session and pre-submit snapshot stale, future-dated, invalid, and
+timezone-naive protections remain fail-closed. M373 authorizes no paper submit
+rerun and adds no live trading, retry, cancel, replace, close, liquidation,
+delete, scheduler, operating brief generator, credential printing, or network
+requirement to normal pytest.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

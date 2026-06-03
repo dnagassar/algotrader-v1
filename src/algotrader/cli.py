@@ -368,6 +368,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Timestamp for the regular equity session status observation.",
     )
     etf_sma_m370_submit_parser.add_argument(
+        "--evaluated-at",
+        default="",
+        help="Explicit timezone-aware ISO-8601 evaluation clock for M370.",
+    )
+    etf_sma_m370_submit_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -1063,6 +1068,7 @@ def _run_etf_sma_m370_paper_submit(
         paper_profile_gate_detail=str(profile_gate.get("detail", "")),
         halt_gate_passed=halt_gate["passed"] is True,
         halt_gate_detail=str(halt_gate.get("detail", "")),
+        evaluated_at=args.evaluated_at,
         broker_factory=lambda: _build_paper_broker(config.alpaca_paper),
         redactor=lambda value: _redact_config_secrets(value, config),
     )

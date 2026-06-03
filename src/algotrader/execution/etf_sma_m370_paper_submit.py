@@ -52,6 +52,7 @@ _PROFIT_CLAIM = "none"
 _MARKET_SESSION_MAX_AGE = timedelta(minutes=15)
 _PRE_SUBMIT_SNAPSHOT_MAX_AGE = timedelta(minutes=5)
 _FUTURE_TOLERANCE = timedelta(seconds=60)
+_SNAPSHOT_OBSERVED_AT_UNSET = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,13 +122,14 @@ def run_m370_tiny_spy_paper_submit(
     equity_session_status: M370EquitySessionStatus,
     paper_profile_gate_passed: bool,
     evaluated_at: str | datetime = "",
-    pre_submit_snapshot_observed_at: str | datetime = "",
+    pre_submit_snapshot_observed_at: object = _SNAPSHOT_OBSERVED_AT_UNSET,
     market_session_max_age: timedelta = _MARKET_SESSION_MAX_AGE,
     pre_submit_snapshot_max_age: timedelta = _PRE_SUBMIT_SNAPSHOT_MAX_AGE,
     future_tolerance: timedelta = _FUTURE_TOLERANCE,
     paper_profile_gate_detail: str = "",
     halt_gate_passed: bool = True,
     halt_gate_detail: str = "halt_not_set",
+    snapshot_clock: Callable[[], object] | None = None,
     broker_factory: Callable[[], Any] | None = None,
     redactor: Callable[[str], str] | None = None,
 ) -> dict[str, object]:
@@ -216,15 +218,26 @@ def run_m370_tiny_spy_paper_submit(
     pre_snapshot = _observe_snapshot(
         broker,
         prefix="pre_submit",
-        observed_at=pre_submit_snapshot_observed_at,
+        observed_at=_snapshot_observed_at(snapshot_clock=snapshot_clock),
         redactor=sanitize,
     )
-    fresh_blockers = _fresh_snapshot_blockers(
-        pre_snapshot,
-        evaluated_at_utc=evaluation_clock,
-        evaluated_at_blockers=evaluation_clock_blockers,
-        max_age=checked_pre_submit_snapshot_max_age,
-        future_tolerance=checked_future_tolerance,
+    fresh_blockers = _dedupe(
+        (
+            *_fresh_snapshot_blockers(
+                pre_snapshot,
+                evaluated_at_utc=evaluation_clock,
+                evaluated_at_blockers=evaluation_clock_blockers,
+                max_age=checked_pre_submit_snapshot_max_age,
+                future_tolerance=checked_future_tolerance,
+            ),
+            *_explicit_pre_submit_snapshot_blockers(
+                pre_submit_snapshot_observed_at,
+                evaluated_at_utc=evaluation_clock,
+                evaluated_at_blockers=evaluation_clock_blockers,
+                max_age=checked_pre_submit_snapshot_max_age,
+                future_tolerance=checked_future_tolerance,
+            ),
+        )
     )
     payload = {
         **payload,
@@ -246,7 +259,7 @@ def run_m370_tiny_spy_paper_submit(
             "post_submit_observation": _observe_snapshot(
                 broker,
                 prefix="post_submit",
-                observed_at=pre_submit_snapshot_observed_at,
+                observed_at=_snapshot_observed_at(snapshot_clock=snapshot_clock),
                 redactor=sanitize,
             ),
         }
@@ -607,6 +620,30 @@ def _fresh_snapshot_blockers(
         "fresh_unavailable_observations_present",
     )
     return _dedupe(blockers)
+
+
+def _explicit_pre_submit_snapshot_blockers(
+    observed_at: object,
+    *,
+    evaluated_at_utc: datetime | None,
+    evaluated_at_blockers: Sequence[str],
+    max_age: timedelta,
+    future_tolerance: timedelta,
+) -> tuple[str, ...]:
+    if observed_at is _SNAPSHOT_OBSERVED_AT_UNSET:
+        return ()
+    return _freshness_blockers(
+        observed_at,
+        evaluated_at_utc=evaluated_at_utc,
+        evaluated_at_blockers=evaluated_at_blockers,
+        missing_blocker="pre_submit_snapshot_observed_at_missing",
+        timezone_naive_blocker="pre_submit_snapshot_observed_at_timezone_naive",
+        invalid_blocker="pre_submit_snapshot_observed_at_invalid",
+        stale_blocker="pre_submit_snapshot_stale",
+        future_blocker="pre_submit_snapshot_future_dated",
+        max_age=max_age,
+        future_tolerance=future_tolerance,
+    )
 
 
 def _observe_snapshot(
@@ -1238,6 +1275,15 @@ def _evaluation_clock(value: object) -> tuple[datetime | None, tuple[str, ...]]:
         timezone_naive_blocker="evaluation_clock_timezone_naive",
         invalid_blocker="evaluation_clock_invalid",
     )
+
+
+def _snapshot_observed_at(*, snapshot_clock: Callable[[], object] | None) -> object:
+    clock = snapshot_clock or _system_utc_now
+    return clock()
+
+
+def _system_utc_now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _timestamp_to_utc(
