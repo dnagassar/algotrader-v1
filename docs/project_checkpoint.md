@@ -14632,6 +14632,26 @@ Safe next tasks include:
   submit rerun and adds no live trading, retry, cancel, replace, close,
   liquidation, delete, scheduler, operating brief generator, credential
   printing, or network requirement to normal pytest.
+- M370C reattempted the regular-session tiny SPY paper-submit action on
+  June 3, 2026 in a scoped paper shell. Alpaca paper clock evidence was
+  recorded in `runs/paper_lab/m370c_alpaca_paper_clock.jsonl` with
+  `is_open=true`, no clock blockers, observed timestamp evidence around
+  `2026-06-03T14:35Z`, and next close at `2026-06-03T20:00:00Z`. A fresh
+  read-only snapshot in
+  `runs/paper_lab/m370c_pre_submit_read_only_snapshot.jsonl` observed account,
+  positions, and open-order metadata successfully, with zero positions, zero
+  recent open orders, complete recent-order query metadata, `submitted=false`,
+  and `mutated=false`. The installed `etf-sma-m370-paper-submit` command was
+  invoked once with explicit `--evaluated-at`, wrote
+  `runs/paper_lab/m370c_regular_session_tiny_spy_paper_submit.jsonl`, and
+  failed closed before broker construction because the wrapper passed
+  market-session `observed_at` as a locale PowerShell timestamp without
+  timezone information. The result is `ok=false`, `submitted=false`,
+  `mutated=false`, `submit_call_count=0`, with blockers
+  `market_session_gate_failed` and `market_session_observed_at_invalid`. No
+  M370 broker submit was attempted, and there was no retry, cancel, replace,
+  close, liquidation, delete, live profile, credential printing, scheduler, or
+  trading hot-path change.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
