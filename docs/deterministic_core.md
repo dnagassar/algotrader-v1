@@ -9179,14 +9179,17 @@ requires an explicit UTC-normalized evaluation clock, timezone-aware
 market-session `observed_at` evidence no older than 15 minutes by default, no
 materially future-dated market-session evidence beyond a 60-second default
 tolerance, and timezone-aware pre-submit snapshot `observed_at` evidence no
-older than 5 minutes by default. Missing, timezone-naive, stale, or future-dated
-freshness evidence fails closed with deterministic blockers before any submit
-attempt can be made. Market-session blockers stop before broker construction;
-pre-submit snapshot blockers stop after read-only snapshot observation and
-before submit. M372 does not authorize broker submit, does not add an operating
-brief generator, and adds no Alpaca SDK call, credential loading, network
-access, retry, cancel, replace, close, liquidation, delete, or broker protocol
-expansion. M370B remains the separate pending regular-session ACTION leaf.
+older than 5 minutes by default. Missing, invalid, timezone-naive, stale, or
+future-dated freshness evidence fails closed with deterministic blockers before
+any submit attempt can be made. Market-session and evaluation-clock blockers
+stop before broker construction; pre-submit snapshot blockers stop after
+read-only snapshot observation and before submit. The operator-facing text
+rendering now displays `evaluated_at`, market-session `observed_at`, and
+pre-submit snapshot `observed_at` in UTC-normalized timestamp form. M372 does
+not authorize broker submit, does not add an operating brief generator, and
+adds no Alpaca SDK call, credential loading, network access, retry, cancel,
+replace, close, liquidation, delete, or broker protocol expansion. M370B
+remains the separate pending regular-session ACTION leaf.
 
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.

@@ -179,6 +179,40 @@ def test_fails_closed_when_market_session_is_unavailable_or_closed(tmp_path) -> 
         assert "market_session_not_open" in payload["blockers"]
 
 
+def test_fails_closed_when_evaluated_at_is_invalid_before_broker_construction(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    factory_calls: list[str] = []
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        evaluated_at="not-a-timestamp",
+        broker_factory=lambda: factory_calls.append("called") or FakeM370Broker(),
+    )
+
+    _assert_freshness_blocked(payload, "evaluation_clock_invalid")
+    assert factory_calls == []
+
+
+def test_fails_closed_when_evaluated_at_is_timezone_naive_before_broker_construction(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    factory_calls: list[str] = []
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        evaluated_at="2026-06-02T14:04:00",
+        broker_factory=lambda: factory_calls.append("called") or FakeM370Broker(),
+    )
+
+    _assert_freshness_blocked(payload, "evaluation_clock_timezone_naive")
+    assert factory_calls == []
+
+
 def test_fails_closed_when_market_session_observed_at_is_missing(tmp_path) -> None:
     source_path = _write_source(tmp_path, _ready_m369_record())
     broker = FakeM370Broker()
@@ -221,6 +255,27 @@ def test_fails_closed_when_market_session_observed_at_is_timezone_naive(
         "market_session_observed_at_timezone_naive",
     )
     assert broker.calls == []
+
+
+def test_fails_closed_when_market_session_observed_at_is_invalid_before_broker_construction(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    factory_calls: list[str] = []
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: factory_calls.append("called") or FakeM370Broker(),
+        session=m370.M370EquitySessionStatus(
+            status="open",
+            source="unit_test_market_clock",
+            observed_at="not-a-timestamp",
+        ),
+    )
+
+    _assert_freshness_blocked(payload, "market_session_observed_at_invalid")
+    assert factory_calls == []
 
 
 def test_fails_closed_when_market_session_observed_at_is_stale(tmp_path) -> None:
@@ -302,6 +357,26 @@ def test_fails_closed_when_pre_submit_snapshot_observed_at_is_timezone_naive(
     assert "submit_order" not in broker.calls
 
 
+def test_fails_closed_when_pre_submit_snapshot_observed_at_is_invalid_before_submit(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+    factory_calls: list[str] = []
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: factory_calls.append("called") or broker,
+        pre_submit_snapshot_observed_at="not-a-timestamp",
+    )
+
+    _assert_freshness_blocked(payload, "pre_submit_snapshot_observed_at_invalid")
+    assert factory_calls == ["called"]
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
 def test_fails_closed_when_pre_submit_snapshot_observed_at_is_stale(
     tmp_path,
 ) -> None:
@@ -376,6 +451,18 @@ def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> N
     assert request.time_in_force == "day"
     assert request.notional == Decimal("25.00")
     assert request.qty is None
+
+
+def test_render_text_includes_utc_normalized_timestamp_evidence(tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+    payload = _run(tmp_path, source_path=source_path, broker_factory=lambda: broker)
+
+    rendered = m370.render_m370_paper_submit_text(payload)
+
+    assert f"evaluated_at: {AS_OF}" in rendered
+    assert "market_session_observed_at: 2026-06-02T14:00:00+00:00" in rendered
+    assert f"pre_submit_snapshot_observed_at: {SNAPSHOT_OBSERVED_AT}" in rendered
 
 
 def test_ambiguous_submit_exception_sets_submitted_mutated_and_no_retry(

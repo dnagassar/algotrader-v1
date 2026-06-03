@@ -274,10 +274,12 @@ def render_m370_paper_submit_text(payload: Mapping[str, object]) -> str:
         [
             "M370 tiny SPY paper submit",
             f"run_id: {_text(payload.get('run_id'))}",
+            f"evaluated_at: {_display_timestamp(payload.get('evaluated_at')) or 'none'}",
             f"source_m369_artifact: {_text(payload.get('source_m369_artifact'))}",
             f"operator_approval_present: {_bool_text(payload.get('operator_approval_present'))}",
             f"market_session_status: {_text(session.get('status')) or 'unavailable'}",
             f"market_session_source: {_text(session.get('source')) or 'none'}",
+            f"market_session_observed_at: {_display_timestamp(session.get('observed_at')) or 'none'}",
             f"ok: {_bool_text(payload.get('ok'))}",
             f"submitted: {_bool_text(payload.get('submitted'))}",
             f"mutated: {_bool_text(payload.get('mutated'))}",
@@ -288,6 +290,7 @@ def render_m370_paper_submit_text(payload: Mapping[str, object]) -> str:
             f"account_observed: {_bool_text(pre_snapshot.get('account_observation_available'))}",
             f"positions_observed: {_bool_text(pre_snapshot.get('positions_observation_available'))}",
             f"orders_observed: {_bool_text(pre_snapshot.get('orders_observation_available'))}",
+            f"pre_submit_snapshot_observed_at: {_display_timestamp(pre_snapshot.get('observed_at')) or 'none'}",
             f"cash: {_text(pre_snapshot.get('cash')) or 'none'}",
             f"currency: {_text(pre_snapshot.get('currency')) or 'none'}",
             f"position_count: {_text(pre_snapshot.get('position_count')) or '0'}",
@@ -1273,6 +1276,16 @@ def _timestamp_text(parsed_utc: datetime | None, original: object) -> str:
     if isinstance(original, datetime):
         return original.isoformat()
     return _text(original).strip()
+
+
+def _display_timestamp(value: object) -> str:
+    parsed_utc, _ = _timestamp_to_utc(
+        value,
+        missing_blocker="timestamp_missing",
+        timezone_naive_blocker="timestamp_timezone_naive",
+        invalid_blocker="timestamp_invalid",
+    )
+    return _timestamp_text(parsed_utc, value)
 
 
 def _nonnegative_timedelta(value: object, field_name: str) -> timedelta:
