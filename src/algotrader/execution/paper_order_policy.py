@@ -65,7 +65,7 @@ PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID = (
 )
 PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY = Decimal("0.032905647")
 PAPER_SPY_CLOSE_SUBMIT_READY_M354_STATE = (
-    "ready_for_separate_spy_paper_close_submit_milestone"
+    "ready_for_separate_spy_close_submit_milestone"
 )
 PAPER_SPY_CLOSE_SUBMIT_READY_STATE = "ready_for_single_spy_paper_close_submit"
 PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE = "blocked_from_spy_paper_close_submit"
@@ -784,7 +784,7 @@ def build_spy_paper_close_submit_contract(
     ),
     client_order_id: str = PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
 ) -> PaperSpyCloseSubmitContract:
-    """Build the exact M355 SPY paper close submit contract."""
+    """Build a gated SPY paper close submit contract from preview evidence."""
 
     equity_policy = paper_order_policy_for_asset_class(ASSET_CLASS_EQUITY)
     normalized_asset_class = str(asset_class).strip().lower()
@@ -807,9 +807,16 @@ def build_spy_paper_close_submit_contract(
         m354_requested_close_quantity,
         "m354_requested_close_quantity",
     )
-    expected_quantity = PAPER_SPY_CLOSE_SUBMIT_EXPECTED_QUANTITY
-    requested_quantity_matches = requested_quantity == expected_quantity
-    m354_quantity_matches = m354_quantity == expected_quantity
+    requested_quantity_matches = (
+        requested_quantity is not None
+        and m354_quantity is not None
+        and requested_quantity == m354_quantity
+    )
+    m354_quantity_matches = (
+        m354_quantity is not None
+        and requested_quantity is not None
+        and m354_quantity == requested_quantity
+    )
     within_observed_position = (
         observed_quantity is not None
         and requested_quantity is not None
@@ -882,7 +889,7 @@ def build_spy_paper_close_submit_contract(
             _close_preview_gate(
                 "m354_requested_quantity_gate",
                 m354_quantity_matches,
-                f"m354_requested_close_quantity={expected_quantity}",
+                f"m354_requested_close_quantity={requested_quantity}",
                 m354_quantity_error or "m354_requested_close_quantity_mismatch",
             ),
             _close_preview_gate(
@@ -923,14 +930,14 @@ def build_spy_paper_close_submit_contract(
             ),
             _close_preview_gate(
                 "client_order_id_gate",
-                normalized_client_order_id == PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
-                PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID,
-                "client_order_id_must_be_m355_spy_close",
+                _valid_spy_close_submit_client_order_id(normalized_client_order_id),
+                "paper-order-close-*_spy_paper_close_submit",
+                "client_order_id_must_be_spy_close_submit",
             ),
             _close_preview_gate(
                 "quantity_gate",
                 requested_quantity_matches,
-                f"requested_close_quantity={expected_quantity}",
+                f"requested_close_quantity={m354_quantity}",
                 requested_quantity_error or "requested_close_quantity_mismatch",
             ),
             _close_preview_gate(
@@ -990,8 +997,8 @@ def build_spy_paper_close_submit_contract(
             _close_preview_gate(
                 "duplicate_client_order_id_gate",
                 duplicate_client_order_id_found is False,
-                "m355_client_order_id_not_seen",
-                "m355_client_order_id_already_exists",
+                "client_order_id_not_seen",
+                "client_order_id_already_exists",
             ),
             _close_preview_gate(
                 "unexpected_position_gate",
@@ -1032,6 +1039,13 @@ def paper_order_policy_for_asset_class(asset_class: str) -> PaperOrderPolicy:
             f"unsupported paper order asset_class: {asset_class!r}; "
             f"expected one of {expected}"
         ) from None
+
+
+def _valid_spy_close_submit_client_order_id(client_order_id: str) -> bool:
+    return (
+        client_order_id.startswith("paper-order-close-")
+        and client_order_id.endswith("_spy_paper_close_submit")
+    )
 
 
 def _close_preview_gate(

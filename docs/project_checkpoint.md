@@ -14669,6 +14669,26 @@ Safe next tasks include:
   construction. No fresh broker observation, submit, cancel, replace, close,
   liquidation, delete, retry, scheduler, live profile, credential printing, or
   trading hot-path behavior occurred.
+- M376A repairs the existing `paper-lab-spy-close-submit` command offline for
+  the fresh M375C close-preview evidence. The stale default bug was that the
+  command still loaded M354 evidence fields and built the M355 close request:
+  client order id `paper-order-close-m355_spy_paper_close_submit` and quantity
+  `0.032905647`. The repaired path accepts
+  `--close-preview-run-log runs/paper_lab/m375c_spy_position_close_preview_fresh_paper.jsonl`
+  with `--run-id m376_spy_position_close_submit`, derives the SPY sell quantity
+  `0.033172072` from the fresh preview record, and resolves the submit request
+  client order id to `paper-order-close-m376_spy_paper_close_submit`. Missing
+  `--submit` or `--i-mean-it`, stale M354 evidence, submitted/mutated/live or
+  not-ready preview evidence, profile/halt failures, open orders, duplicates,
+  unavailable observations, or quantity-over-position conditions still fail
+  closed before broker construction. The SPY quantity close does not use the
+  entry notional-cap gate. Verification for M376A passed
+  `python -m pytest tests/unit/test_paper_lab_cli_smoke.py`,
+  `python -m pytest tests/unit/test_dependency_direction.py`,
+  `python -m pytest tests/unit/test_broker_mutation_surface_invariant.py`,
+  `python -m pytest tests/unit/test_default_pytest_network_guard.py`, and
+  `python -m pytest` with normal pytest remaining offline and credential-free.
+  No real broker submit happened during M376A.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

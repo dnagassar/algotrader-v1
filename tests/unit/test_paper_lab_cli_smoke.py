@@ -34,6 +34,10 @@ from tests.fakes.alpaca import FakeAlpacaClient
 SENSITIVE_API_KEY = "paper-lab-sensitive-api-key"
 SENSITIVE_SECRET_KEY = "paper-lab-sensitive-secret-key"
 API_ERROR_URL = "https://paper.example.test/v2/orders"
+M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit"
+M355_SPY_CLOSE_QUANTITY = "0.032905647"
+M376_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m376_spy_paper_close_submit"
+M376_SPY_CLOSE_QUANTITY = "0.033172072"
 
 
 class APIError(Exception):
@@ -518,22 +522,32 @@ def test_spy_close_preview_blocks_open_spy_orders(
     )
 
 
+@pytest.mark.parametrize(
+    "extra_flags",
+    (
+        (),
+        ("--submit",),
+        ("--i-mean-it",),
+    ),
+)
 def test_spy_close_submit_requires_explicit_submit_confirmation(
     monkeypatch,
     capsys,
     tmp_path,
+    extra_flags: tuple[str, ...],
 ) -> None:
     _set_env(monkeypatch)
     _forbid_broker_build(monkeypatch)
-    m354_log = _write_m354_spy_close_preview_log(tmp_path)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
 
     exit_code, payload = _run_json(
         (
             "paper-lab-spy-close-submit",
-            "--m354-run-log",
-            str(m354_log),
+            "--close-preview-run-log",
+            str(close_preview_log),
             "--run-id",
-            "m355_spy_paper_close_submit",
+            "m376_spy_position_close_submit",
+            *extra_flags,
             "--format",
             "json",
         ),
@@ -546,26 +560,28 @@ def test_spy_close_submit_requires_explicit_submit_confirmation(
     assert payload["broker_action_performed"] is False
     assert payload["close_order_submitted"] is False
     assert payload["error"] == "submit_confirmation_gate_failed"
+    assert payload["client_order_id"] == M376_SPY_CLOSE_CLIENT_ORDER_ID
+    assert payload["requested_close_quantity"] == M376_SPY_CLOSE_QUANTITY
 
 
-def test_spy_close_submit_blocks_non_ready_m354_without_broker_call(
+def test_spy_close_submit_blocks_non_ready_close_preview_without_broker_call(
     monkeypatch,
     capsys,
     tmp_path,
 ) -> None:
     _set_env(monkeypatch)
     _forbid_broker_build(monkeypatch)
-    m354_log = _write_m354_spy_close_preview_log(
+    close_preview_log = _write_m375c_spy_close_preview_log(
         tmp_path,
         ok=False,
-        state="blocked_from_spy_paper_close_submit_milestone",
+        readiness_classification="blocked_from_spy_paper_close_submit_milestone",
     )
 
     exit_code, payload = _run_json(
         (
             "paper-lab-spy-close-submit",
-            "--m354-run-log",
-            str(m354_log),
+            "--close-preview-run-log",
+            str(close_preview_log),
             "--submit",
             "--i-mean-it",
             "--format",
@@ -582,6 +598,41 @@ def test_spy_close_submit_blocks_non_ready_m354_without_broker_call(
     assert payload["error"] == "m354_state_gate_failed"
 
 
+def test_spy_close_submit_blocks_stale_m354_preview_without_broker_call(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    _forbid_broker_build(monkeypatch)
+    stale_m354_log = _write_m354_spy_close_preview_log(tmp_path)
+
+    exit_code, payload = _run_json(
+        (
+            "paper-lab-spy-close-submit",
+            "--close-preview-run-log",
+            str(stale_m354_log),
+            "--submit",
+            "--i-mean-it",
+            "--run-id",
+            "m376_spy_position_close_submit",
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 2
+    assert payload["submitted"] is False
+    assert payload["submit_attempt_count"] == 0
+    assert payload["broker_action_performed"] is False
+    assert payload["close_preview_fresh_source"] is False
+    assert payload["m354_state"] == "stale_close_preview_source"
+    assert payload["requested_close_quantity"] == ""
+    assert payload["client_order_id"] == M376_SPY_CLOSE_CLIENT_ORDER_ID
+    assert payload["proposed_order_request"] is None
+
+
 def test_spy_close_submit_blocks_fresh_open_order_gate(
     monkeypatch,
     capsys,
@@ -596,10 +647,10 @@ def test_spy_close_submit_blocks_fresh_open_order_gate(
             },
         ),
     )
-    m354_log = _write_m354_spy_close_preview_log(tmp_path)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
 
     exit_code, payload = _run_json(
-        _valid_spy_close_submit_args(m354_log, submit=True),
+        _valid_spy_close_submit_args(close_preview_log, submit=True),
         capsys,
     )
 
@@ -618,7 +669,7 @@ def test_spy_close_submit_blocks_fresh_open_order_gate(
     assert payload["error"] == "recent_open_order_gate_failed"
 
 
-def test_spy_close_submit_blocks_duplicate_m355_client_order_id(
+def test_spy_close_submit_blocks_duplicate_m376_client_order_id(
     monkeypatch,
     capsys,
     tmp_path,
@@ -630,27 +681,28 @@ def test_spy_close_submit_blocks_duplicate_m355_client_order_id(
             pre_orders={
                 "all": (
                     _spy_close_order_response(
-                        "paper-order-close-m355_spy_paper_close_submit"
+                        M376_SPY_CLOSE_CLIENT_ORDER_ID
                     ),
                 ),
             },
         ),
     )
-    m354_log = _write_m354_spy_close_preview_log(tmp_path)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
 
     exit_code, payload = _run_json(
-        _valid_spy_close_submit_args(m354_log, submit=True),
+        _valid_spy_close_submit_args(close_preview_log, submit=True),
         capsys,
     )
 
     assert exit_code == 2
     assert fake_client.submitted_requests == []
     assert payload["submitted"] is False
+    assert payload["duplicate_client_order_id_found"] is True
     assert payload["duplicate_m355_client_order_id_found"] is True
     assert payload["error"] == "duplicate_client_order_id_gate_failed"
 
 
-def test_spy_close_submit_submits_once_and_records_post_observation(
+def test_spy_close_submit_accepts_m376_evidence_and_builds_fresh_request(
     monkeypatch,
     capsys,
     tmp_path,
@@ -660,16 +712,16 @@ def test_spy_close_submit_submits_once_and_records_post_observation(
         monkeypatch,
         FakeSpyCloseSubmitAlpacaClient(),
     )
-    m354_log = _write_m354_spy_close_preview_log(tmp_path)
-    run_log = tmp_path / "runs" / "paper_lab" / "m355.jsonl"
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m376.jsonl"
 
     exit_code, payload = _run_json(
         (
-            *_valid_spy_close_submit_args(m354_log, submit=True),
+            *_valid_spy_close_submit_args(close_preview_log, submit=True),
             "--run-log",
             str(run_log),
             "--run-id",
-            "m355_spy_paper_close_submit",
+            "m376_spy_position_close_submit",
         ),
         capsys,
     )
@@ -694,14 +746,22 @@ def test_spy_close_submit_submits_once_and_records_post_observation(
     ]
     assert len(fake_client.submitted_requests) == 1
     request = fake_client.submitted_requests[0]
-    assert request.client_order_id == "paper-order-close-m355_spy_paper_close_submit"
+    assert request.client_order_id == M376_SPY_CLOSE_CLIENT_ORDER_ID
+    assert request.client_order_id != M355_SPY_CLOSE_CLIENT_ORDER_ID
     assert request.asset_class == "equity"
     assert request.symbol == "SPY"
     assert request.side == "sell"
-    assert request.qty == Decimal("0.032905647")
+    assert request.qty == Decimal(M376_SPY_CLOSE_QUANTITY)
+    assert request.qty != Decimal(M355_SPY_CLOSE_QUANTITY)
     assert request.notional is None
     assert request.order_type == "market"
     assert request.time_in_force == "day"
+    assert "notional_cap_gate" not in payload["gates"]
+    assert payload["proposed_order_request"]["client_order_id"] == (
+        M376_SPY_CLOSE_CLIENT_ORDER_ID
+    )
+    assert payload["proposed_order_request"]["qty"] == M376_SPY_CLOSE_QUANTITY
+    assert payload["proposed_order_request"]["notional"] == ""
     assert payload["state"] == "close_submit_accepted_pending_reconciliation"
     assert payload["submitted"] is True
     assert payload["mutated"] is True
@@ -717,10 +777,10 @@ def test_spy_close_submit_submits_once_and_records_post_observation(
     assert payload["normalized_status"] == "accepted"
     assert payload["account_cash"] == "1974.9"
     assert payload["account_currency"] == "USD"
-    assert payload["spy_quantity"] == "0.032905647"
+    assert payload["spy_quantity"] == M376_SPY_CLOSE_QUANTITY
     assert payload["recent_open_spy_order_count"] == 0
     assert payload["post_submit_account_cash"] == "1974.9"
-    assert payload["post_close_remaining_quantity"] == "0.032905647"
+    assert payload["post_close_remaining_quantity"] == M376_SPY_CLOSE_QUANTITY
     assert payload["post_submit_recent_open_spy_order_count"] == 1
     assert payload["post_submit_matching_recent_order_found"] is True
     assert [record["event_type"] for record in records] == [
@@ -743,10 +803,10 @@ def test_spy_close_submit_does_not_retry_after_submit_exception(
         monkeypatch,
         FakeSpyCloseSubmitAlpacaClient(raise_on_submit=True),
     )
-    m354_log = _write_m354_spy_close_preview_log(tmp_path)
+    close_preview_log = _write_m375c_spy_close_preview_log(tmp_path)
 
     exit_code, payload = _run_json(
-        _valid_spy_close_submit_args(m354_log, submit=True),
+        _valid_spy_close_submit_args(close_preview_log, submit=True),
         capsys,
     )
 
@@ -2940,16 +3000,16 @@ def _valid_close_probe_args(
 
 
 def _valid_spy_close_submit_args(
-    m354_run_log,  # noqa: ANN001
+    close_preview_run_log,  # noqa: ANN001
     *,
     submit: bool = False,
 ) -> tuple[str, ...]:
     args = (
         "paper-lab-spy-close-submit",
-        "--m354-run-log",
-        str(m354_run_log),
+        "--close-preview-run-log",
+        str(close_preview_run_log),
         "--run-id",
-        "m355_spy_paper_close_submit",
+        "m376_spy_position_close_submit",
         "--format",
         "json",
     )
@@ -3170,8 +3230,8 @@ class FakeSpyCloseSubmitAlpacaClient(FakeAlpacaClient):
     def __init__(
         self,
         *,
-        position_qty: str = "0.032905647",
-        post_position_qty: str = "0.032905647",
+        position_qty: str = M376_SPY_CLOSE_QUANTITY,
+        post_position_qty: str = M376_SPY_CLOSE_QUANTITY,
         pre_orders: dict[str, tuple[AlpacaOrderResponse, ...]] | None = None,
         status: str = "accepted",
         raise_on_submit: bool = False,
@@ -3204,7 +3264,7 @@ class FakeSpyCloseSubmitAlpacaClient(FakeAlpacaClient):
                 symbol="SPY",
                 qty=Decimal(qty),
                 market_value=Decimal("25.00"),
-                average_entry_price=Decimal("759.748"),
+                average_entry_price=Decimal("753.646"),
             )
         ]
 
@@ -3218,7 +3278,7 @@ class FakeSpyCloseSubmitAlpacaClient(FakeAlpacaClient):
             return list(self.pre_orders.get(query.status_filter, ()))
 
         order = _spy_close_order_response(
-            "paper-order-close-m355_spy_paper_close_submit",
+            M376_SPY_CLOSE_CLIENT_ORDER_ID,
             order_id="broker-spy-close-order-1",
             side="sell",
             status=self.status,
@@ -3437,6 +3497,68 @@ def _write_m354_spy_close_preview_log(tmp_path, **overrides):  # noqa: ANN001
     return m354_log
 
 
+def _write_m375c_spy_close_preview_log(tmp_path, **overrides):  # noqa: ANN001
+    close_preview_log = (
+        tmp_path / "m375c_spy_position_close_preview_fresh_paper.jsonl"
+    )
+    record = {
+        "account": {"cash": "1974.8", "currency": "USD"},
+        "account_observation_available": True,
+        "asset_class": "equity",
+        "blockers": [],
+        "broker_action_performed": False,
+        "broker_mutation_authorized": False,
+        "close_intent_preview": {
+            "asset_class": "equity",
+            "notional": None,
+            "order_type": "market",
+            "quantity": M376_SPY_CLOSE_QUANTITY,
+            "required_next_milestone": (
+                "M376 - Explicit operator-reviewed SPY paper close submit"
+            ),
+            "side": "sell",
+            "source_position_milestone": "M370C",
+            "source_reconciliation_milestone": "M374",
+            "submit_authorized": False,
+            "symbol": "SPY",
+            "time_in_force": "day",
+        },
+        "close_intent_preview_available": True,
+        "close_order_submitted": False,
+        "close_preview_only": True,
+        "close_submit_authorized": False,
+        "command": "etf-sma-m375-spy-close-preview",
+        "expected_m370c_filled_quantity": M376_SPY_CLOSE_QUANTITY,
+        "live_authorized": False,
+        "milestone": "M375",
+        "mutated": False,
+        "not_live_authorized": True,
+        "observed_spy_quantity": M376_SPY_CLOSE_QUANTITY,
+        "ok": True,
+        "order_type": "market",
+        "paper_lab_only": True,
+        "paper_only": True,
+        "preview_only": True,
+        "profit_claim": "none",
+        "readiness_classification": (
+            "ready_for_separate_spy_close_submit_milestone"
+        ),
+        "run_id": "m375c_spy_position_close_preview_fresh_paper",
+        "side": "sell",
+        "source_position_milestone": "M370C",
+        "source_reconciliation_milestone": "M374",
+        "submitted": False,
+        "symbol": "SPY",
+        "time_in_force": "day",
+    }
+    record.update(overrides)
+    close_preview_log.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+    return close_preview_log
+
+
 def _spy_close_order_response(
     client_order_id: str,
     *,
@@ -3451,15 +3573,15 @@ def _spy_close_order_response(
         symbol="SPY",
         side=side,
         status=status,
-        qty=Decimal("0.032905647"),
+        qty=Decimal(M376_SPY_CLOSE_QUANTITY),
         asset_class="equity",
         order_type="market",
         time_in_force="day",
         created_at=observed_at,
         submitted_at=observed_at,
         filled_at=observed_at if status == "filled" else None,
-        filled_qty=Decimal("0.032905647") if status == "filled" else None,
-        filled_avg_price=Decimal("759.748") if status == "filled" else None,
+        filled_qty=Decimal(M376_SPY_CLOSE_QUANTITY) if status == "filled" else None,
+        filled_avg_price=Decimal("753.646") if status == "filled" else None,
     )
 
 

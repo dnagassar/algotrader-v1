@@ -9258,6 +9258,24 @@ before broker construction. No fresh broker observation, submit, cancel,
 replace, close, liquidation, delete, retry, scheduler, live profile, credential
 printing, or trading hot-path behavior occurred.
 
+M376A repairs the existing `paper-lab-spy-close-submit` command offline for the
+fresh M375C close-preview artifact. The stale default bug was that the command
+still loaded M354 evidence fields and built the M355 close request:
+client order id `paper-order-close-m355_spy_paper_close_submit` and quantity
+`0.032905647`. The repaired invocation is:
+`paper-lab-spy-close-submit --close-preview-run-log runs/paper_lab/m375c_spy_position_close_preview_fresh_paper.jsonl --run-id m376_spy_position_close_submit --submit --i-mean-it --format json`.
+That path derives the SPY sell quantity `0.033172072` from fresh preview
+evidence and resolves client order id
+`paper-order-close-m376_spy_paper_close_submit`. Missing confirmations, stale
+or unsafe preview evidence, profile/halt failures, open orders, duplicate
+client ids, unavailable observations, and quantity-over-position conditions
+remain fail-closed before broker construction. The quantity-based SPY close is
+not blocked by the entry notional-cap gate. Verification passed the focused
+CLI smoke test, dependency-direction test, broker mutation surface invariant,
+default pytest network guard, and full `python -m pytest`; normal pytest
+remains offline and credential-free. No real broker submit happened during
+M376A.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
