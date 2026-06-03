@@ -9173,6 +9173,21 @@ harness makes no profitability, execution-quality, or live-readiness claim.
 M370B remains a separate pending ACTION leaf requiring regular equity-session
 conditions and explicit operator approval.
 
+M372 hardens the existing M370 tiny SPY paper-submit gate with deterministic
+market-session and pre-submit snapshot freshness checks. The M370 gate now
+requires an explicit UTC-normalized evaluation clock, timezone-aware
+market-session `observed_at` evidence no older than 15 minutes by default, no
+materially future-dated market-session evidence beyond a 60-second default
+tolerance, and timezone-aware pre-submit snapshot `observed_at` evidence no
+older than 5 minutes by default. Missing, timezone-naive, stale, or future-dated
+freshness evidence fails closed with deterministic blockers before any submit
+attempt can be made. Market-session blockers stop before broker construction;
+pre-submit snapshot blockers stop after read-only snapshot observation and
+before submit. M372 does not authorize broker submit, does not add an operating
+brief generator, and adds no Alpaca SDK call, credential loading, network
+access, retry, cancel, replace, close, liquidation, delete, or broker protocol
+expansion. M370B remains the separate pending regular-session ACTION leaf.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

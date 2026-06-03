@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 import json
 from pathlib import Path
@@ -48,6 +49,9 @@ _ORDER_TYPE = "market"
 _TIME_IN_FORCE = "day"
 _MAX_NOTIONAL = Decimal("25.00")
 _PROFIT_CLAIM = "none"
+_MARKET_SESSION_MAX_AGE = timedelta(minutes=15)
+_PRE_SUBMIT_SNAPSHOT_MAX_AGE = timedelta(minutes=5)
+_FUTURE_TOLERANCE = timedelta(seconds=60)
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,9 +80,15 @@ class M370EquitySessionStatus:
             blockers.append("market_session_not_open")
         if self.status == "open" and not self.source:
             blockers.append("market_session_source_missing")
-        if self.status == "open" and not self.observed_at:
-            blockers.append("market_session_observed_at_missing")
-        return tuple(blockers)
+        blockers.extend(
+            _timestamp_to_utc(
+                self.observed_at,
+                missing_blocker="market_session_observed_at_missing",
+                timezone_naive_blocker="market_session_observed_at_timezone_naive",
+                invalid_blocker="market_session_observed_at_invalid",
+            )[1]
+        )
+        return _dedupe(blockers)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -110,6 +120,11 @@ def run_m370_tiny_spy_paper_submit(
     operator_approval: str = "",
     equity_session_status: M370EquitySessionStatus,
     paper_profile_gate_passed: bool,
+    evaluated_at: str | datetime = "",
+    pre_submit_snapshot_observed_at: str | datetime = "",
+    market_session_max_age: timedelta = _MARKET_SESSION_MAX_AGE,
+    pre_submit_snapshot_max_age: timedelta = _PRE_SUBMIT_SNAPSHOT_MAX_AGE,
+    future_tolerance: timedelta = _FUTURE_TOLERANCE,
     paper_profile_gate_detail: str = "",
     halt_gate_passed: bool = True,
     halt_gate_detail: str = "halt_not_set",
@@ -126,23 +141,45 @@ def run_m370_tiny_spy_paper_submit(
     )
     checked_run_id = _required_string(run_id, "run_id")
     checked_session = _session_status(equity_session_status)
+    checked_market_session_max_age = _nonnegative_timedelta(
+        market_session_max_age,
+        "market_session_max_age",
+    )
+    checked_pre_submit_snapshot_max_age = _nonnegative_timedelta(
+        pre_submit_snapshot_max_age,
+        "pre_submit_snapshot_max_age",
+    )
+    checked_future_tolerance = _nonnegative_timedelta(
+        future_tolerance,
+        "future_tolerance",
+    )
+    evaluation_clock, evaluation_clock_blockers = _evaluation_clock(evaluated_at)
     sanitize = redactor or (lambda value: value)
     operator_approval_present = operator_approval == M370_APPROVAL_PHRASE
 
     source_record, source_blockers = _load_and_validate_m369_source(source_path)
     prior_artifact_blockers = _existing_m370_submit_blockers(output_path)
+    market_session_blockers = _market_session_blockers(
+        checked_session,
+        evaluated_at_utc=evaluation_clock,
+        evaluated_at_blockers=evaluation_clock_blockers,
+        max_age=checked_market_session_max_age,
+        future_tolerance=checked_future_tolerance,
+    )
     initial_gates = _initial_gates(
         operator_approval_present=operator_approval_present,
         paper_profile_gate_passed=paper_profile_gate_passed,
         paper_profile_gate_detail=paper_profile_gate_detail,
         halt_gate_passed=halt_gate_passed,
         halt_gate_detail=halt_gate_detail,
+        market_session_blockers=market_session_blockers,
         source_blockers=source_blockers,
         prior_artifact_blockers=prior_artifact_blockers,
     )
     blockers = _gate_blockers(initial_gates)
     payload = _base_payload(
         run_id=checked_run_id,
+        evaluated_at=_timestamp_text(evaluation_clock, evaluated_at),
         source_path=source_path,
         source_record=source_record,
         output_path=output_path,
@@ -179,9 +216,16 @@ def run_m370_tiny_spy_paper_submit(
     pre_snapshot = _observe_snapshot(
         broker,
         prefix="pre_submit",
+        observed_at=pre_submit_snapshot_observed_at,
         redactor=sanitize,
     )
-    fresh_blockers = _fresh_snapshot_blockers(pre_snapshot, checked_session)
+    fresh_blockers = _fresh_snapshot_blockers(
+        pre_snapshot,
+        evaluated_at_utc=evaluation_clock,
+        evaluated_at_blockers=evaluation_clock_blockers,
+        max_age=checked_pre_submit_snapshot_max_age,
+        future_tolerance=checked_future_tolerance,
+    )
     payload = {
         **payload,
         "blockers": list(fresh_blockers),
@@ -202,6 +246,7 @@ def run_m370_tiny_spy_paper_submit(
             "post_submit_observation": _observe_snapshot(
                 broker,
                 prefix="post_submit",
+                observed_at=pre_submit_snapshot_observed_at,
                 redactor=sanitize,
             ),
         }
@@ -281,6 +326,7 @@ def write_m370_paper_submit_artifact(
 def _base_payload(
     *,
     run_id: str,
+    evaluated_at: str,
     source_path: Path,
     source_record: Mapping[str, object] | None,
     output_path: Path | None,
@@ -300,6 +346,7 @@ def _base_payload(
         "command": M370_COMMAND,
         "credentials_redacted": True,
         "error": _error_from_blockers(blockers),
+        "evaluated_at": evaluated_at,
         "filled_average_price": "",
         "filled_quantity": "",
         "gates": {gate.name: gate.to_dict() for gate in gates},
@@ -352,6 +399,7 @@ def _initial_gates(
     paper_profile_gate_detail: str,
     halt_gate_passed: bool,
     halt_gate_detail: str,
+    market_session_blockers: Sequence[str],
     source_blockers: Sequence[str],
     prior_artifact_blockers: Sequence[str],
 ) -> tuple[M370Gate, ...]:
@@ -385,6 +433,15 @@ def _initial_gates(
             halt_gate_detail if halt_gate_passed else "ALGOTRADER_PAPER_HALT=1",
         ),
         M370Gate(
+            "market_session_gate",
+            not market_session_blockers,
+            (
+                "market_session_fresh_open"
+                if not market_session_blockers
+                else ",".join(market_session_blockers)
+            ),
+        ),
+        M370Gate(
             "prior_m370_artifact_gate",
             not prior_artifact_blockers,
             (
@@ -405,11 +462,90 @@ def _gate_blockers(gates: Sequence[M370Gate]) -> tuple[str, ...]:
     return _dedupe(blockers)
 
 
+def _market_session_blockers(
+    session_status: M370EquitySessionStatus,
+    *,
+    evaluated_at_utc: datetime | None,
+    evaluated_at_blockers: Sequence[str],
+    max_age: timedelta,
+    future_tolerance: timedelta,
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    if session_status.status != "open":
+        blockers.append("market_session_not_open")
+    if session_status.status == "open" and not session_status.source:
+        blockers.append("market_session_source_missing")
+    blockers.extend(
+        _freshness_blockers(
+            session_status.observed_at,
+            evaluated_at_utc=evaluated_at_utc,
+            evaluated_at_blockers=evaluated_at_blockers,
+            missing_blocker="market_session_observed_at_missing",
+            timezone_naive_blocker="market_session_observed_at_timezone_naive",
+            invalid_blocker="market_session_observed_at_invalid",
+            stale_blocker="market_session_status_stale",
+            future_blocker="market_session_status_future_dated",
+            max_age=max_age,
+            future_tolerance=future_tolerance,
+        )
+    )
+    return _dedupe(blockers)
+
+
+def _freshness_blockers(
+    observed_at: object,
+    *,
+    evaluated_at_utc: datetime | None,
+    evaluated_at_blockers: Sequence[str],
+    missing_blocker: str,
+    timezone_naive_blocker: str,
+    invalid_blocker: str,
+    stale_blocker: str,
+    future_blocker: str,
+    max_age: timedelta,
+    future_tolerance: timedelta,
+) -> tuple[str, ...]:
+    observed_at_utc, observed_at_blockers = _timestamp_to_utc(
+        observed_at,
+        missing_blocker=missing_blocker,
+        timezone_naive_blocker=timezone_naive_blocker,
+        invalid_blocker=invalid_blocker,
+    )
+    if observed_at_blockers:
+        return observed_at_blockers
+    if evaluated_at_blockers:
+        return tuple(evaluated_at_blockers)
+    if observed_at_utc is None or evaluated_at_utc is None:
+        return ()
+    if observed_at_utc - evaluated_at_utc > future_tolerance:
+        return (future_blocker,)
+    if evaluated_at_utc - observed_at_utc > max_age:
+        return (stale_blocker,)
+    return ()
+
+
 def _fresh_snapshot_blockers(
     snapshot: Mapping[str, object],
-    session_status: M370EquitySessionStatus,
+    *,
+    evaluated_at_utc: datetime | None,
+    evaluated_at_blockers: Sequence[str],
+    max_age: timedelta,
+    future_tolerance: timedelta,
 ) -> tuple[str, ...]:
-    blockers: list[str] = list(session_status.blockers())
+    blockers: list[str] = list(
+        _freshness_blockers(
+            snapshot.get("observed_at"),
+            evaluated_at_utc=evaluated_at_utc,
+            evaluated_at_blockers=evaluated_at_blockers,
+            missing_blocker="pre_submit_snapshot_observed_at_missing",
+            timezone_naive_blocker="pre_submit_snapshot_observed_at_timezone_naive",
+            invalid_blocker="pre_submit_snapshot_observed_at_invalid",
+            stale_blocker="pre_submit_snapshot_stale",
+            future_blocker="pre_submit_snapshot_future_dated",
+            max_age=max_age,
+            future_tolerance=future_tolerance,
+        )
+    )
     _append_if(
         blockers,
         snapshot.get("account_observation_available") is not True,
@@ -474,6 +610,7 @@ def _observe_snapshot(
     broker: Any,
     *,
     prefix: str,
+    observed_at: str | datetime = "",
     redactor: Callable[[str], str],
 ) -> dict[str, object]:
     unavailable: list[str] = []
@@ -484,6 +621,7 @@ def _observe_snapshot(
         "currency": "",
         "duplicate_m370_client_order_id_found": False,
         "duplicate_m370_client_order_id_matches": [],
+        "observed_at": _timestamp_text(None, observed_at),
         "open_order_count": 0,
         "open_orders": [],
         "orders_observation_available": False,
@@ -1088,6 +1226,59 @@ def _dedupe(values: Sequence[str]) -> tuple[str, ...]:
         seen.add(value)
         deduped.append(value)
     return tuple(deduped)
+
+
+def _evaluation_clock(value: object) -> tuple[datetime | None, tuple[str, ...]]:
+    return _timestamp_to_utc(
+        value,
+        missing_blocker="evaluation_clock_missing",
+        timezone_naive_blocker="evaluation_clock_timezone_naive",
+        invalid_blocker="evaluation_clock_invalid",
+    )
+
+
+def _timestamp_to_utc(
+    value: object,
+    *,
+    missing_blocker: str,
+    timezone_naive_blocker: str,
+    invalid_blocker: str,
+) -> tuple[datetime | None, tuple[str, ...]]:
+    if value in (None, ""):
+        return None, (missing_blocker,)
+    if isinstance(value, datetime):
+        parsed = value
+    elif type(value) is str:
+        text = value.strip()
+        if not text:
+            return None, (missing_blocker,)
+        try:
+            parsed = datetime.fromisoformat(_isoformat_z_to_offset(text))
+        except ValueError:
+            return None, (invalid_blocker,)
+    else:
+        return None, (invalid_blocker,)
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None, (timezone_naive_blocker,)
+    return parsed.astimezone(timezone.utc), ()
+
+
+def _isoformat_z_to_offset(value: str) -> str:
+    return f"{value[:-1]}+00:00" if value.endswith("Z") else value
+
+
+def _timestamp_text(parsed_utc: datetime | None, original: object) -> str:
+    if parsed_utc is not None:
+        return parsed_utc.isoformat()
+    if isinstance(original, datetime):
+        return original.isoformat()
+    return _text(original).strip()
+
+
+def _nonnegative_timedelta(value: object, field_name: str) -> timedelta:
+    if type(value) is not timedelta or value.total_seconds() < 0:
+        raise ValidationError(f"{field_name} must be a non-negative timedelta.")
+    return value
 
 
 def _session_status(value: object) -> M370EquitySessionStatus:

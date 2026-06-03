@@ -17,6 +17,9 @@ import algotrader.execution.etf_sma_m370_paper_submit as m370
 MODULE_PATH = Path("src/algotrader/execution/etf_sma_m370_paper_submit.py")
 SENSITIVE_API_KEY = "m370-sensitive-api-key"
 SENSITIVE_SECRET_KEY = "m370-sensitive-secret-key"
+AS_OF = "2026-06-02T14:04:00+00:00"
+SESSION_OBSERVED_AT = "2026-06-02T10:00:00-04:00"
+SNAPSHOT_OBSERVED_AT = "2026-06-02T14:02:00+00:00"
 
 
 def test_fails_closed_without_exact_operator_approval(tmp_path) -> None:
@@ -154,17 +157,185 @@ def test_fails_closed_when_market_session_is_unavailable_or_closed(tmp_path) -> 
     source_path = _write_source(tmp_path, _ready_m369_record())
     for status in ("unavailable", "closed"):
         broker = FakeM370Broker()
+        factory_calls: list[str] = []
 
         payload = _run(
             tmp_path,
             source_path=source_path,
-            broker_factory=lambda broker=broker: broker,
-            session=m370.M370EquitySessionStatus(status=status),
+            broker_factory=lambda broker=broker: factory_calls.append("called") or broker,
+            session=m370.M370EquitySessionStatus(
+                status=status,
+                source="unit_test_market_clock",
+                observed_at=SESSION_OBSERVED_AT,
+            ),
         )
 
         assert payload["submitted"] is False
+        assert payload["mutated"] is False
+        assert payload["ok"] is False
         assert broker.submit_count == 0
+        assert broker.calls == []
+        assert factory_calls == []
         assert "market_session_not_open" in payload["blockers"]
+
+
+def test_fails_closed_when_market_session_observed_at_is_missing(tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+    factory_calls: list[str] = []
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: factory_calls.append("called") or broker,
+        session=m370.M370EquitySessionStatus(
+            status="open",
+            source="unit_test_market_clock",
+        ),
+    )
+
+    _assert_freshness_blocked(payload, "market_session_observed_at_missing")
+    assert broker.calls == []
+    assert factory_calls == []
+
+
+def test_fails_closed_when_market_session_observed_at_is_timezone_naive(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        session=m370.M370EquitySessionStatus(
+            status="open",
+            source="unit_test_market_clock",
+            observed_at="2026-06-02T10:00:00",
+        ),
+    )
+
+    _assert_freshness_blocked(
+        payload,
+        "market_session_observed_at_timezone_naive",
+    )
+    assert broker.calls == []
+
+
+def test_fails_closed_when_market_session_observed_at_is_stale(tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        session=m370.M370EquitySessionStatus(
+            status="open",
+            source="unit_test_market_clock",
+            observed_at="2026-06-02T13:48:59+00:00",
+        ),
+    )
+
+    _assert_freshness_blocked(payload, "market_session_status_stale")
+    assert broker.calls == []
+
+
+def test_fails_closed_when_market_session_observed_at_is_future_dated(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        session=m370.M370EquitySessionStatus(
+            status="open",
+            source="unit_test_market_clock",
+            observed_at="2026-06-02T14:05:01+00:00",
+        ),
+    )
+
+    _assert_freshness_blocked(payload, "market_session_status_future_dated")
+    assert broker.calls == []
+
+
+def test_fails_closed_when_pre_submit_snapshot_observed_at_is_missing(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        pre_submit_snapshot_observed_at="",
+    )
+
+    _assert_freshness_blocked(payload, "pre_submit_snapshot_observed_at_missing")
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
+def test_fails_closed_when_pre_submit_snapshot_observed_at_is_timezone_naive(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        pre_submit_snapshot_observed_at="2026-06-02T14:02:00",
+    )
+
+    _assert_freshness_blocked(
+        payload,
+        "pre_submit_snapshot_observed_at_timezone_naive",
+    )
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
+def test_fails_closed_when_pre_submit_snapshot_observed_at_is_stale(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        pre_submit_snapshot_observed_at="2026-06-02T13:58:59+00:00",
+    )
+
+    _assert_freshness_blocked(payload, "pre_submit_snapshot_stale")
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
+
+
+def test_fails_closed_when_pre_submit_snapshot_observed_at_is_future_dated(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        pre_submit_snapshot_observed_at="2026-06-02T14:05:01+00:00",
+    )
+
+    _assert_freshness_blocked(payload, "pre_submit_snapshot_future_dated")
+    assert broker.submit_count == 0
+    assert "submit_order" not in broker.calls
 
 
 def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> None:
@@ -183,6 +354,8 @@ def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> N
     assert payload["broker_order_id"] == "broker-m370-order-1"
     assert payload["broker_status"] == "accepted"
     assert payload["client_order_id"] == m370.M370_CLIENT_ORDER_ID
+    assert payload["evaluated_at"] == AS_OF
+    assert payload["pre_submit_snapshot"]["observed_at"] == SNAPSHOT_OBSERVED_AT
     assert broker.calls == [
         "get_account",
         "get_positions",
@@ -203,6 +376,33 @@ def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> N
     assert request.time_in_force == "day"
     assert request.notional == Decimal("25.00")
     assert request.qty is None
+
+
+def test_ambiguous_submit_exception_sets_submitted_mutated_and_no_retry(
+    tmp_path,
+) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker(
+        submit_exception=RuntimeError(f"ambiguous {SENSITIVE_SECRET_KEY}"),
+    )
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+        redactor=lambda value: value.replace(SENSITIVE_SECRET_KEY, "<redacted>"),
+    )
+
+    assert payload["ok"] is False
+    assert payload["submitted"] is True
+    assert payload["mutated"] is True
+    assert payload["broker_error"] is True
+    assert payload["submit_call_count"] == 1
+    assert payload["error"] == "m370_submit_ambiguous_after_single_call"
+    assert payload["state"] == "ambiguous_after_single_submit_stop_no_retry"
+    assert payload["redacted_exception_message"] == "ambiguous <redacted>"
+    assert broker.submit_count == 1
+    assert broker.calls.count("submit_order") == 1
 
 
 def test_does_not_call_submit_order_when_prior_m370_submit_exists(tmp_path) -> None:
@@ -228,6 +428,8 @@ def test_does_not_call_submit_order_when_prior_m370_submit_exists(tmp_path) -> N
         operator_approval=m370.M370_APPROVAL_PHRASE,
         equity_session_status=_open_session(),
         paper_profile_gate_passed=True,
+        evaluated_at=AS_OF,
+        pre_submit_snapshot_observed_at=SNAPSHOT_OBSERVED_AT,
         paper_profile_gate_detail="paper_profile_ready",
         broker_factory=lambda: broker,
     )
@@ -275,7 +477,7 @@ def test_write_artifact_appends_one_jsonl_record(tmp_path) -> None:
     assert records == [payload]
 
 
-def test_cli_m370_submit_path_uses_fake_broker_and_redacts_raw_approval(
+def test_cli_m370_submit_path_fails_closed_without_evaluation_clock_and_redacts(
     monkeypatch,
     capsys,
     tmp_path,
@@ -319,9 +521,13 @@ def test_cli_m370_submit_path_uses_fake_broker_and_redacts_raw_approval(
         for line in output_path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
-    assert exit_code == 0
-    assert payload["submitted"] is True
-    assert broker.submit_count == 1
+    assert exit_code == 2
+    assert payload["ok"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert "evaluation_clock_missing" in payload["blockers"]
+    assert broker.submit_count == 0
+    assert broker.calls == []
     assert records == [payload]
     assert m370.M370_APPROVAL_PHRASE not in rendered
     assert SENSITIVE_API_KEY not in rendered
@@ -360,6 +566,7 @@ class FakeM370Broker:
         post_open_orders=(),  # noqa: ANN001
         post_recent_orders=(),  # noqa: ANN001
         result: BrokerOrderResult | None = None,
+        submit_exception: Exception | None = None,
     ) -> None:
         self.cash = cash
         self.currency = currency
@@ -369,6 +576,7 @@ class FakeM370Broker:
         self.post_open_orders = tuple(post_open_orders)
         self.post_recent_orders = tuple(post_recent_orders)
         self.result = result or _accepted_result()
+        self.submit_exception = submit_exception
         self.calls: list[str] = []
         self.submitted_requests = []
         self.submit_count = 0
@@ -401,6 +609,8 @@ class FakeM370Broker:
         self.submitted_requests.append(request)
         assert risk_verdict is not None
         assert risk_verdict.allowed is True
+        if self.submit_exception is not None:
+            raise self.submit_exception
         return self.result
 
 
@@ -411,6 +621,8 @@ def _run(
     operator_approval: str = m370.M370_APPROVAL_PHRASE,
     broker_factory,
     session: m370.M370EquitySessionStatus | None = None,
+    evaluated_at: str = AS_OF,
+    pre_submit_snapshot_observed_at: str = SNAPSHOT_OBSERVED_AT,
     redactor=lambda value: value,
 ) -> dict[str, object]:
     return m370.run_m370_tiny_spy_paper_submit(
@@ -420,6 +632,8 @@ def _run(
         operator_approval=operator_approval,
         equity_session_status=session or _open_session(),
         paper_profile_gate_passed=True,
+        evaluated_at=evaluated_at,
+        pre_submit_snapshot_observed_at=pre_submit_snapshot_observed_at,
         paper_profile_gate_detail="paper_profile_ready",
         halt_gate_passed=True,
         halt_gate_detail="halt_not_set",
@@ -428,11 +642,19 @@ def _run(
     )
 
 
+def _assert_freshness_blocked(payload: dict[str, object], blocker: str) -> None:
+    assert payload["ok"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["submit_call_count"] == 0
+    assert blocker in payload["blockers"]
+
+
 def _open_session() -> m370.M370EquitySessionStatus:
     return m370.M370EquitySessionStatus(
         status="open",
         source="unit_test_market_clock",
-        observed_at="2026-06-02T10:00:00-04:00",
+        observed_at=SESSION_OBSERVED_AT,
     )
 
 
