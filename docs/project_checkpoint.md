@@ -14791,6 +14791,24 @@ Safe next tasks include:
   `decision=blocked/open_order_present` with `m376_order_nonterminal` and
   `open_order_present` blockers. M376 remains nonterminal/open, so SPY submits
   stay forbidden until terminal read-only reconciliation.
+- M383 reran the M376 SPY close-order reconciliation in a scoped paper shell
+  with `python -m algotrader paper-order-reconcile --symbol SPY --client-order-id paper-order-close-m376_spy_paper_close_submit --broker-order-id dbb32dd3-58bf-49ea-b9b1-9aa44e85002d --expected-side sell --expected-qty 0.033172072 --run-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --run-id m383_m376_spy_close_order_reconciliation --format json`.
+  Normal-shell booleans before and after the paper shell were clean, and the
+  paper-shell checks printed booleans only. The fresh artifact contains one
+  record: the exact M376 order is still found in open orders with
+  `observed_status=accepted`, `terminal_state=nonterminal`,
+  `reconciliation_decision=m376_nonterminal_open`, SPY position quantity
+  `0.033172072`, one open SPY order, no non-SPY positions, and
+  `submitted=false`, `mutated=false`, and `broker_action_performed=false`.
+  The refreshed offline cycle command
+  `python -m algotrader etf-sma-cycle --symbol SPY --run-id m383_etf_sma_cycle_after_reconciliation --run-log runs/paper_lab/m383_etf_sma_cycle_after_reconciliation.jsonl --order-reconciliation-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --format json`
+  writes exactly one record with `decision=blocked/open_order_present`,
+  blockers `m376_order_nonterminal` and `open_order_present`,
+  `next_allowed_action=offline_work_or_read_only_reconciliation`,
+  `spy_submit_until_m376_terminal` still forbidden, and all offline safety flags
+  false for submit, mutation, broker action, network access, and credential
+  access. No submit, cancel, replace, close, liquidation, delete, retry, live
+  profile, credential printing, source change, or test change occurred.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

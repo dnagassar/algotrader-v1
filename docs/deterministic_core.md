@@ -9390,6 +9390,29 @@ reads the M381 reconciliation evidence and produces
 `open_order_present` blockers. M376 therefore remains nonterminal/open, and
 SPY submits remain forbidden until terminal read-only reconciliation.
 
+M383 refreshed the read-only M376 order reconciliation in a scoped paper shell
+with:
+`python -m algotrader paper-order-reconcile --symbol SPY --client-order-id paper-order-close-m376_spy_paper_close_submit --broker-order-id dbb32dd3-58bf-49ea-b9b1-9aa44e85002d --expected-side sell --expected-qty 0.033172072 --run-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --run-id m383_m376_spy_close_order_reconciliation --format json`.
+Normal shells before and after the scoped paper command were credential-free.
+The paper-shell booleans confirmed paper profile, loaded local Alpaca key and
+secret values without printing them, paper endpoint configuration, and no live
+URL detection. The artifact contains one record with
+`observed_status=accepted`, `terminal_state=nonterminal`,
+`reconciliation_decision=m376_nonterminal_open`, `spy_position_qty=0.033172072`,
+one open SPY order, no non-SPY positions, and `submitted=false`,
+`mutated=false`, and `broker_action_performed=false`. The refreshed offline
+cycle command
+`python -m algotrader etf-sma-cycle --symbol SPY --run-id m383_etf_sma_cycle_after_reconciliation --run-log runs/paper_lab/m383_etf_sma_cycle_after_reconciliation.jsonl --order-reconciliation-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --format json`
+writes one local JSONL record with `decision=blocked/open_order_present`,
+blockers `m376_order_nonterminal` and `open_order_present`,
+`next_allowed_action=offline_work_or_read_only_reconciliation`, and
+`spy_submit_until_m376_terminal` in `next_forbidden_action`. The cycle artifact
+also preserves `submitted=false`, `mutated=false`,
+`broker_action_performed=false`, `network_access_attempted=false`, and
+`credential_access_attempted=false`. No submit, cancel, replace, close,
+liquidation, delete, retry, live profile, credential printing, broker mutation,
+source change, or test change occurred.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
