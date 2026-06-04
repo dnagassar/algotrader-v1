@@ -409,6 +409,54 @@ def build_parser() -> argparse.ArgumentParser:
         run_log="runs/paper_lab/m375_spy_position_close_preview.jsonl",
         run_id="m375_spy_position_close_preview",
     )
+    etf_sma_backtest_parser = subparsers.add_parser(
+        "etf-sma-backtest",
+        help="Run an offline local-data-only SPY ETF/SMA backtest.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol to backtest. Default: SPY.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--bars-csv",
+        required=True,
+        help="Read daily bars from a local CSV path.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write one deterministic JSONL backtest artifact to PATH.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--run-id",
+        default="spy_etf_sma_backtest",
+        help="Run/session id to include in the artifact.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--initial-cash",
+        default="1000",
+        help="Initial cash for the modeled offline portfolio. Default: 1000.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--fast-window",
+        type=int,
+        default=50,
+        help="Fast SMA window. Default: 50.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--slow-window",
+        type=int,
+        default=200,
+        help="Slow SMA window. Default: 200.",
+    )
+    etf_sma_backtest_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Backtest output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -741,6 +789,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_paper_preview_only(args)
     if command == "etf-sma-m368-broker-preview-only":
         return _run_etf_sma_m368_broker_preview_only(args)
+    if command == "etf-sma-backtest":
+        return _run_etf_sma_backtest(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -1235,6 +1285,40 @@ def _run_etf_sma_cycle_preview(
     else:
         print(render_etf_sma_cycle_preview_text(preview))
     return 0
+
+
+def _run_etf_sma_backtest(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_backtest import (
+        EtfSmaBacktestConfig,
+        build_etf_sma_backtest_from_csv,
+        render_etf_sma_backtest_json,
+        render_etf_sma_backtest_text,
+        write_etf_sma_backtest_artifact,
+    )
+
+    try:
+        payload = build_etf_sma_backtest_from_csv(
+            EtfSmaBacktestConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                bars_source=args.bars_csv,
+                initial_cash=Decimal(str(args.initial_cash)),
+                fast_window=args.fast_window,
+                slow_window=args.slow_window,
+            )
+        )
+        write_etf_sma_backtest_artifact(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_backtest_json(payload))
+    else:
+        print(render_etf_sma_backtest_text(payload))
+
+    return 2 if payload.get("blocked") is True else 0
 
 
 def _load_etf_sma_cycle_preview_bars(

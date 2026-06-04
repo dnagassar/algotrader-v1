@@ -14745,6 +14745,21 @@ Safe next tasks include:
   before and after the scoped paper command remained credential-free. No second
   preview, submit, cancel, replace, close, liquidation, delete, retry, live
   profile, credential printing, market-data fetch, or broker mutation occurred.
+- M378 adds `etf-sma-backtest`, an offline local-CSV SPY ETF/SMA backtest
+  command that writes one deterministic JSONL artifact with posture history,
+  equity curve, trades, and stats. The command is parameterized by symbol,
+  bars CSV, run log, run id, initial cash, fast window, and slow window, and is
+  dispatched before runtime config/profile loading. The contract computes SMA
+  posture from bars available through as-of date T and models any target no
+  earlier than the next input bar close. It starts flat, remains long-only,
+  uses no leverage or shorting, records explicit zero commission/slippage
+  assumptions, and preserves `submitted=false`, `mutated=false`,
+  `broker_action_performed=false`, `live_authorized=false`, and
+  `profit_claim=none`. Missing local CSV input writes a deterministic blocked
+  artifact and performs no market-data fetch. No Alpaca SDK, broker, execution,
+  paper profile, credentials, network, submit, cancel, replace, close,
+  liquidation, retry, live path, or live-readiness/profitability claim is
+  added.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

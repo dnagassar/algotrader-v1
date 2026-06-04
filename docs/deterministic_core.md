@@ -9337,6 +9337,22 @@ terminal from the visible blocker. There was no second preview, submit, cancel,
 replace, close, liquidation, delete, retry, live profile, credential printing,
 market-data fetch, or broker mutation.
 
+M378 adds `etf-sma-backtest`, the smallest offline SPY ETF/SMA 50/200
+backtest artifact path. Its normal shape is:
+`algotrader etf-sma-backtest --symbol SPY --bars-csv <local daily bars csv> --run-log runs/backtests/m378_spy_etf_sma_backtest.jsonl --run-id m378_spy_etf_sma_backtest --initial-cash 1000 --fast-window 50 --slow-window 200`.
+The command is handled before runtime config/profile loading and reads only the
+caller-supplied local CSV; missing input writes a blocked artifact and performs
+no fetch. The artifact is one deterministic JSONL object containing posture
+history, equity curve, trades, and stats. SMA posture is computed from bars
+available through as-of date T, and any target is modeled no earlier than the
+next input bar close. The model is long-only, starts flat, uses no leverage or
+shorting, records zero commission/slippage assumptions, and preserves
+`submitted=false`, `mutated=false`, `broker_action_performed=false`,
+`live_authorized=false`, and `profit_claim=none`. No Alpaca SDK, broker,
+execution, paper profile, credentials, network, market-data fetch, submit,
+cancel, replace, close, liquidation, retry, live path, or live-readiness claim
+is added.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
