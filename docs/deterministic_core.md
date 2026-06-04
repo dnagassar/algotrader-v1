@@ -9439,6 +9439,31 @@ preserves `submitted=false`, `mutated=false`,
 network access, broker construction, submit, cancel, replace, close,
 liquidation, delete, retry loop, live profile, or non-SPY action is added.
 
+M385 refreshed the existing M376 SPY close-order reconciliation in a scoped
+paper shell with:
+`python -m algotrader paper-order-reconcile --symbol SPY --client-order-id paper-order-close-m376_spy_paper_close_submit --broker-order-id dbb32dd3-58bf-49ea-b9b1-9aa44e85002d --expected-side sell --expected-qty 0.033172072 --run-log runs/paper_lab/m385_m376_spy_close_order_reconciliation.jsonl --run-id m385_m376_spy_close_order_reconciliation --format json`.
+Normal-shell booleans before and after the scoped paper command were clean,
+and the paper-shell checks printed booleans only. The fresh reconciliation
+artifact contains one record with `observed_status=accepted`,
+`observed_filled_qty=0`, `observed_remaining_qty=0.033172072`,
+`terminal_state=nonterminal`,
+`reconciliation_decision=m376_nonterminal_open`,
+`spy_position_qty=0.033172072`, one open SPY order, no non-SPY positions, and
+`submitted=false`, `mutated=false`, `broker_action_performed=false`, and
+`live_authorized=false`. The M385 offline daily preview
+`python -m algotrader paper-lab-daily-preview --symbol SPY --run-id m385_paper_lab_daily_preview --run-log runs/paper_lab/m385_paper_lab_daily_preview.jsonl --order-reconciliation-log runs/paper_lab/m385_m376_spy_close_order_reconciliation.jsonl --format json`
+writes exactly one local JSONL record with `daily_preview_status=blocked`,
+`cycle_decision=blocked/open_order_present`, blockers
+`m376_order_nonterminal` and `open_order_present`,
+`next_allowed_action=offline_work_or_read_only_reconciliation`, and
+`spy_submit_until_m376_terminal` in `next_forbidden_action`. The daily preview
+preserves `submitted=false`, `mutated=false`,
+`broker_action_performed=false`, `broker_mutation_allowed=false`,
+`network_access_attempted=false`, `credential_access_attempted=false`, and
+`live_authorized=false`. M376 remains nonterminal/open; no submit, cancel,
+replace, close, liquidation, delete, retry, live profile, credential printing,
+source change, or test change occurred.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

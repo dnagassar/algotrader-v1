@@ -14828,6 +14828,29 @@ Safe next tasks include:
   SDK import, socket/network path, credential access, broker construction,
   submit, cancel, replace, close, liquidation, delete, retry, live profile, or
   non-SPY action.
+- M385 reran the existing M376 SPY close-order reconciliation in a scoped
+  paper shell with `python -m algotrader paper-order-reconcile --symbol SPY --client-order-id paper-order-close-m376_spy_paper_close_submit --broker-order-id dbb32dd3-58bf-49ea-b9b1-9aa44e85002d --expected-side sell --expected-qty 0.033172072 --run-log runs/paper_lab/m385_m376_spy_close_order_reconciliation.jsonl --run-id m385_m376_spy_close_order_reconciliation --format json`.
+  Normal-shell booleans before and after the scoped paper command were clean,
+  and paper-shell checks printed booleans only. The fresh reconciliation
+  artifact records exact M376 order evidence still found in open orders:
+  `observed_status=accepted`, `observed_filled_qty=0`,
+  `observed_remaining_qty=0.033172072`, `terminal_state=nonterminal`,
+  `reconciliation_decision=m376_nonterminal_open`, SPY position quantity
+  `0.033172072`, one open SPY order, no non-SPY positions, and
+  `submitted=false`, `mutated=false`, `broker_action_performed=false`, and
+  `live_authorized=false`. The offline daily preview
+  `python -m algotrader paper-lab-daily-preview --symbol SPY --run-id m385_paper_lab_daily_preview --run-log runs/paper_lab/m385_paper_lab_daily_preview.jsonl --order-reconciliation-log runs/paper_lab/m385_m376_spy_close_order_reconciliation.jsonl --format json`
+  writes exactly one record with `daily_preview_status=blocked`,
+  `cycle_decision=blocked/open_order_present`, blockers
+  `m376_order_nonterminal` and `open_order_present`,
+  `next_allowed_action=offline_work_or_read_only_reconciliation`,
+  `spy_submit_until_m376_terminal` still forbidden, and all offline daily
+  preview safety flags false for submit, mutation, broker action, broker
+  mutation allowance, network access, credential access, and live
+  authorization. M376 remains nonterminal/open, so SPY submits remain forbidden
+  until terminal read-only reconciliation. No submit, cancel, replace, close,
+  liquidation, delete, retry, live profile, credential printing, source change,
+  or test change occurred.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
