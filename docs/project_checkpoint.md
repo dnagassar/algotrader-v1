@@ -14809,6 +14809,25 @@ Safe next tasks include:
   false for submit, mutation, broker action, network access, and credential
   access. No submit, cancel, replace, close, liquidation, delete, retry, live
   profile, credential printing, source change, or test change occurred.
+- M384 adds `paper-lab-daily-preview`, an offline-only daily preview entrypoint
+  for the SPY ETF/SMA paper lab. It runs before runtime config loading,
+  requires an explicit local order-reconciliation JSONL path, writes exactly
+  one replacing JSONL operator artifact, and reuses the offline `etf-sma-cycle`
+  builder for the cycle decision. The M384 command shape is
+  `python -m algotrader paper-lab-daily-preview --symbol SPY --run-id m384_paper_lab_daily_preview --run-log runs/paper_lab/m384_paper_lab_daily_preview.jsonl --order-reconciliation-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --format json`.
+  Missing, malformed, ambiguous, or conflicting reconciliation input fails
+  closed with `missing_or_invalid_order_reconciliation`; non-SPY position
+  evidence fails closed with `unexpected_non_spy_position`. While M376 remains
+  nonterminal/open, the preview reports `daily_preview_status=blocked`,
+  `cycle_decision=blocked/open_order_present`, blockers
+  `m376_order_nonterminal` and `open_order_present`,
+  `next_allowed_action=offline_work_or_read_only_reconciliation`, and
+  `spy_submit_until_m376_terminal` forbidden. The command preserves false
+  safety flags for submit, mutation, broker action, broker mutation allowance,
+  network access, credential access, and live authorization, and adds no Alpaca
+  SDK import, socket/network path, credential access, broker construction,
+  submit, cancel, replace, close, liquidation, delete, retry, live profile, or
+  non-SPY action.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

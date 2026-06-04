@@ -9413,6 +9413,32 @@ also preserves `submitted=false`, `mutated=false`,
 liquidation, delete, retry, live profile, credential printing, broker mutation,
 source change, or test change occurred.
 
+M384 adds the offline `paper-lab-daily-preview` entrypoint for a future
+scheduler to call after read-only reconciliation evidence exists:
+`python -m algotrader paper-lab-daily-preview --symbol SPY --run-id m384_paper_lab_daily_preview --run-log runs/paper_lab/m384_paper_lab_daily_preview.jsonl --order-reconciliation-log runs/paper_lab/m383_m376_spy_close_order_reconciliation.jsonl --format json`.
+The command is dispatched before runtime config/profile loading, requires the
+order-reconciliation path as an argument, reads only the local JSONL artifact,
+and writes exactly one replacing JSONL operator preview record. The preview
+preserves M376 identifiers from the supplied artifact, summarizes terminal
+state, SPY position quantity, open-order and non-SPY evidence, hard safety
+labels, the next allowed action, and forbidden actions. It delegates ETF/SMA
+cycle decisions to the existing offline `etf-sma-cycle` builder rather than
+duplicating the decision matrix. Missing, malformed, ambiguous, or conflicting
+reconciliation input fails closed with
+`missing_or_invalid_order_reconciliation`; non-SPY position evidence fails
+closed with `unexpected_non_spy_position`. While the M383 reconciliation shows
+M376 nonterminal/open, the preview reports `daily_preview_status=blocked`,
+`cycle_decision=blocked/open_order_present`, blockers
+`m376_order_nonterminal` and `open_order_present`,
+`next_allowed_action=offline_work_or_read_only_reconciliation`, and
+`spy_submit_until_m376_terminal` in `next_forbidden_action`. The command
+preserves `submitted=false`, `mutated=false`,
+`broker_action_performed=false`, `broker_mutation_allowed=false`,
+`network_access_attempted=false`, `credential_access_attempted=false`, and
+`live_authorized=false`. No Alpaca SDK import, credential access, socket or
+network access, broker construction, submit, cancel, replace, close,
+liquidation, delete, retry loop, live profile, or non-SPY action is added.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
