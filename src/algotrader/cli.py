@@ -539,6 +539,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Daily preview output format.",
     )
+    paper_lab_state_rollup_parser = subparsers.add_parser(
+        "paper-lab-state-rollup",
+        help="Roll up local paper-lab JSONL artifacts into one state record.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Paper-lab symbol scope. Default: SPY.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the state rollup.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic state rollup JSONL record to PATH.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--order-reconciliation-log",
+        required=True,
+        help="Explicit local M376 order reconciliation JSONL input path.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--daily-preview-log",
+        required=True,
+        help="Explicit local paper-lab daily preview JSONL input path.",
+    )
+    paper_lab_state_rollup_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="State rollup output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -1000,6 +1036,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
         return _run_paper_lab_daily_preview(args)
+    if command == "paper-lab-state-rollup":
+        return _run_paper_lab_state_rollup(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
     if command == "paper-close-preview":
@@ -1654,6 +1692,37 @@ def _run_paper_lab_daily_preview(args: argparse.Namespace) -> int:
         print(render_etf_sma_daily_preview_json(payload))
     else:
         print(render_etf_sma_daily_preview_text(payload))
+    return 0
+
+
+def _run_paper_lab_state_rollup(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.paper_lab_state_rollup import (
+        PaperLabStateRollupConfig,
+        build_paper_lab_state_rollup,
+        render_paper_lab_state_rollup_json,
+        render_paper_lab_state_rollup_text,
+        write_paper_lab_state_rollup_jsonl,
+    )
+
+    try:
+        payload = build_paper_lab_state_rollup(
+            PaperLabStateRollupConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                order_reconciliation_log=args.order_reconciliation_log,
+                daily_preview_log=args.daily_preview_log,
+            )
+        )
+        write_paper_lab_state_rollup_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_paper_lab_state_rollup_json(payload))
+    else:
+        print(render_paper_lab_state_rollup_text(payload))
     return 0
 
 
