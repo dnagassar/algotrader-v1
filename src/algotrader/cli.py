@@ -457,6 +457,52 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Backtest output format.",
     )
+    daily_operating_brief_parser = subparsers.add_parser(
+        "daily-operating-brief",
+        help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the daily operating brief.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic daily operating brief JSONL record to PATH.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Paper-lab symbol scope. Default: SPY.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--order-reconciliation-log",
+        default=None,
+        help="Optional explicit M376 order reconciliation JSONL input path.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--cycle-preview-log",
+        default=None,
+        help="Optional explicit ETF/SMA cycle-preview JSONL input path.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--backtest-log",
+        default=None,
+        help="Optional explicit ETF/SMA backtest JSONL input path.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--generated-at",
+        default=None,
+        help="Optional timezone-aware ISO-8601 generated-at timestamp.",
+    )
+    daily_operating_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Daily brief output format.",
+    )
     etf_sma_cycle_preview_parser = subparsers.add_parser(
         "etf-sma-cycle-preview",
         help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
@@ -838,6 +884,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_m368_broker_preview_only(args)
     if command == "etf-sma-backtest":
         return _run_etf_sma_backtest(args)
+    if command == "daily-operating-brief":
+        return _run_daily_operating_brief(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -1427,6 +1475,39 @@ def _run_etf_sma_backtest(args: argparse.Namespace) -> int:
         print(render_etf_sma_backtest_text(payload))
 
     return 2 if payload.get("blocked") is True else 0
+
+
+def _run_daily_operating_brief(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.daily_operating_brief import (
+        DailyOperatingBriefConfig,
+        build_daily_operating_brief,
+        render_daily_operating_brief_json,
+        render_daily_operating_brief_text,
+        write_daily_operating_brief_jsonl,
+    )
+
+    try:
+        payload = build_daily_operating_brief(
+            DailyOperatingBriefConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                generated_at=args.generated_at,
+                order_reconciliation_log=args.order_reconciliation_log,
+                cycle_preview_log=args.cycle_preview_log,
+                backtest_log=args.backtest_log,
+            )
+        )
+        write_daily_operating_brief_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_daily_operating_brief_json(payload))
+    else:
+        print(render_daily_operating_brief_text(payload))
+    return 0
 
 
 def _load_etf_sma_cycle_preview_bars(
