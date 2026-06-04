@@ -498,6 +498,53 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Preview output format.",
     )
+    paper_order_reconcile_parser = subparsers.add_parser(
+        "paper-order-reconcile",
+        help="Read and reconcile one exact paper order without broker mutation.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--symbol",
+        required=True,
+        help="Paper symbol to reconcile.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--client-order-id",
+        required=True,
+        help="Expected client_order_id for the paper order.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--broker-order-id",
+        required=True,
+        help="Expected broker order id for the paper order.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--expected-side",
+        choices=("buy", "sell"),
+        required=True,
+        help="Expected paper order side.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--expected-qty",
+        required=True,
+        help="Expected paper order quantity.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Append one deterministic order reconciliation JSONL record to PATH.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the reconciliation record.",
+    )
+    paper_order_reconcile_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Reconciliation output format.",
+    )
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -853,6 +900,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_m375_spy_close_preview(config, args)
     if command == "etf-sma-cycle-preview":
         return _run_etf_sma_cycle_preview(config, args)
+    if command == "paper-order-reconcile":
+        return _run_paper_order_reconcile(config, args)
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
     if command == "paper-close-probe":
@@ -1287,6 +1336,65 @@ def _run_etf_sma_cycle_preview(
     return 0
 
 
+def _run_paper_order_reconcile(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.paper_order_reconciliation import (
+        PaperOrderReconciliationConfig,
+        reconcile_paper_order,
+        render_paper_order_reconciliation_json,
+        render_paper_order_reconciliation_text,
+        write_paper_order_reconciliation_jsonl,
+    )
+
+    profile_gate = _paper_profile_gate(config)
+    broker = None
+    broker_error = None
+    if profile_gate["passed"] is True:
+        try:
+            broker = _build_paper_broker(config.alpaca_paper)
+        except Exception as exc:  # pragma: no cover - fake failure safety path
+            broker_error = {
+                "error_type": exc.__class__.__name__,
+                "message": _redact_config_secrets(str(exc), config),
+            }
+
+    try:
+        payload = reconcile_paper_order(
+            PaperOrderReconciliationConfig(
+                run_id=_paper_lab_run_id(args.run_id),
+                symbol=args.symbol,
+                client_order_id=args.client_order_id,
+                broker_order_id=args.broker_order_id,
+                expected_side=args.expected_side,
+                expected_qty=Decimal(str(args.expected_qty)),
+                profile_gate_passed=profile_gate["passed"] is True,
+                profile_gate_detail=str(profile_gate.get("detail", "")),
+                paper_profile_ready=profile_gate["passed"] is True,
+                live_url_detected=_paper_base_url_live_detected(config),
+            ),
+            broker=broker,
+            query_factory=lambda status_filter: AlpacaRecentOrderQuery(
+                status_filter=status_filter,
+            ),
+            redactor=lambda value: _redact_config_secrets(value, config),
+            broker_error=broker_error,
+        )
+        write_paper_order_reconciliation_jsonl(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_paper_order_reconciliation_json(payload))
+    else:
+        print(render_paper_order_reconciliation_text(payload))
+    return 0
+
+
 def _run_etf_sma_backtest(args: argparse.Namespace) -> int:
     from .errors import ValidationError
     from .research.etf_sma_backtest import (
@@ -1400,6 +1508,12 @@ def _observe_etf_sma_cycle_preview_broker_state(
     spy_position_quantity = None
     open_order_count = None
     open_order_symbols: tuple[str, ...] = ()
+    open_order_client_order_ids: tuple[str, ...] = ()
+    open_order_broker_order_ids: tuple[str, ...] = ()
+    open_order_statuses: tuple[str, ...] = ()
+    open_order_sides: tuple[str, ...] = ()
+    open_order_quantities: tuple[str, ...] = ()
+    open_order_filled_quantities: tuple[str, ...] = ()
 
     try:
         account = account_observation_payload(broker.get_account())
@@ -1436,6 +1550,25 @@ def _observe_etf_sma_cycle_preview_broker_state(
         open_orders = order_observation_payloads(broker.get_recent_orders(query))
         open_order_count = len(open_orders)
         open_order_symbols = _paper_lab_order_symbols(open_orders)
+        open_order_client_order_ids = _paper_lab_order_values(
+            open_orders,
+            "client_order_id",
+        )
+        open_order_broker_order_ids = _paper_lab_order_values(
+            open_orders,
+            "order_id",
+        )
+        open_order_statuses = _paper_lab_order_values(
+            open_orders,
+            "normalized_status",
+        )
+        open_order_sides = _paper_lab_order_values(open_orders, "side")
+        open_order_quantities = _paper_lab_order_values(open_orders, "quantity")
+        open_order_filled_quantities = _paper_lab_order_values(
+            open_orders,
+            "filled_quantity",
+            drop_empty=True,
+        )
         orders_available = True
     except Exception as exc:  # pragma: no cover - fake failure safety path
         unavailable.append("orders")
@@ -1456,6 +1589,12 @@ def _observe_etf_sma_cycle_preview_broker_state(
         spy_position_quantity=spy_position_quantity,
         open_order_count=open_order_count,
         open_order_symbols=open_order_symbols,
+        open_order_client_order_ids=open_order_client_order_ids,
+        open_order_broker_order_ids=open_order_broker_order_ids,
+        open_order_statuses=open_order_statuses,
+        open_order_sides=open_order_sides,
+        open_order_quantities=open_order_quantities,
+        open_order_filled_quantities=open_order_filled_quantities,
         unavailable_observations=tuple(unavailable),
         unavailable_reasons=unavailable_reasons,
     )
@@ -1470,6 +1609,21 @@ def _paper_lab_order_symbols(
         if symbol and symbol not in symbols:
             symbols.append(symbol)
     return tuple(symbols)
+
+
+def _paper_lab_order_values(
+    orders: tuple[dict[str, str], ...],
+    field_name: str,
+    *,
+    drop_empty: bool = False,
+) -> tuple[str, ...]:
+    values: list[str] = []
+    for order in orders:
+        value = str(order.get(field_name, ""))
+        if drop_empty and not value:
+            continue
+        values.append(value)
+    return tuple(values)
 
 
 def _build_paper_lab_spy_close_submit_payload(
@@ -5345,6 +5499,11 @@ def _paper_profile_gate(config) -> dict[str, object]:
         return _gate(False, "paper_profile_ready", _redact_config_secrets(str(exc), config))
 
     return _gate(True, "paper_profile_ready", "")
+
+
+def _paper_base_url_live_detected(config) -> bool:
+    paper_url = str(config.alpaca_paper.alpaca_paper_base_url or "").strip().lower()
+    return "alpaca.markets" in paper_url and "paper" not in paper_url
 
 
 def _build_paper_broker(paper_config):

@@ -9353,6 +9353,26 @@ execution, paper profile, credentials, network, market-data fetch, submit,
 cancel, replace, close, liquidation, retry, live path, or live-readiness claim
 is added.
 
+M379 adds `paper-order-reconcile`, a reusable read-only paper order
+reconciliation command for exact order lineage. Its M376 shape is:
+`algotrader paper-order-reconcile --symbol SPY --client-order-id paper-order-close-m376_spy_paper_close_submit --broker-order-id dbb32dd3-58bf-49ea-b9b1-9aa44e85002d --expected-side sell --expected-qty 0.033172072 --run-log runs/paper_lab/m379_m376_spy_close_order_reconciliation.jsonl --run-id m379_m376_spy_close_order_reconciliation`.
+The command requires the existing paper profile gate before broker
+construction, performs read-only account, position, and open/all/closed order
+observations through `get_account`, `get_positions`, and `get_recent_orders`,
+and writes one deterministic JSONL object. It matches the requested order by
+both `client_order_id` and broker order id, verifies symbol, side, and
+quantity, classifies terminal state conservatively, and blocks the next SPY
+submit when the exact order is nonterminal, missing under incomplete history,
+ambiguous, unavailable, or when context blockers such as an open SPY order or
+unexpected non-SPY position are present. The artifact preserves
+`submitted=false`, `mutated=false`, `broker_action_performed=false`,
+`live_authorized=false`, `credentials_redacted=true`, `paper_lab_only`,
+`not_live_authorized`, and `profit_claim=none`. M379 also extends
+`etf-sma-cycle-preview` serialization with open-order client ids, broker ids,
+statuses, sides, quantities, and filled quantities while leaving preview
+decision behavior unchanged. No submit, broker mutation, live URL, credential
+printing, market-data fetch, or research-layer broker dependency is added.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 

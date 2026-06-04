@@ -14760,6 +14760,22 @@ Safe next tasks include:
   paper profile, credentials, network, submit, cancel, replace, close,
   liquidation, retry, live path, or live-readiness/profitability claim is
   added.
+- M379 adds `paper-order-reconcile`, a reusable read-only paper order
+  reconciliation command for exact client-order-id plus broker-order-id
+  lineage. The M376 invocation records the SPY close order request
+  identifiers, expected side and quantity, paper/profile booleans, exact order
+  source, observed status/fill fields, conservative terminal classification,
+  SPY position and open-order context, blockers, and the next-submit decision
+  into one deterministic JSONL record. Exact open/accepted evidence remains
+  nonterminal and blocking; exact filled evidence is terminal and does not by
+  itself block; missing, mismatched, unavailable, or conflicting evidence is
+  conservative and blocking. The command uses only read-only account,
+  position, and order observations, preserves `submitted=false`,
+  `mutated=false`, `broker_action_performed=false`, `live_authorized=false`,
+  and credential redaction, and adds no submit or broker mutation path. M379
+  also extends `etf-sma-cycle-preview` artifacts with open-order client ids,
+  broker ids, statuses, sides, quantities, and filled quantities so future
+  open-order blockers have exact lineage.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

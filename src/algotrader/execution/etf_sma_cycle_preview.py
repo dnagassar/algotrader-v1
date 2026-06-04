@@ -82,6 +82,12 @@ class EtfSmaCycleBrokerObservation:
     spy_position_quantity: Decimal | str | None = None
     open_order_count: int | None = None
     open_order_symbols: tuple[str, ...] = ()
+    open_order_client_order_ids: tuple[str, ...] = ()
+    open_order_broker_order_ids: tuple[str, ...] = ()
+    open_order_statuses: tuple[str, ...] = ()
+    open_order_sides: tuple[str, ...] = ()
+    open_order_quantities: tuple[str, ...] = ()
+    open_order_filled_quantities: tuple[str, ...] = ()
     unavailable_observations: tuple[str, ...] = ()
     unavailable_reasons: Mapping[str, object] | None = None
     submitted: bool = False
@@ -133,6 +139,19 @@ class EtfSmaCycleBrokerObservation:
             "open_order_symbols",
             _symbol_tuple(self.open_order_symbols, "open_order_symbols", allow_empty=True),
         )
+        for field_name in (
+            "open_order_client_order_ids",
+            "open_order_broker_order_ids",
+            "open_order_statuses",
+            "open_order_sides",
+            "open_order_quantities",
+            "open_order_filled_quantities",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _string_tuple(getattr(self, field_name), field_name, allow_empty=True),
+            )
         object.__setattr__(
             self,
             "unavailable_observations",
@@ -207,6 +226,12 @@ class EtfSmaCycleBrokerObservation:
             "spy_position_quantity": _decimal_text(self.spy_position_quantity),
             "open_order_count": self.open_order_count,
             "open_order_symbols": list(self.open_order_symbols),
+            "open_order_client_order_ids": list(self.open_order_client_order_ids),
+            "open_order_broker_order_ids": list(self.open_order_broker_order_ids),
+            "open_order_statuses": list(self.open_order_statuses),
+            "open_order_sides": list(self.open_order_sides),
+            "open_order_quantities": list(self.open_order_quantities),
+            "open_order_filled_quantities": list(self.open_order_filled_quantities),
             "unavailable_observations": list(self.unavailable_observations),
             "unavailable_reasons": _json_safe(self.unavailable_reasons),
             "submitted": self.submitted,
@@ -435,6 +460,21 @@ class EtfSmaCyclePreview:
             "cash": _decimal_text(self.cash),
             "spy_position_quantity": _decimal_text(self.spy_position_quantity),
             "open_order_count": self.open_order_count,
+            "open_order_symbols": list(self.broker_observation.open_order_symbols),
+            "open_order_client_order_ids": list(
+                self.broker_observation.open_order_client_order_ids
+            ),
+            "open_order_broker_order_ids": list(
+                self.broker_observation.open_order_broker_order_ids
+            ),
+            "open_order_statuses": list(self.broker_observation.open_order_statuses),
+            "open_order_sides": list(self.broker_observation.open_order_sides),
+            "open_order_quantities": list(
+                self.broker_observation.open_order_quantities
+            ),
+            "open_order_filled_quantities": list(
+                self.broker_observation.open_order_filled_quantities
+            ),
             "blockers": list(self.blockers),
             "decision": self.decision,
             "decision_reason": self.decision_reason,

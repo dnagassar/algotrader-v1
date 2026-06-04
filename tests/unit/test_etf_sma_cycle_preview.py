@@ -259,6 +259,17 @@ def test_cli_paper_preview_blocks_existing_m376_open_spy_order(
     assert payload["decision"] == "blocked"
     assert payload["decision_reason"] == "open_order_present"
     assert payload["open_order_count"] == 1
+    assert payload["open_order_client_order_ids"] == [_M376_CLIENT_ORDER_ID]
+    assert payload["open_order_broker_order_ids"] == [_M376_BROKER_ORDER_ID]
+    assert payload["open_order_statuses"] == ["accepted"]
+    assert payload["open_order_symbols"] == ["SPY"]
+    assert payload["open_order_sides"] == ["sell"]
+    assert payload["open_order_quantities"] == [_M376_QUANTITY]
+    assert payload["open_order_filled_quantities"] == []
+    assert payload["broker_observation"]["open_order_client_order_ids"] == [
+        _M376_CLIENT_ORDER_ID
+    ]
+    assert payload["broker_observation"]["open_order_statuses"] == ["accepted"]
     assert payload["spy_position_quantity"] == _M376_QUANTITY
     assert "preview_order" not in payload
     assert payload["submitted"] is False
