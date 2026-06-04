@@ -14851,6 +14851,13 @@ Safe next tasks include:
   until terminal read-only reconciliation. No submit, cancel, replace, close,
   liquidation, delete, retry, live profile, credential printing, source change,
   or test change occurred.
+- M387 compacts `docs/deterministic_core.md` into a current-contract document
+  and preserves condensed historical context in
+  `docs/archive/deterministic_core_history.md`. This is docs-only cleanup:
+  no source files, tests, broker commands, paper commands, live commands,
+  credential loading, network access, submit, cancel, replace, close,
+  liquidation, or broker mutation are in scope. The M376 open-order caution
+  remains explicit and blocking until read-only reconciliation says terminal.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
