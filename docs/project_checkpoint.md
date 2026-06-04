@@ -14776,6 +14776,21 @@ Safe next tasks include:
   also extends `etf-sma-cycle-preview` artifacts with open-order client ids,
   broker ids, statuses, sides, quantities, and filled quantities so future
   open-order blockers have exact lineage.
+- M382 adds the generic offline `etf-sma-cycle` command. It runs before runtime
+  profile loading, reads only deterministic local inputs such as market-data
+  CSV, explicit offline broker-state values, or an order-reconciliation JSONL
+  artifact, and writes exactly one JSONL cycle record with ETF/SMA config and
+  posture, allowlist result, paper-lab/signal-evaluation labels, broker/account
+  state from offline inputs, blockers, next allowed/forbidden actions, and hard
+  safety booleans: `submitted=false`, `mutated=false`,
+  `broker_action_performed=false`, `broker_mutation_allowed=false`,
+  `live_authorized=false`, `network_access_attempted=false`, and
+  `credential_access_attempted=false`. The local M382 run
+  `algotrader etf-sma-cycle --symbol SPY --run-id m382_etf_sma_cycle_offline --run-log runs/paper_lab/m382_etf_sma_cycle_offline.jsonl --order-reconciliation-log runs/paper_lab/m381_m376_spy_close_order_reconciliation.jsonl --format json`
+  consumes the M381 reconciliation artifact and records
+  `decision=blocked/open_order_present` with `m376_order_nonterminal` and
+  `open_order_present` blockers. M376 remains nonterminal/open, so SPY submits
+  stay forbidden until terminal read-only reconciliation.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -544,6 +544,82 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Preview output format.",
     )
+    etf_sma_cycle_parser = subparsers.add_parser(
+        "etf-sma-cycle",
+        help="Build one offline ETF/SMA cycle artifact without broker access.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol to evaluate. Default: SPY.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the cycle record.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic cycle JSONL record to PATH.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--order-reconciliation-log",
+        default=None,
+        help="Optional explicit local order reconciliation JSONL input path.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--market-data-csv",
+        "--bars-csv",
+        dest="market_data_csv",
+        default=None,
+        help="Optional local daily bars CSV. Defaults to data/local/spy_daily_bars.csv.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--as-of",
+        default=None,
+        help="Optional timezone-aware ISO-8601 evaluation timestamp.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--position-qty",
+        default=None,
+        help="Explicit offline position quantity for the configured symbol.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--open-order-count",
+        type=int,
+        default=None,
+        help="Explicit offline open-order count for the configured symbol.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--cash",
+        default=None,
+        help="Optional explicit offline cash observation.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--sma-fast-window",
+        type=int,
+        default=50,
+        help="Fast SMA window. Default: 50.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--sma-slow-window",
+        type=int,
+        default=200,
+        help="Slow SMA window. Default: 200.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--paper-cap",
+        default="25",
+        help="Preview-only paper notional cap for buy previews. Default: 25.",
+    )
+    etf_sma_cycle_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Cycle output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -886,6 +962,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_backtest(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
+    if command == "etf-sma-cycle":
+        return _run_etf_sma_cycle(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -1507,6 +1585,44 @@ def _run_daily_operating_brief(args: argparse.Namespace) -> int:
         print(render_daily_operating_brief_json(payload))
     else:
         print(render_daily_operating_brief_text(payload))
+    return 0
+
+
+def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_cycle import (
+        EtfSmaCycleConfig,
+        build_etf_sma_cycle_from_offline_inputs,
+        render_etf_sma_cycle_json,
+        render_etf_sma_cycle_text,
+        write_etf_sma_cycle_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_cycle_from_offline_inputs(
+            EtfSmaCycleConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                as_of=args.as_of,
+                fast_window=args.sma_fast_window,
+                slow_window=args.sma_slow_window,
+                paper_cap=Decimal(str(args.paper_cap)),
+                market_data_csv=args.market_data_csv,
+                order_reconciliation_log=args.order_reconciliation_log,
+                cash=args.cash,
+                position_qty=args.position_qty,
+                open_order_count=args.open_order_count,
+            )
+        )
+        write_etf_sma_cycle_jsonl(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_cycle_json(payload))
+    else:
+        print(render_etf_sma_cycle_text(payload))
     return 0
 
 

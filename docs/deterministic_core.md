@@ -9373,6 +9373,23 @@ statuses, sides, quantities, and filled quantities while leaving preview
 decision behavior unchanged. No submit, broker mutation, live URL, credential
 printing, market-data fetch, or research-layer broker dependency is added.
 
+M382 adds the generic offline `etf-sma-cycle` command. The command runs before
+runtime profile loading, consumes only local deterministic inputs such as a
+market-data CSV, explicit offline position/order values, or a local
+order-reconciliation JSONL artifact, and writes exactly one JSONL cycle record.
+The record carries the ETF/SMA config and posture, allowlist result, paper-lab
+and signal-evaluation labels, offline broker/account state, blockers, next
+allowed/forbidden actions, and hard safety booleans:
+`submitted=false`, `mutated=false`, `broker_action_performed=false`,
+`broker_mutation_allowed=false`, `live_authorized=false`,
+`network_access_attempted=false`, and `credential_access_attempted=false`.
+The M382 local run
+`algotrader etf-sma-cycle --symbol SPY --run-id m382_etf_sma_cycle_offline --run-log runs/paper_lab/m382_etf_sma_cycle_offline.jsonl --order-reconciliation-log runs/paper_lab/m381_m376_spy_close_order_reconciliation.jsonl --format json`
+reads the M381 reconciliation evidence and produces
+`decision=blocked/open_order_present` with `m376_order_nonterminal` and
+`open_order_present` blockers. M376 therefore remains nonterminal/open, and
+SPY submits remain forbidden until terminal read-only reconciliation.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
