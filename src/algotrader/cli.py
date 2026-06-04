@@ -409,6 +409,47 @@ def build_parser() -> argparse.ArgumentParser:
         run_log="runs/paper_lab/m375_spy_position_close_preview.jsonl",
         run_id="m375_spy_position_close_preview",
     )
+    etf_sma_cycle_preview_parser = subparsers.add_parser(
+        "etf-sma-cycle-preview",
+        help="Render the SPY ETF/SMA paper-lab cycle preview without mutation.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Paper-lab symbol to preview. Default: SPY.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--bars-csv",
+        default=None,
+        help="Read daily SPY bars from CSV. Defaults to data/local/spy_daily_bars.csv.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--bars-jsonl",
+        default=None,
+        help="Read daily SPY bars from JSONL instead of CSV.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--max-notional",
+        default="25.00",
+        help="Small paper-lab notional cap for buy previews. Default: 25.00.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Append one deterministic cycle-preview JSONL record to PATH.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--run-id",
+        default="spy_etf_sma_cycle_preview",
+        help="Run/session id to include in the preview record.",
+    )
+    etf_sma_cycle_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Preview output format.",
+    )
     paper_close_preview_parser = subparsers.add_parser(
         "paper-close-preview",
         help="Design a local BTCUSD paper close preview from a read-only snapshot log.",
@@ -760,6 +801,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_m370_paper_submit(config, args)
     if command == "etf-sma-m375-spy-close-preview":
         return _run_etf_sma_m375_spy_close_preview(config, args)
+    if command == "etf-sma-cycle-preview":
+        return _run_etf_sma_cycle_preview(config, args)
     if command == "paper-order-probe":
         return _run_paper_order_probe(config, args)
     if command == "paper-close-probe":
@@ -1140,6 +1183,209 @@ def _run_etf_sma_m375_spy_close_preview(
     else:
         print(render_m375_spy_close_preview_text(payload))
     return 0 if payload.get("ok") is True else 2
+
+
+def _run_etf_sma_cycle_preview(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_cycle_preview import (
+        EtfSmaCyclePreviewConfig,
+        EtfSmaCyclePreviewWriteConfig,
+        build_etf_sma_cycle_preview,
+        render_etf_sma_cycle_preview_json,
+        render_etf_sma_cycle_preview_text,
+        write_etf_sma_cycle_preview,
+    )
+
+    try:
+        bars, bars_source, bars_input_available = _load_etf_sma_cycle_preview_bars(
+            args
+        )
+        observation = _observe_etf_sma_cycle_preview_broker_state(
+            config,
+            args.symbol,
+        )
+        preview = build_etf_sma_cycle_preview(
+            bars,
+            observation,
+            EtfSmaCyclePreviewConfig(
+                run_id=_paper_lab_run_id(args.run_id),
+                symbol=args.symbol,
+                max_notional=Decimal(str(args.max_notional)),
+                bars_source=bars_source,
+                bars_input_available=bars_input_available,
+            ),
+        )
+        write_etf_sma_cycle_preview(
+            preview,
+            EtfSmaCyclePreviewWriteConfig(
+                output_path=args.run_log,
+                append=True,
+                create_parent_dirs=True,
+            ),
+        )
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_cycle_preview_json(preview))
+    else:
+        print(render_etf_sma_cycle_preview_text(preview))
+    return 0
+
+
+def _load_etf_sma_cycle_preview_bars(
+    args: argparse.Namespace,
+) -> tuple[tuple[object, ...], str, bool]:
+    from pathlib import Path
+
+    from .execution.etf_sma_cycle_preview import (
+        load_etf_sma_cycle_bars_csv,
+        load_etf_sma_cycle_bars_jsonl,
+    )
+
+    if args.bars_jsonl:
+        path = Path(args.bars_jsonl)
+        return (
+            load_etf_sma_cycle_bars_jsonl(path, symbol=args.symbol),
+            str(path),
+            path.exists(),
+        )
+
+    path = Path(args.bars_csv or "data/local/spy_daily_bars.csv")
+    return (
+        load_etf_sma_cycle_bars_csv(path, symbol=args.symbol),
+        str(path),
+        path.exists(),
+    )
+
+
+def _observe_etf_sma_cycle_preview_broker_state(
+    config,
+    symbol: str,
+):
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.etf_sma_cycle_preview import EtfSmaCycleBrokerObservation
+    from .execution.paper_lab_snapshot import (
+        account_observation_payload,
+        order_observation_payloads,
+        position_observation_payloads,
+        position_symbols,
+    )
+
+    checked_symbol = symbol.strip().upper()
+    profile_gate = _paper_profile_gate(config)
+    if profile_gate["passed"] is not True:
+        return EtfSmaCycleBrokerObservation(
+            paper_profile_gate_passed=False,
+            unavailable_observations=("account", "positions", "orders"),
+            unavailable_reasons={
+                "profile": {
+                    "error_type": "ConfigValidationError",
+                    "message": str(profile_gate.get("detail", "")),
+                }
+            },
+        )
+
+    unavailable: list[str] = []
+    unavailable_reasons: dict[str, object] = {}
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return EtfSmaCycleBrokerObservation(
+            paper_profile_gate_passed=True,
+            unavailable_observations=("account", "positions", "orders"),
+            unavailable_reasons={
+                "broker": {
+                    "error_type": exc.__class__.__name__,
+                    "message": _redact_config_secrets(str(exc), config),
+                }
+            },
+        )
+
+    account_available = False
+    positions_available = False
+    orders_available = False
+    cash = None
+    currency = None
+    position_count = None
+    observed_position_symbols: tuple[str, ...] = ()
+    spy_position_quantity = None
+    open_order_count = None
+    open_order_symbols: tuple[str, ...] = ()
+
+    try:
+        account = account_observation_payload(broker.get_account())
+        account_available = True
+        cash = account.get("cash") or None
+        currency = account.get("currency") or None
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("account")
+        unavailable_reasons["account"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    try:
+        positions = position_observation_payloads(broker.get_positions())
+        positions_list = list(positions)
+        position_count = len(positions_list)
+        observed_position_symbols = position_symbols(positions)
+        spy_position = _position_for_symbol(positions_list, checked_symbol)
+        spy_position_quantity = spy_position.get("quantity") or None
+        positions_available = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("positions")
+        unavailable_reasons["positions"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    query = AlpacaRecentOrderQuery(
+        status_filter="open",
+        symbol_filter=checked_symbol,
+    )
+    try:
+        open_orders = order_observation_payloads(broker.get_recent_orders(query))
+        open_order_count = len(open_orders)
+        open_order_symbols = _paper_lab_order_symbols(open_orders)
+        orders_available = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("orders")
+        unavailable_reasons["orders"] = {
+            "error_type": exc.__class__.__name__,
+            "message": _redact_config_secrets(str(exc), config),
+        }
+
+    return EtfSmaCycleBrokerObservation(
+        paper_profile_gate_passed=True,
+        account_observation_available=account_available,
+        positions_observation_available=positions_available,
+        orders_observation_available=orders_available,
+        cash=cash,
+        currency=currency,
+        position_count=position_count,
+        position_symbols=observed_position_symbols,
+        spy_position_quantity=spy_position_quantity,
+        open_order_count=open_order_count,
+        open_order_symbols=open_order_symbols,
+        unavailable_observations=tuple(unavailable),
+        unavailable_reasons=unavailable_reasons,
+    )
+
+
+def _paper_lab_order_symbols(
+    orders: tuple[dict[str, str], ...],
+) -> tuple[str, ...]:
+    symbols: list[str] = []
+    for order in orders:
+        symbol = str(order.get("symbol", "")).strip().upper()
+        if symbol and symbol not in symbols:
+            symbols.append(symbol)
+    return tuple(symbols)
 
 
 def _build_paper_lab_spy_close_submit_payload(

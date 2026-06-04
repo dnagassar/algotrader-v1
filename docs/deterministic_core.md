@@ -9276,6 +9276,67 @@ default pytest network guard, and full `python -m pytest`; normal pytest
 remains offline and credential-free. No real broker submit happened during
 M376A.
 
+Velocity Slice 1 adds `etf-sma-cycle-preview`, a SPY ETF/SMA daily paper-lab
+cycle preview command. Its normal shape is:
+`algotrader etf-sma-cycle-preview --symbol SPY --run-log runs/paper_lab/spy_etf_sma_cycle_preview.jsonl --run-id spy_etf_sma_cycle_preview`.
+The command accepts explicit `--bars-csv` or `--bars-jsonl` inputs, defaulting
+to `data/local/spy_daily_bars.csv` when no bars path is provided. It evaluates
+the existing ETF/SMA signal, then, only after a paper profile gate passes,
+performs read-only account, position, and open-SPY-order observations through
+the paper broker boundary. The single JSONL record preserves
+`paper_lab_only`, `not_live_authorized`, `profit_claim=none`,
+`submitted=false`, `mutated=false`, and `broker_action_performed=false`;
+records SMA posture/status; records account availability, cash, SPY quantity,
+and open-order count when observed; and emits one deterministic decision:
+`buy_preview`, `hold`, `sell_preview`, `blocked`, or
+`insufficient_history`. Existing SPY paper position state is not treated as a
+reset requirement. Bullish plus held SPY is `hold`; risk-off plus held SPY is
+`sell_preview`; risk-off plus no SPY is `hold`; bullish plus no SPY is
+`buy_preview` with the configured small paper cap. Any observed open SPY order,
+including the pending M376 accepted sell order, yields `decision=blocked` with
+`open_order_present` and no second order preview. No submit, broker mutation,
+retry, scheduler, live profile support, credential printing, or trading
+hot-path behavior is added. Verification passed the focused cycle-preview
+tests, dependency-direction test, broker mutation surface invariant, default
+pytest network guard, and full `python -m pytest`; normal pytest remains
+offline and credential-free.
+
+M377A attempted the read-only SPY ETF/SMA cycle preview exactly once with:
+`algotrader etf-sma-cycle-preview --symbol SPY --run-log runs/paper_lab/m377a_spy_etf_sma_cycle_preview_paper.jsonl --run-id m377a_spy_etf_sma_cycle_preview_paper`.
+Normal-shell masked preflight was credential-free, and the target JSONL did not
+already exist. The scoped local env loader populated Alpaca key booleans but
+did not set `APP_PROFILE=paper` or `ALPACA_PAPER_BASE_URL`, so the command
+wrote one blocked artifact before broker construction. The record reports
+`sma_status=insufficient_history`, `sma_posture=insufficient_history`,
+`bars_source=data\local\spy_daily_bars.csv`, `bars_input_available=false`,
+`decision=blocked`, `decision_reason=paper_profile_required`, unavailable
+account/position/order observations, no observed M376 order status, no
+`preview_order`, `submitted=false`, `mutated=false`, and
+`broker_action_performed=false`. No second preview was run, and no submit,
+cancel, replace, close, liquidation, delete, retry, live profile, credential
+printing, or broker mutation occurred. M377A is safe but blocked from a clean
+paper-profile broker observation until the scoped paper env is corrected.
+
+M377B corrected the scoped paper shell and ran the same read-only SPY ETF/SMA
+cycle preview exactly once with:
+`algotrader etf-sma-cycle-preview --symbol SPY --run-log runs/paper_lab/m377b_spy_etf_sma_cycle_preview_paper.jsonl --run-id m377b_spy_etf_sma_cycle_preview_paper`.
+The shell used `scripts/dev/load_env.ps1`, set `APP_PROFILE=paper`, set the
+repo gate's `ALPACA_SECRET_KEY` from the loaded local Alpaca secret without
+printing it, and set `ALPACA_PAPER_BASE_URL` to the paper endpoint. The paper
+gate booleans passed before the preview, and normal-shell masked checks before
+and after the scoped command were credential-free. The resulting artifact
+records account, position, and order observations available; cash `1974.8`;
+SPY quantity `0.033172072`; one open SPY order; unavailable observations empty;
+`sma_status=insufficient_history`; `sma_posture=insufficient_history`;
+`decision=blocked`; `decision_reason=open_order_present`;
+`blockers=["open_order_present"]`; no `preview_order`; `submitted=false`;
+`mutated=false`; and `broker_action_performed=false`. The artifact records the
+open SPY order blocker at count/symbol level rather than serializing a
+client-order-id-specific M376 status, so M376 remains treated as open/not
+terminal from the visible blocker. There was no second preview, submit, cancel,
+replace, close, liquidation, delete, retry, live profile, credential printing,
+market-data fetch, or broker mutation.
+
 Real Alpaca SDK work and Phase 7 reconciliation remain deferred unless
 explicitly approved.
 
