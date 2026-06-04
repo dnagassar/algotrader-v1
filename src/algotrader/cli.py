@@ -7132,3 +7132,7 @@ def _add_paper_lab_run_log_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Run/session id to include in paper-lab observation records.",
     )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
