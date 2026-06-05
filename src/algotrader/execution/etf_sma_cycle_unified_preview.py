@@ -17,6 +17,7 @@ from typing import Any
 
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
+from algotrader.research.local_daily_bars import load_local_daily_bars_csv
 
 from .etf_sma_cycle import (
     EtfSmaCycleConfig,
@@ -77,6 +78,7 @@ class EtfSmaCycleUnifiedPreviewConfig:
     generated_at: datetime | str
     symbol: str = _DEFAULT_SYMBOL
     market_data_csv: Path | str | None = None
+    daily_bars_csv: Path | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -98,6 +100,11 @@ class EtfSmaCycleUnifiedPreviewConfig:
             self,
             "market_data_csv",
             _optional_path(self.market_data_csv, "market_data_csv"),
+        )
+        object.__setattr__(
+            self,
+            "daily_bars_csv",
+            _optional_path(self.daily_bars_csv, "daily_bars_csv"),
         )
 
 
@@ -163,7 +170,7 @@ def build_etf_sma_cycle_unified_preview(
             symbol=checked_config.symbol,
             generated_at=checked_config.generated_at,
             order_reconciliation_log=checked_config.order_reconciliation_log,
-            market_data_csv=checked_config.market_data_csv,
+            market_data_csv=_cycle_market_data_csv(checked_config),
         )
     )
     source_reconciliation = _mapping(
@@ -397,6 +404,11 @@ def _forbidden_actions(state_rollup: Mapping[str, object]) -> list[str]:
 def _cycle_data_readiness(
     config: EtfSmaCycleUnifiedPreviewConfig,
 ) -> dict[str, object]:
+    if config.daily_bars_csv is not None:
+        return _local_daily_bars_data_readiness(config)
+    if config.market_data_csv is None:
+        return _unknown_local_bars_data_readiness()
+
     cycle_record, evidence_error = _cycle_evidence_record(config)
     sma_config = _mapping(cycle_record.get("sma_config"))
     sma = _mapping(cycle_record.get("sma"))
@@ -465,6 +477,82 @@ def _cycle_data_readiness(
     }
 
 
+def _local_daily_bars_data_readiness(
+    config: EtfSmaCycleUnifiedPreviewConfig,
+) -> dict[str, object]:
+    bars = load_local_daily_bars_csv(
+        config.daily_bars_csv,
+        symbol=config.symbol,
+        as_of=config.generated_at,
+    )
+    required_usable_bars = _DEFAULT_SMA_LONG_WINDOW
+    observed_usable_bars = bars.observed_usable_bars
+    missing_usable_bars = _missing_usable_bars(
+        required_usable_bars,
+        observed_usable_bars,
+    )
+    readiness_state = (
+        "insufficient_history"
+        if observed_usable_bars < required_usable_bars
+        else "ready"
+    )
+    readiness_reason = (
+        "sma_insufficient_history"
+        if observed_usable_bars < required_usable_bars
+        else "sma_usable_bars_ready"
+    )
+    source_metadata = bars.source_metadata()
+
+    return {
+        "required_usable_bars": required_usable_bars,
+        "observed_usable_bars": observed_usable_bars,
+        "missing_usable_bars": missing_usable_bars,
+        "sma_short_window": _DEFAULT_SMA_SHORT_WINDOW,
+        "sma_long_window": _DEFAULT_SMA_LONG_WINDOW,
+        "readiness_state": readiness_state,
+        "readiness_reason": readiness_reason,
+        "missing_evidence": [],
+        "source": source_metadata,
+        "source_record_type": "local_daily_bars_csv",
+        "source_market_data": {
+            "source": str(bars.path),
+            "input_available": True,
+            "total_bar_count": bars.matching_symbol_row_count,
+            "usable_bar_count": observed_usable_bars,
+            "ignored_future_bar_count": bars.ignored_future_bar_count,
+            "total_row_count": bars.total_row_count,
+            "ignored_wrong_symbol_row_count": (
+                bars.ignored_wrong_symbol_row_count
+            ),
+        },
+    }
+
+
+def _unknown_local_bars_data_readiness() -> dict[str, object]:
+    return {
+        "required_usable_bars": _DEFAULT_SMA_LONG_WINDOW,
+        "observed_usable_bars": None,
+        "missing_usable_bars": None,
+        "sma_short_window": _DEFAULT_SMA_SHORT_WINDOW,
+        "sma_long_window": _DEFAULT_SMA_LONG_WINDOW,
+        "readiness_state": "unknown_from_cycle_artifact",
+        "readiness_reason": "observed_usable_bars_missing",
+        "missing_evidence": [
+            "local_market_data_bars",
+            "observed_usable_bars",
+        ],
+        "source": "offline_etf_sma_cycle_evidence",
+        "source_record_type": "",
+        "source_market_data": {
+            "source": "",
+            "input_available": False,
+            "total_bar_count": None,
+            "usable_bar_count": None,
+            "ignored_future_bar_count": None,
+        },
+    }
+
+
 def _cycle_evidence_record(
     config: EtfSmaCycleUnifiedPreviewConfig,
 ) -> tuple[Mapping[str, object], str]:
@@ -475,13 +563,19 @@ def _cycle_evidence_record(
                 symbol=config.symbol,
                 milestone=_MILESTONE,
                 as_of=config.generated_at,
-                market_data_csv=config.market_data_csv,
+                market_data_csv=_cycle_market_data_csv(config),
                 order_reconciliation_log=config.order_reconciliation_log,
             )
         )
     except ValidationError as exc:
         return {}, str(exc)
     return _mapping(record), ""
+
+
+def _cycle_market_data_csv(
+    config: EtfSmaCycleUnifiedPreviewConfig,
+) -> Path | None:
+    return config.daily_bars_csv or config.market_data_csv
 
 
 def _observed_usable_bars_from_cycle(

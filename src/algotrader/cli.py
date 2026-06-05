@@ -648,6 +648,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional local daily bars CSV. Defaults to data/local/spy_daily_bars.csv.",
     )
     etf_sma_cycle_parser.add_argument(
+        "--daily-bars-csv",
+        default=None,
+        help=(
+            "Optional strict local daily bars CSV for unified data readiness. "
+            "Omitted preserves unknown local-bars evidence."
+        ),
+    )
+    etf_sma_cycle_parser.add_argument(
         "--as-of",
         default=None,
         help="Optional timezone-aware ISO-8601 evaluation timestamp.",
@@ -1835,6 +1843,7 @@ def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
                     generated_at=args.generated_at,
                     order_reconciliation_log=args.order_reconciliation_log,
                     market_data_csv=args.market_data_csv,
+                    daily_bars_csv=args.daily_bars_csv,
                 )
             )
             write_etf_sma_cycle_unified_preview_jsonl(payload, args.run_log)

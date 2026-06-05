@@ -10,6 +10,8 @@ import subprocess
 import sys
 
 import algotrader.cli as cli_module
+import pytest
+from algotrader.errors import ValidationError
 from algotrader.execution.etf_sma_cycle_unified_preview import (
     ETF_SMA_CYCLE_UNIFIED_PREVIEW_LABELS,
     EtfSmaCycleUnifiedPreviewConfig,
@@ -87,6 +89,7 @@ def test_etf_sma_cycle_help_includes_unified_preview_options() -> None:
     assert "etf-sma-cycle" in result.stdout
     assert "--order-reconciliation-log" in result.stdout
     assert "--generated-at" in result.stdout
+    assert "--daily-bars-csv" in result.stdout
     assert "--run-log" in result.stdout
 
 
@@ -211,6 +214,121 @@ def test_ready_history_non_insufficient_cycle_remains_offline_and_non_mutating(
     _assert_never_mutates(payload)
 
 
+def test_daily_bars_csv_199_usable_bars_marks_insufficient_history(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_199_daily_bars.csv",
+        _daily_rows(199),
+    )
+    run_log = tmp_path / "m398_local_bars_199.jsonl"
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(reconciliation_log, daily_bars_csv=daily_bars_csv)
+    )
+    result = write_etf_sma_cycle_unified_preview_jsonl(payload, run_log)
+    readiness = payload["data_readiness"]
+
+    assert result.record_count == 1
+    assert _read_jsonl(run_log) == [payload]
+    assert run_log.read_text(encoding="utf-8").count("\n") == 1
+    assert readiness["required_usable_bars"] == 200
+    assert readiness["observed_usable_bars"] == 199
+    assert readiness["missing_usable_bars"] == 1
+    assert readiness["readiness_state"] == "insufficient_history"
+    assert readiness["readiness_reason"] == "sma_insufficient_history"
+    assert readiness["missing_evidence"] == []
+    assert readiness["source"]["type"] == "local_daily_bars_csv"
+    assert readiness["source"]["path"] == str(daily_bars_csv)
+    assert readiness["source_market_data"] == {
+        "source": str(daily_bars_csv),
+        "input_available": True,
+        "total_bar_count": 199,
+        "usable_bar_count": 199,
+        "ignored_future_bar_count": 0,
+        "total_row_count": 199,
+        "ignored_wrong_symbol_row_count": 0,
+    }
+    _assert_never_mutates(payload)
+
+
+def test_daily_bars_csv_200_usable_bars_marks_ready(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_200_daily_bars.csv",
+        _daily_rows(200),
+    )
+    run_log = tmp_path / "m398_local_bars_200.jsonl"
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(reconciliation_log, daily_bars_csv=daily_bars_csv)
+    )
+    result = write_etf_sma_cycle_unified_preview_jsonl(payload, run_log)
+    readiness = payload["data_readiness"]
+
+    assert result.record_count == 1
+    assert _read_jsonl(run_log) == [payload]
+    assert run_log.read_text(encoding="utf-8").count("\n") == 1
+    assert readiness["required_usable_bars"] == 200
+    assert readiness["observed_usable_bars"] == 200
+    assert readiness["missing_usable_bars"] == 0
+    assert readiness["readiness_state"] == "ready"
+    assert readiness["readiness_reason"] == "sma_usable_bars_ready"
+    assert readiness["missing_evidence"] == []
+    assert readiness["source"]["type"] == "local_daily_bars_csv"
+    assert readiness["source_market_data"]["input_available"] is True
+    assert readiness["source_market_data"]["ignored_future_bar_count"] == 0
+    _assert_never_mutates(payload)
+
+
+def test_omitted_daily_bars_csv_preserves_unknown_data_readiness(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+
+    payload = build_etf_sma_cycle_unified_preview(_config(reconciliation_log))
+    readiness = payload["data_readiness"]
+
+    assert readiness["required_usable_bars"] == 200
+    assert readiness["observed_usable_bars"] is None
+    assert readiness["missing_usable_bars"] is None
+    assert readiness["readiness_state"] == "unknown_from_cycle_artifact"
+    assert readiness["readiness_reason"] == "observed_usable_bars_missing"
+    assert "local_market_data_bars" in readiness["missing_evidence"]
+    assert "observed_usable_bars" in readiness["missing_evidence"]
+    assert readiness["source_market_data"]["input_available"] is False
+    _assert_never_mutates(payload)
+
+
+def test_supplied_missing_daily_bars_csv_fails_closed(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+
+    with pytest.raises(ValidationError, match="daily_bars_csv"):
+        build_etf_sma_cycle_unified_preview(
+            _config(
+                reconciliation_log,
+                daily_bars_csv=tmp_path / "missing_spy_daily_bars.csv",
+            )
+        )
+
+
 def test_nonterminal_open_m376_fixture_remains_blocked(tmp_path) -> None:  # noqa: ANN001
     reconciliation_log = _write_jsonl(
         tmp_path / "m376_open_reconciliation.jsonl",
@@ -330,6 +448,70 @@ def test_cli_unified_preview_dispatch_avoids_runtime_config_broker_and_network(
     assert payload["record_type"] == "etf_sma_cycle_unified_preview"
     assert payload["m376_terminal"] is True
     assert payload["open_order_present"] is False
+    _assert_never_mutates(payload)
+
+
+def test_cli_daily_bars_csv_emits_ready_readiness_without_broker_network_or_credentials(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:  # noqa: ANN001
+    for name in SCRUBBED_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+    def forbidden_config(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unified preview must not load runtime config")
+
+    def forbidden_broker(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unified preview must not build a broker")
+
+    def forbidden_socket(*args: object, **kwargs: object) -> object:
+        raise AssertionError("unified preview must not open sockets")
+
+    monkeypatch.setattr(cli_module, "_load_runtime_config", forbidden_config)
+    monkeypatch.setattr(cli_module, "_build_paper_broker", forbidden_broker)
+    monkeypatch.setattr(socket, "socket", forbidden_socket)
+    monkeypatch.setattr(socket, "create_connection", forbidden_socket)
+
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_reconciliation.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_200_daily_bars.csv",
+        _daily_rows(200),
+    )
+    run_log = tmp_path / "m398_cycle.jsonl"
+
+    exit_code = cli_module.main(
+        (
+            "etf-sma-cycle",
+            "--symbol",
+            "SPY",
+            "--run-id",
+            "unit_m398_cycle",
+            "--run-log",
+            str(run_log),
+            "--order-reconciliation-log",
+            str(reconciliation_log),
+            "--daily-bars-csv",
+            str(daily_bars_csv),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        )
+    )
+    captured = capsys.readouterr()
+    records = _read_jsonl(run_log)
+    payload = json.loads(captured.out)
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert records == [payload]
+    assert payload["data_readiness"]["observed_usable_bars"] == 200
+    assert payload["data_readiness"]["missing_usable_bars"] == 0
+    assert payload["data_readiness"]["readiness_state"] == "ready"
     _assert_never_mutates(payload)
 
 
@@ -470,6 +652,45 @@ def _write_bars_csv(path: Path, count: int) -> Path:
         )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     return path
+
+
+def _write_daily_bars_csv(path: Path, rows: list[dict[str, str]]) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    columns = (
+        "symbol",
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume",
+    )
+    lines = [",".join(columns)]
+    lines.extend(",".join(row[column] for column in columns) for row in rows)
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _daily_rows(count: int) -> list[dict[str, str]]:
+    start = date(2025, 1, 1)
+    return [
+        _daily_row("SPY", start + timedelta(days=index), 100 + index)
+        for index in range(count)
+    ]
+
+
+def _daily_row(symbol: str, day: date, price: int) -> dict[str, str]:
+    return {
+        "symbol": symbol,
+        "date": day.isoformat(),
+        "open": str(price),
+        "high": str(price),
+        "low": str(price),
+        "close": str(price),
+        "adjusted_close": str(price),
+        "volume": "1000",
+    }
 
 
 def _assert_never_mutates(payload: dict[str, object]) -> None:
