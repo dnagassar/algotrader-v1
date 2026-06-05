@@ -862,6 +862,47 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Local daily-bars intake output format.",
     )
+    local_bars_cycle_proof_parser = subparsers.add_parser(
+        "local-bars-etf-sma-cycle-proof",
+        help="Run an offline local-bars ETF/SMA cycle proof chain.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--input-csv",
+        required=True,
+        help="Operator-supplied local daily-bars CSV to canonicalize.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--canonical-csv",
+        required=True,
+        help="Canonical strict local daily-bars CSV to write.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="ISO YYYY-MM-DD date or timezone-aware ISO-8601 timestamp.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the proof record.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic proof JSONL record to PATH.",
+    )
+    local_bars_cycle_proof_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Local-bars ETF/SMA proof output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1218,6 +1259,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_local_daily_bars_checkpoint(args)
     if command == "local-daily-bars-intake":
         return _run_local_daily_bars_intake(args)
+    if command == "local-bars-etf-sma-cycle-proof":
+        return _run_local_bars_etf_sma_cycle_proof(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -2097,6 +2140,39 @@ def _run_local_daily_bars_intake(args: argparse.Namespace) -> int:
         print(render_local_daily_bars_intake_manifest_json(payload))
     else:
         print(render_local_daily_bars_intake_manifest_text(payload))
+    return 0
+
+
+def _run_local_bars_etf_sma_cycle_proof(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_local_bars_cycle_proof import (
+        EtfSmaLocalBarsCycleProofConfig,
+        build_etf_sma_local_bars_cycle_proof,
+        render_etf_sma_local_bars_cycle_proof_json,
+        render_etf_sma_local_bars_cycle_proof_text,
+        write_etf_sma_local_bars_cycle_proof_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_local_bars_cycle_proof(
+            EtfSmaLocalBarsCycleProofConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                input_csv=args.input_csv,
+                canonical_csv=args.canonical_csv,
+                as_of=args.as_of,
+                run_log=args.run_log,
+            )
+        )
+        write_etf_sma_local_bars_cycle_proof_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_local_bars_cycle_proof_json(payload))
+    else:
+        print(render_etf_sma_local_bars_cycle_proof_text(payload))
     return 0
 
 
