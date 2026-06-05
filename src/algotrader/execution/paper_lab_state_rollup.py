@@ -21,6 +21,8 @@ __all__ = [
     "PaperLabStateRollupConfig",
     "PaperLabStateRollupWriteResult",
     "build_paper_lab_state_rollup",
+    "build_paper_lab_state_rollup_from_daily_preview_record",
+    "build_paper_lab_state_rollup_from_records",
     "render_paper_lab_state_rollup_json",
     "render_paper_lab_state_rollup_text",
     "write_paper_lab_state_rollup_jsonl",
@@ -164,6 +166,106 @@ def build_paper_lab_state_rollup(
     checked_config = _config(config)
     reconciliation = _read_jsonl_artifact(checked_config.order_reconciliation_log)
     daily_preview = _read_jsonl_artifact(checked_config.daily_preview_log)
+    return _build_paper_lab_state_rollup_from_reads(
+        checked_config,
+        reconciliation,
+        daily_preview,
+    )
+
+
+def build_paper_lab_state_rollup_from_daily_preview_record(
+    config: PaperLabStateRollupConfig,
+    *,
+    daily_preview_found: bool,
+    daily_preview_parsed: bool,
+    daily_preview_record_count: int,
+    daily_preview_latest_record: Mapping[str, object] | None,
+    daily_preview_error: str,
+) -> dict[str, object]:
+    """Build one rollup record from a derived daily preview record."""
+
+    checked_config = _config(config)
+    reconciliation = _read_jsonl_artifact(checked_config.order_reconciliation_log)
+    daily_preview = _ArtifactRead(
+        path=checked_config.daily_preview_log,
+        found=_bool(daily_preview_found, "daily_preview_found"),
+        parsed=_bool(daily_preview_parsed, "daily_preview_parsed"),
+        record_count=_non_negative_int(
+            daily_preview_record_count,
+            "daily_preview_record_count",
+        ),
+        latest_record=_optional_mapping(
+            daily_preview_latest_record,
+            "daily_preview_latest_record",
+        ),
+        error=_string(daily_preview_error, "daily_preview_error"),
+    )
+    return _build_paper_lab_state_rollup_from_reads(
+        checked_config,
+        reconciliation,
+        daily_preview,
+    )
+
+
+def build_paper_lab_state_rollup_from_records(
+    config: PaperLabStateRollupConfig,
+    *,
+    order_reconciliation_found: bool,
+    order_reconciliation_parsed: bool,
+    order_reconciliation_record_count: int,
+    order_reconciliation_latest_record: Mapping[str, object] | None,
+    order_reconciliation_error: str,
+    daily_preview_found: bool,
+    daily_preview_parsed: bool,
+    daily_preview_record_count: int,
+    daily_preview_latest_record: Mapping[str, object] | None,
+    daily_preview_error: str,
+) -> dict[str, object]:
+    """Build one rollup record from explicit in-memory artifact records."""
+
+    checked_config = _config(config)
+    reconciliation = _ArtifactRead(
+        path=checked_config.order_reconciliation_log,
+        found=_bool(order_reconciliation_found, "order_reconciliation_found"),
+        parsed=_bool(order_reconciliation_parsed, "order_reconciliation_parsed"),
+        record_count=_non_negative_int(
+            order_reconciliation_record_count,
+            "order_reconciliation_record_count",
+        ),
+        latest_record=_optional_mapping(
+            order_reconciliation_latest_record,
+            "order_reconciliation_latest_record",
+        ),
+        error=_string(order_reconciliation_error, "order_reconciliation_error"),
+    )
+    daily_preview = _ArtifactRead(
+        path=checked_config.daily_preview_log,
+        found=_bool(daily_preview_found, "daily_preview_found"),
+        parsed=_bool(daily_preview_parsed, "daily_preview_parsed"),
+        record_count=_non_negative_int(
+            daily_preview_record_count,
+            "daily_preview_record_count",
+        ),
+        latest_record=_optional_mapping(
+            daily_preview_latest_record,
+            "daily_preview_latest_record",
+        ),
+        error=_string(daily_preview_error, "daily_preview_error"),
+    )
+    return _build_paper_lab_state_rollup_from_reads(
+        checked_config,
+        reconciliation,
+        daily_preview,
+    )
+
+
+def _build_paper_lab_state_rollup_from_reads(
+    checked_config: PaperLabStateRollupConfig,
+    reconciliation: _ArtifactRead,
+    daily_preview: _ArtifactRead,
+) -> dict[str, object]:
+    """Build one consolidated offline paper-lab state rollup record."""
+
     reconciliation_record = reconciliation.latest_record or {}
     daily_record = daily_preview.latest_record or {}
     daily_m376 = _mapping(daily_record.get("m376_order_summary"))
@@ -853,6 +955,35 @@ def _required_string(value: object, field_name: str) -> str:
     if value == "" or value != value.strip():
         raise ValidationError(f"{field_name} must be a non-empty string.")
     return value
+
+
+def _string(value: object, field_name: str) -> str:
+    if type(value) is not str:
+        raise ValidationError(f"{field_name} must be a string.")
+    return value
+
+
+def _bool(value: object, field_name: str) -> bool:
+    if type(value) is not bool:
+        raise ValidationError(f"{field_name} must be a bool.")
+    return value
+
+
+def _non_negative_int(value: object, field_name: str) -> int:
+    if type(value) is not int or value < 0:
+        raise ValidationError(f"{field_name} must be a non-negative integer.")
+    return value
+
+
+def _optional_mapping(
+    value: Mapping[str, object] | None,
+    field_name: str,
+) -> dict[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValidationError(f"{field_name} must be a mapping.")
+    return dict(value)
 
 
 def _mapping(value: object) -> Mapping[str, object]:

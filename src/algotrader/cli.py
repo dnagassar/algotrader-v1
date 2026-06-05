@@ -653,6 +653,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional timezone-aware ISO-8601 evaluation timestamp.",
     )
     etf_sma_cycle_parser.add_argument(
+        "--generated-at",
+        default=None,
+        help=(
+            "Optional timezone-aware ISO-8601 generated-at timestamp for the "
+            "unified paper-lab preview path."
+        ),
+    )
+    etf_sma_cycle_parser.add_argument(
         "--position-qty",
         default=None,
         help="Explicit offline position quantity for the configured symbol.",
@@ -1728,6 +1736,37 @@ def _run_paper_lab_state_rollup(args: argparse.Namespace) -> int:
 
 def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
     from .errors import ValidationError
+
+    if args.generated_at is not None:
+        from .execution.etf_sma_cycle_unified_preview import (
+            EtfSmaCycleUnifiedPreviewConfig,
+            build_etf_sma_cycle_unified_preview,
+            render_etf_sma_cycle_unified_preview_json,
+            render_etf_sma_cycle_unified_preview_text,
+            write_etf_sma_cycle_unified_preview_jsonl,
+        )
+
+        try:
+            payload = build_etf_sma_cycle_unified_preview(
+                EtfSmaCycleUnifiedPreviewConfig(
+                    run_id=args.run_id,
+                    symbol=args.symbol,
+                    generated_at=args.generated_at,
+                    order_reconciliation_log=args.order_reconciliation_log,
+                    market_data_csv=args.market_data_csv,
+                )
+            )
+            write_etf_sma_cycle_unified_preview_jsonl(payload, args.run_log)
+        except ValidationError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+
+        if args.output_format == "json":
+            print(render_etf_sma_cycle_unified_preview_json(payload))
+        else:
+            print(render_etf_sma_cycle_unified_preview_text(payload))
+        return 0
+
     from .execution.etf_sma_cycle import (
         EtfSmaCycleConfig,
         build_etf_sma_cycle_from_offline_inputs,
