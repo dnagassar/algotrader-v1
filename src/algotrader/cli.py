@@ -821,6 +821,47 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Local daily-bars checkpoint output format.",
     )
+    local_daily_bars_intake_parser = subparsers.add_parser(
+        "local-daily-bars-intake",
+        help="Validate and canonicalize an operator-supplied local daily-bars CSV.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--input-csv",
+        required=True,
+        help="Operator-supplied local daily-bars CSV to intake.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--output-csv",
+        required=True,
+        help="Canonical strict local daily-bars CSV to write.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="ISO YYYY-MM-DD date or timezone-aware ISO-8601 timestamp.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the local daily-bars intake manifest.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic intake manifest JSONL record to PATH.",
+    )
+    local_daily_bars_intake_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Local daily-bars intake output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1175,6 +1216,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
         return _run_local_daily_bars_checkpoint(args)
+    if command == "local-daily-bars-intake":
+        return _run_local_daily_bars_intake(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -2022,6 +2065,38 @@ def _run_local_daily_bars_checkpoint(args: argparse.Namespace) -> int:
         print(render_local_daily_bars_checkpoint_json(payload))
     else:
         print(render_local_daily_bars_checkpoint_text(payload))
+    return 0
+
+
+def _run_local_daily_bars_intake(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.local_daily_bars_intake import (
+        LocalDailyBarsIntakeConfig,
+        build_local_daily_bars_intake_manifest,
+        render_local_daily_bars_intake_manifest_json,
+        render_local_daily_bars_intake_manifest_text,
+        write_local_daily_bars_intake_manifest_jsonl,
+    )
+
+    try:
+        payload = build_local_daily_bars_intake_manifest(
+            LocalDailyBarsIntakeConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                input_csv=args.input_csv,
+                output_csv=args.output_csv,
+                as_of=args.as_of,
+            )
+        )
+        write_local_daily_bars_intake_manifest_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_local_daily_bars_intake_manifest_json(payload))
+    else:
+        print(render_local_daily_bars_intake_manifest_text(payload))
     return 0
 
 
