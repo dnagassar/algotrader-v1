@@ -108,8 +108,17 @@ def test_insufficient_history_with_count_fields_produces_readiness_checkpoint(
     cycle_log = _write_jsonl(
         tmp_path / "m394_cycle.jsonl",
         _m394_cycle_record(
-            market_data={"usable_bar_count": 150},
-            sma_config={"required_bars": 200},
+            data_readiness={
+                "required_usable_bars": 200,
+                "observed_usable_bars": 150,
+                "missing_usable_bars": 50,
+                "sma_short_window": 50,
+                "sma_long_window": 200,
+                "readiness_state": "insufficient_history",
+                "readiness_reason": "sma_insufficient_history",
+                "missing_evidence": [],
+                "source": "offline_etf_sma_cycle_evidence",
+            },
         ),
     )
     brief_log = _write_jsonl(tmp_path / "m395_brief.jsonl", _m395_brief_record())
@@ -138,11 +147,11 @@ def test_insufficient_history_with_count_fields_produces_readiness_checkpoint(
     assert payload["data_readiness_state"] == "insufficient_history"
     assert payload["required_usable_bars"] == 200
     assert payload["required_usable_bars_source"] == (
-        "cycle_artifact.sma_config.required_bars"
+        "cycle_artifact.data_readiness.required_usable_bars"
     )
     assert payload["observed_usable_bars"] == 150
     assert payload["observed_usable_bars_source"] == (
-        "cycle_artifact.market_data.usable_bar_count"
+        "cycle_artifact.data_readiness.observed_usable_bars"
     )
     assert payload["missing_usable_bars"] == 50
     assert payload["missing_evidence"] == []
@@ -171,6 +180,10 @@ def test_missing_count_fields_are_reported_as_unknown_from_cycle_artifact(
     assert payload["required_usable_bars_source"] == "configured_sma200_default"
     assert payload["observed_usable_bars"] is None
     assert payload["missing_usable_bars"] is None
+    assert (
+        "cycle_artifact.data_readiness.observed_usable_bars"
+        in payload["missing_evidence"]
+    )
     assert "cycle_artifact.market_data.usable_bar_count" in payload["missing_evidence"]
     assert "missing_observed_usable_bars" in payload["blockers"]
     assert payload["recommended_next_action"] == (
@@ -183,8 +196,17 @@ def test_non_insufficient_cycle_is_classified_without_broker_action(
     tmp_path,
 ) -> None:  # noqa: ANN001
     record = _m394_cycle_record(
-        market_data={"usable_bar_count": 220},
-        sma_config={"required_bars": 200},
+        data_readiness={
+            "required_usable_bars": 200,
+            "observed_usable_bars": 220,
+            "missing_usable_bars": 0,
+            "sma_short_window": 50,
+            "sma_long_window": 200,
+            "readiness_state": "ready_from_cycle_artifact",
+            "readiness_reason": "sma_usable_bars_ready",
+            "missing_evidence": [],
+            "source": "offline_etf_sma_cycle_evidence",
+        },
     )
     record.update(
         {

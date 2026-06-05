@@ -18,6 +18,10 @@ from typing import Any
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
 
+from .etf_sma_cycle import (
+    EtfSmaCycleConfig,
+    build_etf_sma_cycle_from_offline_inputs,
+)
 from .etf_sma_daily_preview import (
     EtfSmaDailyPreviewConfig,
     build_etf_sma_daily_preview,
@@ -51,6 +55,8 @@ _COMMAND = "etf-sma-cycle"
 _DEFAULT_SYMBOL = "SPY"
 _PROFIT_CLAIM = "none"
 _DERIVED_DAILY_PREVIEW_SUFFIX = "derived_daily_preview.jsonl"
+_DEFAULT_SMA_SHORT_WINDOW = 50
+_DEFAULT_SMA_LONG_WINDOW = 200
 _WRITE_RESULT_FALSE_FIELDS = (
     "submitted",
     "mutated",
@@ -177,6 +183,7 @@ def build_etf_sma_cycle_unified_preview(
         daily_preview_error="",
     )
     forbidden_actions = _forbidden_actions(state_rollup)
+    data_readiness = _cycle_data_readiness(checked_config)
 
     return {
         "milestone": _MILESTONE,
@@ -206,6 +213,7 @@ def build_etf_sma_cycle_unified_preview(
         },
         "daily_preview_status": _text(daily_preview.get("daily_preview_status")),
         "daily_preview_summary": _daily_preview_summary(daily_preview),
+        "data_readiness": data_readiness,
         "state_rollup_status": _text(state_rollup.get("state_rollup_status")),
         "state_rollup_summary": _state_rollup_summary(state_rollup),
         "cycle_decision": _text(state_rollup.get("cycle_decision")),
@@ -386,6 +394,170 @@ def _forbidden_actions(state_rollup: Mapping[str, object]) -> list[str]:
     return list(_dedupe(tuple(actions)))
 
 
+def _cycle_data_readiness(
+    config: EtfSmaCycleUnifiedPreviewConfig,
+) -> dict[str, object]:
+    cycle_record, evidence_error = _cycle_evidence_record(config)
+    sma_config = _mapping(cycle_record.get("sma_config"))
+    sma = _mapping(cycle_record.get("sma"))
+    market_data = _mapping(cycle_record.get("market_data"))
+
+    short_window = _first_int(
+        sma_config.get("fast_window"),
+        sma.get("fast_window"),
+        sma.get("short_window"),
+        default=_DEFAULT_SMA_SHORT_WINDOW,
+    )
+    long_window = _first_int(
+        sma_config.get("slow_window"),
+        sma.get("slow_window"),
+        sma.get("long_window"),
+        default=_DEFAULT_SMA_LONG_WINDOW,
+    )
+    required_usable_bars = _first_int(
+        sma_config.get("required_bars"),
+        sma.get("required_bars"),
+        long_window,
+        default=_DEFAULT_SMA_LONG_WINDOW,
+    )
+    observed_usable_bars = _observed_usable_bars_from_cycle(
+        cycle_record,
+        market_data,
+        sma,
+    )
+    missing_usable_bars = _missing_usable_bars(
+        required_usable_bars,
+        observed_usable_bars,
+    )
+    missing_evidence = _data_readiness_missing_evidence(
+        evidence_error,
+        cycle_record,
+        observed_usable_bars,
+    )
+
+    return {
+        "required_usable_bars": required_usable_bars,
+        "observed_usable_bars": observed_usable_bars,
+        "missing_usable_bars": missing_usable_bars,
+        "sma_short_window": short_window,
+        "sma_long_window": long_window,
+        "readiness_state": _readiness_state(
+            required_usable_bars,
+            observed_usable_bars,
+        ),
+        "readiness_reason": _readiness_reason(
+            evidence_error,
+            required_usable_bars,
+            observed_usable_bars,
+        ),
+        "missing_evidence": missing_evidence,
+        "source": "offline_etf_sma_cycle_evidence",
+        "source_record_type": _text(cycle_record.get("record_type")),
+        "source_market_data": {
+            "source": _text(market_data.get("source")),
+            "input_available": market_data.get("input_available") is True,
+            "total_bar_count": _optional_int(market_data.get("total_bar_count")),
+            "usable_bar_count": _optional_int(market_data.get("usable_bar_count")),
+            "ignored_future_bar_count": _optional_int(
+                market_data.get("ignored_future_bar_count")
+            ),
+        },
+    }
+
+
+def _cycle_evidence_record(
+    config: EtfSmaCycleUnifiedPreviewConfig,
+) -> tuple[Mapping[str, object], str]:
+    try:
+        record = build_etf_sma_cycle_from_offline_inputs(
+            EtfSmaCycleConfig(
+                run_id=config.run_id,
+                symbol=config.symbol,
+                milestone=_MILESTONE,
+                as_of=config.generated_at,
+                market_data_csv=config.market_data_csv,
+                order_reconciliation_log=config.order_reconciliation_log,
+            )
+        )
+    except ValidationError as exc:
+        return {}, str(exc)
+    return _mapping(record), ""
+
+
+def _observed_usable_bars_from_cycle(
+    cycle_record: Mapping[str, object],
+    market_data: Mapping[str, object],
+    sma: Mapping[str, object],
+) -> int | None:
+    if not _market_data_input_available(cycle_record, market_data):
+        return None
+    for value in (market_data.get("usable_bar_count"), sma.get("usable_bar_count")):
+        integer = _optional_int(value)
+        if integer is not None:
+            return integer
+    return None
+
+
+def _market_data_input_available(
+    cycle_record: Mapping[str, object],
+    market_data: Mapping[str, object],
+) -> bool:
+    return (
+        market_data.get("input_available") is True
+        or cycle_record.get("bars_input_available") is True
+    )
+
+
+def _missing_usable_bars(
+    required_usable_bars: int,
+    observed_usable_bars: int | None,
+) -> int | None:
+    if observed_usable_bars is None:
+        return None
+    return max(required_usable_bars - observed_usable_bars, 0)
+
+
+def _data_readiness_missing_evidence(
+    evidence_error: str,
+    cycle_record: Mapping[str, object],
+    observed_usable_bars: int | None,
+) -> list[str]:
+    missing: list[str] = []
+    market_data = _mapping(cycle_record.get("market_data"))
+    if evidence_error:
+        missing.append("offline_etf_sma_cycle_evidence")
+    if not _market_data_input_available(cycle_record, market_data):
+        missing.append("local_market_data_bars")
+    if observed_usable_bars is None:
+        missing.append("observed_usable_bars")
+    return list(_dedupe(tuple(missing)))
+
+
+def _readiness_state(
+    required_usable_bars: int,
+    observed_usable_bars: int | None,
+) -> str:
+    if observed_usable_bars is None:
+        return "unknown_from_cycle_artifact"
+    if observed_usable_bars < required_usable_bars:
+        return "insufficient_history"
+    return "ready_from_cycle_artifact"
+
+
+def _readiness_reason(
+    evidence_error: str,
+    required_usable_bars: int,
+    observed_usable_bars: int | None,
+) -> str:
+    if evidence_error:
+        return "offline_etf_sma_cycle_evidence_unavailable"
+    if observed_usable_bars is None:
+        return "observed_usable_bars_missing"
+    if observed_usable_bars < required_usable_bars:
+        return "sma_insufficient_history"
+    return "sma_usable_bars_ready"
+
+
 def _config(value: object) -> EtfSmaCycleUnifiedPreviewConfig:
     if type(value) is not EtfSmaCycleUnifiedPreviewConfig:
         raise ValidationError("config must be an EtfSmaCycleUnifiedPreviewConfig.")
@@ -458,6 +630,24 @@ def _false_bool(value: object, field_name: str) -> bool:
     if value is not False:
         raise ValidationError(f"{field_name} must be false.")
     return False
+
+
+def _optional_int(value: object) -> int | None:
+    if type(value) is int:
+        return value if value >= 0 else None
+    if type(value) is str and value.isdigit():
+        return int(value)
+    return None
+
+
+def _first_int(*values: object, default: int | None = None) -> int:
+    for value in values:
+        integer = _optional_int(value)
+        if integer is not None:
+            return integer
+    if default is None:
+        raise ValidationError("integer evidence is required.")
+    return default
 
 
 def _mapping(value: object) -> Mapping[str, object]:

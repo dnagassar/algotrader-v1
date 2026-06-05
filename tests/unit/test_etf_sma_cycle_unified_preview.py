@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from datetime import date, timedelta
 import json
 import os
 from pathlib import Path
@@ -130,6 +131,83 @@ def test_terminal_filled_m376_fixture_lifts_open_order_blocker(tmp_path) -> None
     assert "not_live_authorized" in payload["labels"]
     assert "profit_claim=none" in payload["labels"]
     assert payload["source_order_reconciliation"]["path"] == str(reconciliation_log)
+    readiness = payload["data_readiness"]
+    assert readiness["sma_short_window"] == 50
+    assert readiness["sma_long_window"] == 200
+    assert readiness["required_usable_bars"] == 200
+    assert readiness["observed_usable_bars"] is None
+    assert readiness["missing_usable_bars"] is None
+    assert readiness["readiness_state"] == "unknown_from_cycle_artifact"
+    assert readiness["readiness_reason"] == "observed_usable_bars_missing"
+    assert "local_market_data_bars" in readiness["missing_evidence"]
+    assert "observed_usable_bars" in readiness["missing_evidence"]
+    assert readiness["source"] == "offline_etf_sma_cycle_evidence"
+    assert readiness["source_market_data"]["input_available"] is False
+    _assert_never_mutates(payload)
+
+
+def test_insufficient_history_emits_sma_data_readiness_counts(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    market_data_csv = _write_bars_csv(tmp_path / "spy_150_daily_bars.csv", 150)
+    run_log = tmp_path / "m397_unified_preview.jsonl"
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(reconciliation_log, market_data_csv=market_data_csv)
+    )
+    result = write_etf_sma_cycle_unified_preview_jsonl(payload, run_log)
+    records = _read_jsonl(run_log)
+    readiness = payload["data_readiness"]
+
+    assert result.record_count == 1
+    assert records == [payload]
+    assert run_log.read_text(encoding="utf-8").count("\n") == 1
+    assert payload["cycle_decision"] == "insufficient_history"
+    assert payload["cycle_decision_reason"] == "sma_insufficient_history"
+    assert readiness["sma_short_window"] == 50
+    assert readiness["sma_long_window"] == 200
+    assert readiness["required_usable_bars"] == 200
+    assert readiness["observed_usable_bars"] == 150
+    assert readiness["missing_usable_bars"] == 50
+    assert readiness["readiness_state"] == "insufficient_history"
+    assert readiness["readiness_reason"] == "sma_insufficient_history"
+    assert readiness["missing_evidence"] == []
+    assert readiness["source"] == "offline_etf_sma_cycle_evidence"
+    assert readiness["source_record_type"] == "etf_sma_cycle"
+    assert readiness["source_market_data"] == {
+        "source": str(market_data_csv),
+        "input_available": True,
+        "total_bar_count": 150,
+        "usable_bar_count": 150,
+        "ignored_future_bar_count": 0,
+    }
+    _assert_never_mutates(payload)
+
+
+def test_ready_history_non_insufficient_cycle_remains_offline_and_non_mutating(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    market_data_csv = _write_bars_csv(tmp_path / "spy_220_daily_bars.csv", 220)
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(reconciliation_log, market_data_csv=market_data_csv)
+    )
+    readiness = payload["data_readiness"]
+
+    assert payload["cycle_decision"] != "insufficient_history"
+    assert payload["cycle_decision_reason"] != "sma_insufficient_history"
+    assert readiness["observed_usable_bars"] == 220
+    assert readiness["missing_usable_bars"] == 0
+    assert readiness["readiness_state"] == "ready_from_cycle_artifact"
+    assert readiness["readiness_reason"] == "sma_usable_bars_ready"
     _assert_never_mutates(payload)
 
 
@@ -377,6 +455,21 @@ def _read_jsonl(path: Path) -> list[dict[str, object]]:
         for line in path.read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
+
+
+def _write_bars_csv(path: Path, count: int) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    start = date(2025, 1, 1)
+    lines = ["timestamp,symbol,open,high,low,close,volume"]
+    for index in range(count):
+        day = start + timedelta(days=index)
+        price = 100 + index
+        lines.append(
+            f"{day.isoformat()}T00:00:00+00:00,SPY,"
+            f"{price},{price},{price},{price},1000"
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
 
 
 def _assert_never_mutates(payload: dict[str, object]) -> None:

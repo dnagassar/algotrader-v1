@@ -65,6 +65,8 @@ _SOURCE_FALSE_FIELDS = (
     "preview_order_authorized",
 )
 _REQUIRED_BAR_CANDIDATES = (
+    ("data_readiness", "required_usable_bars"),
+    ("data_readiness", "sma_long_window"),
     ("required_usable_bars",),
     ("sma_config", "required_bars"),
     ("sma_config", "slow_window"),
@@ -75,6 +77,7 @@ _REQUIRED_BAR_CANDIDATES = (
     ("required_bars",),
 )
 _OBSERVED_BAR_CANDIDATES = (
+    ("data_readiness", "observed_usable_bars"),
     ("observed_usable_bars",),
     ("usable_bar_count",),
     ("market_data", "usable_bar_count"),
@@ -577,6 +580,7 @@ def _missing_evidence(
     if cycle_artifact.parsed and observed_usable_bars is None:
         missing.extend(
             (
+                "cycle_artifact.data_readiness.observed_usable_bars",
                 "cycle_artifact.observed_usable_bars",
                 "cycle_artifact.market_data.usable_bar_count",
                 "cycle_artifact.sma.usable_bar_count",
