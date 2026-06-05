@@ -700,6 +700,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Cycle output format.",
     )
+    etf_sma_cycle_brief_parser = subparsers.add_parser(
+        "etf-sma-cycle-brief",
+        help="Build one offline operator brief from an ETF/SMA cycle JSONL artifact.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the operator brief.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic operator brief JSONL record to PATH.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--cycle-log",
+        required=True,
+        help="Explicit local unified ETF/SMA cycle JSONL input path.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 generated-at timestamp.",
+    )
+    etf_sma_cycle_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Operator brief output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1048,6 +1084,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_state_rollup(args)
     if command == "etf-sma-cycle":
         return _run_etf_sma_cycle(args)
+    if command == "etf-sma-cycle-brief":
+        return _run_etf_sma_cycle_brief(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -1800,6 +1838,37 @@ def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
         print(render_etf_sma_cycle_json(payload))
     else:
         print(render_etf_sma_cycle_text(payload))
+    return 0
+
+
+def _run_etf_sma_cycle_brief(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_cycle_operator_brief import (
+        EtfSmaCycleOperatorBriefConfig,
+        build_etf_sma_cycle_operator_brief,
+        render_etf_sma_cycle_operator_brief_json,
+        render_etf_sma_cycle_operator_brief_text,
+        write_etf_sma_cycle_operator_brief_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_cycle_operator_brief(
+            EtfSmaCycleOperatorBriefConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                generated_at=args.generated_at,
+                cycle_log=args.cycle_log,
+            )
+        )
+        write_etf_sma_cycle_operator_brief_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_cycle_operator_brief_json(payload))
+    else:
+        print(render_etf_sma_cycle_operator_brief_text(payload))
     return 0
 
 
