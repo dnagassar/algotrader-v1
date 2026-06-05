@@ -785,6 +785,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Data-readiness output format.",
     )
+    local_daily_bars_checkpoint_parser = subparsers.add_parser(
+        "local-daily-bars-checkpoint",
+        help="Validate a strict local daily-bars CSV and write one checkpoint.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--daily-bars-csv",
+        required=True,
+        help="Strict local daily bars CSV to validate.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--as-of",
+        required=True,
+        help="ISO YYYY-MM-DD date or timezone-aware ISO-8601 timestamp.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the local daily-bars checkpoint.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic local daily-bars JSONL record to PATH.",
+    )
+    local_daily_bars_checkpoint_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Local daily-bars checkpoint output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1137,6 +1173,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_cycle_brief(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
+    if command == "local-daily-bars-checkpoint":
+        return _run_local_daily_bars_checkpoint(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -1953,6 +1991,37 @@ def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
         print(render_etf_sma_data_readiness_checkpoint_json(payload))
     else:
         print(render_etf_sma_data_readiness_checkpoint_text(payload))
+    return 0
+
+
+def _run_local_daily_bars_checkpoint(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.local_daily_bars_checkpoint import (
+        LocalDailyBarsCheckpointConfig,
+        build_local_daily_bars_checkpoint,
+        render_local_daily_bars_checkpoint_json,
+        render_local_daily_bars_checkpoint_text,
+        write_local_daily_bars_checkpoint_jsonl,
+    )
+
+    try:
+        payload = build_local_daily_bars_checkpoint(
+            LocalDailyBarsCheckpointConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                daily_bars_csv=args.daily_bars_csv,
+                as_of=args.as_of,
+            )
+        )
+        write_local_daily_bars_checkpoint_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_local_daily_bars_checkpoint_json(payload))
+    else:
+        print(render_local_daily_bars_checkpoint_text(payload))
     return 0
 
 
