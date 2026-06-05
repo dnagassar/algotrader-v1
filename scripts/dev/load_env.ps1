@@ -67,6 +67,10 @@ foreach ($line in [System.IO.File]::ReadLines($envPath)) {
     $loadedCount += 1
 }
 
+if (-not $env:ALPACA_SECRET_KEY -and $env:ALPACA_API_SECRET_KEY) {
+    $env:ALPACA_SECRET_KEY = $env:ALPACA_API_SECRET_KEY
+}
+
 if (-not $Quiet) {
     Write-Host "Loaded $loadedCount local environment variable(s) into this PowerShell process."
 }
