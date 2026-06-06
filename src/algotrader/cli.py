@@ -939,6 +939,44 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Paper-lab review packet output format.",
     )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser = (
+        subparsers.add_parser(
+            "paper-lab-read-only-broker-snapshot-reconciliation",
+            help="Write one read-only paper broker snapshot reconciliation record.",
+        )
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Paper symbol to reconcile. Default: SPY.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--source-review-packet",
+        required=True,
+        help="Read the source paper-lab operator review packet JSONL from PATH.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the snapshot reconciliation record.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one snapshot reconciliation JSONL record to PATH.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 timestamp for the snapshot reconciliation.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Snapshot reconciliation output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1348,6 +1386,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.output_format,
             run_log_path=args.run_log,
             run_id=args.run_id,
+        )
+    if command == "paper-lab-read-only-broker-snapshot-reconciliation":
+        return _run_paper_lab_read_only_broker_snapshot_reconciliation(
+            config,
+            args,
         )
     if command == "paper-lab-order-traceability-review":
         return _run_paper_lab_order_traceability_review(config, args)
@@ -2244,6 +2287,55 @@ def _run_etf_sma_paper_lab_review_packet(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_paper_lab_review_packet_text(payload))
     return 0
+
+
+def _run_paper_lab_read_only_broker_snapshot_reconciliation(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.read_only_paper_broker_snapshot_reconciliation import (
+        ReadOnlyPaperBrokerSnapshotReconciliationConfig,
+        build_read_only_paper_broker_snapshot_reconciliation,
+        render_read_only_paper_broker_snapshot_reconciliation_json,
+        render_read_only_paper_broker_snapshot_reconciliation_text,
+        write_read_only_paper_broker_snapshot_reconciliation_jsonl,
+    )
+
+    try:
+        observation = _observe_paper_lab_read_only_broker_snapshot_reconciliation(
+            config,
+            symbol=args.symbol,
+        )
+        payload = build_read_only_paper_broker_snapshot_reconciliation(
+            ReadOnlyPaperBrokerSnapshotReconciliationConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                source_review_packet_path=args.source_review_packet,
+                run_log=args.run_log,
+                generated_at=args.generated_at,
+            ),
+            observation,
+        )
+        write_read_only_paper_broker_snapshot_reconciliation_jsonl(
+            payload,
+            args.run_log,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_read_only_paper_broker_snapshot_reconciliation_json(payload))
+    else:
+        print(render_read_only_paper_broker_snapshot_reconciliation_text(payload))
+
+    state = str(payload.get("reconciliation_state", ""))
+    if state == "ready_for_operator_review":
+        return 0
+    if state == "blocked_profile_gate_failed":
+        return 2
+    return 1
 
 
 def _load_etf_sma_cycle_preview_bars(
@@ -4111,6 +4203,154 @@ def _paper_lab_snapshot_unavailable_payload(
         "ok": False,
         "unavailable_observations": unavailable_observations,
         "unavailable_reasons": unavailable_reasons,
+    }
+
+
+def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
+    config,
+    *,
+    symbol: str,
+):
+    from .execution.alpaca_client import AlpacaRecentOrderQuery
+    from .execution.paper_lab_snapshot import (
+        account_observation_payload,
+        order_observation_payloads,
+        position_observation_payloads,
+    )
+    from .execution.read_only_paper_broker_snapshot_reconciliation import (
+        ReadOnlyPaperBrokerSnapshotObservation,
+    )
+
+    profile_gate = _paper_profile_gate(config)
+    profile_passed = profile_gate.get("passed") is True
+    live_url_detected = _paper_base_url_live_detected(config)
+    profile_detail = str(profile_gate.get("detail", ""))
+    if not profile_passed:
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=False,
+            profile_gate_detail=profile_detail,
+            live_url_detected=live_url_detected,
+            unavailable_observations=(
+                "account",
+                "positions",
+                "open_orders",
+                "recent_orders",
+            ),
+            unavailable_reasons={
+                "profile_gate": {
+                    "error_type": "ConfigValidationError",
+                    "message": profile_detail,
+                }
+            },
+        )
+
+    try:
+        broker = _build_paper_broker(config.alpaca_paper)
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="",
+            live_url_detected=live_url_detected,
+            unavailable_observations=(
+                "broker",
+                "account",
+                "positions",
+                "open_orders",
+                "recent_orders",
+            ),
+            unavailable_reasons={
+                "broker": _paper_lab_read_only_observation_exception_payload(
+                    exc,
+                    config,
+                )
+            },
+            credential_access_attempted=True,
+        )
+
+    unavailable: list[str] = []
+    reasons: dict[str, object] = {}
+    network_access_attempted = False
+    account: dict[str, object] | None = None
+    positions: tuple[dict[str, object], ...] = ()
+    open_orders: tuple[dict[str, object], ...] = ()
+    recent_orders: tuple[dict[str, object], ...] = ()
+    account_observed = False
+    positions_observed = False
+    open_orders_observed = False
+    recent_orders_observed = False
+
+    try:
+        network_access_attempted = True
+        account = account_observation_payload(broker.get_account())
+        account_observed = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("account")
+        reasons["account"] = _paper_lab_read_only_observation_exception_payload(
+            exc,
+            config,
+        )
+
+    try:
+        network_access_attempted = True
+        positions = tuple(position_observation_payloads(broker.get_positions()))
+        positions_observed = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("positions")
+        reasons["positions"] = _paper_lab_read_only_observation_exception_payload(
+            exc,
+            config,
+        )
+
+    try:
+        network_access_attempted = True
+        open_query = AlpacaRecentOrderQuery(status_filter="open")
+        open_orders = tuple(order_observation_payloads(broker.get_recent_orders(open_query)))
+        open_orders_observed = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("open_orders")
+        reasons["open_orders"] = (
+            _paper_lab_read_only_observation_exception_payload(exc, config)
+        )
+
+    try:
+        network_access_attempted = True
+        recent_query = AlpacaRecentOrderQuery(status_filter="all")
+        recent_orders = tuple(
+            order_observation_payloads(broker.get_recent_orders(recent_query))
+        )
+        recent_orders_observed = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("recent_orders")
+        reasons["recent_orders"] = (
+            _paper_lab_read_only_observation_exception_payload(exc, config)
+        )
+
+    return ReadOnlyPaperBrokerSnapshotObservation(
+        paper_profile_gate_passed=True,
+        profile_gate_detail="",
+        live_url_detected=live_url_detected,
+        account_observed=account_observed,
+        positions_observed=positions_observed,
+        orders_observed=open_orders_observed,
+        recent_orders_observed=recent_orders_observed,
+        account=account,
+        positions=positions,
+        open_orders=open_orders,
+        recent_orders=recent_orders,
+        unavailable_observations=tuple(unavailable),
+        unavailable_reasons=reasons,
+        network_access_attempted=network_access_attempted,
+        credential_access_attempted=True,
+    )
+
+
+def _paper_lab_read_only_observation_exception_payload(
+    exc: Exception,
+    config,
+) -> dict[str, object]:
+    return {
+        "error_type": exc.__class__.__name__,
+        "message": _redact_config_secrets(str(exc), config),
     }
 
 

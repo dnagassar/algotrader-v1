@@ -14869,6 +14869,16 @@ Safe next tasks include:
   fails closed into a blocked review state. M402 is review/handoff only: no
   broker state, paper execution, submit flag, market-data download, credential
   access, network access, live support, or broker mutation is authorized.
+- M403 adds `paper-lab-read-only-broker-snapshot-reconciliation`, a separate
+  paper-gated read-only broker reality check after the M402 review packet. It
+  writes exactly one JSONL record with account, position, open-order, and recent
+  order observations when available, classifies open SPY orders and unexpected
+  non-SPY positions as blockers, and fails closed for profile gate failure,
+  broker unavailability, or incomplete observation. The M403 contract preserves
+  `submitted=false`, `mutated=false`, `submit_authorized=false`,
+  `broker_mutation_authorized=false`, `live_authorized=false`, and
+  `profit_claim=none`; it adds no submit, cancel, replace, close, liquidation,
+  or retry-mutation path.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

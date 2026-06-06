@@ -271,6 +271,7 @@ Examples of broker-facing paper surfaces include:
 
 - read-only paper order reconciliation
 - read-only paper account, position, or order snapshots
+- read-only paper broker snapshot/reconciliation records for operator review
 - paper submit or close commands when explicitly scoped
 
 Broker-facing paper command contract:
@@ -287,6 +288,14 @@ Broker-facing paper command contract:
 - must preserve `live_authorized=false`
 - must preserve `not_live_authorized`
 - must not run from default pytest
+
+`paper-lab-read-only-broker-snapshot-reconciliation` is a read-only
+paper-facing operator review command. It consumes the latest M402 review packet
+plus a gated paper account/positions/open-orders/recent-orders observation and
+writes exactly one JSONL record. Its only terminal states are operator-ready or
+blocked states for profile gate failure, broker unavailability, incomplete
+observation, open SPY orders, or unexpected non-SPY positions. It has no submit,
+cancel, replace, close, liquidation, or retry-mutation path.
 
 Mutation-capable paper commands also require explicit intent flags such as
 `--submit` and `--i-mean-it` where the command surface defines them. Those
