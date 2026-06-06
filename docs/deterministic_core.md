@@ -297,6 +297,13 @@ blocked states for profile gate failure, broker unavailability, incomplete
 observation, open SPY orders, or unexpected non-SPY positions. It has no submit,
 cancel, replace, close, liquidation, or retry-mutation path.
 
+`paper-lab-read-only-broker-snapshot-operator-review` is offline-only. It
+consumes the latest local read-only broker snapshot/reconciliation JSONL record,
+validates clean flat/no-open-order observations and false safety authority
+flags, writes one sanitized operator-review JSONL record, and has no credential,
+network, broker adapter, submit, cancel, replace, close, liquidation, or live
+support path.
+
 Mutation-capable paper commands also require explicit intent flags such as
 `--submit` and `--i-mean-it` where the command surface defines them. Those
 flags are not enough by themselves; the milestone must also explicitly scope

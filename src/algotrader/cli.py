@@ -977,6 +977,45 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Snapshot reconciliation output format.",
     )
+    paper_lab_read_only_broker_snapshot_operator_review_parser = (
+        subparsers.add_parser(
+            "paper-lab-read-only-broker-snapshot-operator-review",
+            help=(
+                "Write one offline operator-review packet from a read-only "
+                "paper broker snapshot reconciliation."
+            ),
+        )
+    )
+    paper_lab_read_only_broker_snapshot_operator_review_parser.add_argument(
+        "--source-snapshot-log",
+        required=True,
+        help="Read the source read-only broker snapshot JSONL from PATH.",
+    )
+    paper_lab_read_only_broker_snapshot_operator_review_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the operator-review record.",
+    )
+    paper_lab_read_only_broker_snapshot_operator_review_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one operator-review JSONL record to PATH.",
+    )
+    paper_lab_read_only_broker_snapshot_operator_review_parser.add_argument(
+        "--generated-at",
+        default=None,
+        help=(
+            "Optional timezone-aware ISO-8601 timestamp for the review packet. "
+            "Defaults to the source snapshot timestamp when present."
+        ),
+    )
+    paper_lab_read_only_broker_snapshot_operator_review_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Operator-review output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1337,6 +1376,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_local_bars_etf_sma_cycle_proof(args)
     if command == "etf-sma-paper-lab-review-packet":
         return _run_etf_sma_paper_lab_review_packet(args)
+    if command == "paper-lab-read-only-broker-snapshot-operator-review":
+        return _run_paper_lab_read_only_broker_snapshot_operator_review(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -2287,6 +2328,45 @@ def _run_etf_sma_paper_lab_review_packet(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_paper_lab_review_packet_text(payload))
     return 0
+
+
+def _run_paper_lab_read_only_broker_snapshot_operator_review(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.read_only_paper_broker_snapshot_operator_review import (
+        ReadOnlyPaperBrokerSnapshotOperatorReviewConfig,
+        build_read_only_paper_broker_snapshot_operator_review,
+        render_read_only_paper_broker_snapshot_operator_review_json,
+        render_read_only_paper_broker_snapshot_operator_review_text,
+        write_read_only_paper_broker_snapshot_operator_review_jsonl,
+    )
+
+    try:
+        payload = build_read_only_paper_broker_snapshot_operator_review(
+            ReadOnlyPaperBrokerSnapshotOperatorReviewConfig(
+                run_id=args.run_id,
+                source_snapshot_log=args.source_snapshot_log,
+                run_log=args.run_log,
+                generated_at=args.generated_at,
+            )
+        )
+        write_read_only_paper_broker_snapshot_operator_review_jsonl(
+            payload,
+            args.run_log,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_read_only_paper_broker_snapshot_operator_review_json(payload))
+    else:
+        print(render_read_only_paper_broker_snapshot_operator_review_text(payload))
+
+    if payload.get("review_state") == "operator_review_complete":
+        return 0
+    return 1
 
 
 def _run_paper_lab_read_only_broker_snapshot_reconciliation(

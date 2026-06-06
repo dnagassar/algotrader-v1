@@ -14879,6 +14879,15 @@ Safe next tasks include:
   `broker_mutation_authorized=false`, `live_authorized=false`, and
   `profit_claim=none`; it adds no submit, cancel, replace, close, liquidation,
   or retry-mutation path.
+- M405 adds `paper-lab-read-only-broker-snapshot-operator-review`, an
+  offline-only operator-review packet for the latest read-only paper broker
+  snapshot/reconciliation JSONL record. It reads local artifact evidence only,
+  validates false submit/mutation/live-authority flags plus flat-position and
+  no-open-order observations, treats recent historical orders as context unless
+  they are open, and writes exactly one sanitized JSONL review record. The M405
+  packet includes counts and symbols but excludes raw account ids, balances,
+  and broker order ids. It loads no runtime config, credentials, broker adapter,
+  SDK, or network path, and it approves no paper submit.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
