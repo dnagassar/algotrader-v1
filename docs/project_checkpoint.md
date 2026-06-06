@@ -14949,6 +14949,17 @@ Safe next tasks include:
   of the operator, does not use synthetic/sample/fixture/test data as operator
   evidence, and preserves false submit, mutation, broker/network, credential,
   paper-approval, and live-authority flags.
+- M410 hardens the M409 manual import provenance gate before any real operator
+  CSV can become admissible evidence. The manifest now requires a strict
+  lowercase 64-character `expected_input_sha256` field, compares it with the
+  computed input CSV SHA-256 before final provenance acceptance, rejects missing,
+  malformed, uppercase, non-hex, or mismatched hashes, and catches forbidden
+  generated/sample/fixture/test/synthetic provenance terms inside compound
+  tokens and phrases. Canonical CSV creation and the M407 refresh rerun still
+  occur only after all manifest and data validation passes; missing input or
+  provenance remains blocked-valid with no canonical output, no refresh rerun,
+  `profit_claim=none`, and false submit, mutation, broker/network, credential,
+  paper-approval, and live-authority flags.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

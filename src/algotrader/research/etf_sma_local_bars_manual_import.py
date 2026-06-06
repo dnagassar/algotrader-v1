@@ -70,6 +70,7 @@ _SOURCE_SAFETY_FALSE_FIELDS = (
 _PROVENANCE_REQUIRED_FIELDS = (
     "symbol",
     "input_csv",
+    "expected_input_sha256",
     "source_description",
     "source_type",
     "operator_attested",
@@ -84,6 +85,14 @@ _PROVENANCE_REQUIRED_FIELDS = (
     "adjustment_policy",
     "timeframe",
     "expected_schema",
+    "notes",
+)
+_PROVENANCE_FORBIDDEN_TEXT_FIELDS = (
+    "source_description",
+    "source_type",
+    "data_vendor_or_origin",
+    "acquisition_method",
+    "adjustment_policy",
     "notes",
 )
 _PROVENANCE_FALSE_FLAGS = (
@@ -104,6 +113,7 @@ _PROVENANCE_STRING_FIELDS = (
     "adjustment_policy",
     "timeframe",
     "expected_schema",
+    "notes",
 )
 _AMBIGUOUS_TEXT_VALUES = frozenset(
     ("", "ambiguous", "n/a", "na", "none", "null", "tbd", "todo", "unknown")
@@ -259,6 +269,7 @@ def build_etf_sma_local_bars_manual_import(
     )
     provenance = _validate_provenance_manifest(checked_config)
     data = _validate_input_csv(checked_config, provenance)
+    provenance = _validate_provenance_input_sha256(provenance, data.input_sha256)
 
     blockers = _dedupe(
         (
@@ -433,13 +444,9 @@ def _validate_provenance_manifest(
         if manifest.get(field) is not False:
             blockers.append(f"{field}_not_false")
 
-    source_type = manifest.get("source_type")
-    if type(source_type) is str and _token(source_type) in _FORBIDDEN_PROVENANCE_VALUES:
-        blockers.append("provenance_rejected_generated_sample_fixture_test_synthetic")
-    acquisition_method = manifest.get("acquisition_method")
-    if (
-        type(acquisition_method) is str
-        and _token(acquisition_method) in _FORBIDDEN_PROVENANCE_VALUES
+    if any(
+        _provenance_text_has_forbidden_term(manifest.get(field))
+        for field in _PROVENANCE_FORBIDDEN_TEXT_FIELDS
     ):
         blockers.append("provenance_rejected_generated_sample_fixture_test_synthetic")
 
@@ -471,6 +478,34 @@ def _validate_provenance_manifest(
         blockers=_dedupe(tuple(blockers)),
         manifest_sha256=manifest_sha256,
         normalized_input_csv=normalized_input_csv,
+    )
+
+
+def _validate_provenance_input_sha256(
+    provenance: _ProvenanceValidation,
+    input_sha256: str | None,
+) -> _ProvenanceValidation:
+    if not provenance.supplied or not provenance.manifest:
+        return provenance
+
+    blockers = list(provenance.blockers)
+    if "expected_input_sha256" in provenance.manifest:
+        expected = provenance.manifest.get("expected_input_sha256")
+        if type(expected) is not str or not _valid_lower_sha256(expected):
+            blockers.append("invalid_expected_input_sha256")
+        elif input_sha256 is None:
+            blockers.append("expected_input_sha256_unverified")
+        elif expected != input_sha256:
+            blockers.append("expected_input_sha256_mismatch")
+
+    deduped_blockers = _dedupe(tuple(blockers))
+    return _ProvenanceValidation(
+        supplied=provenance.supplied,
+        valid=not deduped_blockers,
+        manifest=provenance.manifest,
+        blockers=deduped_blockers,
+        manifest_sha256=provenance.manifest_sha256,
+        normalized_input_csv=provenance.normalized_input_csv,
     )
 
 
@@ -757,6 +792,14 @@ def _payload(
             "manifest_template_used": False,
             "valid": provenance.valid,
             "manifest_sha256": provenance.manifest_sha256,
+            "expected_input_sha256": provenance.manifest.get(
+                "expected_input_sha256"
+            ),
+            "input_sha256_matches_manifest": (
+                data.input_sha256 is not None
+                and provenance.manifest.get("expected_input_sha256")
+                == data.input_sha256
+            ),
             "operator_attested": provenance.manifest.get("operator_attested"),
             "attested_by": provenance.manifest.get("attested_by"),
             "attested_at": provenance.manifest.get("attested_at"),
@@ -1210,8 +1253,27 @@ def _valid_iso_date_or_timestamp(value: str) -> bool:
     return True
 
 
+def _valid_lower_sha256(value: str) -> bool:
+    return len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
 def _column_token(value: str) -> str:
     return _token(value.replace(".", " ").replace("/", " ").replace("-", " "))
+
+
+def _provenance_text_has_forbidden_term(value: object) -> bool:
+    if type(value) is not str:
+        return False
+    return any(term in _FORBIDDEN_PROVENANCE_VALUES for term in _text_terms(value))
+
+
+def _text_terms(value: str) -> tuple[str, ...]:
+    normalized = "".join(
+        character if character.isalnum() else "_" for character in value.lower()
+    )
+    return tuple(term for term in normalized.split("_") if term)
 
 
 def _token(value: str) -> str:

@@ -407,7 +407,8 @@ Offline research/backtest path:
   writes a strict canonical SPY daily-bars CSV when the source is non-synthetic,
   local operator evidence with at least 201 usable bars.
 - `etf-sma-local-bars-manual-import` accepts one operator-specified local SPY
-  daily-bars CSV only with a separate explicit provenance manifest, writes a
+  daily-bars CSV only with a separate explicit provenance manifest whose
+  `expected_input_sha256` exactly matches the computed CSV SHA-256, writes a
   strict canonical CSV only after manifest and data validation pass, and reruns
   the local-bars refresh path only after that canonicalization succeeds.
 - `etf-sma-local-bars-backtest-refresh` validates a prior offline stats
@@ -470,8 +471,9 @@ Preferred next work remains offline unless explicitly scoped otherwise:
 - extend fake brokers and deterministic simulators
 - improve local reconciliation artifacts and operator reports
 - acquire or locally place real non-synthetic SPY daily bars with clear operator
-  provenance and at least 201 usable bars, then run the M409 manual import gate
-  before treating them as backtest evidence
+  provenance, a manifest-pinned `expected_input_sha256`, and at least 201
+  usable bars, then run the manual import gate before treating them as backtest
+  evidence
 - run read-only M376 reconciliation only under an explicit paper milestone
 - keep SPY submit blocked until M376 is terminal by read-only reconciliation
 
