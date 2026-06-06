@@ -118,6 +118,25 @@ def test_open_spy_order_blocks_future_same_symbol_submit(tmp_path) -> None:  # n
     _assert_no_broker_authority(payload)
 
 
+def test_open_non_spy_order_blocks_future_submit(tmp_path) -> None:  # noqa: ANN001
+    payload = build_read_only_paper_broker_snapshot_reconciliation(
+        _config(_write_source_review_packet(tmp_path), tmp_path / "m403.jsonl"),
+        _observation(open_orders=({"symbol": "MSFT", "status": "accepted"},)),
+    )
+
+    assert payload["open_order_count"] == 1
+    assert payload["open_order_symbols"] == ["MSFT"]
+    assert payload["open_spy_order_count"] == 0
+    assert payload["unexpected_non_spy_open_orders"] == [
+        {"symbol": "MSFT", "status": "accepted"}
+    ]
+    assert payload["unexpected_non_spy_open_order_count"] == 1
+    assert payload["reconciliation_state"] == "blocked_open_order_present"
+    assert "open_order_present" in payload["blockers"]
+    assert "unexpected_non_spy_open_order" in payload["blockers"]
+    _assert_no_broker_authority(payload)
+
+
 def test_unexpected_non_spy_position_blocks_review(tmp_path) -> None:  # noqa: ANN001
     payload = build_read_only_paper_broker_snapshot_reconciliation(
         _config(_write_source_review_packet(tmp_path), tmp_path / "m403.jsonl"),
@@ -202,6 +221,32 @@ def test_profile_gate_failed_writes_blocked_artifact_shape(tmp_path) -> None:  #
     assert payload["network_access_attempted"] is False
     assert payload["credential_access_attempted"] is False
     assert "paper_profile_gate_failed" in payload["blockers"]
+    _assert_no_broker_authority(payload)
+
+
+def test_live_url_detected_blocks_without_broker_observation(tmp_path) -> None:  # noqa: ANN001
+    payload = build_read_only_paper_broker_snapshot_reconciliation(
+        _config(_write_source_review_packet(tmp_path), tmp_path / "m403.jsonl"),
+        ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="live Alpaca URL detected for paper snapshot",
+            live_url_detected=True,
+            unavailable_observations=(
+                "account",
+                "positions",
+                "open_orders",
+                "recent_orders",
+            ),
+            credential_access_attempted=True,
+        ),
+    )
+
+    assert payload["live_url_detected"] is True
+    assert payload["broker_observation_state"] == "live_url_detected"
+    assert payload["reconciliation_state"] == "blocked_live_url_detected"
+    assert payload["network_access_attempted"] is False
+    assert payload["credential_access_attempted"] is True
+    assert "live_url_detected" in payload["blockers"]
     _assert_no_broker_authority(payload)
 
 
@@ -294,6 +339,43 @@ def test_cli_profile_gate_failure_writes_one_blocked_record_without_broker_build
     assert payload["reconciliation_state"] == "blocked_profile_gate_failed"
     assert payload["network_access_attempted"] is False
     assert payload["credential_access_attempted"] is False
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_live_url_detection_writes_one_blocked_record_without_broker_build(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch, base_url="https://api.alpaca.markets")
+    _forbid_broker_build(monkeypatch)
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_live_url_failed.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert _read_jsonl(run_log) == [payload]
+    assert payload["live_url_detected"] is True
+    assert payload["reconciliation_state"] == "blocked_live_url_detected"
+    assert payload["network_access_attempted"] is False
+    assert payload["credential_access_attempted"] is True
+    assert "live_url_detected" in payload["blockers"]
     _assert_no_broker_authority(payload)
 
 
@@ -425,11 +507,16 @@ def _read_jsonl(path) -> list[dict[str, object]]:  # noqa: ANN001
     ]
 
 
-def _set_env(monkeypatch, *, profile: str = "paper") -> None:
+def _set_env(
+    monkeypatch,
+    *,
+    profile: str = "paper",
+    base_url: str = "https://paper.example.test",
+) -> None:
     monkeypatch.setenv("APP_PROFILE", profile)
     monkeypatch.setenv("ALPACA_API_KEY", SENSITIVE_API_KEY)
     monkeypatch.setenv("ALPACA_SECRET_KEY", SENSITIVE_SECRET_KEY)
-    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", "https://paper.example.test")
+    monkeypatch.setenv("ALPACA_PAPER_BASE_URL", base_url)
     monkeypatch.delenv("ALGOTRADER_PAPER_HALT", raising=False)
 
 

@@ -285,6 +285,11 @@ def build_read_only_paper_broker_snapshot_reconciliation(
         if _symbol_text(position) != checked_config.symbol
     ]
     open_spy_orders = _by_symbol(open_orders, checked_config.symbol)
+    unexpected_non_spy_open_orders = [
+        dict(order)
+        for order in open_orders
+        if _symbol_text(order) != checked_config.symbol
+    ]
     recent_spy_orders = _by_symbol(recent_orders, checked_config.symbol)
 
     source_blockers = _source_blockers(
@@ -298,7 +303,7 @@ def build_read_only_paper_broker_snapshot_reconciliation(
         observation=checked_observation,
         source_blockers=source_blockers,
         observation_blockers=observation_blockers,
-        open_spy_order_count=len(open_spy_orders),
+        open_order_count=len(open_orders),
         unexpected_non_spy_positions=unexpected_non_spy_positions,
     )
     blockers = _dedupe(
@@ -306,8 +311,18 @@ def build_read_only_paper_broker_snapshot_reconciliation(
             *source_blockers,
             *observation_blockers,
             *(
+                ("open_order_present",)
+                if open_orders
+                else ()
+            ),
+            *(
                 ("open_spy_order_present",)
                 if open_spy_orders
+                else ()
+            ),
+            *(
+                ("unexpected_non_spy_open_order",)
+                if unexpected_non_spy_open_orders
                 else ()
             ),
             *(
@@ -369,6 +384,8 @@ def build_read_only_paper_broker_snapshot_reconciliation(
         "open_order_symbols": _symbols(open_orders),
         "open_spy_orders": open_spy_orders,
         "open_spy_order_count": len(open_spy_orders),
+        "unexpected_non_spy_open_orders": unexpected_non_spy_open_orders,
+        "unexpected_non_spy_open_order_count": len(unexpected_non_spy_open_orders),
         "recent_order_count": len(recent_orders),
         "recent_order_symbols": _symbols(recent_orders),
         "recent_spy_orders": recent_spy_orders,
@@ -567,6 +584,8 @@ def _source_blockers(
 def _observation_blockers(
     observation: ReadOnlyPaperBrokerSnapshotObservation,
 ) -> tuple[str, ...]:
+    if observation.live_url_detected:
+        return ("live_url_detected",)
     if not observation.paper_profile_gate_passed:
         return ("paper_profile_gate_failed",)
 
@@ -597,9 +616,15 @@ def _classify(
     observation: ReadOnlyPaperBrokerSnapshotObservation,
     source_blockers: tuple[str, ...],
     observation_blockers: tuple[str, ...],
-    open_spy_order_count: int,
+    open_order_count: int,
     unexpected_non_spy_positions: list[dict[str, object]],
 ) -> tuple[str, str, str]:
+    if observation.live_url_detected:
+        return (
+            "blocked_live_url_detected",
+            "live_url_detected",
+            "fix_paper_base_url_then_rerun_read_only_snapshot_reconciliation",
+        )
     if not observation.paper_profile_gate_passed:
         return (
             "blocked_profile_gate_failed",
@@ -618,11 +643,11 @@ def _classify(
             "observation_incomplete",
             "rerun_read_only_snapshot_reconciliation_after_resolving_missing_observations",
         )
-    if open_spy_order_count:
+    if open_order_count:
         return (
             "blocked_open_order_present",
             "observed",
-            "operator_review_open_spy_orders_without_canceling_before_any_submit",
+            "operator_review_open_orders_without_canceling_before_any_submit",
         )
     if unexpected_non_spy_positions:
         return (

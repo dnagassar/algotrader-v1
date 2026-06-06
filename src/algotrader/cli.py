@@ -4242,6 +4242,26 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
                     "message": profile_detail,
                 }
             },
+            credential_access_attempted=live_url_detected,
+        )
+    if live_url_detected:
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="live Alpaca URL detected for paper snapshot",
+            live_url_detected=True,
+            unavailable_observations=(
+                "account",
+                "positions",
+                "open_orders",
+                "recent_orders",
+            ),
+            unavailable_reasons={
+                "profile_gate": {
+                    "error_type": "ConfigValidationError",
+                    "message": "live Alpaca URL detected for paper snapshot",
+                }
+            },
+            credential_access_attempted=True,
         )
 
     try:
