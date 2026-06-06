@@ -493,6 +493,47 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Backtest stats output format.",
     )
+    etf_sma_local_bars_canonicalize_parser = subparsers.add_parser(
+        "etf-sma-local-bars-canonicalize",
+        help="Catalog and canonicalize strict local SPY ETF/SMA daily bars.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol to canonicalize. M408 supports SPY only.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--candidate-root",
+        required=True,
+        help="Search this local directory tree for candidate daily-bars CSVs.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--source-refresh-log",
+        required=True,
+        help="M407 ETF/SMA local-bars refresh JSONL source artifact.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic canonicalization JSONL record to PATH.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the canonicalization artifact.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--canonical-output",
+        required=True,
+        help="Write the strict canonical daily-bars CSV here when accepted.",
+    )
+    etf_sma_local_bars_canonicalize_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Canonicalization output format.",
+    )
     etf_sma_local_bars_backtest_refresh_parser = subparsers.add_parser(
         "etf-sma-local-bars-backtest-refresh",
         help="Refresh offline SPY ETF/SMA backtest evidence from local bars.",
@@ -1430,6 +1471,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_backtest(args)
     if command == "etf-sma-backtest-stats":
         return _run_etf_sma_backtest_stats(args)
+    if command == "etf-sma-local-bars-canonicalize":
+        return _run_etf_sma_local_bars_canonicalize(args)
     if command == "etf-sma-local-bars-backtest-refresh":
         return _run_etf_sma_local_bars_backtest_refresh(args)
     if command == "daily-operating-brief":
@@ -2078,6 +2121,40 @@ def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
         print(render_etf_sma_backtest_stats_json(payload))
     else:
         print(render_etf_sma_backtest_stats_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_local_bars_canonicalize(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_local_bars_canonicalization import (
+        EtfSmaLocalBarsCanonicalizationConfig,
+        build_etf_sma_local_bars_canonicalization,
+        render_etf_sma_local_bars_canonicalization_json,
+        render_etf_sma_local_bars_canonicalization_text,
+        write_etf_sma_local_bars_canonicalization_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_local_bars_canonicalization(
+            EtfSmaLocalBarsCanonicalizationConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                candidate_root=args.candidate_root,
+                source_refresh_log=args.source_refresh_log,
+                run_log=args.run_log,
+                canonical_output=args.canonical_output,
+            )
+        )
+        write_etf_sma_local_bars_canonicalization_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_local_bars_canonicalization_json(payload))
+    else:
+        print(render_etf_sma_local_bars_canonicalization_text(payload))
 
     return 0
 

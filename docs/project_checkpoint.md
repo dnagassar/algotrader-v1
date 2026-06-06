@@ -14915,6 +14915,25 @@ Safe next tasks include:
   `backtest_state=blocked_insufficient_post_signal_returns`,
   `performance_evidence_state=insufficient_post_signal_returns`,
   `usable_bar_count=200`, and `evaluated_return_count=0`.
+- M408 adds `etf-sma-local-bars-canonicalize`, an offline local-files-only
+  catalog and strict canonicalization command for SPY daily bars. It searches a
+  candidate root while excluding VCS, virtualenv, cache, and generated-temp
+  directories; classifies local CSVs by schema, row counts, usable bars, symbol
+  compatibility, date ordering, duplicate dates, close validity, and provenance;
+  and writes exactly one JSONL artifact. It rejects fixture, sample, synthetic,
+  test, and demo provenance as operator evidence and also rejects ambiguous
+  provenance rather than guessing. The M408 repo search found 21 local CSVs and
+  no valid extended local operator-bars source: clear operator-path files had
+  only 199 or 200 usable bars, fixture/sample files were rejected, M378 remains
+  a sample-schema file rather than operator evidence, and hidden `.data`
+  snapshots were ambiguous and/or non-strict. The run wrote
+  `runs\paper_lab\m408_spy_strict_local_bars_canonicalization.jsonl` with
+  `canonicalization_state=blocked_no_valid_extended_local_operator_bars`,
+  `performance_evidence_state=insufficient_post_signal_returns`,
+  `minimum_required_usable_bars=201`, `usable_bar_count=200`,
+  `evaluated_return_count=0`, `profit_claim=none`, and all submit, mutation,
+  broker/network, credential, paper-approval, and live-authority flags false. No
+  canonical M408 CSV was produced and the M407 refresh rerun was not attempted.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

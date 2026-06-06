@@ -403,6 +403,9 @@ Offline research/backtest path:
 
 - `etf-sma-backtest-stats` produces a research-only SPY ETF/SMA 50/200 daily
   long-only statistics artifact from strict local daily bars.
+- `etf-sma-local-bars-canonicalize` catalogs local CSV candidates and only
+  writes a strict canonical SPY daily-bars CSV when the source is non-synthetic,
+  local operator evidence with at least 201 usable bars.
 - `etf-sma-local-bars-backtest-refresh` validates a prior offline stats
   artifact, evaluates a strict local SPY daily-bars CSV, and classifies the
   refresh as blocked until at least 201 usable bars are available.
@@ -462,6 +465,8 @@ Preferred next work remains offline unless explicitly scoped otherwise:
 - maintain the SPY ETF/SMA current-contract docs
 - extend fake brokers and deterministic simulators
 - improve local reconciliation artifacts and operator reports
+- acquire or locally place real non-synthetic SPY daily bars with clear operator
+  provenance and at least 201 usable bars before rerunning M408/M407
 - run read-only M376 reconciliation only under an explicit paper milestone
 - keep SPY submit blocked until M376 is terminal by read-only reconciliation
 
