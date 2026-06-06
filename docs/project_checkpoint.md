@@ -14858,6 +14858,17 @@ Safe next tasks include:
   credential loading, network access, submit, cancel, replace, close,
   liquidation, or broker mutation are in scope. The M376 open-order caution
   remains explicit and blocking until read-only reconciliation says terminal.
+- M402 adds `etf-sma-paper-lab-review-packet`, an offline operator-facing
+  handoff that consumes an M401 local-bars ETF/SMA cycle proof JSONL artifact
+  and writes exactly one review packet. A 200-bar SPY proof with
+  `readiness_state=ready`, `missing_usable_bars=0`, and
+  `cycle_decision=buy_preview` is classified as
+  `ready_for_operator_review`; a 199-bar/insufficient-history proof is
+  `blocked_insufficient_history`. Any source proof with submit, mutation,
+  network, credential, live-authorization, broker-action, or non-SPY evidence
+  fails closed into a blocked review state. M402 is review/handoff only: no
+  broker state, paper execution, submit flag, market-data download, credential
+  access, network access, live support, or broker mutation is authorized.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

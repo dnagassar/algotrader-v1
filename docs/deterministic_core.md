@@ -230,6 +230,7 @@ Examples of offline/current reporting surfaces:
 - `etf-sma-backtest`
 - `etf-sma-cycle`
 - `paper-lab-daily-preview`
+- `etf-sma-paper-lab-review-packet`
 - advisory or operating-brief rendering commands
 - local content/package preview commands
 
@@ -255,6 +256,12 @@ Offline command contract:
 explicit local order-reconciliation JSONL artifact and delegates cycle decision
 logic to the offline ETF/SMA cycle builder. It must fail closed on missing,
 malformed, ambiguous, or conflicting reconciliation evidence.
+
+`etf-sma-paper-lab-review-packet` is offline-only. It consumes an M401
+local-bars ETF/SMA cycle proof JSONL artifact and writes one operator handoff
+record. A ready 200-bar `buy_preview` proof becomes operator-review-only, while
+insufficient history, non-SPY scope, or any source submit/mutation/network/
+credential/live flag blocks the handoff. It authorizes no broker action.
 
 ### Broker-Facing Paper Commands
 

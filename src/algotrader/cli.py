@@ -903,6 +903,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Local-bars ETF/SMA proof output format.",
     )
+    etf_sma_paper_lab_review_packet_parser = subparsers.add_parser(
+        "etf-sma-paper-lab-review-packet",
+        help="Build an offline ETF/SMA paper-lab operator review packet.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--proof-log",
+        required=True,
+        help="Read the M401 local-bars ETF/SMA cycle proof JSONL from PATH.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the review packet.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic review packet JSONL record to PATH.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 timestamp for the review packet.",
+    )
+    etf_sma_paper_lab_review_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Paper-lab review packet output format.",
+    )
     paper_order_reconcile_parser = subparsers.add_parser(
         "paper-order-reconcile",
         help="Read and reconcile one exact paper order without broker mutation.",
@@ -1261,6 +1297,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_local_daily_bars_intake(args)
     if command == "local-bars-etf-sma-cycle-proof":
         return _run_local_bars_etf_sma_cycle_proof(args)
+    if command == "etf-sma-paper-lab-review-packet":
+        return _run_etf_sma_paper_lab_review_packet(args)
     if command == "paper-close-preview":
         return _run_paper_close_preview(
             args.run_log,
@@ -2173,6 +2211,38 @@ def _run_local_bars_etf_sma_cycle_proof(args: argparse.Namespace) -> int:
         print(render_etf_sma_local_bars_cycle_proof_json(payload))
     else:
         print(render_etf_sma_local_bars_cycle_proof_text(payload))
+    return 0
+
+
+def _run_etf_sma_paper_lab_review_packet(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_paper_lab_review_packet import (
+        EtfSmaPaperLabReviewPacketConfig,
+        build_etf_sma_paper_lab_review_packet,
+        render_etf_sma_paper_lab_review_packet_json,
+        render_etf_sma_paper_lab_review_packet_text,
+        write_etf_sma_paper_lab_review_packet_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_paper_lab_review_packet(
+            EtfSmaPaperLabReviewPacketConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                proof_log=args.proof_log,
+                run_log=args.run_log,
+                generated_at=args.generated_at,
+            )
+        )
+        write_etf_sma_paper_lab_review_packet_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_paper_lab_review_packet_json(payload))
+    else:
+        print(render_etf_sma_paper_lab_review_packet_text(payload))
     return 0
 
 
