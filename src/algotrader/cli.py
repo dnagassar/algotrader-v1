@@ -493,6 +493,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Backtest stats output format.",
     )
+    etf_sma_local_bars_backtest_refresh_parser = subparsers.add_parser(
+        "etf-sma-local-bars-backtest-refresh",
+        help="Refresh offline SPY ETF/SMA backtest evidence from local bars.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol to refresh. M407 supports SPY only.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--candidate-daily-bars-csv",
+        required=True,
+        help="Strict local daily-bars CSV candidate to evaluate.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--source-backtest-log",
+        required=True,
+        help="M406 ETF/SMA backtest stats JSONL source artifact.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M407 refresh JSONL record to PATH.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the M407 refresh artifact.",
+    )
+    etf_sma_local_bars_backtest_refresh_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Backtest refresh output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1394,6 +1430,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_backtest(args)
     if command == "etf-sma-backtest-stats":
         return _run_etf_sma_backtest_stats(args)
+    if command == "etf-sma-local-bars-backtest-refresh":
+        return _run_etf_sma_local_bars_backtest_refresh(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2040,6 +2078,38 @@ def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
         print(render_etf_sma_backtest_stats_json(payload))
     else:
         print(render_etf_sma_backtest_stats_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_local_bars_backtest_refresh(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_local_bars_backtest_refresh import (
+        EtfSmaLocalBarsBacktestRefreshConfig,
+        build_etf_sma_local_bars_backtest_refresh,
+        render_etf_sma_local_bars_backtest_refresh_json,
+        render_etf_sma_local_bars_backtest_refresh_text,
+        write_etf_sma_local_bars_backtest_refresh_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_local_bars_backtest_refresh(
+            EtfSmaLocalBarsBacktestRefreshConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                candidate_daily_bars_csv=args.candidate_daily_bars_csv,
+                source_backtest_log=args.source_backtest_log,
+            )
+        )
+        write_etf_sma_local_bars_backtest_refresh_jsonl(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_local_bars_backtest_refresh_json(payload))
+    else:
+        print(render_etf_sma_local_bars_backtest_refresh_text(payload))
 
     return 0
 

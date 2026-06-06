@@ -14900,6 +14900,21 @@ Safe next tasks include:
   artifact is valid but classified as
   `backtest_state=blocked_insufficient_post_signal_returns` and
   `performance_evidence_state=insufficient_post_signal_returns`.
+- M407 adds `etf-sma-local-bars-backtest-refresh`, an offline research-only
+  local-bars evidence refresh that validates the latest M406 stats artifact
+  before evaluating a candidate strict local SPY daily-bars CSV. It reuses the
+  M406 one-bar-delayed SMA/backtest logic, requires at least 201 usable bars for
+  post-signal return evidence, writes exactly one JSONL record, and preserves
+  `profit_claim=none` plus false submit, mutation, credential, network, broker,
+  and live-authority flags. No valid extended local operator-evidence CSV was
+  found; the only 202-row local CSV is the older M378 sample schema and is not
+  used as operator evidence. The M407 run therefore uses the allowed M402
+  200-bar canonical fallback and writes
+  `runs\paper_lab\m407_spy_etf_sma_local_bars_backtest_refresh.jsonl` with
+  `refresh_state=blocked_insufficient_extended_daily_bars`,
+  `backtest_state=blocked_insufficient_post_signal_returns`,
+  `performance_evidence_state=insufficient_post_signal_returns`,
+  `usable_bar_count=200`, and `evaluated_return_count=0`.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
