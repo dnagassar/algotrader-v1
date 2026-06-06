@@ -399,6 +399,15 @@ Advisory and operating brief path:
 - operating brief/reporting outputs
 - no broker mutation authority
 
+Offline research/backtest path:
+
+- `etf-sma-backtest-stats` produces a research-only SPY ETF/SMA 50/200 daily
+  long-only statistics artifact from strict local daily bars.
+- It uses the conservative one-bar lookahead policy: posture through bar `t`
+  may only affect the next return interval `t->t+1`.
+- It is not paper/live authorization, not a profit claim, and not broker
+  mutation authority.
+
 ## Reconciliation Contract
 
 Reconciliation is observation, not autonomous repair.

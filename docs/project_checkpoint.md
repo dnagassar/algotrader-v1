@@ -14888,6 +14888,18 @@ Safe next tasks include:
   packet includes counts and symbols but excludes raw account ids, balances,
   and broker order ids. It loads no runtime config, credentials, broker adapter,
   SDK, or network path, and it approves no paper submit.
+- M406 adds `etf-sma-backtest-stats`, an offline research-only SPY ETF/SMA
+  50/200 daily long-only statistics artifact over strict local daily bars. The
+  command reads only a local canonical CSV, uses one-bar-delayed exposure
+  (`t` signal applies to `t->t+1`), writes exactly one JSONL record, and keeps
+  `profit_claim=none` plus all submit, mutation, credential, network, broker,
+  and live-authority flags false. The M406 run uses the M401-recorded canonical
+  path `runs\paper_lab\m402_fixture_canonical_spy_daily_bars_200.csv` and
+  writes `runs\paper_lab\m406_spy_etf_sma_backtest_stats.jsonl`. Because the
+  source has exactly 200 usable bars and no post-signal return interval, the
+  artifact is valid but classified as
+  `backtest_state=blocked_insufficient_post_signal_returns` and
+  `performance_evidence_state=insufficient_post_signal_returns`.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

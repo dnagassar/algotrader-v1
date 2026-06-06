@@ -457,6 +457,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Backtest output format.",
     )
+    etf_sma_backtest_stats_parser = subparsers.add_parser(
+        "etf-sma-backtest-stats",
+        help="Run offline SPY ETF/SMA 50/200 backtest statistics.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol to backtest. M406 supports SPY only.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--daily-bars-csv",
+        required=True,
+        help="Strict local daily-bars CSV to use for the backtest.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic backtest stats JSONL record to PATH.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the stats artifact.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--starting-equity",
+        default="25.00",
+        help="Starting equity for the modeled offline path. Default: 25.00.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Backtest stats output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1356,6 +1392,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_m368_broker_preview_only(args)
     if command == "etf-sma-backtest":
         return _run_etf_sma_backtest(args)
+    if command == "etf-sma-backtest-stats":
+        return _run_etf_sma_backtest_stats(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -1972,6 +2010,38 @@ def _run_etf_sma_backtest(args: argparse.Namespace) -> int:
         print(render_etf_sma_backtest_text(payload))
 
     return 2 if payload.get("blocked") is True else 0
+
+
+def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_backtest_stats import (
+        EtfSmaBacktestStatsConfig,
+        build_etf_sma_backtest_stats,
+        render_etf_sma_backtest_stats_json,
+        render_etf_sma_backtest_stats_text,
+        write_etf_sma_backtest_stats_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_backtest_stats(
+            EtfSmaBacktestStatsConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                daily_bars_csv=args.daily_bars_csv,
+                starting_equity=Decimal(str(args.starting_equity)),
+            )
+        )
+        write_etf_sma_backtest_stats_jsonl(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_backtest_stats_json(payload))
+    else:
+        print(render_etf_sma_backtest_stats_text(payload))
+
+    return 0
 
 
 def _run_daily_operating_brief(args: argparse.Namespace) -> int:
