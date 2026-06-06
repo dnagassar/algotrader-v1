@@ -14934,6 +14934,21 @@ Safe next tasks include:
   `evaluated_return_count=0`, `profit_claim=none`, and all submit, mutation,
   broker/network, credential, paper-approval, and live-authority flags false. No
   canonical M408 CSV was produced and the M407 refresh rerun was not attempted.
+- M409 adds `etf-sma-local-bars-manual-import`, an offline local-files-only
+  manual import gate for operator-specified SPY daily bars. It requires a
+  separate JSON provenance manifest, validates manifest/input path agreement,
+  operator attestation, non-synthetic/non-fixture/non-sample/non-test flags,
+  daily timeframe, source logs, strict or explicitly mappable OHLCV columns,
+  SPY-only rows, positive numeric closes, strictly ascending non-duplicate
+  dates, and at least 201 usable bars before writing a strict canonical CSV. On
+  success it writes the canonical CSV and reruns the existing M407 refresh path;
+  on missing or invalid input/provenance it writes exactly one blocked M409 JSONL
+  artifact with `manual_import_state=blocked_manual_operator_data_missing_or_invalid`,
+  `canonical_csv_written=false`, `refresh_rerun_performed=false`, and
+  `profit_claim=none`. It does not create or bless operator provenance on behalf
+  of the operator, does not use synthetic/sample/fixture/test data as operator
+  evidence, and preserves false submit, mutation, broker/network, credential,
+  paper-approval, and live-authority flags.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
