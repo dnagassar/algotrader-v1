@@ -882,6 +882,37 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M421 promotion packet output format.",
     )
+    etf_sma_preferred_baseline_manifest_parser = subparsers.add_parser(
+        "etf-sma-preferred-baseline-manifest",
+        help="Build an offline M422 preferred ETF/SMA baseline manifest.",
+    )
+    etf_sma_preferred_baseline_manifest_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_preferred_baseline_manifest_parser.add_argument(
+        "--run-id",
+        default="m422_spy_preferred_adjusted_baseline_manifest",
+        help="Run/session id to include in the M422 baseline manifest.",
+    )
+    etf_sma_preferred_baseline_manifest_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M422 baseline JSONL record.",
+    )
+    etf_sma_preferred_baseline_manifest_parser.add_argument(
+        "--source-promotion-packet",
+        required=True,
+        help="Explicit M421 adjusted-basis promotion packet JSONL artifact.",
+    )
+    etf_sma_preferred_baseline_manifest_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M422 preferred baseline manifest output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -1860,6 +1891,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_adjusted_basis_validation(args)
     if command == "etf-sma-adjusted-basis-promotion-packet":
         return _run_etf_sma_adjusted_basis_promotion_packet(args)
+    if command == "etf-sma-preferred-baseline-manifest":
+        return _run_etf_sma_preferred_baseline_manifest(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2580,6 +2613,36 @@ def _run_etf_sma_adjusted_basis_promotion_packet(args: argparse.Namespace) -> in
         print(render_etf_sma_adjusted_basis_promotion_packet_json(payload))
     else:
         print(render_etf_sma_adjusted_basis_promotion_packet_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_preferred_baseline_manifest(args: argparse.Namespace) -> int:
+    from .research.etf_sma_preferred_baseline_manifest import (
+        EtfSmaPreferredBaselineManifestConfig,
+        build_etf_sma_preferred_baseline_manifest,
+        render_etf_sma_preferred_baseline_manifest_json,
+        render_etf_sma_preferred_baseline_manifest_text,
+        write_etf_sma_preferred_baseline_manifest_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_preferred_baseline_manifest(
+            EtfSmaPreferredBaselineManifestConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                source_promotion_packet=args.source_promotion_packet,
+            )
+        )
+        write_etf_sma_preferred_baseline_manifest_jsonl(payload, args.run_log)
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_preferred_baseline_manifest_json(payload))
+    else:
+        print(render_etf_sma_preferred_baseline_manifest_text(payload))
 
     return 0
 
