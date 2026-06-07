@@ -45,6 +45,11 @@ _SCHEMA_VERSION = "1"
 _COMMAND = "etf-sma-backtest-stats"
 _STRATEGY = "spy_etf_sma_50_200_daily_long_only"
 _SYMBOL = "SPY"
+_DATA_BASIS = "raw_close_price_return"
+_PRICE_FIELD = "close"
+_FILL_MODEL_NEXT_CLOSE = "next_close"
+_BENCHMARK_BUY_AND_HOLD = "buy_and_hold"
+_COST_MODEL = "bps_per_exposure_change_on_strategy_equity"
 _SHORT_WINDOW = 50
 _LONG_WINDOW = 200
 _DEFAULT_STARTING_EQUITY = Decimal("25.00")
@@ -57,17 +62,27 @@ _POSTURE_RISK_OFF = "risk_off"
 
 @dataclass(frozen=True, slots=True)
 class EtfSmaBacktestStatsBar:
-    """One validated local daily adjusted-close observation."""
+    """One validated local daily price observation."""
 
     date: date
     adjusted_close: Decimal
+    close: Decimal | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "date", _plain_date(self.date, "date"))
+        adjusted_close = _positive_decimal(self.adjusted_close, "adjusted_close")
         object.__setattr__(
             self,
             "adjusted_close",
-            _positive_decimal(self.adjusted_close, "adjusted_close"),
+            adjusted_close,
+        )
+        object.__setattr__(
+            self,
+            "close",
+            _positive_decimal(
+                adjusted_close if self.close is None else self.close,
+                "close",
+            ),
         )
 
 
@@ -81,6 +96,9 @@ class EtfSmaBacktestStatsConfig:
     starting_equity: Decimal | str = _DEFAULT_STARTING_EQUITY
     short_window: int = _SHORT_WINDOW
     long_window: int = _LONG_WINDOW
+    benchmark: str = _BENCHMARK_BUY_AND_HOLD
+    fill_model: str = _FILL_MODEL_NEXT_CLOSE
+    cost_bps: Decimal | str = _ZERO
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -104,6 +122,29 @@ class EtfSmaBacktestStatsConfig:
             self,
             "long_window",
             _positive_int(self.long_window, "long_window"),
+        )
+        object.__setattr__(
+            self,
+            "benchmark",
+            _choice(
+                self.benchmark,
+                "benchmark",
+                (_BENCHMARK_BUY_AND_HOLD,),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "fill_model",
+            _choice(
+                self.fill_model,
+                "fill_model",
+                (_FILL_MODEL_NEXT_CLOSE,),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "cost_bps",
+            _non_negative_decimal(self.cost_bps, "cost_bps"),
         )
         if self.short_window >= self.long_window:
             raise ValidationError("short_window must be less than long_window.")
@@ -176,6 +217,7 @@ def build_etf_sma_backtest_stats_from_bars(
         checked_bars,
         posture_history,
         starting_equity=checked_config.starting_equity,
+        cost_bps=checked_config.cost_bps,
     )
     backtest_state, performance_evidence_state, blockers = _state_fields(
         usable_bar_count=len(checked_bars),
@@ -199,11 +241,21 @@ def build_etf_sma_backtest_stats_from_bars(
             1 for row in posture_history if row["posture"] == _POSTURE_INSUFFICIENT
         ),
         evaluated_return_count=path_stats["evaluated_return_count"],
+        evaluated_start_date=path_stats["evaluated_start_date"],
+        evaluated_end_date=path_stats["evaluated_end_date"],
         starting_equity=checked_config.starting_equity,
         ending_equity=path_stats["ending_equity"],
         total_return=path_stats["total_return"],
         max_drawdown=path_stats["max_drawdown"],
         exposure_fraction=path_stats["exposure_fraction"],
+        benchmark=checked_config.benchmark,
+        benchmark_ending_equity=path_stats["benchmark_ending_equity"],
+        benchmark_total_return=path_stats["benchmark_total_return"],
+        benchmark_max_drawdown=path_stats["benchmark_max_drawdown"],
+        benchmark_equity_curve=path_stats["benchmark_equity_curve"],
+        fill_model=checked_config.fill_model,
+        cost_bps=checked_config.cost_bps,
+        total_cost=path_stats["total_cost"],
         trade_count=path_stats["trade_count"],
         entry_count=path_stats["entry_count"],
         exit_count=path_stats["exit_count"],
@@ -237,6 +289,12 @@ def render_etf_sma_backtest_stats_text(payload: Mapping[str, object]) -> str:
             f"ending_equity: {payload.get('ending_equity', '')}",
             f"total_return: {payload.get('total_return', '')}",
             f"max_drawdown: {payload.get('max_drawdown', '')}",
+            f"data_basis: {payload.get('data_basis', '')}",
+            f"fill_model: {payload.get('fill_model', '')}",
+            f"cost_bps: {payload.get('cost_bps', '')}",
+            f"benchmark: {payload.get('benchmark', '')}",
+            f"benchmark_total_return: {payload.get('benchmark_total_return', '')}",
+            f"excess_return: {payload.get('excess_return', '')}",
             f"exposure_fraction: {payload.get('exposure_fraction', '')}",
             f"trade_count: {payload.get('trade_count', '')}",
             f"final_posture: {payload.get('final_posture', '')}",
@@ -271,6 +329,7 @@ def _bar_from_local_daily_bar(bar: LocalDailyBar) -> EtfSmaBacktestStatsBar:
     return EtfSmaBacktestStatsBar(
         date=bar.date,
         adjusted_close=bar.adjusted_close,
+        close=bar.close,
     )
 
 
@@ -308,6 +367,7 @@ def _posture_history(
         history.append(
             {
                 "date": bar.date.isoformat(),
+                "close": _decimal_text(_bar_price(bar)),
                 "adjusted_close": _decimal_text(bar.adjusted_close),
                 "short_sma": _optional_decimal_text(short_sma),
                 "long_sma": _optional_decimal_text(long_sma),
@@ -323,16 +383,25 @@ def _equity_curve_and_events(
     posture_history: list[dict[str, object]],
     *,
     starting_equity: Decimal,
+    cost_bps: Decimal,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]], dict[str, object]]:
     equity = starting_equity
     peak = starting_equity
     max_drawdown = _ZERO
+    cost_rate = cost_bps / Decimal("10000")
+    total_cost = _ZERO
+    benchmark_equity = starting_equity
+    benchmark_peak = starting_equity
+    benchmark_max_drawdown = _ZERO
+    evaluated_start_date: str | None = None
+    evaluated_end_date: str | None = None
     evaluated_return_count = 0
     exposed_return_count = 0
     entry_count = 0
     exit_count = 0
     previous_exposure = 0
     curve: list[dict[str, object]] = []
+    benchmark_curve: list[dict[str, object]] = []
     events: list[dict[str, object]] = []
 
     for index, bar in enumerate(bars):
@@ -345,10 +414,11 @@ def _equity_curve_and_events(
         )
         asset_return: Decimal | None = None
         strategy_return: Decimal | None = None
+        trade_cost = _ZERO
         evaluated_return = False
 
         if return_available:
-            asset_return = (bar.adjusted_close / bars[index - 1].adjusted_close) - _ONE
+            asset_return = (_bar_price(bar) / _bar_price(bars[index - 1])) - _ONE
             strategy_return = _ZERO if current_exposure == 0 else asset_return
             equity *= _ONE + strategy_return
             evaluated_return = prior_posture != _POSTURE_INSUFFICIENT
@@ -356,6 +426,35 @@ def _equity_curve_and_events(
                 evaluated_return_count += 1
                 if current_exposure == 1:
                     exposed_return_count += 1
+                if evaluated_start_date is None:
+                    evaluated_start_date = bars[index - 1].date.isoformat()
+                evaluated_end_date = bar.date.isoformat()
+                benchmark_equity *= _ONE + asset_return
+                if benchmark_equity > benchmark_peak:
+                    benchmark_peak = benchmark_equity
+                benchmark_drawdown = (benchmark_equity / benchmark_peak) - _ONE
+                if -benchmark_drawdown > benchmark_max_drawdown:
+                    benchmark_max_drawdown = -benchmark_drawdown
+                benchmark_curve.append(
+                    {
+                        "date": bar.date.isoformat(),
+                        "start_date": bars[index - 1].date.isoformat(),
+                        "close": _decimal_text(_bar_price(bar)),
+                        "asset_return": _decimal_text(asset_return),
+                        "equity": _decimal_text(benchmark_equity),
+                        "drawdown": _decimal_text(benchmark_drawdown),
+                    }
+                )
+
+        action = _event_action(previous_exposure, current_exposure)
+        if action == "buy":
+            entry_count += 1
+        elif action == "sell":
+            exit_count += 1
+        if action in ("buy", "sell") and cost_rate > _ZERO:
+            trade_cost = equity * cost_rate
+            equity -= trade_cost
+            total_cost += trade_cost
 
         if equity > peak:
             peak = equity
@@ -363,19 +462,15 @@ def _equity_curve_and_events(
         if -drawdown > max_drawdown:
             max_drawdown = -drawdown
 
-        action = _event_action(previous_exposure, current_exposure)
-        if action == "buy":
-            entry_count += 1
-        elif action == "sell":
-            exit_count += 1
-
         curve.append(
             {
                 "date": bar.date.isoformat(),
+                "close": _decimal_text(_bar_price(bar)),
                 "adjusted_close": _decimal_text(bar.adjusted_close),
                 "exposure": current_exposure,
                 "asset_return": _optional_decimal_text(asset_return),
                 "strategy_return": _optional_decimal_text(strategy_return),
+                "trade_cost": _decimal_text(trade_cost),
                 "return_available": return_available,
                 "evaluated_return": evaluated_return,
                 "equity": _decimal_text(equity),
@@ -393,6 +488,8 @@ def _equity_curve_and_events(
                 ),
                 "target_posture": prior_posture,
                 "evaluated_return": evaluated_return,
+                "fill_model": _FILL_MODEL_NEXT_CLOSE,
+                "trade_cost": _decimal_text(trade_cost),
             }
         )
         previous_exposure = current_exposure
@@ -409,11 +506,22 @@ def _equity_curve_and_events(
         {
             "return_interval_count": return_interval_count,
             "evaluated_return_count": evaluated_return_count,
+            "evaluated_start_date": evaluated_start_date,
+            "evaluated_end_date": evaluated_end_date,
             "exposed_return_count": exposed_return_count,
             "ending_equity": equity,
             "total_return": (equity / starting_equity) - _ONE,
             "max_drawdown": max_drawdown,
             "exposure_fraction": exposure_fraction,
+            "benchmark_ending_equity": benchmark_equity,
+            "benchmark_total_return": (
+                _ZERO
+                if evaluated_return_count == 0
+                else (benchmark_equity / starting_equity) - _ONE
+            ),
+            "benchmark_max_drawdown": benchmark_max_drawdown,
+            "benchmark_equity_curve": benchmark_curve,
+            "total_cost": total_cost,
             "trade_count": entry_count + exit_count,
             "entry_count": entry_count,
             "exit_count": exit_count,
@@ -469,11 +577,21 @@ def _payload(
     blockers: tuple[str, ...],
     insufficient_history_count: int,
     evaluated_return_count: object,
+    evaluated_start_date: object,
+    evaluated_end_date: object,
     starting_equity: Decimal,
     ending_equity: object,
     total_return: object,
     max_drawdown: object,
     exposure_fraction: object,
+    benchmark: str,
+    benchmark_ending_equity: object,
+    benchmark_total_return: object,
+    benchmark_max_drawdown: object,
+    benchmark_equity_curve: list[dict[str, object]],
+    fill_model: str,
+    cost_bps: Decimal,
+    total_cost: object,
     trade_count: object,
     entry_count: object,
     exit_count: object,
@@ -481,6 +599,29 @@ def _payload(
     final_posture: str,
     final_decision: str,
 ) -> dict[str, object]:
+    strategy_total_return = _decimal_value(total_return, "total_return")
+    benchmark_return = _decimal_value(
+        benchmark_total_return,
+        "benchmark_total_return",
+    )
+    strategy_max_drawdown = _decimal_value(max_drawdown, "max_drawdown")
+    benchmark_drawdown = _decimal_value(
+        benchmark_max_drawdown,
+        "benchmark_max_drawdown",
+    )
+    strategy_ending_equity = _decimal_value(ending_equity, "ending_equity")
+    benchmark_equity = _decimal_value(
+        benchmark_ending_equity,
+        "benchmark_ending_equity",
+    )
+    checked_evaluated_start_date = _optional_string(
+        evaluated_start_date,
+        "evaluated_start_date",
+    )
+    checked_evaluated_end_date = _optional_string(
+        evaluated_end_date,
+        "evaluated_end_date",
+    )
     return {
         "record_type": _RECORD_TYPE,
         "schema_version": _SCHEMA_VERSION,
@@ -489,12 +630,19 @@ def _payload(
         "symbol": config.symbol,
         "strategy": _STRATEGY,
         "labels": list(ETF_SMA_BACKTEST_STATS_LABELS),
+        "data_basis": _DATA_BASIS,
+        "price_field": _PRICE_FIELD,
+        "raw_close_price_return_evidence_only": True,
         "source_daily_bars_csv": str(config.daily_bars_csv),
         "source_bar_count": source_bar_count,
         "usable_bar_count": usable_bar_count,
         "short_window": config.short_window,
         "long_window": config.long_window,
         "lookahead_policy": ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY,
+        "fill_model": fill_model,
+        "benchmark": benchmark,
+        "cost_bps": _decimal_text(cost_bps),
+        "cost_model": _COST_MODEL,
         "backtest_state": backtest_state,
         "performance_evidence_state": performance_evidence_state,
         "profit_claim": "none",
@@ -503,11 +651,25 @@ def _payload(
             evaluated_return_count,
             "evaluated_return_count",
         ),
+        "evaluated_start_date": checked_evaluated_start_date,
+        "evaluated_end_date": checked_evaluated_end_date,
+        "strategy_start_date": checked_evaluated_start_date,
+        "strategy_end_date": checked_evaluated_end_date,
+        "benchmark_start_date": checked_evaluated_start_date,
+        "benchmark_end_date": checked_evaluated_end_date,
         "starting_equity": _decimal_text(starting_equity),
-        "ending_equity": _decimal_text(ending_equity),
-        "total_return": _decimal_text(total_return),
-        "max_drawdown": _decimal_text(max_drawdown),
+        "ending_equity": _decimal_text(strategy_ending_equity),
+        "total_return": _decimal_text(strategy_total_return),
+        "max_drawdown": _decimal_text(strategy_max_drawdown),
+        "strategy_ending_equity": _decimal_text(strategy_ending_equity),
+        "strategy_total_return": _decimal_text(strategy_total_return),
+        "strategy_max_drawdown": _decimal_text(strategy_max_drawdown),
+        "benchmark_ending_equity": _decimal_text(benchmark_equity),
+        "benchmark_total_return": _decimal_text(benchmark_return),
+        "benchmark_max_drawdown": _decimal_text(benchmark_drawdown),
+        "excess_return": _decimal_text(strategy_total_return - benchmark_return),
         "exposure_fraction": _decimal_text(exposure_fraction),
+        "total_cost": _decimal_text(total_cost),
         "trade_count": _non_negative_int(trade_count, "trade_count"),
         "entry_count": _non_negative_int(entry_count, "entry_count"),
         "exit_count": _non_negative_int(exit_count, "exit_count"),
@@ -517,14 +679,19 @@ def _payload(
         "blockers": list(blockers),
         "posture_history": posture_history,
         "equity_curve": equity_curve,
+        "benchmark_equity_curve": benchmark_equity_curve,
         "events": events,
         "submitted": False,
         "mutated": False,
         "submit_authorized": False,
+        "submit_path_allowed": False,
         "paper_submit_approved": False,
+        "paper_submit_authorized": False,
         "broker_mutation_authorized": False,
         "live_authorized": False,
+        "credential_access": False,
         "credential_access_attempted": False,
+        "broker_network_access": False,
         "network_access_attempted": False,
         "broker_action_performed": False,
         "broker_actions_performed": False,
@@ -556,11 +723,21 @@ def _blocked_payload(
         blockers=blockers,
         insufficient_history_count=0,
         evaluated_return_count=0,
+        evaluated_start_date=None,
+        evaluated_end_date=None,
         starting_equity=config.starting_equity,
         ending_equity=config.starting_equity,
         total_return=_ZERO,
         max_drawdown=_ZERO,
         exposure_fraction=_ZERO,
+        benchmark=config.benchmark,
+        benchmark_ending_equity=config.starting_equity,
+        benchmark_total_return=_ZERO,
+        benchmark_max_drawdown=_ZERO,
+        benchmark_equity_curve=[],
+        fill_model=config.fill_model,
+        cost_bps=config.cost_bps,
+        total_cost=_ZERO,
         trade_count=0,
         entry_count=0,
         exit_count=0,
@@ -587,9 +764,13 @@ def _sma(
 ) -> Decimal | None:
     if len(bars) < window:
         return None
-    return sum((bar.adjusted_close for bar in bars[-window:]), _ZERO) / Decimal(
+    return sum((_bar_price(bar) for bar in bars[-window:]), _ZERO) / Decimal(
         window
     )
+
+
+def _bar_price(bar: EtfSmaBacktestStatsBar) -> Decimal:
+    return _positive_decimal(bar.close, "close")
 
 
 def _config(value: object) -> EtfSmaBacktestStatsConfig:
@@ -633,6 +814,21 @@ def _required_string(value: object, field_name: str) -> str:
     if value != value.strip() or not value:
         raise ValidationError(f"{field_name} must be a non-empty string.")
     return value
+
+
+def _optional_string(value: object, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _required_string(value, field_name)
+
+
+def _choice(value: object, field_name: str, choices: tuple[str, ...]) -> str:
+    text = _required_string(value, field_name)
+    if text not in choices:
+        raise ValidationError(
+            f"{field_name} must be one of: {', '.join(choices)}."
+        )
+    return text
 
 
 def _spy_symbol(value: object) -> str:
@@ -695,6 +891,13 @@ def _positive_decimal(value: object, field_name: str) -> Decimal:
     decimal_value = _decimal_value(value, field_name)
     if decimal_value <= _ZERO:
         raise ValidationError(f"{field_name} must be greater than zero.")
+    return decimal_value
+
+
+def _non_negative_decimal(value: object, field_name: str) -> Decimal:
+    decimal_value = _decimal_value(value, field_name)
+    if decimal_value < _ZERO:
+        raise ValidationError(f"{field_name} must be greater than or equal to zero.")
     return decimal_value
 
 

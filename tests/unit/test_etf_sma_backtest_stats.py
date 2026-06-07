@@ -43,6 +43,7 @@ _FORBIDDEN_IMPORT_PREFIXES = (
     "alpaca_trade_api",
     "http",
     "httpx",
+    "openai",
     "requests",
     "socket",
     "urllib",
@@ -66,10 +67,14 @@ _SAFETY_FALSE_FIELDS = (
     "submitted",
     "mutated",
     "submit_authorized",
+    "submit_path_allowed",
     "paper_submit_approved",
+    "paper_submit_authorized",
     "broker_mutation_authorized",
     "live_authorized",
+    "credential_access",
     "credential_access_attempted",
+    "broker_network_access",
     "network_access_attempted",
     "broker_action_performed",
     "broker_actions_performed",
@@ -154,6 +159,53 @@ def test_deterministic_equity_curve_and_summary_statistics() -> None:
     assert payload["final_exposure"] == 1
     assert payload["final_posture"] == "risk_on"
     assert payload["final_decision"] == "hold_long"
+
+
+def test_buy_and_hold_benchmark_math_uses_same_evaluated_return_window() -> None:
+    payload = _payload_for(150 * ("100",) + 50 * ("200",) + ("220",))
+
+    assert payload["benchmark"] == "buy_and_hold"
+    assert payload["benchmark_start_date"] == payload["strategy_start_date"]
+    assert payload["benchmark_end_date"] == payload["strategy_end_date"]
+    assert payload["benchmark_start_date"] == payload["equity_curve"][199]["date"]
+    assert payload["benchmark_end_date"] == payload["equity_curve"][-1]["date"]
+    assert payload["benchmark_equity_curve"] == [
+        {
+            "date": payload["equity_curve"][-1]["date"],
+            "start_date": payload["equity_curve"][199]["date"],
+            "close": "220",
+            "asset_return": "0.1",
+            "equity": "27.500",
+            "drawdown": "0",
+        }
+    ]
+    assert payload["benchmark_total_return"] == "0.1"
+    assert payload["strategy_total_return"] == "0.1"
+    assert payload["excess_return"] == "0.0"
+
+
+def test_cost_bps_changes_strategy_result_without_changing_benchmark() -> None:
+    values = 150 * ("100",) + 50 * ("200",) + ("220",)
+    no_cost = _payload_for(values)
+    with_cost = _payload_for(values, cost_bps="100")
+
+    assert no_cost["strategy_total_return"] == "0.1"
+    assert no_cost["total_cost"] == "0"
+    assert with_cost["cost_bps"] == "100"
+    assert with_cost["strategy_ending_equity"] == "27.22500"
+    assert with_cost["strategy_total_return"] == "0.089"
+    assert with_cost["total_cost"] == "0.27500"
+    assert with_cost["benchmark_total_return"] == no_cost["benchmark_total_return"]
+    assert with_cost["excess_return"] == "-0.011"
+
+
+def test_strategy_and_benchmark_max_drawdown_are_deterministic() -> None:
+    payload = _payload_for(150 * ("100",) + 50 * ("200",) + ("100", "150"))
+
+    assert payload["strategy_max_drawdown"] == "0.5"
+    assert payload["benchmark_max_drawdown"] == "0.5"
+    assert payload["benchmark_equity_curve"][0]["drawdown"] == "-0.5"
+    assert payload["benchmark_equity_curve"][1]["drawdown"] == "-0.25"
 
 
 def test_exact_200_bar_edge_case_is_valid_but_insufficient_performance_evidence() -> None:
@@ -273,6 +325,12 @@ def test_all_safety_booleans_are_false_and_labels_are_conservative() -> None:
     assert payload["profit_claim"] == "none"
     assert payload["labels"] == list(ETF_SMA_BACKTEST_STATS_LABELS)
     assert payload["lookahead_policy"] == ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY
+    assert payload["data_basis"] == "raw_close_price_return"
+    assert payload["price_field"] == "close"
+    assert payload["raw_close_price_return_evidence_only"] is True
+    assert payload["fill_model"] == "next_close"
+    assert payload["cost_bps"] == "0"
+    assert payload["benchmark"] == "buy_and_hold"
 
 
 def test_research_module_imports_no_broker_sdk_or_network_dependencies() -> None:
@@ -311,6 +369,12 @@ def test_cli_smoke_writes_stats_before_runtime_config_loading(
             str(csv_path),
             "--run-id",
             "unit_m406",
+            "--benchmark",
+            "buy_and_hold",
+            "--fill-model",
+            "next_close",
+            "--cost-bps",
+            "100",
             "--run-log",
             str(run_log),
             "--format",
@@ -324,24 +388,33 @@ def test_cli_smoke_writes_stats_before_runtime_config_loading(
     assert payload["record_type"] == "etf_sma_backtest_stats"
     assert payload["run_id"] == "unit_m406"
     assert payload["backtest_state"] == "completed"
+    assert payload["fill_model"] == "next_close"
+    assert payload["cost_bps"] == "100"
+    assert payload["strategy_total_return"] == "0.089"
 
 
-def _payload_for(values: tuple[str, ...]) -> dict[str, object]:
+def _payload_for(
+    values: tuple[str, ...],
+    *,
+    cost_bps: Decimal | str = Decimal("0"),
+) -> dict[str, object]:
     return build_etf_sma_backtest_stats_from_bars(
         _bars(values),
-        _config(),
+        _config(cost_bps=cost_bps),
     )
 
 
 def _config(
     *,
     daily_bars_csv: Path | str = "unit_spy_daily_bars.csv",
+    cost_bps: Decimal | str = Decimal("0"),
 ) -> EtfSmaBacktestStatsConfig:
     return EtfSmaBacktestStatsConfig(
         run_id="unit_m406",
         symbol="SPY",
         daily_bars_csv=daily_bars_csv,
         starting_equity=Decimal("25.00"),
+        cost_bps=cost_bps,
     )
 
 

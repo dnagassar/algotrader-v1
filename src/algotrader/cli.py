@@ -487,6 +487,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Starting equity for the modeled offline path. Default: 25.00.",
     )
     etf_sma_backtest_stats_parser.add_argument(
+        "--benchmark",
+        choices=("buy_and_hold",),
+        default="buy_and_hold",
+        help="Benchmark model over the same evaluated window. Default: buy_and_hold.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--fill-model",
+        choices=("next_close",),
+        default="next_close",
+        help="Modeled strategy fill timing. Default: next_close.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
+        "--cost-bps",
+        default="0",
+        help="Per exposure-change strategy cost in basis points. Default: 0.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -2305,6 +2322,9 @@ def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
                 symbol=args.symbol,
                 daily_bars_csv=args.daily_bars_csv,
                 starting_equity=Decimal(str(args.starting_equity)),
+                benchmark=args.benchmark,
+                fill_model=args.fill_model,
+                cost_bps=Decimal(str(args.cost_bps)),
             )
         )
         write_etf_sma_backtest_stats_jsonl(payload, args.run_log)
