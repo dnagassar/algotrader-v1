@@ -667,6 +667,52 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Operating brief output format.",
     )
+    etf_sma_evidence_rollup_parser = subparsers.add_parser(
+        "etf-sma-evidence-rollup",
+        help="Build an offline ETF/SMA evidence rollup from M411/M412 artifacts.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the evidence rollup.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic evidence rollup JSONL record to PATH.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--manual-import-log",
+        required=True,
+        help="Explicit M411 manual-import JSONL source artifact.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--backtest-refresh-log",
+        required=True,
+        help="Explicit M411 backtest-refresh JSONL source artifact.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--operating-brief-log",
+        required=True,
+        help="Explicit M412 operating-brief JSONL source artifact.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 generated-at timestamp.",
+    )
+    etf_sma_evidence_rollup_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Evidence rollup output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1576,6 +1622,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_local_bars_backtest_refresh(args)
     if command == "etf-sma-operating-brief":
         return _run_etf_sma_operating_brief(args)
+    if command == "etf-sma-evidence-rollup":
+        return _run_etf_sma_evidence_rollup(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2358,6 +2406,40 @@ def _run_etf_sma_operating_brief(args: argparse.Namespace) -> int:
         print(render_etf_sma_operating_brief_json(payload))
     else:
         print(render_etf_sma_operating_brief_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_evidence_rollup(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_evidence_rollup import (
+        EtfSmaEvidenceRollupConfig,
+        build_etf_sma_evidence_rollup,
+        render_etf_sma_evidence_rollup_json,
+        render_etf_sma_evidence_rollup_text,
+        write_etf_sma_evidence_rollup_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_evidence_rollup(
+            EtfSmaEvidenceRollupConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                manual_import_log=args.manual_import_log,
+                backtest_refresh_log=args.backtest_refresh_log,
+                operating_brief_log=args.operating_brief_log,
+                generated_at=args.generated_at,
+            )
+        )
+        write_etf_sma_evidence_rollup_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_evidence_rollup_json(payload))
+    else:
+        print(render_etf_sma_evidence_rollup_text(payload))
 
     return 0
 

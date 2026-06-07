@@ -14970,6 +14970,16 @@ Safe next tasks include:
   `broker_mutation_authorized=false`, and `profit_claim=none`. M412 does not
   read `.data` operator inputs directly and does not recommend or authorize a
   paper submit.
+- M413 adds `etf-sma-evidence-rollup`, an offline evidence rollup/dashboard
+  artifact command that consumes only the M411 manual import, M411 local-bars
+  backtest refresh, and M412 operating brief JSONL artifacts. It cross-checks
+  counts, posture, exposure, decision, trade counts, `profit_claim`, raw-close
+  scope, and safety flags; writes exactly one ignored JSONL rollup; preserves
+  `data_basis=raw_close_price_return`, `profit_claim=none`, and false submit,
+  mutation, broker/network, credential, paper-authorization, live-authority,
+  and broker-mutation flags; and limits next actions to offline/read-only
+  follow-ups. M413 does not read `.data` operator inputs directly, access a
+  broker or network, or recommend or authorize a paper submit.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
