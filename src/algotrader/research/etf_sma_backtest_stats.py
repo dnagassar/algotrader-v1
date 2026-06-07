@@ -18,12 +18,17 @@ from algotrader.research.local_daily_bars import (
 __all__ = [
     "ETF_SMA_BACKTEST_STATS_LABELS",
     "ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY",
+    "EtfSmaAdjustedBasisValidationConfig",
     "EtfSmaBacktestStatsBar",
     "EtfSmaBacktestStatsConfig",
+    "build_etf_sma_adjusted_basis_validation",
     "build_etf_sma_backtest_stats",
     "build_etf_sma_backtest_stats_from_bars",
+    "render_etf_sma_adjusted_basis_validation_json",
+    "render_etf_sma_adjusted_basis_validation_text",
     "render_etf_sma_backtest_stats_json",
     "render_etf_sma_backtest_stats_text",
+    "write_etf_sma_adjusted_basis_validation_jsonl",
     "write_etf_sma_backtest_stats_jsonl",
 ]
 
@@ -59,6 +64,16 @@ _REGIME_SLICE_POLICY = (
     "calendar-year slices use the prior trading-day close as the start boundary."
 )
 _RETURN_RANKING_BASIS = "provisional_raw_close_price_return_only"
+_M418_RECORD_TYPE = "etf_sma_adjusted_basis_validation"
+_M418_MILESTONE = "M418"
+_M418_COMMAND = "etf-sma-adjusted-basis-validation"
+_M418_ADJUSTED_DATA_BASIS = "adjusted_close_price_return"
+_M418_BLOCKED_DATA_BASIS = "unavailable_adjusted_or_total_return_basis"
+_M418_ADJUSTED_PRICE_FIELD = "adjusted_close"
+_M418_AVAILABLE_STATUS = "completed_adjusted_close_basis_validation"
+_M418_BLOCKED_STATUS = "blocked_adjusted_or_total_return_basis_unavailable"
+_M418_VERDICT_SCOPE = "adjusted_or_total_return_basis_validation_only"
+_M418_NO_TRADE_RECOMMENDATION = "none"
 _DEFAULT_REGIME_SLICE_SPECS = (
     ("full_evaluated_window", None, None),
     ("stress_2022", date(2022, 1, 1), date(2022, 12, 31)),
@@ -179,6 +194,62 @@ class EtfSmaBacktestStatsConfig:
             raise ValidationError("M406 supports only SMA 50/200 windows.")
 
 
+@dataclass(frozen=True, slots=True)
+class EtfSmaAdjustedBasisValidationConfig:
+    """Explicit inputs for the offline M418 adjusted-basis validation artifact."""
+
+    run_id: str
+    source_m417_artifact: Path | str
+    daily_bars_csv: Path | str | None = None
+    symbol: str = _SYMBOL
+    starting_equity: Decimal | str = _DEFAULT_STARTING_EQUITY
+    benchmark: str = _BENCHMARK_BUY_AND_HOLD
+    fill_model: str = _FILL_MODEL_NEXT_CLOSE
+    cost_bps: Decimal | str = Decimal("1")
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
+        object.__setattr__(
+            self,
+            "source_m417_artifact",
+            _jsonl_path_value(self.source_m417_artifact, "source_m417_artifact"),
+        )
+        object.__setattr__(
+            self,
+            "daily_bars_csv",
+            _optional_csv_path_value(self.daily_bars_csv, "daily_bars_csv"),
+        )
+        object.__setattr__(self, "symbol", _spy_symbol(self.symbol))
+        object.__setattr__(
+            self,
+            "starting_equity",
+            _positive_decimal(self.starting_equity, "starting_equity"),
+        )
+        object.__setattr__(
+            self,
+            "benchmark",
+            _choice(
+                self.benchmark,
+                "benchmark",
+                (_BENCHMARK_BUY_AND_HOLD,),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "fill_model",
+            _choice(
+                self.fill_model,
+                "fill_model",
+                (_FILL_MODEL_NEXT_CLOSE,),
+            ),
+        )
+        object.__setattr__(
+            self,
+            "cost_bps",
+            _non_negative_decimal(self.cost_bps, "cost_bps"),
+        )
+
+
 def build_etf_sma_backtest_stats(
     config: EtfSmaBacktestStatsConfig,
 ) -> dict[str, object]:
@@ -293,6 +364,141 @@ def build_etf_sma_backtest_stats_from_bars(
     return _maybe_with_regime_slice_evidence(payload, checked_config)
 
 
+def build_etf_sma_adjusted_basis_validation(
+    config: EtfSmaAdjustedBasisValidationConfig,
+) -> dict[str, object]:
+    """Build the offline M418 adjusted-close or total-return basis validation."""
+
+    checked_config = _m418_config(config)
+    source_m417 = _load_source_m417_artifact(checked_config.source_m417_artifact)
+    daily_bars_path = _m418_daily_bars_csv_path(checked_config, source_m417)
+    adjusted_inspection, adjusted_bars = _inspect_adjusted_basis_bars(
+        daily_bars_path,
+        symbol=checked_config.symbol,
+    )
+    total_return_inspection = _inspect_total_return_basis(source_m417)
+
+    if not (
+        adjusted_inspection["adjusted_close_available"] is True
+        or total_return_inspection["total_return_available"] is True
+    ):
+        return _m418_blocked_payload(
+            checked_config,
+            source_m417=source_m417,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=adjusted_inspection,
+            total_return_inspection=total_return_inspection,
+        )
+
+    if adjusted_inspection["adjusted_close_available"] is not True:
+        return _m418_blocked_payload(
+            checked_config,
+            source_m417=source_m417,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=adjusted_inspection,
+            total_return_inspection=total_return_inspection,
+            blocked_reason="total_return_basis_detected_but_not_supported_by_m418_runner",
+            extra_missing_inputs=(
+                "offline_adjusted_close_daily_bars_csv_with_verified_adjusted_close_values",
+            ),
+        )
+
+    adjusted_stats = build_etf_sma_backtest_stats_from_bars(
+        adjusted_bars,
+        EtfSmaBacktestStatsConfig(
+            run_id=checked_config.run_id,
+            daily_bars_csv=daily_bars_path
+            if daily_bars_path is not None
+            else "missing_adjusted_basis.csv",
+            symbol=checked_config.symbol,
+            starting_equity=checked_config.starting_equity,
+            benchmark=checked_config.benchmark,
+            fill_model=checked_config.fill_model,
+            cost_bps=checked_config.cost_bps,
+            regime_slices=_REGIME_SLICES_DEFAULT,
+        ),
+        source_bar_count=_non_negative_int(
+            adjusted_inspection["source_bar_count"],
+            "source_bar_count",
+        ),
+    )
+    if adjusted_stats.get("record_type") != _REGIME_SLICE_RECORD_TYPE:
+        return _m418_blocked_payload(
+            checked_config,
+            source_m417=source_m417,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=adjusted_inspection,
+            total_return_inspection=total_return_inspection,
+            blocked_reason="adjusted_close_backtest_did_not_produce_regime_slices",
+            extra_missing_inputs=(
+                "sufficient_adjusted_close_history_for_sma_50_200_regime_slices",
+            ),
+        )
+
+    return _m418_available_payload(
+        checked_config,
+        source_m417=source_m417,
+        adjusted_stats=adjusted_stats,
+        daily_bars_path=daily_bars_path,
+        adjusted_inspection=adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+
+
+def render_etf_sma_adjusted_basis_validation_json(
+    payload: Mapping[str, object],
+) -> str:
+    """Return one compact deterministic M418 JSON object."""
+
+    return json.dumps(_json_safe(dict(payload)), sort_keys=True, separators=(",", ":"))
+
+
+def render_etf_sma_adjusted_basis_validation_text(
+    payload: Mapping[str, object],
+) -> str:
+    """Render a compact operator-facing M418 summary."""
+
+    return "\n".join(
+        (
+            "ETF/SMA M418 adjusted-basis validation",
+            f"run_id: {payload.get('run_id', '')}",
+            f"source_m417_artifact: {payload.get('source_m417_artifact', '')}",
+            f"source_daily_bars_csv: {payload.get('source_daily_bars_csv', '')}",
+            f"basis_validation_status: {payload.get('basis_validation_status', '')}",
+            f"data_basis: {payload.get('data_basis', '')}",
+            "adjusted_close_available: "
+            f"{_bool_text(payload.get('adjusted_close_available'))}",
+            "total_return_available: "
+            f"{_bool_text(payload.get('total_return_available'))}",
+            f"blocked_reason: {payload.get('blocked_reason', '')}",
+            f"profit_claim: {payload.get('profit_claim', '')}",
+            f"trade_recommendation: {payload.get('trade_recommendation', '')}",
+            f"submitted: {_bool_text(payload.get('submitted'))}",
+            f"mutated: {_bool_text(payload.get('mutated'))}",
+            "broker_action_performed: "
+            f"{_bool_text(payload.get('broker_action_performed'))}",
+            "network_access_attempted: "
+            f"{_bool_text(payload.get('network_access_attempted'))}",
+            "credential_access_attempted: "
+            f"{_bool_text(payload.get('credential_access_attempted'))}",
+        )
+    )
+
+
+def write_etf_sma_adjusted_basis_validation_jsonl(
+    payload: Mapping[str, object],
+    output_path: Path | str,
+) -> None:
+    """Write exactly one deterministic M418 JSONL record."""
+
+    path = _output_path(output_path)
+    if str(path.parent) not in ("", "."):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8", newline="\n") as stream:
+        stream.write(render_etf_sma_adjusted_basis_validation_json(payload))
+        stream.write("\n")
+
+
 def render_etf_sma_backtest_stats_json(payload: Mapping[str, object]) -> str:
     """Return one compact deterministic JSON object."""
 
@@ -358,6 +564,16 @@ def _bar_from_local_daily_bar(bar: LocalDailyBar) -> EtfSmaBacktestStatsBar:
         date=bar.date,
         adjusted_close=bar.adjusted_close,
         close=bar.close,
+    )
+
+
+def _adjusted_basis_bar_from_local_daily_bar(
+    bar: LocalDailyBar,
+) -> EtfSmaBacktestStatsBar:
+    return EtfSmaBacktestStatsBar(
+        date=bar.date,
+        adjusted_close=bar.adjusted_close,
+        close=bar.adjusted_close,
     )
 
 
@@ -787,6 +1003,557 @@ def _maybe_with_regime_slice_evidence(
     return _with_default_regime_slice_evidence(payload, config)
 
 
+def _load_source_m417_artifact(path: Path) -> dict[str, object]:
+    if not path.exists():
+        raise ValidationError("source_m417_artifact must reference an existing file.")
+    if not path.is_file():
+        raise ValidationError("source_m417_artifact must reference a local JSONL file.")
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+    if len(lines) != 1:
+        raise ValidationError("source_m417_artifact must contain exactly one record.")
+    try:
+        payload = json.loads(lines[0])
+    except json.JSONDecodeError as exc:
+        raise ValidationError("source_m417_artifact must contain valid JSON.") from exc
+    if not isinstance(payload, Mapping):
+        raise ValidationError("source_m417_artifact record must be an object.")
+    record = dict(payload)
+    if record.get("record_type") != _REGIME_SLICE_RECORD_TYPE:
+        raise ValidationError("source_m417_artifact must be M417 regime evidence.")
+    if record.get("milestone") != _REGIME_SLICE_MILESTONE:
+        raise ValidationError("source_m417_artifact milestone must be M417.")
+    return record
+
+
+def _m418_daily_bars_csv_path(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    source_m417: Mapping[str, object],
+) -> Path | None:
+    if config.daily_bars_csv is not None:
+        return config.daily_bars_csv
+    candidate = source_m417.get("source_daily_bars_csv")
+    if type(candidate) is not str or candidate == "":
+        command_fields = source_m417.get("source_input_command_fields")
+        if isinstance(command_fields, Mapping):
+            candidate = command_fields.get("daily_bars_csv")
+    if type(candidate) is not str or candidate == "":
+        return None
+    return _path_value(candidate, "daily_bars_csv")
+
+
+def _inspect_adjusted_basis_bars(
+    daily_bars_path: Path | None,
+    *,
+    symbol: str,
+) -> tuple[dict[str, object], tuple[EtfSmaBacktestStatsBar, ...]]:
+    base = {
+        "path": None if daily_bars_path is None else str(daily_bars_path),
+        "found": False,
+        "valid": False,
+        "source_bar_count": 0,
+        "usable_bar_count": 0,
+        "matching_symbol_row_count": 0,
+        "input_sorted_by_date": None,
+        "first_usable_date": None,
+        "last_usable_date": None,
+        "close_adjusted_close_equal_count": 0,
+        "close_adjusted_close_diff_count": 0,
+        "adjusted_close_available": False,
+        "reason": "",
+    }
+    if daily_bars_path is None:
+        base["reason"] = "missing_daily_bars_csv_from_source_m417_artifact"
+        return base, ()
+    if not daily_bars_path.exists():
+        base["reason"] = "daily_bars_csv_not_found"
+        return base, ()
+    if not daily_bars_path.is_file():
+        base["found"] = True
+        base["reason"] = "daily_bars_csv_is_not_a_file"
+        return base, ()
+
+    base["found"] = True
+    try:
+        csv_result = load_local_daily_bars_csv(daily_bars_path, symbol=symbol)
+        _validate_csv_result(csv_result)
+    except ValidationError as exc:
+        base["reason"] = str(exc)
+        return base, ()
+
+    usable_bars = csv_result.usable_bars
+    diff_count = sum(1 for bar in usable_bars if bar.close != bar.adjusted_close)
+    equal_count = len(usable_bars) - diff_count
+    base.update(
+        {
+            "valid": True,
+            "source_bar_count": csv_result.total_row_count,
+            "usable_bar_count": len(usable_bars),
+            "matching_symbol_row_count": csv_result.matching_symbol_row_count,
+            "input_sorted_by_date": csv_result.input_sorted_by_date,
+            "first_usable_date": None
+            if not usable_bars
+            else usable_bars[0].date.isoformat(),
+            "last_usable_date": None
+            if not usable_bars
+            else usable_bars[-1].date.isoformat(),
+            "close_adjusted_close_equal_count": equal_count,
+            "close_adjusted_close_diff_count": diff_count,
+            "adjusted_close_available": diff_count > 0,
+            "reason": ""
+            if diff_count > 0
+            else "adjusted_close_column_mirrors_raw_close_for_all_usable_rows",
+        }
+    )
+    if diff_count == 0:
+        return base, ()
+    return (
+        base,
+        tuple(_adjusted_basis_bar_from_local_daily_bar(bar) for bar in usable_bars),
+    )
+
+
+def _inspect_total_return_basis(
+    source_m417: Mapping[str, object],
+) -> dict[str, object]:
+    source_data_basis = source_m417.get("data_basis")
+    return {
+        "total_return_available": False,
+        "source_data_basis": None
+        if type(source_data_basis) is not str
+        else source_data_basis,
+        "reason": "no_offline_total_return_compatible_input_discovered",
+    }
+
+
+def _m418_blocked_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object],
+    daily_bars_path: Path | None,
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+    blocked_reason: str = "offline_adjusted_close_or_total_return_compatible_data_unavailable",
+    extra_missing_inputs: tuple[str, ...] = (),
+) -> dict[str, object]:
+    payload = _m418_base_payload(
+        config,
+        source_m417=source_m417,
+        daily_bars_path=daily_bars_path,
+        data_basis=_M418_BLOCKED_DATA_BASIS,
+        basis_validation_status=_M418_BLOCKED_STATUS,
+        adjusted_inspection=adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+    raw_slice_conclusions = _m418_slice_table(
+        _payload_mapping_list(source_m417, "regime_slices"),
+        data_basis=_DATA_BASIS,
+    )
+    payload.update(
+        {
+            "blocked_reason": blocked_reason,
+            "missing_inputs": list(
+                _m418_missing_inputs(adjusted_inspection, total_return_inspection)
+                + extra_missing_inputs
+            ),
+            "next_required_offline_data_artifact": {
+                "type": "strict_local_spy_adjusted_or_total_return_daily_bars",
+                "accepted_adjusted_close_csv_schema": [
+                    "symbol",
+                    "date",
+                    "open",
+                    "high",
+                    "low",
+                    "close",
+                    "adjusted_close",
+                    "volume",
+                ],
+                "accepted_total_return_artifact": (
+                    "offline SPY total-return-compatible price or return series "
+                    "with deterministic provenance"
+                ),
+                "requirement": (
+                    "Adjusted-close values must be verified as adjusted or "
+                    "total-return-compatible and must not merely mirror raw close "
+                    "over the dividend-bearing evaluation window."
+                ),
+                "suggested_path": (
+                    "runs/paper_lab/"
+                    "m418_spy_adjusted_or_total_return_daily_bars.csv"
+                ),
+            },
+            "no_fabricated_returns": True,
+            "returns_fabricated": False,
+            "m417a_raw_close_slice_count_contract": _m418_slice_count_contract(
+                source_m417,
+                raw_slice_conclusions,
+            ),
+            "m417a_raw_close_slice_conclusions": raw_slice_conclusions,
+            "adjusted_basis_vs_m417a_raw_close_comparison": {
+                "status": _M418_BLOCKED_STATUS,
+                "raw_close_conclusions_revalidated": False,
+                "raw_close_conclusions_preserved_unvalidated": True,
+                "reason": blocked_reason,
+            },
+        }
+    )
+    return payload
+
+
+def _m418_available_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object],
+    adjusted_stats: Mapping[str, object],
+    daily_bars_path: Path | None,
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+) -> dict[str, object]:
+    raw_slice_conclusions = _m418_slice_table(
+        _payload_mapping_list(source_m417, "regime_slices"),
+        data_basis=_DATA_BASIS,
+    )
+    adjusted_slice_table = _m418_slice_table(
+        _payload_mapping_list(adjusted_stats, "regime_slices"),
+        data_basis=_M418_ADJUSTED_DATA_BASIS,
+    )
+    comparison = _m418_slice_comparison(
+        raw_slice_conclusions,
+        adjusted_slice_table,
+    )
+    payload = _m418_base_payload(
+        config,
+        source_m417=source_m417,
+        daily_bars_path=daily_bars_path,
+        data_basis=_M418_ADJUSTED_DATA_BASIS,
+        basis_validation_status=_M418_AVAILABLE_STATUS,
+        adjusted_inspection=adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+    payload.update(
+        {
+            "price_field": _M418_ADJUSTED_PRICE_FIELD,
+            "source_bar_count": adjusted_stats.get("source_bar_count"),
+            "usable_bar_count": adjusted_stats.get("usable_bar_count"),
+            "evaluated_return_count": adjusted_stats.get("evaluated_return_count"),
+            "evaluated_start_date": adjusted_stats.get("evaluated_start_date"),
+            "evaluated_end_date": adjusted_stats.get("evaluated_end_date"),
+            "starting_equity": adjusted_stats.get("starting_equity"),
+            "strategy_total_return": adjusted_stats.get("strategy_total_return"),
+            "benchmark_total_return": adjusted_stats.get("benchmark_total_return"),
+            "excess_return": adjusted_stats.get("excess_return"),
+            "strategy_max_drawdown": adjusted_stats.get("strategy_max_drawdown"),
+            "benchmark_max_drawdown": adjusted_stats.get("benchmark_max_drawdown"),
+            "drawdown_delta": _decimal_text(
+                _decimal_value(
+                    adjusted_stats.get("strategy_max_drawdown"),
+                    "strategy_max_drawdown",
+                )
+                - _decimal_value(
+                    adjusted_stats.get("benchmark_max_drawdown"),
+                    "benchmark_max_drawdown",
+                )
+            ),
+            "exposure_fraction": adjusted_stats.get("exposure_fraction"),
+            "total_cost": adjusted_stats.get("total_cost"),
+            "trade_count": adjusted_stats.get("trade_count"),
+            "entry_count": adjusted_stats.get("entry_count"),
+            "exit_count": adjusted_stats.get("exit_count"),
+            "regime_slice_policy": _REGIME_SLICE_POLICY,
+            "regime_slice_count": adjusted_stats.get("regime_slice_count"),
+            "regime_slices": adjusted_slice_table,
+            "m417a_raw_close_slice_count_contract": _m418_slice_count_contract(
+                source_m417,
+                raw_slice_conclusions,
+            ),
+            "m417a_raw_close_slice_conclusions": raw_slice_conclusions,
+            "adjusted_basis_vs_m417a_raw_close_comparison": comparison,
+            "m417a_slice_counts_unchanged": comparison["same_slice_counts"],
+            "no_fabricated_returns": True,
+            "returns_fabricated": False,
+        }
+    )
+    return payload
+
+
+def _m418_base_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object],
+    daily_bars_path: Path | None,
+    data_basis: str,
+    basis_validation_status: str,
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "record_type": _M418_RECORD_TYPE,
+        "schema_version": _SCHEMA_VERSION,
+        "command": _M418_COMMAND,
+        "run_id": config.run_id,
+        "milestone": _M418_MILESTONE,
+        "symbol": config.symbol,
+        "strategy": _STRATEGY,
+        "labels": list(ETF_SMA_BACKTEST_STATS_LABELS),
+        "source_m417_artifact": str(config.source_m417_artifact),
+        "source_daily_bars_csv": None
+        if daily_bars_path is None
+        else str(daily_bars_path),
+        "source_m417_data_basis": source_m417.get("data_basis"),
+        "source_m417_run_id": source_m417.get("run_id"),
+        "data_basis": data_basis,
+        "basis_validation_status": basis_validation_status,
+        "adjusted_close_available": adjusted_inspection.get(
+            "adjusted_close_available",
+            False,
+        ),
+        "total_return_available": total_return_inspection.get(
+            "total_return_available",
+            False,
+        ),
+        "adjusted_close_source_inspection": dict(adjusted_inspection),
+        "total_return_source_inspection": dict(total_return_inspection),
+        "short_window": _SHORT_WINDOW,
+        "long_window": _LONG_WINDOW,
+        "lookahead_policy": ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY,
+        "fill_model": config.fill_model,
+        "benchmark": config.benchmark,
+        "cost_bps": _decimal_text(config.cost_bps),
+        "cost_model": _COST_MODEL,
+        "verdict_scope": _M418_VERDICT_SCOPE,
+        "profit_claim": "none",
+        "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+        "operator_trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+        "no_trade_recommendation": True,
+        "paper_lab_only": True,
+        "research_only": True,
+        "signal_evaluation_only": True,
+        "not_live_authorized": True,
+    }
+    payload.update(_safety_false_fields())
+    return payload
+
+
+def _m418_missing_inputs(
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+) -> tuple[str, ...]:
+    missing: list[str] = []
+    if adjusted_inspection.get("adjusted_close_available") is not True:
+        reason = adjusted_inspection.get("reason")
+        if reason == "adjusted_close_column_mirrors_raw_close_for_all_usable_rows":
+            missing.append(
+                "adjusted_close_values_distinct_from_raw_close_for_spy_dividend_window"
+            )
+        elif reason == "daily_bars_csv_not_found":
+            missing.append("existing_strict_local_daily_bars_csv")
+        elif reason == "missing_daily_bars_csv_from_source_m417_artifact":
+            missing.append("source_daily_bars_csv_path_from_m417_or_cli")
+        else:
+            missing.append(
+                "valid_strict_local_daily_bars_csv_with_adjusted_close_column"
+            )
+        missing.append(
+            "operator_attested_adjusted_close_or_total_return_provenance_manifest"
+        )
+    if total_return_inspection.get("total_return_available") is not True:
+        missing.append("offline_total_return_compatible_spy_series_or_index_artifact")
+    return tuple(dict.fromkeys(missing))
+
+
+def _m418_slice_table(
+    slices: list[dict[str, object]],
+    *,
+    data_basis: str,
+) -> list[dict[str, object]]:
+    return [_m418_slice_summary(item, data_basis=data_basis) for item in slices]
+
+
+def _m418_slice_summary(
+    item: Mapping[str, object],
+    *,
+    data_basis: str,
+) -> dict[str, object]:
+    return {
+        "slice_name": _mapping_text(item, "slice_name"),
+        "slice_start_date": _mapping_text(item, "slice_start_date"),
+        "slice_end_date": _mapping_text(item, "slice_end_date"),
+        "evaluated_return_count": _mapping_int(item, "evaluated_return_count"),
+        "data_basis": data_basis,
+        "strategy_starting_equity": _mapping_text(item, "strategy_starting_equity"),
+        "strategy_ending_equity": _mapping_text(item, "strategy_ending_equity"),
+        "strategy_total_return": _mapping_text(item, "strategy_total_return"),
+        "benchmark_starting_equity": _mapping_text(item, "benchmark_starting_equity"),
+        "benchmark_ending_equity": _mapping_text(item, "benchmark_ending_equity"),
+        "benchmark_total_return": _mapping_text(item, "benchmark_total_return"),
+        "excess_return": _mapping_text(item, "excess_return"),
+        "strategy_max_drawdown": _mapping_text(item, "strategy_max_drawdown"),
+        "benchmark_max_drawdown": _mapping_text(item, "benchmark_max_drawdown"),
+        "drawdown_delta": _mapping_text(item, "drawdown_delta"),
+        "strategy_exposure_fraction": _mapping_text(
+            item,
+            "strategy_exposure_fraction",
+        ),
+        "trade_count": _mapping_int(item, "trade_count"),
+        "entry_count": _mapping_int(item, "entry_count"),
+        "exit_count": _mapping_int(item, "exit_count"),
+        "transition_event_dates": list(_payload_string_tuple(
+            item.get("transition_event_dates"),
+        )),
+        "return_conclusion": _m418_return_conclusion(item),
+        "drawdown_conclusion": _m418_drawdown_conclusion(item),
+        "profit_claim": "none",
+        "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+    }
+
+
+def _m418_slice_count_contract(
+    source_m417: Mapping[str, object],
+    raw_slice_conclusions: list[dict[str, object]],
+) -> dict[str, object]:
+    return {
+        "total_interval_count": source_m417.get("evaluated_return_count"),
+        "slices": [
+            {
+                "slice_name": item["slice_name"],
+                "slice_start_date": item["slice_start_date"],
+                "slice_end_date": item["slice_end_date"],
+                "evaluated_return_count": item["evaluated_return_count"],
+            }
+            for item in raw_slice_conclusions
+        ],
+    }
+
+
+def _m418_slice_comparison(
+    raw_slices: list[dict[str, object]],
+    adjusted_slices: list[dict[str, object]],
+) -> dict[str, object]:
+    adjusted_by_name = {str(item["slice_name"]): item for item in adjusted_slices}
+    comparisons: list[dict[str, object]] = []
+    for raw_item in raw_slices:
+        name = str(raw_item["slice_name"])
+        adjusted_item = adjusted_by_name.get(name)
+        if adjusted_item is None:
+            comparisons.append(
+                {
+                    "slice_name": name,
+                    "status": "missing_adjusted_slice",
+                    "raw_evaluated_return_count": raw_item[
+                        "evaluated_return_count"
+                    ],
+                }
+            )
+            continue
+        same_count = (
+            raw_item["evaluated_return_count"]
+            == adjusted_item["evaluated_return_count"]
+        )
+        same_dates = (
+            raw_item["slice_start_date"] == adjusted_item["slice_start_date"]
+            and raw_item["slice_end_date"] == adjusted_item["slice_end_date"]
+        )
+        same_return_conclusion = (
+            raw_item["return_conclusion"] == adjusted_item["return_conclusion"]
+        )
+        same_drawdown_conclusion = (
+            raw_item["drawdown_conclusion"]
+            == adjusted_item["drawdown_conclusion"]
+        )
+        comparisons.append(
+            {
+                "slice_name": name,
+                "status": "compared",
+                "same_evaluated_return_count": same_count,
+                "same_slice_dates": same_dates,
+                "raw_evaluated_return_count": raw_item[
+                    "evaluated_return_count"
+                ],
+                "adjusted_evaluated_return_count": adjusted_item[
+                    "evaluated_return_count"
+                ],
+                "raw_return_conclusion": raw_item["return_conclusion"],
+                "adjusted_return_conclusion": adjusted_item[
+                    "return_conclusion"
+                ],
+                "return_conclusion_unchanged": same_return_conclusion,
+                "raw_drawdown_conclusion": raw_item["drawdown_conclusion"],
+                "adjusted_drawdown_conclusion": adjusted_item[
+                    "drawdown_conclusion"
+                ],
+                "drawdown_conclusion_unchanged": same_drawdown_conclusion,
+                "raw_strategy_total_return": raw_item["strategy_total_return"],
+                "adjusted_strategy_total_return": adjusted_item[
+                    "strategy_total_return"
+                ],
+                "raw_benchmark_total_return": raw_item["benchmark_total_return"],
+                "adjusted_benchmark_total_return": adjusted_item[
+                    "benchmark_total_return"
+                ],
+                "raw_strategy_max_drawdown": raw_item["strategy_max_drawdown"],
+                "adjusted_strategy_max_drawdown": adjusted_item[
+                    "strategy_max_drawdown"
+                ],
+            }
+        )
+
+    same_slice_counts = (
+        len(raw_slices) == len(adjusted_slices)
+        and all(
+            item.get("same_evaluated_return_count") is True
+            for item in comparisons
+            if item.get("status") == "compared"
+        )
+        and all(item.get("status") == "compared" for item in comparisons)
+    )
+    return {
+        "status": "computed_adjusted_close_against_m417a_raw_close",
+        "raw_close_conclusions_revalidated": True,
+        "same_slice_counts": same_slice_counts,
+        "slice_comparisons": comparisons,
+        "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+    }
+
+
+def _m418_return_conclusion(item: Mapping[str, object]) -> str:
+    strategy_return = _mapping_decimal(item, "strategy_total_return")
+    benchmark_return = _mapping_decimal(item, "benchmark_total_return")
+    if strategy_return > benchmark_return:
+        return "strategy_return_above_benchmark"
+    if strategy_return < benchmark_return:
+        return "strategy_return_below_benchmark"
+    return "strategy_return_matches_benchmark"
+
+
+def _m418_drawdown_conclusion(item: Mapping[str, object]) -> str:
+    strategy_drawdown = _mapping_decimal(item, "strategy_max_drawdown")
+    benchmark_drawdown = _mapping_decimal(item, "benchmark_max_drawdown")
+    if strategy_drawdown < benchmark_drawdown:
+        return "strategy_drawdown_below_benchmark"
+    if strategy_drawdown > benchmark_drawdown:
+        return "strategy_drawdown_above_benchmark"
+    return "strategy_drawdown_matches_benchmark"
+
+
+def _safety_false_fields() -> dict[str, object]:
+    return {
+        "submitted": False,
+        "mutated": False,
+        "submit_authorized": False,
+        "submit_path_allowed": False,
+        "paper_submit_approved": False,
+        "paper_submit_authorized": False,
+        "broker_mutation_authorized": False,
+        "live_authorized": False,
+        "credential_access": False,
+        "credential_access_attempted": False,
+        "broker_network_access": False,
+        "network_access_attempted": False,
+        "broker_action_performed": False,
+        "broker_actions_performed": False,
+        "market_data_fetch_performed": False,
+    }
+
+
 def _with_default_regime_slice_evidence(
     payload: dict[str, object],
     config: EtfSmaBacktestStatsConfig,
@@ -1095,6 +1862,12 @@ def _payload_mapping_list(
     return rows
 
 
+def _payload_string_tuple(value: object) -> tuple[str, ...]:
+    if not isinstance(value, list):
+        return ()
+    return tuple(str(item) for item in value if str(item))
+
+
 def _mapping_rows_by_date(
     rows: list[dict[str, object]],
     field_name: str,
@@ -1171,6 +1944,14 @@ def _bar_price(bar: EtfSmaBacktestStatsBar) -> Decimal:
 def _config(value: object) -> EtfSmaBacktestStatsConfig:
     if type(value) is not EtfSmaBacktestStatsConfig:
         raise ValidationError("config must be an EtfSmaBacktestStatsConfig.")
+    return value
+
+
+def _m418_config(value: object) -> EtfSmaAdjustedBasisValidationConfig:
+    if type(value) is not EtfSmaAdjustedBasisValidationConfig:
+        raise ValidationError(
+            "config must be an EtfSmaAdjustedBasisValidationConfig."
+        )
     return value
 
 
@@ -1259,6 +2040,28 @@ def _path_value(value: object, field_name: str) -> Path:
         raise ValidationError(f"{field_name} must be a local CSV path.")
     if path.suffix.lower() != ".csv":
         raise ValidationError(f"{field_name} must reference a CSV file.")
+    return path
+
+
+def _optional_csv_path_value(value: object, field_name: str) -> Path | None:
+    if value is None:
+        return None
+    return _path_value(value, field_name)
+
+
+def _jsonl_path_value(value: object, field_name: str) -> Path:
+    if type(value) is str:
+        path = Path(value)
+    elif isinstance(value, Path):
+        path = value
+    else:
+        raise ValidationError(f"{field_name} must be a path.")
+    if str(path).strip() == "":
+        raise ValidationError(f"{field_name} is required.")
+    if isinstance(value, str) and "://" in value:
+        raise ValidationError(f"{field_name} must be a local JSONL path.")
+    if path.suffix.lower() != ".jsonl":
+        raise ValidationError(f"{field_name} must reference a JSONL file.")
     return path
 
 

@@ -780,6 +780,64 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Adjusted-close evidence gate output format.",
     )
+    etf_sma_adjusted_basis_validation_parser = subparsers.add_parser(
+        "etf-sma-adjusted-basis-validation",
+        help="Validate M417 regime evidence on an adjusted/total-return basis.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--run-id",
+        default="m418_spy_etf_sma_adjusted_basis_validation",
+        help="Run/session id to include in the M418 validation artifact.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M418 validation JSONL record.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--source-m417-artifact",
+        required=True,
+        help="Explicit M417 raw-close regime-slice JSONL artifact.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--daily-bars-csv",
+        default=None,
+        help="Optional strict local daily-bars CSV; defaults to the M417 source.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--starting-equity",
+        default="25.00",
+        help="Starting equity for adjusted-basis validation. Default: 25.00.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--benchmark",
+        choices=("buy_and_hold",),
+        default="buy_and_hold",
+        help="Benchmark model over the same evaluated window.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--fill-model",
+        choices=("next_close",),
+        default="next_close",
+        help="Modeled strategy fill timing. Default: next_close.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--cost-bps",
+        default="1",
+        help="Per exposure-change strategy cost in basis points. Default: 1.",
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M418 validation output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1693,6 +1751,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_evidence_rollup(args)
     if command == "etf-sma-adjusted-close-evidence-gate":
         return _run_etf_sma_adjusted_close_evidence_gate(args)
+    if command == "etf-sma-adjusted-basis-validation":
+        return _run_etf_sma_adjusted_basis_validation(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2343,6 +2403,42 @@ def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
         print(render_etf_sma_backtest_stats_json(payload))
     else:
         print(render_etf_sma_backtest_stats_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_adjusted_basis_validation(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_backtest_stats import (
+        EtfSmaAdjustedBasisValidationConfig,
+        build_etf_sma_adjusted_basis_validation,
+        render_etf_sma_adjusted_basis_validation_json,
+        render_etf_sma_adjusted_basis_validation_text,
+        write_etf_sma_adjusted_basis_validation_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_adjusted_basis_validation(
+            EtfSmaAdjustedBasisValidationConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                source_m417_artifact=args.source_m417_artifact,
+                daily_bars_csv=args.daily_bars_csv,
+                starting_equity=Decimal(str(args.starting_equity)),
+                benchmark=args.benchmark,
+                fill_model=args.fill_model,
+                cost_bps=Decimal(str(args.cost_bps)),
+            )
+        )
+        write_etf_sma_adjusted_basis_validation_jsonl(payload, args.run_log)
+    except (InvalidOperation, ValidationError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_adjusted_basis_validation_json(payload))
+    else:
+        print(render_etf_sma_adjusted_basis_validation_text(payload))
 
     return 0
 
