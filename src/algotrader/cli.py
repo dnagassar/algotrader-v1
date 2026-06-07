@@ -838,6 +838,67 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M418 validation output format.",
     )
+    etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
+        "etf-sma-adjusted-bars-intake",
+        help="Validate and canonicalize operator-supplied SPY adjusted bars.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--input-csv",
+        default=None,
+        help="Operator-supplied local adjusted/total-return-compatible bars CSV.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--run-id",
+        default="m419_spy_adjusted_bars_intake",
+        help="Run/session id to include in the M419 intake artifact.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M419 intake JSONL record.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--canonical-csv",
+        default=None,
+        help="Canonical adjusted bars CSV to write. Defaults beside --run-log.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--operator-attested-provenance",
+        action="store_true",
+        help="Mark source provenance as explicitly operator-attested.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--source-name",
+        default="",
+        help="Operator-supplied source/vendor/origin label.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--source-notes",
+        default="",
+        help="Operator-supplied provenance or adjustment notes.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--attested-by",
+        default="",
+        help="Optional operator attestation name or handle.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--attested-at",
+        default="",
+        help="Optional operator attestation timestamp.",
+    )
+    etf_sma_adjusted_bars_intake_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M419 intake output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1753,6 +1814,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_adjusted_close_evidence_gate(args)
     if command == "etf-sma-adjusted-basis-validation":
         return _run_etf_sma_adjusted_basis_validation(args)
+    if command == "etf-sma-adjusted-bars-intake":
+        return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2439,6 +2502,44 @@ def _run_etf_sma_adjusted_basis_validation(args: argparse.Namespace) -> int:
         print(render_etf_sma_adjusted_basis_validation_json(payload))
     else:
         print(render_etf_sma_adjusted_basis_validation_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_adjusted_bars_intake(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_adjusted_bars_intake import (
+        EtfSmaAdjustedBarsIntakeConfig,
+        build_etf_sma_adjusted_bars_intake,
+        render_etf_sma_adjusted_bars_intake_json,
+        render_etf_sma_adjusted_bars_intake_text,
+        write_etf_sma_adjusted_bars_intake_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_adjusted_bars_intake(
+            EtfSmaAdjustedBarsIntakeConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                input_csv=args.input_csv,
+                canonical_csv=args.canonical_csv,
+                run_log=args.run_log,
+                operator_attested_provenance=args.operator_attested_provenance,
+                source_name=args.source_name,
+                source_notes=args.source_notes,
+                attested_by=args.attested_by,
+                attested_at=args.attested_at,
+            )
+        )
+        write_etf_sma_adjusted_bars_intake_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_adjusted_bars_intake_json(payload))
+    else:
+        print(render_etf_sma_adjusted_bars_intake_text(payload))
 
     return 0
 
