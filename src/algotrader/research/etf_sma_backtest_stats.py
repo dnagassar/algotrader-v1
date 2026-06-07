@@ -50,6 +50,23 @@ _PRICE_FIELD = "close"
 _FILL_MODEL_NEXT_CLOSE = "next_close"
 _BENCHMARK_BUY_AND_HOLD = "buy_and_hold"
 _COST_MODEL = "bps_per_exposure_change_on_strategy_equity"
+_REGIME_SLICES_DEFAULT = "default"
+_REGIME_SLICE_RECORD_TYPE = "etf_sma_regime_slice_evidence"
+_REGIME_SLICE_MILESTONE = "M417"
+_REGIME_SLICE_VERDICT_SCOPE = "raw_close_regime_risk_profile_only"
+_REGIME_SLICE_POLICY = (
+    "Slice already-evaluated close-to-close return intervals by interval end date; "
+    "calendar-year slices use the prior trading-day close as the start boundary."
+)
+_RETURN_RANKING_BASIS = "provisional_raw_close_price_return_only"
+_DEFAULT_REGIME_SLICE_SPECS = (
+    ("full_evaluated_window", None, None),
+    ("stress_2022", date(2022, 1, 1), date(2022, 12, 31)),
+    ("recovery_2023", date(2023, 1, 1), date(2023, 12, 31)),
+    ("bull_2024", date(2024, 1, 1), date(2024, 12, 31)),
+    ("whipsaw_2025", date(2025, 1, 1), date(2025, 12, 31)),
+    ("ytd_2026", date(2026, 1, 1), date(2026, 12, 31)),
+)
 _SHORT_WINDOW = 50
 _LONG_WINDOW = 200
 _DEFAULT_STARTING_EQUITY = Decimal("25.00")
@@ -99,6 +116,7 @@ class EtfSmaBacktestStatsConfig:
     benchmark: str = _BENCHMARK_BUY_AND_HOLD
     fill_model: str = _FILL_MODEL_NEXT_CLOSE
     cost_bps: Decimal | str = _ZERO
+    regime_slices: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -145,6 +163,15 @@ class EtfSmaBacktestStatsConfig:
             self,
             "cost_bps",
             _non_negative_decimal(self.cost_bps, "cost_bps"),
+        )
+        object.__setattr__(
+            self,
+            "regime_slices",
+            _optional_choice(
+                self.regime_slices,
+                "regime_slices",
+                (_REGIME_SLICES_DEFAULT,),
+            ),
         )
         if self.short_window >= self.long_window:
             raise ValidationError("short_window must be less than long_window.")
@@ -227,7 +254,7 @@ def build_etf_sma_backtest_stats_from_bars(
     final_posture = str(posture_history[-1]["posture"])
     final_exposure = int(equity_curve[-1]["exposure"])
 
-    return _payload(
+    payload = _payload(
         checked_config,
         source_bar_count=source_count,
         usable_bar_count=len(checked_bars),
@@ -263,6 +290,7 @@ def build_etf_sma_backtest_stats_from_bars(
         final_posture=final_posture,
         final_decision=_final_decision(final_posture, final_exposure),
     )
+    return _maybe_with_regime_slice_evidence(payload, checked_config)
 
 
 def render_etf_sma_backtest_stats_json(payload: Mapping[str, object]) -> str:
@@ -711,7 +739,7 @@ def _blocked_payload(
     blockers: tuple[str, ...],
     source_bar_count: int = 0,
 ) -> dict[str, object]:
-    return _payload(
+    payload = _payload(
         config,
         source_bar_count=source_bar_count,
         usable_bar_count=0,
@@ -745,6 +773,373 @@ def _blocked_payload(
         final_posture=_POSTURE_INSUFFICIENT,
         final_decision=backtest_state,
     )
+    return _maybe_with_regime_slice_evidence(payload, config)
+
+
+def _maybe_with_regime_slice_evidence(
+    payload: dict[str, object],
+    config: EtfSmaBacktestStatsConfig,
+) -> dict[str, object]:
+    if config.regime_slices is None:
+        return payload
+    if config.regime_slices != _REGIME_SLICES_DEFAULT:
+        raise ValidationError("regime_slices must be default when provided.")
+    return _with_default_regime_slice_evidence(payload, config)
+
+
+def _with_default_regime_slice_evidence(
+    payload: dict[str, object],
+    config: EtfSmaBacktestStatsConfig,
+) -> dict[str, object]:
+    return_rows = _payload_mapping_list(payload, "benchmark_equity_curve")
+    equity_rows_by_date = _mapping_rows_by_date(
+        _payload_mapping_list(payload, "equity_curve"),
+        "equity_curve",
+    )
+    events = _payload_mapping_list(payload, "events")
+    slices: list[dict[str, object]] = []
+    omitted: list[dict[str, object]] = []
+
+    for name, requested_start, requested_end in _DEFAULT_REGIME_SLICE_SPECS:
+        selected_rows = _selected_regime_return_rows(
+            return_rows,
+            requested_start=requested_start,
+            requested_end=requested_end,
+        )
+        if not selected_rows:
+            omitted.append(
+                _omitted_regime_slice(
+                    name,
+                    requested_start=requested_start,
+                    requested_end=requested_end,
+                )
+            )
+            continue
+        slices.append(
+            _regime_slice_evidence(
+                name,
+                selected_rows,
+                equity_rows_by_date=equity_rows_by_date,
+                events=events,
+                config=config,
+                requested_start=requested_start,
+                requested_end=requested_end,
+            )
+        )
+
+    evidence = dict(payload)
+    evidence.update(
+        {
+            "record_type": _REGIME_SLICE_RECORD_TYPE,
+            "schema_version": _SCHEMA_VERSION,
+            "milestone": _REGIME_SLICE_MILESTONE,
+            "source_input_command_fields": {
+                "command": _COMMAND,
+                "run_id": config.run_id,
+                "symbol": config.symbol,
+                "daily_bars_csv": str(config.daily_bars_csv),
+                "starting_equity": _decimal_text(config.starting_equity),
+                "benchmark": config.benchmark,
+                "cost_bps": _decimal_text(config.cost_bps),
+                "fill_model": config.fill_model,
+                "short_window": config.short_window,
+                "long_window": config.long_window,
+                "regime_slices": _REGIME_SLICES_DEFAULT,
+            },
+            "regime_slice_policy": _REGIME_SLICE_POLICY,
+            "verdict_scope": _REGIME_SLICE_VERDICT_SCOPE,
+            "return_ranking_basis": _RETURN_RANKING_BASIS,
+            "regime_slice_count": len(slices),
+            "regime_slices": slices,
+            "omitted_regime_slices": omitted,
+        }
+    )
+    return evidence
+
+
+def _selected_regime_return_rows(
+    return_rows: list[dict[str, object]],
+    *,
+    requested_start: date | None,
+    requested_end: date | None,
+) -> list[dict[str, object]]:
+    if requested_start is None and requested_end is None:
+        return list(return_rows)
+    if requested_start is None or requested_end is None:
+        raise ValidationError("regime slice start and end dates must pair.")
+    return [
+        row
+        for row in return_rows
+        if requested_start <= _mapping_date(row, "date") <= requested_end
+    ]
+
+
+def _omitted_regime_slice(
+    name: str,
+    *,
+    requested_start: date | None,
+    requested_end: date | None,
+) -> dict[str, object]:
+    reason = (
+        "no_evaluated_returns"
+        if requested_start is None
+        else "no_evaluated_returns_in_requested_window"
+    )
+    return {
+        "slice_name": name,
+        "requested_start_date": None
+        if requested_start is None
+        else requested_start.isoformat(),
+        "requested_end_date": None
+        if requested_end is None
+        else requested_end.isoformat(),
+        "reason": reason,
+    }
+
+
+def _regime_slice_evidence(
+    name: str,
+    return_rows: list[dict[str, object]],
+    *,
+    equity_rows_by_date: dict[str, dict[str, object]],
+    events: list[dict[str, object]],
+    config: EtfSmaBacktestStatsConfig,
+    requested_start: date | None,
+    requested_end: date | None,
+) -> dict[str, object]:
+    slice_start_date = _mapping_text(return_rows[0], "start_date")
+    slice_end_date = _mapping_text(return_rows[-1], "date")
+    strategy_path = _normalized_strategy_slice_equity_path(
+        return_rows,
+        equity_rows_by_date=equity_rows_by_date,
+        starting_equity=config.starting_equity,
+        cost_bps=config.cost_bps,
+    )
+    benchmark_path = _normalized_benchmark_slice_equity_path(
+        return_rows,
+        starting_equity=config.starting_equity,
+    )
+    strategy_starting_equity = strategy_path[0]
+    strategy_ending_equity = strategy_path[-1]
+    benchmark_starting_equity = benchmark_path[0]
+    benchmark_ending_equity = benchmark_path[-1]
+    strategy_total_return = (strategy_ending_equity / strategy_starting_equity) - _ONE
+    benchmark_total_return = (benchmark_ending_equity / benchmark_starting_equity) - _ONE
+    strategy_max_drawdown = _max_drawdown_from_equity_path(strategy_path)
+    benchmark_max_drawdown = _max_drawdown_from_equity_path(benchmark_path)
+    strategy_exposure_fraction = _strategy_exposure_fraction(
+        return_rows,
+        equity_rows_by_date=equity_rows_by_date,
+    )
+    transition_events = _transition_events_inside_slice(return_rows, events)
+    entry_count = sum(1 for event in transition_events if event["action"] == "buy")
+    exit_count = sum(1 for event in transition_events if event["action"] == "sell")
+
+    return {
+        "slice_name": name,
+        "requested_start_date": None
+        if requested_start is None
+        else requested_start.isoformat(),
+        "requested_end_date": None
+        if requested_end is None
+        else requested_end.isoformat(),
+        "slice_start_date": slice_start_date,
+        "slice_end_date": slice_end_date,
+        "strategy_start_date": slice_start_date,
+        "strategy_end_date": slice_end_date,
+        "benchmark_start_date": slice_start_date,
+        "benchmark_end_date": slice_end_date,
+        "evaluated_return_count": len(return_rows),
+        "data_basis": _DATA_BASIS,
+        "fill_model": config.fill_model,
+        "lookahead_policy": ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY,
+        "cost_bps": _decimal_text(config.cost_bps),
+        "benchmark": config.benchmark,
+        "strategy_starting_equity": _decimal_text(strategy_starting_equity),
+        "strategy_ending_equity": _decimal_text(strategy_ending_equity),
+        "strategy_total_return": _decimal_text(strategy_total_return),
+        "benchmark_starting_equity": _decimal_text(benchmark_starting_equity),
+        "benchmark_ending_equity": _decimal_text(benchmark_ending_equity),
+        "benchmark_total_return": _decimal_text(benchmark_total_return),
+        "excess_return": _decimal_text(
+            strategy_total_return - benchmark_total_return
+        ),
+        "strategy_max_drawdown": _decimal_text(strategy_max_drawdown),
+        "benchmark_max_drawdown": _decimal_text(benchmark_max_drawdown),
+        "drawdown_delta": _decimal_text(
+            strategy_max_drawdown - benchmark_max_drawdown
+        ),
+        "strategy_exposure_fraction": _decimal_text(strategy_exposure_fraction),
+        "benchmark_exposure_fraction": _decimal_text(_ONE),
+        "entry_count": entry_count,
+        "exit_count": exit_count,
+        "trade_count": entry_count + exit_count,
+        "transition_event_dates": [
+            _mapping_text(event, "date") for event in transition_events
+        ],
+        "transition_events": transition_events,
+        "verdict_scope": _REGIME_SLICE_VERDICT_SCOPE,
+        "profit_claim": "none",
+    }
+
+
+def _normalized_strategy_slice_equity_path(
+    return_rows: list[dict[str, object]],
+    *,
+    equity_rows_by_date: dict[str, dict[str, object]],
+    starting_equity: Decimal,
+    cost_bps: Decimal,
+) -> list[Decimal]:
+    equity = starting_equity
+    cost_rate = cost_bps / Decimal("10000")
+    path = [equity]
+    boundary_row = _mapping_row_for_date(
+        equity_rows_by_date,
+        _mapping_text(return_rows[0], "start_date"),
+        "equity_curve",
+    )
+    previous_exposure = _mapping_int(boundary_row, "exposure")
+    for return_row in return_rows:
+        end_row = _mapping_row_for_date(
+            equity_rows_by_date,
+            _mapping_text(return_row, "date"),
+            "equity_curve",
+        )
+        current_exposure = _mapping_int(end_row, "exposure")
+        asset_return = _mapping_decimal(return_row, "asset_return")
+        if current_exposure == 1:
+            equity *= _ONE + asset_return
+        action = _event_action(previous_exposure, current_exposure)
+        if action in ("buy", "sell") and cost_rate > _ZERO:
+            equity -= equity * cost_rate
+        previous_exposure = current_exposure
+        path.append(equity)
+    return path
+
+
+def _normalized_benchmark_slice_equity_path(
+    return_rows: list[dict[str, object]],
+    *,
+    starting_equity: Decimal,
+) -> list[Decimal]:
+    equity = starting_equity
+    path = [equity]
+    for return_row in return_rows:
+        equity *= _ONE + _mapping_decimal(return_row, "asset_return")
+        path.append(equity)
+    return path
+
+
+def _max_drawdown_from_equity_path(path: list[Decimal]) -> Decimal:
+    if not path:
+        raise ValidationError("equity path must contain at least one value.")
+    peak = path[0]
+    max_drawdown = _ZERO
+    for equity in path:
+        if equity > peak:
+            peak = equity
+        drawdown = (equity / peak) - _ONE
+        if -drawdown > max_drawdown:
+            max_drawdown = -drawdown
+    return max_drawdown
+
+
+def _strategy_exposure_fraction(
+    return_rows: list[dict[str, object]],
+    *,
+    equity_rows_by_date: dict[str, dict[str, object]],
+) -> Decimal:
+    exposed = sum(
+        1
+        for return_row in return_rows
+        if _mapping_int(
+            _mapping_row_for_date(
+                equity_rows_by_date,
+                _mapping_text(return_row, "date"),
+                "equity_curve",
+            ),
+            "exposure",
+        )
+        == 1
+    )
+    return Decimal(exposed) / Decimal(len(return_rows))
+
+
+def _transition_events_inside_slice(
+    return_rows: list[dict[str, object]],
+    events: list[dict[str, object]],
+) -> list[dict[str, object]]:
+    selected_dates = {_mapping_text(row, "date") for row in return_rows}
+    transition_events: list[dict[str, object]] = []
+    for event in events:
+        if _mapping_text(event, "date") not in selected_dates:
+            continue
+        if _mapping_text(event, "action") not in ("buy", "sell"):
+            continue
+        transition_events.append(dict(event))
+    return transition_events
+
+
+def _payload_mapping_list(
+    payload: Mapping[str, object],
+    field_name: str,
+) -> list[dict[str, object]]:
+    value = payload.get(field_name)
+    if not isinstance(value, list):
+        raise ValidationError(f"{field_name} must be a list.")
+    rows: list[dict[str, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise ValidationError(f"{field_name}[{index}] must be an object.")
+        rows.append(dict(item))
+    return rows
+
+
+def _mapping_rows_by_date(
+    rows: list[dict[str, object]],
+    field_name: str,
+) -> dict[str, dict[str, object]]:
+    by_date: dict[str, dict[str, object]] = {}
+    for row in rows:
+        row_date = _mapping_text(row, "date")
+        if row_date in by_date:
+            raise ValidationError(f"{field_name} must not contain duplicate dates.")
+        by_date[row_date] = row
+    return by_date
+
+
+def _mapping_row_for_date(
+    rows_by_date: dict[str, dict[str, object]],
+    row_date: str,
+    field_name: str,
+) -> dict[str, object]:
+    try:
+        return rows_by_date[row_date]
+    except KeyError as exc:
+        raise ValidationError(f"{field_name} is missing date {row_date}.") from exc
+
+
+def _mapping_text(row: Mapping[str, object], field_name: str) -> str:
+    value = row.get(field_name)
+    if type(value) is not str or value == "":
+        raise ValidationError(f"{field_name} must be a non-empty string.")
+    return value
+
+
+def _mapping_date(row: Mapping[str, object], field_name: str) -> date:
+    text = _mapping_text(row, field_name)
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValidationError(f"{field_name} must be an ISO date.") from exc
+
+
+def _mapping_decimal(row: Mapping[str, object], field_name: str) -> Decimal:
+    return _decimal_value(row.get(field_name), field_name)
+
+
+def _mapping_int(row: Mapping[str, object], field_name: str) -> int:
+    return _non_negative_int(row.get(field_name), field_name)
 
 
 def _final_decision(final_posture: str, final_exposure: int) -> str:
@@ -829,6 +1224,16 @@ def _choice(value: object, field_name: str, choices: tuple[str, ...]) -> str:
             f"{field_name} must be one of: {', '.join(choices)}."
         )
     return text
+
+
+def _optional_choice(
+    value: object,
+    field_name: str,
+    choices: tuple[str, ...],
+) -> str | None:
+    if value is None:
+        return None
+    return _choice(value, field_name, choices)
 
 
 def _spy_symbol(value: object) -> str:

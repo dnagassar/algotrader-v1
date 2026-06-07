@@ -504,6 +504,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per exposure-change strategy cost in basis points. Default: 0.",
     )
     etf_sma_backtest_stats_parser.add_argument(
+        "--regime-slices",
+        choices=("default",),
+        default=None,
+        help="Emit deterministic default regime-sliced evidence.",
+    )
+    etf_sma_backtest_stats_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -2325,6 +2331,7 @@ def _run_etf_sma_backtest_stats(args: argparse.Namespace) -> int:
                 benchmark=args.benchmark,
                 fill_model=args.fill_model,
                 cost_bps=Decimal(str(args.cost_bps)),
+                regime_slices=args.regime_slices,
             )
         )
         write_etf_sma_backtest_stats_jsonl(payload, args.run_log)
