@@ -846,6 +846,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M418 validation output format.",
     )
+    etf_sma_adjusted_basis_promotion_packet_parser = subparsers.add_parser(
+        "etf-sma-adjusted-basis-promotion-packet",
+        help="Build an offline M421 adjusted matched-window promotion packet.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--run-id",
+        default="m421_spy_adjusted_basis_promotion_packet",
+        help="Run/session id to include in the M421 promotion packet.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M421 promotion JSONL record.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--source-m417-artifact",
+        required=True,
+        help="Explicit M417A raw-close regime-slice JSONL artifact.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--source-m420-artifact",
+        required=True,
+        help="Explicit M420 adjusted matched-window JSONL artifact.",
+    )
+    etf_sma_adjusted_basis_promotion_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M421 promotion packet output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -1822,6 +1858,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_adjusted_close_evidence_gate(args)
     if command == "etf-sma-adjusted-basis-validation":
         return _run_etf_sma_adjusted_basis_validation(args)
+    if command == "etf-sma-adjusted-basis-promotion-packet":
+        return _run_etf_sma_adjusted_basis_promotion_packet(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2511,6 +2549,37 @@ def _run_etf_sma_adjusted_basis_validation(args: argparse.Namespace) -> int:
         print(render_etf_sma_adjusted_basis_validation_json(payload))
     else:
         print(render_etf_sma_adjusted_basis_validation_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_adjusted_basis_promotion_packet(args: argparse.Namespace) -> int:
+    from .research.etf_sma_adjusted_basis_promotion_packet import (
+        EtfSmaAdjustedBasisPromotionPacketConfig,
+        build_etf_sma_adjusted_basis_promotion_packet,
+        render_etf_sma_adjusted_basis_promotion_packet_json,
+        render_etf_sma_adjusted_basis_promotion_packet_text,
+        write_etf_sma_adjusted_basis_promotion_packet_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_adjusted_basis_promotion_packet(
+            EtfSmaAdjustedBasisPromotionPacketConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                source_m417_artifact=args.source_m417_artifact,
+                source_m420_artifact=args.source_m420_artifact,
+            )
+        )
+        write_etf_sma_adjusted_basis_promotion_packet_jsonl(payload, args.run_log)
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_adjusted_basis_promotion_packet_json(payload))
+    else:
+        print(render_etf_sma_adjusted_basis_promotion_packet_text(payload))
 
     return 0
 
