@@ -626,6 +626,47 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Backtest refresh output format.",
     )
+    etf_sma_operating_brief_parser = subparsers.add_parser(
+        "etf-sma-operating-brief",
+        help="Build an offline ETF/SMA operating brief from local M411 artifacts.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the operating brief.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic operating brief JSONL record to PATH.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--manual-import-log",
+        required=True,
+        help="Explicit M411 manual-import JSONL source artifact.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--backtest-refresh-log",
+        required=True,
+        help="Explicit M411 backtest-refresh JSONL source artifact.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 generated-at timestamp.",
+    )
+    etf_sma_operating_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Operating brief output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1533,6 +1574,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_local_bars_manual_import(args)
     if command == "etf-sma-local-bars-backtest-refresh":
         return _run_etf_sma_local_bars_backtest_refresh(args)
+    if command == "etf-sma-operating-brief":
+        return _run_etf_sma_operating_brief(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2282,6 +2325,39 @@ def _run_etf_sma_local_bars_backtest_refresh(args: argparse.Namespace) -> int:
         print(render_etf_sma_local_bars_backtest_refresh_json(payload))
     else:
         print(render_etf_sma_local_bars_backtest_refresh_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_operating_brief(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_operating_brief import (
+        EtfSmaOperatingBriefConfig,
+        build_etf_sma_operating_brief,
+        render_etf_sma_operating_brief_json,
+        render_etf_sma_operating_brief_text,
+        write_etf_sma_operating_brief_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_operating_brief(
+            EtfSmaOperatingBriefConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                manual_import_log=args.manual_import_log,
+                backtest_refresh_log=args.backtest_refresh_log,
+                generated_at=args.generated_at,
+            )
+        )
+        write_etf_sma_operating_brief_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_operating_brief_json(payload))
+    else:
+        print(render_etf_sma_operating_brief_text(payload))
 
     return 0
 

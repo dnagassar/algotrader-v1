@@ -14960,6 +14960,16 @@ Safe next tasks include:
   provenance remains blocked-valid with no canonical output, no refresh rerun,
   `profit_claim=none`, and false submit, mutation, broker/network, credential,
   paper-approval, and live-authority flags.
+- M412 adds `etf-sma-operating-brief`, an offline artifact-only daily
+  operating brief / paper-lab cycle-update command that consumes the M411 manual
+  import and local-bars backtest refresh JSONL artifacts. It summarizes the
+  current SPY ETF/SMA raw-close evidence, requires false submit, mutation,
+  broker/network, credential, and live-authority source flags, rejects
+  non-`none` profit claims, and writes exactly one JSONL brief with
+  `paper_submit_authorized=false`, `live_authorized=false`,
+  `broker_mutation_authorized=false`, and `profit_claim=none`. M412 does not
+  read `.data` operator inputs directly and does not recommend or authorize a
+  paper submit.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
