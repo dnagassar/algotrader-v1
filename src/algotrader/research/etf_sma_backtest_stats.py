@@ -74,8 +74,19 @@ _M418_AVAILABLE_STATUS = "completed_adjusted_close_basis_validation"
 _M418_BLOCKED_STATUS = "blocked_adjusted_or_total_return_basis_unavailable"
 _M418_VERDICT_SCOPE = "adjusted_or_total_return_basis_validation_only"
 _M418_NO_TRADE_RECOMMENDATION = "none"
+_M420_RECORD_TYPE = "etf_sma_adjusted_matched_window_validation"
+_M420_MILESTONE = "M420"
+_M420_AVAILABLE_STATUS = "completed_adjusted_matched_window_validation"
+_M420_VERDICT_SCOPE = "adjusted_matched_window_basis_validation_only"
+_M420_BLOCKED_MISSING_SOURCE_STATUS = "blocked_missing_source_m417_artifact"
+_M420_BLOCKED_MISSING_DAILY_BARS_STATUS = "blocked_missing_daily_bars_csv"
+_M420_BLOCKED_SOURCE_CONTRACT_STATUS = "blocked_m417a_slice_contract_unavailable"
+_M420_BLOCKED_COVERAGE_STATUS = "blocked_adjusted_bars_do_not_cover_m417a_window"
+_M420_BLOCKED_COUNT_MISMATCH_STATUS = "blocked_matched_window_count_mismatch"
+_M420_BLOCKED_INVALID_BASIS_STATUS = "blocked_invalid_adjusted_close_basis"
+_FULL_EVALUATED_WINDOW_SLICE_NAME = "full_evaluated_window"
 _DEFAULT_REGIME_SLICE_SPECS = (
-    ("full_evaluated_window", None, None),
+    (_FULL_EVALUATED_WINDOW_SLICE_NAME, None, None),
     ("stress_2022", date(2022, 1, 1), date(2022, 12, 31)),
     ("recovery_2023", date(2023, 1, 1), date(2023, 12, 31)),
     ("bull_2024", date(2024, 1, 1), date(2024, 12, 31)),
@@ -206,6 +217,7 @@ class EtfSmaAdjustedBasisValidationConfig:
     benchmark: str = _BENCHMARK_BUY_AND_HOLD
     fill_model: str = _FILL_MODEL_NEXT_CLOSE
     cost_bps: Decimal | str = Decimal("1")
+    match_source_slice_contract: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -248,6 +260,8 @@ class EtfSmaAdjustedBasisValidationConfig:
             "cost_bps",
             _non_negative_decimal(self.cost_bps, "cost_bps"),
         )
+        if type(self.match_source_slice_contract) is not bool:
+            raise ValidationError("match_source_slice_contract must be a bool.")
 
 
 def build_etf_sma_backtest_stats(
@@ -370,6 +384,9 @@ def build_etf_sma_adjusted_basis_validation(
     """Build the offline M418 adjusted-close or total-return basis validation."""
 
     checked_config = _m418_config(config)
+    if checked_config.match_source_slice_contract:
+        return _build_etf_sma_adjusted_matched_window_validation(checked_config)
+
     source_m417 = _load_source_m417_artifact(checked_config.source_m417_artifact)
     daily_bars_path = _m418_daily_bars_csv_path(checked_config, source_m417)
     adjusted_inspection, adjusted_bars = _inspect_adjusted_basis_bars(
@@ -439,6 +456,148 @@ def build_etf_sma_adjusted_basis_validation(
         checked_config,
         source_m417=source_m417,
         adjusted_stats=adjusted_stats,
+        daily_bars_path=daily_bars_path,
+        adjusted_inspection=adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+
+
+def _build_etf_sma_adjusted_matched_window_validation(
+    config: EtfSmaAdjustedBasisValidationConfig,
+) -> dict[str, object]:
+    """Build M420 adjusted-close validation over the source M417A windows."""
+
+    daily_bars_path = config.daily_bars_csv
+    if not config.source_m417_artifact.exists():
+        return _m420_blocked_payload(
+            config,
+            source_m417=None,
+            source_contract=None,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=None,
+            total_return_inspection=_inspect_total_return_basis({}),
+            basis_validation_status=_M420_BLOCKED_MISSING_SOURCE_STATUS,
+            blocked_reason="source_m417_artifact_not_found",
+            missing_inputs=("existing_source_m417_artifact",),
+        )
+
+    try:
+        source_m417 = _load_source_m417_artifact(config.source_m417_artifact)
+    except ValidationError as exc:
+        return _m420_blocked_payload(
+            config,
+            source_m417=None,
+            source_contract=None,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=None,
+            total_return_inspection=_inspect_total_return_basis({}),
+            basis_validation_status=_M420_BLOCKED_SOURCE_CONTRACT_STATUS,
+            blocked_reason=str(exc),
+            missing_inputs=("valid_m417a_regime_slice_contract",),
+        )
+
+    total_return_inspection = _inspect_total_return_basis(source_m417)
+    try:
+        source_contract = _m420_source_slice_contract(source_m417)
+    except ValidationError as exc:
+        return _m420_blocked_payload(
+            config,
+            source_m417=source_m417,
+            source_contract=None,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=None,
+            total_return_inspection=total_return_inspection,
+            basis_validation_status=_M420_BLOCKED_SOURCE_CONTRACT_STATUS,
+            blocked_reason=str(exc),
+            missing_inputs=("valid_m417a_regime_slice_contract",),
+        )
+
+    try:
+        daily_bars_path = _m418_daily_bars_csv_path(config, source_m417)
+    except ValidationError as exc:
+        return _m420_blocked_payload(
+            config,
+            source_m417=source_m417,
+            source_contract=source_contract,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=None,
+            total_return_inspection=total_return_inspection,
+            basis_validation_status=_M420_BLOCKED_MISSING_DAILY_BARS_STATUS,
+            blocked_reason=str(exc),
+            missing_inputs=("valid_strict_local_daily_bars_csv",),
+        )
+
+    adjusted_inspection, adjusted_bars = _inspect_adjusted_basis_bars(
+        daily_bars_path,
+        symbol=config.symbol,
+    )
+    if adjusted_inspection["adjusted_close_available"] is not True:
+        status, blocked_reason, missing_inputs = _m420_adjusted_basis_block_fields(
+            adjusted_inspection
+        )
+        return _m420_blocked_payload(
+            config,
+            source_m417=source_m417,
+            source_contract=source_contract,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=adjusted_inspection,
+            total_return_inspection=total_return_inspection,
+            basis_validation_status=status,
+            blocked_reason=blocked_reason,
+            missing_inputs=missing_inputs,
+        )
+
+    stats_config = EtfSmaBacktestStatsConfig(
+        run_id=config.run_id,
+        daily_bars_csv=daily_bars_path
+        if daily_bars_path is not None
+        else "missing_adjusted_basis.csv",
+        symbol=config.symbol,
+        starting_equity=config.starting_equity,
+        benchmark=config.benchmark,
+        fill_model=config.fill_model,
+        cost_bps=config.cost_bps,
+        regime_slices=None,
+    )
+    adjusted_stats = build_etf_sma_backtest_stats_from_bars(
+        adjusted_bars,
+        stats_config,
+        source_bar_count=_non_negative_int(
+            adjusted_inspection["source_bar_count"],
+            "source_bar_count",
+        ),
+    )
+    matched_stats = _m420_matched_regime_slice_evidence(
+        adjusted_stats,
+        stats_config,
+        source_contract=source_contract,
+    )
+    if matched_stats["status"] != "completed":
+        return _m420_blocked_payload(
+            config,
+            source_m417=source_m417,
+            source_contract=source_contract,
+            daily_bars_path=daily_bars_path,
+            adjusted_inspection=adjusted_inspection,
+            total_return_inspection=total_return_inspection,
+            basis_validation_status=str(matched_stats["status"]),
+            blocked_reason=str(matched_stats["blocked_reason"]),
+            missing_inputs=tuple(
+                str(item) for item in matched_stats.get("missing_inputs", ())
+            ),
+            matched_slice_diagnostics=tuple(
+                dict(item)
+                for item in matched_stats.get("matched_slice_diagnostics", ())
+                if isinstance(item, Mapping)
+            ),
+        )
+
+    return _m420_available_payload(
+        config,
+        source_m417=source_m417,
+        source_contract=source_contract,
+        adjusted_stats=adjusted_stats,
+        matched_stats=matched_stats,
         daily_bars_path=daily_bars_path,
         adjusted_inspection=adjusted_inspection,
         total_return_inspection=total_return_inspection,
@@ -1125,6 +1284,597 @@ def _inspect_total_return_basis(
     }
 
 
+def _m420_source_slice_contract(
+    source_m417: Mapping[str, object],
+) -> dict[str, object]:
+    raw_slice_conclusions = _m418_slice_table(
+        _payload_mapping_list(source_m417, "regime_slices"),
+        data_basis=_DATA_BASIS,
+    )
+    if not raw_slice_conclusions:
+        raise ValidationError("source_m417_artifact regime_slices must not be empty.")
+
+    seen_names: set[str] = set()
+    contract_slices: list[dict[str, object]] = []
+    source_return_rows = _m420_source_return_rows_or_empty(source_m417)
+    for item in raw_slice_conclusions:
+        name = _mapping_text(item, "slice_name")
+        if name in seen_names:
+            raise ValidationError("source_m417_artifact slice names must be unique.")
+        seen_names.add(name)
+        slice_start = _mapping_date(item, "slice_start_date")
+        slice_end = _mapping_date(item, "slice_end_date")
+        if slice_start >= slice_end:
+            raise ValidationError("source M417A slice start must precede end.")
+        evaluated_count = _mapping_int(item, "evaluated_return_count")
+        if evaluated_count == 0:
+            raise ValidationError("source M417A slices must have evaluated returns.")
+        interval_end_dates: tuple[str, ...] = ()
+        if source_return_rows:
+            source_selected_rows = _selected_matched_window_return_rows(
+                source_return_rows,
+                window_start=slice_start,
+                window_end=slice_end,
+            )
+            if (
+                len(source_selected_rows) != evaluated_count
+                or _mapping_text(source_selected_rows[0], "start_date")
+                != slice_start.isoformat()
+                or _mapping_text(source_selected_rows[-1], "date")
+                != slice_end.isoformat()
+            ):
+                raise ValidationError(
+                    "source M417A return rows must match regime_slices."
+                )
+            interval_end_dates = tuple(
+                _mapping_text(row, "date") for row in source_selected_rows
+            )
+        contract_slices.append(
+            {
+                "slice_name": name,
+                "slice_start_date": slice_start.isoformat(),
+                "slice_end_date": slice_end.isoformat(),
+                "evaluated_return_count": evaluated_count,
+                "interval_end_dates": interval_end_dates,
+            }
+        )
+
+    full_slices = [
+        item
+        for item in contract_slices
+        if item["slice_name"] == _FULL_EVALUATED_WINDOW_SLICE_NAME
+    ]
+    if len(full_slices) != 1:
+        raise ValidationError(
+            "source M417A contract must include one full_evaluated_window slice."
+        )
+    total_interval_count = _mapping_int(source_m417, "evaluated_return_count")
+    if total_interval_count != full_slices[0]["evaluated_return_count"]:
+        raise ValidationError(
+            "source M417A full_evaluated_window count must match total count."
+        )
+    interval_slice_total = sum(
+        int(item["evaluated_return_count"])
+        for item in contract_slices
+        if item["slice_name"] != _FULL_EVALUATED_WINDOW_SLICE_NAME
+    )
+    if interval_slice_total != total_interval_count:
+        raise ValidationError(
+            "source M417A interval slice counts must sum to the total count."
+        )
+
+    return {
+        "total_interval_count": total_interval_count,
+        "regime_slice_count": len(contract_slices),
+        "slices": tuple(contract_slices),
+        "m417a_slice_counts_unchanged": True,
+    }
+
+
+def _m420_adjusted_basis_block_fields(
+    adjusted_inspection: Mapping[str, object],
+) -> tuple[str, str, tuple[str, ...]]:
+    reason = str(adjusted_inspection.get("reason", ""))
+    if reason in (
+        "daily_bars_csv_not_found",
+        "missing_daily_bars_csv_from_source_m417_artifact",
+    ):
+        return (
+            _M420_BLOCKED_MISSING_DAILY_BARS_STATUS,
+            reason,
+            ("existing_strict_local_daily_bars_csv",),
+        )
+    if reason == "adjusted_close_column_mirrors_raw_close_for_all_usable_rows":
+        return (
+            _M420_BLOCKED_INVALID_BASIS_STATUS,
+            reason,
+            (
+                "adjusted_close_values_distinct_from_raw_close_for_spy_dividend_window",
+            ),
+        )
+    return (
+        _M420_BLOCKED_INVALID_BASIS_STATUS,
+        reason if reason else "adjusted_close_basis_unavailable",
+        ("valid_strict_local_daily_bars_csv_with_adjusted_close_column",),
+    )
+
+
+def _m420_matched_regime_slice_evidence(
+    adjusted_stats: Mapping[str, object],
+    config: EtfSmaBacktestStatsConfig,
+    *,
+    source_contract: Mapping[str, object],
+) -> dict[str, object]:
+    return_rows = _payload_mapping_list(adjusted_stats, "benchmark_equity_curve")
+    equity_rows_by_date = _mapping_rows_by_date(
+        _payload_mapping_list(adjusted_stats, "equity_curve"),
+        "equity_curve",
+    )
+    events = _payload_mapping_list(adjusted_stats, "events")
+    slices: list[dict[str, object]] = []
+    diagnostics: list[dict[str, object]] = []
+
+    for source_slice in _m420_contract_slices(source_contract):
+        name = _mapping_text(source_slice, "slice_name")
+        slice_start = _mapping_date(source_slice, "slice_start_date")
+        slice_end = _mapping_date(source_slice, "slice_end_date")
+        expected_count = _mapping_int(source_slice, "evaluated_return_count")
+        interval_end_dates = _m420_interval_end_dates(source_slice)
+        selected_rows = (
+            _selected_matched_interval_end_date_rows(
+                return_rows,
+                interval_end_dates=interval_end_dates,
+            )
+            if interval_end_dates
+            else _selected_matched_window_return_rows(
+                return_rows,
+                window_start=slice_start,
+                window_end=slice_end,
+            )
+        )
+        if not selected_rows:
+            diagnostics.append(
+                _m420_slice_diagnostic(
+                    source_slice,
+                    status=_M420_BLOCKED_COVERAGE_STATUS,
+                    adjusted_start_date=None,
+                    adjusted_end_date=None,
+                    adjusted_count=0,
+                )
+            )
+            return {
+                "status": _M420_BLOCKED_COVERAGE_STATUS,
+                "blocked_reason": (
+                    "adjusted return rows do not cover the source M417A window"
+                ),
+                "missing_inputs": (
+                    "adjusted_close_bars_covering_source_m417a_windows",
+                ),
+                "matched_slice_diagnostics": diagnostics,
+            }
+
+        adjusted_start = _mapping_text(selected_rows[0], "start_date")
+        adjusted_end = _mapping_text(selected_rows[-1], "date")
+        adjusted_count = len(selected_rows)
+        diagnostics.append(
+            _m420_slice_diagnostic(
+                source_slice,
+                status="selected",
+                adjusted_start_date=adjusted_start,
+                adjusted_end_date=adjusted_end,
+                adjusted_count=adjusted_count,
+            )
+        )
+        if adjusted_start != slice_start.isoformat() or adjusted_end != (
+            slice_end.isoformat()
+        ):
+            return {
+                "status": _M420_BLOCKED_COVERAGE_STATUS,
+                "blocked_reason": (
+                    "adjusted return rows do not align to the source M417A "
+                    "slice boundary dates"
+                ),
+                "missing_inputs": (
+                    "adjusted_close_bars_covering_source_m417a_windows",
+                ),
+                "matched_slice_diagnostics": diagnostics,
+            }
+        if adjusted_count != expected_count:
+            return {
+                "status": _M420_BLOCKED_COUNT_MISMATCH_STATUS,
+                "blocked_reason": (
+                    "adjusted matched-window return count differs from the "
+                    "source M417A contract"
+                ),
+                "missing_inputs": (
+                    "adjusted_close_bars_matching_source_m417a_interval_counts",
+                ),
+                "matched_slice_diagnostics": diagnostics,
+            }
+
+        slices.append(
+            _regime_slice_evidence(
+                name,
+                selected_rows,
+                equity_rows_by_date=equity_rows_by_date,
+                events=events,
+                config=config,
+                requested_start=slice_start,
+                requested_end=slice_end,
+            )
+        )
+
+    return {
+        "status": "completed",
+        "regime_slice_policy": _REGIME_SLICE_POLICY,
+        "regime_slice_count": len(slices),
+        "regime_slices": slices,
+        "matched_slice_diagnostics": diagnostics,
+    }
+
+
+def _selected_matched_window_return_rows(
+    return_rows: list[dict[str, object]],
+    *,
+    window_start: date,
+    window_end: date,
+) -> list[dict[str, object]]:
+    if window_start >= window_end:
+        raise ValidationError("matched window start must precede end.")
+    return [
+        row
+        for row in return_rows
+        if window_start < _mapping_date(row, "date") <= window_end
+    ]
+
+
+def _selected_matched_interval_end_date_rows(
+    return_rows: list[dict[str, object]],
+    *,
+    interval_end_dates: tuple[str, ...],
+) -> list[dict[str, object]]:
+    expected_dates = set(interval_end_dates)
+    return [row for row in return_rows if _mapping_text(row, "date") in expected_dates]
+
+
+def _m420_slice_diagnostic(
+    source_slice: Mapping[str, object],
+    *,
+    status: str,
+    adjusted_start_date: str | None,
+    adjusted_end_date: str | None,
+    adjusted_count: int,
+) -> dict[str, object]:
+    return {
+        "slice_name": _mapping_text(source_slice, "slice_name"),
+        "status": status,
+        "source_slice_start_date": _mapping_text(source_slice, "slice_start_date"),
+        "source_slice_end_date": _mapping_text(source_slice, "slice_end_date"),
+        "source_evaluated_return_count": _mapping_int(
+            source_slice,
+            "evaluated_return_count",
+        ),
+        "adjusted_slice_start_date": adjusted_start_date,
+        "adjusted_slice_end_date": adjusted_end_date,
+        "adjusted_evaluated_return_count": adjusted_count,
+    }
+
+
+def _m420_available_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object],
+    source_contract: Mapping[str, object],
+    adjusted_stats: Mapping[str, object],
+    matched_stats: Mapping[str, object],
+    daily_bars_path: Path | None,
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+) -> dict[str, object]:
+    raw_slice_conclusions = _m418_slice_table(
+        _payload_mapping_list(source_m417, "regime_slices"),
+        data_basis=_DATA_BASIS,
+    )
+    adjusted_slice_table = _m418_slice_table(
+        _payload_mapping_list(matched_stats, "regime_slices"),
+        data_basis=_M418_ADJUSTED_DATA_BASIS,
+    )
+    comparison = _m418_slice_comparison(
+        raw_slice_conclusions,
+        adjusted_slice_table,
+    )
+    full_slice = _m420_full_slice(adjusted_slice_table)
+    payload = _m420_base_payload(
+        config,
+        source_m417=source_m417,
+        daily_bars_path=daily_bars_path,
+        data_basis=_M418_ADJUSTED_DATA_BASIS,
+        basis_validation_status=_M420_AVAILABLE_STATUS,
+        adjusted_inspection=adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+    payload.update(
+        {
+            "price_field": _M418_ADJUSTED_PRICE_FIELD,
+            "source_bar_count": adjusted_stats.get("source_bar_count"),
+            "usable_bar_count": adjusted_stats.get("usable_bar_count"),
+            "full_history_evaluated_return_count": adjusted_stats.get(
+                "evaluated_return_count"
+            ),
+            "full_history_evaluated_start_date": adjusted_stats.get(
+                "evaluated_start_date"
+            ),
+            "full_history_evaluated_end_date": adjusted_stats.get(
+                "evaluated_end_date"
+            ),
+            "matched_total_interval_count": source_contract[
+                "total_interval_count"
+            ],
+            "evaluated_return_count": full_slice["evaluated_return_count"],
+            "evaluated_start_date": full_slice["slice_start_date"],
+            "evaluated_end_date": full_slice["slice_end_date"],
+            "starting_equity": full_slice["strategy_starting_equity"],
+            "strategy_total_return": full_slice["strategy_total_return"],
+            "benchmark_total_return": full_slice["benchmark_total_return"],
+            "excess_return": full_slice["excess_return"],
+            "strategy_max_drawdown": full_slice["strategy_max_drawdown"],
+            "benchmark_max_drawdown": full_slice["benchmark_max_drawdown"],
+            "drawdown_delta": full_slice["drawdown_delta"],
+            "exposure_fraction": full_slice["strategy_exposure_fraction"],
+            "trade_count": full_slice["trade_count"],
+            "entry_count": full_slice["entry_count"],
+            "exit_count": full_slice["exit_count"],
+            "regime_slice_policy": _REGIME_SLICE_POLICY,
+            "regime_slice_count": matched_stats.get("regime_slice_count"),
+            "regime_slices": adjusted_slice_table,
+            "matched_slice_diagnostics": matched_stats.get(
+                "matched_slice_diagnostics",
+                [],
+            ),
+            "matched_slice_comparisons": comparison["slice_comparisons"],
+            "m417a_raw_close_slice_count_contract": _m420_contract_payload(
+                source_contract
+            ),
+            "m417a_raw_close_slice_conclusions": raw_slice_conclusions,
+            "adjusted_basis_vs_m417a_raw_close_comparison": comparison,
+            "m417a_slice_counts_unchanged": source_contract[
+                "m417a_slice_counts_unchanged"
+            ],
+            "same_slice_counts": comparison["same_slice_counts"],
+            "same_slice_dates": comparison["same_slice_dates"],
+            "no_fabricated_returns": True,
+            "returns_fabricated": False,
+        }
+    )
+    return payload
+
+
+def _m420_blocked_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object] | None,
+    source_contract: Mapping[str, object] | None,
+    daily_bars_path: Path | None,
+    adjusted_inspection: Mapping[str, object] | None,
+    total_return_inspection: Mapping[str, object],
+    basis_validation_status: str,
+    blocked_reason: str,
+    missing_inputs: tuple[str, ...],
+    matched_slice_diagnostics: tuple[dict[str, object], ...] = (),
+) -> dict[str, object]:
+    checked_adjusted_inspection = _m420_adjusted_inspection(
+        adjusted_inspection,
+        daily_bars_path,
+    )
+    raw_slice_conclusions = (
+        []
+        if source_m417 is None
+        else _m420_raw_slice_conclusions_or_empty(source_m417)
+    )
+    payload = _m420_base_payload(
+        config,
+        source_m417=source_m417,
+        daily_bars_path=daily_bars_path,
+        data_basis=_M418_BLOCKED_DATA_BASIS,
+        basis_validation_status=basis_validation_status,
+        adjusted_inspection=checked_adjusted_inspection,
+        total_return_inspection=total_return_inspection,
+    )
+    payload.update(
+        {
+            "blocked_reason": blocked_reason,
+            "missing_inputs": list(dict.fromkeys(missing_inputs)),
+            "matched_total_interval_count": 0
+            if source_contract is None
+            else source_contract["total_interval_count"],
+            "regime_slice_count": 0,
+            "regime_slices": [],
+            "matched_slice_diagnostics": list(matched_slice_diagnostics),
+            "matched_slice_comparisons": [],
+            "m417a_raw_close_slice_count_contract": {}
+            if source_contract is None
+            else _m420_contract_payload(source_contract),
+            "m417a_raw_close_slice_conclusions": raw_slice_conclusions,
+            "adjusted_basis_vs_m417a_raw_close_comparison": {
+                "status": basis_validation_status,
+                "raw_close_conclusions_revalidated": False,
+                "raw_close_conclusions_preserved_unvalidated": True,
+                "same_slice_counts": False,
+                "same_slice_dates": False,
+                "slice_comparisons": [],
+                "reason": blocked_reason,
+                "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+            },
+            "m417a_slice_counts_unchanged": False
+            if source_contract is None
+            else source_contract["m417a_slice_counts_unchanged"],
+            "same_slice_counts": False,
+            "same_slice_dates": False,
+            "no_fabricated_returns": True,
+            "returns_fabricated": False,
+        }
+    )
+    return payload
+
+
+def _m420_base_payload(
+    config: EtfSmaAdjustedBasisValidationConfig,
+    *,
+    source_m417: Mapping[str, object] | None,
+    daily_bars_path: Path | None,
+    data_basis: str,
+    basis_validation_status: str,
+    adjusted_inspection: Mapping[str, object],
+    total_return_inspection: Mapping[str, object],
+) -> dict[str, object]:
+    source_data_basis = None if source_m417 is None else source_m417.get("data_basis")
+    source_run_id = None if source_m417 is None else source_m417.get("run_id")
+    payload: dict[str, object] = {
+        "record_type": _M420_RECORD_TYPE,
+        "schema_version": _SCHEMA_VERSION,
+        "command": _M418_COMMAND,
+        "run_id": config.run_id,
+        "milestone": _M420_MILESTONE,
+        "symbol": config.symbol,
+        "strategy": _STRATEGY,
+        "labels": list(ETF_SMA_BACKTEST_STATS_LABELS),
+        "source_m417_artifact": str(config.source_m417_artifact),
+        "source_daily_bars_csv": None
+        if daily_bars_path is None
+        else str(daily_bars_path),
+        "source_m417_data_basis": source_data_basis,
+        "source_m417_run_id": source_run_id,
+        "data_basis": data_basis,
+        "basis_validation_status": basis_validation_status,
+        "match_source_slice_contract": True,
+        "adjusted_close_available": adjusted_inspection.get(
+            "adjusted_close_available",
+            False,
+        ),
+        "total_return_available": total_return_inspection.get(
+            "total_return_available",
+            False,
+        ),
+        "adjusted_close_source_inspection": dict(adjusted_inspection),
+        "total_return_source_inspection": dict(total_return_inspection),
+        "short_window": _SHORT_WINDOW,
+        "long_window": _LONG_WINDOW,
+        "lookahead_policy": ETF_SMA_BACKTEST_STATS_LOOKAHEAD_POLICY,
+        "fill_model": config.fill_model,
+        "benchmark": config.benchmark,
+        "cost_bps": _decimal_text(config.cost_bps),
+        "cost_model": _COST_MODEL,
+        "verdict_scope": _M420_VERDICT_SCOPE,
+        "profit_claim": "none",
+        "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+        "operator_trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
+        "no_trade_recommendation": True,
+        "paper_lab_only": True,
+        "research_only": True,
+        "signal_evaluation_only": True,
+        "not_live_authorized": True,
+    }
+    payload.update(_safety_false_fields())
+    return payload
+
+
+def _m420_adjusted_inspection(
+    adjusted_inspection: Mapping[str, object] | None,
+    daily_bars_path: Path | None,
+) -> dict[str, object]:
+    if adjusted_inspection is not None:
+        return dict(adjusted_inspection)
+    return {
+        "path": None if daily_bars_path is None else str(daily_bars_path),
+        "found": False,
+        "valid": False,
+        "source_bar_count": 0,
+        "usable_bar_count": 0,
+        "matching_symbol_row_count": 0,
+        "input_sorted_by_date": None,
+        "first_usable_date": None,
+        "last_usable_date": None,
+        "close_adjusted_close_equal_count": 0,
+        "close_adjusted_close_diff_count": 0,
+        "adjusted_close_available": False,
+        "reason": "",
+    }
+
+
+def _m420_raw_slice_conclusions_or_empty(
+    source_m417: Mapping[str, object],
+) -> list[dict[str, object]]:
+    try:
+        return _m418_slice_table(
+            _payload_mapping_list(source_m417, "regime_slices"),
+            data_basis=_DATA_BASIS,
+        )
+    except ValidationError:
+        return []
+
+
+def _m420_source_return_rows_or_empty(
+    source_m417: Mapping[str, object],
+) -> list[dict[str, object]]:
+    if "benchmark_equity_curve" not in source_m417:
+        return []
+    return _payload_mapping_list(source_m417, "benchmark_equity_curve")
+
+
+def _m420_contract_slices(
+    source_contract: Mapping[str, object],
+) -> tuple[dict[str, object], ...]:
+    slices = source_contract.get("slices")
+    if not isinstance(slices, tuple):
+        raise ValidationError("source_contract slices must be a tuple.")
+    checked: list[dict[str, object]] = []
+    for index, item in enumerate(slices):
+        if not isinstance(item, Mapping):
+            raise ValidationError(f"source_contract slices[{index}] must be an object.")
+        checked.append(dict(item))
+    return tuple(checked)
+
+
+def _m420_interval_end_dates(source_slice: Mapping[str, object]) -> tuple[str, ...]:
+    value = source_slice.get("interval_end_dates")
+    if value is None:
+        return ()
+    if not isinstance(value, tuple):
+        raise ValidationError("source slice interval_end_dates must be a tuple.")
+    return tuple(_required_string(item, "interval_end_date") for item in value)
+
+
+def _m420_contract_payload(
+    source_contract: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "total_interval_count": source_contract["total_interval_count"],
+        "slices": [
+            {
+                "slice_name": _mapping_text(item, "slice_name"),
+                "slice_start_date": _mapping_text(item, "slice_start_date"),
+                "slice_end_date": _mapping_text(item, "slice_end_date"),
+                "evaluated_return_count": _mapping_int(
+                    item,
+                    "evaluated_return_count",
+                ),
+            }
+            for item in _m420_contract_slices(source_contract)
+        ],
+    }
+
+
+def _m420_full_slice(slices: list[dict[str, object]]) -> dict[str, object]:
+    full_slices = [
+        item
+        for item in slices
+        if item["slice_name"] == _FULL_EVALUATED_WINDOW_SLICE_NAME
+    ]
+    if len(full_slices) != 1:
+        raise ValidationError("matched slices must include one full_evaluated_window.")
+    return full_slices[0]
+
+
 def _m418_blocked_payload(
     config: EtfSmaAdjustedBasisValidationConfig,
     *,
@@ -1505,10 +2255,20 @@ def _m418_slice_comparison(
         )
         and all(item.get("status") == "compared" for item in comparisons)
     )
+    same_slice_dates = (
+        len(raw_slices) == len(adjusted_slices)
+        and all(
+            item.get("same_slice_dates") is True
+            for item in comparisons
+            if item.get("status") == "compared"
+        )
+        and all(item.get("status") == "compared" for item in comparisons)
+    )
     return {
         "status": "computed_adjusted_close_against_m417a_raw_close",
         "raw_close_conclusions_revalidated": True,
         "same_slice_counts": same_slice_counts,
+        "same_slice_dates": same_slice_dates,
         "slice_comparisons": comparisons,
         "trade_recommendation": _M418_NO_TRADE_RECOMMENDATION,
     }

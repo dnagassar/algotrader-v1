@@ -832,6 +832,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per exposure-change strategy cost in basis points. Default: 1.",
     )
     etf_sma_adjusted_basis_validation_parser.add_argument(
+        "--match-source-slice-contract",
+        action="store_true",
+        help=(
+            "Evaluate adjusted-close validation only over the source M417 "
+            "regime slice windows."
+        ),
+    )
+    etf_sma_adjusted_basis_validation_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -2491,6 +2499,7 @@ def _run_etf_sma_adjusted_basis_validation(args: argparse.Namespace) -> int:
                 benchmark=args.benchmark,
                 fill_model=args.fill_model,
                 cost_bps=Decimal(str(args.cost_bps)),
+                match_source_slice_contract=args.match_source_slice_contract,
             )
         )
         write_etf_sma_adjusted_basis_validation_jsonl(payload, args.run_log)
