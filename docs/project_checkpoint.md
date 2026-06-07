@@ -14980,6 +14980,23 @@ Safe next tasks include:
   and broker-mutation flags; and limits next actions to offline/read-only
   follow-ups. M413 does not read `.data` operator inputs directly, access a
   broker or network, or recommend or authorize a paper submit.
+- M414 adds `etf-sma-adjusted-close-evidence-gate`, an offline adjusted-close
+  evidence intake gate for the SPY ETF/SMA path. It consumes the M413 rollup as
+  prior context, preserves `prior_data_basis=raw_close_price_return`, targets
+  `adjusted_close_price_return`, and writes exactly one JSONL readiness record.
+  Without explicit operator `--adjusted-bars-csv` and `--provenance-manifest`
+  paths, the gate blocks deterministically with
+  `adjusted_close_gate_state=blocked_missing_adjusted_close_operator_input`.
+  When both files are supplied, it requires a strict adjusted-close CSV schema,
+  manifest-pinned `expected_input_sha256`, manifest
+  `data_basis=adjusted_close_price_return`, SPY-only provenance, daily
+  timeframe, non-synthetic/non-fixture/non-sample/non-test provenance flags, no
+  generated/Codex/synthetic provenance terms, positive close and adjusted-close
+  values, nonnegative volume, strictly ascending non-duplicate dates, and a
+  matching computed CSV hash. M414 does not relabel M411/M412/M413 raw-close
+  evidence as adjusted-close or total-return evidence, does not auto-discover
+  `.data`, and preserves false submit, mutation, broker/network, credential,
+  paper-authorization, live-authority, and broker-mutation flags.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -713,6 +713,50 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Evidence rollup output format.",
     )
+    etf_sma_adjusted_close_gate_parser = subparsers.add_parser(
+        "etf-sma-adjusted-close-evidence-gate",
+        help="Build an offline adjusted-close evidence intake gate artifact.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--run-id",
+        required=True,
+        help="Run/session id to include in the adjusted-close evidence gate.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic adjusted-close gate JSONL record.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--evidence-rollup-log",
+        required=True,
+        help="Explicit M413 evidence-rollup JSONL source artifact.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--adjusted-bars-csv",
+        help="Explicit operator-supplied adjusted-close daily bars CSV.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--provenance-manifest",
+        help="Explicit operator-supplied adjusted-close provenance manifest JSON.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--generated-at",
+        required=True,
+        help="Timezone-aware ISO-8601 generated-at timestamp.",
+    )
+    etf_sma_adjusted_close_gate_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Adjusted-close evidence gate output format.",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -1624,6 +1668,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_operating_brief(args)
     if command == "etf-sma-evidence-rollup":
         return _run_etf_sma_evidence_rollup(args)
+    if command == "etf-sma-adjusted-close-evidence-gate":
+        return _run_etf_sma_adjusted_close_evidence_gate(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -2440,6 +2486,41 @@ def _run_etf_sma_evidence_rollup(args: argparse.Namespace) -> int:
         print(render_etf_sma_evidence_rollup_json(payload))
     else:
         print(render_etf_sma_evidence_rollup_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_adjusted_close_evidence_gate(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .research.etf_sma_adjusted_close_evidence_gate import (
+        EtfSmaAdjustedCloseEvidenceGateConfig,
+        build_etf_sma_adjusted_close_evidence_gate,
+        render_etf_sma_adjusted_close_evidence_gate_json,
+        render_etf_sma_adjusted_close_evidence_gate_text,
+        write_etf_sma_adjusted_close_evidence_gate_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_adjusted_close_evidence_gate(
+            EtfSmaAdjustedCloseEvidenceGateConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                run_log=args.run_log,
+                evidence_rollup_log=args.evidence_rollup_log,
+                adjusted_bars_csv=args.adjusted_bars_csv,
+                provenance_manifest=args.provenance_manifest,
+                generated_at=args.generated_at,
+            )
+        )
+        write_etf_sma_adjusted_close_evidence_gate_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_adjusted_close_evidence_gate_json(payload))
+    else:
+        print(render_etf_sma_adjusted_close_evidence_gate_text(payload))
 
     return 0
 
