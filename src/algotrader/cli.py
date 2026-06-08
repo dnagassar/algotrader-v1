@@ -990,6 +990,46 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized ETF/SMA comparison stub output format.",
     )
+    etf_sma_authorized_comparison_summary_parser = subparsers.add_parser(
+        "etf-sma-authorized-comparison-summary",
+        help=(
+            "Summarize the offline ETF/SMA comparison only after the M425 "
+            "authorized stub passes."
+        ),
+    )
+    etf_sma_authorized_comparison_summary_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_comparison_summary_parser.add_argument(
+        "--run-id",
+        default="m426_authorized_preferred_baseline_comparison_summary",
+        help="Run/session id to include in the M426 comparison summary artifact.",
+    )
+    etf_sma_authorized_comparison_summary_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m426_authorized_preferred_baseline_comparison_summary.jsonl"
+        ),
+        help="Write exactly one deterministic M426 comparison summary JSONL record.",
+    )
+    etf_sma_authorized_comparison_summary_parser.add_argument(
+        "--stub-path",
+        default=(
+            "runs/paper_lab/"
+            "m425_authorization_consumed_etf_sma_comparison_stub.jsonl"
+        ),
+        help="Explicit M425 authorized comparison stub JSONL artifact.",
+    )
+    etf_sma_authorized_comparison_summary_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized ETF/SMA comparison summary output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -1974,6 +2014,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_preferred_baseline_comparison_guard(args)
     if command == "etf-sma-authorized-comparison-stub":
         return _run_etf_sma_authorized_comparison_stub(args)
+    if command == "etf-sma-authorized-comparison-summary":
+        return _run_etf_sma_authorized_comparison_summary(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2792,6 +2834,39 @@ def _run_etf_sma_authorized_comparison_stub(args: argparse.Namespace) -> int:
         print(render_etf_sma_authorization_consumed_comparison_json(payload))
     else:
         print(render_etf_sma_authorization_consumed_comparison_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_authorized_comparison_summary(args: argparse.Namespace) -> int:
+    from .research.etf_sma_authorized_comparison_summary import (
+        EtfSmaAuthorizedComparisonSummaryConfig,
+        build_etf_sma_authorized_comparison_summary,
+        render_etf_sma_authorized_comparison_summary_json,
+        render_etf_sma_authorized_comparison_summary_text,
+        write_etf_sma_authorized_comparison_summary_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_comparison_summary(
+            EtfSmaAuthorizedComparisonSummaryConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                stub_path=args.stub_path,
+            )
+        )
+        write_etf_sma_authorized_comparison_summary_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_authorized_comparison_summary_json(payload))
+    else:
+        print(render_etf_sma_authorized_comparison_summary_text(payload))
 
     return 0
 
