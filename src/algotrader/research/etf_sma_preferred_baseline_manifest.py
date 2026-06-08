@@ -8,12 +8,22 @@ import json
 from pathlib import Path
 
 __all__ = [
+    "DEFAULT_PREFERRED_ADJUSTED_BASELINE_MANIFEST_PATH",
     "EtfSmaPreferredBaselineManifestConfig",
+    "PreferredBaselineGuardResult",
     "build_etf_sma_preferred_baseline_manifest",
+    "load_and_validate_preferred_adjusted_baseline_manifest",
     "render_etf_sma_preferred_baseline_manifest_json",
     "render_etf_sma_preferred_baseline_manifest_text",
     "write_etf_sma_preferred_baseline_manifest_jsonl",
 ]
+
+
+DEFAULT_PREFERRED_ADJUSTED_BASELINE_MANIFEST_PATH = (
+    Path("runs")
+    / "paper_lab"
+    / "m422_spy_preferred_adjusted_baseline_manifest.jsonl"
+)
 
 
 @dataclass(frozen=True)
@@ -23,6 +33,46 @@ class EtfSmaPreferredBaselineManifestConfig:
     run_id: str
     symbol: str
     source_promotion_packet: str | Path
+
+
+@dataclass(frozen=True, slots=True)
+class PreferredBaselineGuardResult:
+    """Fail-closed status for downstream offline ETF/SMA baseline use."""
+
+    manifest_path: Path
+    guard_status: str
+    preferred_baseline_active: bool
+    preferred_baseline: str
+    preferred_basis: str
+    comparison_basis: str
+    matched_total_interval_count: int
+    known_basis_delta_slices: tuple[str, ...]
+    blockers: tuple[str, ...]
+    submitted: bool
+    mutated: bool
+    broker_action_performed: bool
+    network_access_attempted: bool
+    credential_access_attempted: bool
+    live_authorized: bool
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "manifest_path": str(self.manifest_path),
+            "guard_status": self.guard_status,
+            "preferred_baseline_active": self.preferred_baseline_active,
+            "preferred_baseline": self.preferred_baseline,
+            "preferred_basis": self.preferred_basis,
+            "comparison_basis": self.comparison_basis,
+            "matched_total_interval_count": self.matched_total_interval_count,
+            "known_basis_delta_slices": list(self.known_basis_delta_slices),
+            "blockers": list(self.blockers),
+            "submitted": self.submitted,
+            "mutated": self.mutated,
+            "broker_action_performed": self.broker_action_performed,
+            "network_access_attempted": self.network_access_attempted,
+            "credential_access_attempted": self.credential_access_attempted,
+            "live_authorized": self.live_authorized,
+        }
 
 
 _COMMAND = "etf-sma-preferred-baseline-manifest"
@@ -40,9 +90,19 @@ _COMPARISON_BASIS = "matched_window"
 _LEGACY_RAW_BASIS = "raw_close_price_return"
 _LEGACY_RAW_BASELINE_STATUS = "superseded_for_offline_comparison"
 _DOWNSTREAM_USE = "offline_etf_sma_comparison_baseline"
+_GUARD_READY_STATUS = "preferred_adjusted_baseline_guard_ready"
+_GUARD_BLOCKED_STATUS = "blocked_preferred_adjusted_baseline_guard"
 _EXPECTED_MATCHED_TOTAL_INTERVAL_COUNT = 1055
 _EXPECTED_RETURN_CONCLUSION_CHANGES: tuple[str, ...] = ()
 _EXPECTED_KNOWN_BASIS_DELTA_SLICES = ("recovery_2023",)
+_GUARD_REQUIRED_STRING_FIELDS = (
+    ("manifest_status", _MANIFEST_ACTIVE_STATUS),
+    ("preferred_baseline", _PREFERRED_BASELINE),
+    ("preferred_basis", _PREFERRED_BASIS),
+    ("comparison_basis", _COMPARISON_BASIS),
+    ("trade_recommendation", "none"),
+    ("profit_claim", "none"),
+)
 _SOURCE_REQUIRED_FALSE_FIELDS = (
     "submitted",
     "mutated",
@@ -167,6 +227,18 @@ def write_etf_sma_preferred_baseline_manifest_jsonl(
     return path
 
 
+def load_and_validate_preferred_adjusted_baseline_manifest(
+    path: str | Path = DEFAULT_PREFERRED_ADJUSTED_BASELINE_MANIFEST_PATH,
+) -> PreferredBaselineGuardResult:
+    """Load and validate the active M422 adjusted-close matched-window baseline."""
+
+    manifest_path = Path(path)
+    record, blockers = _load_single_preferred_baseline_manifest_record(manifest_path)
+    if record is not None:
+        blockers = (*blockers, *_validate_preferred_baseline_guard_record(record))
+    return _preferred_baseline_guard_result(manifest_path, record or {}, blockers)
+
+
 def _base_payload(
     config: EtfSmaPreferredBaselineManifestConfig,
     source_path: Path,
@@ -266,6 +338,76 @@ def _load_single_jsonl_record(path: Path) -> tuple[dict[str, object], str | None
     return records[0], None
 
 
+def _load_single_preferred_baseline_manifest_record(
+    path: Path,
+) -> tuple[dict[str, object] | None, tuple[str, ...]]:
+    if not path.exists():
+        return None, ("preferred_baseline_manifest_not_found",)
+    if not path.is_file():
+        return None, ("preferred_baseline_manifest_path_not_file",)
+
+    records: list[dict[str, object]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None, ("preferred_baseline_manifest_unreadable",)
+
+    for line_number, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None, (
+                f"preferred_baseline_manifest_invalid_json_line_{line_number}",
+            )
+        if not isinstance(decoded, dict):
+            return None, (
+                f"preferred_baseline_manifest_record_{line_number}_not_object",
+            )
+        records.append(decoded)
+
+    if not records:
+        return None, ("preferred_baseline_manifest_empty",)
+    if len(records) != 1:
+        return None, ("ambiguous_preferred_baseline_manifest_record_count",)
+    return records[0], ()
+
+
+def _validate_preferred_baseline_guard_record(
+    record: Mapping[str, object],
+) -> tuple[str, ...]:
+    blockers: list[str] = []
+    for field_name, expected in _GUARD_REQUIRED_STRING_FIELDS:
+        blocker = _validate_expected_string_field(record, field_name, expected)
+        if blocker is not None:
+            blockers.append(blocker)
+
+    count_blocker = _validate_expected_int_field(
+        record,
+        "matched_total_interval_count",
+        _EXPECTED_MATCHED_TOTAL_INTERVAL_COUNT,
+    )
+    if count_blocker is not None:
+        blockers.append(count_blocker)
+
+    slices_blocker = _validate_expected_string_list_field(
+        record,
+        "known_basis_delta_slices",
+        _EXPECTED_KNOWN_BASIS_DELTA_SLICES,
+    )
+    if slices_blocker is not None:
+        blockers.append(slices_blocker)
+
+    for field_name in _MANIFEST_FALSE_FIELDS:
+        blocker = _validate_false_safety_field(record, field_name)
+        if blocker is not None:
+            blockers.append(blocker)
+
+    return tuple(blockers)
+
+
 def _validate_source_promotion_packet(
     source_record: Mapping[str, object],
     symbol: str,
@@ -341,6 +483,97 @@ def _validate_source_safety(source_record: Mapping[str, object]) -> list[str]:
     return blockers
 
 
+def _preferred_baseline_guard_result(
+    path: Path,
+    record: Mapping[str, object],
+    blockers: Sequence[str],
+) -> PreferredBaselineGuardResult:
+    clean_blockers = tuple(str(blocker) for blocker in blockers if str(blocker))
+    guard_ready = not clean_blockers
+    return PreferredBaselineGuardResult(
+        manifest_path=path,
+        guard_status=_GUARD_READY_STATUS if guard_ready else _GUARD_BLOCKED_STATUS,
+        preferred_baseline_active=guard_ready,
+        preferred_baseline=_record_string(record, "preferred_baseline"),
+        preferred_basis=_record_string(record, "preferred_basis"),
+        comparison_basis=_record_string(record, "comparison_basis"),
+        matched_total_interval_count=_record_int(
+            record,
+            "matched_total_interval_count",
+        ),
+        known_basis_delta_slices=_record_string_tuple(
+            record,
+            "known_basis_delta_slices",
+        ),
+        blockers=clean_blockers,
+        submitted=False,
+        mutated=False,
+        broker_action_performed=False,
+        network_access_attempted=False,
+        credential_access_attempted=False,
+        live_authorized=False,
+    )
+
+
+def _validate_expected_string_field(
+    record: Mapping[str, object],
+    field_name: str,
+    expected: str,
+) -> str | None:
+    if field_name not in record:
+        return f"preferred_baseline_manifest_missing_{field_name}"
+    value = record[field_name]
+    if type(value) is not str:
+        return f"preferred_baseline_manifest_malformed_{field_name}"
+    if value != expected:
+        return f"preferred_baseline_manifest_unexpected_{field_name}"
+    return None
+
+
+def _validate_expected_int_field(
+    record: Mapping[str, object],
+    field_name: str,
+    expected: int,
+) -> str | None:
+    if field_name not in record:
+        return f"preferred_baseline_manifest_missing_{field_name}"
+    value = record[field_name]
+    if type(value) is not int:
+        return f"preferred_baseline_manifest_malformed_{field_name}"
+    if value != expected:
+        return f"preferred_baseline_manifest_unexpected_{field_name}"
+    return None
+
+
+def _validate_expected_string_list_field(
+    record: Mapping[str, object],
+    field_name: str,
+    expected: tuple[str, ...],
+) -> str | None:
+    if field_name not in record:
+        return f"preferred_baseline_manifest_missing_{field_name}"
+    value = record[field_name]
+    if type(value) is not list or any(type(item) is not str for item in value):
+        return f"preferred_baseline_manifest_malformed_{field_name}"
+    if tuple(value) != expected:
+        return f"preferred_baseline_manifest_unexpected_{field_name}"
+    return None
+
+
+def _validate_false_safety_field(
+    record: Mapping[str, object],
+    field_name: str,
+) -> str | None:
+    if field_name not in record:
+        return f"preferred_baseline_manifest_safety_flag_missing_{field_name}"
+    value = record[field_name]
+    if value is True:
+        return f"preferred_baseline_manifest_safety_flag_dirty_{field_name}"
+    if value is not False:
+        return f"preferred_baseline_manifest_safety_flag_malformed_{field_name}"
+    return None
+
+
 def _payload_string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return ()
@@ -359,6 +592,30 @@ def _mapping_int(payload: Mapping[str, object], key: str) -> int:
 
 def _manifest_false_fields() -> dict[str, bool]:
     return {field_name: False for field_name in _MANIFEST_FALSE_FIELDS}
+
+
+def _record_string(record: Mapping[str, object], field_name: str) -> str:
+    value = record.get(field_name)
+    if type(value) is str:
+        return value
+    return ""
+
+
+def _record_int(record: Mapping[str, object], field_name: str) -> int:
+    value = record.get(field_name)
+    if type(value) is int:
+        return value
+    return 0
+
+
+def _record_string_tuple(
+    record: Mapping[str, object],
+    field_name: str,
+) -> tuple[str, ...]:
+    value = record.get(field_name)
+    if type(value) is list and all(type(item) is str for item in value):
+        return tuple(value)
+    return ()
 
 
 def _bool_text(value: object) -> str:

@@ -9,6 +9,7 @@ import algotrader.cli as cli_module
 from algotrader.research.etf_sma_preferred_baseline_manifest import (
     EtfSmaPreferredBaselineManifestConfig,
     build_etf_sma_preferred_baseline_manifest,
+    load_and_validate_preferred_adjusted_baseline_manifest,
     render_etf_sma_preferred_baseline_manifest_json,
     write_etf_sma_preferred_baseline_manifest_jsonl,
 )
@@ -17,6 +18,8 @@ from algotrader.research.etf_sma_preferred_baseline_manifest import (
 _COMMAND = "etf-sma-preferred-baseline-manifest"
 _ACTIVE_STATUS = "preferred_baseline_active"
 _BLOCKED_STATUS = "blocked_preferred_baseline_manifest"
+_GUARD_READY_STATUS = "preferred_adjusted_baseline_guard_ready"
+_GUARD_BLOCKED_STATUS = "blocked_preferred_adjusted_baseline_guard"
 _SOURCE_PROMOTION_STATUS = "ready_to_promote_adjusted_matched_window_basis"
 _PREFERRED_BASELINE = "adjusted_close_matched_window"
 _PREFERRED_BASIS = "adjusted_close_price_return"
@@ -249,6 +252,148 @@ def test_cli_writes_manifest_before_runtime_config_loading(
     assert payload["manifest_status"] == _ACTIVE_STATUS
 
 
+def test_preferred_adjusted_baseline_guard_success_path_from_m422_record(
+    tmp_path: Path,
+) -> None:
+    manifest_path = _write_preferred_baseline_manifest(tmp_path)
+
+    result = load_and_validate_preferred_adjusted_baseline_manifest(manifest_path)
+
+    assert result.guard_status == _GUARD_READY_STATUS
+    assert result.preferred_baseline_active is True
+    assert result.preferred_baseline == _PREFERRED_BASELINE
+    assert result.preferred_basis == _PREFERRED_BASIS
+    assert result.comparison_basis == "matched_window"
+    assert result.matched_total_interval_count == 1055
+    assert result.known_basis_delta_slices == ("recovery_2023",)
+    assert result.blockers == ()
+    assert result.submitted is False
+    assert result.mutated is False
+    assert result.broker_action_performed is False
+    assert result.network_access_attempted is False
+    assert result.credential_access_attempted is False
+    assert result.live_authorized is False
+    assert result.to_dict()["guard_status"] == _GUARD_READY_STATUS
+
+
+@pytest.mark.parametrize(
+    ("field_name", "value", "expected_blocker"),
+    [
+        (
+            "preferred_baseline",
+            "raw_close_matched_window",
+            "preferred_baseline_manifest_unexpected_preferred_baseline",
+        ),
+        (
+            "preferred_basis",
+            "raw_close_price_return",
+            "preferred_baseline_manifest_unexpected_preferred_basis",
+        ),
+        (
+            "comparison_basis",
+            "full_history",
+            "preferred_baseline_manifest_unexpected_comparison_basis",
+        ),
+        (
+            "matched_total_interval_count",
+            1054,
+            "preferred_baseline_manifest_unexpected_matched_total_interval_count",
+        ),
+    ],
+)
+def test_preferred_adjusted_baseline_guard_fails_closed_on_core_drift(
+    tmp_path: Path,
+    field_name: str,
+    value: object,
+    expected_blocker: str,
+) -> None:
+    manifest_path = _write_preferred_baseline_manifest(
+        tmp_path,
+        mutator=lambda payload: payload.update({field_name: value}),
+    )
+
+    result = load_and_validate_preferred_adjusted_baseline_manifest(manifest_path)
+
+    assert result.guard_status == _GUARD_BLOCKED_STATUS
+    assert result.preferred_baseline_active is False
+    assert expected_blocker in result.blockers
+    assert result.submitted is False
+    assert result.mutated is False
+    assert result.broker_action_performed is False
+    assert result.network_access_attempted is False
+    assert result.credential_access_attempted is False
+    assert result.live_authorized is False
+
+
+@pytest.mark.parametrize(
+    ("mutator", "expected_blocker"),
+    [
+        (
+            lambda payload: payload.pop("known_basis_delta_slices"),
+            "preferred_baseline_manifest_missing_known_basis_delta_slices",
+        ),
+        (
+            lambda payload: payload.update({"known_basis_delta_slices": []}),
+            "preferred_baseline_manifest_unexpected_known_basis_delta_slices",
+        ),
+    ],
+)
+def test_preferred_adjusted_baseline_guard_fails_closed_on_delta_slice_drift(
+    tmp_path: Path,
+    mutator,
+    expected_blocker: str,
+) -> None:
+    manifest_path = _write_preferred_baseline_manifest(
+        tmp_path,
+        mutator=mutator,
+    )
+
+    result = load_and_validate_preferred_adjusted_baseline_manifest(manifest_path)
+
+    assert result.guard_status == _GUARD_BLOCKED_STATUS
+    assert result.preferred_baseline_active is False
+    assert expected_blocker in result.blockers
+
+
+@pytest.mark.parametrize("field_name", _SAFETY_FALSE_FIELDS)
+def test_preferred_adjusted_baseline_guard_fails_closed_when_safety_flag_is_true(
+    tmp_path: Path,
+    field_name: str,
+) -> None:
+    manifest_path = _write_preferred_baseline_manifest(
+        tmp_path,
+        mutator=lambda payload: payload.update({field_name: True}),
+    )
+
+    result = load_and_validate_preferred_adjusted_baseline_manifest(manifest_path)
+
+    assert result.guard_status == _GUARD_BLOCKED_STATUS
+    assert result.preferred_baseline_active is False
+    assert (
+        f"preferred_baseline_manifest_safety_flag_dirty_{field_name}"
+        in result.blockers
+    )
+    assert result.submitted is False
+    assert result.mutated is False
+    assert result.broker_action_performed is False
+    assert result.network_access_attempted is False
+    assert result.credential_access_attempted is False
+    assert result.live_authorized is False
+
+
+def test_preferred_adjusted_baseline_guard_fails_closed_when_manifest_missing(
+    tmp_path: Path,
+) -> None:
+    result = load_and_validate_preferred_adjusted_baseline_manifest(
+        tmp_path / "missing.jsonl"
+    )
+
+    assert result.guard_status == _GUARD_BLOCKED_STATUS
+    assert result.preferred_baseline_active is False
+    assert result.blockers == ("preferred_baseline_manifest_not_found",)
+    assert result.preferred_baseline == ""
+
+
 def _config(source_path: Path) -> EtfSmaPreferredBaselineManifestConfig:
     return EtfSmaPreferredBaselineManifestConfig(
         run_id="unit_m422",
@@ -272,6 +417,70 @@ def _write_source_packet(
         encoding="utf-8",
     )
     return source_path
+
+
+def _write_preferred_baseline_manifest(
+    tmp_path: Path,
+    *,
+    mutator=None,  # noqa: ANN001
+) -> Path:
+    payload = _preferred_baseline_manifest_payload()
+    if mutator is not None:
+        mutator(payload)
+
+    manifest_path = tmp_path / "m422.jsonl"
+    manifest_path.write_text(
+        json.dumps(payload, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    return manifest_path
+
+
+def _preferred_baseline_manifest_payload() -> dict[str, object]:
+    payload: dict[str, object] = {
+        "baseline_source_milestone": "M421",
+        "basis_delta_review_required": True,
+        "blockers": [],
+        "broker_mutation_status": "none",
+        "command": _COMMAND,
+        "comparison_basis": "matched_window",
+        "credential_access_status": "not_attempted",
+        "downstream_use": "offline_etf_sma_comparison_baseline",
+        "known_basis_delta_count": 1,
+        "known_basis_delta_slices": ["recovery_2023"],
+        "legacy_raw_baseline_status": "superseded_for_offline_comparison",
+        "legacy_raw_basis": _LEGACY_RAW_BASIS,
+        "m417a_slice_counts_unchanged": True,
+        "manifest_status": _ACTIVE_STATUS,
+        "matched_total_interval_count": 1055,
+        "milestone": "M422",
+        "network_broker_access_status": "not_attempted",
+        "no_trade_recommendation": True,
+        "not_live_authorized": True,
+        "operator_trade_recommendation": "none",
+        "paper_lab_only": True,
+        "preferred_baseline": _PREFERRED_BASELINE,
+        "preferred_baseline_active": True,
+        "preferred_basis": _PREFERRED_BASIS,
+        "profit_claim": "none",
+        "record_type": "etf_sma_preferred_baseline_manifest",
+        "research_only": True,
+        "return_conclusion_changes": [],
+        "return_conclusions_unchanged": True,
+        "run_id": "unit_m422_manifest",
+        "same_slice_counts": True,
+        "same_slice_dates": True,
+        "schema_version": "1",
+        "signal_evaluation_only": True,
+        "source_promotion_packet": "runs\\paper_lab\\m421_spy_adjusted_basis.jsonl",
+        "source_promotion_packet_valid": True,
+        "source_promotion_status": _SOURCE_PROMOTION_STATUS,
+        "symbol": "SPY",
+        "trade_recommendation": "none",
+    }
+    for field_name in _SAFETY_FALSE_FIELDS:
+        payload[field_name] = False
+    return payload
 
 
 def _source_payload() -> dict[str, object]:
