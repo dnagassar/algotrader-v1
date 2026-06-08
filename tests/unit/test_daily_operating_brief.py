@@ -119,6 +119,7 @@ def test_missing_reconciliation_marks_order_state_unknown_and_never_authorizes_s
     )
     assert "spy_submit_until_order_state_known" in payload["next_forbidden_action"]
     assert payload["paper_state_summary"]["next_spy_submit_blocked"] is True
+    assert payload["submit_allowed"] is False
     assert payload["submitted"] is False
     assert payload["mutated"] is False
     assert payload["broker_action_performed"] is False
@@ -133,6 +134,7 @@ def test_labels_and_safety_booleans_are_fixed_false() -> None:
     assert "not_live_authorized" in payload["labels"]
     assert "profit_claim=none" in payload["labels"]
     assert payload["profit_claim"] == "none"
+    assert payload["submit_allowed"] is False
     assert payload["submitted"] is False
     assert payload["mutated"] is False
     assert payload["broker_action_performed"] is False
@@ -179,6 +181,30 @@ def test_cycle_preview_open_order_blocker_is_preserved(tmp_path) -> None:  # noq
     assert "open_order_present" in payload["blockers"]
     assert payload["paper_state_summary"]["next_spy_submit_blocked"] is True
     assert payload["next_allowed_action"] == "offline_work_or_read_only_reconciliation"
+
+
+def test_ambiguous_order_state_routes_to_read_only_reconciliation(tmp_path) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "ambiguous_reconciliation.jsonl",
+        _ambiguous_filled_reconciliation_record(),
+    )
+
+    payload = build_daily_operating_brief(
+        _config(order_reconciliation_log=reconciliation_log)
+    )
+
+    assert payload["m376_order_summary"]["state"] == "unknown"
+    assert payload["m376_order_summary"]["observed_status"] == "filled"
+    assert payload["paper_state_summary"]["next_spy_submit_blocked"] is True
+    assert "order_state_unknown" in payload["blockers"]
+    assert payload["next_allowed_action"] == (
+        "read_only_reconciliation_before_any_spy_submit"
+    )
+    assert "spy_submit_until_order_state_known" in payload["next_forbidden_action"]
+    assert payload["submit_allowed"] is False
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["broker_action_performed"] is False
 
 
 def test_backtest_summary_is_research_evidence_only(tmp_path) -> None:  # noqa: ANN001
@@ -373,6 +399,29 @@ def _terminal_reconciliation_record() -> dict[str, object]:
             "open_order_quantities": [],
             "open_order_filled_quantities": [],
             "blockers": [],
+        }
+    )
+    return record
+
+
+def _ambiguous_filled_reconciliation_record() -> dict[str, object]:
+    record = _terminal_reconciliation_record()
+    record.update(
+        {
+            "exact_order_found": False,
+            "exact_order_source": "ambiguous",
+            "observed_qty": "",
+            "terminal_state": "unknown",
+            "terminal_reason": "multiple_conflicting_matches",
+            "reconciliation_decision": "m376_ambiguous",
+            "next_spy_submit_blocked": True,
+            "reason": "multiple_conflicting_matches",
+            "spy_position_qty": QUANTITY,
+            "blockers": [
+                "multiple_conflicting_matches",
+                "order_state_ambiguous",
+                "order_identity_mismatch",
+            ],
         }
     )
     return record

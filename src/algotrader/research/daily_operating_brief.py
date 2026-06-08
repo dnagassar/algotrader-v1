@@ -198,6 +198,7 @@ def build_daily_operating_brief(
             blockers,
             backtest_summary,
         ),
+        "submit_allowed": False,
         "submitted": False,
         "mutated": False,
         "broker_action_performed": False,
@@ -544,6 +545,8 @@ def _brief_blockers(
 ) -> list[str]:
     blockers: list[str] = []
     blockers.extend(_string_list(m376_order_summary.get("blockers")))
+    if _text(m376_order_summary.get("state")) == "unknown":
+        blockers.append("order_state_unknown")
     if cycle_preview_summary is not None:
         blockers.extend(_string_list(cycle_preview_summary.get("blockers")))
     if (
