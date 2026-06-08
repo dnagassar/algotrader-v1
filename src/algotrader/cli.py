@@ -1214,6 +1214,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized adjusted-close SMA posture snapshot output format.",
     )
+    etf_sma_authorized_offline_cycle_preview_parser = subparsers.add_parser(
+        "etf-sma-authorized-offline-cycle-preview",
+        help=(
+            "Preview an offline SPY paper-lab cycle from the authorized M430 "
+            "SMA posture and local paper-state evidence only."
+        ),
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--run-id",
+        default="m431_authorized_offline_paper_lab_cycle_preview",
+        help="Run/session id to include in the M431 cycle preview artifact.",
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m431_authorized_offline_paper_lab_cycle_preview.jsonl"
+        ),
+        help="Write exactly one deterministic M431 cycle preview JSONL record.",
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--posture-path",
+        default=(
+            "runs/paper_lab/"
+            "m430_authorized_adjusted_close_sma_posture_snapshot.jsonl"
+        ),
+        help="Explicit M430 authorized adjusted-close SMA posture JSONL artifact.",
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--offline-paper-state-path",
+        default="runs/paper_lab/m389_offline_paper_lab_state_rollup.jsonl",
+        help="Explicit local/offline paper-state JSONL evidence path.",
+    )
+    etf_sma_authorized_offline_cycle_preview_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized offline cycle preview output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2208,6 +2253,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_adjusted_baseline_backtest_replay(args)
     if command == "etf-sma-authorized-adjusted-close-posture-snapshot":
         return _run_etf_sma_authorized_adjusted_close_posture_snapshot(args)
+    if command == "etf-sma-authorized-offline-cycle-preview":
+        return _run_etf_sma_authorized_offline_cycle_preview(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -3226,6 +3273,43 @@ def _run_etf_sma_authorized_adjusted_close_posture_snapshot(
                 payload
             )
         )
+
+    return 0
+
+
+def _run_etf_sma_authorized_offline_cycle_preview(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_authorized_offline_cycle_preview import (
+        EtfSmaAuthorizedOfflineCyclePreviewConfig,
+        build_etf_sma_authorized_offline_cycle_preview,
+        render_etf_sma_authorized_offline_cycle_preview_json,
+        render_etf_sma_authorized_offline_cycle_preview_text,
+        write_etf_sma_authorized_offline_cycle_preview_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_offline_cycle_preview(
+            EtfSmaAuthorizedOfflineCyclePreviewConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                posture_path=args.posture_path,
+                offline_paper_state_path=args.offline_paper_state_path,
+            )
+        )
+        write_etf_sma_authorized_offline_cycle_preview_jsonl(
+            payload,
+            args.run_log,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_authorized_offline_cycle_preview_json(payload))
+    else:
+        print(render_etf_sma_authorized_offline_cycle_preview_text(payload))
 
     return 0
 
