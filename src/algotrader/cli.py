@@ -913,6 +913,43 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M422 preferred baseline manifest output format.",
     )
+    etf_sma_preferred_baseline_comparison_guard_parser = subparsers.add_parser(
+        "etf-sma-preferred-baseline-comparison-guard",
+        help=(
+            "Authorize offline ETF/SMA comparison only after the preferred "
+            "baseline guard passes."
+        ),
+    )
+    etf_sma_preferred_baseline_comparison_guard_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_preferred_baseline_comparison_guard_parser.add_argument(
+        "--run-id",
+        default="m424_guarded_preferred_baseline_comparison_authorization",
+        help="Run/session id to include in the M424 authorization artifact.",
+    )
+    etf_sma_preferred_baseline_comparison_guard_parser.add_argument(
+        "--run-log",
+        required=True,
+        help="Write exactly one deterministic M424 authorization JSONL record.",
+    )
+    etf_sma_preferred_baseline_comparison_guard_parser.add_argument(
+        "--manifest-path",
+        default=(
+            "runs/paper_lab/"
+            "m422_spy_preferred_adjusted_baseline_manifest.jsonl"
+        ),
+        help="Explicit M422 preferred adjusted baseline manifest JSONL artifact.",
+    )
+    etf_sma_preferred_baseline_comparison_guard_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M424 preferred baseline comparison guard output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -1893,6 +1930,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_adjusted_basis_promotion_packet(args)
     if command == "etf-sma-preferred-baseline-manifest":
         return _run_etf_sma_preferred_baseline_manifest(args)
+    if command == "etf-sma-preferred-baseline-comparison-guard":
+        return _run_etf_sma_preferred_baseline_comparison_guard(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2643,6 +2682,41 @@ def _run_etf_sma_preferred_baseline_manifest(args: argparse.Namespace) -> int:
         print(render_etf_sma_preferred_baseline_manifest_json(payload))
     else:
         print(render_etf_sma_preferred_baseline_manifest_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_preferred_baseline_comparison_guard(
+    args: argparse.Namespace,
+) -> int:
+    from .research.etf_sma_guarded_preferred_baseline_comparison import (
+        EtfSmaGuardedPreferredBaselineComparisonConfig,
+        build_etf_sma_guarded_preferred_baseline_comparison_authorization,
+        render_etf_sma_guarded_preferred_baseline_comparison_json,
+        render_etf_sma_guarded_preferred_baseline_comparison_text,
+        write_etf_sma_guarded_preferred_baseline_comparison_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_guarded_preferred_baseline_comparison_authorization(
+            EtfSmaGuardedPreferredBaselineComparisonConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                manifest_path=args.manifest_path,
+            )
+        )
+        write_etf_sma_guarded_preferred_baseline_comparison_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_guarded_preferred_baseline_comparison_json(payload))
+    else:
+        print(render_etf_sma_guarded_preferred_baseline_comparison_text(payload))
 
     return 0
 
