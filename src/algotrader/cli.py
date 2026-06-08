@@ -1117,6 +1117,61 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized adjusted-baseline backtest snapshot output format.",
     )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser = (
+        subparsers.add_parser(
+            "etf-sma-authorized-adjusted-baseline-backtest-replay",
+            help=(
+                "Replay an offline ETF/SMA adjusted-close matched-window "
+                "backtest only after the M428 authorized snapshot passes."
+            ),
+        )
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--run-id",
+        default="m429_authorized_adjusted_baseline_backtest_replay",
+        help="Run/session id to include in the M429 backtest replay artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m429_authorized_adjusted_baseline_backtest_replay.jsonl"
+        ),
+        help="Write exactly one deterministic M429 backtest replay JSONL record.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--snapshot-path",
+        default=(
+            "runs/paper_lab/"
+            "m428_authorized_adjusted_baseline_backtest_snapshot.jsonl"
+        ),
+        help="Explicit M428 authorized adjusted-baseline snapshot JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--source-m417-artifact",
+        default="runs/paper_lab/m417_spy_etf_sma_regime_slice_evidence.jsonl",
+        help="Explicit M417 raw-close regime slice source JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--daily-bars-csv",
+        default=(
+            "runs/operator_input/"
+            "spy_daily_tiingo_adjusted_canonical_20260607.csv"
+        ),
+        help="Explicit local adjusted daily bars CSV for the M420 replay helper.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_replay_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized adjusted-baseline backtest replay output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2107,6 +2162,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_adjusted_baseline_metrics(args)
     if command == "etf-sma-authorized-adjusted-baseline-backtest-snapshot":
         return _run_etf_sma_authorized_adjusted_baseline_backtest_snapshot(args)
+    if command == "etf-sma-authorized-adjusted-baseline-backtest-replay":
+        return _run_etf_sma_authorized_adjusted_baseline_backtest_replay(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -3034,6 +3091,51 @@ def _run_etf_sma_authorized_adjusted_baseline_backtest_snapshot(
     else:
         print(
             render_etf_sma_authorized_adjusted_baseline_backtest_snapshot_text(
+                payload
+            )
+        )
+
+    return 0
+
+
+def _run_etf_sma_authorized_adjusted_baseline_backtest_replay(
+    args: argparse.Namespace,
+) -> int:
+    from .research.etf_sma_authorized_adjusted_baseline_backtest_replay import (
+        EtfSmaAuthorizedAdjustedBaselineBacktestReplayConfig,
+        build_etf_sma_authorized_adjusted_baseline_backtest_replay,
+        render_etf_sma_authorized_adjusted_baseline_backtest_replay_json,
+        render_etf_sma_authorized_adjusted_baseline_backtest_replay_text,
+        write_etf_sma_authorized_adjusted_baseline_backtest_replay_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_adjusted_baseline_backtest_replay(
+            EtfSmaAuthorizedAdjustedBaselineBacktestReplayConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                snapshot_path=args.snapshot_path,
+                source_m417_artifact=args.source_m417_artifact,
+                daily_bars_csv=args.daily_bars_csv,
+            )
+        )
+        write_etf_sma_authorized_adjusted_baseline_backtest_replay_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(
+            render_etf_sma_authorized_adjusted_baseline_backtest_replay_json(
+                payload
+            )
+        )
+    else:
+        print(
+            render_etf_sma_authorized_adjusted_baseline_backtest_replay_text(
                 payload
             )
         )
