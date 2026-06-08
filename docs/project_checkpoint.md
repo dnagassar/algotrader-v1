@@ -14997,6 +14997,19 @@ Safe next tasks include:
   evidence as adjusted-close or total-return evidence, does not auto-discover
   `.data`, and preserves false submit, mutation, broker/network, credential,
   paper-authorization, live-authority, and broker-mutation flags.
+- M442 adds `etf-sma-cycle-packet-validator`, an offline fail-closed validator
+  for the M441 unified ETF/SMA cycle readiness packet. It reads exactly one
+  local JSONL source packet, verifies SPY scope, sufficient usable bars,
+  numeric SMA values, posture, cycle decision, fresh parseable `as_of`, no
+  source blockers, no open orders, no unexpected non-SPY position, and false
+  source submit, mutation, broker-action, and live-authority flags before
+  writing exactly one validation JSONL record. The accepted M441 hold/noop
+  packet yields `validation_state=accepted_current_cycle_hold_noop`,
+  `paper_action_authorized=false`, `submit_authorized=false`, and
+  `recommended_operator_action=observe_hold_noop`. Blocked validations still
+  write one local artifact and do not authorize paper submit, calculate order
+  quantity, import broker SDKs, load credentials, access the network, or touch
+  broker adapters.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

@@ -1744,6 +1744,49 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Operator brief output format.",
     )
+    etf_sma_cycle_packet_validator_parser = subparsers.add_parser(
+        "etf-sma-cycle-packet-validator",
+        help="Validate one unified ETF/SMA cycle packet without broker access.",
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--run-id",
+        default="m442_unified_cycle_packet_validation",
+        help="Run/session id to include in the validation record.",
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--source-packet",
+        "--input-packet",
+        dest="source_packet_path",
+        default="runs/paper_lab/m441_unified_etf_sma_cycle_readiness_packet.jsonl",
+        help="Read exactly one unified cycle readiness packet JSONL record from PATH.",
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--run-log",
+        "--output",
+        dest="run_log",
+        default="runs/paper_lab/m442_unified_cycle_packet_validation.jsonl",
+        help="Write exactly one deterministic validation JSONL record to PATH.",
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--validated-at",
+        default=None,
+        help=(
+            "Optional timezone-aware ISO-8601 validation clock. Defaults to the "
+            "source packet as_of when parseable."
+        ),
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--max-age-hours",
+        default="24",
+        help="Maximum source as_of age in hours before validation blocks. Default: 24.",
+    )
+    etf_sma_cycle_packet_validator_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Validation output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2417,6 +2460,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_cycle(args)
     if command == "etf-sma-cycle-brief":
         return _run_etf_sma_cycle_brief(args)
+    if command == "etf-sma-cycle-packet-validator":
+        return _run_etf_sma_cycle_packet_validator(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4027,6 +4072,37 @@ def _run_etf_sma_cycle_brief(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_cycle_operator_brief_text(payload))
     return 0
+
+
+def _run_etf_sma_cycle_packet_validator(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_cycle_packet_validator import (
+        EtfSmaCyclePacketValidationConfig,
+        build_etf_sma_cycle_packet_validation,
+        render_etf_sma_cycle_packet_validation_json,
+        render_etf_sma_cycle_packet_validation_text,
+        write_etf_sma_cycle_packet_validation_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_cycle_packet_validation(
+            EtfSmaCyclePacketValidationConfig(
+                run_id=args.run_id,
+                source_packet_path=args.source_packet_path,
+                validated_at=args.validated_at,
+                max_age_hours=args.max_age_hours,
+            )
+        )
+        write_etf_sma_cycle_packet_validation_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_cycle_packet_validation_json(payload))
+    else:
+        print(render_etf_sma_cycle_packet_validation_text(payload))
+    return 0 if not payload["validation_blockers"] else 1
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
