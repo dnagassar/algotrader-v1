@@ -1299,6 +1299,38 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M433 offline operator review packet output format.",
     )
+    etf_sma_m434_offline_buy_submit_approval_packet_parser = subparsers.add_parser(
+        "etf-sma-m434-offline-buy-submit-approval-packet",
+        help=(
+            "Build an offline M434 paper buy submit approval packet from "
+            "the M433 operator review packet."
+        ),
+    )
+    etf_sma_m434_offline_buy_submit_approval_packet_parser.add_argument(
+        "--m433-review",
+        default="runs/paper_lab/m433_offline_operator_review_packet.jsonl",
+        help="Explicit M433 offline operator review packet JSONL artifact.",
+    )
+    etf_sma_m434_offline_buy_submit_approval_packet_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m434_offline_paper_buy_submit_approval_packet.jsonl"
+        ),
+        help="Write exactly one deterministic M434 approval packet JSONL record.",
+    )
+    etf_sma_m434_offline_buy_submit_approval_packet_parser.add_argument(
+        "--run-id",
+        default="m434_offline_paper_buy_submit_approval_packet",
+        help="Run/session id to include in the M434 approval packet artifact.",
+    )
+    etf_sma_m434_offline_buy_submit_approval_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M434 offline paper buy submit approval packet output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2297,6 +2329,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_offline_cycle_preview(args)
     if command == "etf-sma-m433-offline-operator-review-packet":
         return _run_etf_sma_m433_offline_operator_review_packet(args)
+    if command == "etf-sma-m434-offline-buy-submit-approval-packet":
+        return _run_etf_sma_m434_offline_buy_submit_approval_packet(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -3388,6 +3422,41 @@ def _run_etf_sma_m433_offline_operator_review_packet(
         print(render_etf_sma_m433_offline_operator_review_packet_json(payload))
     else:
         print(render_etf_sma_m433_offline_operator_review_packet_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_m434_offline_buy_submit_approval_packet(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_m434_offline_paper_buy_submit_approval_packet import (
+        EtfSmaM434OfflinePaperBuySubmitApprovalPacketConfig,
+        build_etf_sma_m434_offline_paper_buy_submit_approval_packet,
+        render_etf_sma_m434_offline_paper_buy_submit_approval_packet_json,
+        render_etf_sma_m434_offline_paper_buy_submit_approval_packet_text,
+        write_etf_sma_m434_offline_paper_buy_submit_approval_packet_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_m434_offline_paper_buy_submit_approval_packet(
+            EtfSmaM434OfflinePaperBuySubmitApprovalPacketConfig(
+                run_id=args.run_id,
+                m433_review_path=args.m433_review,
+            )
+        )
+        write_etf_sma_m434_offline_paper_buy_submit_approval_packet_jsonl(
+            payload,
+            args.run_log,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_m434_offline_paper_buy_submit_approval_packet_json(payload))
+    else:
+        print(render_etf_sma_m434_offline_paper_buy_submit_approval_packet_text(payload))
 
     return 0
 
