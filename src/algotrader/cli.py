@@ -1259,6 +1259,46 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized offline cycle preview output format.",
     )
+    etf_sma_m433_offline_operator_review_packet_parser = subparsers.add_parser(
+        "etf-sma-m433-offline-operator-review-packet",
+        help=(
+            "Build an offline M433 operator review packet from M432 "
+            "reconciliation and authorized cycle preview evidence."
+        ),
+    )
+    etf_sma_m433_offline_operator_review_packet_parser.add_argument(
+        "--m432-reconciliation",
+        default=(
+            "runs/paper_lab/"
+            "m432_m376_read_only_reconciliation_refresh.jsonl"
+        ),
+        help="Explicit M432 read-only M376 reconciliation JSONL artifact.",
+    )
+    etf_sma_m433_offline_operator_review_packet_parser.add_argument(
+        "--m432-preview",
+        default=(
+            "runs/paper_lab/"
+            "m432_authorized_offline_cycle_preview_rerun.jsonl"
+        ),
+        help="Explicit M432 authorized offline cycle preview rerun JSONL artifact.",
+    )
+    etf_sma_m433_offline_operator_review_packet_parser.add_argument(
+        "--run-log",
+        default="runs/paper_lab/m433_offline_operator_review_packet.jsonl",
+        help="Write exactly one deterministic M433 review packet JSONL record.",
+    )
+    etf_sma_m433_offline_operator_review_packet_parser.add_argument(
+        "--run-id",
+        default="m433_offline_operator_review_packet",
+        help="Run/session id to include in the M433 review packet artifact.",
+    )
+    etf_sma_m433_offline_operator_review_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M433 offline operator review packet output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2255,6 +2295,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_adjusted_close_posture_snapshot(args)
     if command == "etf-sma-authorized-offline-cycle-preview":
         return _run_etf_sma_authorized_offline_cycle_preview(args)
+    if command == "etf-sma-m433-offline-operator-review-packet":
+        return _run_etf_sma_m433_offline_operator_review_packet(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -3310,6 +3352,42 @@ def _run_etf_sma_authorized_offline_cycle_preview(
         print(render_etf_sma_authorized_offline_cycle_preview_json(payload))
     else:
         print(render_etf_sma_authorized_offline_cycle_preview_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_m433_offline_operator_review_packet(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_m433_offline_operator_review_packet import (
+        EtfSmaM433OfflineOperatorReviewPacketConfig,
+        build_etf_sma_m433_offline_operator_review_packet,
+        render_etf_sma_m433_offline_operator_review_packet_json,
+        render_etf_sma_m433_offline_operator_review_packet_text,
+        write_etf_sma_m433_offline_operator_review_packet_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_m433_offline_operator_review_packet(
+            EtfSmaM433OfflineOperatorReviewPacketConfig(
+                run_id=args.run_id,
+                m432_reconciliation_path=args.m432_reconciliation,
+                m432_preview_path=args.m432_preview,
+            )
+        )
+        write_etf_sma_m433_offline_operator_review_packet_jsonl(
+            payload,
+            args.run_log,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_m433_offline_operator_review_packet_json(payload))
+    else:
+        print(render_etf_sma_m433_offline_operator_review_packet_text(payload))
 
     return 0
 
