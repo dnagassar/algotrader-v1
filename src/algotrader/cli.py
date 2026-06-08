@@ -3931,7 +3931,7 @@ def _run_paper_lab_state_rollup(args: argparse.Namespace) -> int:
 def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
     from .errors import ValidationError
 
-    if args.generated_at is not None:
+    if args.generated_at is not None or args.daily_bars_csv is not None:
         from .execution.etf_sma_cycle_unified_preview import (
             EtfSmaCycleUnifiedPreviewConfig,
             build_etf_sma_cycle_unified_preview,
@@ -3945,7 +3945,7 @@ def _run_etf_sma_cycle(args: argparse.Namespace) -> int:
                 EtfSmaCycleUnifiedPreviewConfig(
                     run_id=args.run_id,
                     symbol=args.symbol,
-                    generated_at=args.generated_at,
+                    generated_at=args.generated_at or args.as_of,
                     order_reconciliation_log=args.order_reconciliation_log,
                     market_data_csv=args.market_data_csv,
                     daily_bars_csv=args.daily_bars_csv,

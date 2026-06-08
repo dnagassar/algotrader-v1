@@ -88,6 +88,7 @@ def test_etf_sma_cycle_help_includes_unified_preview_options() -> None:
     assert result.returncode == 0, result.stderr
     assert "etf-sma-cycle" in result.stdout
     assert "--order-reconciliation-log" in result.stdout
+    assert "--as-of" in result.stdout
     assert "--generated-at" in result.stdout
     assert "--daily-bars-csv" in result.stdout
     assert "--run-log" in result.stdout
@@ -236,6 +237,14 @@ def test_daily_bars_csv_199_usable_bars_marks_insufficient_history(
     assert result.record_count == 1
     assert _read_jsonl(run_log) == [payload]
     assert run_log.read_text(encoding="utf-8").count("\n") == 1
+    assert payload["daily_bars_csv"] == str(daily_bars_csv)
+    assert payload["usable_spy_bars"] == 199
+    assert payload["usable_spy_bar_count"] == 199
+    assert payload["sma50"] == ""
+    assert payload["sma200"] == ""
+    assert payload["posture"] == "insufficient_history"
+    assert payload["cycle_decision"] == "insufficient_history"
+    assert payload["cycle_decision_reason"] == "sma_insufficient_history"
     assert readiness["required_usable_bars"] == 200
     assert readiness["observed_usable_bars"] == 199
     assert readiness["missing_usable_bars"] == 1
@@ -261,11 +270,11 @@ def test_daily_bars_csv_200_usable_bars_marks_ready(
 ) -> None:  # noqa: ANN001
     reconciliation_log = _write_jsonl(
         tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
-        _terminal_reconciliation_record(),
+        _terminal_reconciliation_record_with_position(),
     )
     daily_bars_csv = _write_daily_bars_csv(
         tmp_path / "spy_200_daily_bars.csv",
-        _daily_rows(200),
+        _daily_rows_with_close_adjusted_trend(200),
     )
     run_log = tmp_path / "m398_local_bars_200.jsonl"
 
@@ -278,6 +287,20 @@ def test_daily_bars_csv_200_usable_bars_marks_ready(
     assert result.record_count == 1
     assert _read_jsonl(run_log) == [payload]
     assert run_log.read_text(encoding="utf-8").count("\n") == 1
+    assert payload["daily_bars_csv"] == str(daily_bars_csv)
+    assert payload["market_data_csv"] == ""
+    assert payload["usable_spy_bars"] == 200
+    assert payload["usable_spy_bar_count"] == 200
+    assert payload["sma_status"] == "evaluated"
+    assert payload["sma_posture"] == "risk_on"
+    assert payload["posture"] == "risk_on"
+    assert payload["sma50"] == "274.5"
+    assert payload["sma200"] == "199.5"
+    assert payload["cycle_decision"] == "hold/noop"
+    assert payload["cycle_decision_reason"] == "risk_on_existing_position"
+    assert payload["current_spy_position_qty"] == QUANTITY
+    assert payload["open_order_count"] == 0
+    assert payload["unexpected_non_spy_position_present"] is False
     assert readiness["required_usable_bars"] == 200
     assert readiness["observed_usable_bars"] == 200
     assert readiness["missing_usable_bars"] == 0
@@ -287,6 +310,40 @@ def test_daily_bars_csv_200_usable_bars_marks_ready(
     assert readiness["source"]["type"] == "local_daily_bars_csv"
     assert readiness["source_market_data"]["input_available"] is True
     assert readiness["source_market_data"]["ignored_future_bar_count"] == 0
+    _assert_never_mutates(payload)
+
+
+def test_daily_bars_csv_uses_as_of_and_ignores_future_bars(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    as_of = "2025-07-19T00:00:00+00:00"
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_m376_spy_close_order_reconciliation_retry.jsonl",
+        _terminal_reconciliation_record_with_position(),
+    )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_201_daily_bars.csv",
+        _daily_rows_with_close_adjusted_trend(201),
+    )
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(
+            reconciliation_log,
+            generated_at=as_of,
+            daily_bars_csv=daily_bars_csv,
+        )
+    )
+    readiness = payload["data_readiness"]
+
+    assert payload["as_of"] == as_of
+    assert payload["usable_spy_bars"] == 200
+    assert payload["sma50"] == "274.5"
+    assert payload["sma200"] == "199.5"
+    assert payload["posture"] == "risk_on"
+    assert readiness["observed_usable_bars"] == 200
+    assert readiness["source_market_data"]["total_bar_count"] == 201
+    assert readiness["source_market_data"]["usable_bar_count"] == 200
+    assert readiness["source_market_data"]["ignored_future_bar_count"] == 1
     _assert_never_mutates(payload)
 
 
@@ -334,12 +391,18 @@ def test_nonterminal_open_m376_fixture_remains_blocked(tmp_path) -> None:  # noq
         tmp_path / "m376_open_reconciliation.jsonl",
         _nonterminal_reconciliation_record(),
     )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_200_daily_bars.csv",
+        _daily_rows_with_close_adjusted_trend(200),
+    )
 
     payload = build_etf_sma_cycle_unified_preview(
-        _config(reconciliation_log, market_data_csv=tmp_path / "missing_bars.csv")
+        _config(reconciliation_log, daily_bars_csv=daily_bars_csv)
     )
 
     assert payload["state_rollup_status"] == "blocked"
+    assert payload["usable_spy_bars"] == 200
+    assert payload["posture"] == "risk_on"
     assert payload["m376_terminal"] is False
     assert payload["m376_status"] == "accepted"
     assert payload["m376_terminal_state"] == "nonterminal"
@@ -351,6 +414,32 @@ def test_nonterminal_open_m376_fixture_remains_blocked(tmp_path) -> None:  # noq
     assert payload["cycle_decision"] == "blocked/open_order_present"
     assert payload["next_allowed_action"] == "offline_work_or_read_only_reconciliation"
     assert "spy_submit_until_m376_terminal" in payload["forbidden_actions"]
+    assert payload["preview_order_authorized"] is False
+    _assert_never_mutates(payload)
+
+
+def test_unexpected_non_spy_position_blocks_unified_cycle(tmp_path) -> None:  # noqa: ANN001
+    record = _terminal_reconciliation_record()
+    record["non_spy_positions"] = [{"symbol": "QQQ", "quantity": "1"}]
+    reconciliation_log = _write_jsonl(
+        tmp_path / "m391_reconciliation_non_spy.jsonl",
+        record,
+    )
+    daily_bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_200_daily_bars.csv",
+        _daily_rows_with_close_adjusted_trend(200),
+    )
+
+    payload = build_etf_sma_cycle_unified_preview(
+        _config(reconciliation_log, daily_bars_csv=daily_bars_csv)
+    )
+
+    assert payload["state_rollup_status"] == "blocked"
+    assert payload["posture"] == "risk_on"
+    assert payload["unexpected_non_spy_position_present"] is True
+    assert payload["non_spy_position_present"] is True
+    assert "unexpected_non_spy_position" in payload["blockers"]
+    assert payload["cycle_decision"] == "blocked/unexpected_non_spy_position"
     assert payload["preview_order_authorized"] is False
     _assert_never_mutates(payload)
 
@@ -496,7 +585,7 @@ def test_cli_daily_bars_csv_emits_ready_readiness_without_broker_network_or_cred
             str(reconciliation_log),
             "--daily-bars-csv",
             str(daily_bars_csv),
-            "--generated-at",
+            "--as-of",
             GENERATED_AT,
             "--format",
             "json",
@@ -509,6 +598,10 @@ def test_cli_daily_bars_csv_emits_ready_readiness_without_broker_network_or_cred
     assert exit_code == 0
     assert captured.err == ""
     assert records == [payload]
+    assert payload["as_of"] == GENERATED_AT
+    assert payload["daily_bars_csv"] == str(daily_bars_csv)
+    assert payload["usable_spy_bars"] == 200
+    assert payload["posture"] == "risk_on"
     assert payload["data_readiness"]["observed_usable_bars"] == 200
     assert payload["data_readiness"]["missing_usable_bars"] == 0
     assert payload["data_readiness"]["readiness_state"] == "ready"
@@ -624,6 +717,12 @@ def _terminal_reconciliation_record() -> dict[str, object]:
     return record
 
 
+def _terminal_reconciliation_record_with_position() -> dict[str, object]:
+    record = _terminal_reconciliation_record()
+    record["spy_position_qty"] = QUANTITY
+    return record
+
+
 def _write_jsonl(path: Path, *records: dict[str, object]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [json.dumps(record, sort_keys=True) for record in records]
@@ -680,6 +779,19 @@ def _daily_rows(count: int) -> list[dict[str, str]]:
     ]
 
 
+def _daily_rows_with_close_adjusted_trend(count: int) -> list[dict[str, str]]:
+    start = date(2025, 1, 1)
+    return [
+        _daily_row_with_close_adjusted(
+            "SPY",
+            start + timedelta(days=index),
+            raw_close=1000 - index,
+            adjusted_close=100 + index,
+        )
+        for index in range(count)
+    ]
+
+
 def _daily_row(symbol: str, day: date, price: int) -> dict[str, str]:
     return {
         "symbol": symbol,
@@ -689,6 +801,25 @@ def _daily_row(symbol: str, day: date, price: int) -> dict[str, str]:
         "low": str(price),
         "close": str(price),
         "adjusted_close": str(price),
+        "volume": "1000",
+    }
+
+
+def _daily_row_with_close_adjusted(
+    symbol: str,
+    day: date,
+    *,
+    raw_close: int,
+    adjusted_close: int,
+) -> dict[str, str]:
+    return {
+        "symbol": symbol,
+        "date": day.isoformat(),
+        "open": str(raw_close),
+        "high": str(raw_close),
+        "low": str(raw_close),
+        "close": str(raw_close),
+        "adjusted_close": str(adjusted_close),
         "volume": "1000",
     }
 

@@ -170,7 +170,8 @@ def build_etf_sma_cycle_unified_preview(
             symbol=checked_config.symbol,
             generated_at=checked_config.generated_at,
             order_reconciliation_log=checked_config.order_reconciliation_log,
-            market_data_csv=_cycle_market_data_csv(checked_config),
+            daily_bars_csv=checked_config.daily_bars_csv,
+            market_data_csv=checked_config.market_data_csv,
         )
     )
     source_reconciliation = _mapping(
@@ -218,9 +219,18 @@ def build_etf_sma_cycle_unified_preview(
         "source_artifacts": {
             "order_reconciliation_log": _json_safe(source_reconciliation),
         },
+        "daily_bars_csv": _path_text(checked_config.daily_bars_csv),
+        "market_data_csv": _path_text(checked_config.market_data_csv),
         "daily_preview_status": _text(daily_preview.get("daily_preview_status")),
         "daily_preview_summary": _daily_preview_summary(daily_preview),
         "data_readiness": data_readiness,
+        "usable_spy_bars": _usable_spy_bars(data_readiness, state_rollup),
+        "usable_spy_bar_count": _usable_spy_bars(data_readiness, state_rollup),
+        "sma_status": _text(state_rollup.get("sma_status")),
+        "sma_posture": _text(state_rollup.get("sma_posture")),
+        "posture": _packet_posture(data_readiness, state_rollup),
+        "sma50": _packet_sma_value(data_readiness, state_rollup, "sma50"),
+        "sma200": _packet_sma_value(data_readiness, state_rollup, "sma200"),
         "state_rollup_status": _text(state_rollup.get("state_rollup_status")),
         "state_rollup_summary": _state_rollup_summary(state_rollup),
         "cycle_decision": _text(state_rollup.get("cycle_decision")),
@@ -247,7 +257,11 @@ def build_etf_sma_cycle_unified_preview(
         "open_order_present": state_rollup.get("open_order_present") is True,
         "open_spy_order_present": state_rollup.get("open_spy_order_present") is True,
         "spy_position_qty": _text(state_rollup.get("spy_position_qty")),
+        "current_spy_position_qty": _text(state_rollup.get("spy_position_qty")),
         "non_spy_position_present": (
+            state_rollup.get("non_spy_position_present") is True
+        ),
+        "unexpected_non_spy_position_present": (
             state_rollup.get("non_spy_position_present") is True
         ),
         "preview_order_authorized": False,
@@ -283,12 +297,21 @@ def render_etf_sma_cycle_unified_preview_text(
             f"run_id: {payload.get('run_id', '')}",
             f"generated_at: {payload.get('generated_at', '')}",
             f"symbol: {payload.get('symbol', '')}",
+            f"daily_bars_csv: {payload.get('daily_bars_csv', '')}",
+            f"usable_spy_bars: {payload.get('usable_spy_bars', '')}",
+            f"sma50: {payload.get('sma50', '')}",
+            f"sma200: {payload.get('sma200', '')}",
+            f"posture: {payload.get('posture', '')}",
             f"daily_preview_status: {payload.get('daily_preview_status', '')}",
             f"state_rollup_status: {payload.get('state_rollup_status', '')}",
             f"m376_status: {payload.get('m376_status', '')}",
             f"m376_terminal_state: {payload.get('m376_terminal_state', '')}",
+            "current_spy_position_qty: "
+            f"{payload.get('current_spy_position_qty', '')}",
             f"open_order_count: {payload.get('open_order_count', '')}",
             f"open_order_present: {_bool_text(payload.get('open_order_present'))}",
+            "unexpected_non_spy_position_present: "
+            f"{_bool_text(payload.get('unexpected_non_spy_position_present'))}",
             f"cycle_decision: {payload.get('cycle_decision', '')}",
             f"blockers: {_joined(_string_list(payload.get('blockers')))}",
             f"next_allowed_action: {payload.get('next_allowed_action', '')}",
@@ -376,6 +399,17 @@ def _state_rollup_summary(payload: Mapping[str, object]) -> dict[str, object]:
         "open_order_present": payload.get("open_order_present") is True,
         "open_spy_order_present": payload.get("open_spy_order_present") is True,
         "spy_position_qty": _text(payload.get("spy_position_qty")),
+        "current_spy_position_qty": _text(payload.get("spy_position_qty")),
+        "non_spy_position_present": (
+            payload.get("non_spy_position_present") is True
+        ),
+        "unexpected_non_spy_position_present": (
+            payload.get("non_spy_position_present") is True
+        ),
+        "usable_spy_bars": _optional_int(payload.get("usable_spy_bar_count")),
+        "sma50": _text(payload.get("sma50")),
+        "sma200": _text(payload.get("sma200")),
+        "posture": _text(payload.get("sma_posture")),
         "blockers": list(_string_list(payload.get("blockers"))),
         "next_allowed_action": _text(payload.get("next_allowed_action")),
         "submitted": False,
@@ -385,6 +419,48 @@ def _state_rollup_summary(payload: Mapping[str, object]) -> dict[str, object]:
         "network_access_attempted": False,
         "credential_access_attempted": False,
         "live_authorized": False,
+    }
+
+
+def _usable_spy_bars(
+    data_readiness: Mapping[str, object],
+    state_rollup: Mapping[str, object],
+) -> int | None:
+    return _first_optional_int(
+        data_readiness.get("observed_usable_bars"),
+        state_rollup.get("usable_spy_bar_count"),
+    )
+
+
+def _packet_posture(
+    data_readiness: Mapping[str, object],
+    state_rollup: Mapping[str, object],
+) -> str:
+    if not _sma_ready(data_readiness):
+        readiness_state = _text(data_readiness.get("readiness_state"))
+        if readiness_state == "insufficient_history":
+            return "insufficient_history"
+    return _text(state_rollup.get("sma_posture"))
+
+
+def _packet_sma_value(
+    data_readiness: Mapping[str, object],
+    state_rollup: Mapping[str, object],
+    field_name: str,
+) -> str:
+    if not _sma_ready(data_readiness):
+        return ""
+    return _text(state_rollup.get(field_name))
+
+
+def _sma_ready(data_readiness: Mapping[str, object]) -> bool:
+    required = _optional_int(data_readiness.get("required_usable_bars"))
+    observed = _optional_int(data_readiness.get("observed_usable_bars"))
+    if required is not None and observed is not None:
+        return observed >= required
+    return _text(data_readiness.get("readiness_state")) in {
+        "ready",
+        "ready_from_cycle_artifact",
     }
 
 
@@ -744,6 +820,14 @@ def _first_int(*values: object, default: int | None = None) -> int:
     return default
 
 
+def _first_optional_int(*values: object) -> int | None:
+    for value in values:
+        integer = _optional_int(value)
+        if integer is not None:
+            return integer
+    return None
+
+
 def _mapping(value: object) -> Mapping[str, object]:
     if isinstance(value, Mapping):
         return value
@@ -758,6 +842,12 @@ def _string_list(value: object) -> tuple[str, ...]:
 
 def _text(value: object) -> str:
     if value is None:
+        return ""
+    return str(value)
+
+
+def _path_text(value: object) -> str:
+    if value in (None, ""):
         return ""
     return str(value)
 
