@@ -1172,6 +1172,48 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized adjusted-baseline backtest replay output format.",
     )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser = (
+        subparsers.add_parser(
+            "etf-sma-authorized-adjusted-close-posture-snapshot",
+            help=(
+                "Compute an offline latest SPY adjusted-close SMA posture "
+                "only after the M429 authorized replay passes."
+            ),
+        )
+    )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser.add_argument(
+        "--run-id",
+        default="m430_authorized_adjusted_close_sma_posture_snapshot",
+        help="Run/session id to include in the M430 posture snapshot artifact.",
+    )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m430_authorized_adjusted_close_sma_posture_snapshot.jsonl"
+        ),
+        help="Write exactly one deterministic M430 posture snapshot JSONL record.",
+    )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser.add_argument(
+        "--replay-path",
+        default=(
+            "runs/paper_lab/"
+            "m429_authorized_adjusted_baseline_backtest_replay.jsonl"
+        ),
+        help="Explicit M429 authorized adjusted-baseline replay JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_close_posture_snapshot_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized adjusted-close SMA posture snapshot output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2164,6 +2206,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_adjusted_baseline_backtest_snapshot(args)
     if command == "etf-sma-authorized-adjusted-baseline-backtest-replay":
         return _run_etf_sma_authorized_adjusted_baseline_backtest_replay(args)
+    if command == "etf-sma-authorized-adjusted-close-posture-snapshot":
+        return _run_etf_sma_authorized_adjusted_close_posture_snapshot(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -3136,6 +3180,49 @@ def _run_etf_sma_authorized_adjusted_baseline_backtest_replay(
     else:
         print(
             render_etf_sma_authorized_adjusted_baseline_backtest_replay_text(
+                payload
+            )
+        )
+
+    return 0
+
+
+def _run_etf_sma_authorized_adjusted_close_posture_snapshot(
+    args: argparse.Namespace,
+) -> int:
+    from .research.etf_sma_authorized_adjusted_close_posture_snapshot import (
+        EtfSmaAuthorizedAdjustedClosePostureSnapshotConfig,
+        build_etf_sma_authorized_adjusted_close_posture_snapshot,
+        render_etf_sma_authorized_adjusted_close_posture_snapshot_json,
+        render_etf_sma_authorized_adjusted_close_posture_snapshot_text,
+        write_etf_sma_authorized_adjusted_close_posture_snapshot_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_adjusted_close_posture_snapshot(
+            EtfSmaAuthorizedAdjustedClosePostureSnapshotConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                replay_path=args.replay_path,
+            )
+        )
+        write_etf_sma_authorized_adjusted_close_posture_snapshot_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(
+            render_etf_sma_authorized_adjusted_close_posture_snapshot_json(
+                payload
+            )
+        )
+    else:
+        print(
+            render_etf_sma_authorized_adjusted_close_posture_snapshot_text(
                 payload
             )
         )
