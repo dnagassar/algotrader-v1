@@ -2032,6 +2032,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Expected paper order quantity.",
     )
     paper_order_reconcile_parser.add_argument(
+        "--expected-sizing-mode",
+        choices=("qty", "notional"),
+        default="qty",
+        help=(
+            "Expected order sizing mode. Qty mode requires broker qty; "
+            "notional mode can reconcile an empty broker qty with matching filled_qty."
+        ),
+    )
+    paper_order_reconcile_parser.add_argument(
         "--run-log",
         required=True,
         help="Append one deterministic order reconciliation JSONL record to PATH.",
@@ -2995,6 +3004,7 @@ def _run_paper_order_reconcile(
                 broker_order_id=args.broker_order_id,
                 expected_side=args.expected_side,
                 expected_qty=Decimal(str(args.expected_qty)),
+                expected_sizing_mode=args.expected_sizing_mode,
                 profile_gate_passed=profile_gate["passed"] is True,
                 profile_gate_detail=str(profile_gate.get("detail", "")),
                 paper_profile_ready=profile_gate["passed"] is True,

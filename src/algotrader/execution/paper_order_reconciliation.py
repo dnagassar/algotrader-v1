@@ -41,6 +41,7 @@ _ORDER_SOURCES = (
     ("all", "all"),
     ("closed", "closed"),
 )
+_EXPECTED_SIZING_MODES = {"qty", "notional"}
 _SOURCE_PRIORITY = {"open": 0, "all": 1, "closed": 2}
 _TERMINAL_STATUSES = {"filled", "canceled", "cancelled", "expired", "rejected"}
 _NONTERMINAL_STATUSES = {
@@ -82,6 +83,7 @@ class PaperOrderReconciliationConfig:
     broker_order_id: str
     expected_side: str
     expected_qty: Decimal | str
+    expected_sizing_mode: str = "qty"
     milestone: str = PAPER_ORDER_RECONCILIATION_MILESTONE
     profile_gate_passed: bool = False
     profile_gate_detail: str = ""
@@ -112,6 +114,13 @@ class PaperOrderReconciliationConfig:
             "expected_qty",
             _positive_decimal(self.expected_qty, "expected_qty"),
         )
+        sizing_mode = _required_string(
+            self.expected_sizing_mode,
+            "expected_sizing_mode",
+        ).lower()
+        if sizing_mode not in _EXPECTED_SIZING_MODES:
+            raise ValidationError("expected_sizing_mode must be qty or notional.")
+        object.__setattr__(self, "expected_sizing_mode", sizing_mode)
         object.__setattr__(
             self,
             "profile_gate_passed",
@@ -333,6 +342,7 @@ def _base_payload(config: PaperOrderReconciliationConfig) -> dict[str, object]:
         "broker_order_id": config.broker_order_id,
         "expected_side": config.expected_side,
         "expected_qty": str(config.expected_qty),
+        "expected_sizing_mode": config.expected_sizing_mode,
         "submitted": False,
         "mutated": False,
         "broker_action_performed": False,
@@ -800,8 +810,23 @@ def _order_mismatches(
         mismatches.append("symbol_mismatch")
     if order.get("side") != config.expected_side:
         mismatches.append("side_mismatch")
+    mismatches.extend(_quantity_mismatches(order, config))
+    return tuple(mismatches)
+
+
+def _quantity_mismatches(
+    order: Mapping[str, object],
+    config: PaperOrderReconciliationConfig,
+) -> tuple[str, ...]:
     observed_qty = _optional_decimal(order.get("qty"))
-    if observed_qty != config.expected_qty:
+    if config.expected_sizing_mode == "qty":
+        return () if observed_qty == config.expected_qty else ("qty_mismatch",)
+
+    mismatches: list[str] = []
+    observed_filled_qty = _optional_decimal(order.get("filled_qty"))
+    if observed_filled_qty != config.expected_qty:
+        mismatches.append("filled_qty_mismatch")
+    if observed_qty is not None and observed_qty != config.expected_qty:
         mismatches.append("qty_mismatch")
     return tuple(mismatches)
 

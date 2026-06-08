@@ -16,6 +16,10 @@ from algotrader.execution.paper_order_reconciliation import (
 CLIENT_ORDER_ID = "paper-order-close-m376_spy_paper_close_submit"
 BROKER_ORDER_ID = "dbb32dd3-58bf-49ea-b9b1-9aa44e85002d"
 QUANTITY = "0.033172072"
+M436_CLIENT_ORDER_ID = "paper-order-m435_spy_etf_sma_tiny_buy_submit"
+M436_BROKER_ORDER_ID = "4553f69a-748b-4ce4-a7bb-a9bac1ade9fb"
+M436_QUANTITY = "0.033695775"
+M436_AVG_FILL_PRICE = "741.636"
 MUTATION_METHOD_NAMES = {
     "cancel_order",
     "close_all_positions",
@@ -75,6 +79,145 @@ def test_exact_filled_order_is_terminal_and_does_not_block_by_itself() -> None:
     assert payload["blockers"] == []
     assert payload["observed_filled_qty"] == QUANTITY
     assert payload["observed_avg_fill_price"] == "750.12"
+
+
+def test_m436_filled_notional_spy_buy_with_empty_broker_qty_reconciles() -> None:
+    payload = _reconcile_m436_notional(
+        positions=[_m436_position()],
+        open_orders=[],
+        all_orders=[_m436_order()],
+    )
+
+    assert payload["expected_sizing_mode"] == "notional"
+    assert payload["exact_order_found"] is True
+    assert payload["exact_order_source"] == "all"
+    assert payload["observed_symbol"] == "SPY"
+    assert payload["observed_side"] == "buy"
+    assert payload["observed_status"] == "filled"
+    assert payload["observed_qty"] == ""
+    assert payload["observed_filled_qty"] == M436_QUANTITY
+    assert payload["observed_avg_fill_price"] == M436_AVG_FILL_PRICE
+    assert payload["terminal_state"] == "terminal"
+    assert payload["terminal_reason"] == "status_filled"
+    assert payload["reconciliation_decision"] == "m376_terminal_filled"
+    assert payload["mismatches"] == []
+    assert payload["blockers"] == []
+    assert payload["next_spy_submit_blocked"] is False
+    assert payload["spy_position_qty"] == M436_QUANTITY
+    assert payload["open_order_count"] == 0
+
+
+def test_empty_broker_qty_still_blocks_share_quantity_orders() -> None:
+    payload = _reconcile(
+        FakeReconciliationBroker(
+            positions=[_position()],
+            open_orders=[],
+            all_orders=[
+                _order(
+                    qty="",
+                    status="filled",
+                    filled_qty=QUANTITY,
+                    filled_at="2026-06-03T15:31:00+00:00",
+                )
+            ],
+        )
+    )
+
+    assert payload["exact_order_found"] is False
+    assert payload["terminal_state"] == "unknown"
+    assert payload["reconciliation_decision"] == "m376_ambiguous"
+    assert "qty_mismatch" in payload["mismatches"]
+    assert "order_identity_mismatch" in payload["blockers"]
+
+
+def test_m436_notional_mismatched_filled_qty_blocks() -> None:
+    payload = _reconcile_m436_notional(
+        positions=[_m436_position()],
+        open_orders=[],
+        all_orders=[_m436_order(filled_qty="0.01")],
+    )
+
+    assert payload["exact_order_found"] is False
+    assert payload["terminal_state"] == "unknown"
+    assert payload["reconciliation_decision"] == "m376_ambiguous"
+    assert "filled_qty_mismatch" in payload["mismatches"]
+    assert "order_identity_mismatch" in payload["blockers"]
+
+
+def test_m436_notional_identity_shape_mismatches_still_block() -> None:
+    cases = (
+        (_m436_order(symbol="QQQ"), "symbol_mismatch"),
+        (_m436_order(side="sell"), "side_mismatch"),
+        (_m436_order(client_order_id="other-client"), "client_order_id_mismatch"),
+        (_m436_order(order_id="other-broker"), "broker_order_id_mismatch"),
+    )
+
+    for order, expected_mismatch in cases:
+        payload = _reconcile_m436_notional(
+            positions=[_m436_position()],
+            open_orders=[],
+            all_orders=[order],
+        )
+
+        assert payload["exact_order_found"] is False
+        assert payload["terminal_state"] == "unknown"
+        assert payload["reconciliation_decision"] == "m376_ambiguous"
+        assert expected_mismatch in payload["mismatches"]
+        assert "order_identity_mismatch" in payload["blockers"]
+
+
+def test_m436_notional_nonterminal_status_blocks_clean_reconciliation() -> None:
+    payload = _reconcile_m436_notional(
+        positions=[_m436_position()],
+        open_orders=[],
+        all_orders=[_m436_order(status="accepted", filled_at="")],
+    )
+
+    assert payload["exact_order_found"] is True
+    assert payload["terminal_state"] == "nonterminal"
+    assert payload["terminal_reason"] == "status_accepted_active"
+    assert payload["reconciliation_decision"] == "m376_nonterminal_open"
+    assert "m376_order_nonterminal" in payload["blockers"]
+    assert payload["next_spy_submit_blocked"] is True
+
+
+def test_m436_notional_open_spy_order_remains_blocker() -> None:
+    payload = _reconcile_m436_notional(
+        positions=[_m436_position()],
+        open_orders=[
+            _m436_order(
+                client_order_id="open-spy-client",
+                order_id="open-spy-broker",
+                status="accepted",
+                filled_qty="0",
+                filled_at="",
+            )
+        ],
+        all_orders=[_m436_order()],
+    )
+
+    assert payload["exact_order_found"] is True
+    assert payload["terminal_state"] == "terminal"
+    assert payload["reconciliation_decision"] == "m376_terminal_filled"
+    assert payload["open_order_count"] == 1
+    assert "open_order_present" in payload["blockers"]
+    assert payload["next_spy_submit_blocked"] is True
+
+
+def test_m436_notional_unexpected_non_spy_position_remains_blocker() -> None:
+    payload = _reconcile_m436_notional(
+        positions=[_m436_position(), _position(symbol="QQQ", quantity="1")],
+        open_orders=[],
+        all_orders=[_m436_order()],
+    )
+
+    assert payload["exact_order_found"] is True
+    assert payload["terminal_state"] == "terminal"
+    assert payload["reconciliation_decision"] == "m376_terminal_filled"
+    assert payload["non_spy_positions"] == ["QQQ"]
+    assert payload["unexpected_non_spy_position_present"] is True
+    assert "unexpected_non_spy_position" in payload["blockers"]
+    assert payload["next_spy_submit_blocked"] is True
 
 
 def test_exact_order_not_found_is_conservative_without_complete_history() -> None:
@@ -344,6 +487,27 @@ def _reconcile(
     )
 
 
+def _reconcile_m436_notional(
+    *,
+    positions: list[dict[str, object]],
+    open_orders: list[dict[str, object]],
+    all_orders: list[dict[str, object]],
+) -> dict[str, object]:
+    return _reconcile(
+        FakeReconciliationBroker(
+            positions=positions,
+            open_orders=open_orders,
+            all_orders=all_orders,
+        ),
+        run_id="m438_m436_spy_buy_read_only_reconciliation_repaired",
+        client_order_id=M436_CLIENT_ORDER_ID,
+        broker_order_id=M436_BROKER_ORDER_ID,
+        expected_side="buy",
+        expected_qty=M436_QUANTITY,
+        expected_sizing_mode="notional",
+    )
+
+
 def _config(**overrides: object) -> PaperOrderReconciliationConfig:
     values = {
         "run_id": "m379_m376_spy_close_order_reconciliation",
@@ -392,12 +556,48 @@ def _order(
     }
 
 
-def _position() -> dict[str, object]:
+def _m436_order(
+    *,
+    client_order_id: str = M436_CLIENT_ORDER_ID,
+    order_id: str = M436_BROKER_ORDER_ID,
+    symbol: str = "SPY",
+    side: str = "buy",
+    qty: str = "",
+    status: str = "filled",
+    filled_qty: str = M436_QUANTITY,
+    filled_avg_price: str = M436_AVG_FILL_PRICE,
+    submitted_at: str = "2026-06-04T15:30:00+00:00",
+    filled_at: str = "2026-06-04T15:30:03+00:00",
+) -> dict[str, object]:
+    return _order(
+        client_order_id=client_order_id,
+        order_id=order_id,
+        symbol=symbol,
+        side=side,
+        qty=qty,
+        status=status,
+        filled_qty=filled_qty,
+        filled_avg_price=filled_avg_price,
+        submitted_at=submitted_at,
+        filled_at=filled_at,
+    )
+
+
+def _position(
+    *,
+    symbol: str = "SPY",
+    quantity: str = QUANTITY,
+    average_price: str = "753.646",
+) -> dict[str, object]:
     return {
-        "average_price": "753.646",
-        "quantity": QUANTITY,
-        "symbol": "SPY",
+        "average_price": average_price,
+        "quantity": quantity,
+        "symbol": symbol,
     }
+
+
+def _m436_position() -> dict[str, object]:
+    return _position(quantity=M436_QUANTITY, average_price=M436_AVG_FILL_PRICE)
 
 
 def _set_dev_env(monkeypatch) -> None:  # noqa: ANN001
