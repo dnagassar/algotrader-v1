@@ -393,6 +393,56 @@ def build_parser() -> argparse.ArgumentParser:
         run_log="runs/paper_lab/m370_tiny_spy_paper_submit.jsonl",
         run_id="m370_tiny_spy_paper_submit",
     )
+    etf_sma_m435_buy_submit_parser = subparsers.add_parser(
+        "etf-sma-m435-paper-buy-submit",
+        help="Submit the explicitly approved M435 tiny SPY paper buy.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--source-m434-artifact",
+        default=(
+            "runs/paper_lab/"
+            "m434_offline_paper_buy_submit_approval_packet.jsonl"
+        ),
+        help="Read the M434 approval JSONL artifact from PATH.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--operator-approval",
+        default="",
+        help="Exact M435 approval phrase required before any submit.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--equity-session-status",
+        choices=("open", "closed", "unavailable"),
+        default="unavailable",
+        help="Regular equity session status. Default fails closed.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--equity-session-source",
+        default="",
+        help="Source used to verify the regular equity session is open.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--equity-session-observed-at",
+        default="",
+        help="Timestamp for the regular equity session status observation.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--evaluated-at",
+        default="",
+        help="Explicit timezone-aware ISO-8601 evaluation clock for M435.",
+    )
+    etf_sma_m435_buy_submit_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Submit output format.",
+    )
+    _add_paper_lab_run_log_options(etf_sma_m435_buy_submit_parser)
+    etf_sma_m435_buy_submit_parser.set_defaults(
+        run_log="runs/paper_lab/m435_tiny_spy_paper_buy_submit.jsonl",
+        run_id="m435_tiny_spy_paper_buy_submit",
+    )
     etf_sma_m375_close_preview_parser = subparsers.add_parser(
         "etf-sma-m375-spy-close-preview",
         help="Preview readiness to close the M370C SPY paper position without mutation.",
@@ -2418,6 +2468,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_lab_spy_close_submit(config, args)
     if command == "etf-sma-m370-paper-submit":
         return _run_etf_sma_m370_paper_submit(config, args)
+    if command == "etf-sma-m435-paper-buy-submit":
+        return _run_etf_sma_m435_paper_buy_submit(config, args)
     if command == "etf-sma-m375-spy-close-preview":
         return _run_etf_sma_m375_spy_close_preview(config, args)
     if command == "etf-sma-cycle-preview":
@@ -2770,6 +2822,56 @@ def _run_etf_sma_m370_paper_submit(
         print(render_m370_paper_submit_json(payload))
     else:
         print(render_m370_paper_submit_text(payload))
+    if payload.get("broker_error") is True:
+        return 1
+    return 0 if payload.get("ok") is True else 2
+
+
+def _run_etf_sma_m435_paper_buy_submit(
+    config,
+    args: argparse.Namespace,
+) -> int:
+    from .execution.etf_sma_m435_paper_buy_submit import (
+        M435EquitySessionStatus,
+        render_m435_paper_buy_submit_json,
+        render_m435_paper_buy_submit_text,
+        run_m435_tiny_spy_paper_buy_submit,
+        write_m435_paper_buy_submit_artifact,
+    )
+
+    profile_gate = _paper_profile_gate(config)
+    halt_gate = _gate(
+        _paper_halt_not_set(),
+        "halt_not_set",
+        "ALGOTRADER_PAPER_HALT=1",
+    )
+    session_status = M435EquitySessionStatus(
+        status=args.equity_session_status,
+        source=args.equity_session_source,
+        observed_at=args.equity_session_observed_at,
+    )
+    payload = run_m435_tiny_spy_paper_buy_submit(
+        source_m434_artifact_path=args.source_m434_artifact,
+        output_artifact_path=args.run_log,
+        run_id=args.run_id or "m435_tiny_spy_paper_buy_submit",
+        operator_approval=args.operator_approval,
+        equity_session_status=session_status,
+        paper_profile_gate_passed=profile_gate["passed"] is True,
+        paper_profile_gate_detail=str(profile_gate.get("detail", "")),
+        live_url_detected=_paper_base_url_live_detected(config),
+        halt_gate_passed=halt_gate["passed"] is True,
+        halt_gate_detail=str(halt_gate.get("detail", "")),
+        evaluated_at=args.evaluated_at,
+        broker_factory=lambda: _build_paper_broker(config.alpaca_paper),
+        redactor=lambda value: _redact_config_secrets(value, config),
+    )
+    if args.run_log:
+        write_m435_paper_buy_submit_artifact(payload, args.run_log)
+
+    if args.output_format == "json":
+        print(render_m435_paper_buy_submit_json(payload))
+    else:
+        print(render_m435_paper_buy_submit_text(payload))
     if payload.get("broker_error") is True:
         return 1
     return 0 if payload.get("ok") is True else 2
