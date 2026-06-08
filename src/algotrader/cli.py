@@ -1030,6 +1030,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized ETF/SMA comparison summary output format.",
     )
+    etf_sma_authorized_adjusted_baseline_metrics_parser = subparsers.add_parser(
+        "etf-sma-authorized-adjusted-baseline-metrics",
+        help=(
+            "Materialize offline ETF/SMA adjusted-baseline metrics only after "
+            "the M426 authorized summary passes."
+        ),
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--run-id",
+        default="m427_authorized_adjusted_baseline_metrics_materialization",
+        help="Run/session id to include in the M427 metrics artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m427_authorized_adjusted_baseline_metrics_materialization.jsonl"
+        ),
+        help="Write exactly one deterministic M427 metrics JSONL record.",
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--summary-path",
+        default=(
+            "runs/paper_lab/"
+            "m426_authorized_preferred_baseline_comparison_summary.jsonl"
+        ),
+        help="Explicit M426 authorized comparison summary JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--source-evidence-path",
+        default="runs/paper_lab/m421_spy_adjusted_basis_promotion_packet.jsonl",
+        help="Explicit M421 adjusted-basis promotion packet JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_metrics_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized adjusted-baseline metrics output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2016,6 +2061,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_comparison_stub(args)
     if command == "etf-sma-authorized-comparison-summary":
         return _run_etf_sma_authorized_comparison_summary(args)
+    if command == "etf-sma-authorized-adjusted-baseline-metrics":
+        return _run_etf_sma_authorized_adjusted_baseline_metrics(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2867,6 +2914,42 @@ def _run_etf_sma_authorized_comparison_summary(args: argparse.Namespace) -> int:
         print(render_etf_sma_authorized_comparison_summary_json(payload))
     else:
         print(render_etf_sma_authorized_comparison_summary_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_authorized_adjusted_baseline_metrics(
+    args: argparse.Namespace,
+) -> int:
+    from .research.etf_sma_authorized_adjusted_baseline_metrics import (
+        EtfSmaAuthorizedAdjustedBaselineMetricsConfig,
+        build_etf_sma_authorized_adjusted_baseline_metrics,
+        render_etf_sma_authorized_adjusted_baseline_metrics_json,
+        render_etf_sma_authorized_adjusted_baseline_metrics_text,
+        write_etf_sma_authorized_adjusted_baseline_metrics_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_adjusted_baseline_metrics(
+            EtfSmaAuthorizedAdjustedBaselineMetricsConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                summary_path=args.summary_path,
+                source_evidence_path=args.source_evidence_path,
+            )
+        )
+        write_etf_sma_authorized_adjusted_baseline_metrics_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_authorized_adjusted_baseline_metrics_json(payload))
+    else:
+        print(render_etf_sma_authorized_adjusted_baseline_metrics_text(payload))
 
     return 0
 
