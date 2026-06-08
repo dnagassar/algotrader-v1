@@ -183,6 +183,61 @@ def test_cycle_preview_open_order_blocker_is_preserved(tmp_path) -> None:  # noq
     assert payload["next_allowed_action"] == "offline_work_or_read_only_reconciliation"
 
 
+def test_daily_preview_cycle_summary_preserves_sma_posture_fields(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_reconciliation.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    cycle_preview_log = _write_jsonl(
+        tmp_path / "daily_preview.jsonl",
+        {
+            "run_id": "m440_spy_sma_history_readiness_preview",
+            "record_type": "paper_lab_daily_preview",
+            "command": "paper-lab-daily-preview",
+            "symbol": "SPY",
+            "cycle_decision": "hold/noop",
+            "cycle_decision_reason": "risk_on_existing_position",
+            "sma_status": "evaluated",
+            "sma_posture": "risk_on",
+            "sma50": "713.5118",
+            "sma200": "681.5535044594288505",
+            "market_data_basis": "adjusted_close",
+            "usable_spy_bar_count": 8395,
+            "ignored_future_spy_bar_count": 0,
+            "spy_position_qty": QUANTITY,
+            "open_order_count": 0,
+            "open_order_symbols": [],
+            "blockers": [],
+            "preview_order": None,
+            "submitted": False,
+            "mutated": False,
+            "broker_action_performed": False,
+        },
+    )
+
+    payload = build_daily_operating_brief(
+        _config(
+            order_reconciliation_log=reconciliation_log,
+            cycle_preview_log=cycle_preview_log,
+        )
+    )
+
+    summary = payload["cycle_preview_summary"]
+    assert summary["decision"] == "hold/noop"
+    assert summary["decision_reason"] == "risk_on_existing_position"
+    assert summary["sma_status"] == "evaluated"
+    assert summary["sma_posture"] == "risk_on"
+    assert summary["sma50"] == "713.5118"
+    assert summary["sma200"] == "681.5535044594288505"
+    assert summary["market_data_basis"] == "adjusted_close"
+    assert summary["usable_spy_bar_count"] == 8395
+    assert summary["spy_position_quantity"] == QUANTITY
+    assert payload["paper_state_summary"]["spy_position_qty"] == QUANTITY
+    assert payload["submit_allowed"] is False
+
+
 def test_ambiguous_order_state_routes_to_read_only_reconciliation(tmp_path) -> None:  # noqa: ANN001
     reconciliation_log = _write_jsonl(
         tmp_path / "ambiguous_reconciliation.jsonl",

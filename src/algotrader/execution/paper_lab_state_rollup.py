@@ -400,6 +400,28 @@ def _build_paper_lab_state_rollup_from_reads(
             checked_config.symbol,
         ),
         "daily_preview_status": daily_preview_status,
+        "source_daily_bars_csv": _first_text(daily_record.get("source_daily_bars_csv")),
+        "source_market_data_csv": _first_text(
+            daily_record.get("source_market_data_csv")
+        ),
+        "market_data_basis": _first_text(daily_record.get("market_data_basis")),
+        "market_data": _json_safe(_mapping(daily_record.get("market_data"))),
+        "bars_source": _first_text(daily_record.get("bars_source")),
+        "bars_input_available": daily_record.get("bars_input_available") is True,
+        "total_spy_bar_count": _first_int(daily_record.get("total_spy_bar_count")),
+        "usable_spy_bar_count": _first_int(daily_record.get("usable_spy_bar_count")),
+        "ignored_future_spy_bar_count": _first_int(
+            daily_record.get("ignored_future_spy_bar_count")
+        ),
+        "sma_status": _first_text(daily_record.get("sma_status")),
+        "sma_posture": _first_text(daily_record.get("sma_posture")),
+        "sma": _json_safe(_mapping(daily_record.get("sma"))),
+        "sma50": _first_text(daily_record.get("sma50")),
+        "sma200": _first_text(daily_record.get("sma200")),
+        "sma_short_window": _first_int(daily_record.get("sma_short_window")),
+        "sma_long_window": _first_int(daily_record.get("sma_long_window")),
+        "sma_required_bars": _first_int(daily_record.get("sma_required_bars")),
+        "latest_close": _first_text(daily_record.get("latest_close")),
         "cycle_decision": cycle_decision,
         "cycle_decision_reason": _first_text(
             daily_record.get("cycle_decision_reason")
@@ -411,6 +433,7 @@ def _build_paper_lab_state_rollup_from_reads(
         "next_allowed_action": next_allowed_action,
         "forbidden_actions": forbidden_actions,
         "next_forbidden_action": forbidden_actions,
+        "preview_order": _json_safe(daily_record.get("preview_order")),
         "preview_order_authorized": False,
         "submitted": False,
         "mutated": False,
@@ -442,6 +465,11 @@ def render_paper_lab_state_rollup_text(payload: Mapping[str, object]) -> str:
             f"spy_position_qty: {payload.get('spy_position_qty', '')}",
             f"open_order_count: {payload.get('open_order_count', '')}",
             f"daily_preview_status: {payload.get('daily_preview_status', '')}",
+            f"sma_status: {payload.get('sma_status', '')}",
+            f"sma_posture: {payload.get('sma_posture', '')}",
+            f"sma50: {payload.get('sma50', '')}",
+            f"sma200: {payload.get('sma200', '')}",
+            f"usable_spy_bar_count: {payload.get('usable_spy_bar_count', '')}",
             f"cycle_decision: {payload.get('cycle_decision', '')}",
             f"blockers: {_joined(_string_list(payload.get('blockers')))}",
             f"next_allowed_action: {payload.get('next_allowed_action', '')}",

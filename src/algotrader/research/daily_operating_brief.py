@@ -459,11 +459,24 @@ def _cycle_preview_summary(artifact: _ArtifactRead) -> dict[str, object] | None:
         "source_parsed": artifact.parsed,
         "run_id": _text(record.get("run_id")),
         "symbol": _text(record.get("symbol")),
-        "decision": _text(record.get("decision")),
-        "decision_reason": _text(record.get("decision_reason")),
+        "decision": _first_text(record.get("decision"), record.get("cycle_decision")),
+        "decision_reason": _first_text(
+            record.get("decision_reason"),
+            record.get("cycle_decision_reason"),
+        ),
         "sma_status": _text(record.get("sma_status")),
         "sma_posture": _text(record.get("sma_posture")),
-        "spy_position_quantity": _text(record.get("spy_position_quantity")),
+        "sma50": _text(record.get("sma50")),
+        "sma200": _text(record.get("sma200")),
+        "market_data_basis": _text(record.get("market_data_basis")),
+        "usable_spy_bar_count": _optional_int(record.get("usable_spy_bar_count")),
+        "ignored_future_spy_bar_count": _optional_int(
+            record.get("ignored_future_spy_bar_count")
+        ),
+        "spy_position_quantity": _first_text(
+            record.get("spy_position_quantity"),
+            record.get("spy_position_qty"),
+        ),
         "open_order_count": _optional_int(record.get("open_order_count")),
         "open_order_symbols": _string_list(record.get("open_order_symbols")),
         "open_order_client_order_ids": _string_list(
@@ -799,6 +812,14 @@ def _text(value: object) -> str:
     if value is None:
         return ""
     return str(value)
+
+
+def _first_text(*values: object) -> str:
+    for value in values:
+        text = _text(value)
+        if text:
+            return text
+    return ""
 
 
 def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:

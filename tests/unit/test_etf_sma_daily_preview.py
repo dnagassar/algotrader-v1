@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import json
 import socket
+from datetime import date, timedelta
 from pathlib import Path
 
 import algotrader.cli as cli_module
@@ -16,6 +17,7 @@ from algotrader.execution.etf_sma_daily_preview import (
 
 MODULE_PATH = Path("src/algotrader/execution/etf_sma_daily_preview.py")
 FIXED_GENERATED_AT = "2026-06-04T14:00:00+00:00"
+BAR_START_DATE = date(2025, 1, 1)
 CLIENT_ORDER_ID = "paper-order-close-m376_spy_paper_close_submit"
 BROKER_ORDER_ID = "dbb32dd3-58bf-49ea-b9b1-9aa44e85002d"
 QUANTITY = "0.033172072"
@@ -164,6 +166,142 @@ def test_terminal_m376_no_spy_open_order_removes_open_order_blocker(tmp_path) ->
     _assert_never_mutates(payload)
 
 
+def test_daily_preview_with_less_than_200_usable_as_of_bars_is_insufficient_history(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_position_reconciliation.jsonl",
+        _terminal_position_reconciliation_record(),
+    )
+    bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_daily_bars.csv",
+        *(199 * ("10",) + ("1000",)),
+    )
+
+    payload = build_etf_sma_daily_preview(
+        _config(
+            reconciliation_log,
+            generated_at=_generated_at_for_bar_index(198),
+            daily_bars_csv=bars_csv,
+        )
+    )
+
+    assert payload["market_data_basis"] == "adjusted_close"
+    assert payload["bars_input_available"] is True
+    assert payload["total_spy_bar_count"] == 200
+    assert payload["usable_spy_bar_count"] == 199
+    assert payload["ignored_future_spy_bar_count"] == 1
+    assert payload["sma_status"] == "insufficient_history"
+    assert payload["sma_posture"] == "insufficient_history"
+    assert payload["sma50"] == "10"
+    assert payload["sma200"] == ""
+    assert payload["cycle_decision"] == "insufficient_history"
+    assert payload["cycle_decision_reason"] == "sma_insufficient_history"
+    assert payload["preview_order"] is None
+    _assert_never_mutates(payload)
+
+
+def test_daily_preview_with_200_usable_bars_computes_sma_without_lookahead(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_reconciliation.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_daily_bars.csv",
+        *(150 * ("10",) + 50 * ("20",) + ("1000",)),
+    )
+
+    payload = build_etf_sma_daily_preview(
+        _config(
+            reconciliation_log,
+            generated_at=_generated_at_for_bar_index(199),
+            daily_bars_csv=bars_csv,
+        )
+    )
+
+    assert payload["total_spy_bar_count"] == 201
+    assert payload["usable_spy_bar_count"] == 200
+    assert payload["ignored_future_spy_bar_count"] == 1
+    assert payload["latest_close"] == "20"
+    assert payload["sma50"] == "20"
+    assert payload["sma200"] == "12.5"
+    assert payload["sma_status"] == "evaluated"
+    assert payload["sma_posture"] == "risk_on"
+    assert payload["cycle_decision"] == "buy_preview"
+    assert payload["cycle_decision_reason"] == "risk_on_no_position"
+    assert payload["preview_order"]["side"] == "buy"
+    assert payload["preview_order"]["preview_only"] is True
+    _assert_never_mutates(payload)
+
+
+def test_daily_preview_risk_on_spy_position_produces_hold_noop(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_position_reconciliation.jsonl",
+        _terminal_position_reconciliation_record(),
+    )
+    bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_daily_bars.csv",
+        *(150 * ("10",) + 50 * ("20",)),
+    )
+
+    payload = build_etf_sma_daily_preview(
+        _config(
+            reconciliation_log,
+            generated_at=_generated_at_for_bar_index(199),
+            daily_bars_csv=bars_csv,
+        )
+    )
+
+    assert payload["sma_posture"] == "risk_on"
+    assert payload["cycle_decision"] == "hold/noop"
+    assert payload["cycle_decision_reason"] == "risk_on_existing_position"
+    assert payload["spy_position_qty"] == QUANTITY
+    assert payload["preview_order"] is None
+    _assert_never_mutates(payload)
+
+
+def test_daily_preview_risk_off_spy_position_produces_sell_preview_only(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_position_reconciliation.jsonl",
+        _terminal_position_reconciliation_record(),
+    )
+    bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_daily_bars.csv",
+        *(200 * ("10",)),
+    )
+
+    payload = build_etf_sma_daily_preview(
+        _config(
+            reconciliation_log,
+            generated_at=_generated_at_for_bar_index(199),
+            daily_bars_csv=bars_csv,
+        )
+    )
+
+    assert payload["sma50"] == "10"
+    assert payload["sma200"] == "10"
+    assert payload["sma_posture"] == "risk_off"
+    assert payload["cycle_decision"] == "sell_preview"
+    assert payload["cycle_decision_reason"] == "risk_off_existing_position"
+    assert payload["preview_order"] == {
+        "asset_class": "equity",
+        "symbol": "SPY",
+        "side": "sell",
+        "order_type": "market",
+        "time_in_force": "day",
+        "quantity": QUANTITY,
+        "preview_only": True,
+    }
+    assert payload["preview_order_authorized"] is False
+    _assert_never_mutates(payload)
+
+
 def test_cli_dispatch_runs_before_runtime_config_loading(
     monkeypatch,
     tmp_path,
@@ -172,6 +310,10 @@ def test_cli_dispatch_runs_before_runtime_config_loading(
     reconciliation_log = _write_jsonl(
         tmp_path / "m383_reconciliation.jsonl",
         _m383_nonterminal_reconciliation_record(),
+    )
+    bars_csv = _write_daily_bars_csv(
+        tmp_path / "spy_daily_bars.csv",
+        *(150 * ("10",) + 50 * ("20",)),
     )
     run_log = tmp_path / "daily_preview.jsonl"
 
@@ -200,8 +342,10 @@ def test_cli_dispatch_runs_before_runtime_config_loading(
             str(run_log),
             "--order-reconciliation-log",
             str(reconciliation_log),
+            "--daily-bars-csv",
+            str(bars_csv),
             "--generated-at",
-            FIXED_GENERATED_AT,
+            _generated_at_for_bar_index(199),
             "--format",
             "json",
         )
@@ -213,6 +357,8 @@ def test_cli_dispatch_runs_before_runtime_config_loading(
     assert captured.err == ""
     assert json.loads(captured.out) == records[0]
     assert records[0]["run_id"] == "unit_daily_preview"
+    assert records[0]["source_daily_bars_csv"] == str(bars_csv)
+    assert records[0]["sma_status"] == "evaluated"
 
 
 def test_daily_preview_command_has_no_stale_run_log_defaults() -> None:
@@ -226,6 +372,8 @@ def test_daily_preview_command_has_no_stale_run_log_defaults() -> None:
     assert defaults["run_id"] is None
     assert defaults["run_log"] is None
     assert defaults["order_reconciliation_log"] is None
+    assert defaults["daily_bars_csv"] is None
+    assert defaults["market_data_csv"] is None
     assert "runs/paper_lab/" not in str(defaults["run_log"]).lower()
     assert "m38" not in str(defaults["order_reconciliation_log"]).lower()
 
@@ -351,6 +499,35 @@ def _terminal_reconciliation_record() -> dict[str, object]:
         }
     )
     return record
+
+
+def _terminal_position_reconciliation_record() -> dict[str, object]:
+    record = _terminal_reconciliation_record()
+    record["spy_position_qty"] = QUANTITY
+    return record
+
+
+def _write_daily_bars_csv(path: Path, *adjusted_closes: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["symbol,date,open,high,low,close,adjusted_close,volume\n"]
+    for index, adjusted_close in enumerate(adjusted_closes):
+        bar_date = BAR_START_DATE + timedelta(days=index)
+        lines.append(
+            "SPY,"
+            f"{bar_date.isoformat()},"
+            f"{adjusted_close},"
+            f"{adjusted_close},"
+            f"{adjusted_close},"
+            f"{adjusted_close},"
+            f"{adjusted_close},"
+            "100\n"
+        )
+    path.write_text("".join(lines), encoding="utf-8")
+    return path
+
+
+def _generated_at_for_bar_index(index: int) -> str:
+    return f"{(BAR_START_DATE + timedelta(days=index)).isoformat()}T12:00:00+00:00"
 
 
 def _write_jsonl(path: Path, *records: dict[str, object]) -> Path:

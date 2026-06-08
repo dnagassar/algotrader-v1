@@ -162,6 +162,78 @@ def test_terminal_m376_without_open_order_does_not_invent_submit_permission(
     _assert_safety_booleans_false(payload)
 
 
+def test_rollup_preserves_repaired_daily_preview_sma_posture_fields(
+    tmp_path,
+) -> None:  # noqa: ANN001
+    reconciliation_log = _write_jsonl(
+        tmp_path / "terminal_reconciliation.jsonl",
+        _terminal_reconciliation_record(),
+    )
+    daily_record = _terminal_daily_preview_record()
+    daily_record.update(
+        {
+            "source_daily_bars_csv": "runs\\operator_input\\spy.csv",
+            "market_data_basis": "adjusted_close",
+            "market_data": {
+                "source": "runs\\operator_input\\spy.csv",
+                "input_available": True,
+                "total_bar_count": 201,
+                "usable_bar_count": 200,
+                "ignored_future_bar_count": 1,
+            },
+            "bars_source": "runs\\operator_input\\spy.csv",
+            "bars_input_available": True,
+            "total_spy_bar_count": 201,
+            "usable_spy_bar_count": 200,
+            "ignored_future_spy_bar_count": 1,
+            "sma_status": "evaluated",
+            "sma_posture": "risk_on",
+            "sma": {
+                "fast_sma": "20",
+                "slow_sma": "12.5",
+                "usable_bar_count": 200,
+                "ignored_future_bar_count": 1,
+            },
+            "sma50": "20",
+            "sma200": "12.5",
+            "sma_short_window": 50,
+            "sma_long_window": 200,
+            "sma_required_bars": 200,
+            "latest_close": "20",
+            "cycle_decision": "buy_preview",
+            "cycle_decision_reason": "risk_on_no_position",
+            "preview_order": {
+                "asset_class": "equity",
+                "symbol": "SPY",
+                "side": "buy",
+                "order_type": "market",
+                "time_in_force": "day",
+                "notional": "25",
+                "preview_only": True,
+            },
+        }
+    )
+    daily_preview_log = _write_jsonl(tmp_path / "daily_preview.jsonl", daily_record)
+
+    payload = build_paper_lab_state_rollup(
+        _config(reconciliation_log, daily_preview_log)
+    )
+
+    assert payload["market_data_basis"] == "adjusted_close"
+    assert payload["bars_input_available"] is True
+    assert payload["total_spy_bar_count"] == 201
+    assert payload["usable_spy_bar_count"] == 200
+    assert payload["ignored_future_spy_bar_count"] == 1
+    assert payload["sma_status"] == "evaluated"
+    assert payload["sma_posture"] == "risk_on"
+    assert payload["sma50"] == "20"
+    assert payload["sma200"] == "12.5"
+    assert payload["cycle_decision"] == "buy_preview"
+    assert payload["preview_order"]["side"] == "buy"
+    assert payload["preview_order_authorized"] is False
+    _assert_safety_booleans_false(payload)
+
+
 def test_conflicting_m376_terminal_evidence_fails_closed(tmp_path) -> None:  # noqa: ANN001
     reconciliation_log = _write_jsonl(
         tmp_path / "terminal_reconciliation.jsonl",

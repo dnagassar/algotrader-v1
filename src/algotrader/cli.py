@@ -1513,6 +1513,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit local M376 order reconciliation JSONL input path.",
     )
     paper_lab_daily_preview_parser.add_argument(
+        "--daily-bars-csv",
+        default=None,
+        help=(
+            "Optional strict local SPY daily bars CSV. When supplied, "
+            "adjusted_close is used for SMA50/SMA200 posture evaluation."
+        ),
+    )
+    paper_lab_daily_preview_parser.add_argument(
+        "--market-data-csv",
+        "--bars-csv",
+        dest="market_data_csv",
+        default=None,
+        help="Optional generic local daily bars CSV using close for SMA evaluation.",
+    )
+    paper_lab_daily_preview_parser.add_argument(
         "--generated-at",
         default=None,
         help="Optional timezone-aware ISO-8601 generated-at timestamp.",
@@ -3866,6 +3881,8 @@ def _run_paper_lab_daily_preview(args: argparse.Namespace) -> int:
                 symbol=args.symbol,
                 generated_at=args.generated_at,
                 order_reconciliation_log=args.order_reconciliation_log,
+                daily_bars_csv=args.daily_bars_csv,
+                market_data_csv=args.market_data_csv,
             )
         )
         write_etf_sma_daily_preview_jsonl(payload, args.run_log)

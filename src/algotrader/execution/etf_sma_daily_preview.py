@@ -9,20 +9,23 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, time
 from decimal import Decimal
 import json
 from pathlib import Path
 from typing import Any
 
+from algotrader.core.types import Bar
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
+from algotrader.research.local_daily_bars import load_local_daily_bars_csv
 
 from .etf_sma_cycle import (
     EtfSmaCycleBrokerState,
     EtfSmaCycleConfig,
     build_etf_sma_cycle,
     build_etf_sma_cycle_from_offline_inputs,
+    load_etf_sma_cycle_reconciliation_state,
 )
 
 __all__ = [
@@ -90,6 +93,7 @@ class EtfSmaDailyPreviewConfig:
     order_reconciliation_log: Path | str
     symbol: str = _DEFAULT_SYMBOL
     generated_at: datetime | str | None = None
+    daily_bars_csv: Path | str | None = None
     market_data_csv: Path | str | None = None
 
     def __post_init__(self) -> None:
@@ -107,6 +111,11 @@ class EtfSmaDailyPreviewConfig:
                 self.order_reconciliation_log,
                 "order_reconciliation_log",
             ),
+        )
+        object.__setattr__(
+            self,
+            "daily_bars_csv",
+            _optional_path(self.daily_bars_csv, "daily_bars_csv"),
         )
         object.__setattr__(
             self,
@@ -209,6 +218,8 @@ def build_etf_sma_daily_preview(
     )
     cycle_payload = _build_cycle_payload(checked_config, artifact)
     latest_record = artifact.latest_record or {}
+    sma_payload = _mapping(cycle_payload.get("sma"))
+    market_data_payload = _mapping(cycle_payload.get("market_data"))
     cycle_blockers = list(_string_list(cycle_payload.get("blockers")))
     blockers = _daily_preview_blockers(
         artifact,
@@ -238,6 +249,46 @@ def build_etf_sma_daily_preview(
             checked_config.order_reconciliation_log
         ),
         "source_order_reconciliation": artifact.summary(),
+        "source_daily_bars_csv": _path_text(checked_config.daily_bars_csv),
+        "source_market_data_csv": _path_text(checked_config.market_data_csv),
+        "market_data_basis": _market_data_basis(checked_config),
+        "market_data": _json_safe(market_data_payload),
+        "bars_source": _text(cycle_payload.get("bars_source")),
+        "bars_input_available": cycle_payload.get("bars_input_available") is True,
+        "total_spy_bar_count": _optional_int(
+            market_data_payload.get("total_bar_count")
+        ),
+        "usable_spy_bar_count": _optional_int(
+            market_data_payload.get("usable_bar_count")
+        ),
+        "ignored_future_spy_bar_count": _optional_int(
+            market_data_payload.get("ignored_future_bar_count")
+        ),
+        "sma_status": _text(cycle_payload.get("sma_status")),
+        "sma_posture": _text(cycle_payload.get("sma_posture")),
+        "sma": _json_safe(sma_payload),
+        "sma50": _first_text(
+            sma_payload.get("fast_sma"),
+            sma_payload.get("short_sma"),
+        ),
+        "sma200": _first_text(
+            sma_payload.get("slow_sma"),
+            sma_payload.get("long_sma"),
+        ),
+        "sma_short_window": _optional_int(
+            _first_present(
+                sma_payload.get("fast_window"),
+                sma_payload.get("short_window"),
+            )
+        ),
+        "sma_long_window": _optional_int(
+            _first_present(
+                sma_payload.get("slow_window"),
+                sma_payload.get("long_window"),
+            )
+        ),
+        "sma_required_bars": _optional_int(sma_payload.get("required_bars")),
+        "latest_close": _first_text(sma_payload.get("latest_close")),
         "m376_order_summary": m376_order,
         "m376_client_order_id": m376_order["client_order_id"],
         "m376_broker_order_id": m376_order["broker_order_id"],
@@ -247,6 +298,13 @@ def build_etf_sma_daily_preview(
             latest_record,
             cycle_payload,
             checked_config.symbol,
+        ),
+        "open_order_count": _optional_int(
+            _first_present(
+                cycle_payload.get("open_order_count"),
+                latest_record.get("open_order_count"),
+                m376_order.get("open_order_count"),
+            )
         ),
         "open_spy_order_present": _open_spy_order_present(
             latest_record,
@@ -271,6 +329,7 @@ def build_etf_sma_daily_preview(
         "cycle_next_allowed_action": _text(
             cycle_payload.get("next_allowed_action")
         ),
+        "preview_order": _json_safe(cycle_payload.get("preview_order")),
         "next_allowed_action": _next_allowed_action(blockers, cycle_payload),
         "next_forbidden_action": forbidden_actions,
         "preview_order_authorized": False,
@@ -300,6 +359,11 @@ def render_etf_sma_daily_preview_text(payload: Mapping[str, object]) -> str:
             f"generated_at: {payload.get('generated_at', '')}",
             f"symbol: {payload.get('symbol', '')}",
             f"daily_preview_status: {payload.get('daily_preview_status', '')}",
+            f"sma_status: {payload.get('sma_status', '')}",
+            f"sma_posture: {payload.get('sma_posture', '')}",
+            f"sma50: {payload.get('sma50', '')}",
+            f"sma200: {payload.get('sma200', '')}",
+            f"usable_spy_bar_count: {payload.get('usable_spy_bar_count', '')}",
             f"cycle_decision: {payload.get('cycle_decision', '')}",
             f"blockers: {_joined(_string_list(payload.get('blockers')))}",
             f"next_allowed_action: {payload.get('next_allowed_action', '')}",
@@ -346,6 +410,8 @@ def _build_cycle_payload(
 ) -> dict[str, object]:
     if artifact.valid:
         try:
+            if config.daily_bars_csv is not None:
+                return _build_cycle_payload_from_daily_bars(config)
             return build_etf_sma_cycle_from_offline_inputs(
                 EtfSmaCycleConfig(
                     run_id=config.run_id,
@@ -376,6 +442,48 @@ def _build_cycle_payload(
             bars_source=str(config.market_data_csv or ""),
             bars_input_available=False,
         ),
+    )
+
+
+def _build_cycle_payload_from_daily_bars(
+    config: EtfSmaDailyPreviewConfig,
+) -> dict[str, object]:
+    if config.daily_bars_csv is None:
+        raise ValidationError("daily_bars_csv is required.")
+    bars_result = load_local_daily_bars_csv(
+        config.daily_bars_csv,
+        symbol=config.symbol,
+        as_of=config.generated_at,
+    )
+    bars = tuple(_adjusted_close_bar(bar) for bar in bars_result.bars)
+    broker_state = load_etf_sma_cycle_reconciliation_state(
+        config.order_reconciliation_log,
+        symbol=config.symbol,
+    )
+    return build_etf_sma_cycle(
+        bars,
+        broker_state,
+        EtfSmaCycleConfig(
+            run_id=config.run_id,
+            symbol=config.symbol,
+            milestone=_MILESTONE,
+            as_of=config.generated_at,
+            bars_source=str(config.daily_bars_csv),
+            bars_input_available=True,
+        ),
+    )
+
+
+def _adjusted_close_bar(value: object) -> Bar:
+    adjusted_close = value.adjusted_close
+    return Bar(
+        symbol=value.symbol,
+        timestamp=datetime.combine(value.date, time.min, tzinfo=UTC),
+        open=adjusted_close,
+        high=adjusted_close,
+        low=adjusted_close,
+        close=adjusted_close,
+        volume=Decimal(value.volume),
     )
 
 
@@ -735,6 +843,13 @@ def _optional_int(value: object) -> int | None:
     return None
 
 
+def _first_present(*values: object) -> object:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
 def _optional_decimal(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -753,6 +868,10 @@ def _string_list(value: object) -> tuple[str, ...]:
     return tuple(str(item) for item in value if str(item))
 
 
+def _mapping(value: object) -> dict[str, object]:
+    return dict(value) if isinstance(value, Mapping) else {}
+
+
 def _text(value: object) -> str:
     if value is None:
         return ""
@@ -764,6 +883,20 @@ def _first_text(*values: object) -> str:
         text = _text(value)
         if text:
             return text
+    return ""
+
+
+def _path_text(value: object) -> str:
+    if value in (None, ""):
+        return ""
+    return str(value)
+
+
+def _market_data_basis(config: EtfSmaDailyPreviewConfig) -> str:
+    if config.daily_bars_csv is not None:
+        return "adjusted_close"
+    if config.market_data_csv is not None:
+        return "close"
     return ""
 
 
