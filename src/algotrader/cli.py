@@ -1075,6 +1075,48 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Authorized adjusted-baseline metrics output format.",
     )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser = (
+        subparsers.add_parser(
+            "etf-sma-authorized-adjusted-baseline-backtest-snapshot",
+            help=(
+                "Materialize an offline ETF/SMA adjusted-baseline backtest "
+                "snapshot only after the M427 authorized metrics pass."
+            ),
+        )
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="ETF symbol scope. Default: SPY.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser.add_argument(
+        "--run-id",
+        default="m428_authorized_adjusted_baseline_backtest_snapshot",
+        help="Run/session id to include in the M428 backtest snapshot artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser.add_argument(
+        "--run-log",
+        default=(
+            "runs/paper_lab/"
+            "m428_authorized_adjusted_baseline_backtest_snapshot.jsonl"
+        ),
+        help="Write exactly one deterministic M428 backtest snapshot JSONL record.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser.add_argument(
+        "--metrics-path",
+        default=(
+            "runs/paper_lab/"
+            "m427_authorized_adjusted_baseline_metrics_materialization.jsonl"
+        ),
+        help="Explicit M427 authorized adjusted-baseline metrics JSONL artifact.",
+    )
+    etf_sma_authorized_adjusted_baseline_backtest_snapshot_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Authorized adjusted-baseline backtest snapshot output format.",
+    )
     etf_sma_adjusted_bars_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-bars-intake",
         help="Validate and canonicalize operator-supplied SPY adjusted bars.",
@@ -2063,6 +2105,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_authorized_comparison_summary(args)
     if command == "etf-sma-authorized-adjusted-baseline-metrics":
         return _run_etf_sma_authorized_adjusted_baseline_metrics(args)
+    if command == "etf-sma-authorized-adjusted-baseline-backtest-snapshot":
+        return _run_etf_sma_authorized_adjusted_baseline_backtest_snapshot(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
     if command == "daily-operating-brief":
@@ -2950,6 +2994,49 @@ def _run_etf_sma_authorized_adjusted_baseline_metrics(
         print(render_etf_sma_authorized_adjusted_baseline_metrics_json(payload))
     else:
         print(render_etf_sma_authorized_adjusted_baseline_metrics_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_authorized_adjusted_baseline_backtest_snapshot(
+    args: argparse.Namespace,
+) -> int:
+    from .research.etf_sma_authorized_adjusted_baseline_backtest_snapshot import (
+        EtfSmaAuthorizedAdjustedBaselineBacktestSnapshotConfig,
+        build_etf_sma_authorized_adjusted_baseline_backtest_snapshot,
+        render_etf_sma_authorized_adjusted_baseline_backtest_snapshot_json,
+        render_etf_sma_authorized_adjusted_baseline_backtest_snapshot_text,
+        write_etf_sma_authorized_adjusted_baseline_backtest_snapshot_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_authorized_adjusted_baseline_backtest_snapshot(
+            EtfSmaAuthorizedAdjustedBaselineBacktestSnapshotConfig(
+                run_id=args.run_id,
+                symbol=args.symbol,
+                metrics_path=args.metrics_path,
+            )
+        )
+        write_etf_sma_authorized_adjusted_baseline_backtest_snapshot_jsonl(
+            payload,
+            args.run_log,
+        )
+    except (OSError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(
+            render_etf_sma_authorized_adjusted_baseline_backtest_snapshot_json(
+                payload
+            )
+        )
+    else:
+        print(
+            render_etf_sma_authorized_adjusted_baseline_backtest_snapshot_text(
+                payload
+            )
+        )
 
     return 0
 
