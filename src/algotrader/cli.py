@@ -2095,6 +2095,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Read the refreshed M446 canonical adjusted daily bars CSV.",
     )
 
+    etf_sma_daily_operator_brief_parser = subparsers.add_parser(
+        "etf-sma-daily-operator-brief",
+        help="Build one offline operator brief from the accepted M450 pipeline manifest.",
+    )
+    etf_sma_daily_operator_brief_parser.add_argument(
+        "--input-jsonl",
+        default="runs/paper_lab/m450_daily_preview_pipeline_manifest.jsonl",
+        help="Path to the accepted M450 daily preview pipeline manifest.",
+    )
+    etf_sma_daily_operator_brief_parser.add_argument(
+        "--output-txt",
+        default="runs/paper_lab/m451_daily_operator_brief.txt",
+        help="Path to write the human-readable daily operator brief.",
+    )
+    etf_sma_daily_operator_brief_parser.add_argument(
+        "--output-jsonl",
+        default="runs/paper_lab/m451_daily_operator_brief_summary.jsonl",
+        help="Path to write the compact JSONL summary.",
+    )
+    etf_sma_daily_operator_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Operator brief output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2786,6 +2813,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_preview_run(args)
     if command == "etf-sma-daily-preview-pipeline":
         return _run_etf_sma_daily_preview_pipeline(args)
+    if command == "etf-sma-daily-operator-brief":
+        return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4673,6 +4702,34 @@ def _run_etf_sma_daily_preview_pipeline(args: argparse.Namespace) -> int:
         return 2
 
     print(render_etf_sma_daily_preview_pipeline_json(payload))
+    return 0
+
+
+def _run_etf_sma_daily_operator_brief(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_operator_brief import (
+        EtfSmaDailyOperatorBriefConfig,
+        run_etf_sma_daily_operator_brief,
+        render_etf_sma_daily_operator_brief_json,
+        render_etf_sma_daily_operator_brief_text,
+    )
+
+    try:
+        payload = run_etf_sma_daily_operator_brief(
+            EtfSmaDailyOperatorBriefConfig(
+                input_jsonl=args.input_jsonl,
+                output_txt=args.output_txt,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_daily_operator_brief_json(payload))
+    else:
+        print(render_etf_sma_daily_operator_brief_text(payload))
     return 0
 
 
