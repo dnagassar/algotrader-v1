@@ -15024,6 +15024,24 @@ Safe next tasks include:
   M443 does not authorize paper action, import broker SDKs, load credentials,
   access the network, submit, cancel, replace, close, delete, retry, liquidate,
   or touch live trading paths.
+- M444 adds `etf-sma-offline-daily-cycle-run`, an offline daily convenience
+  runner for the local M441 -> M442 -> M443 chain. It requires an
+  operator-supplied `--validated-at`, explicit local daily-bars and child output
+  paths, runs the existing in-memory builders without subprocesses, verifies
+  each child JSONL artifact exists with exactly one record, records child
+  SHA256 values, preserves the hold/noop cycle decision through the chain, and
+  writes exactly one M444 manifest JSONL record. The accepted local chain yields
+  `daily_chain_state=accepted_observe_hold_noop`,
+  `recommended_operator_action=observe_hold_noop`,
+  `paper_action_authorized=false`, `submit_authorized=false`,
+  `paper_submit_authorized=false`, `submitted=false`, `mutated=false`,
+  `broker_action_performed=false`, `live_authorized=false`,
+  `network_access_attempted=false`, `credential_access_attempted=false`, and
+  `profit_claim=none`. Any missing, multi-record, blocked, mismatched, or
+  unsafe child evidence populates `chain_blockers` and blocks the manifest; M444
+  does not authorize paper action, import broker SDKs, load credentials, access
+  the network, submit, cancel, replace, close, delete, retry, liquidate, or
+  touch live trading paths.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish

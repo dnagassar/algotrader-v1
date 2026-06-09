@@ -1822,6 +1822,60 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Daily wrapper output format.",
     )
+    etf_sma_offline_daily_cycle_run_parser = subparsers.add_parser(
+        "etf-sma-offline-daily-cycle-run",
+        help="Run the offline M441/M442/M443 ETF/SMA daily cycle chain.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--run-id",
+        default="m444_offline_daily_cycle_run",
+        help="Run/session id to include in the M444 manifest.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--validated-at",
+        required=True,
+        help="Operator-supplied timezone-aware ISO-8601 daily chain clock.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--daily-bars-csv",
+        required=True,
+        help="Explicit local adjusted SPY daily-bars CSV for the M441 packet.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--order-reconciliation-log",
+        default=(
+            "runs/paper_lab/"
+            "m439_m436_spy_buy_fresh_read_only_reconciliation.jsonl"
+        ),
+        help="Explicit local order reconciliation JSONL input for M441.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--readiness-output-jsonl",
+        required=True,
+        help="Write the M441 unified cycle readiness packet JSONL to PATH.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--validation-output-jsonl",
+        required=True,
+        help="Write the M442 validation packet JSONL to PATH.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--summary-output-jsonl",
+        required=True,
+        help="Write the M443 daily summary JSONL to PATH.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--manifest-output-jsonl",
+        required=True,
+        help="Write the M444 chain manifest JSONL to PATH.",
+    )
+    etf_sma_offline_daily_cycle_run_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M444 manifest output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2499,6 +2553,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_cycle_packet_validator(args)
     if command == "etf-sma-daily-validated-cycle-summary":
         return _run_etf_sma_daily_validated_cycle_summary(args)
+    if command == "etf-sma-offline-daily-cycle-run":
+        return _run_etf_sma_offline_daily_cycle_run(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4173,6 +4229,39 @@ def _run_etf_sma_daily_validated_cycle_summary(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_daily_validated_cycle_summary_text(payload))
     return 0 if not payload["daily_wrapper_blockers"] else 1
+
+
+def _run_etf_sma_offline_daily_cycle_run(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_offline_daily_cycle_run import (
+        EtfSmaOfflineDailyCycleRunConfig,
+        render_etf_sma_offline_daily_cycle_run_json,
+        render_etf_sma_offline_daily_cycle_run_text,
+        run_etf_sma_offline_daily_cycle_run,
+    )
+
+    try:
+        payload = run_etf_sma_offline_daily_cycle_run(
+            EtfSmaOfflineDailyCycleRunConfig(
+                run_id=args.run_id,
+                validated_at=args.validated_at,
+                daily_bars_csv=args.daily_bars_csv,
+                order_reconciliation_log=args.order_reconciliation_log,
+                readiness_output_jsonl=args.readiness_output_jsonl,
+                validation_output_jsonl=args.validation_output_jsonl,
+                summary_output_jsonl=args.summary_output_jsonl,
+                manifest_output_jsonl=args.manifest_output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_offline_daily_cycle_run_json(payload))
+    else:
+        print(render_etf_sma_offline_daily_cycle_run_text(payload))
+    return 0 if not payload["chain_blockers"] else 1
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
