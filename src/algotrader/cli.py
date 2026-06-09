@@ -2154,6 +2154,58 @@ def build_parser() -> argparse.ArgumentParser:
         help="Acceptance gate output format.",
     )
 
+    etf_sma_daily_run_index_parser = subparsers.add_parser(
+        "etf-sma-daily-run-index",
+        help="Build one offline run index verifying daily ETFs/SMA cycle artifacts.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m447-jsonl",
+        default="runs/paper_lab/m447_offline_daily_cycle_m446_rerun_manifest.jsonl",
+        help="Path to the M447 manifest JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m448-jsonl",
+        default="runs/paper_lab/m448_refreshed_current_cycle_rollup.jsonl",
+        help="Path to the M448 rollup JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m449-jsonl",
+        default="runs/paper_lab/m449_preview_only_daily_run_packet.jsonl",
+        help="Path to the M449 daily run packet JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m450-jsonl",
+        default="runs/paper_lab/m450_daily_preview_pipeline_manifest.jsonl",
+        help="Path to the M450 pipeline manifest JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m451-summary-jsonl",
+        default="runs/paper_lab/m451_daily_operator_brief_summary.jsonl",
+        help="Path to the M451 operator brief summary JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m451-txt",
+        default="runs/paper_lab/m451_daily_operator_brief.txt",
+        help="Path to the M451 operator brief text file.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--m452-jsonl",
+        default="runs/paper_lab/m452_daily_acceptance_gate_packet.jsonl",
+        help="Path to the M452 acceptance gate packet JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--output-jsonl",
+        default="runs/paper_lab/m453_daily_run_index.jsonl",
+        help="Path to write the M453 daily run index JSONL.",
+    )
+    etf_sma_daily_run_index_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2849,6 +2901,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
         return _run_etf_sma_daily_acceptance_gate(args)
+    if command == "etf-sma-daily-run-index":
+        return _run_etf_sma_daily_run_index(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4793,6 +4847,39 @@ def _run_etf_sma_daily_acceptance_gate(args: argparse.Namespace) -> int:
         print(render_etf_sma_daily_acceptance_gate_json(payload))
     else:
         print(render_etf_sma_daily_acceptance_gate_text(payload))
+    return 0
+
+
+def _run_etf_sma_daily_run_index(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_run_index import (
+        EtfSmaDailyRunIndexConfig,
+        run_etf_sma_daily_run_index,
+        render_etf_sma_daily_run_index_json,
+        render_etf_sma_daily_run_index_text,
+    )
+
+    try:
+        payload = run_etf_sma_daily_run_index(
+            EtfSmaDailyRunIndexConfig(
+                m447_jsonl=args.m447_jsonl,
+                m448_jsonl=args.m448_jsonl,
+                m449_jsonl=args.m449_jsonl,
+                m450_jsonl=args.m450_jsonl,
+                m451_summary_jsonl=args.m451_summary_jsonl,
+                m451_txt=args.m451_txt,
+                m452_jsonl=args.m452_jsonl,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_daily_run_index_json(payload))
+    else:
+        print(render_etf_sma_daily_run_index_text(payload))
     return 0
 
 
