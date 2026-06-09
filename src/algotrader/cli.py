@@ -2065,6 +2065,36 @@ def build_parser() -> argparse.ArgumentParser:
         default="runs/paper_lab/m449_preview_only_daily_run_packet.jsonl",
         help="Write exactly one deterministic M449 daily run packet JSONL record.",
     )
+    etf_sma_daily_preview_pipeline_parser = subparsers.add_parser(
+        "etf-sma-daily-preview-pipeline",
+        help="Run the offline M450 daily preview pipeline (rerun, rollup, and daily preview).",
+    )
+    etf_sma_daily_preview_pipeline_parser.add_argument(
+        "--m447-output-jsonl",
+        default="runs/paper_lab/m447_offline_daily_cycle_m446_rerun_manifest.jsonl",
+        help="Write/validate M447 rerun manifest record.",
+    )
+    etf_sma_daily_preview_pipeline_parser.add_argument(
+        "--m448-output-jsonl",
+        default="runs/paper_lab/m448_refreshed_current_cycle_rollup.jsonl",
+        help="Write/validate M448 rollup record.",
+    )
+    etf_sma_daily_preview_pipeline_parser.add_argument(
+        "--m449-output-jsonl",
+        default="runs/paper_lab/m449_preview_only_daily_run_packet.jsonl",
+        help="Write/validate M449 daily preview run record.",
+    )
+    etf_sma_daily_preview_pipeline_parser.add_argument(
+        "--output-jsonl",
+        default="runs/paper_lab/m450_daily_preview_pipeline_manifest.jsonl",
+        help="Write exactly one deterministic M450 pipeline manifest JSONL record.",
+    )
+    etf_sma_daily_preview_pipeline_parser.add_argument(
+        "--source-m446-canonical-csv-path",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Read the refreshed M446 canonical adjusted daily bars CSV.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2754,6 +2784,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_refreshed_current_cycle_rollup_m448(args)
     if command == "etf-sma-daily-preview-run":
         return _run_etf_sma_daily_preview_run(args)
+    if command == "etf-sma-daily-preview-pipeline":
+        return _run_etf_sma_daily_preview_pipeline(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4615,6 +4647,32 @@ def _run_etf_sma_daily_preview_run(args: argparse.Namespace) -> int:
         return 2
 
     print(render_etf_sma_daily_preview_run_json(payload))
+    return 0
+
+
+def _run_etf_sma_daily_preview_pipeline(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_preview_pipeline import (
+        EtfSmaDailyPreviewPipelineConfig,
+        render_etf_sma_daily_preview_pipeline_json,
+        run_etf_sma_daily_preview_pipeline,
+    )
+
+    try:
+        payload = run_etf_sma_daily_preview_pipeline(
+            EtfSmaDailyPreviewPipelineConfig(
+                m447_output_jsonl=args.m447_output_jsonl,
+                m448_output_jsonl=args.m448_output_jsonl,
+                m449_output_jsonl=args.m449_output_jsonl,
+                output_jsonl=args.output_jsonl,
+                source_m446_canonical_csv_path=args.source_m446_canonical_csv_path,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(render_etf_sma_daily_preview_pipeline_json(payload))
     return 0
 
 
