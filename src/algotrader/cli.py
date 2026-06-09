@@ -1876,6 +1876,51 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M444 manifest output format.",
     )
+    etf_sma_offline_daily_cycle_freshness_check_parser = subparsers.add_parser(
+        "etf-sma-offline-daily-cycle-freshness-check",
+        help="Check accepted M444 daily cycle freshness against local adjusted bars.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--run-id",
+        default="m445_offline_daily_cycle_freshness_check",
+        help="Run/session id to include in the M445 freshness record.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--source-m444-manifest",
+        "--source-m444-path",
+        dest="source_m444_path",
+        default="runs/paper_lab/m444_offline_daily_cycle_run_manifest.jsonl",
+        help="Read exactly one accepted M444 offline daily cycle manifest.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--daily-bars-csv",
+        dest="source_daily_bars_csv_path",
+        default=(
+            "runs/operator_input/"
+            "spy_daily_tiingo_adjusted_canonical_20260607.csv"
+        ),
+        help="Read the preferred local adjusted SPY daily-bars CSV.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--expected-latest-bar-date",
+        required=True,
+        help="Expected latest local daily bar date in YYYY-MM-DD form.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--output-jsonl",
+        "--run-log",
+        "--output",
+        dest="output_jsonl",
+        default="runs/paper_lab/m445_offline_daily_cycle_freshness_check.jsonl",
+        help="Write exactly one deterministic M445 freshness JSONL record.",
+    )
+    etf_sma_offline_daily_cycle_freshness_check_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M445 freshness output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2555,6 +2600,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_validated_cycle_summary(args)
     if command == "etf-sma-offline-daily-cycle-run":
         return _run_etf_sma_offline_daily_cycle_run(args)
+    if command == "etf-sma-offline-daily-cycle-freshness-check":
+        return _run_etf_sma_offline_daily_cycle_freshness_check(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4262,6 +4309,38 @@ def _run_etf_sma_offline_daily_cycle_run(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_offline_daily_cycle_run_text(payload))
     return 0 if not payload["chain_blockers"] else 1
+
+
+def _run_etf_sma_offline_daily_cycle_freshness_check(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_offline_daily_cycle_freshness_check import (
+        EtfSmaOfflineDailyCycleFreshnessCheckConfig,
+        render_etf_sma_offline_daily_cycle_freshness_check_json,
+        render_etf_sma_offline_daily_cycle_freshness_check_text,
+        run_etf_sma_offline_daily_cycle_freshness_check,
+    )
+
+    try:
+        payload = run_etf_sma_offline_daily_cycle_freshness_check(
+            EtfSmaOfflineDailyCycleFreshnessCheckConfig(
+                run_id=args.run_id,
+                source_m444_path=args.source_m444_path,
+                source_daily_bars_csv_path=args.source_daily_bars_csv_path,
+                output_jsonl=args.output_jsonl,
+                expected_latest_bar_date=args.expected_latest_bar_date,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_offline_daily_cycle_freshness_check_json(payload))
+    else:
+        print(render_etf_sma_offline_daily_cycle_freshness_check_text(payload))
+    return 0 if not payload["freshness_blockers"] else 1
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
