@@ -2011,6 +2011,45 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M447 manifest output format.",
     )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser = subparsers.add_parser(
+        "etf-sma-refreshed-current-cycle-rollup-m448",
+        help="Build the M448 refreshed current-cycle rollup record.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--run-id",
+        default="m448_refreshed_current_cycle_rollup",
+        help="Run/session id to include in the M448 rollup.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--source-m447-manifest-path",
+        default="runs/paper_lab/m447_offline_daily_cycle_m446_rerun_manifest.jsonl",
+        help="Read the M447 offline daily cycle rerun manifest.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--expected-m447-latest-bar-date",
+        default="2026-06-08",
+        help="Expected M447 latest local bar date in YYYY-MM-DD form.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--expected-m446-csv-sha256",
+        default="408fd46ef351442cbcb72067e7c7874d92981554fe560b68e3da98492b77db69",
+        help="Expected SHA256 hash of the M446 canonical CSV.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--output-jsonl",
+        "--run-log",
+        "--output",
+        dest="output_jsonl",
+        default="runs/paper_lab/m448_refreshed_current_cycle_rollup.jsonl",
+        help="Write exactly one deterministic M448 rollup JSONL record.",
+    )
+    etf_sma_refreshed_current_cycle_rollup_m448_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M448 rollup output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2696,6 +2735,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_offline_daily_cycle_freshness_check(args)
     if command == "etf-sma-offline-daily-cycle-rerun-m446":
         return _run_etf_sma_offline_daily_cycle_rerun_m446(args)
+    if command == "etf-sma-refreshed-current-cycle-rollup-m448":
+        return _run_etf_sma_refreshed_current_cycle_rollup_m448(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4503,6 +4544,38 @@ def _run_etf_sma_offline_daily_cycle_rerun_m446(
     else:
         print(render_etf_sma_offline_daily_cycle_rerun_m446_text(payload))
     return 0 if not payload["freshness_blockers"] else 1
+
+
+def _run_etf_sma_refreshed_current_cycle_rollup_m448(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_refreshed_current_cycle_rollup_m448 import (
+        EtfSmaRefreshedCurrentCycleRollupM448Config,
+        render_etf_sma_refreshed_current_cycle_rollup_m448_json,
+        render_etf_sma_refreshed_current_cycle_rollup_m448_text,
+        run_etf_sma_refreshed_current_cycle_rollup_m448,
+    )
+
+    try:
+        payload = run_etf_sma_refreshed_current_cycle_rollup_m448(
+            EtfSmaRefreshedCurrentCycleRollupM448Config(
+                run_id=args.run_id,
+                source_m447_manifest_path=args.source_m447_manifest_path,
+                expected_m447_latest_bar_date=args.expected_m447_latest_bar_date,
+                expected_m446_csv_sha256=args.expected_m446_csv_sha256,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_refreshed_current_cycle_rollup_m448_json(payload))
+    else:
+        print(render_etf_sma_refreshed_current_cycle_rollup_m448_text(payload))
+    return 0
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
