@@ -1957,6 +1957,60 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M445 freshness output format.",
     )
+    etf_sma_offline_daily_cycle_rerun_m446_parser = subparsers.add_parser(
+        "etf-sma-offline-daily-cycle-rerun-m446",
+        help="Rerun the offline daily cycle chain using refreshed M446 CSV.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--run-id",
+        default="m447_offline_daily_cycle_m446_rerun",
+        help="Run/session id to include in the M447 manifest.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--source-m446-manifest-path",
+        default="runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl",
+        help="Read the M446 adjusted SPY bars refresh manifest.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--source-m446-canonical-csv-path",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Read the refreshed M446 canonical adjusted daily bars CSV.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--expected-m446-csv-sha256",
+        default="408fd46ef351442cbcb72067e7c7874d92981554fe560b68e3da98492b77db69",
+        help="Expected SHA256 hash of the M446 canonical CSV.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--order-reconciliation-log",
+        default="runs/paper_lab/m439_m436_spy_buy_fresh_read_only_reconciliation.jsonl",
+        help="Explicit local order reconciliation JSONL input.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--validated-at",
+        default="2026-06-08T20:33:47+00:00",
+        help="Operator-supplied timezone-aware ISO-8601 daily chain clock.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--expected-latest-bar-date",
+        default="2026-06-08",
+        help="Expected latest local daily bar date in YYYY-MM-DD form.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--output-jsonl",
+        "--run-log",
+        "--output",
+        dest="output_jsonl",
+        default="runs/paper_lab/m447_offline_daily_cycle_m446_rerun_manifest.jsonl",
+        help="Write exactly one deterministic M447 manifest JSONL record.",
+    )
+    etf_sma_offline_daily_cycle_rerun_m446_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="M447 manifest output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2640,6 +2694,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_offline_daily_cycle_run(args)
     if command == "etf-sma-offline-daily-cycle-freshness-check":
         return _run_etf_sma_offline_daily_cycle_freshness_check(args)
+    if command == "etf-sma-offline-daily-cycle-rerun-m446":
+        return _run_etf_sma_offline_daily_cycle_rerun_m446(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4411,6 +4467,41 @@ def _run_etf_sma_offline_daily_cycle_freshness_check(
         print(render_etf_sma_offline_daily_cycle_freshness_check_json(payload))
     else:
         print(render_etf_sma_offline_daily_cycle_freshness_check_text(payload))
+    return 0 if not payload["freshness_blockers"] else 1
+
+
+def _run_etf_sma_offline_daily_cycle_rerun_m446(
+    args: argparse.Namespace,
+) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_offline_daily_cycle_rerun_m446 import (
+        EtfSmaOfflineDailyCycleRerunM446Config,
+        render_etf_sma_offline_daily_cycle_rerun_m446_json,
+        render_etf_sma_offline_daily_cycle_rerun_m446_text,
+        run_etf_sma_offline_daily_cycle_rerun_m446,
+    )
+
+    try:
+        payload = run_etf_sma_offline_daily_cycle_rerun_m446(
+            EtfSmaOfflineDailyCycleRerunM446Config(
+                run_id=args.run_id,
+                source_m446_manifest_path=args.source_m446_manifest_path,
+                source_m446_canonical_csv_path=args.source_m446_canonical_csv_path,
+                expected_m446_csv_sha256=args.expected_m446_csv_sha256,
+                order_reconciliation_log=args.order_reconciliation_log,
+                validated_at=args.validated_at,
+                expected_latest_bar_date=args.expected_latest_bar_date,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_offline_daily_cycle_rerun_m446_json(payload))
+    else:
+        print(render_etf_sma_offline_daily_cycle_rerun_m446_text(payload))
     return 0 if not payload["freshness_blockers"] else 1
 
 
