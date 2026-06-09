@@ -2294,6 +2294,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_dashboard_text_export_parser = subparsers.add_parser(
+        "etf-sma-daily-dashboard-text-export",
+        help="Build one offline daily operator dashboard text export and JSONL manifest for Milestone M456.",
+    )
+    etf_sma_daily_dashboard_text_export_parser.add_argument(
+        "--input-dashboard-packet-path",
+        default="runs/paper_lab/m455_daily_operator_dashboard_packet.jsonl",
+        help="Path to the M455 daily operator dashboard packet JSONL.",
+    )
+    etf_sma_daily_dashboard_text_export_parser.add_argument(
+        "--output-text-path",
+        default="runs/paper_lab/m456_daily_dashboard_text_export.txt",
+        help="Path to write the M456 daily dashboard text export.",
+    )
+    etf_sma_daily_dashboard_text_export_parser.add_argument(
+        "--output-manifest-path",
+        default="runs/paper_lab/m456_daily_dashboard_text_export.jsonl",
+        help="Path to write the M456 daily dashboard text export JSONL manifest.",
+    )
+    etf_sma_daily_dashboard_text_export_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2995,6 +3022,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_artifact_manifest_health(args)
     if command == "etf-sma-daily-operator-dashboard-packet":
         return _run_etf_sma_daily_operator_dashboard_packet(args)
+    if command == "etf-sma-daily-dashboard-text-export":
+        return _run_etf_sma_daily_dashboard_text_export(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -5034,6 +5063,40 @@ def _run_etf_sma_daily_operator_dashboard_packet(args: argparse.Namespace) -> in
         print(render_etf_sma_daily_operator_dashboard_packet_json(payload))
     else:
         print(render_etf_sma_daily_operator_dashboard_packet_text(payload))
+    return 0
+
+
+def _run_etf_sma_daily_dashboard_text_export(args: argparse.Namespace) -> int:
+    import json
+    from pathlib import Path
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_dashboard_text_export import (
+        EtfSmaDailyDashboardTextExportConfig,
+        run_etf_sma_daily_dashboard_text_export,
+    )
+
+    try:
+        payload = run_etf_sma_daily_dashboard_text_export(
+            EtfSmaDailyDashboardTextExportConfig(
+                input_dashboard_packet_path=args.input_dashboard_packet_path,
+                output_text_path=args.output_text_path,
+                output_manifest_path=args.output_manifest_path,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        try:
+            content = Path(args.output_text_path).read_text(encoding="utf-8")
+            print(content, end="")
+        except Exception as exc:
+            print(f"Error reading output text file: {exc}", file=sys.stderr)
+            return 1
+
     return 0
 
 
