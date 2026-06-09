@@ -2050,6 +2050,21 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M448 rollup output format.",
     )
+    etf_sma_daily_preview_run_parser = subparsers.add_parser(
+        "etf-sma-daily-preview-run",
+        help="Build the M449 preview-only daily operating brief/schedule contract artifact.",
+    )
+    etf_sma_daily_preview_run_parser.add_argument(
+        "--source-rollup-jsonl",
+        default="runs/paper_lab/m448_refreshed_current_cycle_rollup.jsonl",
+        help="Read the M448 refreshed current-cycle rollup JSONL record.",
+    )
+    etf_sma_daily_preview_run_parser.add_argument(
+        "--output-jsonl",
+        dest="output_jsonl",
+        default="runs/paper_lab/m449_preview_only_daily_run_packet.jsonl",
+        help="Write exactly one deterministic M449 daily run packet JSONL record.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2737,6 +2752,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_offline_daily_cycle_rerun_m446(args)
     if command == "etf-sma-refreshed-current-cycle-rollup-m448":
         return _run_etf_sma_refreshed_current_cycle_rollup_m448(args)
+    if command == "etf-sma-daily-preview-run":
+        return _run_etf_sma_daily_preview_run(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4575,6 +4592,29 @@ def _run_etf_sma_refreshed_current_cycle_rollup_m448(
         print(render_etf_sma_refreshed_current_cycle_rollup_m448_json(payload))
     else:
         print(render_etf_sma_refreshed_current_cycle_rollup_m448_text(payload))
+    return 0
+
+
+def _run_etf_sma_daily_preview_run(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_preview_run import (
+        EtfSmaDailyPreviewRunConfig,
+        render_etf_sma_daily_preview_run_json,
+        run_etf_sma_daily_preview_run,
+    )
+
+    try:
+        payload = run_etf_sma_daily_preview_run(
+            EtfSmaDailyPreviewRunConfig(
+                source_rollup_jsonl=args.source_rollup_jsonl,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(render_etf_sma_daily_preview_run_json(payload))
     return 0
 
 
