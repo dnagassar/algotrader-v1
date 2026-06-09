@@ -2122,6 +2122,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Operator brief output format.",
     )
 
+    etf_sma_daily_acceptance_gate_parser = subparsers.add_parser(
+        "etf-sma-daily-acceptance-gate",
+        help="Validate consistency of daily preview pipeline manifest and daily operator brief.",
+    )
+    etf_sma_daily_acceptance_gate_parser.add_argument(
+        "--pipeline-jsonl",
+        default="runs/paper_lab/m450_daily_preview_pipeline_manifest.jsonl",
+        help="Path to the accepted M450 daily preview pipeline manifest.",
+    )
+    etf_sma_daily_acceptance_gate_parser.add_argument(
+        "--brief-summary-jsonl",
+        default="runs/paper_lab/m451_daily_operator_brief_summary.jsonl",
+        help="Path to the accepted M451 daily operator brief summary JSONL.",
+    )
+    etf_sma_daily_acceptance_gate_parser.add_argument(
+        "--brief-txt",
+        default="runs/paper_lab/m451_daily_operator_brief.txt",
+        help="Path to the accepted M451 daily operator brief text file.",
+    )
+    etf_sma_daily_acceptance_gate_parser.add_argument(
+        "--output-jsonl",
+        default="runs/paper_lab/m452_daily_acceptance_gate_packet.jsonl",
+        help="Path to write the local JSONL acceptance-gate packet.",
+    )
+    etf_sma_daily_acceptance_gate_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Acceptance gate output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2815,6 +2847,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_preview_pipeline(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
+    if command == "etf-sma-daily-acceptance-gate":
+        return _run_etf_sma_daily_acceptance_gate(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4730,6 +4764,35 @@ def _run_etf_sma_daily_operator_brief(args: argparse.Namespace) -> int:
         print(render_etf_sma_daily_operator_brief_json(payload))
     else:
         print(render_etf_sma_daily_operator_brief_text(payload))
+    return 0
+
+
+def _run_etf_sma_daily_acceptance_gate(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_acceptance_gate import (
+        EtfSmaDailyAcceptanceGateConfig,
+        run_etf_sma_daily_acceptance_gate,
+        render_etf_sma_daily_acceptance_gate_json,
+        render_etf_sma_daily_acceptance_gate_text,
+    )
+
+    try:
+        payload = run_etf_sma_daily_acceptance_gate(
+            EtfSmaDailyAcceptanceGateConfig(
+                pipeline_jsonl=args.pipeline_jsonl,
+                brief_summary_jsonl=args.brief_summary_jsonl,
+                brief_txt=args.brief_txt,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_daily_acceptance_gate_json(payload))
+    else:
+        print(render_etf_sma_daily_acceptance_gate_text(payload))
     return 0
 
 
