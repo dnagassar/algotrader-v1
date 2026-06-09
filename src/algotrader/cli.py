@@ -1787,6 +1787,41 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="Validation output format.",
     )
+    etf_sma_daily_validated_cycle_summary_parser = subparsers.add_parser(
+        "etf-sma-daily-validated-cycle-summary",
+        help="Wrap one accepted M442 validation artifact into a daily summary.",
+    )
+    etf_sma_daily_validated_cycle_summary_parser.add_argument(
+        "--run-id",
+        default="m443_daily_validated_cycle_summary",
+        help="Run/session id to include in the daily summary record.",
+    )
+    etf_sma_daily_validated_cycle_summary_parser.add_argument(
+        "--validation-jsonl",
+        dest="validation_jsonl",
+        default="runs/paper_lab/m442_unified_cycle_packet_validation.jsonl",
+        help="Read exactly one M442 validation JSONL record from PATH.",
+    )
+    etf_sma_daily_validated_cycle_summary_parser.add_argument(
+        "--output-jsonl",
+        "--run-log",
+        "--output",
+        dest="output_jsonl",
+        default="runs/paper_lab/m443_daily_validated_cycle_summary.jsonl",
+        help="Write exactly one deterministic daily summary JSONL record to PATH.",
+    )
+    etf_sma_daily_validated_cycle_summary_parser.add_argument(
+        "--validated-at",
+        required=True,
+        help="Operator-supplied timezone-aware ISO-8601 daily wrapper clock.",
+    )
+    etf_sma_daily_validated_cycle_summary_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Daily wrapper output format.",
+    )
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2462,6 +2497,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_cycle_brief(args)
     if command == "etf-sma-cycle-packet-validator":
         return _run_etf_sma_cycle_packet_validator(args)
+    if command == "etf-sma-daily-validated-cycle-summary":
+        return _run_etf_sma_daily_validated_cycle_summary(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4103,6 +4140,39 @@ def _run_etf_sma_cycle_packet_validator(args: argparse.Namespace) -> int:
     else:
         print(render_etf_sma_cycle_packet_validation_text(payload))
     return 0 if not payload["validation_blockers"] else 1
+
+
+def _run_etf_sma_daily_validated_cycle_summary(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_validated_cycle_summary import (
+        EtfSmaDailyValidatedCycleSummaryConfig,
+        build_etf_sma_daily_validated_cycle_summary,
+        render_etf_sma_daily_validated_cycle_summary_json,
+        render_etf_sma_daily_validated_cycle_summary_text,
+        write_etf_sma_daily_validated_cycle_summary_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_daily_validated_cycle_summary(
+            EtfSmaDailyValidatedCycleSummaryConfig(
+                run_id=args.run_id,
+                validation_jsonl_path=args.validation_jsonl,
+                validated_at=args.validated_at,
+            )
+        )
+        write_etf_sma_daily_validated_cycle_summary_jsonl(
+            payload,
+            args.output_jsonl,
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_daily_validated_cycle_summary_json(payload))
+    else:
+        print(render_etf_sma_daily_validated_cycle_summary_text(payload))
+    return 0 if not payload["daily_wrapper_blockers"] else 1
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:

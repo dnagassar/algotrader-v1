@@ -15010,6 +15010,20 @@ Safe next tasks include:
   write one local artifact and do not authorize paper submit, calculate order
   quantity, import broker SDKs, load credentials, access the network, or touch
   broker adapters.
+- M443 adds `etf-sma-daily-validated-cycle-summary`, an offline accepted-only
+  daily wrapper for the M442 validation artifact. It reads exactly one local
+  M442 JSONL validation record, requires
+  `validation_state=accepted_current_cycle_hold_noop`, empty
+  `validation_blockers`, false submit, paper-submit, mutation, broker-action,
+  network, credential, and live-authority flags, and an operator-supplied
+  `--validated-at` timestamp before writing exactly one deterministic daily
+  summary JSONL record. The accepted current cycle yields
+  `daily_wrapper_state=accepted_observe_hold_noop` and
+  `recommended_operator_action=observe_hold_noop`; blocked summaries preserve
+  the source cycle fields but keep all authorization and mutation fields false.
+  M443 does not authorize paper action, import broker SDKs, load credentials,
+  access the network, submit, cancel, replace, close, delete, retry, liquidate,
+  or touch live trading paths.
 - small deterministic screener polish with synthetic inputs only
 - a small config cleanup audit
 - documentation polish
