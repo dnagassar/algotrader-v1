@@ -2265,6 +2265,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_operator_dashboard_packet_parser = subparsers.add_parser(
+        "etf-sma-daily-operator-dashboard-packet",
+        help="Build one offline daily operator dashboard packet for Milestone M455.",
+    )
+    etf_sma_daily_operator_dashboard_packet_parser.add_argument(
+        "--run-index-jsonl",
+        default="runs/paper_lab/m453_daily_run_index.jsonl",
+        help="Path to the M453 daily run index JSONL.",
+    )
+    etf_sma_daily_operator_dashboard_packet_parser.add_argument(
+        "--manifest-health-jsonl",
+        default="runs/paper_lab/m454_daily_artifact_manifest_health.jsonl",
+        help="Path to the M454 daily manifest health JSONL.",
+    )
+    etf_sma_daily_operator_dashboard_packet_parser.add_argument(
+        "--output-jsonl",
+        "--output",
+        dest="output_jsonl",
+        default="runs/paper_lab/m455_daily_operator_dashboard_packet.jsonl",
+        help="Path to write the M455 daily operator dashboard packet JSONL.",
+    )
+    etf_sma_daily_operator_dashboard_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -2964,6 +2993,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_run_index(args)
     if command == "etf-sma-daily-artifact-manifest-health":
         return _run_etf_sma_daily_artifact_manifest_health(args)
+    if command == "etf-sma-daily-operator-dashboard-packet":
+        return _run_etf_sma_daily_operator_dashboard_packet(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -4975,6 +5006,34 @@ def _run_etf_sma_daily_artifact_manifest_health(args: argparse.Namespace) -> int
         print(render_etf_sma_daily_artifact_manifest_health_json(payload))
     else:
         print(render_etf_sma_daily_artifact_manifest_health_text(payload))
+    return 0
+
+
+def _run_etf_sma_daily_operator_dashboard_packet(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_operator_dashboard_packet import (
+        EtfSmaDailyOperatorDashboardPacketConfig,
+        run_etf_sma_daily_operator_dashboard_packet,
+        render_etf_sma_daily_operator_dashboard_packet_json,
+        render_etf_sma_daily_operator_dashboard_packet_text,
+    )
+
+    try:
+        payload = run_etf_sma_daily_operator_dashboard_packet(
+            EtfSmaDailyOperatorDashboardPacketConfig(
+                run_index_jsonl=args.run_index_jsonl,
+                manifest_health_jsonl=args.manifest_health_jsonl,
+                output_jsonl=args.output_jsonl,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_daily_operator_dashboard_packet_json(payload))
+    else:
+        print(render_etf_sma_daily_operator_dashboard_packet_text(payload))
     return 0
 
 
