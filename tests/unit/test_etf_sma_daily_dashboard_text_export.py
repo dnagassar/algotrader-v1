@@ -167,6 +167,8 @@ def test_success_path_text_content(tmp_path) -> None:
 
     text_content = paths["output_text_path"].read_text(encoding="utf-8")
     assert "ETF/SMA Daily Operator Dashboard Export (M456)" in text_content
+    assert "export_state: ready" in text_content
+    assert "source M455 state: ready" in text_content
     assert "dashboard_state: ready" in text_content
     assert "source M453 state: ready" in text_content
     assert "source M454 state: ready" in text_content
@@ -496,6 +498,8 @@ def test_cli_format_text(tmp_path, capsys) -> None:
     assert exit_code == 0
     printed = capsys.readouterr().out
     assert "ETF/SMA Daily Operator Dashboard Export (M456)" in printed
+    assert "export_state: ready" in printed
+    assert "source M455 state: ready" in printed
     assert "dashboard_state: ready" in printed
     assert "operator_warning: preview_only_not_order_authorization" in printed
     assert "submitted=false" in printed

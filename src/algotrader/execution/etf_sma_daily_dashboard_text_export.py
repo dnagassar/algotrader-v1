@@ -219,6 +219,8 @@ def build_etf_sma_daily_dashboard_text_export(
     text_content = (
         "ETF/SMA Daily Operator Dashboard Export (M456)\n"
         "==============================================\n"
+        "export_state: ready\n"
+        "source M455 state: ready\n"
         f"dashboard_state: {m455_rec.get('dashboard_state')}\n"
         f"source M453 state: {m455_rec.get('source_run_index_state')}\n"
         f"source M454 state: {m455_rec.get('source_manifest_health_state')}\n"
