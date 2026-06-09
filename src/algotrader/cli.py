@@ -1442,6 +1442,42 @@ def build_parser() -> argparse.ArgumentParser:
         dest="output_format",
         help="M419 intake output format.",
     )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser = subparsers.add_parser(
+        "etf-sma-adjusted-spy-bars-refresh-intake",
+        help="Validate and canonicalize refreshed operator-supplied SPY adjusted bars.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--expected-latest-bar-date",
+        required=True,
+        help="Expected YYYY-MM-DD date of the latest bar.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--input-csv",
+        default=".data/operator_inputs/spy_tiingo_adjusted_refresh_latest.csv",
+        help="Path to operator-supplied adjusted daily bars CSV.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--canonical-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Path to refreshed canonical CSV to write.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--run-log",
+        default="runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl",
+        help="Write exactly one deterministic M446 JSONL refresh manifest record.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--run-id",
+        default="m446_adjusted_spy_bars_refresh_intake",
+        help="Run/session id to include in the M446 manifest.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format (text or json).",
+    )
     daily_operating_brief_parser = subparsers.add_parser(
         "daily-operating-brief",
         help="Aggregate explicit local paper-lab JSONL artifacts into one brief.",
@@ -2584,6 +2620,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_m434_offline_buy_submit_approval_packet(args)
     if command == "etf-sma-adjusted-bars-intake":
         return _run_etf_sma_adjusted_bars_intake(args)
+    if command == "etf-sma-adjusted-spy-bars-refresh-intake":
+        return _run_etf_sma_adjusted_spy_bars_refresh_intake(args)
     if command == "daily-operating-brief":
         return _run_daily_operating_brief(args)
     if command == "paper-lab-daily-preview":
@@ -3807,6 +3845,39 @@ def _run_etf_sma_adjusted_bars_intake(args: argparse.Namespace) -> int:
         print(render_etf_sma_adjusted_bars_intake_json(payload))
     else:
         print(render_etf_sma_adjusted_bars_intake_text(payload))
+
+    return 0
+
+
+def _run_etf_sma_adjusted_spy_bars_refresh_intake(args: argparse.Namespace) -> int:
+    from .errors import ValidationError
+    from .execution.etf_sma_adjusted_spy_bars_refresh_intake import (
+        EtfSmaAdjustedSpyBarsRefreshIntakeConfig,
+        build_etf_sma_adjusted_spy_bars_refresh_intake,
+        render_etf_sma_adjusted_spy_bars_refresh_intake_json,
+        render_etf_sma_adjusted_spy_bars_refresh_intake_text,
+        write_etf_sma_adjusted_spy_bars_refresh_intake_jsonl,
+    )
+
+    try:
+        payload = build_etf_sma_adjusted_spy_bars_refresh_intake(
+            EtfSmaAdjustedSpyBarsRefreshIntakeConfig(
+                expected_latest_bar_date=args.expected_latest_bar_date,
+                input_csv=args.input_csv,
+                canonical_csv=args.canonical_csv,
+                run_log=args.run_log,
+                run_id=args.run_id,
+            )
+        )
+        write_etf_sma_adjusted_spy_bars_refresh_intake_jsonl(payload, args.run_log)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(render_etf_sma_adjusted_spy_bars_refresh_intake_json(payload))
+    else:
+        print(render_etf_sma_adjusted_spy_bars_refresh_intake_text(payload))
 
     return 0
 
