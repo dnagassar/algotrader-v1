@@ -2353,6 +2353,54 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_preview_archive_index_parser = subparsers.add_parser(
+        "etf-sma-daily-preview-archive-index",
+        help="Build one offline daily preview archive index for Milestone M458.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-run-index-path",
+        default="runs/paper_lab/m453_daily_run_index.jsonl",
+        help="Path to the M453 daily run index JSONL.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-manifest-health-path",
+        default="runs/paper_lab/m454_daily_artifact_manifest_health_check.jsonl",
+        help="Path to the M454 daily manifest health JSONL.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-dashboard-packet-path",
+        default="runs/paper_lab/m455_daily_operator_dashboard_packet.jsonl",
+        help="Path to the M455 daily operator dashboard packet JSONL.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-text-export-manifest-path",
+        default="runs/paper_lab/m456_daily_dashboard_text_export.jsonl",
+        help="Path to the M456 daily dashboard text export JSONL manifest.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-text-export-path",
+        default="runs/paper_lab/m456_daily_dashboard_text_export.txt",
+        help="Path to the M456 daily dashboard text export.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--input-bundle-manifest-path",
+        default="runs/paper_lab/m457_daily_dashboard_bundle_manifest.jsonl",
+        help="Path to the M457 daily dashboard bundle manifest JSONL.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--output-archive-index-path",
+        default="runs/paper_lab/m458_daily_preview_archive_index.jsonl",
+        help="Path to write the M458 daily preview archive index JSONL.",
+    )
+    etf_sma_daily_preview_archive_index_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3058,6 +3106,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_dashboard_text_export(args)
     if command == "etf-sma-daily-dashboard-bundle-manifest":
         return _run_etf_sma_daily_dashboard_bundle_manifest(args)
+    if command == "etf-sma-daily-preview-archive-index":
+        return _run_etf_sma_daily_preview_archive_index(args)
     if command == "etf-sma-data-readiness":
         return _run_etf_sma_data_readiness(args)
     if command == "local-daily-bars-checkpoint":
@@ -5150,6 +5200,39 @@ def _run_etf_sma_daily_dashboard_bundle_manifest(args: argparse.Namespace) -> in
                 input_text_export_manifest_path=args.input_text_export_manifest_path,
                 input_text_export_path=args.input_text_export_path,
                 output_manifest_path=args.output_manifest_path,
+            )
+        )
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if args.output_format == "json":
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(json.dumps(payload, sort_keys=True, indent=2))
+
+    return 0
+
+
+def _run_etf_sma_daily_preview_archive_index(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_preview_archive_index import (
+        EtfSmaDailyPreviewArchiveIndexConfig,
+        run_etf_sma_daily_preview_archive_index,
+    )
+
+    try:
+        payload = run_etf_sma_daily_preview_archive_index(
+            EtfSmaDailyPreviewArchiveIndexConfig(
+                input_run_index_path=args.input_run_index_path,
+                input_manifest_health_path=args.input_manifest_health_path,
+                input_dashboard_packet_path=args.input_dashboard_packet_path,
+                input_text_export_manifest_path=args.input_text_export_manifest_path,
+                input_text_export_path=args.input_text_export_path,
+                input_bundle_manifest_path=args.input_bundle_manifest_path,
+                output_archive_index_path=args.output_archive_index_path,
             )
         )
     except ValidationError as exc:
