@@ -55,6 +55,29 @@ Verify that the output bundle matches the strict schema definition:
 python -m algotrader.cli validate-artifacts --input-root runs/daily/<as_of_date> --output runs/validation/artifact_validation_report.jsonl
 ```
 
+## Canonical Soak Runner Command
+
+To sequentially run the daily loop checks across a historical date range and compile a unified soak rollup:
+
+```powershell
+python -m algotrader.cli etf-sma-daily-soak --start-date YYYY-MM-DD --end-date YYYY-MM-DD --bars-csv <PATH_TO_CSV> --reconciliation-state-path <PATH_TO_JSONL>
+```
+
+### Required Inputs
+
+* `--start-date`: The beginning of the historical range in `YYYY-MM-DD` format.
+* `--end-date`: The end of the historical range in `YYYY-MM-DD` format.
+* `--bars-csv`: The path to the daily price bars CSV file.
+* `--reconciliation-state-path`: The path to the ledger reconciliation JSONL file.
+* `--output-root` (Optional): Directory for runs and rollups (defaults to `runs/daily`).
+
+### Expected Outputs
+
+The soak runner generates:
+1. Individual daily folders `runs/daily/<date>/` for each attempted date in the range.
+2. `runs/daily/soak_rollup.jsonl`: Exactly one compact aggregate summary JSON record.
+3. `runs/daily/soak_rollup.txt`: An ASCII table detailing each day's status, posture, decision, and findings.
+
 ## Safety Declarations
 
 > [!WARNING]
