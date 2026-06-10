@@ -2459,6 +2459,48 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_offline_check_parser = subparsers.add_parser(
+        "etf-sma-daily-offline-check",
+        help="Run offline daily loop smoke check and validate outputs.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Explicit as-of date (YYYY-MM-DD). If omitted, derived from input bars.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--output-root",
+        default="runs/daily",
+        help="Directory under which daily runs are stored.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--bars-csv",
+        required=True,
+        help="Path to the canonical daily bars CSV file.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--reconciliation-state-path",
+        default=None,
+        help="Optional path to the offline reconciliation state JSONL file.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--output-check-jsonl",
+        default=None,
+        help="Path to write the JSONL offline check record. Defaults to <bundle_dir>/offline_check.jsonl.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--output-check-text",
+        default=None,
+        help="Path to write the text status report. Defaults to <bundle_dir>/offline_check.txt.",
+    )
+    etf_sma_daily_offline_check_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3189,6 +3231,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily(args)
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
+    if command == "etf-sma-daily-offline-check":
+        return _run_etf_sma_daily_offline_check(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5401,6 +5445,43 @@ def _run_etf_sma_daily_status(args: argparse.Namespace) -> int:
         else:
             print(json.dumps(payload, sort_keys=True, indent=2))
 
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_offline_check(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_offline_check import (
+        EtfSmaDailyOfflineCheckConfig,
+        run_etf_sma_daily_offline_check,
+    )
+
+    try:
+        payload = run_etf_sma_daily_offline_check(
+            EtfSmaDailyOfflineCheckConfig(
+                as_of_date=args.as_of_date,
+                output_root=args.output_root,
+                bars_csv=args.bars_csv,
+                reconciliation_state_path=args.reconciliation_state_path,
+                output_check_jsonl=args.output_check_jsonl,
+                output_check_text=args.output_check_text,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
+        # Exit with a nonzero code if the offline check status is blocked
+        if payload.get("status") == "blocked":
+            return 1
         return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
