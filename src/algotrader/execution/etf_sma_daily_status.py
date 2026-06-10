@@ -716,11 +716,12 @@ def run_etf_sma_daily_status(config: EtfSmaDailyStatusConfig) -> dict[str, Any]:
 
     # Write concise text status report
     findings_str = "\n".join(f"- [{f['code']}] {f['message']}" for f in findings) if findings else "none"
+    as_of_display = as_of_date if re.match(r"^\d{4}-\d{2}-\d{2}$", as_of_date) else "None"
     text_report = (
         f"ETF/SMA Daily Bundle Status (V3B) - {status.upper()}\n"
         f"============================================\n"
         f"bundle_dir: {_normalize_path(bundle_dir)}\n"
-        f"as_of_date: {as_of_date if re.match(r'^\d{4}-\d{2}-\d{2}$', as_of_date) else 'None'}\n"
+        f"as_of_date: {as_of_display}\n"
         f"required_files_present: {str(required_files_present).lower()}\n"
         f"jsonl_parse_ok: {str(jsonl_parse_ok).lower()}\n"
         f"manifest_hashes_match: {str(manifest_hashes_match).lower()}\n"
