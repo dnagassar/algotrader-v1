@@ -1,0 +1,1 @@
+{"cash": "1000", "currency": "USD", "spy_position_qty": "0", "open_order_count": 1, "open_order_symbols": ["SPY"], "blockers": ["open_order_present"], "positions_observation_available": true, "orders_observation_available": true}
