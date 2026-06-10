@@ -16,6 +16,7 @@ from typing import Any
 from datetime import datetime
 
 from algotrader.errors import ValidationError
+from algotrader.core.daily_bundle_schema import DAILY_BUNDLE_GENERATED_FILES
 from algotrader.execution.etf_sma_cycle import (
     EtfSmaCycleConfig,
     build_etf_sma_cycle_from_offline_inputs,
@@ -128,8 +129,8 @@ def run_etf_sma_daily(config: EtfSmaDailyConfig) -> dict[str, Any]:
         run_id=f"daily_cycle_{as_of_date}",
         symbol="SPY",
         as_of=as_of_date,
-        market_data_csv=bars_path,
-        order_reconciliation_log=Path(config.reconciliation_state_path) if config.reconciliation_state_path else None,
+        market_data_csv=Path(_normalize_path(bars_path)),
+        order_reconciliation_log=Path(_normalize_path(config.reconciliation_state_path)) if config.reconciliation_state_path else None,
     )
     cycle_payload = build_etf_sma_cycle_from_offline_inputs(cycle_conf)
     cycle_file = target_dir / "cycle.jsonl"
@@ -256,7 +257,7 @@ def run_etf_sma_daily(config: EtfSmaDailyConfig) -> dict[str, Any]:
     dashboard_file.write_text(dashboard_content, encoding="utf-8", newline="\n")
 
     # 5. Write bundle_manifest.jsonl
-    bundle_files = ["cycle.jsonl", "brief.jsonl", "brief.txt", "gate.jsonl", "dashboard.txt"]
+    bundle_files = DAILY_BUNDLE_GENERATED_FILES
     file_records = []
     for fname in bundle_files:
         fpath = target_dir / fname

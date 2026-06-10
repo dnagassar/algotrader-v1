@@ -16,6 +16,7 @@ from typing import Any
 
 from algotrader.errors import ValidationError
 from algotrader.core.artifacts import validate_artifact
+from algotrader.core.daily_bundle_schema import DAILY_BUNDLE_REQUIRED_FILES
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,14 +145,7 @@ def run_etf_sma_daily_status(config: EtfSmaDailyStatusConfig) -> dict[str, Any]:
         # If the date format is completely invalid, we can't do index lookup properly, but we can continue.
 
     # Required files in the bundle directory
-    required_files = [
-        "cycle.jsonl",
-        "brief.jsonl",
-        "brief.txt",
-        "gate.jsonl",
-        "dashboard.txt",
-        "bundle_manifest.jsonl"
-    ]
+    required_files = DAILY_BUNDLE_REQUIRED_FILES
     
     for f_name in required_files:
         f_path = bundle_dir / f_name

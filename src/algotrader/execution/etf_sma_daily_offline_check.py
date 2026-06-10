@@ -17,6 +17,7 @@ from typing import Any
 
 from algotrader.errors import ValidationError
 from algotrader.core.artifacts import validate_artifact
+from algotrader.core.daily_bundle_schema import DAILY_BUNDLE_REQUIRED_FILES
 from algotrader.execution.etf_sma_daily import (
     EtfSmaDailyConfig,
     run_etf_sma_daily,
@@ -179,12 +180,7 @@ def run_etf_sma_daily_offline_check(config: EtfSmaDailyOfflineCheckConfig) -> di
             })
 
     # 4. Check validate-artifacts agreement
-    jsonl_files_to_check = [
-        "cycle.jsonl",
-        "brief.jsonl",
-        "gate.jsonl",
-        "bundle_manifest.jsonl"
-    ]
+    jsonl_files_to_check = [f for f in DAILY_BUNDLE_REQUIRED_FILES if f.endswith(".jsonl")]
     if daily_status_created:
         jsonl_files_to_check.append("bundle_status.jsonl")
 
@@ -207,7 +203,7 @@ def run_etf_sma_daily_offline_check(config: EtfSmaDailyOfflineCheckConfig) -> di
             })
 
     # Check that required text files and index file exist
-    expected_txt_files = ["brief.txt", "dashboard.txt"]
+    expected_txt_files = [f for f in DAILY_BUNDLE_REQUIRED_FILES if f.endswith(".txt")]
     if daily_status_created:
         expected_txt_files.append("bundle_status.txt")
 
