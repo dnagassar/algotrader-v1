@@ -2920,6 +2920,39 @@ def build_parser() -> argparse.ArgumentParser:
         include_diagnostic_issues=False,
         include_advisory_sections=False,
     )
+
+    validate_parser = subparsers.add_parser(
+        "validate-artifacts",
+        help="Validate JSONL run artifacts under runs/.",
+    )
+    validate_parser.add_argument(
+        "--input-root",
+        default="runs",
+        help="Root directory scanning for .jsonl artifacts recursively.",
+    )
+    validate_parser.add_argument(
+        "--output",
+        default="runs/validation/artifact_validation_report.jsonl",
+        help="Path to write the deterministic JSONL validation report.",
+    )
+    validate_parser.add_argument(
+        "--root",
+        dest="root_alias",
+        default=None,
+        help="Alias for --input-root.",
+    )
+    validate_parser.add_argument(
+        "--report",
+        dest="report_alias",
+        default=None,
+        help="Alias for --output.",
+    )
+    validate_parser.add_argument(
+        "--required-key",
+        action="append",
+        default=[],
+        help="Check every JSON object record for this key (can be repeated).",
+    )
     return parser
 
 
@@ -3006,6 +3039,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             include_diagnostic_issues=args.include_diagnostic_issues,
             include_advisory_sections=args.include_advisory_sections,
         )
+    if command == "validate-artifacts":
+        return _run_validate_artifacts(args)
     if command == "advisory-operating-brief-package-preview":
         return _run_advisory_operating_brief_package_preview(args.output_format)
     if command == "advisory-operating-brief-mvp-preview":
@@ -11031,6 +11066,41 @@ def _add_paper_lab_run_log_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Run/session id to include in paper-lab observation records.",
     )
+
+
+def _run_validate_artifacts(args: argparse.Namespace) -> int:
+    from pathlib import Path
+    from .core.artifacts import validate_tree, write_validation_report
+
+    input_root_str = args.root_alias if args.root_alias is not None else args.input_root
+    output_str = args.report_alias if args.report_alias is not None else args.output
+    required_keys = args.required_key if args.required_key is not None else []
+
+    input_root = Path(input_root_str)
+    output_path = Path(output_str)
+
+    try:
+        report = validate_tree(input_root, output_path=output_path, required_keys=required_keys)
+        write_validation_report(report, output_path)
+
+        print(f"Artifact Validation Complete:")
+        print(f"  status:                 {report.status}")
+        print(f"  scanned_file_count:     {report.scanned_file_count}")
+        print(f"  scanned_record_count:   {report.scanned_record_count}")
+        print(f"  finding_count:          {report.finding_count}")
+        print(f"  required_keys_checked:  {', '.join(report.required_keys_checked) if report.required_keys_checked else 'none'}")
+
+        if report.status == "passed":
+            return 0
+        else:
+            return 1
+
+    except ValueError as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Unexpected operational error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
