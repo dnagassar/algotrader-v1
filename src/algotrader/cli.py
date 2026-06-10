@@ -2400,6 +2400,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_parser = subparsers.add_parser(
+        "etf-sma-daily",
+        help="Orchestrate offline ETF/SMA daily loop and write stable daily bundle.",
+    )
+    etf_sma_daily_parser.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Explicit as-of date (YYYY-MM-DD). If omitted, derived from input bars.",
+    )
+    etf_sma_daily_parser.add_argument(
+        "--output-root",
+        default="runs/daily",
+        help="Directory under which daily runs are stored.",
+    )
+    etf_sma_daily_parser.add_argument(
+        "--bars-csv",
+        required=True,
+        help="Path to the canonical daily bars CSV file.",
+    )
+    etf_sma_daily_parser.add_argument(
+        "--reconciliation-state-path",
+        default=None,
+        help="Optional path to the offline reconciliation state JSONL file.",
+    )
+    etf_sma_daily_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
 
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
@@ -3127,6 +3158,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_preview_run(args)
     if command == "etf-sma-daily-preview-pipeline":
         return _run_etf_sma_daily_preview_pipeline(args)
+    if command == "etf-sma-daily":
+        return _run_etf_sma_daily(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5280,6 +5313,41 @@ def _run_etf_sma_daily_preview_archive_index(args: argparse.Namespace) -> int:
         print(json.dumps(payload, sort_keys=True, indent=2))
 
     return 0
+
+
+def _run_etf_sma_daily(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily import (
+        EtfSmaDailyConfig,
+        run_etf_sma_daily,
+    )
+
+    try:
+        payload = run_etf_sma_daily(
+            EtfSmaDailyConfig(
+                as_of_date=args.as_of_date,
+                output_root=args.output_root,
+                bars_csv=args.bars_csv,
+                reconciliation_state_path=args.reconciliation_state_path,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
+        # If there are blockers, exit with a nonzero code
+        if payload.get("blockers"):
+            return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
 
 
 def _run_etf_sma_data_readiness(args: argparse.Namespace) -> int:
