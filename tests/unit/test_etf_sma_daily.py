@@ -273,6 +273,71 @@ def test_etf_sma_daily_rebuild_index(tmp_path: Path) -> None:
     assert rec1["as_of_date"] == "2026-06-06"
 
 
+def test_etf_sma_daily_custom_output_root(tmp_path: Path) -> None:
+    """Test etf-sma-daily with a custom output root and verify index references exist on disk."""
+    output_root = tmp_path / "custom_output_root"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+    reco_path = FIXTURES_DIR / "reconciliation_state_flat.jsonl"
+
+    config = EtfSmaDailyConfig(
+        as_of_date="2026-06-05",
+        output_root=output_root,
+        bars_csv=bars_csv,
+        reconciliation_state_path=reco_path,
+    )
+    run_etf_sma_daily(config)
+
+    # 1. Verify that daily_run_index.jsonl exists in the custom output root
+    index_file = output_root / "daily_run_index.jsonl"
+    assert index_file.exists()
+
+    # 2. Verify that the indexed bundle_manifest_path is not hardcoded to runs/daily
+    index_content = index_file.read_text(encoding="utf-8").strip()
+    records = [json.loads(line) for line in index_content.splitlines()]
+    assert len(records) == 1
+    assert records[0]["as_of_date"] == "2026-06-05"
+
+    manifest_path_str = records[0]["bundle_manifest_path"]
+    assert "runs/daily" not in manifest_path_str
+
+    # 3. Assert the indexed path exists on disk
+    full_manifest_path = Path(manifest_path_str).resolve()
+    assert full_manifest_path.exists()
+    assert full_manifest_path == (output_root / "2026-06-05" / "bundle_manifest.jsonl").resolve()
+
+
+def test_etf_sma_daily_same_date_rerun(tmp_path: Path) -> None:
+    """Test that same-date reruns do not produce duplicate entries in the daily run index."""
+    output_root = tmp_path / "daily"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+    reco_path = FIXTURES_DIR / "reconciliation_state_flat.jsonl"
+
+    # First run
+    run_etf_sma_daily(EtfSmaDailyConfig(
+        as_of_date="2026-06-05",
+        output_root=output_root,
+        bars_csv=bars_csv,
+        reconciliation_state_path=reco_path,
+    ))
+
+    # Second run for the same date
+    run_etf_sma_daily(EtfSmaDailyConfig(
+        as_of_date="2026-06-05",
+        output_root=output_root,
+        bars_csv=bars_csv,
+        reconciliation_state_path=reco_path,
+    ))
+
+    # Verify that daily_run_index.jsonl contains only one entry for the date
+    index_file = output_root / "daily_run_index.jsonl"
+    index_content = index_file.read_text(encoding="utf-8").strip()
+    lines = index_content.splitlines()
+    assert len(lines) == 1
+
+    entry = json.loads(lines[0])
+    assert entry["as_of_date"] == "2026-06-05"
+
+
 def test_cli_command_success(tmp_path: Path) -> None:
     """Test the CLI entrypoint for a successful run."""
     output_root = tmp_path / "daily"

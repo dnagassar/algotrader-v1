@@ -80,7 +80,7 @@ def rebuild_daily_run_index(output_root: Path) -> None:
                         byte_size = manifest_path.stat().st_size
                         entries.append({
                             "as_of_date": path.name,
-                            "bundle_manifest_path": str(Path("runs/daily") / path.name / "bundle_manifest.jsonl"),
+                            "bundle_manifest_path": _normalize_path(manifest_path),
                             "sha256": sha256_val,
                             "byte_size": byte_size,
                             "status": manifest_data.get("bundle_state", "ready")
@@ -156,7 +156,7 @@ def run_etf_sma_daily(config: EtfSmaDailyConfig) -> dict[str, Any]:
     # Write brief.jsonl
     brief_payload = {
         "milestone": "V3A",
-        "phase": "offline_daily_operator_brief_renderer",
+        "phase": "offline_daily_bundle_brief",
         "command": "etf-sma-daily",
         "brief_state": brief_state,
         "as_of_date": as_of_date,
@@ -214,7 +214,7 @@ def run_etf_sma_daily(config: EtfSmaDailyConfig) -> dict[str, Any]:
 
     gate_payload = {
         "milestone": "V3A",
-        "phase": "offline_daily_acceptance_gate",
+        "phase": "offline_daily_bundle_gate",
         "command": "etf-sma-daily",
         "acceptance_gate_state": gate_state,
         "accepted_for_operator_observation": accepted_obs,
@@ -274,7 +274,7 @@ def run_etf_sma_daily(config: EtfSmaDailyConfig) -> dict[str, Any]:
 
     manifest_payload = {
         "milestone": "V3A",
-        "phase": "offline_daily_dashboard_bundle_manifest",
+        "phase": "offline_daily_bundle_manifest",
         "command": "etf-sma-daily",
         "bundle_state": "blocked_or_invalid" if blockers else "ready",
         "as_of_date": as_of_date,
