@@ -2432,6 +2432,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_status_parser = subparsers.add_parser(
+        "etf-sma-daily-status",
+        help="Validate offline daily bundle integrity, safety, and consistency.",
+    )
+    etf_sma_daily_status_parser.add_argument(
+        "--bundle-dir",
+        default=None,
+        help="Path to the daily bundle directory. Defaults to latest in runs/daily.",
+    )
+    etf_sma_daily_status_parser.add_argument(
+        "--output-status-jsonl",
+        default=None,
+        help="Path to write the JSONL status record. Defaults to <bundle_dir>/bundle_status.jsonl.",
+    )
+    etf_sma_daily_status_parser.add_argument(
+        "--output-status-text",
+        default=None,
+        help="Path to write the text status report. Defaults to <bundle_dir>/bundle_status.txt.",
+    )
+    etf_sma_daily_status_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3160,6 +3187,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_preview_pipeline(args)
     if command == "etf-sma-daily":
         return _run_etf_sma_daily(args)
+    if command == "etf-sma-daily-status":
+        return _run_etf_sma_daily_status(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5341,6 +5370,37 @@ def _run_etf_sma_daily(args: argparse.Namespace) -> int:
         # If there are blockers, exit with a nonzero code
         if payload.get("blockers"):
             return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_status(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_status import (
+        EtfSmaDailyStatusConfig,
+        run_etf_sma_daily_status,
+    )
+
+    try:
+        payload = run_etf_sma_daily_status(
+            EtfSmaDailyStatusConfig(
+                bundle_dir=args.bundle_dir,
+                output_status_jsonl=args.output_status_jsonl,
+                output_status_text=args.output_status_text,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
         return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
