@@ -2548,6 +2548,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_brief_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-brief",
+        help="Build a deterministic offline operator brief command that consumes daily soak outputs and daily bundle artifacts.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--soak-rollup-jsonl",
+        required=True,
+        help="Path to the soak rollup JSONL file.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--daily-root",
+        required=True,
+        help="Path to the daily root directory.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--output-jsonl",
+        default="runs/daily_soak/soak_operator_brief.jsonl",
+        help="Path to write the brief JSONL rollup record.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--output-text",
+        default="runs/daily_soak/soak_operator_brief.txt",
+        help="Path to write the brief text status report.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--baseline-rollup-jsonl",
+        default=None,
+        help="Optional path to a baseline soak rollup JSONL for regression comparison.",
+    )
+    etf_sma_daily_soak_brief_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3282,6 +3319,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_offline_check(args)
     if command == "etf-sma-daily-soak":
         return _run_etf_sma_daily_soak(args)
+    if command == "etf-sma-daily-soak-brief":
+        return _run_etf_sma_daily_soak_brief(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5559,6 +5598,43 @@ def _run_etf_sma_daily_soak(args: argparse.Namespace) -> int:
                 output_root=args.output_root,
                 soak_rollup_jsonl=args.soak_rollup_jsonl,
                 soak_rollup_text=args.soak_rollup_text,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
+        # Exit with a nonzero code if the rollup status is blocked
+        if payload.get("status") == "blocked":
+            return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_brief(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_brief import (
+        EtfSmaDailySoakBriefConfig,
+        run_etf_sma_daily_soak_brief,
+    )
+
+    try:
+        payload = run_etf_sma_daily_soak_brief(
+            EtfSmaDailySoakBriefConfig(
+                soak_rollup_jsonl=args.soak_rollup_jsonl,
+                daily_root=args.daily_root,
+                output_jsonl=args.output_jsonl,
+                output_text=args.output_text,
+                baseline_rollup_jsonl=args.baseline_rollup_jsonl,
+                output_format=args.output_format,
             )
         )
         if args.output_format == "json":

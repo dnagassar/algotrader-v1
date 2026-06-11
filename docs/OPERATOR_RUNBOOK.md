@@ -78,6 +78,32 @@ The soak runner generates:
 2. `runs/daily/soak_rollup.jsonl`: Exactly one compact aggregate summary JSON record.
 3. `runs/daily/soak_rollup.txt`: An ASCII table detailing each day's status, posture, decision, and findings.
 
+## Canonical Soak Brief and Regression Command
+
+To compile an operator brief summarizing a multi-day soak run and optionally perform regression comparison against a baseline soak rollup:
+
+```powershell
+python -m algotrader.cli etf-sma-daily-soak-brief --soak-rollup-jsonl runs/daily_soak/soak_rollup.jsonl --daily-root runs/daily_soak --output-jsonl runs/daily_soak/soak_operator_brief.jsonl --output-text runs/daily_soak/soak_operator_brief.txt --baseline-rollup-jsonl <PATH_TO_BASELINE>
+```
+
+### Required Inputs
+
+* `--soak-rollup-jsonl`: The path to the V3E soak rollup JSONL file to compile.
+* `--daily-root`: The path to the root directory containing the individual daily folders.
+
+### Optional Inputs
+
+* `--output-jsonl` (Optional): The path to write the brief JSONL rollup record (defaults to `runs/daily_soak/soak_operator_brief.jsonl`).
+* `--output-text` (Optional): The path to write the brief text report (defaults to `runs/daily_soak/soak_operator_brief.txt`).
+* `--baseline-rollup-jsonl` (Optional): A path to a local baseline soak rollup JSONL to check for regressions.
+* `--format` (Optional): CLI stdout output format (`text` or `json`, default `text`).
+
+### Expected Outputs
+
+The soak brief compiler generates:
+1. `runs/daily_soak/soak_operator_brief.jsonl`: A single-line JSON summary record.
+2. `runs/daily_soak/soak_operator_brief.txt`: A detailed operator-readable report outlining date buckets, posture distributions, active blockers, missing daily artifacts, absolute path leaks, and baseline comparison mismatches.
+
 ## Safety Declarations
 
 > [!WARNING]
