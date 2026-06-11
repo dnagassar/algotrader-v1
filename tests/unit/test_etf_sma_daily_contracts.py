@@ -33,6 +33,7 @@ V3_DAILY_MODULES = [
     Path("src/algotrader/execution/etf_sma_daily_soak.py"),
     Path("src/algotrader/execution/etf_sma_daily_soak_brief.py"),
     Path("src/algotrader/execution/etf_sma_daily_soak_release_gate.py"),
+    Path("src/algotrader/execution/etf_sma_daily_soak_golden_check.py"),
 ]
 
 FORBIDDEN_IMPORT_PREFIXES = (
