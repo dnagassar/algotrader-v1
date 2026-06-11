@@ -214,14 +214,18 @@ def run_etf_sma_daily_soak_operator_summary(
                         "insufficient_history_to_risk_on",
                         "sma_insufficient_history",
                         "no_history",
+                        "no_data",
+                        "no-data",
+                        "blocked-no-history",
                     }
                     is_no_history_blocker = False
-                    if latest_blockers:
-                        non_no_history = [b for b in latest_blockers if b not in allowed_no_history]
-                        if not non_no_history:
-                            is_no_history_blocker = True
-                        elif len(non_no_history) == 1 and non_no_history[0] == "release_gate_blocked":
-                            if validation_finding_count_total == 0 and insufficient_history_count > 0:
+                    if latest_blockers and validation_finding_count_total == 0:
+                        has_explicit_allowed = any(b in allowed_no_history for b in latest_blockers)
+                        if has_explicit_allowed:
+                            non_no_history = [b for b in latest_blockers if b not in allowed_no_history]
+                            if not non_no_history:
+                                is_no_history_blocker = True
+                            elif len(non_no_history) == 1 and non_no_history[0] == "release_gate_blocked":
                                 is_no_history_blocker = True
                     
                     if is_no_history_blocker:

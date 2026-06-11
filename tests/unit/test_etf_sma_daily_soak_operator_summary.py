@@ -395,3 +395,178 @@ def test_operator_summary_cli_integration_exit_codes(tmp_path: Path) -> None:
             "--invalid-option-unwanted", "some-value",
         ])
     assert excinfo.value.code == 2
+
+
+def test_operator_summary_regression_release_gate_blocked_alone(tmp_path: Path) -> None:
+    """Verify that release_gate_blocked alone with insufficient_history_count > 0 classifies as repair_required."""
+    index_file = tmp_path / "index.jsonl"
+    out_file = tmp_path / "out.jsonl"
+
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    config = EtfSmaDailySoakOperatorSummaryConfig(history_index=index_file, out=out_file)
+    summary_records = run_etf_sma_daily_soak_operator_summary(config)
+    summary_rec = next(r for r in summary_records if r.get("record_type") == "summary")
+
+    assert summary_rec["next_safe_action_classification"] == "repair_required"
+
+
+def test_operator_summary_regression_release_gate_blocked_plus_insufficient_history(tmp_path: Path) -> None:
+    """Verify that release_gate_blocked alongside explicit insufficient_history classifies as inspect_blockers."""
+    index_file = tmp_path / "index.jsonl"
+    out_file = tmp_path / "out.jsonl"
+
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked", "insufficient_history"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    config = EtfSmaDailySoakOperatorSummaryConfig(history_index=index_file, out=out_file)
+    summary_records = run_etf_sma_daily_soak_operator_summary(config)
+    summary_rec = next(r for r in summary_records if r.get("record_type") == "summary")
+
+    assert summary_rec["next_safe_action_classification"] == "inspect_blockers"
+
+
+def test_operator_summary_regression_release_gate_blocked_plus_no_history(tmp_path: Path) -> None:
+    """Verify that release_gate_blocked alongside explicit no_history classifies as inspect_blockers."""
+    index_file = tmp_path / "index.jsonl"
+    out_file = tmp_path / "out.jsonl"
+
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked", "no_history"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    config = EtfSmaDailySoakOperatorSummaryConfig(history_index=index_file, out=out_file)
+    summary_records = run_etf_sma_daily_soak_operator_summary(config)
+    summary_rec = next(r for r in summary_records if r.get("record_type") == "summary")
+
+    assert summary_rec["next_safe_action_classification"] == "inspect_blockers"
+
+
+def test_operator_summary_regression_release_gate_blocked_plus_no_data(tmp_path: Path) -> None:
+    """Verify that release_gate_blocked alongside explicit no-data/no_data classifies as inspect_blockers."""
+    index_file = tmp_path / "index.jsonl"
+    out_file = tmp_path / "out.jsonl"
+
+    for no_data_token in ["no-data", "no_data"]:
+        records = _create_v3j_payload(
+            latest_status="blocked",
+            golden_status="blocked",
+            release_status="blocked",
+            attempted=5,
+            accepted=0,
+            insufficient=5,
+            latest_blockers=["release_gate_blocked", no_data_token],
+        )
+        index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+        config = EtfSmaDailySoakOperatorSummaryConfig(history_index=index_file, out=out_file)
+        summary_records = run_etf_sma_daily_soak_operator_summary(config)
+        summary_rec = next(r for r in summary_records if r.get("record_type") == "summary")
+
+        assert summary_rec["next_safe_action_classification"] == "inspect_blockers"
+
+
+def test_operator_summary_regression_exit_code_for_non_green(tmp_path: Path) -> None:
+    """Confirm exit code is 1 for the repaired non-green deterministic summaries."""
+    index_file = tmp_path / "index.jsonl"
+    out_file = tmp_path / "out.jsonl"
+
+    # Scenario 1: release_gate_blocked alone => repair_required => exit code 1
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    exit_code = cli_module.main([
+        "etf-sma-daily-soak-operator-summary",
+        "--history-index", str(index_file),
+        "--out", str(out_file),
+        "--format", "json",
+    ])
+    assert exit_code == 1
+
+    # Scenario 2: release_gate_blocked + insufficient_history => inspect_blockers => exit code 1
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked", "insufficient_history"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    exit_code = cli_module.main([
+        "etf-sma-daily-soak-operator-summary",
+        "--history-index", str(index_file),
+        "--out", str(out_file),
+        "--format", "json",
+    ])
+    assert exit_code == 1
+
+
+def test_operator_summary_regression_determinism_repeated(tmp_path: Path) -> None:
+    """Confirm repeated output remains deterministic."""
+    index_file = tmp_path / "index.jsonl"
+    out_file_1 = tmp_path / "out_1.jsonl"
+    out_file_2 = tmp_path / "out_2.jsonl"
+
+    records = _create_v3j_payload(
+        latest_status="blocked",
+        golden_status="blocked",
+        release_status="blocked",
+        attempted=5,
+        accepted=0,
+        insufficient=5,
+        latest_blockers=["release_gate_blocked", "insufficient_history"],
+    )
+    index_file.write_text("\n".join(json.dumps(r) for r in records) + "\n", encoding="utf-8")
+
+    # First run
+    cli_module.main([
+        "etf-sma-daily-soak-operator-summary",
+        "--history-index", str(index_file),
+        "--out", str(out_file_1),
+        "--format", "json",
+    ])
+
+    # Second run
+    cli_module.main([
+        "etf-sma-daily-soak-operator-summary",
+        "--history-index", str(index_file),
+        "--out", str(out_file_2),
+        "--format", "json",
+    ])
+
+    assert out_file_1.read_text(encoding="utf-8") == out_file_2.read_text(encoding="utf-8")
