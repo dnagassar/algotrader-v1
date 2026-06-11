@@ -17,8 +17,8 @@ def test_daily_lab_closeout_script_declares_strict_fail_fast_contract() -> None:
     assert "Set-StrictMode -Version Latest" in script
     assert '$ErrorActionPreference = "Stop"' in script
     assert "$LASTEXITCODE" in script
-    assert "if ($ExitCode -ne 0)" in script
-    assert "exit $ExitCode" in script
+    assert "exit $FailedExitCode" in script
+    assert "$AnyFailed" in script
 
 
 def test_daily_lab_closeout_script_invokes_closeout_sequence_in_order() -> None:
@@ -29,6 +29,7 @@ def test_daily_lab_closeout_script_invokes_closeout_sequence_in_order() -> None:
         "etf-sma-daily-soak-acceptance-history-index",
         "etf-sma-daily-soak-operator-summary",
         "etf-sma-daily-soak-closeout-packet",
+        "etf-sma-daily-soak-closeout-receipt",
     )
 
     positions = [script.index(command) for command in expected_sequence]
@@ -45,6 +46,8 @@ def test_daily_lab_closeout_script_supports_operator_parameters() -> None:
         "ReconciliationStatePath",
         "DailySoakDir",
         "PythonExecutable",
+        "ReceiptOut",
+        "ReceiptTextOut",
     ):
         assert f"${parameter_name}" in script
 
@@ -66,6 +69,8 @@ def test_daily_lab_closeout_script_uses_deterministic_artifact_names() -> None:
         "v3k_daily_soak_operator_summary.md",
         "v3l_daily_soak_closeout_packet.jsonl",
         "v3l_daily_soak_closeout_packet.md",
+        "v3n_daily_lab_closeout_run_receipt.jsonl",
+        "v3n_daily_lab_closeout_run_receipt.md",
     ):
         assert artifact_name in script
 
@@ -74,6 +79,21 @@ def test_daily_lab_closeout_script_uses_deterministic_artifact_names() -> None:
     assert "--operator-summary" in script
     assert "--operator-summary-md" in script
     assert "--text-out" in script
+    assert "--steps-json" in script
+    assert "--receipt-out" in script
+    assert "--receipt-text-out" in script
+
+
+def test_daily_lab_closeout_script_suppresses_child_artifact_stdout() -> None:
+    script = _script_text()
+
+    assert "Steps" + "Json:" not in script
+    assert "Steps " + "count" not in script
+    assert "Write-" + "Output" not in script
+    assert "Steps" + "Json" not in script
+    assert "$StepRecordsJson" in script
+    assert script.count("1> $null") == 5
+    assert "& $PythonExecutable @ReceiptArgs 1> $null" in script
 
 
 def test_daily_lab_closeout_script_has_no_credential_loading_or_printing() -> None:

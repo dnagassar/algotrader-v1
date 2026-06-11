@@ -2762,6 +2762,63 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_closeout_receipt_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-closeout-receipt",
+        help="Build a deterministic offline run receipt over the daily lab closeout run (V3N).",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--start-date",
+        required=True,
+        help="Start date of the historical range (YYYY-MM-DD).",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--end-date",
+        required=True,
+        help="End date of the historical range (YYYY-MM-DD).",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--bars-csv",
+        required=True,
+        help="Path to the canonical daily bars CSV file.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--reconciliation-state-path",
+        required=True,
+        help="Path to the offline reconciliation state JSONL file.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--daily-soak-dir",
+        required=True,
+        help="Directory under which daily soak artifacts are stored.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--status",
+        required=True,
+        help="Final run status.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--steps-json",
+        required=True,
+        help="JSON array representing the steps run.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--receipt-out",
+        required=True,
+        help="Path to write the receipt JSONL record.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--receipt-text-out",
+        required=True,
+        help="Path to write the receipt markdown report.",
+    )
+    etf_sma_daily_soak_closeout_receipt_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3508,6 +3565,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_operator_summary(args)
     if command == "etf-sma-daily-soak-closeout-packet":
         return _run_etf_sma_daily_soak_closeout_packet(args)
+    if command == "etf-sma-daily-soak-closeout-receipt":
+        return _run_etf_sma_daily_soak_closeout_receipt(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -6017,6 +6076,42 @@ def _run_etf_sma_daily_soak_closeout_packet(args: argparse.Namespace) -> int:
         if packet.get("closeout_status") == "ready_for_operator_review":
             return 0
         return 1
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_closeout_receipt(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.daily_lab_closeout_run_receipt import (
+        DailyLabCloseoutRunReceiptConfig,
+        run_daily_lab_closeout_receipt,
+    )
+
+    try:
+        receipt = run_daily_lab_closeout_receipt(
+            DailyLabCloseoutRunReceiptConfig(
+                start_date=args.start_date,
+                end_date=args.end_date,
+                bars_csv=args.bars_csv,
+                reconciliation_state_path=args.reconciliation_state_path,
+                daily_soak_dir=args.daily_soak_dir,
+                status=args.status,
+                steps_json=args.steps_json,
+                receipt_out=args.receipt_out,
+                receipt_text_out=args.receipt_text_out,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(receipt, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(receipt, sort_keys=True, indent=2))
+        return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
