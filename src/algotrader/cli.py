@@ -2585,6 +2585,38 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_release_gate_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-release-gate",
+        help="Compile a deterministic offline pass/fail release packet for the daily soak loop.",
+    )
+    etf_sma_daily_soak_release_gate_parser.add_argument(
+        "--soak-brief-jsonl",
+        required=True,
+        help="Path to the V3F daily soak operator brief JSONL file.",
+    )
+    etf_sma_daily_soak_release_gate_parser.add_argument(
+        "--artifact-validation-jsonl",
+        required=True,
+        help="Path to the V3D artifact validation JSONL report.",
+    )
+    etf_sma_daily_soak_release_gate_parser.add_argument(
+        "--output-jsonl",
+        default="runs/daily_soak/soak_release_gate.jsonl",
+        help="Path to write the release gate JSONL packet.",
+    )
+    etf_sma_daily_soak_release_gate_parser.add_argument(
+        "--output-text",
+        default="runs/daily_soak/soak_release_gate.txt",
+        help="Path to write the release gate text report.",
+    )
+    etf_sma_daily_soak_release_gate_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3321,6 +3353,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak(args)
     if command == "etf-sma-daily-soak-brief":
         return _run_etf_sma_daily_soak_brief(args)
+    if command == "etf-sma-daily-soak-release-gate":
+        return _run_etf_sma_daily_soak_release_gate(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5643,6 +5677,42 @@ def _run_etf_sma_daily_soak_brief(args: argparse.Namespace) -> int:
             print(json.dumps(payload, sort_keys=True, indent=2))
 
         # Exit with a nonzero code if the rollup status is blocked
+        if payload.get("status") == "blocked":
+            return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_release_gate(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_release_gate import (
+        EtfSmaDailySoakReleaseGateConfig,
+        run_etf_sma_daily_soak_release_gate,
+    )
+
+    try:
+        payload = run_etf_sma_daily_soak_release_gate(
+            EtfSmaDailySoakReleaseGateConfig(
+                soak_brief_jsonl=args.soak_brief_jsonl,
+                artifact_validation_jsonl=args.artifact_validation_jsonl,
+                output_jsonl=args.output_jsonl,
+                output_text=args.output_text,
+                output_format=args.output_format,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
+        # Exit with status 1 if release gate status is blocked
         if payload.get("status") == "blocked":
             return 1
         return 0

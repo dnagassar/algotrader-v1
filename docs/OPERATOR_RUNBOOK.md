@@ -104,6 +104,38 @@ The soak brief compiler generates:
 1. `runs/daily_soak/soak_operator_brief.jsonl`: A single-line JSON summary record.
 2. `runs/daily_soak/soak_operator_brief.txt`: A detailed operator-readable report outlining date buckets, posture distributions, active blockers, missing daily artifacts, absolute path leaks, and baseline comparison mismatches.
 
+## Canonical Soak Release Gate Command
+
+To compile a deterministic offline pass/fail release packet for the daily soak loop:
+
+```powershell
+python -m algotrader.cli etf-sma-daily-soak-release-gate --soak-brief-jsonl runs/daily_soak/soak_operator_brief.jsonl --artifact-validation-jsonl runs/validation/artifact_validation_report.jsonl --output-jsonl runs/daily_soak/soak_release_gate.jsonl --output-text runs/daily_soak/soak_release_gate.txt
+```
+
+### Required Inputs
+
+* `--soak-brief-jsonl`: The path to the V3F daily soak operator brief JSONL file.
+* `--artifact-validation-jsonl`: The path to the V3D artifact validation JSONL report.
+
+### Optional Inputs
+
+* `--output-jsonl` (Optional): The path to write the release gate JSONL packet (defaults to `runs/daily_soak/soak_release_gate.jsonl`).
+* `--output-text` (Optional): The path to write the release gate text summary (defaults to `runs/daily_soak/soak_release_gate.txt`).
+* `--format` (Optional): CLI stdout output format (`text` or `json`, default `text`).
+
+### Expected Outputs
+
+The release gate command compiles:
+1. `runs/daily_soak/soak_release_gate.jsonl`: A single-line JSON release packet containing the pass/fail status and all verified metadata.
+2. `runs/daily_soak/soak_release_gate.txt`: An operator-readable ASCII report outlining the acceptance gate status, findings breakdown, active release blockers, date range counts, and output paths.
+
+### Release Gate Status Semantics
+
+The command exits with:
+* `0` if the release gate evaluates to **ACCEPTED**.
+* `1` if the release gate evaluates to **BLOCKED**.
+* `2` if an operational or input validation error occurs.
+
 ## Safety Declarations
 
 > [!WARNING]
