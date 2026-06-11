@@ -2674,6 +2674,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_acceptance_history_index_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-acceptance-history-index",
+        help="Build a deterministic offline index over prior runs/daily_soak golden acceptance outputs.",
+    )
+    etf_sma_daily_soak_acceptance_history_index_parser.add_argument(
+        "--daily-soak-dir",
+        default="runs/daily_soak",
+        help="Directory under which daily soak golden check files are stored.",
+    )
+    etf_sma_daily_soak_acceptance_history_index_parser.add_argument(
+        "--out",
+        "--output-jsonl",
+        dest="out",
+        default="runs/daily_soak/v3j_daily_soak_acceptance_history_index.jsonl",
+        help="Path to write the history index JSONL record.",
+    )
+    etf_sma_daily_soak_acceptance_history_index_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3414,6 +3438,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_release_gate(args)
     if command == "etf-sma-daily-soak-golden-check":
         return _run_etf_sma_daily_soak_golden_check(args)
+    if command == "etf-sma-daily-soak-acceptance-history-index":
+        return _run_etf_sma_daily_soak_acceptance_history_index(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5814,6 +5840,40 @@ def _run_etf_sma_daily_soak_golden_check(args: argparse.Namespace) -> int:
 
         # Exit with status 1 if golden check status is blocked
         if payload.get("status") == "blocked":
+            return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_acceptance_history_index(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_acceptance_history_index import (
+        EtfSmaDailySoakAcceptanceHistoryIndexConfig,
+        run_etf_sma_daily_soak_acceptance_history_index,
+    )
+
+    try:
+        records = run_etf_sma_daily_soak_acceptance_history_index(
+            EtfSmaDailySoakAcceptanceHistoryIndexConfig(
+                daily_soak_dir=args.daily_soak_dir,
+                out=args.out,
+            )
+        )
+        summary = next((r for r in records if r.get("record_type") == "summary"), {})
+
+        if args.output_format == "json":
+            print(json.dumps(records, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(records, sort_keys=True, indent=2))
+
+        if str(summary.get("status", "")).startswith("blocked"):
             return 1
         return 0
     except ValidationError as exc:
