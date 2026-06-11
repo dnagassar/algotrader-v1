@@ -2725,6 +2725,43 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_closeout_packet_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-closeout-packet",
+        help="Build a deterministic offline closeout packet over V3J/V3K daily soak artifacts.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--history-index",
+        default="runs/daily_soak/v3j_daily_soak_acceptance_history_index.jsonl",
+        help="Path to the V3J daily soak acceptance history index JSONL file.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--operator-summary",
+        default="runs/daily_soak/v3k_daily_soak_operator_summary.jsonl",
+        help="Path to the V3K daily soak operator summary JSONL file.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--operator-summary-md",
+        default="runs/daily_soak/v3k_daily_soak_operator_summary.md",
+        help="Path to the V3K daily soak operator summary markdown file.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--out",
+        default="runs/daily_soak/v3l_daily_soak_closeout_packet.jsonl",
+        help="Path to write the closeout packet JSONL record.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--text-out",
+        default="runs/daily_soak/v3l_daily_soak_closeout_packet.md",
+        help="Path to write the markdown closeout packet.",
+    )
+    etf_sma_daily_soak_closeout_packet_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3469,6 +3506,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_acceptance_history_index(args)
     if command == "etf-sma-daily-soak-operator-summary":
         return _run_etf_sma_daily_soak_operator_summary(args)
+    if command == "etf-sma-daily-soak-closeout-packet":
+        return _run_etf_sma_daily_soak_closeout_packet(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5939,6 +5978,43 @@ def _run_etf_sma_daily_soak_operator_summary(args: argparse.Namespace) -> int:
             print(json.dumps(records, sort_keys=True, indent=2))
 
         if classification == "proceed_offline":
+            return 0
+        return 1
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_closeout_packet(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_closeout_packet import (
+        EtfSmaDailySoakCloseoutPacketConfig,
+        run_etf_sma_daily_soak_closeout_packet,
+    )
+
+    try:
+        records = run_etf_sma_daily_soak_closeout_packet(
+            EtfSmaDailySoakCloseoutPacketConfig(
+                history_index=args.history_index,
+                operator_summary=args.operator_summary,
+                operator_summary_md=args.operator_summary_md,
+                out=args.out,
+                text_out=args.text_out,
+            )
+        )
+        packet = records[0] if records else {}
+
+        if args.output_format == "json":
+            print(json.dumps(records, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(records, sort_keys=True, indent=2))
+
+        if packet.get("closeout_status") == "ready_for_operator_review":
             return 0
         return 1
     except ValidationError as exc:
