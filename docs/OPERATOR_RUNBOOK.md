@@ -170,6 +170,35 @@ The command exits with:
 * `1` if any blocking conditions are met (meaning it status is **BLOCKED**).
 * `2` if an operational or input validation error occurs.
 
+## Offline Daily Lab Acceptance Launcher
+
+To run the complete daily lab acceptance sequence, which performs environment prechecks, runs local verification tests, executes the soak golden checks, confirms no generated run artifacts are tracked or staged in git, and produces a final operator acceptance summary:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\run_daily_lab_acceptance.ps1 -StartDate YYYY-MM-DD -EndDate YYYY-MM-DD -BarsCsv <PATH_TO_CSV> -ReconciliationStatePath <PATH_TO_JSONL>
+```
+
+### Inputs and Options
+
+* `-StartDate` (Optional): The beginning of the historical range (default: `2025-06-01`).
+* `-EndDate` (Optional): The end of the historical range (default: `2025-06-10`).
+* `-BarsCsv` (Optional): Path to the daily price bars CSV file.
+* `-ReconciliationStatePath` (Optional): Path to the offline reconciliation state JSONL file.
+* `-OutputRoot` (Optional): Target directory for soak and rollup output files (default: `runs/daily_soak`).
+* `-FullVerify` (Optional): Runs full offline pytest suite inside `verify_offline.ps1` instead of targeted guard tests only.
+
+### Acceptance Summary Output
+
+Upon completion, the launcher prints a compact final summary:
+* **Verifier Status**: Pass/Fail status of `verify_offline.ps1`.
+* **Golden Acceptance Status**: Pass/Fail status of the golden check.
+* **Release Gate Status**: Pass/Fail status of the daily soak release gate.
+* **Pre/Post-Gate Validation Findings**: Counts of scan findings.
+* **Output Root**: Relative path to the output directory.
+* **Safety Authorization Booleans**: Confirms authorization gates remain safely locked (`False`).
+* **Git Artifact Verification**: Confirms that no generated artifacts are tracked or staged.
+* **Key Output Artifact Paths**: List of generated files relative and POSIX-style.
+
 ## Safety Declarations
 
 > [!WARNING]
