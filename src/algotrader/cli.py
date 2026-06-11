@@ -2617,6 +2617,63 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_golden_check_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-golden-check",
+        help="Run the deterministic offline V3 daily soak acceptance loop end-to-end with golden checks.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--start-date",
+        default="2025-06-01",
+        help="Start date of the historical range (YYYY-MM-DD).",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--end-date",
+        default="2025-06-10",
+        help="End date of the historical range (YYYY-MM-DD).",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--bars-csv",
+        default="tests/fixtures/etf_sma_cycle_matrix/spy_daily_bars_200_bullish.csv",
+        help="Path to the canonical daily bars CSV file.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--reconciliation-state-path",
+        default="tests/fixtures/etf_sma_cycle_matrix/reconciliation_state_flat.jsonl",
+        help="Path to the offline reconciliation state JSONL file.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--output-root",
+        default="runs/daily_soak",
+        help="Directory under which daily runs and soak rollups are stored.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--validation-output",
+        default="runs/validation/artifact_validation_report.jsonl",
+        help="Path to write the artifact validation report before release gate.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--post-release-validation-output",
+        default="runs/validation/artifact_validation_after_release_gate_report.jsonl",
+        help="Path to write the artifact validation report after release gate.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--output-jsonl",
+        default="runs/daily_soak/soak_golden_acceptance.jsonl",
+        help="Path to write the golden acceptance JSONL record.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--output-text",
+        default="runs/daily_soak/soak_golden_acceptance.txt",
+        help="Path to write the golden acceptance text summary.",
+    )
+    etf_sma_daily_soak_golden_check_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3355,6 +3412,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_brief(args)
     if command == "etf-sma-daily-soak-release-gate":
         return _run_etf_sma_daily_soak_release_gate(args)
+    if command == "etf-sma-daily-soak-golden-check":
+        return _run_etf_sma_daily_soak_golden_check(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5713,6 +5772,47 @@ def _run_etf_sma_daily_soak_release_gate(args: argparse.Namespace) -> int:
             print(json.dumps(payload, sort_keys=True, indent=2))
 
         # Exit with status 1 if release gate status is blocked
+        if payload.get("status") == "blocked":
+            return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_golden_check(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_golden_check import (
+        EtfSmaDailySoakGoldenCheckConfig,
+        run_etf_sma_daily_soak_golden_check,
+    )
+
+    try:
+        payload = run_etf_sma_daily_soak_golden_check(
+            EtfSmaDailySoakGoldenCheckConfig(
+                start_date=args.start_date,
+                end_date=args.end_date,
+                bars_csv=args.bars_csv,
+                reconciliation_state_path=args.reconciliation_state_path,
+                output_root=args.output_root,
+                validation_output=args.validation_output,
+                post_release_validation_output=args.post_release_validation_output,
+                output_jsonl=args.output_jsonl,
+                output_text=args.output_text,
+                output_format=args.output_format,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
+
+        # Exit with status 1 if golden check status is blocked
         if payload.get("status") == "blocked":
             return 1
         return 0

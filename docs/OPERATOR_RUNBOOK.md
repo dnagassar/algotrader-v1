@@ -136,6 +136,40 @@ The command exits with:
 * `1` if the release gate evaluates to **BLOCKED**.
 * `2` if an operational or input validation error occurs.
 
+## Canonical Soak Golden Acceptance Command
+
+To run the complete deterministic offline V3 daily soak acceptance loop end-to-end, validating all outputs and generating the final golden check acceptance packet:
+
+```powershell
+python -m algotrader.cli etf-sma-daily-soak-golden-check --start-date YYYY-MM-DD --end-date YYYY-MM-DD --bars-csv <PATH_TO_CSV> --reconciliation-state-path <PATH_TO_JSONL>
+```
+
+### Inputs and Options
+
+* `--start-date` (Optional): The beginning of the historical range (default: `2025-06-01`).
+* `--end-date` (Optional): The end of the historical range (default: `2025-06-10`).
+* `--bars-csv` (Optional): Path to the daily price bars CSV file.
+* `--reconciliation-state-path` (Optional): Path to the offline reconciliation state JSONL file.
+* `--output-root` (Optional): Target directory for soak and rollup output files (default: `runs/daily_soak`).
+* `--validation-output` (Optional): Path to validation report before release gate (default: `runs/validation/artifact_validation_report.jsonl`).
+* `--post-release-validation-output` (Optional): Path to validation report after release gate (default: `runs/validation/artifact_validation_after_release_gate_report.jsonl`).
+* `--output-jsonl` (Optional): Output path for the compact golden check JSONL summary (default: `runs/daily_soak/soak_golden_acceptance.jsonl`).
+* `--output-text` (Optional): Output path for the detailed golden check ASCII text summary (default: `runs/daily_soak/soak_golden_acceptance.txt`).
+* `--format` (Optional): Output format for CLI stdout (`text` or `json`, default: `text`).
+
+### Expected Outputs
+
+The golden check command produces:
+1. `runs/daily_soak/soak_golden_acceptance.jsonl`: A single-line JSON record detailing the overall loops execution summary, blockers, paths, and status.
+2. `runs/daily_soak/soak_golden_acceptance.txt`: An operator-readable summary showing date counts, findings counts, active blockers, path leak checks, and safety assertions.
+
+### Golden Acceptance Status Semantics
+
+The command exits with:
+* `0` if the end-to-end loop finishes with **ACCEPTED** status.
+* `1` if any blocking conditions are met (meaning it status is **BLOCKED**).
+* `2` if an operational or input validation error occurs.
+
 ## Safety Declarations
 
 > [!WARNING]
