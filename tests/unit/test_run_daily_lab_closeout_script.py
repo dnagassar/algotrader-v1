@@ -30,6 +30,7 @@ def test_daily_lab_closeout_script_invokes_closeout_sequence_in_order() -> None:
         "etf-sma-daily-soak-operator-summary",
         "etf-sma-daily-soak-closeout-packet",
         "etf-sma-daily-soak-closeout-receipt",
+        "etf-sma-daily-soak-closeout-bundle-validate",
     )
 
     positions = [script.index(command) for command in expected_sequence]
@@ -48,6 +49,8 @@ def test_daily_lab_closeout_script_supports_operator_parameters() -> None:
         "PythonExecutable",
         "ReceiptOut",
         "ReceiptTextOut",
+        "ValidationOut",
+        "ValidationTextOut",
     ):
         assert f"${parameter_name}" in script
 
@@ -71,6 +74,8 @@ def test_daily_lab_closeout_script_uses_deterministic_artifact_names() -> None:
         "v3l_daily_soak_closeout_packet.md",
         "v3n_daily_lab_closeout_run_receipt.jsonl",
         "v3n_daily_lab_closeout_run_receipt.md",
+        "v3o_daily_lab_closeout_bundle_validation.jsonl",
+        "v3o_daily_lab_closeout_bundle_validation.md",
     ):
         assert artifact_name in script
 
@@ -82,6 +87,8 @@ def test_daily_lab_closeout_script_uses_deterministic_artifact_names() -> None:
     assert "--steps-json" in script
     assert "--receipt-out" in script
     assert "--receipt-text-out" in script
+    assert "--validation-out" in script
+    assert "--validation-text-out" in script
 
 
 def test_daily_lab_closeout_script_suppresses_child_artifact_stdout() -> None:
@@ -92,7 +99,7 @@ def test_daily_lab_closeout_script_suppresses_child_artifact_stdout() -> None:
     assert "Write-" + "Output" not in script
     assert "Steps" + "Json" not in script
     assert "$StepRecordsJson" in script
-    assert script.count("1> $null") == 5
+    assert script.count("1> $null") == 6
     assert "& $PythonExecutable @ReceiptArgs 1> $null" in script
 
 

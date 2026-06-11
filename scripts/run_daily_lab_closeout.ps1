@@ -41,7 +41,9 @@ param(
     [string]$DailySoakDir = "runs/daily_soak",
     [string]$PythonExecutable = "python",
     [string]$ReceiptOut = "",
-    [string]$ReceiptTextOut = ""
+    [string]$ReceiptTextOut = "",
+    [string]$ValidationOut = "",
+    [string]$ValidationTextOut = ""
 )
 
 Set-StrictMode -Version Latest
@@ -67,6 +69,12 @@ if ([string]::IsNullOrEmpty($ReceiptOut)) {
 }
 if ([string]::IsNullOrEmpty($ReceiptTextOut)) {
     $ReceiptTextOut = Join-Path $DailySoakDir "v3n_daily_lab_closeout_run_receipt.md"
+}
+if ([string]::IsNullOrEmpty($ValidationOut)) {
+    $ValidationOut = Join-Path $DailySoakDir "v3o_daily_lab_closeout_bundle_validation.jsonl"
+}
+if ([string]::IsNullOrEmpty($ValidationTextOut)) {
+    $ValidationTextOut = Join-Path $DailySoakDir "v3o_daily_lab_closeout_bundle_validation.md"
 }
 
 $Steps = @()
@@ -289,6 +297,32 @@ try {
     Pop-Location
 }
 
+# Now run the bundle validator!
+Write-Section "Validating daily lab closeout bundle (V3O)"
+Push-Location -LiteralPath $RepoRoot
+try {
+    $ValidationArgs = @(
+        "-m", "algotrader.cli", "etf-sma-daily-soak-closeout-bundle-validate",
+        "--daily-soak-dir", $DailySoakDir,
+        "--validation-out", $ValidationOut,
+        "--validation-text-out", $ValidationTextOut
+    )
+
+    & $PythonExecutable @ValidationArgs 1> $null
+    $ValidationExitCode = $LASTEXITCODE
+    if ($null -eq $ValidationExitCode) { $ValidationExitCode = 0 }
+
+    if ($ValidationExitCode -ne 0) {
+        [Console]::Error.WriteLine("Error: Bundle validation failed with exit code $ValidationExitCode")
+        $AnyFailed = $true
+        if ($FailedExitCode -eq 0) {
+            $FailedExitCode = $ValidationExitCode
+        }
+    }
+} finally {
+    Pop-Location
+}
+
 Write-Host ""
 Write-Host "=================================================================="
 Write-Host "DAILY LAB CLOSEOUT ARTIFACTS"
@@ -301,6 +335,8 @@ Write-Host "V3L Packet JSONL:     $CloseoutPacketPath"
 Write-Host "V3L Packet Markdown:  $CloseoutPacketTextPath"
 Write-Host "V3N Receipt JSONL:    $ReceiptOut"
 Write-Host "V3N Receipt Markdown: $ReceiptTextOut"
+Write-Host "V3O Validation JSONL: $ValidationOut"
+Write-Host "V3O Validation MD:    $ValidationTextOut"
 Write-Host "=================================================================="
 
 if ($AnyFailed) {
