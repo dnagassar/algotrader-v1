@@ -2698,6 +2698,33 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_operator_summary_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-operator-summary",
+        help="Build a deterministic offline operator summary over the daily soak acceptance history index.",
+    )
+    etf_sma_daily_soak_operator_summary_parser.add_argument(
+        "--history-index",
+        default="runs/daily_soak/v3j_daily_soak_acceptance_history_index.jsonl",
+        help="Path to the V3J daily soak acceptance history index JSONL file.",
+    )
+    etf_sma_daily_soak_operator_summary_parser.add_argument(
+        "--out",
+        default="runs/daily_soak/v3k_daily_soak_operator_summary.jsonl",
+        help="Path to write the operator summary JSONL record.",
+    )
+    etf_sma_daily_soak_operator_summary_parser.add_argument(
+        "--text-out",
+        default=None,
+        help="Optional path to write the text/markdown summary report.",
+    )
+    etf_sma_daily_soak_operator_summary_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3440,6 +3467,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_golden_check(args)
     if command == "etf-sma-daily-soak-acceptance-history-index":
         return _run_etf_sma_daily_soak_acceptance_history_index(args)
+    if command == "etf-sma-daily-soak-operator-summary":
+        return _run_etf_sma_daily_soak_operator_summary(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -5876,6 +5905,42 @@ def _run_etf_sma_daily_soak_acceptance_history_index(args: argparse.Namespace) -
         if str(summary.get("status", "")).startswith("blocked"):
             return 1
         return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_operator_summary(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_operator_summary import (
+        EtfSmaDailySoakOperatorSummaryConfig,
+        run_etf_sma_daily_soak_operator_summary,
+    )
+
+    try:
+        records = run_etf_sma_daily_soak_operator_summary(
+            EtfSmaDailySoakOperatorSummaryConfig(
+                history_index=args.history_index,
+                out=args.out,
+                text_out=args.text_out,
+            )
+        )
+        summary = next((r for r in records if r.get("record_type") == "summary"), {})
+        classification = summary.get("next_safe_action_classification", "repair_required")
+
+        if args.output_format == "json":
+            print(json.dumps(records, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(records, sort_keys=True, indent=2))
+
+        if classification == "proceed_offline":
+            return 0
+        return 1
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
