@@ -2451,6 +2451,51 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_paper_lab_parser = subparsers.add_parser(
+        "etf-sma-daily-paper-lab",
+        help="Run daily SPY SMA paper-lab loop and produce an operating packet.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--output-root",
+        required=True,
+        help="Root directory under which the daily paper-lab operating packet is written.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--bars-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Path to the canonical daily bars CSV file.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--as-of-date",
+        default=None,
+        help="Explicit as-of date (YYYY-MM-DD). If omitted, derived from input bars.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--symbol",
+        default="SPY",
+        help="Symbol to evaluate. Defaults to SPY.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--sma-fast-window",
+        type=int,
+        default=50,
+        help="SMA fast window size. Defaults to 50.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--sma-slow-window",
+        type=int,
+        default=200,
+        help="SMA slow window size. Defaults to 200.",
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
+
     etf_sma_daily_status_parser = subparsers.add_parser(
         "etf-sma-daily-status",
         help="Validate offline daily bundle integrity, safety, and consistency.",
@@ -3622,6 +3667,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_preview_pipeline(args)
     if command == "etf-sma-daily":
         return _run_etf_sma_daily(args)
+    if command == "etf-sma-daily-paper-lab":
+        return _run_etf_sma_daily_paper_lab(args)
+
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
     if command == "etf-sma-daily-offline-check":
@@ -5827,6 +5875,40 @@ def _run_etf_sma_daily(args: argparse.Namespace) -> int:
         # If there are blockers, exit with a nonzero code
         if payload.get("blockers"):
             return 1
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+
+def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_paper_lab import (
+        EtfSmaDailyPaperLabConfig,
+        run_etf_sma_daily_paper_lab,
+    )
+
+    try:
+        payload = run_etf_sma_daily_paper_lab(
+            EtfSmaDailyPaperLabConfig(
+                output_root=args.output_root,
+                bars_csv=args.bars_csv,
+                as_of_date=args.as_of_date,
+                symbol=args.symbol,
+                sma_fast_window=args.sma_fast_window,
+                sma_slow_window=args.sma_slow_window,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(payload, sort_keys=True, indent=2))
         return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
