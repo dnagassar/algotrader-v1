@@ -28,6 +28,7 @@ __all__ = [
     "EtfSmaDailyPaperLabConfig",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
+    "validate_etf_sma_daily_paper_lab_packet",
 ]
 
 _DEFAULT_SYMBOL = "SPY"
@@ -35,6 +36,7 @@ _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonica
 _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
 _ASSISTANT_VERSION = "assistant_v1"
+_ASSISTANT_PACKET_VERSION = "assistant_v1.1"
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
@@ -51,6 +53,56 @@ _REQUIRED_LABELS = [
     "broker_state_not_observed",
     "paper_submit_not_authorized",
 ]
+_EXPECTED_ARTIFACTS = (
+    ("operating_brief", _BRIEF_FILENAME),
+    ("operating_record", _RECORD_FILENAME),
+    ("manifest", _MANIFEST_FILENAME),
+)
+_REQUIRED_PACKET_FIELDS = (
+    "input_data_path",
+    "as_of_date",
+    "active_strategy_name",
+    "posture",
+    "sma_posture_status",
+    "preview_decision",
+    "blocker_status",
+    "broker_state_mode",
+    "next_operator_action",
+    "safety_labels",
+    "assistant_packet_version",
+)
+_REQUIRED_MANIFEST_FIELDS = (
+    "input_data_path",
+    "as_of_date",
+    "active_strategy_name",
+    "posture",
+    "sma_posture_status",
+    "preview_decision",
+    "blocker_status",
+    "broker_state_mode",
+    "paper_submit_authorized",
+    "paper_submit_authorization_status",
+    "next_operator_action",
+    "safety_labels",
+    "assistant_packet_version",
+    "validation_status",
+    "missing_required_fields",
+    "artifact_presence_status",
+)
+_BRIEF_REQUIRED_VALUE_FIELDS = (
+    "input_data_path",
+    "as_of_date",
+    "active_strategy_name",
+    "sma_posture_status",
+    "preview_decision",
+    "blocker_status",
+    "broker_state_mode",
+    "next_operator_action",
+)
+_NOT_AUTHORIZED_STATUSES = {
+    "not_authorized",
+    "paper_submit_not_authorized",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +135,58 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
 
     payload = build_etf_sma_daily_paper_lab(config)
 
+    _write_packet_artifacts(output_root=output_root, payload=payload)
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    _apply_packet_validation(payload, validation)
+    _write_packet_artifacts(output_root=output_root, payload=payload)
+
+    return payload
+
+
+def validate_etf_sma_daily_paper_lab_packet(
+    output_root: Path | str,
+    *,
+    packet: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate a generated Assistant v1.1 daily paper-lab packet."""
+    root = Path(output_root)
+    artifact_presence_status = _artifact_presence_status(root)
+    packet_payload = packet
+    read_failures: list[str] = []
+
+    if packet_payload is None:
+        packet_payload, read_failures = _read_packet_record(root / _RECORD_FILENAME)
+
+    missing_required_fields: list[str] = []
+    missing_required_fields.extend(read_failures)
+    if packet_payload is None:
+        missing_required_fields.append("operating_record.packet")
+    else:
+        missing_required_fields.extend(_missing_packet_fields(packet_payload))
+        missing_required_fields.extend(_missing_manifest_fields(root, packet_payload))
+        missing_required_fields.extend(_missing_brief_references(root, packet_payload))
+
+    validation_status = (
+        "pass"
+        if (
+            artifact_presence_status["status"] == "pass"
+            and not missing_required_fields
+        )
+        else "fail"
+    )
+    return {
+        "assistant_packet_version": _ASSISTANT_PACKET_VERSION,
+        "validation_status": validation_status,
+        "missing_required_fields": missing_required_fields,
+        "artifact_presence_status": artifact_presence_status,
+    }
+
+
+def _write_packet_artifacts(
+    *,
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
     record_file = output_root / _RECORD_FILENAME
     record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
     record_file.write_text(record_line, encoding="utf-8", newline="\n")
@@ -95,7 +199,22 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
 
-    return payload
+
+def _apply_packet_validation(
+    payload: dict[str, Any],
+    validation: Mapping[str, Any],
+) -> None:
+    payload["assistant_packet_version"] = str(validation["assistant_packet_version"])
+    payload["validation_status"] = str(validation["validation_status"])
+    payload["missing_required_fields"] = list(validation["missing_required_fields"])
+    payload["artifact_presence_status"] = dict(validation["artifact_presence_status"])
+    payload["executive_dashboard"]["validation_status"] = payload["validation_status"]
+    payload["executive_dashboard"]["missing_required_fields"] = list(
+        payload["missing_required_fields"]
+    )
+    payload["executive_dashboard"]["artifact_presence_status"] = dict(
+        payload["artifact_presence_status"]
+    )
 
 
 def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
@@ -165,6 +284,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     payload: dict[str, Any] = {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
+        "assistant_packet_version": _ASSISTANT_PACKET_VERSION,
         "packet_type": _PACKET_TYPE,
         "command": _COMMAND,
         "script": _SCRIPT,
@@ -201,7 +321,14 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "labels": list(_REQUIRED_LABELS),
         "safety_labels": list(_REQUIRED_LABELS),
         "data_freshness": data_freshness,
-        "validation_status": "packet_written_offline",
+        "validation_status": "pending",
+        "missing_required_fields": [],
+        "artifact_presence_status": {
+            "status": "not_evaluated",
+            "missing_artifacts": [],
+            "empty_artifacts": [],
+            "artifacts": {},
+        },
         "system_health": "offline_assistant_packet_ready",
         "artifact_paths": artifact_paths,
         "artifacts": {
@@ -226,7 +353,14 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "research_lab": research_lab,
         "executive_dashboard": {
             "data_freshness": data_freshness,
-            "validation_status": "packet_written_offline",
+            "validation_status": "pending",
+            "missing_required_fields": [],
+            "artifact_presence_status": {
+                "status": "not_evaluated",
+                "missing_artifacts": [],
+                "empty_artifacts": [],
+                "artifacts": {},
+            },
             "artifact_paths": artifact_paths,
             "system_health": "offline_assistant_packet_ready",
             "safety_labels": list(_REQUIRED_LABELS),
@@ -359,6 +493,183 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
     }
 
 
+def _artifact_presence_status(output_root: Path) -> dict[str, Any]:
+    artifacts: dict[str, dict[str, Any]] = {}
+    missing_artifacts: list[str] = []
+    empty_artifacts: list[str] = []
+
+    for kind, filename in _EXPECTED_ARTIFACTS:
+        path = output_root / filename
+        exists = path.exists() and path.is_file()
+        non_empty = exists and path.stat().st_size > 0
+        if not exists:
+            missing_artifacts.append(kind)
+        elif not non_empty:
+            empty_artifacts.append(kind)
+        artifacts[kind] = {
+            "path": _normalize_path(path),
+            "exists": exists,
+            "non_empty": non_empty,
+        }
+
+    return {
+        "status": "pass" if not missing_artifacts and not empty_artifacts else "fail",
+        "missing_artifacts": missing_artifacts,
+        "empty_artifacts": empty_artifacts,
+        "artifacts": artifacts,
+    }
+
+
+def _read_packet_record(path: Path) -> tuple[Mapping[str, Any] | None, list[str]]:
+    return _read_jsonl_mapping(path, "operating_record")
+
+
+def _read_manifest_record(path: Path) -> tuple[Mapping[str, Any] | None, list[str]]:
+    return _read_jsonl_mapping(path, "manifest")
+
+
+def _read_jsonl_mapping(
+    path: Path,
+    artifact_name: str,
+) -> tuple[Mapping[str, Any] | None, list[str]]:
+    if not path.exists():
+        return None, []
+    try:
+        lines = [
+            line.strip()
+            for line in path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except OSError:
+        return None, [f"{artifact_name}.readable"]
+    if len(lines) != 1:
+        return None, [f"{artifact_name}.single_jsonl_record"]
+    try:
+        record = json.loads(lines[0])
+    except json.JSONDecodeError:
+        return None, [f"{artifact_name}.parseable_jsonl"]
+    if not isinstance(record, Mapping):
+        return None, [f"{artifact_name}.record_object"]
+    return record, []
+
+
+def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for field_name in _REQUIRED_PACKET_FIELDS:
+        if not _has_required_value(packet.get(field_name)):
+            missing.append(field_name)
+
+    if (
+        "assistant_packet_version" not in missing
+        and packet.get("assistant_packet_version") != _ASSISTANT_PACKET_VERSION
+    ):
+        missing.append("assistant_packet_version")
+    if not _paper_submit_not_authorized(packet):
+        missing.append("paper_submit_authorized_false_or_not_authorized")
+    if packet.get("broker_state_observed") is not False:
+        missing.append("broker_state_observed_false")
+    if packet.get("broker_state_mode") not in {
+        "broker_state_not_observed",
+        "offline_preview_only",
+    }:
+        missing.append("broker_state_mode_offline_or_not_observed")
+
+    labels = packet.get("safety_labels")
+    if not isinstance(labels, list) or not labels:
+        if "safety_labels" not in missing:
+            missing.append("safety_labels")
+    else:
+        for label in _REQUIRED_LABELS:
+            if label not in labels:
+                missing.append(f"safety_labels.{label}")
+    return missing
+
+
+def _missing_manifest_fields(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    manifest, failures = _read_manifest_record(output_root / _MANIFEST_FILENAME)
+    if manifest is None:
+        return failures
+
+    missing: list[str] = list(failures)
+    for field_name in _REQUIRED_MANIFEST_FIELDS:
+        if field_name == "missing_required_fields":
+            if field_name not in manifest or not isinstance(
+                manifest.get(field_name),
+                list,
+            ):
+                missing.append(f"manifest.{field_name}")
+        elif not _has_required_value(manifest.get(field_name)):
+            missing.append(f"manifest.{field_name}")
+    if not _paper_submit_not_authorized(manifest):
+        missing.append("manifest.paper_submit_authorized_false_or_not_authorized")
+
+    for field_name in (
+        "input_data_path",
+        "as_of_date",
+        "active_strategy_name",
+        "posture",
+        "sma_posture_status",
+        "preview_decision",
+        "blocker_status",
+        "broker_state_mode",
+        "next_operator_action",
+        "assistant_packet_version",
+    ):
+        if field_name in packet and manifest.get(field_name) != packet.get(field_name):
+            missing.append(f"manifest.{field_name}.matches_record")
+
+    return missing
+
+
+def _missing_brief_references(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    brief_path = output_root / _BRIEF_FILENAME
+    if not brief_path.exists():
+        return []
+    try:
+        brief_text = brief_path.read_text(encoding="utf-8")
+    except OSError:
+        return ["operating_brief.readable"]
+
+    missing: list[str] = []
+    for field_name in _BRIEF_REQUIRED_VALUE_FIELDS:
+        value = packet.get(field_name)
+        if _has_required_value(value) and str(value) not in brief_text:
+            missing.append(f"operating_brief.{field_name}")
+
+    if (
+        "paper_submit_authorized=false" not in brief_text
+        and "not_authorized" not in brief_text
+    ):
+        missing.append("operating_brief.paper_submit_authorized_false_or_not_authorized")
+    for label in _REQUIRED_LABELS:
+        if label not in brief_text:
+            missing.append(f"operating_brief.safety_labels.{label}")
+    return missing
+
+
+def _has_required_value(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple, set, dict)):
+        return len(value) > 0
+    return True
+
+
+def _paper_submit_not_authorized(packet: Mapping[str, Any]) -> bool:
+    status = str(packet.get("paper_submit_authorization_status", "")).strip()
+    return packet.get("paper_submit_authorized") is False or status in _NOT_AUTHORIZED_STATUSES
+
+
 def _decimal_text(value: Decimal | None) -> str | None:
     if value is None:
         return None
@@ -461,12 +772,26 @@ def _research_lab(
         ],
         "candidate_strategy_board": [
             {
-                "strategy_name": "candidate_strategy_placeholder",
-                "status": "no_candidates_loaded",
-                "note": (
-                    "Assistant v1 keeps SPY SMA 50/200 as the single controlled "
-                    "test strategy."
+                "candidate_name": "candidate_strategy_board_seed",
+                "status": "placeholder_not_implemented",
+                "hypothesis": (
+                    "No alternate strategy hypothesis is active in Assistant v1.1; "
+                    "SPY SMA 50/200 remains the only controlled test strategy."
                 ),
+                "required_evidence": [
+                    "operator_and_GPT_approved_candidate_definition",
+                    "offline_backtest_or_replay_evidence",
+                    "dependency_direction_and_safety_review",
+                    "paper_lab_only_promotion_packet",
+                ],
+                "next_research_action": (
+                    "draft_candidate_hypothesis_for_GPT_review_before_any_strategy_code"
+                ),
+                "promotion_blockers": [
+                    "no_candidate_strategy_selected",
+                    "no_offline_evidence_collected",
+                    "no_approval_to_expand_strategy_catalog",
+                ],
             }
         ],
         "confidence_status": "confidence_not_yet_quantified",
@@ -521,19 +846,22 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     missing_evidence_lines = "\n".join(
         f"* {item}" for item in payload["research_lab"]["missing_evidence"]
     )
-    candidate_lines = "\n".join(
-        f"* **{item['strategy_name']}**: {item['status']} - {item['note']}"
-        for item in payload["research_lab"]["candidate_strategy_board"]
+    candidate_lines = _render_candidate_strategy_board(
+        payload["research_lab"]["candidate_strategy_board"]
     )
     freshness = payload["data_freshness"]
+    missing_required_fields = payload["missing_required_fields"]
+    missing_required_fields_text = (
+        "[]" if not missing_required_fields else ", ".join(missing_required_fields)
+    )
 
     return f"""# Daily Trading Research Command Center
 
 ## Executive summary
-* **Plain-English status**: {payload["executive_summary"]["plain_english_status"]}
-* **Current recommendation**: {payload["current_recommendation"]}
-* **Current blocker**: {payload["blocker_status"]}. {payload["broker_state_claim"]}
-* **Does Daniel need to do anything?** {payload["executive_summary"]["daniel_action_required"]}
+* **Recommendation**: {payload["current_recommendation"]}
+* **Evidence**: {payload["executive_summary"]["plain_english_status"]} Preview decision: `{payload["preview_decision"]}`.
+* **Risks / blockers**: {payload["blocker_status"]}. {payload["broker_state_claim"]} Paper submit authorization is `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`).
+* **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
 
 ## Trading desk brief
 * **Active strategy**: {payload["active_strategy_name"]}
@@ -558,6 +886,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 ## Executive dashboard
 * **Data freshness**: {freshness["status"]} (latest input bar: {freshness["latest_input_bar_date"]}; basis: {freshness["freshness_basis"]}; wall-clock staleness: {freshness["wall_clock_staleness"]})
 * **Validation status**: {payload["validation_status"]}
+* **Assistant packet version**: {payload["assistant_packet_version"]}
+* **Missing required fields**: {missing_required_fields_text}
+* **Artifact presence status**: {payload["artifact_presence_status"]["status"]}
 * **Artifact paths**:
 {artifact_lines}
 * **System health**: {payload["system_health"]}
@@ -565,6 +896,26 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {labels_list}
 * **Next operator action**: {payload["next_operator_action"]}
 """
+
+
+def _render_candidate_strategy_board(candidate_board: list[Mapping[str, Any]]) -> str:
+    if not candidate_board:
+        return "* No candidate strategy placeholders are present."
+    lines = [
+        "| Candidate | Status | Hypothesis | Required evidence | Next research action | Promotion blockers |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in candidate_board:
+        lines.append(
+            "| "
+            f"`{item['candidate_name']}` | "
+            f"`{item['status']}` | "
+            f"{item['hypothesis']} | "
+            f"{', '.join(item['required_evidence'])} | "
+            f"{item['next_research_action']} | "
+            f"{', '.join(item['promotion_blockers'])} |"
+        )
+    return "\n".join(lines)
 
 
 def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -575,6 +926,7 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
+        "assistant_packet_version": payload["assistant_packet_version"],
         "manifest_type": "daily_trading_research_command_center_index",
         "command": _COMMAND,
         "script": _SCRIPT,
@@ -583,13 +935,18 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "active_strategy_name": payload["active_strategy_name"],
         "input_data_path": payload["input_data_path"],
         "input_data_sha256": payload["input_data_sha256"],
+        "posture": payload["posture"],
         "sma_posture_status": payload["sma_posture_status"],
         "preview_decision": payload["preview_decision"],
         "blocker_status": payload["blocker_status"],
         "broker_state_mode": payload["broker_state_mode"],
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
+        "next_operator_action": payload["next_operator_action"],
         "safety_labels": list(_REQUIRED_LABELS),
+        "validation_status": payload["validation_status"],
+        "missing_required_fields": list(payload["missing_required_fields"]),
+        "artifact_presence_status": dict(payload["artifact_presence_status"]),
         "artifact_paths": dict(payload["artifact_paths"]),
         "indexed_artifacts": indexed_artifacts,
     }
