@@ -188,6 +188,45 @@ def test_validation_passes_when_all_artifacts_are_healthy(
 
 
 @patch("subprocess.run")
+def test_validation_passes_for_selected_repo_relative_output_root(
+    mock_subproc: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    soak_dir = Path("runs/daily_soak/v3p_unit")
+    validation_out = soak_dir / "v3o_daily_lab_closeout_bundle_validation.jsonl"
+    validation_text_out = soak_dir / "v3o_daily_lab_closeout_bundle_validation.md"
+
+    _create_passing_artifacts(soak_dir)
+
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+    mock_res.stdout = ""
+    mock_subproc.return_value = mock_res
+
+    record = run_daily_lab_closeout_bundle_validation(
+        DailyLabCloseoutBundleValidationConfig(
+            daily_soak_dir=str(soak_dir),
+            validation_out=str(validation_out),
+            validation_text_out=str(validation_text_out),
+        )
+    )
+
+    assert record["status"] == "passed"
+    assert record["bundle_root"] == "runs/daily_soak/v3p_unit"
+    assert set(record["expected_artifacts"]) == {
+        "runs/daily_soak/v3p_unit/v3j_daily_soak_acceptance_history_index.jsonl",
+        "runs/daily_soak/v3p_unit/v3k_daily_soak_operator_summary.jsonl",
+        "runs/daily_soak/v3p_unit/v3k_daily_soak_operator_summary.md",
+        "runs/daily_soak/v3p_unit/v3l_daily_soak_closeout_packet.jsonl",
+        "runs/daily_soak/v3p_unit/v3l_daily_soak_closeout_packet.md",
+        "runs/daily_soak/v3p_unit/v3n_daily_lab_closeout_run_receipt.jsonl",
+        "runs/daily_soak/v3p_unit/v3n_daily_lab_closeout_run_receipt.md",
+    }
+    assert validation_out.exists()
+    assert validation_text_out.exists()
+
+
+@patch("subprocess.run")
 def test_validation_fails_on_missing_artifact(mock_subproc: MagicMock, tmp_path: Path) -> None:
     soak_dir = tmp_path / "soak"
     validation_out = soak_dir / "validation.jsonl"
@@ -216,6 +255,41 @@ def test_validation_fails_on_missing_artifact(mock_subproc: MagicMock, tmp_path:
     assert any("v3l_closeout_packet_markdown" in f for f in record["failures"])
 
     # Output files must still be written
+    assert validation_out.exists()
+    assert validation_text_out.exists()
+
+
+@patch("subprocess.run")
+def test_validation_fails_on_missing_artifact_under_selected_output_root(
+    mock_subproc: MagicMock, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    soak_dir = Path("runs/daily_soak/v3p_missing")
+    validation_out = soak_dir / "v3o_daily_lab_closeout_bundle_validation.jsonl"
+    validation_text_out = soak_dir / "v3o_daily_lab_closeout_bundle_validation.md"
+
+    paths = _create_passing_artifacts(soak_dir)
+    paths["v3k_operator_summary_jsonl"].unlink()
+
+    mock_res = MagicMock()
+    mock_res.returncode = 0
+    mock_res.stdout = ""
+    mock_subproc.return_value = mock_res
+
+    record = run_daily_lab_closeout_bundle_validation(
+        DailyLabCloseoutBundleValidationConfig(
+            daily_soak_dir=str(soak_dir),
+            validation_out=str(validation_out),
+            validation_text_out=str(validation_text_out),
+        )
+    )
+
+    assert record["status"] == "failed"
+    assert record["bundle_root"] == "runs/daily_soak/v3p_missing"
+    assert any(
+        "runs/daily_soak/v3p_missing/v3k_daily_soak_operator_summary.jsonl" in failure
+        for failure in record["failures"]
+    )
     assert validation_out.exists()
     assert validation_text_out.exists()
 

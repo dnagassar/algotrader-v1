@@ -22,6 +22,10 @@ Path to the offline reconciliation state JSONL file.
 .PARAMETER DailySoakDir
 Directory under which daily soak artifacts are stored.
 
+.PARAMETER OutputRoot
+Optional bundle output root. When provided, overrides DailySoakDir for
+V3I/V3J/V3K/V3L/V3N/V3O artifacts.
+
 .PARAMETER PythonExecutable
 Python executable used for algotrader CLI commands.
 
@@ -39,6 +43,7 @@ param(
     [string]$BarsCsv = "tests/fixtures/etf_sma_cycle_matrix/spy_daily_bars_200_bullish.csv",
     [string]$ReconciliationStatePath = "tests/fixtures/etf_sma_cycle_matrix/reconciliation_state_flat.jsonl",
     [string]$DailySoakDir = "runs/daily_soak",
+    [string]$OutputRoot = "",
     [string]$PythonExecutable = "python",
     [string]$ReceiptOut = "",
     [string]$ReceiptTextOut = "",
@@ -57,6 +62,20 @@ function Write-Section {
 
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $AcceptanceScript = Join-Path $RepoRoot "scripts/run_daily_lab_acceptance.ps1"
+
+if (-not [string]::IsNullOrWhiteSpace($OutputRoot)) {
+    $DailySoakDir = $OutputRoot
+}
+
+function Resolve-RepoRelativePath {
+    param([string]$Path)
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return $Path
+    }
+    return Join-Path $RepoRoot $Path
+}
+
+$DailySoakDirFsPath = Resolve-RepoRelativePath -Path $DailySoakDir
 
 $HistoryIndexPath = Join-Path $DailySoakDir "v3j_daily_soak_acceptance_history_index.jsonl"
 $OperatorSummaryPath = Join-Path $DailySoakDir "v3k_daily_soak_operator_summary.jsonl"
@@ -261,7 +280,8 @@ if ($AnyFailed) {
 Write-Section "Building V3N daily lab closeout run receipt"
 $StepRecordsJson = ConvertTo-Json -InputObject $Steps -Compress
 
-$StepsTempPath = Join-Path $DailySoakDir "v3n_steps_temp.json"
+New-Item -ItemType Directory -Path $DailySoakDirFsPath -Force | Out-Null
+$StepsTempPath = Join-Path $DailySoakDirFsPath "v3n_steps_temp.json"
 $StepRecordsJson | Out-File -FilePath $StepsTempPath -Encoding utf8 -Force
 
 Push-Location -LiteralPath $RepoRoot

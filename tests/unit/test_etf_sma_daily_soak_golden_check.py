@@ -734,6 +734,86 @@ def test_golden_check_blocks_on_phase_exception(mock_soak) -> None:
 @patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak_release_gate")
 @patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak_brief")
 @patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak")
+def test_golden_check_cli_derives_default_outputs_from_custom_output_root(
+    mock_soak,
+    mock_brief,
+    mock_gate,
+    mock_val,
+    mock_write,
+    mock_git,
+) -> None:
+    test_root = Path("runs/test_soak_golden_check_cli_root")
+    test_val = Path("runs/validation/test_cli_root_artifact_validation_report.jsonl")
+    test_post_val = Path(
+        "runs/validation/test_cli_root_artifact_validation_after_release_gate_report.jsonl"
+    )
+    out_jsonl = test_root / "soak_golden_acceptance.jsonl"
+    out_text = test_root / "soak_golden_acceptance.txt"
+
+    for p in (test_val, test_post_val):
+        if p.exists():
+            os.remove(p)
+    if test_root.exists():
+        shutil.rmtree(test_root, ignore_errors=True)
+
+    try:
+        root = test_root.as_posix()
+        rollup = _get_mock_rollup()
+        rollup["artifact_paths"] = [f"{root}/soak_rollup.jsonl"]
+        brief = _get_mock_brief()
+        brief["source_soak_rollup_path"] = f"{root}/soak_rollup.jsonl"
+        brief["daily_root"] = root
+        brief["artifact_paths"] = [
+            f"{root}/soak_rollup.jsonl",
+            f"{root}/soak_operator_brief.jsonl",
+        ]
+        release_gate = _get_mock_release_gate()
+        release_gate["source_soak_brief_path"] = f"{root}/soak_operator_brief.jsonl"
+        release_gate["source_artifact_validation_path"] = test_val.as_posix()
+        release_gate["artifact_paths"] = [
+            f"{root}/soak_rollup.jsonl",
+            f"{root}/soak_operator_brief.jsonl",
+            f"{root}/soak_release_gate.jsonl",
+        ]
+
+        mock_soak.return_value = rollup
+        mock_brief.return_value = brief
+        mock_gate.return_value = release_gate
+        mock_val.return_value = _get_mock_validation()
+
+        exit_code = cli_module.main([
+            "etf-sma-daily-soak-golden-check",
+            "--start-date", "2025-06-01",
+            "--end-date", "2025-06-10",
+            "--bars-csv", "tests/fixtures/etf_sma_cycle_matrix/spy_daily_bars_200_bullish.csv",
+            "--reconciliation-state-path", "tests/fixtures/etf_sma_cycle_matrix/reconciliation_state_flat.jsonl",
+            "--output-root", str(test_root),
+            "--validation-output", str(test_val),
+            "--post-release-validation-output", str(test_post_val),
+            "--format", "json",
+        ])
+
+        assert exit_code == 0
+        assert out_jsonl.exists()
+        assert out_text.exists()
+        payload = json.loads(out_jsonl.read_text(encoding="utf-8"))
+        assert payload["output_root"] == test_root.as_posix()
+        assert out_jsonl.as_posix() in payload["artifact_paths"]
+        assert out_text.as_posix() in payload["artifact_paths"]
+    finally:
+        for p in (test_val, test_post_val):
+            if p.exists():
+                os.remove(p)
+        if test_root.exists():
+            shutil.rmtree(test_root, ignore_errors=True)
+
+
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check._is_git_tracked_or_staged", return_value=False)
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check.write_validation_report")
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check.validate_tree")
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak_release_gate")
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak_brief")
+@patch("algotrader.execution.etf_sma_daily_soak_golden_check.run_etf_sma_daily_soak")
 def test_golden_check_cli_exit_codes(
     mock_soak,
     mock_brief,

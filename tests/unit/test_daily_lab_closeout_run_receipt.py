@@ -167,6 +167,51 @@ def test_receipt_writer_records_present_artifacts_with_size_bytes_and_sha256(tmp
     assert receipt_art["sha256"] is not None
 
 
+def test_receipt_references_selected_repo_relative_output_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    soak_dir = Path("runs/daily_soak/v3p_unit")
+    soak_dir.mkdir(parents=True)
+    receipt_out = soak_dir / "v3n_daily_lab_closeout_run_receipt.jsonl"
+    receipt_text_out = soak_dir / "v3n_daily_lab_closeout_run_receipt.md"
+
+    for artifact_name in (
+        "v3j_daily_soak_acceptance_history_index.jsonl",
+        "v3k_daily_soak_operator_summary.jsonl",
+        "v3k_daily_soak_operator_summary.md",
+        "v3l_daily_soak_closeout_packet.jsonl",
+        "v3l_daily_soak_closeout_packet.md",
+    ):
+        (soak_dir / artifact_name).write_text("fixture\n", encoding="utf-8")
+
+    receipt = run_daily_lab_closeout_receipt(
+        DailyLabCloseoutRunReceiptConfig(
+            start_date="2025-06-01",
+            end_date="2025-06-10",
+            bars_csv="tests/fixtures/spy_bars.csv",
+            reconciliation_state_path="tests/fixtures/recon.jsonl",
+            daily_soak_dir=str(soak_dir),
+            status="completed",
+            steps_json="[]",
+            receipt_out=str(receipt_out),
+            receipt_text_out=str(receipt_text_out),
+        )
+    )
+
+    assert receipt["daily_soak_dir"] == "runs/daily_soak/v3p_unit"
+    artifact_paths = {artifact["path"] for artifact in receipt["artifacts"]}
+    assert artifact_paths == {
+        "runs/daily_soak/v3p_unit/v3j_daily_soak_acceptance_history_index.jsonl",
+        "runs/daily_soak/v3p_unit/v3k_daily_soak_operator_summary.jsonl",
+        "runs/daily_soak/v3p_unit/v3k_daily_soak_operator_summary.md",
+        "runs/daily_soak/v3p_unit/v3l_daily_soak_closeout_packet.jsonl",
+        "runs/daily_soak/v3p_unit/v3l_daily_soak_closeout_packet.md",
+        "runs/daily_soak/v3p_unit/v3n_daily_lab_closeout_run_receipt.jsonl",
+        "runs/daily_soak/v3p_unit/v3n_daily_lab_closeout_run_receipt.md",
+    }
+
+
 def test_receipt_includes_all_required_safety_booleans_set_to_false(tmp_path: Path) -> None:
     soak_dir = tmp_path / "soak"
     soak_dir.mkdir()

@@ -6,6 +6,7 @@ import argparse
 from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 import json
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -31,6 +32,15 @@ from .execution.paper_order_policy import (
 
 _PROFILE_NAMES = ("dev", "paper", "live")
 _PREVIEW_FORMATS = ("text", "json")
+_DAILY_SOAK_DEFAULT_ROOT = "runs/daily_soak"
+_DAILY_SOAK_GOLDEN_CHECK_JSONL_FILENAME = "soak_golden_acceptance.jsonl"
+_DAILY_SOAK_GOLDEN_CHECK_TEXT_FILENAME = "soak_golden_acceptance.txt"
+_DAILY_SOAK_GOLDEN_CHECK_DEFAULT_JSONL = (
+    f"{_DAILY_SOAK_DEFAULT_ROOT}/{_DAILY_SOAK_GOLDEN_CHECK_JSONL_FILENAME}"
+)
+_DAILY_SOAK_GOLDEN_CHECK_DEFAULT_TEXT = (
+    f"{_DAILY_SOAK_DEFAULT_ROOT}/{_DAILY_SOAK_GOLDEN_CHECK_TEXT_FILENAME}"
+)
 _PAPER_ORDER_EQUITY_POLICY = paper_order_policy_for_asset_class("equity")
 _PAPER_ORDER_PROBE_SYMBOL_ALLOWLIST = (
     _PAPER_ORDER_EQUITY_POLICY.symbol_allowlist or ()
@@ -80,6 +90,15 @@ _PAPER_CLOSE_PROBE_GATE_ORDER = (
     "recent_order_query_metadata_gate",
     "recent_open_order_gate",
 )
+
+
+def _argv_option_was_provided(args: argparse.Namespace, option: str) -> bool:
+    argv_items = getattr(args, "_argv_items", ())
+    return any(item == option or item.startswith(f"{option}=") for item in argv_items)
+
+
+def _daily_soak_output_path(output_root: str, filename: str) -> str:
+    return (Path(output_root) / filename).as_posix()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2643,7 +2662,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     etf_sma_daily_soak_golden_check_parser.add_argument(
         "--output-root",
-        default="runs/daily_soak",
+        default=_DAILY_SOAK_DEFAULT_ROOT,
         help="Directory under which daily runs and soak rollups are stored.",
     )
     etf_sma_daily_soak_golden_check_parser.add_argument(
@@ -2658,12 +2677,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     etf_sma_daily_soak_golden_check_parser.add_argument(
         "--output-jsonl",
-        default="runs/daily_soak/soak_golden_acceptance.jsonl",
+        default=_DAILY_SOAK_GOLDEN_CHECK_DEFAULT_JSONL,
         help="Path to write the golden acceptance JSONL record.",
     )
     etf_sma_daily_soak_golden_check_parser.add_argument(
         "--output-text",
-        default="runs/daily_soak/soak_golden_acceptance.txt",
+        default=_DAILY_SOAK_GOLDEN_CHECK_DEFAULT_TEXT,
         help="Path to write the golden acceptance text summary.",
     )
     etf_sma_daily_soak_golden_check_parser.add_argument(
@@ -3455,6 +3474,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv_items)
+    setattr(args, "_argv_items", argv_items)
 
     command = args.command or "config"
 
@@ -5975,6 +5995,17 @@ def _run_etf_sma_daily_soak_golden_check(args: argparse.Namespace) -> int:
     )
 
     try:
+        output_jsonl = args.output_jsonl
+        output_text = args.output_text
+        if not _argv_option_was_provided(args, "--output-jsonl"):
+            output_jsonl = _daily_soak_output_path(
+                args.output_root, _DAILY_SOAK_GOLDEN_CHECK_JSONL_FILENAME
+            )
+        if not _argv_option_was_provided(args, "--output-text"):
+            output_text = _daily_soak_output_path(
+                args.output_root, _DAILY_SOAK_GOLDEN_CHECK_TEXT_FILENAME
+            )
+
         payload = run_etf_sma_daily_soak_golden_check(
             EtfSmaDailySoakGoldenCheckConfig(
                 start_date=args.start_date,
@@ -5984,8 +6015,8 @@ def _run_etf_sma_daily_soak_golden_check(args: argparse.Namespace) -> int:
                 output_root=args.output_root,
                 validation_output=args.validation_output,
                 post_release_validation_output=args.post_release_validation_output,
-                output_jsonl=args.output_jsonl,
-                output_text=args.output_text,
+                output_jsonl=output_jsonl,
+                output_text=output_text,
                 output_format=args.output_format,
             )
         )
