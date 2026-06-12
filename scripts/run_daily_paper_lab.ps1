@@ -67,8 +67,14 @@ foreach ($Name in $CredentialVariableNames) {
     }
 }
 
+$AppProfileIsPaper = [System.Environment]::GetEnvironmentVariable("APP_PROFILE", "Process") -eq "paper"
+if ($AppProfileIsPaper) {
+    [Console]::Error.WriteLine("Error: APP_PROFILE is paper. Daily paper-lab assistant must run offline only without paper profile.")
+    exit 2
+}
+
 if ($LoadedCredentialVariables.Count -gt 0) {
-    [Console]::Error.WriteLine("Error: broker credential environment variable(s) are loaded: $($LoadedCredentialVariables -join ', '). V3R must run offline only without credentials.")
+    [Console]::Error.WriteLine("Error: broker credential environment variable(s) are loaded: $($LoadedCredentialVariables -join ', '). Daily paper-lab assistant must run offline only without credentials.")
     exit 2
 }
 

@@ -1,7 +1,8 @@
-"""Working Daily ETF SMA Daily Paper-Lab execution runner for V3R.
+"""Assistant v1 daily ETF/SMA paper-lab command center.
 
-This module is completely offline, deterministic, credential-free, network-free,
-and broker-free. It generates a daily paper-lab operating packet.
+This module is completely offline, deterministic, credential-free,
+network-free, and broker-free. It generates the first operator-facing daily
+assistant packet for the controlled SPY SMA 50/200 paper-lab strategy.
 """
 
 from __future__ import annotations
@@ -16,9 +17,12 @@ import json
 from pathlib import Path
 from typing import Any
 
-from algotrader.errors import ValidationError
 from algotrader.core.types import Bar
-from algotrader.signals.etf_sma_evaluator import evaluate_etf_sma_signal, EtfSmaSignalConfig
+from algotrader.errors import ValidationError
+from algotrader.signals.etf_sma_evaluator import (
+    EtfSmaSignalConfig,
+    evaluate_etf_sma_signal,
+)
 
 __all__ = [
     "EtfSmaDailyPaperLabConfig",
@@ -30,6 +34,13 @@ _DEFAULT_SYMBOL = "SPY"
 _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
 _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
+_ASSISTANT_VERSION = "assistant_v1"
+_PACKET_TYPE = "daily_trading_research_command_center"
+_COMMAND = "etf-sma-daily-paper-lab"
+_SCRIPT = "scripts/run_daily_paper_lab.ps1"
+_BRIEF_FILENAME = "operating_brief.md"
+_RECORD_FILENAME = "operating_record.jsonl"
+_MANIFEST_FILENAME = "manifest.jsonl"
 _REQUIRED_LABELS = [
     "paper_lab_only",
     "signal_evaluation_only",
@@ -37,12 +48,14 @@ _REQUIRED_LABELS = [
     "not_live_authorized",
     "profit_claim=none",
     "offline_only",
+    "broker_state_not_observed",
+    "paper_submit_not_authorized",
 ]
 
 
 @dataclass(frozen=True, slots=True)
 class EtfSmaDailyPaperLabConfig:
-    """Configuration for V3R Daily Paper-Lab loop execution."""
+    """Configuration for the Assistant v1 daily paper-lab loop."""
 
     output_root: Path | str
     bars_csv: Path | str = _DEFAULT_BARS_CSV
@@ -64,25 +77,21 @@ class EtfSmaDailyPaperLabConfig:
 
 
 def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
-    """Execute the daily paper-lab command and write artifacts."""
+    """Execute the daily assistant command and write the packet artifacts."""
     output_root = Path(config.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
     payload = build_etf_sma_daily_paper_lab(config)
 
-    # 1. Write operating_record.jsonl
-    record_file = output_root / "operating_record.jsonl"
+    record_file = output_root / _RECORD_FILENAME
     record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
     record_file.write_text(record_line, encoding="utf-8", newline="\n")
 
-    # 2. Write operating_brief.md
-    brief_file = output_root / "operating_brief.md"
-    brief_content = _render_brief_markdown(payload)
-    brief_file.write_text(brief_content, encoding="utf-8", newline="\n")
+    brief_file = output_root / _BRIEF_FILENAME
+    brief_file.write_text(_render_brief_markdown(payload), encoding="utf-8", newline="\n")
 
-    # 3. Compute manifest and write manifest.jsonl
-    manifest_file = output_root / "manifest.jsonl"
-    manifest_data = _build_manifest(output_root, payload["run_id"], payload["as_of_date"])
+    manifest_file = output_root / _MANIFEST_FILENAME
+    manifest_data = _build_manifest(output_root, payload)
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
 
@@ -90,24 +99,31 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
 
 
 def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
-    """Load inputs and build daily paper-lab payload."""
+    """Load inputs and build the Assistant v1 daily paper-lab payload."""
     bars_path = Path(config.bars_csv)
     bars = _load_bars(bars_path, config.symbol)
 
-    # Resolve as_of_date
     if config.as_of_date:
         as_of_str = config.as_of_date.strip()
         try:
-            as_of_dt = datetime.combine(datetime.fromisoformat(as_of_str).date(), datetime.min.time(), tzinfo=timezone.utc)
+            as_of_dt = datetime.combine(
+                datetime.fromisoformat(as_of_str).date(),
+                datetime.min.time(),
+                tzinfo=timezone.utc,
+            )
         except ValueError as exc:
-            raise ValidationError(f"as_of_date must be in YYYY-MM-DD format: {config.as_of_date}") from exc
+            raise ValidationError(
+                f"as_of_date must be in YYYY-MM-DD format: {config.as_of_date}"
+            ) from exc
+        as_of_source = "explicit_config"
     else:
         if not bars:
             raise ValidationError("No usable bars found to derive default as-of date.")
         as_of_dt = max(bar.timestamp for bar in bars)
         as_of_str = as_of_dt.strftime("%Y-%m-%d")
+        as_of_source = "latest_input_bar"
 
-    # Run evaluate_etf_sma_signal
+    latest_input_bar_date = max(bar.timestamp for bar in bars).strftime("%Y-%m-%d")
     signal = evaluate_etf_sma_signal(
         bars,
         EtfSmaSignalConfig(
@@ -119,50 +135,111 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     )
 
     posture = signal.posture
-    sma_fast_val = _decimal_text(signal.short_sma)
-    sma_slow_val = _decimal_text(signal.long_sma)
-
-    # Determine decision, next operator action
-    if posture == "insufficient_history":
-        decision = "insufficient_history"
-        next_operator_action = "observe_insufficient_history"
-    elif posture == "bullish_risk_on":
-        decision = "offline_preview_bullish_risk_on"
-        next_operator_action = "observe_offline_preview_only"
-    else:
-        decision = "offline_preview_defensive_risk_off"
-        next_operator_action = "observe_offline_preview_only"
-
+    sma_fast_value = _decimal_text(signal.short_sma)
+    sma_slow_value = _decimal_text(signal.long_sma)
+    preview_decision = _preview_decision(posture)
+    next_operator_action = _next_operator_action(posture, config.sma_slow_window)
+    blocker_status = "broker_state_not_observed"
+    broker_state_mode = "broker_state_not_observed"
     output_root = Path(config.output_root)
-    run_id = f"daily_paper_lab_{as_of_str}"
+    artifact_paths = _artifact_paths(output_root)
+    sma_status = _sma_status(
+        posture=posture,
+        fast_window=config.sma_fast_window,
+        slow_window=config.sma_slow_window,
+        usable_bar_count=signal.usable_bar_count,
+    )
+    data_freshness = _data_freshness(
+        as_of_date=as_of_str,
+        latest_input_bar_date=latest_input_bar_date,
+    )
+    research_lab = _research_lab(
+        config=config,
+        as_of_date=as_of_str,
+        posture=posture,
+        sma_status=sma_status,
+        sma_fast_value=sma_fast_value,
+        sma_slow_value=sma_slow_value,
+    )
 
-    return {
+    payload: dict[str, Any] = {
         "schema_version": _SCHEMA_VERSION,
-        "run_id": run_id,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "assistant_version": _ASSISTANT_VERSION,
+        "packet_type": _PACKET_TYPE,
+        "command": _COMMAND,
+        "script": _SCRIPT,
+        "run_id": f"daily_paper_lab_{as_of_str}",
         "input_data_path": _normalize_path(bars_path),
+        "input_data_sha256": _sha256_file(bars_path),
         "as_of_date": as_of_str,
-        "symbol": config.symbol,
+        "as_of_source": as_of_source,
+        "latest_input_bar_date": latest_input_bar_date,
+        "active_strategy_name": _STRATEGY_NAME,
         "strategy_name": _STRATEGY_NAME,
+        "symbol": config.symbol,
         "sma_fast_window": config.sma_fast_window,
         "sma_slow_window": config.sma_slow_window,
-        "sma_fast_value": sma_fast_val,
-        "sma_slow_value": sma_slow_val,
+        "sma_fast_value": sma_fast_value,
+        "sma_slow_value": sma_slow_value,
+        "sma_posture_status": sma_status,
         "posture": posture,
-        "decision": decision,
-        "blocker_status": "broker_state_not_observed",
-        "broker_state_mode": "broker_state_not_observed",
+        "preview_decision": preview_decision,
+        "decision": preview_decision,
+        "current_recommendation": _current_recommendation(posture),
+        "blocker_status": blocker_status,
+        "blockers": [blocker_status],
+        "broker_state_mode": broker_state_mode,
         "broker_state_observed": False,
+        "broker_state_claim": (
+            "No broker positions or open orders were read; this packet makes no "
+            "position or order-state claim."
+        ),
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
+        "paper_submit_authorization_reason": "operator_has_not_authorized_submit",
         "next_operator_action": next_operator_action,
         "labels": list(_REQUIRED_LABELS),
+        "safety_labels": list(_REQUIRED_LABELS),
+        "data_freshness": data_freshness,
+        "validation_status": "packet_written_offline",
+        "system_health": "offline_assistant_packet_ready",
+        "artifact_paths": artifact_paths,
         "artifacts": {
-            "operating_brief": _normalize_path(output_root / "operating_brief.md"),
-            "operating_record": _normalize_path(output_root / "operating_record.jsonl"),
-            "manifest": _normalize_path(output_root / "manifest.jsonl"),
+            "assistant_brief": artifact_paths["assistant_brief"],
+            "operating_brief": artifact_paths["assistant_brief"],
+            "operating_record": artifact_paths["operating_record"],
+            "manifest": artifact_paths["manifest"],
+        },
+        "sma": {
+            "symbol": signal.symbol,
+            "fast_window": signal.short_window,
+            "slow_window": signal.long_window,
+            "fast_value": sma_fast_value,
+            "slow_value": sma_slow_value,
+            "latest_close": _decimal_text(signal.latest_close),
+            "total_bar_count": signal.total_bar_count,
+            "usable_bar_count": signal.usable_bar_count,
+            "ignored_future_bar_count": signal.ignored_future_bar_count,
+            "posture": posture,
+            "status": sma_status,
+        },
+        "research_lab": research_lab,
+        "executive_dashboard": {
+            "data_freshness": data_freshness,
+            "validation_status": "packet_written_offline",
+            "artifact_paths": artifact_paths,
+            "system_health": "offline_assistant_packet_ready",
+            "safety_labels": list(_REQUIRED_LABELS),
+            "next_operator_action": next_operator_action,
         },
     }
+    payload["executive_summary"] = {
+        "plain_english_status": _plain_english_status(payload),
+        "current_recommendation": payload["current_recommendation"],
+        "current_blocker": blocker_status,
+        "daniel_action_required": _daniel_action_required(posture),
+    }
+    return payload
 
 
 def _load_bars(path: Path, symbol: str) -> list[Bar]:
@@ -192,15 +269,11 @@ def _parse_row_to_bar(row: Mapping[str, object], symbol: str) -> Bar:
     adj_close_val = _row_value(row, "adjusted_close")
     if adj_close_val not in (None, ""):
         close = Decimal(str(adj_close_val))
-        if raw_close != Decimal("0"):
-            factor = close / raw_close
-        else:
-            factor = Decimal("1")
+        factor = close / raw_close if raw_close != Decimal("0") else Decimal("1")
     else:
         close = raw_close
         factor = Decimal("1")
 
-    # fallback for other fields
     open_val = _row_value(row, "open")
     open_price = Decimal(str(open_val)) if open_val not in (None, "") else raw_close
 
@@ -213,17 +286,13 @@ def _parse_row_to_bar(row: Mapping[str, object], symbol: str) -> Bar:
     volume_val = _row_value(row, "volume")
     volume = Decimal(str(volume_val)) if volume_val not in (None, "") else Decimal("0")
 
-    # Scale by adjustment factor
     open_price = open_price * factor
     high = high * factor
     low = low * factor
 
-    # Clamp to ensure invariants are strictly satisfied
     high = max(high, open_price, close)
     low = min(low, open_price, close)
 
-
-    # date
     dt_val = None
     for date_field in ("date", "timestamp", "datetime"):
         val = _row_value(row, date_field)
@@ -282,6 +351,14 @@ def _normalize_path(path: Path | str) -> str:
     return str(p.as_posix())
 
 
+def _artifact_paths(output_root: Path) -> dict[str, str]:
+    return {
+        "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
+        "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
+        "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
+    }
+
+
 def _decimal_text(value: Decimal | None) -> str | None:
     if value is None:
         return None
@@ -300,57 +377,232 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+def _preview_decision(posture: str) -> str:
+    if posture == "insufficient_history":
+        return "insufficient_history"
+    if posture == "bullish_risk_on":
+        return "offline_preview_bullish_risk_on"
+    return "offline_preview_defensive_risk_off"
+
+
+def _next_operator_action(posture: str, slow_window: int) -> str:
+    if posture == "insufficient_history":
+        return f"provide_at_least_{slow_window}_usable_daily_bars_before_preview_use"
+    return "review_assistant_brief_no_broker_action"
+
+
+def _current_recommendation(posture: str) -> str:
+    if posture == "insufficient_history":
+        return (
+            "Do not submit orders. The SMA preview is blocked until enough "
+            "daily bars are available."
+        )
+    return (
+        "Treat this as an offline research preview only. Do not submit paper or "
+        "live orders from this packet."
+    )
+
+
+def _sma_status(
+    *,
+    posture: str,
+    fast_window: int,
+    slow_window: int,
+    usable_bar_count: int,
+) -> str:
+    if posture == "insufficient_history":
+        return (
+            f"insufficient_history: {usable_bar_count} usable bars is fewer than "
+            f"the {slow_window}-bar slow SMA requirement"
+        )
+    if posture == "bullish_risk_on":
+        return f"risk_on: SMA{fast_window} is above SMA{slow_window}"
+    return f"risk_off: SMA{fast_window} is at or below SMA{slow_window}"
+
+
+def _data_freshness(*, as_of_date: str, latest_input_bar_date: str) -> dict[str, Any]:
+    if as_of_date == latest_input_bar_date:
+        status = "as_of_matches_latest_input_bar"
+    elif as_of_date < latest_input_bar_date:
+        status = "as_of_before_latest_input_bar"
+    else:
+        status = "as_of_after_latest_input_bar"
+    return {
+        "status": status,
+        "as_of_date": as_of_date,
+        "latest_input_bar_date": latest_input_bar_date,
+        "freshness_basis": "input_csv_latest_bar_only",
+        "wall_clock_staleness": "not_evaluated_by_offline_command",
+    }
+
+
+def _research_lab(
+    *,
+    config: EtfSmaDailyPaperLabConfig,
+    as_of_date: str,
+    posture: str,
+    sma_status: str,
+    sma_fast_value: str | None,
+    sma_slow_value: str | None,
+) -> dict[str, Any]:
+    fast_value = sma_fast_value if sma_fast_value is not None else "not_available"
+    slow_value = sma_slow_value if sma_slow_value is not None else "not_available"
+    return {
+        "active_strategy_evidence": [
+            f"{config.symbol} daily bars loaded from {_normalize_path(config.bars_csv)}",
+            (
+                f"SMA {config.sma_fast_window}/{config.sma_slow_window} evaluated "
+                f"as of {as_of_date}"
+            ),
+            f"posture={posture}",
+            f"sma_status={sma_status}",
+            f"sma_fast_value={fast_value}",
+            f"sma_slow_value={slow_value}",
+        ],
+        "candidate_strategy_board": [
+            {
+                "strategy_name": "candidate_strategy_placeholder",
+                "status": "no_candidates_loaded",
+                "note": (
+                    "Assistant v1 keeps SPY SMA 50/200 as the single controlled "
+                    "test strategy."
+                ),
+            }
+        ],
+        "confidence_status": "confidence_not_yet_quantified",
+        "missing_evidence": [
+            "broker_state_not_observed",
+            "multi_day_assistant_packet_history_not_yet_accumulated",
+            "strategy_confidence_not_yet_quantified",
+        ],
+        "next_research_action": "accumulate_daily_assistant_packets_after_input_data_refresh",
+    }
+
+
+def _plain_english_status(payload: Mapping[str, Any]) -> str:
+    fast_window = payload["sma_fast_window"]
+    slow_window = payload["sma_slow_window"]
+    as_of_date = payload["as_of_date"]
+    posture = payload["posture"]
+    if posture == "bullish_risk_on":
+        return (
+            f"As of {as_of_date}, SPY is risk-on under the SMA "
+            f"{fast_window}/{slow_window} test."
+        )
+    if posture == "defensive_risk_off":
+        return (
+            f"As of {as_of_date}, SPY is risk-off under the SMA "
+            f"{fast_window}/{slow_window} test."
+        )
+    return (
+        f"As of {as_of_date}, the SMA {fast_window}/{slow_window} test has "
+        "insufficient usable history."
+    )
+
+
+def _daniel_action_required(posture: str) -> str:
+    if posture == "insufficient_history":
+        return "Yes: provide enough daily input bars before relying on the preview."
+    return (
+        "No broker action is required. Daniel can review the packet and refresh "
+        "input data outside this command when needed."
+    )
+
+
 def _render_brief_markdown(payload: dict[str, Any]) -> str:
-    labels_list = "\n".join(f"* `{label}`" for label in payload["labels"])
-    fast_val = payload["sma_fast_value"] or "None"
-    slow_val = payload["sma_slow_value"] or "None"
+    labels_list = "\n".join(f"* `{label}`" for label in payload["safety_labels"])
+    artifact_lines = "\n".join(
+        f"* **{name}**: `{path}`"
+        for name, path in payload["artifact_paths"].items()
+    )
+    evidence_lines = "\n".join(
+        f"* {item}" for item in payload["research_lab"]["active_strategy_evidence"]
+    )
+    missing_evidence_lines = "\n".join(
+        f"* {item}" for item in payload["research_lab"]["missing_evidence"]
+    )
+    candidate_lines = "\n".join(
+        f"* **{item['strategy_name']}**: {item['status']} - {item['note']}"
+        for item in payload["research_lab"]["candidate_strategy_board"]
+    )
+    freshness = payload["data_freshness"]
 
-    return f"""# SPY SMA Paper-Lab Daily Operating Brief
+    return f"""# Daily Trading Research Command Center
 
-## Metadata
-* **Run ID**: {payload["run_id"]}
-* **Generated At**: {payload["generated_at"]}
-* **As-of Date**: {payload["as_of_date"]}
-* **Symbol**: {payload["symbol"]}
-* **Strategy**: {payload["strategy_name"]}
-* **Input Data Path**: {payload["input_data_path"]}
-* **Broker-State Mode**: {payload["broker_state_mode"]}
-* **Broker-State Observed**: {payload["broker_state_observed"]}
-* **Paper Submit Authorized**: {payload["paper_submit_authorized"]}
-* **Paper Submit Authorization Status**: {payload["paper_submit_authorization_status"]}
+## Executive summary
+* **Plain-English status**: {payload["executive_summary"]["plain_english_status"]}
+* **Current recommendation**: {payload["current_recommendation"]}
+* **Current blocker**: {payload["blocker_status"]}. {payload["broker_state_claim"]}
+* **Does Daniel need to do anything?** {payload["executive_summary"]["daniel_action_required"]}
 
-## SMA Analysis
-* **SMA Fast Window (50)**: {payload["sma_fast_window"]}
-* **SMA Slow Window (200)**: {payload["sma_slow_window"]}
-* **SMA Fast Value**: {fast_val}
-* **SMA Slow Value**: {slow_val}
-* **Posture**: {payload["posture"]}
+## Trading desk brief
+* **Active strategy**: {payload["active_strategy_name"]}
+* **Market/posture state**: {payload["sma_posture_status"]}
+* **Preview decision**: {payload["preview_decision"]}
+* **Blocker status**: {payload["blocker_status"]}
+* **Paper submit authorization status**: {payload["paper_submit_authorization_status"]} (`paper_submit_authorized=false`)
+* **Broker-state mode**: {payload["broker_state_mode"]}
+* **As-of date**: {payload["as_of_date"]}
+* **Input data path**: `{payload["input_data_path"]}`
 
-## Cycle Decision
-* **Decision**: {payload["decision"]}
-* **Blocker Status**: {payload["blocker_status"]}
-* **Next Operator Action**: {payload["next_operator_action"]}
+## Research lab section
+* **Active strategy evidence**:
+{evidence_lines}
+* **Candidate strategy board**:
+{candidate_lines}
+* **Confidence status**: {payload["research_lab"]["confidence_status"]}
+* **Missing evidence**:
+{missing_evidence_lines}
+* **Next research action**: {payload["research_lab"]["next_research_action"]}
 
-## Safety Labels
+## Executive dashboard
+* **Data freshness**: {freshness["status"]} (latest input bar: {freshness["latest_input_bar_date"]}; basis: {freshness["freshness_basis"]}; wall-clock staleness: {freshness["wall_clock_staleness"]})
+* **Validation status**: {payload["validation_status"]}
+* **Artifact paths**:
+{artifact_lines}
+* **System health**: {payload["system_health"]}
+* **Safety labels**:
 {labels_list}
+* **Next operator action**: {payload["next_operator_action"]}
 """
 
 
-def _build_manifest(output_root: Path, run_id: str, as_of_date: str) -> dict[str, Any]:
-    artifacts = {}
-    for filename in ("operating_brief.md", "operating_record.jsonl", "manifest.jsonl"):
-        filepath = output_root / filename
-        if filepath.exists():
-            content = filepath.read_bytes()
-            artifacts[filename.split(".")[0]] = {
-                "path": _normalize_path(filepath),
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "size": len(content),
-            }
-
+def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+    indexed_artifacts = {
+        "assistant_brief": _artifact_metadata(output_root / _BRIEF_FILENAME),
+        "operating_record": _artifact_metadata(output_root / _RECORD_FILENAME),
+    }
     return {
         "schema_version": _SCHEMA_VERSION,
-        "run_id": run_id,
-        "as_of_date": as_of_date,
-        "artifacts": artifacts,
+        "assistant_version": _ASSISTANT_VERSION,
+        "manifest_type": "daily_trading_research_command_center_index",
+        "command": _COMMAND,
+        "script": _SCRIPT,
+        "run_id": payload["run_id"],
+        "as_of_date": payload["as_of_date"],
+        "active_strategy_name": payload["active_strategy_name"],
+        "input_data_path": payload["input_data_path"],
+        "input_data_sha256": payload["input_data_sha256"],
+        "sma_posture_status": payload["sma_posture_status"],
+        "preview_decision": payload["preview_decision"],
+        "blocker_status": payload["blocker_status"],
+        "broker_state_mode": payload["broker_state_mode"],
+        "paper_submit_authorized": False,
+        "paper_submit_authorization_status": "not_authorized",
+        "safety_labels": list(_REQUIRED_LABELS),
+        "artifact_paths": dict(payload["artifact_paths"]),
+        "indexed_artifacts": indexed_artifacts,
     }
+
+
+def _artifact_metadata(path: Path) -> dict[str, Any]:
+    content = path.read_bytes()
+    return {
+        "path": _normalize_path(path),
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "size": len(content),
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
