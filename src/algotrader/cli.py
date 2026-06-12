@@ -2865,6 +2865,34 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    etf_sma_daily_soak_closeout_catalog_parser = subparsers.add_parser(
+        "etf-sma-daily-soak-closeout-catalog",
+        help="Create a deterministic offline catalog/index of closeout bundles (V3Q).",
+    )
+    etf_sma_daily_soak_closeout_catalog_parser.add_argument(
+        "--bundle-root",
+        action="append",
+        default=[],
+        help="One or more daily closeout bundle roots to catalog.",
+    )
+    etf_sma_daily_soak_closeout_catalog_parser.add_argument(
+        "--output-jsonl",
+        default="runs/daily_soak/closeout_catalog.jsonl",
+        help="Path to write the catalog JSONL records.",
+    )
+    etf_sma_daily_soak_closeout_catalog_parser.add_argument(
+        "--output-text",
+        default="runs/daily_soak/closeout_catalog.md",
+        help="Path to write the catalog markdown summary.",
+    )
+    etf_sma_daily_soak_closeout_catalog_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
     etf_sma_data_readiness_parser = subparsers.add_parser(
         "etf-sma-data-readiness",
         help="Build one offline ETF/SMA data-readiness checkpoint.",
@@ -3616,6 +3644,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_soak_closeout_receipt(args)
     if command == "etf-sma-daily-soak-closeout-bundle-validate":
         return _run_etf_sma_daily_soak_closeout_bundle_validate(args)
+    if command == "etf-sma-daily-soak-closeout-catalog":
+        return _run_etf_sma_daily_soak_closeout_catalog(args)
     if command == "etf-sma-daily-operator-brief":
         return _run_etf_sma_daily_operator_brief(args)
     if command == "etf-sma-daily-acceptance-gate":
@@ -6202,6 +6232,38 @@ def _run_etf_sma_daily_soak_closeout_bundle_validate(args: argparse.Namespace) -
         else:
             print(json.dumps(record, sort_keys=True, indent=2))
         return 0 if record.get("status") == "passed" else 1
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_etf_sma_daily_soak_closeout_catalog(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.etf_sma_daily_soak_closeout_catalog import (
+        DailyLabCloseoutCatalogConfig,
+        run_daily_lab_closeout_catalog,
+    )
+
+    bundle_roots = args.bundle_root if args.bundle_root else ["runs/daily_soak"]
+
+    try:
+        records = run_daily_lab_closeout_catalog(
+            DailyLabCloseoutCatalogConfig(
+                bundle_roots=bundle_roots,
+                output_jsonl=args.output_jsonl,
+                output_text=args.output_text,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(records, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(records, sort_keys=True, indent=2))
+        return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
