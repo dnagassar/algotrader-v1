@@ -48,10 +48,11 @@ _WORK_ORDER_EXPORTS_VERSION = "assistant_v1.6_work_order_exports"
 _RESEARCH_CANDIDATE_QUEUE_VERSION = "assistant_v1.7_research_candidate_queue"
 _BASELINE_HEALTH_EVALUATION_VERSION = "assistant_v1.8_baseline_health_evaluation"
 _BASELINE_EVIDENCE_METRICS_VERSION = "assistant_v1.9_baseline_evidence_metrics"
-_PHASE_NAME = "Assistant v1.9 - Baseline Evidence Metrics Snapshot"
+_PHASE_NAME = "Assistant v1.10 - Baseline Metrics Artifact Ingest"
 _PHASE_GOAL = (
-    "Generate a deterministic offline baseline evidence metrics snapshot for the "
-    "active SPY SMA 50/200 control harness and route the next safe metric command."
+    "Ingest deterministic local baseline metric artifacts for the active SPY "
+    "SMA 50/200 control harness while preserving paper-submit and broker "
+    "safety lockouts."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -76,6 +77,17 @@ _BASELINE_BACKTEST_CONFIDENCE_SUMMARY_FILENAME = (
     "offline_backtest_confidence_summary.jsonl"
 )
 _BASELINE_ADJUSTED_CLOSE_EVIDENCE_FILENAME = "adjusted_close_evidence.jsonl"
+_BASELINE_METRIC_ARTIFACTS = (
+    (
+        "baseline_authorized_adjusted_metrics",
+        _BASELINE_METRIC_MATERIALIZATION_FILENAME,
+    ),
+    (
+        "offline_backtest_confidence_summary",
+        _BASELINE_BACKTEST_CONFIDENCE_SUMMARY_FILENAME,
+    ),
+    ("adjusted_close_evidence", _BASELINE_ADJUSTED_CLOSE_EVIDENCE_FILENAME),
+)
 _REVIEW_INPUTS_DIRNAME = "review_inputs"
 _WORK_ORDERS_DIRNAME = "work_orders"
 _GPT_WORK_ORDER_FILENAME = "gpt_next_action_handoff.md"
@@ -422,6 +434,27 @@ _BASELINE_METRIC_STATUSES = (
     "offline_only",
     "broker_state_not_observed",
 )
+_BASELINE_METRIC_CONFIDENCE_STATUSES = (
+    "confidence_not_yet_quantified",
+    "offline_confidence_quantified",
+)
+_BASELINE_METRIC_ARTIFACT_INGEST_STATUSES = (
+    "metric_artifacts_missing",
+    "metric_artifacts_partially_ingested",
+    "metric_artifacts_ingested",
+    "metric_artifacts_parse_failed",
+)
+_BASELINE_METRIC_ARTIFACT_PARSE_STATUSES = (
+    "missing",
+    "path_not_file",
+    "unreadable",
+    "decode_error",
+    "json_decode_error",
+    "record_not_object",
+    "empty",
+    "ambiguous_record_count",
+    "parsed",
+)
 _REQUIRED_BASELINE_HEALTH_EVALUATION_FIELDS = (
     "baseline_health_evaluation_version",
     "status",
@@ -446,6 +479,9 @@ _REQUIRED_BASELINE_HEALTH_EVALUATION_FIELDS = (
     "baseline_evidence_metrics_status",
     "baseline_evidence_snapshot_status",
     "baseline_metric_confidence_status",
+    "baseline_metric_artifact_ingest_status",
+    "baseline_metric_artifact_parse_status",
+    "baseline_remaining_missing_metric_sources",
     "baseline_evidence_metrics_path",
     "next_safe_metric_command",
     "paper_submit_readiness_status",
@@ -473,8 +509,15 @@ _REQUIRED_BASELINE_EVIDENCE_METRICS_FIELDS = (
     "as_of_date",
     "evidence_snapshot_status",
     "metric_confidence_status",
+    "metric_artifact_ingest_status",
+    "metric_artifact_paths",
+    "metric_artifact_hashes",
+    "metric_artifact_parse_status",
+    "metric_artifact_record_count",
     "available_metric_sources",
     "missing_metric_sources",
+    "backtest_confidence_summary_status",
+    "benchmark_metric_status",
     "benchmark_comparison_status",
     "backtest_metric_status",
     "drawdown_metric_status",
@@ -482,6 +525,8 @@ _REQUIRED_BASELINE_EVIDENCE_METRICS_FIELDS = (
     "cost_model_status",
     "sample_window_status",
     "adjusted_close_basis_status",
+    "quantified_metric_summary",
+    "remaining_missing_metric_sources",
     "paper_observation_status",
     "broker_state_mode",
     "paper_submit_readiness_status",
@@ -740,19 +785,44 @@ def _build_baseline_evidence_metrics(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     active_baseline = _active_baseline_record(payload)
+    output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
+    metric_artifact_ingest = _ingest_baseline_metric_artifacts(output_root)
+    metric_artifact_records = metric_artifact_ingest.pop("_records")
     sample_window_status = _baseline_sample_window_status(payload)
     adjusted_close_basis_status = _adjusted_close_basis_status(payload)
+    artifact_statuses = _baseline_metric_statuses_from_artifacts(
+        metric_artifact_records=metric_artifact_records,
+        initial_sample_window_status=sample_window_status,
+        initial_adjusted_close_basis_status=adjusted_close_basis_status,
+    )
+    sample_window_status = artifact_statuses["sample_window_status"]
+    adjusted_close_basis_status = artifact_statuses["adjusted_close_basis_status"]
     available_sources = _available_baseline_metric_sources(
         payload,
         sample_window_status=sample_window_status,
         adjusted_close_basis_status=adjusted_close_basis_status,
+        metric_artifact_records=metric_artifact_records,
     )
-    missing_sources = _missing_baseline_metric_sources(
+    remaining_missing_sources = _remaining_missing_baseline_metric_sources(
+        backtest_confidence_summary_status=artifact_statuses[
+            "backtest_confidence_summary_status"
+        ],
+        benchmark_metric_status=artifact_statuses["benchmark_metric_status"],
+        drawdown_metric_status=artifact_statuses["drawdown_metric_status"],
+        turnover_metric_status=artifact_statuses["turnover_metric_status"],
+        cost_model_status=artifact_statuses["cost_model_status"],
         adjusted_close_basis_status=adjusted_close_basis_status,
+        metric_artifact_ingest_status=str(
+            metric_artifact_ingest["metric_artifact_ingest_status"]
+        ),
     )
     evidence_snapshot_status = _baseline_evidence_snapshot_status(
         available_sources,
-        missing_sources,
+        remaining_missing_sources,
+    )
+    metric_confidence_status = _baseline_metric_confidence_status(
+        artifact_statuses=artifact_statuses,
+        remaining_missing_sources=remaining_missing_sources,
     )
     next_artifacts = _baseline_metric_next_artifacts(artifact_paths)
     return {
@@ -771,16 +841,35 @@ def _build_baseline_evidence_metrics(
         "active_strategy": "SMA 50/200",
         "as_of_date": str(payload.get("as_of_date", "as_of_date_missing")),
         "evidence_snapshot_status": evidence_snapshot_status,
-        "metric_confidence_status": "confidence_not_yet_quantified",
+        "metric_confidence_status": metric_confidence_status,
+        "metric_artifact_ingest_status": metric_artifact_ingest[
+            "metric_artifact_ingest_status"
+        ],
+        "metric_artifact_paths": metric_artifact_ingest["metric_artifact_paths"],
+        "metric_artifact_hashes": metric_artifact_ingest["metric_artifact_hashes"],
+        "metric_artifact_parse_status": metric_artifact_ingest[
+            "metric_artifact_parse_status"
+        ],
+        "metric_artifact_record_count": metric_artifact_ingest[
+            "metric_artifact_record_count"
+        ],
         "available_metric_sources": available_sources,
-        "missing_metric_sources": missing_sources,
-        "benchmark_comparison_status": "metrics_missing",
-        "backtest_metric_status": "metrics_missing",
-        "drawdown_metric_status": "metrics_missing",
-        "turnover_metric_status": "metrics_missing",
-        "cost_model_status": "metrics_missing",
+        "missing_metric_sources": remaining_missing_sources,
+        "backtest_confidence_summary_status": artifact_statuses[
+            "backtest_confidence_summary_status"
+        ],
+        "benchmark_metric_status": artifact_statuses["benchmark_metric_status"],
+        "benchmark_comparison_status": artifact_statuses["benchmark_metric_status"],
+        "backtest_metric_status": artifact_statuses["backtest_metric_status"],
+        "drawdown_metric_status": artifact_statuses["drawdown_metric_status"],
+        "turnover_metric_status": artifact_statuses["turnover_metric_status"],
+        "cost_model_status": artifact_statuses["cost_model_status"],
         "sample_window_status": sample_window_status,
         "adjusted_close_basis_status": adjusted_close_basis_status,
+        "quantified_metric_summary": _quantified_metric_summary(
+            metric_artifact_records
+        ),
+        "remaining_missing_metric_sources": remaining_missing_sources,
         "paper_observation_status": "broker_state_not_observed",
         "broker_state_mode": str(
             payload.get("broker_state_mode", "broker_state_not_observed")
@@ -813,6 +902,293 @@ def _build_baseline_evidence_metrics(
             "broker_state_not_observed"
         ),
     }
+
+
+def _ingest_baseline_metric_artifacts(output_root: Path) -> dict[str, Any]:
+    records: dict[str, Mapping[str, Any]] = {}
+    paths: dict[str, str] = {}
+    hashes: dict[str, str] = {}
+    parse_status: dict[str, str] = {}
+    record_count: dict[str, int] = {}
+
+    for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
+        path = output_root / filename
+        paths[artifact_id] = _normalize_path(path)
+        artifact_record, status, count, digest = _read_single_jsonl_artifact(path)
+        parse_status[artifact_id] = status
+        record_count[artifact_id] = count
+        if digest is not None:
+            hashes[artifact_id] = digest
+        if artifact_record is not None:
+            records[artifact_id] = artifact_record
+
+    statuses = set(parse_status.values())
+    if statuses == {"missing"}:
+        ingest_status = "metric_artifacts_missing"
+    elif statuses == {"parsed"}:
+        ingest_status = "metric_artifacts_ingested"
+    elif any(status not in {"missing", "parsed"} for status in statuses):
+        ingest_status = "metric_artifacts_parse_failed"
+    else:
+        ingest_status = "metric_artifacts_partially_ingested"
+
+    return {
+        "metric_artifact_ingest_status": ingest_status,
+        "metric_artifact_paths": paths,
+        "metric_artifact_hashes": hashes,
+        "metric_artifact_parse_status": parse_status,
+        "metric_artifact_record_count": record_count,
+        "_records": records,
+    }
+
+
+def _read_single_jsonl_artifact(
+    path: Path,
+) -> tuple[Mapping[str, Any] | None, str, int, str | None]:
+    if not path.exists():
+        return None, "missing", 0, None
+    if not path.is_file():
+        return None, "path_not_file", 0, None
+
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return None, "unreadable", 0, None
+
+    digest = hashlib.sha256(content).hexdigest()
+    try:
+        lines = content.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return None, "decode_error", 0, digest
+
+    records: list[Mapping[str, Any]] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None, "json_decode_error", len(records), digest
+        if not isinstance(decoded, Mapping):
+            return None, "record_not_object", len(records) + 1, digest
+        records.append(decoded)
+
+    if not records:
+        return None, "empty", 0, digest
+    if len(records) != 1:
+        return None, "ambiguous_record_count", len(records), digest
+    return records[0], "parsed", 1, digest
+
+
+def _baseline_metric_statuses_from_artifacts(
+    *,
+    metric_artifact_records: Mapping[str, Mapping[str, Any]],
+    initial_sample_window_status: str,
+    initial_adjusted_close_basis_status: str,
+) -> dict[str, str]:
+    metrics_record = metric_artifact_records.get("baseline_authorized_adjusted_metrics")
+    summary_record = metric_artifact_records.get("offline_backtest_confidence_summary")
+    evidence_record = metric_artifact_records.get("adjusted_close_evidence")
+    metrics_materialized = _artifact_bool(metrics_record, "metrics_materialized")
+
+    backtest_confidence_summary_status = (
+        "metrics_available"
+        if _has_artifact_value(summary_record, "comparison_summary_status")
+        else "metrics_missing"
+    )
+    backtest_metric_status = (
+        "metrics_available"
+        if metrics_materialized
+        and (
+            _has_artifact_value(metrics_record, "matched_evaluated_return_count")
+            or _has_artifact_value(metrics_record, "full_window_return_deltas")
+        )
+        else "metrics_missing"
+    )
+    benchmark_metric_status = (
+        "metrics_available"
+        if metrics_materialized
+        and (
+            _artifact_mapping_has_any_key(
+                metrics_record,
+                "full_window_return_deltas",
+                ("benchmark_total_return",),
+            )
+            or _artifact_slice_has_any_key(
+                metrics_record,
+                "matched_slice_comparisons",
+                ("adjusted_benchmark_total_return", "raw_benchmark_total_return"),
+            )
+        )
+        else "metrics_missing"
+    )
+    drawdown_metric_status = (
+        "metrics_available"
+        if metrics_materialized
+        and (
+            _has_artifact_value(metrics_record, "drawdown_conclusion_changes")
+            or _artifact_slice_has_any_key(
+                metrics_record,
+                "matched_slice_comparisons",
+                ("adjusted_strategy_max_drawdown", "raw_strategy_max_drawdown"),
+            )
+        )
+        else "metrics_missing"
+    )
+    turnover_metric_status = (
+        "metrics_available"
+        if _any_artifact_has_key(
+            metric_artifact_records,
+            ("turnover_summary", "turnover", "turnover_rate", "trade_count"),
+        )
+        else "metrics_missing"
+    )
+    cost_model_status = (
+        "metrics_available"
+        if _any_artifact_has_key(
+            metric_artifact_records,
+            ("cost_model_summary", "cost_model", "transaction_costs"),
+        )
+        else "metrics_missing"
+    )
+    sample_window_status = initial_sample_window_status
+    if _has_artifact_value(metrics_record, "matched_evaluated_return_count"):
+        sample_window_status = "metrics_available"
+    adjusted_close_basis_status = initial_adjusted_close_basis_status
+    if _artifact_bool(evidence_record, "adjusted_basis_verified"):
+        adjusted_close_basis_status = "metrics_available"
+
+    return {
+        "backtest_confidence_summary_status": backtest_confidence_summary_status,
+        "benchmark_metric_status": benchmark_metric_status,
+        "backtest_metric_status": backtest_metric_status,
+        "drawdown_metric_status": drawdown_metric_status,
+        "turnover_metric_status": turnover_metric_status,
+        "cost_model_status": cost_model_status,
+        "sample_window_status": sample_window_status,
+        "adjusted_close_basis_status": adjusted_close_basis_status,
+    }
+
+
+def _baseline_metric_confidence_status(
+    *,
+    artifact_statuses: Mapping[str, str],
+    remaining_missing_sources: list[str],
+) -> str:
+    offline_required_statuses = (
+        "backtest_confidence_summary_status",
+        "benchmark_metric_status",
+        "backtest_metric_status",
+        "drawdown_metric_status",
+        "sample_window_status",
+        "adjusted_close_basis_status",
+    )
+    if all(
+        artifact_statuses.get(status_name) == "metrics_available"
+        for status_name in offline_required_statuses
+    ):
+        return "offline_confidence_quantified"
+    _ = remaining_missing_sources
+    return "confidence_not_yet_quantified"
+
+
+def _quantified_metric_summary(
+    metric_artifact_records: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    metrics_record = metric_artifact_records.get("baseline_authorized_adjusted_metrics")
+    if not isinstance(metrics_record, Mapping):
+        return {}
+    summary: dict[str, Any] = {}
+    for field_name in (
+        "metrics_materialization_status",
+        "metrics_materialized",
+        "metrics_source_basis",
+        "active_preferred_baseline",
+        "active_preferred_basis",
+        "comparison_basis",
+        "matched_total_interval_count",
+        "matched_evaluated_return_count",
+        "full_adjusted_history_evaluated_return_count",
+        "known_basis_delta_slices",
+        "known_basis_delta_slice_count",
+        "return_conclusions_unchanged",
+        "basis_delta_review_required",
+        "return_conclusion_changes",
+        "drawdown_conclusion_changes",
+        "full_window_return_deltas",
+        "metrics_materialized_fields",
+    ):
+        if field_name in metrics_record:
+            summary[field_name] = _json_safe(metrics_record[field_name])
+    matched_slice_comparisons = metrics_record.get("matched_slice_comparisons")
+    if isinstance(matched_slice_comparisons, list):
+        summary["matched_slice_count"] = len(matched_slice_comparisons)
+        summary["matched_slice_names"] = [
+            str(item.get("slice_name"))
+            for item in matched_slice_comparisons
+            if isinstance(item, Mapping) and item.get("slice_name") is not None
+        ]
+    if summary:
+        summary["summary_source"] = "baseline_authorized_adjusted_metrics.jsonl"
+    return summary
+
+
+def _has_artifact_value(
+    record: Mapping[str, Any] | None,
+    field_name: str,
+) -> bool:
+    if not isinstance(record, Mapping) or field_name not in record:
+        return False
+    value = record[field_name]
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, dict)):
+        return bool(value)
+    return True
+
+
+def _artifact_bool(record: Mapping[str, Any] | None, field_name: str) -> bool:
+    return isinstance(record, Mapping) and record.get(field_name) is True
+
+
+def _artifact_mapping_has_any_key(
+    record: Mapping[str, Any] | None,
+    field_name: str,
+    keys: tuple[str, ...],
+) -> bool:
+    if not isinstance(record, Mapping):
+        return False
+    value = record.get(field_name)
+    return isinstance(value, Mapping) and any(key in value for key in keys)
+
+
+def _artifact_slice_has_any_key(
+    record: Mapping[str, Any] | None,
+    field_name: str,
+    keys: tuple[str, ...],
+) -> bool:
+    if not isinstance(record, Mapping):
+        return False
+    value = record.get(field_name)
+    if not isinstance(value, list):
+        return False
+    return any(
+        isinstance(item, Mapping) and any(key in item for key in keys)
+        for item in value
+    )
+
+
+def _any_artifact_has_key(
+    records: Mapping[str, Mapping[str, Any]],
+    keys: tuple[str, ...],
+) -> bool:
+    for record in records.values():
+        if any(key in record for key in keys):
+            return True
+    return False
 
 
 def _baseline_sample_window_status(payload: Mapping[str, Any]) -> str:
@@ -855,6 +1231,7 @@ def _available_baseline_metric_sources(
     *,
     sample_window_status: str,
     adjusted_close_basis_status: str,
+    metric_artifact_records: Mapping[str, Mapping[str, Any]],
 ) -> list[str]:
     sources = [
         "packet.sma.posture",
@@ -870,21 +1247,48 @@ def _available_baseline_metric_sources(
         sources.append("input_csv.adjusted_close_column")
     if str(payload.get("quality_gate_status")) == "pass":
         sources.append("packet.quality_gate.pass")
+    for artifact_id in metric_artifact_records:
+        sources.append(f"metric_artifact.{artifact_id}")
+    metrics_record = metric_artifact_records.get("baseline_authorized_adjusted_metrics")
+    if _has_artifact_value(metrics_record, "metrics_materialization_status"):
+        sources.append("baseline_authorized_adjusted_metrics.materialization_status")
+    if _has_artifact_value(metrics_record, "full_window_return_deltas"):
+        sources.append("baseline_authorized_adjusted_metrics.full_window_return_deltas")
+    if _has_artifact_value(metrics_record, "matched_slice_comparisons"):
+        sources.append("baseline_authorized_adjusted_metrics.matched_slice_comparisons")
+    summary_record = metric_artifact_records.get("offline_backtest_confidence_summary")
+    if _has_artifact_value(summary_record, "comparison_summary_status"):
+        sources.append("offline_backtest_confidence_summary.comparison_summary_status")
+    evidence_record = metric_artifact_records.get("adjusted_close_evidence")
+    if _has_artifact_value(evidence_record, "promotion_status"):
+        sources.append("adjusted_close_evidence.promotion_status")
     return sources
 
 
-def _missing_baseline_metric_sources(
+def _remaining_missing_baseline_metric_sources(
     *,
+    backtest_confidence_summary_status: str,
+    benchmark_metric_status: str,
+    drawdown_metric_status: str,
+    turnover_metric_status: str,
+    cost_model_status: str,
     adjusted_close_basis_status: str,
+    metric_artifact_ingest_status: str,
 ) -> list[str]:
-    missing = [
-        "offline_backtest_confidence_summary",
-        "buy_and_hold_benchmark_status",
-        "drawdown_summary",
-        "turnover_summary",
-        "cost_model_summary",
-        "paper_observation_summary",
-    ]
+    missing: list[str] = []
+    if metric_artifact_ingest_status == "metric_artifacts_parse_failed":
+        missing.append("parseable_metric_artifacts")
+    if backtest_confidence_summary_status != "metrics_available":
+        missing.append("offline_backtest_confidence_summary")
+    if benchmark_metric_status != "metrics_available":
+        missing.append("buy_and_hold_benchmark_status")
+    if drawdown_metric_status != "metrics_available":
+        missing.append("drawdown_summary")
+    if turnover_metric_status != "metrics_available":
+        missing.append("turnover_summary")
+    if cost_model_status != "metrics_available":
+        missing.append("cost_model_summary")
+    missing.append("paper_observation_summary")
     if adjusted_close_basis_status != "metrics_available":
         missing.append("input_csv.adjusted_close_column")
     return missing
@@ -1011,6 +1415,21 @@ def _build_baseline_health_evaluation(
             metrics_record.get(
                 "metric_confidence_status",
                 "confidence_not_yet_quantified",
+            )
+        ),
+        "baseline_metric_artifact_ingest_status": str(
+            metrics_record.get(
+                "metric_artifact_ingest_status",
+                "metric_artifacts_missing",
+            )
+        ),
+        "baseline_metric_artifact_parse_status": dict(
+            metrics_record.get("metric_artifact_parse_status", {})
+        ),
+        "baseline_remaining_missing_metric_sources": list(
+            metrics_record.get(
+                "remaining_missing_metric_sources",
+                metrics_record.get("missing_metric_sources", []),
             )
         ),
         "baseline_evidence_metrics_path": str(
@@ -1475,18 +1894,20 @@ def _baseline_evidence_metrics_candidate(
     return _research_candidate_item(
         candidate_id="baseline_evidence_metrics_snapshot_spy_sma_50_200",
         candidate_type="baseline_evidence_metrics",
-        title="Generate baseline evidence metrics snapshot for SPY SMA 50/200",
+        title="Materialize and ingest baseline metric artifacts for SPY SMA 50/200",
         hypothesis=(
             "The assistant becomes more useful when it can separate available "
-            "signal evidence from missing quantitative baseline metrics."
+            "signal evidence from locally materialized quantitative baseline metrics."
         ),
         rationale=(
-            "Assistant v1.8 established a usable control harness but left "
-            "confidence, benchmark, drawdown, turnover, and cost evidence "
-            "unquantified."
+            "Assistant v1.9 selected a deterministic offline metric path; v1.10 "
+            "should ingest the resulting local artifacts without broker or network "
+            "access."
         ),
         evidence_sources=[
             "baseline_evidence_metrics",
+            "baseline_evidence_metrics.metric_artifact_ingest_status",
+            "baseline_evidence_metrics.metric_artifact_parse_status",
             "research_lab.missing_evidence",
             "sma posture fields",
             "input_data_sha256",
@@ -1495,6 +1916,7 @@ def _baseline_evidence_metrics_candidate(
             "baseline_evidence_metrics.jsonl",
             "offline_backtest_confidence_summary.jsonl",
             "adjusted_close_evidence.jsonl",
+            "baseline_authorized_adjusted_metrics.jsonl",
             "local SPY daily CSV",
         ],
         expected_artifact_or_command=next_safe_metric_command,
@@ -1507,6 +1929,7 @@ def _baseline_evidence_metrics_candidate(
         promotion_criteria=[
             "baseline_evidence_metrics.jsonl is generated from packet evidence",
             "next metric command references deterministic local artifact paths",
+            "metric artifact ingest status and parse status remain explicit",
             "missing metric sources remain explicit until materialized",
             "profit_claim remains none",
         ],
@@ -2864,6 +3287,12 @@ def _default_baseline_health_evaluation_fields(
             "baseline_evidence_metrics_status": "not_generated",
             "baseline_evidence_snapshot_status": "metrics_missing",
             "baseline_metric_confidence_status": "confidence_not_yet_quantified",
+            "baseline_metric_artifact_ingest_status": "metric_artifacts_missing",
+            "baseline_metric_artifact_parse_status": {
+                artifact_id: "missing"
+                for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS
+            },
+            "baseline_remaining_missing_metric_sources": [],
             "baseline_evidence_metrics_path": str(
                 artifact_paths["baseline_evidence_metrics"]
             ),
@@ -2890,6 +3319,20 @@ def _default_baseline_evidence_metrics_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     next_artifacts = _baseline_metric_next_artifacts(artifact_paths)
+    output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
+    artifact_paths_by_id = {
+        artifact_id: _normalize_path(output_root / filename)
+        for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS
+    }
+    missing_sources = [
+        "offline_backtest_confidence_summary",
+        "buy_and_hold_benchmark_status",
+        "drawdown_summary",
+        "turnover_summary",
+        "cost_model_summary",
+        "paper_observation_summary",
+        "input_csv.adjusted_close_column",
+    ]
     return {
         "baseline_evidence_metrics_version": _BASELINE_EVIDENCE_METRICS_VERSION,
         "baseline_evidence_metrics_path": str(
@@ -2907,8 +3350,20 @@ def _default_baseline_evidence_metrics_fields(
             "as_of_date": "not_evaluated",
             "evidence_snapshot_status": "metrics_missing",
             "metric_confidence_status": "confidence_not_yet_quantified",
+            "metric_artifact_ingest_status": "metric_artifacts_missing",
+            "metric_artifact_paths": artifact_paths_by_id,
+            "metric_artifact_hashes": {},
+            "metric_artifact_parse_status": {
+                artifact_id: "missing"
+                for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS
+            },
+            "metric_artifact_record_count": {
+                artifact_id: 0 for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS
+            },
             "available_metric_sources": [],
-            "missing_metric_sources": [],
+            "missing_metric_sources": list(missing_sources),
+            "backtest_confidence_summary_status": "metrics_missing",
+            "benchmark_metric_status": "metrics_missing",
             "benchmark_comparison_status": "metrics_missing",
             "backtest_metric_status": "metrics_missing",
             "drawdown_metric_status": "metrics_missing",
@@ -2916,6 +3371,8 @@ def _default_baseline_evidence_metrics_fields(
             "cost_model_status": "metrics_missing",
             "sample_window_status": "metrics_missing",
             "adjusted_close_basis_status": "metrics_missing",
+            "quantified_metric_summary": {},
+            "remaining_missing_metric_sources": list(missing_sources),
             "paper_observation_status": "broker_state_not_observed",
             "broker_state_mode": "broker_state_not_observed",
             "paper_submit_readiness_status": "not_ready_for_paper_submit",
@@ -3342,6 +3799,30 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("baseline_evidence_metrics"), Mapping)
             else "metrics_missing"
         ),
+        "baseline_metric_confidence_status": str(
+            payload.get("baseline_evidence_metrics", {}).get(
+                "metric_confidence_status",
+                "confidence_not_yet_quantified",
+            )
+            if isinstance(payload.get("baseline_evidence_metrics"), Mapping)
+            else "confidence_not_yet_quantified"
+        ),
+        "baseline_metric_artifact_ingest_status": str(
+            payload.get("baseline_evidence_metrics", {}).get(
+                "metric_artifact_ingest_status",
+                "metric_artifacts_missing",
+            )
+            if isinstance(payload.get("baseline_evidence_metrics"), Mapping)
+            else "metric_artifacts_missing"
+        ),
+        "baseline_remaining_missing_metric_sources": list(
+            payload.get("baseline_evidence_metrics", {}).get(
+                "remaining_missing_metric_sources",
+                [],
+            )
+            if isinstance(payload.get("baseline_evidence_metrics"), Mapping)
+            else []
+        ),
     }
 
 
@@ -3475,6 +3956,8 @@ def _apply_work_order_exports(
     selected_candidate_id = None
     if isinstance(selector, Mapping):
         selected_candidate_id = selector.get("selected_research_candidate_id")
+    metrics = payload.get("baseline_evidence_metrics")
+    metrics_record = metrics if isinstance(metrics, Mapping) else {}
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -3485,6 +3968,39 @@ def _apply_work_order_exports(
         "research_candidate_queue_path": str(artifact_paths["research_candidate_queue"]),
         "baseline_evidence_metrics_path": str(
             artifact_paths["baseline_evidence_metrics"]
+        ),
+        "metric_artifact_ingest_status": str(
+            metrics_record.get(
+                "metric_artifact_ingest_status",
+                "metric_artifacts_missing",
+            )
+            if isinstance(metrics_record, Mapping)
+            else "metric_artifacts_missing"
+        ),
+        "metric_artifact_paths": dict(
+            metrics_record.get("metric_artifact_paths", {})
+            if isinstance(metrics_record, Mapping)
+            else {}
+        ),
+        "metric_artifact_hashes": dict(
+            metrics_record.get("metric_artifact_hashes", {})
+            if isinstance(metrics_record, Mapping)
+            else {}
+        ),
+        "metric_artifact_parse_status": dict(
+            metrics_record.get("metric_artifact_parse_status", {})
+            if isinstance(metrics_record, Mapping)
+            else {}
+        ),
+        "metric_artifact_record_count": dict(
+            metrics_record.get("metric_artifact_record_count", {})
+            if isinstance(metrics_record, Mapping)
+            else {}
+        ),
+        "remaining_missing_metric_sources": list(
+            metrics_record.get("remaining_missing_metric_sources", [])
+            if isinstance(metrics_record, Mapping)
+            else []
         ),
         "next_safe_metric_command": _baseline_evidence_next_safe_metric_command(
             artifact_paths
@@ -4406,6 +4922,10 @@ def _build_quality_gate(
     baseline_metrics_ok, baseline_metrics_summary = (
         _quality_baseline_evidence_metrics_summary(root, packet_for_checks)
     )
+    metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
+        root,
+        packet_for_checks,
+    )
 
     required_checks = [
         _quality_check(
@@ -4473,6 +4993,11 @@ def _build_quality_gate(
             "baseline_evidence_metrics_generated",
             baseline_metrics_ok,
             baseline_metrics_summary,
+        ),
+        _quality_check(
+            "baseline_metric_artifact_ingest_status_explicit",
+            metric_ingest_ok,
+            metric_ingest_summary,
         ),
         _quality_check(
             "history_delta_exists",
@@ -4811,6 +5336,74 @@ def _quality_baseline_evidence_metrics_summary(
         "baseline evidence metrics generated; evidence_snapshot_status="
         f"{metrics['evidence_snapshot_status']}; "
         f"next_safe_metric_command={metrics['next_safe_metric_command']}"
+    )
+
+
+def _quality_metric_artifact_ingest_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_baseline_evidence_metrics_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    metrics = packet["baseline_evidence_metrics"]
+    assert isinstance(metrics, Mapping)
+    paths = metrics["metric_artifact_paths"]
+    hashes = metrics["metric_artifact_hashes"]
+    parse_status = metrics["metric_artifact_parse_status"]
+    record_count = metrics["metric_artifact_record_count"]
+    assert isinstance(paths, Mapping)
+    assert isinstance(hashes, Mapping)
+    assert isinstance(parse_status, Mapping)
+    assert isinstance(record_count, Mapping)
+
+    parsed_artifacts: list[str] = []
+    for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
+        path_text = str(paths.get(artifact_id, ""))
+        if not path_text.endswith(filename):
+            return False, f"{artifact_id} path does not end with {filename}"
+        status = parse_status.get(artifact_id)
+        if status not in _BASELINE_METRIC_ARTIFACT_PARSE_STATUSES:
+            return False, f"{artifact_id} parse status is not explicit"
+        count = record_count.get(artifact_id)
+        if not isinstance(count, int) or count < 0:
+            return False, f"{artifact_id} record count is not explicit"
+
+        path = Path(path_text)
+        if not path.is_absolute():
+            path = output_root / filename
+        if path.exists() and path.is_file():
+            digest = str(hashes.get(artifact_id, ""))
+            if len(digest) != 64 or digest != _sha256_file(path):
+                return False, f"{artifact_id} sha256 missing or mismatched"
+            if status == "missing":
+                return False, f"{artifact_id} exists but parse status is missing"
+        elif path.exists() and status != "path_not_file":
+            return False, f"{artifact_id} exists but parse status is {status}"
+        elif not path.exists() and status != "missing":
+            return False, f"{artifact_id} missing but parse status is {status}"
+        if status == "parsed":
+            parsed_artifacts.append(artifact_id)
+
+    ingest_status = str(metrics.get("metric_artifact_ingest_status", ""))
+    if ingest_status == "metric_artifacts_missing":
+        if parsed_artifacts:
+            return False, "missing ingest status includes parsed artifacts"
+        if metrics.get("metric_confidence_status") != "confidence_not_yet_quantified":
+            return False, "missing artifacts must not quantify confidence"
+        if metrics.get("quantified_metric_summary") != {}:
+            return False, "missing artifacts must not expose quantified metrics"
+    if (
+        metrics.get("profit_claim") != "none"
+        or metrics.get("paper_submit_readiness_status") != "not_ready_for_paper_submit"
+        or metrics.get("broker_state_mode")
+        not in {"broker_state_not_observed", "offline_preview_only"}
+    ):
+        return False, "baseline metric safety wording changed"
+
+    return True, (
+        f"metric_artifact_ingest_status={ingest_status}; "
+        f"parsed_artifacts={','.join(parsed_artifacts) or 'none'}"
     )
 
 
@@ -5350,11 +5943,31 @@ def _missing_baseline_health_evaluation_fields(
         missing.append(
             f"{field_prefix}baseline_health_evaluation.baseline_evidence_snapshot_status.allowed"
         )
-    if evaluation.get("baseline_metric_confidence_status") != (
-        "confidence_not_yet_quantified"
+    if (
+        evaluation.get("baseline_metric_confidence_status")
+        not in _BASELINE_METRIC_CONFIDENCE_STATUSES
     ):
         missing.append(
             f"{field_prefix}baseline_health_evaluation.baseline_metric_confidence_status"
+        )
+    if (
+        evaluation.get("baseline_metric_artifact_ingest_status")
+        not in _BASELINE_METRIC_ARTIFACT_INGEST_STATUSES
+    ):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.baseline_metric_artifact_ingest_status"
+        )
+    if not isinstance(
+        evaluation.get("baseline_metric_artifact_parse_status"), Mapping
+    ):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.baseline_metric_artifact_parse_status.object"
+        )
+    if not isinstance(
+        evaluation.get("baseline_remaining_missing_metric_sources"), list
+    ):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.baseline_remaining_missing_metric_sources.list"
         )
     if not str(evaluation.get("baseline_evidence_metrics_path", "")).strip():
         missing.append(
@@ -5444,6 +6057,8 @@ def _missing_baseline_evidence_metrics_fields(
         missing.append(f"{field_prefix}baseline_evidence_metrics.status.allowed")
     for status_field in (
         "evidence_snapshot_status",
+        "backtest_confidence_summary_status",
+        "benchmark_metric_status",
         "benchmark_comparison_status",
         "backtest_metric_status",
         "drawdown_metric_status",
@@ -5457,9 +6072,61 @@ def _missing_baseline_evidence_metrics_fields(
             missing.append(
                 f"{field_prefix}baseline_evidence_metrics.{status_field}.allowed"
             )
-    if metrics.get("metric_confidence_status") != "confidence_not_yet_quantified":
+    if (
+        metrics.get("metric_confidence_status")
+        not in _BASELINE_METRIC_CONFIDENCE_STATUSES
+    ):
         missing.append(
             f"{field_prefix}baseline_evidence_metrics.metric_confidence_status"
+        )
+    if (
+        metrics.get("metric_artifact_ingest_status")
+        not in _BASELINE_METRIC_ARTIFACT_INGEST_STATUSES
+    ):
+        missing.append(
+            f"{field_prefix}baseline_evidence_metrics.metric_artifact_ingest_status"
+        )
+    for mapping_field in (
+        "metric_artifact_paths",
+        "metric_artifact_hashes",
+        "metric_artifact_parse_status",
+        "metric_artifact_record_count",
+        "quantified_metric_summary",
+    ):
+        if not isinstance(metrics.get(mapping_field), Mapping):
+            missing.append(
+                f"{field_prefix}baseline_evidence_metrics.{mapping_field}.object"
+            )
+    parse_status = metrics.get("metric_artifact_parse_status")
+    record_count = metrics.get("metric_artifact_record_count")
+    artifact_paths = metrics.get("metric_artifact_paths")
+    if isinstance(parse_status, Mapping):
+        for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS:
+            status = parse_status.get(artifact_id)
+            if status not in _BASELINE_METRIC_ARTIFACT_PARSE_STATUSES:
+                missing.append(
+                    f"{field_prefix}baseline_evidence_metrics.metric_artifact_parse_status.{artifact_id}"
+                )
+    if isinstance(record_count, Mapping):
+        for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS:
+            count = record_count.get(artifact_id)
+            if not isinstance(count, int) or count < 0:
+                missing.append(
+                    f"{field_prefix}baseline_evidence_metrics.metric_artifact_record_count.{artifact_id}"
+                )
+    if isinstance(artifact_paths, Mapping):
+        for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
+            path_text = str(artifact_paths.get(artifact_id, ""))
+            if not path_text.endswith(filename):
+                missing.append(
+                    f"{field_prefix}baseline_evidence_metrics.metric_artifact_paths.{artifact_id}"
+                )
+    if (
+        metrics.get("metric_artifact_ingest_status") == "metric_artifacts_missing"
+        and metrics.get("quantified_metric_summary") != {}
+    ):
+        missing.append(
+            f"{field_prefix}baseline_evidence_metrics.quantified_metric_summary.empty_when_missing"
         )
     if metrics.get("active_symbol") != _DEFAULT_SYMBOL:
         missing.append(f"{field_prefix}baseline_evidence_metrics.active_symbol")
@@ -5479,6 +6146,7 @@ def _missing_baseline_evidence_metrics_fields(
     for list_field in (
         "available_metric_sources",
         "missing_metric_sources",
+        "remaining_missing_metric_sources",
         "required_next_artifacts",
         "promotion_criteria",
         "deprecation_criteria",
@@ -5630,6 +6298,12 @@ def _missing_work_order_export_fields(
         "runtime_callouts_performed",
         "research_candidate_queue_path",
         "baseline_evidence_metrics_path",
+        "metric_artifact_ingest_status",
+        "metric_artifact_paths",
+        "metric_artifact_hashes",
+        "metric_artifact_parse_status",
+        "metric_artifact_record_count",
+        "remaining_missing_metric_sources",
         "next_safe_metric_command",
         "top_research_candidate_id",
         "selected_research_candidate_id",
@@ -5656,6 +6330,23 @@ def _missing_work_order_export_fields(
     if not str(exports.get("baseline_evidence_metrics_path", "")).strip():
         missing.append(
             f"{field_prefix}work_order_exports.baseline_evidence_metrics_path"
+        )
+    if (
+        exports.get("metric_artifact_ingest_status")
+        not in _BASELINE_METRIC_ARTIFACT_INGEST_STATUSES
+    ):
+        missing.append(f"{field_prefix}work_order_exports.metric_artifact_ingest_status")
+    for mapping_field in (
+        "metric_artifact_paths",
+        "metric_artifact_hashes",
+        "metric_artifact_parse_status",
+        "metric_artifact_record_count",
+    ):
+        if not isinstance(exports.get(mapping_field), Mapping):
+            missing.append(f"{field_prefix}work_order_exports.{mapping_field}.object")
+    if not isinstance(exports.get("remaining_missing_metric_sources"), list):
+        missing.append(
+            f"{field_prefix}work_order_exports.remaining_missing_metric_sources.list"
         )
     if not str(exports.get("next_safe_metric_command", "")).strip():
         missing.append(f"{field_prefix}work_order_exports.next_safe_metric_command")
@@ -6282,9 +6973,12 @@ def _render_work_order_markdown(
 * **Artifact**: `{payload["baseline_evidence_metrics_path"]}`
 * **Evidence snapshot status**: `{baseline_metrics["evidence_snapshot_status"]}`
 * **Metric confidence status**: `{baseline_metrics["metric_confidence_status"]}`
+* **Metric artifact ingest status**: `{baseline_metrics["metric_artifact_ingest_status"]}`
+* **Metric artifact parse status**: `{baseline_metrics["metric_artifact_parse_status"]}`
+* **Metric artifact hashes**: `{baseline_metrics["metric_artifact_hashes"]}`
 * **next_safe_metric_command**: `{baseline_metrics["next_safe_metric_command"]}`
 * **Available metric sources**: {", ".join(baseline_metrics["available_metric_sources"])}
-* **Missing metric sources**: {", ".join(baseline_metrics["missing_metric_sources"])}
+* **Remaining missing metric sources**: {", ".join(baseline_metrics["remaining_missing_metric_sources"])}
 
 {extra_sections}
 
@@ -6302,7 +6996,9 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_9_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_10_smoke`
+* `python -m algotrader.cli etf-sma-authorized-adjusted-baseline-metrics --symbol SPY --run-id spy_sma_50_200_baseline_metrics --run-log runs/daily_lab/v_assistant_v1_10_smoke/baseline_authorized_adjusted_metrics.jsonl --summary-path runs/daily_lab/v_assistant_v1_10_smoke/offline_backtest_confidence_summary.jsonl --source-evidence-path runs/daily_lab/v_assistant_v1_10_smoke/adjusted_close_evidence.jsonl --format json`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_10_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -6314,6 +7010,9 @@ def _render_work_order_markdown(
 * `research_candidate_queue.jsonl`
 * `baseline_health_evaluation.jsonl`
 * `baseline_evidence_metrics.jsonl`
+* `baseline_authorized_adjusted_metrics.jsonl`
+* `offline_backtest_confidence_summary.jsonl`
+* `adjusted_close_evidence.jsonl`
 * `work_orders/gpt_next_action_handoff.md`
 * `work_orders/codex_work_order.md`
 * `work_orders/antigravity_review_order.md`
@@ -6326,16 +7025,18 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Commands added or changed.
 6. Behavior implemented.
-7. Baseline evidence metrics fields and final evidence status.
-8. Available and missing metric sources.
-9. Selected next safe metric command/artifact.
-10. Smoke artifact paths and quality gate result.
-11. Tests run and exact results.
-12. Safety assessment.
-13. Known limitations.
-14. Whether any runtime artifacts under `runs/` were staged.
-15. Final `git status --short`.
-16. Commit recommendation.
+7. Metric artifact materialization command result.
+8. Metric artifact ingest fields and final ingest status.
+9. Available ingested metric sources.
+10. Remaining missing metric sources.
+11. Selected next safe metric command/artifact.
+12. Smoke artifact paths and quality gate result.
+13. Tests run and exact results.
+14. Safety assessment.
+15. Known limitations.
+16. Whether any runtime artifacts under `runs/` were staged.
+17. Final `git status --short`.
+18. Commit recommendation.
 
 ## Commit instruction
 Do not commit unless GPT/Daniel explicitly asks after review.
@@ -6470,6 +7171,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Artifact**: `{payload["baseline_evidence_metrics_path"]}`
 * **Evidence snapshot status**: `{payload["baseline_evidence_metrics"]["evidence_snapshot_status"]}`
 * **Metric confidence status**: `{payload["baseline_evidence_metrics"]["metric_confidence_status"]}`
+* **Metric artifact ingest status**: `{payload["baseline_evidence_metrics"]["metric_artifact_ingest_status"]}`
+* **Metric artifact parse status**: `{payload["baseline_evidence_metrics"]["metric_artifact_parse_status"]}`
+* **Metric artifact hashes**: `{payload["baseline_evidence_metrics"]["metric_artifact_hashes"]}`
 * **Benchmark comparison status**: `{payload["baseline_evidence_metrics"]["benchmark_comparison_status"]}`
 * **Backtest metric status**: `{payload["baseline_evidence_metrics"]["backtest_metric_status"]}`
 * **Drawdown metric status**: `{payload["baseline_evidence_metrics"]["drawdown_metric_status"]}`
@@ -6478,6 +7182,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Sample window status**: `{payload["baseline_evidence_metrics"]["sample_window_status"]}`
 * **Adjusted-close basis status**: `{payload["baseline_evidence_metrics"]["adjusted_close_basis_status"]}`
 * **Paper observation status**: `{payload["baseline_evidence_metrics"]["paper_observation_status"]}`
+* **Remaining missing metric sources**: `{payload["baseline_evidence_metrics"]["remaining_missing_metric_sources"]}`
 * **Next safe metric command**: `{payload["baseline_evidence_metrics"]["next_safe_metric_command"]}`
 ```json
 {baseline_metrics_json}
@@ -6645,6 +7350,10 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **baseline_evidence_metrics_path**: `{payload["baseline_evidence_metrics_path"]}`
 * **evidence_snapshot_status**: `{payload["baseline_evidence_metrics"]["evidence_snapshot_status"]}`
 * **metric_confidence_status**: `{payload["baseline_evidence_metrics"]["metric_confidence_status"]}`
+* **metric_artifact_ingest_status**: `{payload["baseline_evidence_metrics"]["metric_artifact_ingest_status"]}`
+* **metric_artifact_parse_status**: `{payload["baseline_evidence_metrics"]["metric_artifact_parse_status"]}`
+* **metric_artifact_hashes**: `{payload["baseline_evidence_metrics"]["metric_artifact_hashes"]}`
+* **remaining_missing_metric_sources**: `{payload["baseline_evidence_metrics"]["remaining_missing_metric_sources"]}`
 * **next_safe_metric_command**: `{payload["baseline_evidence_metrics"]["next_safe_metric_command"]}`
 ```json
 {baseline_metrics_json}
@@ -6664,7 +7373,7 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
 
 ## Reviewer instructions
-* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, baseline-health evaluation status, baseline evidence metrics status, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, baseline-health evaluation status, baseline evidence metrics status, metric artifact ingest status, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
 * **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
 * **Return format**:
   * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
@@ -6710,6 +7419,14 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         ),
         ("claude_critique_order", artifact_paths.get("claude_critique_order")),
     ]
+    metrics = payload.get("baseline_evidence_metrics")
+    if isinstance(metrics, Mapping):
+        metric_artifact_paths = metrics.get("metric_artifact_paths")
+        if isinstance(metric_artifact_paths, Mapping):
+            ordered_artifacts.extend(
+                (artifact_id, metric_artifact_paths.get(artifact_id))
+                for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS
+            )
     return "\n".join(
         f"* **{name}**: `{path}`"
         for name, path in ordered_artifacts
@@ -6902,6 +7619,10 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["baseline_evidence_metrics"] = _artifact_metadata(
             baseline_evidence_metrics_path
         )
+    for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
+        metric_artifact_path = output_root / filename
+        if metric_artifact_path.is_file():
+            indexed_artifacts[artifact_id] = _artifact_metadata(metric_artifact_path)
     work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
     for artifact_id, filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS:
         work_order_path = work_orders_dir / filename
