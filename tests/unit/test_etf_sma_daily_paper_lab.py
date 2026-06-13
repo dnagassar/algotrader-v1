@@ -66,6 +66,29 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["validation_status"] == "pass"
     assert payload["missing_required_fields"] == []
     assert payload["artifact_presence_status"]["status"] == "pass"
+    assert payload["history_ledger_path"].endswith("history_ledger.jsonl")
+    delta = payload["history_delta"]
+    assert delta["previous_packet_found"] is False
+    assert delta["previous_as_of_date"] is None
+    assert delta["current_as_of_date"] == "2025-07-20"
+    assert delta["posture_changed"] is False
+    assert delta["current_posture"] == "bullish_risk_on"
+    assert delta["preview_decision_changed"] is False
+    assert delta["current_preview_decision"] == "offline_preview_bullish_risk_on"
+    assert delta["blocker_status_changed"] is False
+    assert delta["current_blocker_status"] == "broker_state_not_observed"
+    assert delta["validation_status_changed"] is False
+    assert delta["current_validation_status"] == "pass"
+    assert delta["broker_state_mode_changed"] is False
+    assert delta["current_broker_state_mode"] == "broker_state_not_observed"
+    assert delta["research_board_changed"] is False
+    assert delta["research_board_delta_status"] == "no_previous_packet"
+    assert delta["next_operator_action_changed"] is False
+    assert (
+        delta["delta_summary_text"]
+        == "No prior packet was found in this output root history; this is the "
+        "first observed packet in the selected history."
+    )
     assert payload["artifact_presence_status"]["missing_artifacts"] == []
     assert payload["artifact_presence_status"]["empty_artifacts"] == []
     assert payload["artifact_presence_status"]["artifacts"]["operating_brief"]["exists"] is True
@@ -95,6 +118,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "operating_brief.md").exists()
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
+    assert (output_root / "history_ledger.jsonl").exists()
 
     brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
     assert "## Executive summary" in brief
@@ -112,6 +136,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "**Validation status**: pass" in brief
     assert "**Missing required fields**: []" in brief
     assert "**Artifact presence status**: pass" in brief
+    assert "**Previous packet found**: false" in brief
+    assert "history_ledger.jsonl" in brief
+    assert delta["delta_summary_text"] in brief
 
     record_lines = (output_root / "operating_record.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(record_lines) == 1
@@ -130,6 +157,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["validation_status"] == "pass"
     assert record["missing_required_fields"] == []
     assert record["artifact_presence_status"]["status"] == "pass"
+    assert record["history_delta"] == delta
+    assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     candidate = record["research_lab"]["candidate_strategy_board"][0]
     assert candidate["candidate_name"] == "candidate_strategy_board_seed"
     assert candidate["status"] == "placeholder_not_implemented"
@@ -153,14 +182,186 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["validation_status"] == "pass"
     assert manifest["missing_required_fields"] == []
     assert manifest["artifact_presence_status"]["status"] == "pass"
+    assert manifest["history_delta"] == delta
+    assert manifest["previous_packet_found"] is False
+    assert manifest["delta_summary_text"] == delta["delta_summary_text"]
     assert "assistant_brief" in manifest["indexed_artifacts"]
     assert "operating_record" in manifest["indexed_artifacts"]
+    assert "history_ledger" in manifest["indexed_artifacts"]
     assert "manifest" not in manifest["indexed_artifacts"]
+
+    history_lines = (output_root / "history_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(history_lines) == 1
+    history_entry = json.loads(history_lines[0])
+    assert history_entry["history_entry_version"] == "assistant_v1.2_history_entry"
+    assert history_entry["sequence_number"] == 1
+    assert history_entry["as_of_date"] == "2025-07-20"
+    assert history_entry["posture"] == "bullish_risk_on"
+    assert history_entry["preview_decision"] == "offline_preview_bullish_risk_on"
+    assert history_entry["blocker_status"] == "broker_state_not_observed"
+    assert history_entry["validation_status"] == "pass"
+    assert history_entry["broker_state_mode"] == "broker_state_not_observed"
+    assert len(history_entry["packet_summary_sha256"]) == 64
 
     validation = validate_etf_sma_daily_paper_lab_packet(output_root)
     assert validation["validation_status"] == "pass"
     assert validation["missing_required_fields"] == []
     assert validation["artifact_presence_status"]["status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_second_run_delta_compares_prior_packet(
+    tmp_path: Path,
+) -> None:
+    """Second run against one output root reports the prior packet delta."""
+    output_root = tmp_path / "paper_lab_out"
+
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+    second_payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bearish.csv",
+            as_of_date="2025-07-21",
+            symbol="SPY",
+        )
+    )
+
+    delta = second_payload["history_delta"]
+    assert delta["previous_packet_found"] is True
+    assert delta["previous_as_of_date"] == "2025-07-20"
+    assert delta["current_as_of_date"] == "2025-07-21"
+    assert delta["posture_changed"] is True
+    assert delta["previous_posture"] == "bullish_risk_on"
+    assert delta["current_posture"] == "defensive_risk_off"
+    assert delta["preview_decision_changed"] is True
+    assert delta["previous_preview_decision"] == "offline_preview_bullish_risk_on"
+    assert delta["current_preview_decision"] == "offline_preview_defensive_risk_off"
+    assert delta["blocker_status_changed"] is False
+    assert delta["validation_status_changed"] is False
+    assert delta["broker_state_mode_changed"] is False
+    assert delta["research_board_changed"] is False
+    assert delta["research_board_delta_status"] == "unchanged"
+    assert delta["next_operator_action_changed"] is False
+    assert delta["delta_summary_text"] == (
+        "Prior packet found; as-of date moved from 2025-07-20 to "
+        "2025-07-21; posture changed from bullish_risk_on to "
+        "defensive_risk_off; preview decision changed from "
+        "offline_preview_bullish_risk_on to "
+        "offline_preview_defensive_risk_off."
+    )
+
+    history_lines = (output_root / "history_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(history_lines) == 2
+    first_history_entry = json.loads(history_lines[0])
+    second_history_entry = json.loads(history_lines[1])
+    assert first_history_entry["sequence_number"] == 1
+    assert second_history_entry["sequence_number"] == 2
+    assert second_history_entry["posture"] == "defensive_risk_off"
+    assert second_history_entry["delta_summary_text"] == delta["delta_summary_text"]
+
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()[0]
+    )
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8").splitlines()[0]
+    )
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    assert record["history_delta"] == delta
+    assert manifest["history_delta"] == delta
+    assert manifest["previous_packet_found"] is True
+    assert delta["delta_summary_text"] in brief
+
+
+def test_etf_sma_daily_paper_lab_delta_reports_changed_operational_fields(
+    tmp_path: Path,
+) -> None:
+    """Seeded history proves blocker, validation, broker, and action changes."""
+    output_root = tmp_path / "paper_lab_out"
+    output_root.mkdir(parents=True)
+    seeded_history_entry = {
+        "history_entry_version": "assistant_v1.2_history_entry",
+        "sequence_number": 1,
+        "run_id": "daily_paper_lab_2025-07-19",
+        "as_of_date": "2025-07-19",
+        "posture": "defensive_risk_off",
+        "preview_decision": "offline_preview_defensive_risk_off",
+        "blocker_status": "legacy_blocker",
+        "validation_status": "fail",
+        "broker_state_mode": "offline_preview_only",
+        "research_board_fingerprint": "legacy_research_board",
+        "next_operator_action": "legacy_operator_action",
+    }
+    (output_root / "history_ledger.jsonl").write_text(
+        json.dumps(seeded_history_entry, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    delta = payload["history_delta"]
+    assert delta["previous_packet_found"] is True
+    assert delta["previous_as_of_date"] == "2025-07-19"
+    assert delta["current_as_of_date"] == "2025-07-20"
+    assert delta["posture_changed"] is True
+    assert delta["preview_decision_changed"] is True
+    assert delta["blocker_status_changed"] is True
+    assert delta["previous_blocker_status"] == "legacy_blocker"
+    assert delta["current_blocker_status"] == "broker_state_not_observed"
+    assert delta["validation_status_changed"] is True
+    assert delta["previous_validation_status"] == "fail"
+    assert delta["current_validation_status"] == "pass"
+    assert delta["broker_state_mode_changed"] is True
+    assert delta["previous_broker_state_mode"] == "offline_preview_only"
+    assert delta["current_broker_state_mode"] == "broker_state_not_observed"
+    assert delta["research_board_changed"] is True
+    assert delta["research_board_delta_status"] == "changed"
+    assert delta["next_operator_action_changed"] is True
+    assert delta["previous_next_operator_action"] == "legacy_operator_action"
+    assert (
+        delta["current_next_operator_action"]
+        == "review_assistant_brief_no_broker_action"
+    )
+    assert delta["delta_summary_text"] == (
+        "Prior packet found; as-of date moved from 2025-07-19 to "
+        "2025-07-20; posture changed from defensive_risk_off to "
+        "bullish_risk_on; preview decision changed from "
+        "offline_preview_defensive_risk_off to "
+        "offline_preview_bullish_risk_on; blocker status changed from "
+        "legacy_blocker to broker_state_not_observed; validation status "
+        "changed from fail to pass; broker-state mode changed from "
+        "offline_preview_only to broker_state_not_observed; research board "
+        "changed; next operator action changed from legacy_operator_action "
+        "to review_assistant_brief_no_broker_action."
+    )
+
+    history_lines = (output_root / "history_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(history_lines) == 2
+    appended_entry = json.loads(history_lines[1])
+    assert appended_entry["sequence_number"] == 2
+    assert appended_entry["validation_status"] == "pass"
+    assert appended_entry["blocker_status"] == "broker_state_not_observed"
 
 
 def test_etf_sma_daily_paper_lab_validator_reports_missing_fields_and_artifacts(

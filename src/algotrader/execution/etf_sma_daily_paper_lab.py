@@ -43,6 +43,8 @@ _SCRIPT = "scripts/run_daily_paper_lab.ps1"
 _BRIEF_FILENAME = "operating_brief.md"
 _RECORD_FILENAME = "operating_record.jsonl"
 _MANIFEST_FILENAME = "manifest.jsonl"
+_HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
+_HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
 _REQUIRED_LABELS = [
     "paper_lab_only",
     "signal_evaluation_only",
@@ -70,6 +72,8 @@ _REQUIRED_PACKET_FIELDS = (
     "next_operator_action",
     "safety_labels",
     "assistant_packet_version",
+    "history_ledger_path",
+    "history_delta",
 )
 _REQUIRED_MANIFEST_FIELDS = (
     "input_data_path",
@@ -88,6 +92,32 @@ _REQUIRED_MANIFEST_FIELDS = (
     "validation_status",
     "missing_required_fields",
     "artifact_presence_status",
+    "history_ledger_path",
+    "history_delta",
+)
+_REQUIRED_DELTA_FIELDS = (
+    "previous_packet_found",
+    "previous_as_of_date",
+    "current_as_of_date",
+    "posture_changed",
+    "previous_posture",
+    "current_posture",
+    "preview_decision_changed",
+    "previous_preview_decision",
+    "current_preview_decision",
+    "blocker_status_changed",
+    "previous_blocker_status",
+    "current_blocker_status",
+    "validation_status_changed",
+    "previous_validation_status",
+    "current_validation_status",
+    "broker_state_mode_changed",
+    "previous_broker_state_mode",
+    "current_broker_state_mode",
+    "research_board_changed",
+    "research_board_delta_status",
+    "next_operator_action_changed",
+    "delta_summary_text",
 )
 _BRIEF_REQUIRED_VALUE_FIELDS = (
     "input_data_path",
@@ -133,11 +163,27 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
     output_root = Path(config.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
 
+    history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
+    history_entries = _read_history_ledger(history_ledger_path)
+    previous_history_entry = history_entries[-1] if history_entries else None
+
     payload = build_etf_sma_daily_paper_lab(config)
+    _apply_history_delta(payload, previous_history_entry)
 
     _write_packet_artifacts(output_root=output_root, payload=payload)
     validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
     _apply_packet_validation(payload, validation)
+    _apply_history_delta(payload, previous_history_entry)
+
+    history_entry = _build_history_entry(
+        payload=payload,
+        sequence_number=len(history_entries) + 1,
+    )
+    _append_history_entry(history_ledger_path, history_entry)
+    payload["history_ledger_entry"] = dict(history_entry)
+    payload["executive_dashboard"]["history_ledger_entry_sequence"] = history_entry[
+        "sequence_number"
+    ]
     _write_packet_artifacts(output_root=output_root, payload=payload)
 
     return payload
@@ -331,11 +377,15 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         },
         "system_health": "offline_assistant_packet_ready",
         "artifact_paths": artifact_paths,
+        "history_ledger_path": artifact_paths["history_ledger"],
+        "history_delta": _empty_history_delta(as_of_str),
+        "history_ledger_entry": {},
         "artifacts": {
             "assistant_brief": artifact_paths["assistant_brief"],
             "operating_brief": artifact_paths["assistant_brief"],
             "operating_record": artifact_paths["operating_record"],
             "manifest": artifact_paths["manifest"],
+            "history_ledger": artifact_paths["history_ledger"],
         },
         "sma": {
             "symbol": signal.symbol,
@@ -362,6 +412,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
                 "artifacts": {},
             },
             "artifact_paths": artifact_paths,
+            "history_ledger_path": artifact_paths["history_ledger"],
+            "history_ledger_entry_sequence": None,
             "system_health": "offline_assistant_packet_ready",
             "safety_labels": list(_REQUIRED_LABELS),
             "next_operator_action": next_operator_action,
@@ -490,7 +542,332 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
+        "history_ledger": _normalize_path(output_root / _HISTORY_LEDGER_FILENAME),
     }
+
+
+def _read_history_ledger(path: Path) -> list[Mapping[str, Any]]:
+    if not path.exists():
+        return []
+
+    entries: list[Mapping[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValidationError(f"History ledger is not readable: {path}") from exc
+
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                f"History ledger line {index} is not parseable JSON: {path}"
+            ) from exc
+        if not isinstance(entry, Mapping):
+            raise ValidationError(
+                f"History ledger line {index} is not a JSON object: {path}"
+            )
+        entries.append(entry)
+    return entries
+
+
+def _append_history_entry(path: Path, entry: Mapping[str, Any]) -> None:
+    line = json.dumps(_json_safe(entry), sort_keys=True, separators=(",", ":")) + "\n"
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(line)
+
+
+def _apply_history_delta(
+    payload: dict[str, Any],
+    previous_history_entry: Mapping[str, Any] | None,
+) -> None:
+    delta = _build_history_delta(payload, previous_history_entry)
+    payload["history_delta"] = delta
+    payload["executive_dashboard"]["history_delta"] = dict(delta)
+    payload["executive_dashboard"]["delta_summary_text"] = delta["delta_summary_text"]
+
+
+def _empty_history_delta(current_as_of_date: str) -> dict[str, Any]:
+    return {
+        "previous_packet_found": False,
+        "previous_as_of_date": None,
+        "current_as_of_date": current_as_of_date,
+        "posture_changed": False,
+        "previous_posture": None,
+        "current_posture": None,
+        "preview_decision_changed": False,
+        "previous_preview_decision": None,
+        "current_preview_decision": None,
+        "blocker_status_changed": False,
+        "previous_blocker_status": None,
+        "current_blocker_status": None,
+        "validation_status_changed": False,
+        "previous_validation_status": None,
+        "current_validation_status": None,
+        "broker_state_mode_changed": False,
+        "previous_broker_state_mode": None,
+        "current_broker_state_mode": None,
+        "research_board_changed": False,
+        "research_board_delta_status": "not_evaluated",
+        "next_operator_action_changed": False,
+        "previous_next_operator_action": None,
+        "current_next_operator_action": None,
+        "delta_summary_text": "History delta has not been evaluated yet.",
+    }
+
+
+def _build_history_delta(
+    payload: Mapping[str, Any],
+    previous_history_entry: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    previous_packet_found = previous_history_entry is not None
+    previous = previous_history_entry or {}
+
+    previous_as_of_date = _history_value(previous, "as_of_date")
+    current_as_of_date = str(payload["as_of_date"])
+    previous_posture = _history_value(previous, "posture")
+    current_posture = str(payload["posture"])
+    previous_preview_decision = _history_value(previous, "preview_decision")
+    current_preview_decision = str(payload["preview_decision"])
+    previous_blocker_status = _history_value(previous, "blocker_status")
+    current_blocker_status = str(payload["blocker_status"])
+    previous_validation_status = _history_value(previous, "validation_status")
+    current_validation_status = str(payload["validation_status"])
+    previous_broker_state_mode = _history_value(previous, "broker_state_mode")
+    current_broker_state_mode = str(payload["broker_state_mode"])
+    previous_next_operator_action = _history_value(previous, "next_operator_action")
+    current_next_operator_action = str(payload["next_operator_action"])
+    previous_research_board_fingerprint = _history_value(
+        previous,
+        "research_board_fingerprint",
+    )
+    current_research_board_fingerprint = _research_board_fingerprint(payload)
+
+    posture_changed = _history_changed(
+        previous_packet_found,
+        previous_posture,
+        current_posture,
+    )
+    preview_decision_changed = _history_changed(
+        previous_packet_found,
+        previous_preview_decision,
+        current_preview_decision,
+    )
+    blocker_status_changed = _history_changed(
+        previous_packet_found,
+        previous_blocker_status,
+        current_blocker_status,
+    )
+    validation_status_changed = _history_changed(
+        previous_packet_found,
+        previous_validation_status,
+        current_validation_status,
+    )
+    broker_state_mode_changed = _history_changed(
+        previous_packet_found,
+        previous_broker_state_mode,
+        current_broker_state_mode,
+    )
+    research_board_changed = _history_changed(
+        previous_packet_found,
+        previous_research_board_fingerprint,
+        current_research_board_fingerprint,
+    )
+    next_operator_action_changed = _history_changed(
+        previous_packet_found,
+        previous_next_operator_action,
+        current_next_operator_action,
+    )
+
+    if not previous_packet_found:
+        research_board_delta_status = "no_previous_packet"
+    elif research_board_changed:
+        research_board_delta_status = "changed"
+    else:
+        research_board_delta_status = "unchanged"
+
+    delta: dict[str, Any] = {
+        "previous_packet_found": previous_packet_found,
+        "previous_as_of_date": previous_as_of_date,
+        "current_as_of_date": current_as_of_date,
+        "posture_changed": posture_changed,
+        "previous_posture": previous_posture,
+        "current_posture": current_posture,
+        "preview_decision_changed": preview_decision_changed,
+        "previous_preview_decision": previous_preview_decision,
+        "current_preview_decision": current_preview_decision,
+        "blocker_status_changed": blocker_status_changed,
+        "previous_blocker_status": previous_blocker_status,
+        "current_blocker_status": current_blocker_status,
+        "validation_status_changed": validation_status_changed,
+        "previous_validation_status": previous_validation_status,
+        "current_validation_status": current_validation_status,
+        "broker_state_mode_changed": broker_state_mode_changed,
+        "previous_broker_state_mode": previous_broker_state_mode,
+        "current_broker_state_mode": current_broker_state_mode,
+        "research_board_changed": research_board_changed,
+        "research_board_delta_status": research_board_delta_status,
+        "previous_research_board_fingerprint": previous_research_board_fingerprint,
+        "current_research_board_fingerprint": current_research_board_fingerprint,
+        "next_operator_action_changed": next_operator_action_changed,
+        "previous_next_operator_action": previous_next_operator_action,
+        "current_next_operator_action": current_next_operator_action,
+    }
+    delta["delta_summary_text"] = _delta_summary_text(delta)
+    return delta
+
+
+def _history_value(entry: Mapping[str, Any], field_name: str) -> str | None:
+    value = entry.get(field_name)
+    if value is None:
+        return None
+    return str(value)
+
+
+def _history_changed(
+    previous_packet_found: bool,
+    previous_value: str | None,
+    current_value: str | None,
+) -> bool:
+    return previous_packet_found and previous_value != current_value
+
+
+def _delta_summary_text(delta: Mapping[str, Any]) -> str:
+    if not delta["previous_packet_found"]:
+        return (
+            "No prior packet was found in this output root history; this is the "
+            "first observed packet in the selected history."
+        )
+
+    changes: list[str] = []
+    if delta["previous_as_of_date"] != delta["current_as_of_date"]:
+        changes.append(
+            "as-of date moved from "
+            f"{delta['previous_as_of_date']} to {delta['current_as_of_date']}"
+        )
+    if delta["posture_changed"]:
+        changes.append(
+            "posture changed from "
+            f"{delta['previous_posture']} to {delta['current_posture']}"
+        )
+    if delta["preview_decision_changed"]:
+        changes.append(
+            "preview decision changed from "
+            f"{delta['previous_preview_decision']} to "
+            f"{delta['current_preview_decision']}"
+        )
+    if delta["blocker_status_changed"]:
+        changes.append(
+            "blocker status changed from "
+            f"{delta['previous_blocker_status']} to {delta['current_blocker_status']}"
+        )
+    if delta["validation_status_changed"]:
+        changes.append(
+            "validation status changed from "
+            f"{delta['previous_validation_status']} to "
+            f"{delta['current_validation_status']}"
+        )
+    if delta["broker_state_mode_changed"]:
+        changes.append(
+            "broker-state mode changed from "
+            f"{delta['previous_broker_state_mode']} to "
+            f"{delta['current_broker_state_mode']}"
+        )
+    if delta["research_board_changed"]:
+        changes.append("research board changed")
+    if delta["next_operator_action_changed"]:
+        changes.append(
+            "next operator action changed from "
+            f"{delta['previous_next_operator_action']} to "
+            f"{delta['current_next_operator_action']}"
+        )
+
+    if not changes:
+        return (
+            "Prior packet found; no tracked posture, decision, blocker, validation, "
+            "broker-state, research-board, or operator-action fields changed."
+        )
+    return "Prior packet found; " + "; ".join(changes) + "."
+
+
+def _build_history_entry(
+    *,
+    payload: Mapping[str, Any],
+    sequence_number: int,
+) -> dict[str, Any]:
+    entry: dict[str, Any] = {
+        "history_entry_version": _HISTORY_ENTRY_VERSION,
+        "sequence_number": sequence_number,
+        "run_id": payload["run_id"],
+        "as_of_date": payload["as_of_date"],
+        "active_strategy_name": payload["active_strategy_name"],
+        "input_data_path": payload["input_data_path"],
+        "input_data_sha256": payload["input_data_sha256"],
+        "posture": payload["posture"],
+        "sma_posture_status": payload["sma_posture_status"],
+        "preview_decision": payload["preview_decision"],
+        "blocker_status": payload["blocker_status"],
+        "validation_status": payload["validation_status"],
+        "broker_state_mode": payload["broker_state_mode"],
+        "broker_state_observed": payload["broker_state_observed"],
+        "paper_submit_authorized": payload["paper_submit_authorized"],
+        "paper_submit_authorization_status": payload[
+            "paper_submit_authorization_status"
+        ],
+        "research_board_status": _research_board_status(payload),
+        "research_board_fingerprint": _research_board_fingerprint(payload),
+        "next_operator_action": payload["next_operator_action"],
+        "delta_summary_text": payload["history_delta"]["delta_summary_text"],
+        "safety_labels": list(payload["safety_labels"]),
+    }
+    entry["packet_summary_sha256"] = _history_entry_digest(entry)
+    return entry
+
+
+def _history_entry_digest(entry: Mapping[str, Any]) -> str:
+    digest_source = {
+        key: value
+        for key, value in entry.items()
+        if key != "packet_summary_sha256"
+    }
+    encoded = json.dumps(
+        _json_safe(digest_source),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _research_board_status(payload: Mapping[str, Any]) -> str:
+    research_lab = payload.get("research_lab")
+    if not isinstance(research_lab, Mapping):
+        return "research_lab_missing"
+    candidate_board = research_lab.get("candidate_strategy_board")
+    if not isinstance(candidate_board, list) or not candidate_board:
+        return "candidate_strategy_board_empty"
+    statuses = []
+    for item in candidate_board:
+        if isinstance(item, Mapping):
+            statuses.append(str(item.get("status", "status_missing")))
+        else:
+            statuses.append("candidate_entry_not_object")
+    return ",".join(statuses)
+
+
+def _research_board_fingerprint(payload: Mapping[str, Any]) -> str:
+    research_lab = payload.get("research_lab")
+    candidate_board: Any = []
+    if isinstance(research_lab, Mapping):
+        candidate_board = research_lab.get("candidate_strategy_board", [])
+    encoded = json.dumps(
+        _json_safe(candidate_board),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _artifact_presence_status(output_root: Path) -> dict[str, Any]:
@@ -582,6 +959,9 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         for label in _REQUIRED_LABELS:
             if label not in labels:
                 missing.append(f"safety_labels.{label}")
+    missing.extend(
+        _missing_history_delta_fields("history_delta", packet.get("history_delta"))
+    )
     return missing
 
 
@@ -605,6 +985,12 @@ def _missing_manifest_fields(
             missing.append(f"manifest.{field_name}")
     if not _paper_submit_not_authorized(manifest):
         missing.append("manifest.paper_submit_authorized_false_or_not_authorized")
+    missing.extend(
+        _missing_history_delta_fields(
+            "manifest.history_delta",
+            manifest.get("history_delta"),
+        )
+    )
 
     for field_name in (
         "input_data_path",
@@ -617,10 +1003,34 @@ def _missing_manifest_fields(
         "broker_state_mode",
         "next_operator_action",
         "assistant_packet_version",
+        "history_ledger_path",
     ):
         if field_name in packet and manifest.get(field_name) != packet.get(field_name):
             missing.append(f"manifest.{field_name}.matches_record")
 
+    if (
+        isinstance(packet.get("history_delta"), Mapping)
+        and isinstance(manifest.get("history_delta"), Mapping)
+        and dict(manifest["history_delta"]) != dict(packet["history_delta"])
+    ):
+        missing.append("manifest.history_delta.matches_record")
+
+    return missing
+
+
+def _missing_history_delta_fields(prefix: str, delta: Any) -> list[str]:
+    if not isinstance(delta, Mapping):
+        return [prefix]
+
+    missing: list[str] = []
+    for field_name in _REQUIRED_DELTA_FIELDS:
+        if field_name not in delta:
+            missing.append(f"{prefix}.{field_name}")
+
+    summary_text = delta.get("delta_summary_text")
+    if not isinstance(summary_text, str) or not summary_text.strip():
+        if f"{prefix}.delta_summary_text" not in missing:
+            missing.append(f"{prefix}.delta_summary_text")
     return missing
 
 
@@ -650,6 +1060,15 @@ def _missing_brief_references(
     for label in _REQUIRED_LABELS:
         if label not in brief_text:
             missing.append(f"operating_brief.safety_labels.{label}")
+    delta = packet.get("history_delta")
+    if isinstance(delta, Mapping):
+        delta_summary = delta.get("delta_summary_text")
+        if (
+            isinstance(delta_summary, str)
+            and delta_summary.strip()
+            and delta_summary not in brief_text
+        ):
+            missing.append("operating_brief.history_delta.delta_summary_text")
     return missing
 
 
@@ -850,6 +1269,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
         payload["research_lab"]["candidate_strategy_board"]
     )
     freshness = payload["data_freshness"]
+    delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
     missing_required_fields_text = (
         "[]" if not missing_required_fields else ", ".join(missing_required_fields)
@@ -861,6 +1281,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Recommendation**: {payload["current_recommendation"]}
 * **Evidence**: {payload["executive_summary"]["plain_english_status"]} Preview decision: `{payload["preview_decision"]}`.
 * **Risks / blockers**: {payload["blocker_status"]}. {payload["broker_state_claim"]} Paper submit authorization is `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`).
+* **Delta since prior packet**: {delta["delta_summary_text"]}
 * **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
 
 ## Trading desk brief
@@ -887,6 +1308,8 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Data freshness**: {freshness["status"]} (latest input bar: {freshness["latest_input_bar_date"]}; basis: {freshness["freshness_basis"]}; wall-clock staleness: {freshness["wall_clock_staleness"]})
 * **Validation status**: {payload["validation_status"]}
 * **Assistant packet version**: {payload["assistant_packet_version"]}
+* **Previous packet found**: {str(delta["previous_packet_found"]).lower()}
+* **History ledger path**: `{payload["history_ledger_path"]}`
 * **Missing required fields**: {missing_required_fields_text}
 * **Artifact presence status**: {payload["artifact_presence_status"]["status"]}
 * **Artifact paths**:
@@ -923,6 +1346,10 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "assistant_brief": _artifact_metadata(output_root / _BRIEF_FILENAME),
         "operating_record": _artifact_metadata(output_root / _RECORD_FILENAME),
     }
+    history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
+    if history_ledger_path.exists():
+        indexed_artifacts["history_ledger"] = _artifact_metadata(history_ledger_path)
+    history_delta = dict(payload["history_delta"])
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
@@ -948,6 +1375,21 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "missing_required_fields": list(payload["missing_required_fields"]),
         "artifact_presence_status": dict(payload["artifact_presence_status"]),
         "artifact_paths": dict(payload["artifact_paths"]),
+        "history_ledger_path": payload["history_ledger_path"],
+        "history_delta": history_delta,
+        "previous_packet_found": history_delta["previous_packet_found"],
+        "previous_as_of_date": history_delta["previous_as_of_date"],
+        "current_as_of_date": history_delta["current_as_of_date"],
+        "posture_changed": history_delta["posture_changed"],
+        "preview_decision_changed": history_delta["preview_decision_changed"],
+        "blocker_status_changed": history_delta["blocker_status_changed"],
+        "validation_status_changed": history_delta["validation_status_changed"],
+        "broker_state_mode_changed": history_delta["broker_state_mode_changed"],
+        "research_board_changed": history_delta["research_board_changed"],
+        "next_operator_action_changed": history_delta[
+            "next_operator_action_changed"
+        ],
+        "delta_summary_text": history_delta["delta_summary_text"],
         "indexed_artifacts": indexed_artifacts,
     }
 
