@@ -242,6 +242,26 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         "metric_artifacts_ingested",
         "metric_artifacts_parse_failed",
     }
+    assert exports["turnover_artifact_ingest_status"] in {
+        "turnover_artifact_missing",
+        "turnover_artifact_ingested",
+        "turnover_artifact_parse_failed",
+    }
+    assert exports["cost_model_artifact_ingest_status"] in {
+        "cost_model_artifact_missing",
+        "cost_model_artifact_ingested",
+        "cost_model_artifact_parse_failed",
+    }
+    assert exports["turnover_metric_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
+    assert exports["cost_model_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
     for field_name in (
         "metric_artifact_paths",
         "metric_artifact_hashes",
@@ -249,9 +269,39 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         "metric_artifact_record_count",
     ):
         assert isinstance(exports[field_name], dict)
+    assert str(exports["turnover_artifact_path"]).endswith("turnover_summary.jsonl")
+    assert str(exports["cost_model_artifact_path"]).endswith("cost_model_summary.jsonl")
+    assert exports["turnover_artifact_parse_status"] in {
+        "missing",
+        "path_not_file",
+        "unreadable",
+        "decode_error",
+        "json_decode_error",
+        "record_not_object",
+        "empty",
+        "ambiguous_record_count",
+        "parsed",
+    }
+    assert exports["cost_model_artifact_parse_status"] in {
+        "missing",
+        "path_not_file",
+        "unreadable",
+        "decode_error",
+        "json_decode_error",
+        "record_not_object",
+        "empty",
+        "ambiguous_record_count",
+        "parsed",
+    }
     assert isinstance(exports["remaining_missing_metric_sources"], list)
     assert "etf-sma-authorized-adjusted-baseline-metrics" in str(
         exports["next_safe_metric_command"]
+    )
+    assert isinstance(exports["artifact_prerequisite_chain"], list)
+    assert "turnover_summary.jsonl" in " ".join(exports["artifact_prerequisite_chain"])
+    assert "cost_model_summary.jsonl" in " ".join(exports["artifact_prerequisite_chain"])
+    assert "paper_observation_summary" in " ".join(
+        exports["artifact_prerequisite_chain"]
     )
     assert exports["top_research_candidate_id"]
     assert str(exports["directory"]).endswith("work_orders")
@@ -405,10 +455,18 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "evidence_snapshot_status",
         "metric_confidence_status",
         "metric_artifact_ingest_status",
+        "turnover_artifact_ingest_status",
+        "cost_model_artifact_ingest_status",
         "metric_artifact_paths",
         "metric_artifact_hashes",
         "metric_artifact_parse_status",
         "metric_artifact_record_count",
+        "turnover_artifact_path",
+        "cost_model_artifact_path",
+        "turnover_artifact_hash",
+        "cost_model_artifact_hash",
+        "turnover_artifact_parse_status",
+        "cost_model_artifact_parse_status",
         "available_metric_sources",
         "missing_metric_sources",
         "backtest_confidence_summary_status",
@@ -427,6 +485,7 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "paper_submit_readiness_status",
         "profit_claim",
         "required_next_artifacts",
+        "artifact_prerequisite_chain",
         "next_safe_metric_command",
         "promotion_criteria",
         "deprecation_criteria",
@@ -459,6 +518,16 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "metric_artifacts_ingested",
         "metric_artifacts_parse_failed",
     }
+    assert metrics["turnover_artifact_ingest_status"] in {
+        "turnover_artifact_missing",
+        "turnover_artifact_ingested",
+        "turnover_artifact_parse_failed",
+    }
+    assert metrics["cost_model_artifact_ingest_status"] in {
+        "cost_model_artifact_missing",
+        "cost_model_artifact_ingested",
+        "cost_model_artifact_parse_failed",
+    }
     for mapping_field in (
         "metric_artifact_paths",
         "metric_artifact_hashes",
@@ -471,6 +540,8 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "baseline_authorized_adjusted_metrics",
         "offline_backtest_confidence_summary",
         "adjusted_close_evidence",
+        "turnover_summary",
+        "cost_model_summary",
     }
     assert set(metrics["metric_artifact_paths"]) == expected_artifact_ids
     assert set(metrics["metric_artifact_parse_status"]) == expected_artifact_ids
@@ -495,8 +566,40 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "metrics_available",
         "metrics_missing",
     }
-    assert metrics["turnover_metric_status"] == "metrics_missing"
-    assert metrics["cost_model_status"] == "metrics_missing"
+    assert metrics["turnover_metric_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
+    assert metrics["cost_model_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
+    assert str(metrics["turnover_artifact_path"]).endswith("turnover_summary.jsonl")
+    assert str(metrics["cost_model_artifact_path"]).endswith("cost_model_summary.jsonl")
+    assert metrics["turnover_artifact_parse_status"] in {
+        "missing",
+        "path_not_file",
+        "unreadable",
+        "decode_error",
+        "json_decode_error",
+        "record_not_object",
+        "empty",
+        "ambiguous_record_count",
+        "parsed",
+    }
+    assert metrics["cost_model_artifact_parse_status"] in {
+        "missing",
+        "path_not_file",
+        "unreadable",
+        "decode_error",
+        "json_decode_error",
+        "record_not_object",
+        "empty",
+        "ambiguous_record_count",
+        "parsed",
+    }
     assert metrics["paper_observation_status"] == "broker_state_not_observed"
     assert metrics["broker_state_mode"] == "broker_state_not_observed"
     assert metrics["paper_submit_readiness_status"] == "not_ready_for_paper_submit"
@@ -506,6 +609,7 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "missing_metric_sources",
         "remaining_missing_metric_sources",
         "required_next_artifacts",
+        "artifact_prerequisite_chain",
         "promotion_criteria",
         "deprecation_criteria",
     ):
@@ -528,11 +632,14 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
             "offline_backtest_confidence_summary" in metrics["missing_metric_sources"]
         )
         assert "drawdown_summary" in metrics["missing_metric_sources"]
-    assert "turnover_summary" in metrics["missing_metric_sources"]
-    assert "cost_model_summary" in metrics["missing_metric_sources"]
     assert "paper_observation_summary" in metrics["missing_metric_sources"]
     assert "baseline_authorized_adjusted_metrics.jsonl" in " ".join(
         metrics["required_next_artifacts"]
+    )
+    assert "turnover_summary.jsonl" in " ".join(metrics["required_next_artifacts"])
+    assert "cost_model_summary.jsonl" in " ".join(metrics["required_next_artifacts"])
+    assert "paper_observation_summary" in " ".join(
+        metrics["artifact_prerequisite_chain"]
     )
     assert "etf-sma-authorized-adjusted-baseline-metrics" in str(
         metrics["next_safe_metric_command"]
@@ -561,6 +668,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "baseline_health_evaluation_generated",
         "baseline_evidence_metrics_generated",
         "baseline_metric_artifact_ingest_status_explicit",
+        "turnover_and_cost_model_artifacts_explicit",
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
@@ -574,9 +682,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "22/22 required checks passed; 0 failed; 0 warnings"
+        "23/23 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 22
+    assert container["quality_gate_passed_required_count"] == 23
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -866,17 +974,22 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "confidence_not_yet_quantified"
     )
     assert baseline_health["baseline_metric_artifact_ingest_status"] == (
-        "metric_artifacts_missing"
+        "metric_artifacts_partially_ingested"
     )
     assert set(baseline_health["baseline_metric_artifact_parse_status"]) == {
         "baseline_authorized_adjusted_metrics",
         "offline_backtest_confidence_summary",
         "adjusted_close_evidence",
+        "turnover_summary",
+        "cost_model_summary",
     }
-    assert all(
-        status == "missing"
-        for status in baseline_health["baseline_metric_artifact_parse_status"].values()
-    )
+    assert baseline_health["baseline_metric_artifact_parse_status"] == {
+        "baseline_authorized_adjusted_metrics": "missing",
+        "offline_backtest_confidence_summary": "missing",
+        "adjusted_close_evidence": "missing",
+        "turnover_summary": "parsed",
+        "cost_model_summary": "parsed",
+    }
     assert baseline_health["baseline_evidence_metrics_path"].endswith(
         "baseline_evidence_metrics.jsonl"
     )
@@ -907,28 +1020,67 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "metrics_partially_available"
     )
     assert baseline_metrics["metric_artifact_ingest_status"] == (
-        "metric_artifacts_missing"
+        "metric_artifacts_partially_ingested"
     )
-    assert baseline_metrics["metric_artifact_hashes"] == {}
+    assert set(baseline_metrics["metric_artifact_hashes"]) == {
+        "turnover_summary",
+        "cost_model_summary",
+    }
     assert baseline_metrics["quantified_metric_summary"] == {}
-    assert all(
-        status == "missing"
-        for status in baseline_metrics["metric_artifact_parse_status"].values()
-    )
-    assert all(
-        count == 0 for count in baseline_metrics["metric_artifact_record_count"].values()
-    )
+    assert baseline_metrics["metric_artifact_parse_status"] == {
+        "baseline_authorized_adjusted_metrics": "missing",
+        "offline_backtest_confidence_summary": "missing",
+        "adjusted_close_evidence": "missing",
+        "turnover_summary": "parsed",
+        "cost_model_summary": "parsed",
+    }
+    assert baseline_metrics["metric_artifact_record_count"] == {
+        "baseline_authorized_adjusted_metrics": 0,
+        "offline_backtest_confidence_summary": 0,
+        "adjusted_close_evidence": 0,
+        "turnover_summary": 1,
+        "cost_model_summary": 1,
+    }
     assert baseline_metrics["backtest_confidence_summary_status"] == "metrics_missing"
     assert baseline_metrics["benchmark_metric_status"] == "metrics_missing"
     assert baseline_metrics["benchmark_comparison_status"] == "metrics_missing"
     assert baseline_metrics["backtest_metric_status"] == "metrics_missing"
     assert baseline_metrics["drawdown_metric_status"] == "metrics_missing"
+    assert baseline_metrics["turnover_metric_status"] == "metrics_available"
+    assert baseline_metrics["cost_model_status"] == "metrics_available"
+    assert baseline_metrics["turnover_artifact_ingest_status"] == (
+        "turnover_artifact_ingested"
+    )
+    assert baseline_metrics["cost_model_artifact_ingest_status"] == (
+        "cost_model_artifact_ingested"
+    )
+    assert baseline_metrics["turnover_artifact_parse_status"] == "parsed"
+    assert baseline_metrics["cost_model_artifact_parse_status"] == "parsed"
+    assert baseline_metrics["turnover_artifact_hash"] == (
+        baseline_metrics["metric_artifact_hashes"]["turnover_summary"]
+    )
+    assert baseline_metrics["cost_model_artifact_hash"] == (
+        baseline_metrics["metric_artifact_hashes"]["cost_model_summary"]
+    )
     assert baseline_metrics["sample_window_status"] == "metrics_available"
     assert baseline_metrics["adjusted_close_basis_status"] == "metrics_missing"
     assert baseline_metrics["remaining_missing_metric_sources"] == baseline_metrics[
         "missing_metric_sources"
     ]
+    assert baseline_metrics["remaining_missing_metric_sources"] == [
+        "offline_backtest_confidence_summary",
+        "buy_and_hold_benchmark_status",
+        "drawdown_summary",
+        "paper_observation_summary",
+        "input_csv.adjusted_close_column",
+    ]
     assert "packet.sma.usable_bar_count" in baseline_metrics[
+        "available_metric_sources"
+    ]
+    assert "metric_artifact.turnover_summary" in baseline_metrics[
+        "available_metric_sources"
+    ]
+    assert "metric_artifact.cost_model_summary" in baseline_metrics[
         "available_metric_sources"
     ]
     assert "input_csv.adjusted_close_column" in baseline_metrics[
@@ -959,6 +1111,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "research_candidate_queue.jsonl").exists()
     assert (output_root / "baseline_health_evaluation.jsonl").exists()
     assert (output_root / "baseline_evidence_metrics.jsonl").exists()
+    assert (output_root / "turnover_summary.jsonl").exists()
+    assert (output_root / "cost_model_summary.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
     assert (output_root / "work_orders" / "codex_work_order.md").exists()
     assert (output_root / "work_orders" / "antigravity_review_order.md").exists()
@@ -985,8 +1139,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "## Baseline Evidence Metrics" in brief
     assert "baseline_evidence_metrics.jsonl" in brief
     assert "metrics_partially_available" in brief
-    assert "metric_artifacts_missing" in brief
+    assert "metric_artifacts_partially_ingested" in brief
     assert "Metric artifact ingest status" in brief
+    assert "turnover_artifact_ingested" in brief
+    assert "cost_model_artifact_ingested" in brief
+    assert "turnover_summary.jsonl" in brief
+    assert "cost_model_summary.jsonl" in brief
     assert "etf-sma-authorized-adjusted-baseline-metrics" in brief
     assert "usable_control_harness" in brief
     assert (
@@ -1151,6 +1309,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "research_candidate_queue" in manifest["indexed_artifacts"]
     assert "baseline_health_evaluation" in manifest["indexed_artifacts"]
     assert "baseline_evidence_metrics" in manifest["indexed_artifacts"]
+    assert "turnover_summary" in manifest["indexed_artifacts"]
+    assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
     assert "codex_work_order" in manifest["indexed_artifacts"]
     assert "antigravity_review_order" in manifest["indexed_artifacts"]
@@ -1173,11 +1333,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         ),
     ]
     for work_order in work_order_texts:
-        assert "Assistant v1.10 - Baseline Metrics Artifact Ingest" in work_order
+        assert (
+            "Assistant v1.11 - Turnover and Cost Model Evidence Materialization"
+            in work_order
+        )
         assert "collect_offline_review_feedback" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
+        assert "turnover_summary.jsonl" in work_order
+        assert "cost_model_summary.jsonl" in work_order
+        assert "paper_observation_summary" in work_order
+        assert "## Prerequisite artifact chain" in work_order
         assert "## Baseline health evaluation" in work_order
         assert "## Baseline evidence metrics" in work_order
         assert "next_safe_metric_command" in work_order
@@ -1318,11 +1485,15 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
         "baseline_authorized_adjusted_metrics": "parsed",
         "offline_backtest_confidence_summary": "parsed",
         "adjusted_close_evidence": "parsed",
+        "turnover_summary": "parsed",
+        "cost_model_summary": "parsed",
     }
     assert metrics["metric_artifact_record_count"] == {
         "baseline_authorized_adjusted_metrics": 1,
         "offline_backtest_confidence_summary": 1,
         "adjusted_close_evidence": 1,
+        "turnover_summary": 1,
+        "cost_model_summary": 1,
     }
     expected_hashes = {
         "baseline_authorized_adjusted_metrics": hashlib.sha256(
@@ -1334,19 +1505,24 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
         "adjusted_close_evidence": hashlib.sha256(
             (output_root / "adjusted_close_evidence.jsonl").read_bytes()
         ).hexdigest(),
+        "turnover_summary": hashlib.sha256(
+            (output_root / "turnover_summary.jsonl").read_bytes()
+        ).hexdigest(),
+        "cost_model_summary": hashlib.sha256(
+            (output_root / "cost_model_summary.jsonl").read_bytes()
+        ).hexdigest(),
     }
     assert metrics["metric_artifact_hashes"] == expected_hashes
-    assert all(
-        str(path).endswith(filename)
-        for path, filename in zip(
-            metrics["metric_artifact_paths"].values(),
-            (
-                "baseline_authorized_adjusted_metrics.jsonl",
-                "offline_backtest_confidence_summary.jsonl",
-                "adjusted_close_evidence.jsonl",
-            ),
-        )
-    )
+    expected_path_suffixes = {
+        "baseline_authorized_adjusted_metrics": "baseline_authorized_adjusted_metrics.jsonl",
+        "offline_backtest_confidence_summary": "offline_backtest_confidence_summary.jsonl",
+        "adjusted_close_evidence": "adjusted_close_evidence.jsonl",
+        "turnover_summary": "turnover_summary.jsonl",
+        "cost_model_summary": "cost_model_summary.jsonl",
+    }
+    assert set(metrics["metric_artifact_paths"]) == set(expected_path_suffixes)
+    for artifact_id, filename in expected_path_suffixes.items():
+        assert str(metrics["metric_artifact_paths"][artifact_id]).endswith(filename)
     assert metrics["metric_confidence_status"] == "offline_confidence_quantified"
     assert metrics["evidence_snapshot_status"] == "metrics_partially_available"
     assert metrics["backtest_confidence_summary_status"] == "metrics_available"
@@ -1354,15 +1530,25 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
     assert metrics["benchmark_comparison_status"] == "metrics_available"
     assert metrics["backtest_metric_status"] == "metrics_available"
     assert metrics["drawdown_metric_status"] == "metrics_available"
-    assert metrics["turnover_metric_status"] == "metrics_missing"
-    assert metrics["cost_model_status"] == "metrics_missing"
+    assert metrics["turnover_metric_status"] == "metrics_available"
+    assert metrics["cost_model_status"] == "metrics_available"
+    assert metrics["turnover_artifact_ingest_status"] == (
+        "turnover_artifact_ingested"
+    )
+    assert metrics["cost_model_artifact_ingest_status"] == (
+        "cost_model_artifact_ingested"
+    )
+    assert str(metrics["turnover_artifact_path"]).endswith("turnover_summary.jsonl")
+    assert str(metrics["cost_model_artifact_path"]).endswith("cost_model_summary.jsonl")
+    assert metrics["turnover_artifact_hash"] == expected_hashes["turnover_summary"]
+    assert metrics["cost_model_artifact_hash"] == expected_hashes[
+        "cost_model_summary"
+    ]
+    assert metrics["turnover_artifact_parse_status"] == "parsed"
+    assert metrics["cost_model_artifact_parse_status"] == "parsed"
     assert metrics["sample_window_status"] == "metrics_available"
     assert metrics["adjusted_close_basis_status"] == "metrics_available"
-    assert metrics["remaining_missing_metric_sources"] == [
-        "turnover_summary",
-        "cost_model_summary",
-        "paper_observation_summary",
-    ]
+    assert metrics["remaining_missing_metric_sources"] == ["paper_observation_summary"]
     assert "metric_artifact.baseline_authorized_adjusted_metrics" in metrics[
         "available_metric_sources"
     ]
@@ -1370,6 +1556,14 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
         "available_metric_sources"
     ]
     assert "metric_artifact.adjusted_close_evidence" in metrics[
+        "available_metric_sources"
+    ]
+    assert "metric_artifact.turnover_summary" in metrics["available_metric_sources"]
+    assert "metric_artifact.cost_model_summary" in metrics["available_metric_sources"]
+    assert "turnover_summary.signal_change_count" in metrics[
+        "available_metric_sources"
+    ]
+    assert "cost_model_summary.estimated_cost_per_trade_status" in metrics[
         "available_metric_sources"
     ]
     summary = metrics["quantified_metric_summary"]
@@ -1406,10 +1600,18 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
         "metric_artifacts_ingested"
     )
     assert payload["work_order_exports"]["metric_artifact_hashes"] == expected_hashes
+    assert payload["work_order_exports"]["turnover_artifact_ingest_status"] == (
+        "turnover_artifact_ingested"
+    )
+    assert payload["work_order_exports"]["cost_model_artifact_ingest_status"] == (
+        "cost_model_artifact_ingested"
+    )
+    assert payload["work_order_exports"]["turnover_metric_status"] == (
+        "metrics_available"
+    )
+    assert payload["work_order_exports"]["cost_model_status"] == "metrics_available"
     assert payload["work_order_exports"]["remaining_missing_metric_sources"] == [
-        "turnover_summary",
-        "cost_model_summary",
-        "paper_observation_summary",
+        "paper_observation_summary"
     ]
 
     manifest = json.loads(
@@ -1422,6 +1624,8 @@ def test_etf_sma_daily_paper_lab_ingests_local_metric_artifacts(
     brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
     assert "offline_confidence_quantified" in brief
     assert "metric_artifacts_ingested" in brief
+    assert "turnover_artifact_ingested" in brief
+    assert "cost_model_artifact_ingested" in brief
 
 
 def test_etf_sma_daily_paper_lab_second_run_delta_compares_prior_packet(
@@ -1708,6 +1912,8 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "research_candidate_queue.jsonl",
         "baseline_health_evaluation.jsonl",
         "baseline_evidence_metrics.jsonl",
+        "turnover_summary.jsonl",
+        "cost_model_summary.jsonl",
         "review_inputs",
         "work_orders",
         "gpt_next_action_handoff.md",
@@ -1945,7 +2151,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "19/22 required checks passed; 3 failed; 0 warnings"
+        "20/23 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",

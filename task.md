@@ -1,10 +1,11 @@
-# Assistant v1.10 - Baseline Metrics Artifact Materialization + Ingest
+# Assistant v1.11 - Turnover and Cost Model Evidence Materialization
 
-- [x] Preserve Assistant v1/v1.1/v1.2/v1.3/v1.4/v1.5/v1.6/v1.7/v1.8/v1.9 brief, operating record, manifest, validation, history-delta, executive action queue, research board, review handoff, decision-ledger, selector, work-order, research-candidate queue, baseline-health, and baseline-evidence behavior.
-- [x] Add deterministic local metric artifact ingest fields to `baseline_evidence_metrics`, `baseline_health_evaluation`, `next_action_selector`, `research_candidate_queue`, `work_order_exports`, operating brief, review handoff, operating record, and manifest.
-- [x] Detect and parse local metric artifacts under the selected output root: `baseline_authorized_adjusted_metrics.jsonl`, `offline_backtest_confidence_summary.jsonl`, and `adjusted_close_evidence.jsonl`.
-- [x] Keep the v1.9-safe missing-artifact state when artifacts are absent: explicit missing sources, empty quantified summary, `metric_confidence_status=confidence_not_yet_quantified`, `profit_claim=none`, and the selected next safe metric command.
-- [x] Ingest parseable local artifacts without inventing metric values, expose deterministic paths, hashes, parse status, record counts, available sources, remaining missing sources, and artifact-backed quantified summary fields.
-- [x] Preserve explicit `broker_state_not_observed`, `offline_preview_only`, `not_ready_for_paper_submit`, and `profit_claim=none` wording without broker reads, broker mutation, paper submit, live trading, network calls, external services, protected broker material, new accounts, or capital actions.
-- [x] Add quality-gate and unit-test coverage for metric artifact ingest status, paths, hashes, parse status, no invented missing-artifact metrics, paper-submit lockout, profit claim lockout, and broker-state wording.
-- [ ] Complete full required verification, including safety group, offline verifier, v1.10 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.
+- [x] Preserve Assistant v1/v1.1/v1.2/v1.3/v1.4/v1.5/v1.6/v1.7/v1.8/v1.9/v1.10 brief, operating record, manifest, validation, history-delta, executive action queue, research board, review handoff, decision-ledger, selector, work-order, research-candidate queue, baseline-health, and baseline-evidence behavior.
+- [x] Materialize deterministic local `turnover_summary.jsonl` from SPY SMA 50/200 signal-transition evidence under the selected daily-lab output root.
+- [x] Materialize deterministic local `cost_model_summary.jsonl` as an assumptions-only cost-model inventory that explicitly refuses per-trade and total-cost estimates without fill, spread, notional, and commission-schedule sources.
+- [x] Ingest turnover and cost-model artifacts into `baseline_evidence_metrics` with explicit artifact paths, hashes, parse statuses, ingest statuses, metric statuses, and remaining missing metric sources.
+- [x] Preserve `paper_observation_summary` as the only broker-read hard-gated metric source after all deterministic offline metric artifacts are present.
+- [x] Keep `profit_claim=none`, `paper_submit_readiness_status=not_ready_for_paper_submit`, `broker_state_not_observed`, and no broker/network/runtime dependency behavior intact.
+- [x] Update quality-gate checks, research candidate queue, baseline-health evaluation, next-action selector, work-order exports, operating brief, review handoff, operating record, and manifest for v1.11 turnover/cost evidence.
+- [x] Make prerequisite artifact chains explicit in generated work orders: daily packet output root, v1.10 prerequisite metric materialization, rerun daily packet for ingest, and leave paper observation hard-gated.
+- [ ] Complete required verification, including targeted test, safety guard group, offline verifier, v1.11 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.
