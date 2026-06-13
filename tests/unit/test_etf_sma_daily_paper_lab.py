@@ -233,6 +233,12 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert str(exports["research_candidate_queue_path"]).endswith(
         "research_candidate_queue.jsonl"
     )
+    assert str(exports["baseline_evidence_metrics_path"]).endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in str(
+        exports["next_safe_metric_command"]
+    )
     assert exports["top_research_candidate_id"]
     assert str(exports["directory"]).endswith("work_orders")
     artifacts = exports["artifacts"]
@@ -271,6 +277,11 @@ def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> N
         "health_status",
         "confidence_status",
         "evidence_status",
+        "baseline_evidence_metrics_status",
+        "baseline_evidence_snapshot_status",
+        "baseline_metric_confidence_status",
+        "baseline_evidence_metrics_path",
+        "next_safe_metric_command",
         "paper_submit_readiness_status",
         "known_strengths",
         "known_weaknesses",
@@ -317,6 +328,24 @@ def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> N
     assert evaluation["paper_submit_readiness_status"] == (
         "not_ready_for_paper_submit"
     )
+    assert evaluation["baseline_evidence_metrics_status"] in {
+        "generated",
+        "not_generated",
+    }
+    assert evaluation["baseline_evidence_snapshot_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
+    assert evaluation["baseline_metric_confidence_status"] == (
+        "confidence_not_yet_quantified"
+    )
+    assert str(evaluation["baseline_evidence_metrics_path"]).endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in str(
+        evaluation["next_safe_metric_command"]
+    )
     assert evaluation["next_safe_test"] == (
         "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
         "-k baseline_health_evaluation"
@@ -336,6 +365,93 @@ def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> N
     assert "broker_state_not_observed" in json.dumps(evaluation, sort_keys=True)
 
 
+def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
+    assert set(metrics) == {
+        "baseline_evidence_metrics_version",
+        "status",
+        "artifact_path",
+        "generation_mode",
+        "baseline_id",
+        "baseline_name",
+        "active_symbol",
+        "active_strategy",
+        "as_of_date",
+        "evidence_snapshot_status",
+        "metric_confidence_status",
+        "available_metric_sources",
+        "missing_metric_sources",
+        "benchmark_comparison_status",
+        "backtest_metric_status",
+        "drawdown_metric_status",
+        "turnover_metric_status",
+        "cost_model_status",
+        "sample_window_status",
+        "adjusted_close_basis_status",
+        "paper_observation_status",
+        "broker_state_mode",
+        "paper_submit_readiness_status",
+        "profit_claim",
+        "required_next_artifacts",
+        "next_safe_metric_command",
+        "promotion_criteria",
+        "deprecation_criteria",
+        "requires_daniel",
+        "hard_gate_required",
+        "safety_scope",
+    }
+    assert metrics["baseline_evidence_metrics_version"] == (
+        "assistant_v1.9_baseline_evidence_metrics"
+    )
+    assert metrics["status"] == "generated"
+    assert str(metrics["artifact_path"]).endswith("baseline_evidence_metrics.jsonl")
+    assert metrics["generation_mode"] == "deterministic_offline_from_packet_evidence"
+    assert metrics["baseline_id"] == "spy_sma_50_200_daily_long_only"
+    assert metrics["baseline_name"] == "SPY SMA 50/200 daily long-only baseline"
+    assert metrics["active_symbol"] == "SPY"
+    assert metrics["active_strategy"] == "SMA 50/200"
+    assert metrics["evidence_snapshot_status"] in {
+        "metrics_available",
+        "metrics_partially_available",
+        "metrics_missing",
+    }
+    assert metrics["metric_confidence_status"] == "confidence_not_yet_quantified"
+    assert metrics["benchmark_comparison_status"] == "metrics_missing"
+    assert metrics["backtest_metric_status"] == "metrics_missing"
+    assert metrics["drawdown_metric_status"] == "metrics_missing"
+    assert metrics["turnover_metric_status"] == "metrics_missing"
+    assert metrics["cost_model_status"] == "metrics_missing"
+    assert metrics["paper_observation_status"] == "broker_state_not_observed"
+    assert metrics["broker_state_mode"] == "broker_state_not_observed"
+    assert metrics["paper_submit_readiness_status"] == "not_ready_for_paper_submit"
+    assert metrics["profit_claim"] == "none"
+    for list_field in (
+        "available_metric_sources",
+        "missing_metric_sources",
+        "required_next_artifacts",
+        "promotion_criteria",
+        "deprecation_criteria",
+    ):
+        assert isinstance(metrics[list_field], list)
+    assert "offline_backtest_confidence_summary" in metrics["missing_metric_sources"]
+    assert "drawdown_summary" in metrics["missing_metric_sources"]
+    assert "turnover_summary" in metrics["missing_metric_sources"]
+    assert "cost_model_summary" in metrics["missing_metric_sources"]
+    assert "paper_observation_summary" in metrics["missing_metric_sources"]
+    assert "baseline_authorized_adjusted_metrics.jsonl" in " ".join(
+        metrics["required_next_artifacts"]
+    )
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in str(
+        metrics["next_safe_metric_command"]
+    )
+    assert "baseline_authorized_adjusted_metrics.jsonl" in str(
+        metrics["next_safe_metric_command"]
+    )
+    assert metrics["requires_daniel"] is False
+    assert metrics["hard_gate_required"] is False
+    assert "offline_preview_only" in str(metrics["safety_scope"])
+    assert "broker_state_not_observed" in json.dumps(metrics, sort_keys=True)
+
+
 def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     expected_check_ids = [
         "required_packet_artifacts_exist",
@@ -349,6 +465,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "research_board_has_spy_sma_50_200_active_baseline",
         "research_candidate_queue_generated",
         "baseline_health_evaluation_generated",
+        "baseline_evidence_metrics_generated",
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
@@ -362,9 +479,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "20/20 required checks passed; 0 failed; 0 warnings"
+        "21/21 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 20
+    assert container["quality_gate_passed_required_count"] == 21
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -499,6 +616,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "baseline_evidence_metrics"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -527,6 +650,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["baseline_health_evaluation"].endswith(
         "baseline_health_evaluation.jsonl"
     )
+    assert payload["artifacts"]["baseline_evidence_metrics"].endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -542,6 +668,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert payload["executive_dashboard"]["baseline_health_evaluation"] == payload[
         "baseline_health_evaluation"
+    ]
+    assert payload["executive_dashboard"]["baseline_evidence_metrics"] == payload[
+        "baseline_evidence_metrics"
     ]
     assert payload["executive_dashboard"]["review_classification"] == "missing"
     assert payload["executive_action_queue_version"] == "assistant_v1.3_action_queue"
@@ -599,7 +728,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert queue["top_candidate_id"] == "offline_review_evidence_gap"
     assert queue["top_candidate_priority"] == "P1"
     assert queue["selected_safe_candidate_id"] == (
-        "baseline_health_evaluation_spy_sma_50_200"
+        "baseline_evidence_metrics_snapshot_spy_sma_50_200"
     )
     assert queue["selected_safe_candidate_priority"] == "P2"
     candidate_ids = [
@@ -607,6 +736,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     assert candidate_ids == [
         "offline_review_evidence_gap",
+        "baseline_evidence_metrics_snapshot_spy_sma_50_200",
         "baseline_health_evaluation_spy_sma_50_200",
         "benchmark_buy_and_hold_comparison_spy",
         "current_baseline_evidence_gap_map",
@@ -633,14 +763,53 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert baseline_health["health_status"] == "usable_control_harness"
     assert baseline_health["confidence_status"] == "confidence_not_yet_quantified"
     assert baseline_health["evidence_status"] == "evidence_incomplete"
+    assert baseline_health["baseline_evidence_metrics_status"] == "generated"
+    assert baseline_health["baseline_evidence_snapshot_status"] == (
+        "metrics_partially_available"
+    )
+    assert baseline_health["baseline_metric_confidence_status"] == (
+        "confidence_not_yet_quantified"
+    )
+    assert baseline_health["baseline_evidence_metrics_path"].endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in baseline_health[
+        "next_safe_metric_command"
+    ]
     assert "offline_backtest_confidence_summary" in baseline_health[
         "missing_evidence"
+    ]
+    assert "baseline_evidence_metrics.jsonl" in baseline_health[
+        "required_next_artifacts"
     ]
     assert "buy_and_hold_benchmark_status" in baseline_health[
         "required_next_artifacts"
     ]
     assert baseline_health["requires_daniel"] is False
     assert baseline_health["hard_gate_required"] is False
+    assert payload["baseline_evidence_metrics_version"] == (
+        "assistant_v1.9_baseline_evidence_metrics"
+    )
+    assert payload["baseline_evidence_metrics_path"].endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    _assert_baseline_evidence_metrics_shape(payload["baseline_evidence_metrics"])
+    baseline_metrics = payload["baseline_evidence_metrics"]
+    assert baseline_metrics["as_of_date"] == "2025-07-20"
+    assert baseline_metrics["evidence_snapshot_status"] == (
+        "metrics_partially_available"
+    )
+    assert baseline_metrics["sample_window_status"] == "metrics_available"
+    assert baseline_metrics["adjusted_close_basis_status"] == "metrics_missing"
+    assert "packet.sma.usable_bar_count" in baseline_metrics[
+        "available_metric_sources"
+    ]
+    assert "input_csv.adjusted_close_column" in baseline_metrics[
+        "missing_metric_sources"
+    ]
+    assert baseline_metrics["paper_observation_status"] == (
+        "broker_state_not_observed"
+    )
 
     # Labels verification
     for label in (
@@ -662,6 +831,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "manifest.jsonl").exists()
     assert (output_root / "research_candidate_queue.jsonl").exists()
     assert (output_root / "baseline_health_evaluation.jsonl").exists()
+    assert (output_root / "baseline_evidence_metrics.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
     assert (output_root / "work_orders" / "codex_work_order.md").exists()
     assert (output_root / "work_orders" / "antigravity_review_order.md").exists()
@@ -685,12 +855,17 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "research_candidate_queue.jsonl" in brief
     assert "## Baseline Health Evaluation" in brief
     assert "baseline_health_evaluation.jsonl" in brief
+    assert "## Baseline Evidence Metrics" in brief
+    assert "baseline_evidence_metrics.jsonl" in brief
+    assert "metrics_partially_available" in brief
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in brief
     assert "usable_control_harness" in brief
     assert (
         "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
         "-k baseline_health_evaluation"
     ) in brief
     assert "offline_review_evidence_gap" in brief
+    assert "baseline_evidence_metrics_snapshot_spy_sma_50_200" in brief
     assert "baseline_health_evaluation_spy_sma_50_200" in brief
     assert "## Executive dashboard" in brief
     assert "paper_submit_authorized=false" in brief
@@ -759,6 +934,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["baseline_health_evaluation"] == payload[
         "baseline_health_evaluation"
     ]
+    assert record["baseline_evidence_metrics_version"] == (
+        "assistant_v1.9_baseline_evidence_metrics"
+    )
+    assert record["baseline_evidence_metrics_path"].endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    assert record["baseline_evidence_metrics"] == payload["baseline_evidence_metrics"]
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -818,6 +1000,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["baseline_health_evaluation"] == payload[
         "baseline_health_evaluation"
     ]
+    assert manifest["baseline_evidence_metrics_version"] == (
+        "assistant_v1.9_baseline_evidence_metrics"
+    )
+    assert manifest["baseline_evidence_metrics_path"].endswith(
+        "baseline_evidence_metrics.jsonl"
+    )
+    assert manifest["baseline_evidence_metrics"] == payload[
+        "baseline_evidence_metrics"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -830,6 +1021,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "history_ledger" in manifest["indexed_artifacts"]
     assert "research_candidate_queue" in manifest["indexed_artifacts"]
     assert "baseline_health_evaluation" in manifest["indexed_artifacts"]
+    assert "baseline_evidence_metrics" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
     assert "codex_work_order" in manifest["indexed_artifacts"]
     assert "antigravity_review_order" in manifest["indexed_artifacts"]
@@ -852,11 +1044,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         ),
     ]
     for work_order in work_order_texts:
-        assert "Assistant v1.8 - Baseline Health Evaluation Packet" in work_order
+        assert "Assistant v1.9 - Baseline Evidence Metrics Snapshot" in work_order
         assert "collect_offline_review_feedback" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
+        assert "baseline_evidence_metrics.jsonl" in work_order
         assert "## Baseline health evaluation" in work_order
+        assert "## Baseline evidence metrics" in work_order
+        assert "next_safe_metric_command" in work_order
+        assert "etf-sma-authorized-adjusted-baseline-metrics" in work_order
         assert "usable_control_harness" in work_order
         assert (
             "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
@@ -901,6 +1097,14 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert len(baseline_health_lines) == 1
     assert json.loads(baseline_health_lines[0]) == payload[
         "baseline_health_evaluation"
+    ]
+
+    baseline_metrics_lines = (
+        output_root / "baseline_evidence_metrics.jsonl"
+    ).read_text(encoding="utf-8").splitlines()
+    assert len(baseline_metrics_lines) == 1
+    assert json.loads(baseline_metrics_lines[0]) == payload[
+        "baseline_evidence_metrics"
     ]
 
 
@@ -1150,6 +1354,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Research board",
         "## Research candidate queue",
         "## Baseline health evaluation",
+        "## Baseline evidence metrics",
         "## History delta",
         "## Safety assessment",
         "## Reviewer instructions",
@@ -1168,6 +1373,9 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
     assert "broker_state_not_observed" in handoff
     assert "usable_control_harness" in handoff
     assert "baseline_health_evaluation.jsonl" in handoff
+    assert "baseline_evidence_metrics.jsonl" in handoff
+    assert "metrics_partially_available" in handoff
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in handoff
     assert (
         "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
         "-k baseline_health_evaluation"
@@ -1183,6 +1391,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "decision_ledger.jsonl",
         "research_candidate_queue.jsonl",
         "baseline_health_evaluation.jsonl",
+        "baseline_evidence_metrics.jsonl",
         "review_inputs",
         "work_orders",
         "gpt_next_action_handoff.md",
@@ -1365,10 +1574,10 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
         "safe_offline_research_candidate_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "baseline_health_evaluation_spy_sma_50_200"
+        "baseline_evidence_metrics_snapshot_spy_sma_50_200"
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] == (
-        "baseline_health_evaluation_spy_sma_50_200"
+        "baseline_evidence_metrics_snapshot_spy_sma_50_200"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -1376,6 +1585,17 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
     assert payload["next_action_selector"]["blocks_offline_build"] is False
     assert payload["next_action_selector"]["broker_action_allowed"] is False
     assert payload["next_action_selector"]["llm_runtime_calls_allowed"] is False
+    selected_candidate = next(
+        candidate
+        for candidate in payload["research_candidate_queue"]["candidates"]
+        if (
+            candidate["candidate_id"]
+            == "baseline_evidence_metrics_snapshot_spy_sma_50_200"
+        )
+    )
+    assert "etf-sma-authorized-adjusted-baseline-metrics" in selected_candidate[
+        "expected_artifact_or_command"
+    ]
 
 
 def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
@@ -1409,7 +1629,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "17/20 required checks passed; 3 failed; 0 warnings"
+        "18/21 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
