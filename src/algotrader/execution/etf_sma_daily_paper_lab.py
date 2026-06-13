@@ -43,6 +43,13 @@ _QUALITY_GATE_VERSION = "assistant_v1.4_quality_gate"
 _REVIEW_HANDOFF_VERSION = "assistant_v1.4_review_handoff"
 _DECISION_LEDGER_VERSION = "assistant_v1.5_decision_ledger"
 _DECISION_LEDGER_ENTRY_VERSION = "assistant_v1.5_decision_ledger_entry"
+_NEXT_ACTION_SELECTOR_VERSION = "assistant_v1.6_next_action_selector"
+_WORK_ORDER_EXPORTS_VERSION = "assistant_v1.6_work_order_exports"
+_PHASE_NAME = "Assistant v1.6 - Agent Work Order Export + Next Action Selector"
+_PHASE_GOAL = (
+    "Emit deterministic, offline, paste-ready work orders and a next-action "
+    "selector from the daily assistant packet."
+)
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
@@ -53,6 +60,11 @@ _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
 _REVIEW_HANDOFF_FILENAME = "review_handoff.md"
 _DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
 _REVIEW_INPUTS_DIRNAME = "review_inputs"
+_WORK_ORDERS_DIRNAME = "work_orders"
+_GPT_WORK_ORDER_FILENAME = "gpt_next_action_handoff.md"
+_CODEX_WORK_ORDER_FILENAME = "codex_work_order.md"
+_ANTIGRAVITY_WORK_ORDER_FILENAME = "antigravity_review_order.md"
+_CLAUDE_WORK_ORDER_FILENAME = "claude_critique_order.md"
 _HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
 _REQUIRED_LABELS = [
     "paper_lab_only",
@@ -69,6 +81,13 @@ _EXPECTED_ARTIFACTS = (
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
     ("review_handoff", _REVIEW_HANDOFF_FILENAME),
+    ("gpt_next_action_handoff", f"{_WORK_ORDERS_DIRNAME}/{_GPT_WORK_ORDER_FILENAME}"),
+    ("codex_work_order", f"{_WORK_ORDERS_DIRNAME}/{_CODEX_WORK_ORDER_FILENAME}"),
+    (
+        "antigravity_review_order",
+        f"{_WORK_ORDERS_DIRNAME}/{_ANTIGRAVITY_WORK_ORDER_FILENAME}",
+    ),
+    ("claude_critique_order", f"{_WORK_ORDERS_DIRNAME}/{_CLAUDE_WORK_ORDER_FILENAME}"),
 )
 _REQUIRED_PACKET_FIELDS = (
     "input_data_path",
@@ -108,6 +127,8 @@ _REQUIRED_PACKET_FIELDS = (
     "review_classification",
     "reviewer_source",
     "review_selected_next_action",
+    "next_action_selector",
+    "work_order_exports",
 )
 _REQUIRED_MANIFEST_FIELDS = (
     "input_data_path",
@@ -151,6 +172,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "review_classification",
     "reviewer_source",
     "review_selected_next_action",
+    "next_action_selector",
+    "work_order_exports",
 )
 _REQUIRED_FIELDS_ALLOW_EMPTY = {
     "quality_gate_failed_checks",
@@ -181,6 +204,46 @@ _REVIEW_FORBIDDEN_NEXT_ACTION_TERMS = (
     "broker mutation",
     "alpaca",
     "credential",
+)
+_SELECTOR_FORBIDDEN_ACTION_TERMS = (
+    "submit_order",
+    "place_order",
+    "cancel_order",
+    "replace_order",
+    "close_order",
+    "liquidate",
+    "live_trading",
+    "paper_submit_authorized=true",
+    "broker_read",
+    "broker_mutation",
+    "load_secret",
+    "load_credential",
+)
+_WORK_ORDER_ARTIFACTS = (
+    (
+        "gpt_next_action_handoff",
+        _GPT_WORK_ORDER_FILENAME,
+        "GPT",
+        "source_of_truth_next_action_routing",
+    ),
+    (
+        "codex_work_order",
+        _CODEX_WORK_ORDER_FILENAME,
+        "Codex",
+        "implementation_work_order",
+    ),
+    (
+        "antigravity_review_order",
+        _ANTIGRAVITY_WORK_ORDER_FILENAME,
+        "Antigravity",
+        "independent_repo_health_review",
+    ),
+    (
+        "claude_critique_order",
+        _CLAUDE_WORK_ORDER_FILENAME,
+        "Claude",
+        "independent_critique_audit",
+    ),
 )
 _REQUIRED_DELTA_FIELDS = (
     "previous_packet_found",
@@ -385,8 +448,12 @@ def validate_etf_sma_daily_paper_lab_packet(
 def _write_packet_artifacts(
     *,
     output_root: Path,
-    payload: Mapping[str, Any],
+    payload: dict[str, Any],
 ) -> None:
+    _apply_next_action_selector(payload, output_root)
+    _apply_work_order_exports(payload, output_root)
+    _write_work_order_artifacts(output_root, payload)
+
     record_file = output_root / _RECORD_FILENAME
     record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
     record_file.write_text(record_line, encoding="utf-8", newline="\n")
@@ -873,6 +940,10 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     artifact_paths = _artifact_paths(output_root)
     quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
     decision_ledger_defaults = _default_decision_ledger_fields(artifact_paths)
+    next_action_selector_defaults = _default_next_action_selector_fields(
+        artifact_paths
+    )
+    work_order_export_defaults = _default_work_order_export_fields(artifact_paths)
     sma_status = _sma_status(
         posture=posture,
         fast_window=config.sma_fast_window,
@@ -945,6 +1016,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "history_ledger_path": artifact_paths["history_ledger"],
         **quality_gate_defaults,
         **decision_ledger_defaults,
+        **next_action_selector_defaults,
+        **work_order_export_defaults,
         "history_delta": _empty_history_delta(as_of_str),
         "history_ledger_entry": {},
         "artifacts": {
@@ -956,6 +1029,15 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "review_handoff": artifact_paths["review_handoff"],
             "decision_ledger": artifact_paths["decision_ledger"],
             "review_inputs": artifact_paths["review_inputs"],
+            "work_orders": artifact_paths["work_orders"],
+            "gpt_next_action_handoff": artifact_paths[
+                "gpt_next_action_handoff"
+            ],
+            "codex_work_order": artifact_paths["codex_work_order"],
+            "antigravity_review_order": artifact_paths[
+                "antigravity_review_order"
+            ],
+            "claude_critique_order": artifact_paths["claude_critique_order"],
         },
         "sma": {
             "symbol": signal.symbol,
@@ -1025,6 +1107,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "review_selected_next_action": decision_ledger_defaults[
                 "review_selected_next_action"
             ],
+            "next_action_selector": dict(
+                next_action_selector_defaults["next_action_selector"]
+            ),
+            "work_order_exports": dict(
+                work_order_export_defaults["work_order_exports"]
+            ),
         },
     }
     payload["executive_summary"] = {
@@ -1147,6 +1235,7 @@ def _normalize_path(path: Path | str) -> str:
 
 
 def _artifact_paths(output_root: Path) -> dict[str, str]:
+    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
     return {
         "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
@@ -1155,6 +1244,19 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "review_handoff": _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME),
         "decision_ledger": _normalize_path(output_root / _DECISION_LEDGER_FILENAME),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
+        "work_orders": _normalize_path(work_orders_dir),
+        "gpt_next_action_handoff": _normalize_path(
+            work_orders_dir / _GPT_WORK_ORDER_FILENAME
+        ),
+        "codex_work_order": _normalize_path(
+            work_orders_dir / _CODEX_WORK_ORDER_FILENAME
+        ),
+        "antigravity_review_order": _normalize_path(
+            work_orders_dir / _ANTIGRAVITY_WORK_ORDER_FILENAME
+        ),
+        "claude_critique_order": _normalize_path(
+            work_orders_dir / _CLAUDE_WORK_ORDER_FILENAME
+        ),
     }
 
 
@@ -1205,6 +1307,52 @@ def _default_decision_ledger_fields(
             "status": "review_input_not_found",
             "selected_next_action": "await_offline_review_input",
         },
+    }
+
+
+def _default_next_action_selector_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "next_action_selector": {
+            "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
+            "status": "not_evaluated",
+            "priority": "P3",
+            "selected_next_action_id": "prepare_daily_packet_for_quality_gate",
+            "selected_next_action_type": "packet_preparation",
+            "selected_work_order": "gpt_next_action_handoff",
+            "selected_work_order_path": str(artifact_paths["gpt_next_action_handoff"]),
+            "selected_owner": "GPT",
+            "rationale": "Packet artifacts have not completed final quality-gate evaluation.",
+            "reason_codes": ["quality_gate_not_yet_evaluated"],
+            "blocks_offline_build": False,
+            "requires_daniel": False,
+            "hard_gate_required": False,
+            "broker_action_allowed": False,
+            "capital_action_allowed": False,
+            "llm_runtime_calls_allowed": False,
+            "network_runtime_calls_allowed": False,
+            "safety_scope": "offline_text_artifacts_only_no_broker_no_network_no_submit",
+            "forbidden_actions": _forbidden_behavior_lines(),
+            "source_state": {},
+        }
+    }
+
+
+def _default_work_order_export_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "work_order_exports": {
+            "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
+            "status": "not_generated",
+            "directory": str(artifact_paths["work_orders"]),
+            "artifact_count": len(_WORK_ORDER_ARTIFACTS),
+            "generation_mode": "deterministic_offline_markdown_only",
+            "runtime_callouts_performed": False,
+            "safety_scope": "offline_text_export_only_no_broker_no_network_no_llm_calls",
+            "artifacts": _work_order_export_artifacts(artifact_paths, "not_generated"),
+        }
     }
 
 
@@ -1264,6 +1412,355 @@ def _apply_review_decision_state(
     ):
         dashboard[field_name] = payload[field_name]
     dashboard["review_decision"] = dict(payload["review_decision"])
+
+
+def _apply_next_action_selector(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    selector = _build_next_action_selector(payload, _artifact_paths(output_root))
+    payload["next_action_selector"] = selector
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["next_action_selector"] = dict(selector)
+
+
+def _build_next_action_selector(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    source_state = _selector_source_state(payload)
+    action_queue = payload.get("executive_action_queue")
+    actions = action_queue if isinstance(action_queue, list) else []
+    p0_action = _first_selector_action(actions, priority="P0")
+    if p0_action is not None:
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="safety_stop_selected",
+            priority="P0",
+            selected_next_action_id=str(p0_action.get("action_id")),
+            selected_next_action_type="safety_stop",
+            selected_work_order="gpt_next_action_handoff",
+            selected_owner="GPT",
+            rationale=(
+                "A P0 executive action is present, so GPT/Daniel source-of-truth "
+                "review must happen before any implementation work."
+            ),
+            reason_codes=["p0_safety_stop_wins", *_selector_action_reasons(p0_action)],
+            blocks_offline_build=True,
+            requires_daniel=bool(p0_action.get("requires_daniel")),
+            hard_gate_required=True,
+        )
+
+    review_classification = str(payload.get("review_classification", "missing"))
+    if review_classification in {"needs-repair", "rejected"}:
+        repair_action = _first_selector_action(
+            actions,
+            action_ids=(
+                "repair_review_feedback_before_next_packet_use",
+                "stop_on_rejected_review_feedback",
+            ),
+        )
+        selected_id = (
+            str(repair_action.get("action_id"))
+            if repair_action is not None
+            else "repair_decision_ledger_feedback"
+        )
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="repair_work_order_selected",
+            priority="P1",
+            selected_next_action_id=selected_id,
+            selected_next_action_type="decision_ledger_repair",
+            selected_work_order="codex_work_order",
+            selected_owner="Codex",
+            rationale=(
+                "The ingested decision-ledger classification requires offline "
+                "packet repair before the packet is relied on."
+            ),
+            reason_codes=[
+                "decision_ledger_input_requires_repair",
+                f"review_classification_{review_classification}",
+            ],
+            blocks_offline_build=True,
+            requires_daniel=False,
+            hard_gate_required=review_classification == "rejected",
+        )
+
+    quality_gate_status = str(payload.get("quality_gate_status", "not_evaluated"))
+    if quality_gate_status == "fail":
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="packet_repair_selected",
+            priority="P1",
+            selected_next_action_id="repair_packet_quality_gate_failure",
+            selected_next_action_type="quality_gate_packet_repair",
+            selected_work_order="codex_work_order",
+            selected_owner="Codex",
+            rationale=(
+                "The quality gate failed, so the next action is deterministic "
+                "packet repair inside the offline daily-lab surfaces."
+            ),
+            reason_codes=["quality_gate_failed", *source_state["quality_gate_failed_checks"]],
+            blocks_offline_build=True,
+            requires_daniel=False,
+            hard_gate_required=False,
+        )
+
+    review_input_status = str(payload.get("review_input_status", "review_input_not_found"))
+    if review_input_status in {
+        "review_input_not_found",
+        "review_input_directory_empty",
+    }:
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="operator_support_review_ingest_selected",
+            priority="P2",
+            selected_next_action_id="collect_offline_review_feedback",
+            selected_next_action_type="operator_support_review_ingest",
+            selected_work_order="gpt_next_action_handoff",
+            selected_owner="GPT",
+            rationale=(
+                "No offline review input is present. That requests review/feedback "
+                "ingest support, but it is not a blocker for safe offline build work."
+            ),
+            reason_codes=["missing_review_input", "not_build_blocker"],
+            blocks_offline_build=False,
+            requires_daniel=False,
+            hard_gate_required=False,
+        )
+
+    next_safe_action = _first_safe_offline_action(actions)
+    if next_safe_action is not None:
+        work_order, owner = _work_order_for_action(next_safe_action)
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="safe_offline_action_selected",
+            priority=str(next_safe_action.get("priority", "P2")),
+            selected_next_action_id=str(next_safe_action.get("action_id")),
+            selected_next_action_type=str(next_safe_action.get("action_type")),
+            selected_work_order=work_order,
+            selected_owner=owner,
+            rationale=str(next_safe_action.get("rationale", "Safe offline action selected.")),
+            reason_codes=[
+                "quality_gate_passed",
+                "no_repair_blocker",
+                *_selector_action_reasons(next_safe_action),
+            ],
+            blocks_offline_build=False,
+            requires_daniel=bool(next_safe_action.get("requires_daniel")),
+            hard_gate_required=bool(next_safe_action.get("hard_gate_required")),
+        )
+
+    return _selector_result(
+        artifact_paths=artifact_paths,
+        source_state=source_state,
+        status="safe_noop_selected",
+        priority="P3",
+        selected_next_action_id="continue_offline_packet_history",
+        selected_next_action_type="noop",
+        selected_work_order="gpt_next_action_handoff",
+        selected_owner="GPT",
+        rationale=(
+            "The packet has no higher-priority repair, review, or research action "
+            "after deterministic safety filtering."
+        ),
+        reason_codes=["quality_gate_passed", "no_blocker", "no_safe_action_queued"],
+        blocks_offline_build=False,
+        requires_daniel=False,
+        hard_gate_required=False,
+    )
+
+
+def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
+    action_queue = payload.get("executive_action_queue")
+    action_ids: list[str] = []
+    highest_priority = "P3"
+    if isinstance(action_queue, list) and action_queue:
+        for item in action_queue:
+            if isinstance(item, Mapping):
+                action_ids.append(str(item.get("action_id", "action_id_missing")))
+        first = action_queue[0]
+        if isinstance(first, Mapping):
+            highest_priority = str(first.get("priority", highest_priority))
+    return {
+        "quality_gate_status": str(payload.get("quality_gate_status", "not_evaluated")),
+        "quality_gate_failed_checks": [
+            str(item) for item in payload.get("quality_gate_failed_checks", [])
+        ],
+        "decision_ledger_status": str(
+            payload.get("decision_ledger_status", "decision_ledger_status_missing")
+        ),
+        "review_input_status": str(
+            payload.get("review_input_status", "review_input_status_missing")
+        ),
+        "review_classification": str(
+            payload.get("review_classification", "classification_missing")
+        ),
+        "executive_highest_priority": highest_priority,
+        "executive_action_ids": action_ids,
+        "history_delta_summary": str(
+            payload.get("history_delta", {}).get(
+                "delta_summary_text",
+                "history_delta_missing",
+            )
+            if isinstance(payload.get("history_delta"), Mapping)
+            else "history_delta_missing"
+        ),
+    }
+
+
+def _selector_result(
+    *,
+    artifact_paths: Mapping[str, str],
+    source_state: Mapping[str, Any],
+    status: str,
+    priority: str,
+    selected_next_action_id: str,
+    selected_next_action_type: str,
+    selected_work_order: str,
+    selected_owner: str,
+    rationale: str,
+    reason_codes: list[str],
+    blocks_offline_build: bool,
+    requires_daniel: bool,
+    hard_gate_required: bool,
+) -> dict[str, Any]:
+    selected_work_order_path = str(artifact_paths[selected_work_order])
+    return {
+        "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
+        "status": status,
+        "priority": priority,
+        "selected_next_action_id": selected_next_action_id,
+        "selected_next_action_type": selected_next_action_type,
+        "selected_work_order": selected_work_order,
+        "selected_work_order_path": selected_work_order_path,
+        "selected_owner": selected_owner,
+        "rationale": rationale,
+        "reason_codes": list(reason_codes),
+        "blocks_offline_build": blocks_offline_build,
+        "requires_daniel": requires_daniel,
+        "hard_gate_required": hard_gate_required,
+        "broker_action_allowed": False,
+        "capital_action_allowed": False,
+        "llm_runtime_calls_allowed": False,
+        "network_runtime_calls_allowed": False,
+        "safety_scope": "offline_text_artifacts_only_no_broker_no_network_no_submit",
+        "forbidden_actions": _forbidden_behavior_lines(),
+        "source_state": dict(source_state),
+    }
+
+
+def _first_selector_action(
+    actions: list[Any],
+    *,
+    priority: str | None = None,
+    action_ids: tuple[str, ...] = (),
+) -> Mapping[str, Any] | None:
+    for action in actions:
+        if not isinstance(action, Mapping):
+            continue
+        if priority is not None and action.get("priority") != priority:
+            continue
+        if action_ids and action.get("action_id") not in action_ids:
+            continue
+        return action
+    return None
+
+
+def _first_safe_offline_action(actions: list[Any]) -> Mapping[str, Any] | None:
+    for action in actions:
+        if not isinstance(action, Mapping):
+            continue
+        if action.get("action_type") == "noop":
+            continue
+        action_id = str(action.get("action_id", ""))
+        if _selector_contains_forbidden_action(action_id):
+            continue
+        safety_scope = str(action.get("safety_scope", ""))
+        if "no_broker_access" not in safety_scope and "broker_state_not_observed" not in safety_scope:
+            continue
+        return action
+    return None
+
+
+def _selector_action_reasons(action: Mapping[str, Any]) -> list[str]:
+    reason_codes = action.get("reason_codes", [])
+    if not isinstance(reason_codes, list):
+        return []
+    return [str(item) for item in reason_codes]
+
+
+def _work_order_for_action(action: Mapping[str, Any]) -> tuple[str, str]:
+    action_type = str(action.get("action_type", ""))
+    if action_type in {"research_action", "validation_action"}:
+        return "codex_work_order", "Codex"
+    if action_type == "operator_action":
+        return "gpt_next_action_handoff", "GPT"
+    return "gpt_next_action_handoff", "GPT"
+
+
+def _selector_contains_forbidden_action(value: str) -> bool:
+    token = _classification_token(value)
+    return any(term in token or term in value.lower() for term in _SELECTOR_FORBIDDEN_ACTION_TERMS)
+
+
+def _apply_work_order_exports(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    exports = {
+        "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
+        "status": "generated",
+        "directory": str(artifact_paths["work_orders"]),
+        "artifact_count": len(_WORK_ORDER_ARTIFACTS),
+        "generation_mode": "deterministic_offline_markdown_only",
+        "runtime_callouts_performed": False,
+        "safety_scope": "offline_text_export_only_no_broker_no_network_no_llm_calls",
+        "artifacts": _work_order_export_artifacts(artifact_paths, "generated"),
+    }
+    payload["work_order_exports"] = exports
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["work_order_exports"] = dict(exports)
+
+
+def _work_order_export_artifacts(
+    artifact_paths: Mapping[str, str],
+    status: str,
+) -> dict[str, dict[str, str]]:
+    return {
+        artifact_id: {
+            "path": str(artifact_paths[artifact_id]),
+            "audience": audience,
+            "purpose": purpose,
+            "status": status,
+        }
+        for artifact_id, _filename, audience, purpose in _WORK_ORDER_ARTIFACTS
+    }
+
+
+def _write_work_order_artifacts(output_root: Path, payload: Mapping[str, Any]) -> None:
+    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
+    work_orders_dir.mkdir(parents=True, exist_ok=True)
+    renderers = {
+        _GPT_WORK_ORDER_FILENAME: _render_gpt_next_action_handoff,
+        _CODEX_WORK_ORDER_FILENAME: _render_codex_work_order,
+        _ANTIGRAVITY_WORK_ORDER_FILENAME: _render_antigravity_review_order,
+        _CLAUDE_WORK_ORDER_FILENAME: _render_claude_critique_order,
+    }
+    for filename, renderer in renderers.items():
+        (work_orders_dir / filename).write_text(
+            renderer(payload),
+            encoding="utf-8",
+            newline="\n",
+        )
 
 
 def _build_review_decision_state(
@@ -2124,6 +2621,13 @@ def _build_quality_gate(
     review_next_action_ok, review_next_action_summary = (
         _quality_review_next_action_summary(packet_for_checks)
     )
+    selector_ok, selector_summary = _quality_next_action_selector_summary(
+        packet_for_checks
+    )
+    work_orders_ok, work_orders_summary = _quality_work_order_exports_summary(
+        root,
+        packet_for_checks,
+    )
 
     required_checks = [
         _quality_check(
@@ -2211,6 +2715,16 @@ def _build_quality_gate(
             "review_selected_next_action_safety_scoped",
             review_next_action_ok,
             review_next_action_summary,
+        ),
+        _quality_check(
+            "next_action_selector_safety_scoped",
+            selector_ok,
+            selector_summary,
+        ),
+        _quality_check(
+            "work_order_exports_generated",
+            work_orders_ok,
+            work_orders_summary,
         ),
     ]
     optional_checks: list[dict[str, Any]] = []
@@ -2308,9 +2822,11 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Executive Action Queue",
         "## Trading desk brief",
         "## Research Board",
+        "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
         "Decision Ledger",
+        "Work order exports",
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -2395,6 +2911,11 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _REVIEW_HANDOFF_FILENAME,
         _DECISION_LEDGER_FILENAME,
         _REVIEW_INPUTS_DIRNAME,
+        _WORK_ORDERS_DIRNAME,
+        _GPT_WORK_ORDER_FILENAME,
+        _CODEX_WORK_ORDER_FILENAME,
+        _ANTIGRAVITY_WORK_ORDER_FILENAME,
+        _CLAUDE_WORK_ORDER_FILENAME,
     ]
     return [token for token in required_tokens if token not in review_handoff_text]
 
@@ -2458,6 +2979,69 @@ def _quality_review_next_action_summary(
     if _contains_forbidden_review_next_action(next_action):
         return False, "review_selected_next_action includes forbidden broker term"
     return True, f"review_selected_next_action={next_action}"
+
+
+def _quality_next_action_selector_summary(
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_next_action_selector_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    selector = packet["next_action_selector"]
+    assert isinstance(selector, Mapping)
+    selected_action_id = str(selector["selected_next_action_id"])
+    if _selector_contains_forbidden_action(selected_action_id):
+        return False, "selected_next_action_id includes forbidden runtime action"
+    selected_path = str(selector["selected_work_order_path"])
+    if f"{_WORK_ORDERS_DIRNAME}/" not in selected_path.replace("\\", "/"):
+        return False, "selected_work_order_path is not under work_orders"
+    return True, (
+        "selected_next_action_id="
+        f"{selected_action_id}; selected_work_order={selector['selected_work_order']}"
+    )
+
+
+def _quality_work_order_exports_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_work_order_export_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    exports = packet["work_order_exports"]
+    assert isinstance(exports, Mapping)
+    if exports.get("status") != "generated":
+        return False, f"work_order_exports status={exports.get('status')}"
+    artifacts = exports["artifacts"]
+    assert isinstance(artifacts, Mapping)
+    missing_files: list[str] = []
+    empty_files: list[str] = []
+    missing_tokens: list[str] = []
+    for artifact_id, filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS:
+        path = output_root / _WORK_ORDERS_DIRNAME / filename
+        if not path.exists() or not path.is_file():
+            missing_files.append(artifact_id)
+            continue
+        text = _read_text_or_empty(path)
+        if not text.strip():
+            empty_files.append(artifact_id)
+            continue
+        for token in (
+            _PHASE_NAME,
+            "Do not commit unless GPT/Daniel explicitly asks after review.",
+            "## Forbidden behavior",
+            "## Required tests",
+            "## Expected report format",
+        ):
+            if token not in text:
+                missing_tokens.append(f"{artifact_id}.{token}")
+    if missing_files or empty_files or missing_tokens:
+        return False, (
+            "missing="
+            f"{','.join(missing_files)}; empty={','.join(empty_files)}; "
+            f"missing_tokens={','.join(missing_tokens)}"
+        )
+    return True, "all deterministic work-order markdown artifacts are generated"
 
 
 def _sha256_text(value: Any) -> bool:
@@ -2535,6 +3119,8 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     else:
         missing.append("research_lab")
     missing.extend(_missing_review_decision_fields("", packet))
+    missing.extend(_missing_next_action_selector_fields("", packet))
+    missing.extend(_missing_work_order_export_fields("", packet))
     return missing
 
 
@@ -2580,6 +3166,8 @@ def _missing_manifest_fields(
         )
     )
     missing.extend(_missing_review_decision_fields("manifest", manifest))
+    missing.extend(_missing_next_action_selector_fields("manifest", manifest))
+    missing.extend(_missing_work_order_export_fields("manifest", manifest))
 
     for field_name in (
         "input_data_path",
@@ -2614,6 +3202,8 @@ def _missing_manifest_fields(
         "reviewer_source",
         "review_classification",
         "review_selected_next_action",
+        "next_action_selector",
+        "work_order_exports",
     ):
         if field_name in packet and manifest.get(field_name) != packet.get(field_name):
             missing.append(f"manifest.{field_name}.matches_record")
@@ -2660,6 +3250,147 @@ def _missing_review_decision_fields(
             missing.append(f"{field_prefix}review_input_path")
         if not _sha256_text(packet.get("review_input_sha256")):
             missing.append(f"{field_prefix}review_input_sha256")
+    return missing
+
+
+def _missing_next_action_selector_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    selector = packet.get("next_action_selector")
+    if not isinstance(selector, Mapping):
+        return [f"{field_prefix}next_action_selector"]
+
+    missing: list[str] = []
+    required_fields = (
+        "next_action_selector_version",
+        "status",
+        "priority",
+        "selected_next_action_id",
+        "selected_next_action_type",
+        "selected_work_order",
+        "selected_work_order_path",
+        "selected_owner",
+        "rationale",
+        "reason_codes",
+        "blocks_offline_build",
+        "requires_daniel",
+        "hard_gate_required",
+        "broker_action_allowed",
+        "capital_action_allowed",
+        "llm_runtime_calls_allowed",
+        "network_runtime_calls_allowed",
+        "safety_scope",
+        "forbidden_actions",
+        "source_state",
+    )
+    for field_name in required_fields:
+        if field_name not in selector:
+            missing.append(f"{field_prefix}next_action_selector.{field_name}")
+    if selector.get("next_action_selector_version") != _NEXT_ACTION_SELECTOR_VERSION:
+        missing.append(
+            f"{field_prefix}next_action_selector.next_action_selector_version"
+        )
+    if selector.get("priority") not in _ACTION_PRIORITIES:
+        missing.append(f"{field_prefix}next_action_selector.priority.allowed")
+    if selector.get("selected_work_order") not in {
+        artifact_id for artifact_id, _filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS
+    }:
+        missing.append(
+            f"{field_prefix}next_action_selector.selected_work_order.allowed"
+        )
+    for bool_field in (
+        "blocks_offline_build",
+        "requires_daniel",
+        "hard_gate_required",
+        "broker_action_allowed",
+        "capital_action_allowed",
+        "llm_runtime_calls_allowed",
+        "network_runtime_calls_allowed",
+    ):
+        if bool_field in selector and not isinstance(selector.get(bool_field), bool):
+            missing.append(f"{field_prefix}next_action_selector.{bool_field}.bool")
+    for false_field in (
+        "broker_action_allowed",
+        "capital_action_allowed",
+        "llm_runtime_calls_allowed",
+        "network_runtime_calls_allowed",
+    ):
+        if selector.get(false_field) is not False:
+            missing.append(f"{field_prefix}next_action_selector.{false_field}.false")
+    if not isinstance(selector.get("reason_codes"), list):
+        missing.append(f"{field_prefix}next_action_selector.reason_codes.list")
+    if not isinstance(selector.get("forbidden_actions"), list):
+        missing.append(f"{field_prefix}next_action_selector.forbidden_actions.list")
+    if not isinstance(selector.get("source_state"), Mapping):
+        missing.append(f"{field_prefix}next_action_selector.source_state.object")
+    selected_action_id = str(selector.get("selected_next_action_id", ""))
+    if not selected_action_id.strip():
+        missing.append(f"{field_prefix}next_action_selector.selected_next_action_id")
+    elif _selector_contains_forbidden_action(selected_action_id):
+        missing.append(f"{field_prefix}next_action_selector.selected_next_action_id.safe")
+    selected_path = str(selector.get("selected_work_order_path", ""))
+    if f"{_WORK_ORDERS_DIRNAME}/" not in selected_path.replace("\\", "/"):
+        missing.append(
+            f"{field_prefix}next_action_selector.selected_work_order_path.work_orders"
+        )
+    return missing
+
+
+def _missing_work_order_export_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    exports = packet.get("work_order_exports")
+    if not isinstance(exports, Mapping):
+        return [f"{field_prefix}work_order_exports"]
+
+    missing: list[str] = []
+    required_fields = (
+        "work_order_exports_version",
+        "status",
+        "directory",
+        "artifact_count",
+        "generation_mode",
+        "runtime_callouts_performed",
+        "safety_scope",
+        "artifacts",
+    )
+    for field_name in required_fields:
+        if field_name not in exports:
+            missing.append(f"{field_prefix}work_order_exports.{field_name}")
+    if exports.get("work_order_exports_version") != _WORK_ORDER_EXPORTS_VERSION:
+        missing.append(
+            f"{field_prefix}work_order_exports.work_order_exports_version"
+        )
+    if exports.get("status") not in {"generated", "not_generated"}:
+        missing.append(f"{field_prefix}work_order_exports.status.allowed")
+    if exports.get("artifact_count") != len(_WORK_ORDER_ARTIFACTS):
+        missing.append(f"{field_prefix}work_order_exports.artifact_count")
+    if exports.get("runtime_callouts_performed") is not False:
+        missing.append(
+            f"{field_prefix}work_order_exports.runtime_callouts_performed.false"
+        )
+    artifacts = exports.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        missing.append(f"{field_prefix}work_order_exports.artifacts")
+        return missing
+    for artifact_id, _filename, audience, purpose in _WORK_ORDER_ARTIFACTS:
+        artifact = artifacts.get(artifact_id)
+        artifact_prefix = f"{field_prefix}work_order_exports.artifacts.{artifact_id}"
+        if not isinstance(artifact, Mapping):
+            missing.append(artifact_prefix)
+            continue
+        if not str(artifact.get("path", "")).strip():
+            missing.append(f"{artifact_prefix}.path")
+        if artifact.get("audience") != audience:
+            missing.append(f"{artifact_prefix}.audience")
+        if artifact.get("purpose") != purpose:
+            missing.append(f"{artifact_prefix}.purpose")
+        if artifact.get("status") not in {"generated", "not_generated"}:
+            missing.append(f"{artifact_prefix}.status")
     return missing
 
 
@@ -2776,6 +3507,10 @@ def _missing_brief_references(
         missing.append("operating_brief.quality_gate")
     if "Decision Ledger" not in brief_text:
         missing.append("operating_brief.decision_ledger")
+    if "## Next Action Selector" not in brief_text:
+        missing.append("operating_brief.next_action_selector.section")
+    if "Work order exports" not in brief_text:
+        missing.append("operating_brief.work_order_exports")
     review_handoff_path = packet.get("review_handoff_path")
     if (
         _has_required_value(review_handoff_path)
@@ -2788,6 +3523,24 @@ def _missing_brief_references(
         and str(decision_ledger_path) not in brief_text
     ):
         missing.append("operating_brief.decision_ledger_path")
+    selector = packet.get("next_action_selector")
+    if isinstance(selector, Mapping):
+        selected_action = str(selector.get("selected_next_action_id", ""))
+        selected_path = str(selector.get("selected_work_order_path", ""))
+        if selected_action and selected_action not in brief_text:
+            missing.append("operating_brief.next_action_selector.selected_action")
+        if selected_path and selected_path not in brief_text:
+            missing.append("operating_brief.next_action_selector.selected_path")
+    work_order_exports = packet.get("work_order_exports")
+    if isinstance(work_order_exports, Mapping):
+        artifacts = work_order_exports.get("artifacts")
+        if isinstance(artifacts, Mapping):
+            for artifact_id, artifact in artifacts.items():
+                if not isinstance(artifact, Mapping):
+                    continue
+                path = str(artifact.get("path", ""))
+                if path and path not in brief_text:
+                    missing.append(f"operating_brief.work_order_exports.{artifact_id}")
     research_board = packet.get("research_board")
     if isinstance(research_board, list):
         for item in research_board:
@@ -3028,6 +3781,210 @@ def _daniel_action_required(posture: str) -> str:
     )
 
 
+def _render_gpt_next_action_handoff(payload: Mapping[str, Any]) -> str:
+    selector = payload["next_action_selector"]
+    exports = payload["work_order_exports"]
+    return _render_work_order_markdown(
+        title="GPT Next Action Handoff",
+        audience="GPT",
+        orientation=(
+            "Source-of-truth routing handoff. Classify the packet state and decide "
+            "whether the selected next action should proceed, be repaired, or be "
+            "sent back for more offline review input."
+        ),
+        payload=payload,
+        extra_sections=f"""## GPT classification focus
+* **Current assistant packet status**: `{payload["system_health"]}`
+* **Quality gate status**: `{payload["quality_gate_status"]}` ({payload["quality_gate_score"]})
+* **Decision-ledger status**: `{payload["decision_ledger_status"]}`; review classification `{payload["review_classification"]}`
+* **Executive action queue**:
+{_render_review_action_queue(payload["executive_action_queue"])}
+* **Research board**:
+{_render_review_research_board(payload["research_board"])}
+* **Safety assessment**: offline preview only; broker state `{payload["broker_state_mode"]}`; paper submit authorization `{payload["paper_submit_authorization_status"]}`.
+* **Selected next action**: `{selector["selected_next_action_id"]}` via `{selector["selected_work_order"]}`.
+* **Files/artifacts generated**:
+{_render_generated_artifacts(payload)}
+* **Work-order exports**: `{exports["status"]}` in `{exports["directory"]}`.
+
+## What GPT should classify next
+Classify whether the current packet and selected next action are `accepted`, `accepted-with-minor-note`, `needs-repair`, or `rejected`. If repair is needed, return concrete offline repair items only.
+""",
+    )
+
+
+def _render_codex_work_order(payload: Mapping[str, Any]) -> str:
+    selector = payload["next_action_selector"]
+    return _render_work_order_markdown(
+        title="Codex Work Order",
+        audience="Codex",
+        orientation=(
+            "Implementation-oriented work order for safe offline packet, test, "
+            "documentation, or research-support changes."
+        ),
+        payload=payload,
+        extra_sections=f"""## Implementation target
+* **Selected action**: `{selector["selected_next_action_id"]}`
+* **Selected action type**: `{selector["selected_next_action_type"]}`
+* **Selector rationale**: {selector["rationale"]}
+* **Expected implementation stance**: keep changes scoped to offline deterministic packet artifacts, tests, and docs. Do not add broker, SDK, network, LLM, browser, notebook, paid-service, credential, paper-submit, or live-trading behavior.
+
+## Allowed files and surfaces
+* `src/algotrader/execution/etf_sma_daily_paper_lab.py`
+* `tests/unit/test_etf_sma_daily_paper_lab.py`
+* `task.md`
+* A small focused helper module/test only if it is needed to keep the main file maintainable.
+* Generated runtime artifacts under the selected output root may be inspected but must not be staged or tracked.
+""",
+    )
+
+
+def _render_antigravity_review_order(payload: Mapping[str, Any]) -> str:
+    selector = payload["next_action_selector"]
+    return _render_work_order_markdown(
+        title="Antigravity Review Order",
+        audience="Antigravity",
+        orientation=(
+            "Independent repo-health and implementation-review order. Focus on "
+            "dependency direction, offline determinism, artifact integrity, and "
+            "whether the selected next action is correctly scoped."
+        ),
+        payload=payload,
+        extra_sections=f"""## Review focus
+* Confirm the selected action `{selector["selected_next_action_id"]}` follows the deterministic priority rules.
+* Inspect repo-health risks, dependency direction, default-pytest network safety, and generated artifact consistency.
+* Review whether any implementation would broaden broker, network, SDK, LLM, browser, notebook, paid-service, credential, paper-submit, or live-trading surfaces.
+* Return actionable findings only; GPT remains source of truth for final classification.
+""",
+    )
+
+
+def _render_claude_critique_order(payload: Mapping[str, Any]) -> str:
+    selector = payload["next_action_selector"]
+    return _render_work_order_markdown(
+        title="Claude Critique Order",
+        audience="Claude",
+        orientation=(
+            "Independent critique/audit order. Challenge assumptions, identify "
+            "safety regressions, and evaluate packet clarity without acting as "
+            "source of truth."
+        ),
+        payload=payload,
+        extra_sections=f"""## Critique focus
+* Audit the selected action `{selector["selected_next_action_id"]}` and explain whether the selector should have chosen a higher-priority safety, repair, review-ingest, or offline build action.
+* Check safety wording, broker-state wording, quality-gate claims, decision-ledger handling, executive action queue order, and research-board claims.
+* Do not approve live trading, paper submits, broker reads, capital actions, credential use, or runtime LLM/agent calls.
+* Return critique findings for GPT/Daniel review; Claude is not the source of truth.
+""",
+    )
+
+
+def _render_work_order_markdown(
+    *,
+    title: str,
+    audience: str,
+    orientation: str,
+    payload: Mapping[str, Any],
+    extra_sections: str,
+) -> str:
+    selector = payload["next_action_selector"]
+    return f"""# {title}
+
+## Phase
+* **Phase name**: {_PHASE_NAME}
+* **Goal**: {_PHASE_GOAL}
+* **Project location**: `{Path.cwd()}`
+* **Audience**: {audience}
+* **Orientation**: {orientation}
+
+## Current packet identity
+* **packet_type**: `{payload["packet_type"]}`
+* **run_id**: `{payload["run_id"]}`
+* **as_of_date**: `{payload["as_of_date"]}`
+* **active_strategy_name**: {payload["active_strategy_name"]}
+* **output_root**: `{_review_output_root(payload)}`
+* **assistant_packet_version**: `{payload["assistant_packet_version"]}`
+
+## Selected next action
+```json
+{_json_markdown(selector)}
+```
+
+{extra_sections}
+
+## Forbidden behavior
+{_render_bullets(_forbidden_behavior_lines())}
+
+## Safety constraints
+* Normal pytest must remain offline, credential-free, deterministic, and safe.
+* Preserve `paper_lab_only`, `not_live_authorized`, `profit_claim=none`, `offline_only`, `broker_state_not_observed`, and `paper_submit_not_authorized` safety labels.
+* Preserve `ExecutionIntent`/`ExecutionPlan` pre-broker boundaries and dependency-direction safety.
+* Runtime code must not call GPT, Codex, Claude, Antigravity, agents, LLMs, browsers, network APIs, broker APIs, notebooks, or external services.
+* Work-order files are offline text artifacts only.
+
+## Required tests
+* `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
+* `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
+* `.\\scripts\\verify_offline.ps1`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_6_smoke`
+* Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
+
+## Expected artifacts
+* `operating_brief.md`
+* `operating_record.jsonl`
+* `manifest.jsonl`
+* `history_ledger.jsonl`
+* `review_handoff.md`
+* `work_orders/gpt_next_action_handoff.md`
+* `work_orders/codex_work_order.md`
+* `work_orders/antigravity_review_order.md`
+* `work_orders/claude_critique_order.md`
+
+## Expected report format
+1. Classification recommendation.
+2. Starting branch and HEAD.
+3. Preflight credential/profile booleans.
+4. Files changed.
+5. Commands added or changed.
+6. Behavior implemented.
+7. Work-order artifacts produced.
+8. Smoke artifact paths and quality gate result.
+9. Tests run and exact results.
+10. Safety assessment.
+11. Known limitations.
+12. Whether any runtime artifacts under `runs/` were staged.
+13. Final `git status --short`.
+14. Commit recommendation.
+
+## Commit instruction
+Do not commit unless GPT/Daniel explicitly asks after review.
+"""
+
+
+def _json_markdown(value: Any) -> str:
+    return json.dumps(_json_safe(value), indent=2, sort_keys=True)
+
+
+def _render_bullets(items: list[str]) -> str:
+    return "\n".join(f"* {item}" for item in items)
+
+
+def _forbidden_behavior_lines() -> list[str]:
+    return [
+        "Do not perform broker reads.",
+        "Do not perform broker mutation.",
+        "Do not submit paper orders.",
+        "Do not add live trading support.",
+        "Do not add broker SDK imports.",
+        "Do not add network calls.",
+        "Do not call LLMs, agents, external tools, browser tools, notebooks, or paid services from runtime code.",
+        "Do not request, load, or print secrets.",
+        "Do not stage or track generated runtime artifacts under runs/.",
+        "Do not weaken safety labels, broker-state wording, paper-submit lockout, or offline guarantees.",
+        "Do not make normal pytest depend on credentials, broker access, market hours, network, or local runtime artifacts.",
+    ]
+
+
 def _render_brief_markdown(payload: dict[str, Any]) -> str:
     labels_list = "\n".join(f"* `{label}`" for label in payload["safety_labels"])
     artifact_lines = "\n".join(
@@ -3064,6 +4021,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
         if not review_repair_items
         else ", ".join(str(item) for item in review_repair_items)
     )
+    selector = payload["next_action_selector"]
+    selector_json = _json_markdown(selector)
+    exports_json = _json_markdown(payload["work_order_exports"])
 
     return f"""# Daily Trading Research Command Center
 
@@ -3073,6 +4033,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Risks / blockers**: {payload["blocker_status"]}. {payload["broker_state_claim"]} Paper submit authorization is `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`).
 * **Delta since prior packet**: {delta["delta_summary_text"]}
 * **Review decision**: classification `{payload["review_classification"]}`; ledger status `{payload["decision_ledger_status"]}`; append status `{payload["decision_ledger_append_status"]}`.
+* **Selected next action**: `{selector["selected_next_action_id"]}` via `{selector["selected_work_order_path"]}`.
 * **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
 * **Quality Gate**: `{payload["quality_gate_status"]}` ({payload["quality_gate_score"]}); review handoff: `{payload["review_handoff_path"]}`.
 
@@ -3101,6 +4062,11 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {missing_evidence_lines}
 * **Next research action**: {payload["research_lab"]["next_research_action"]}
 
+## Next Action Selector
+```json
+{selector_json}
+```
+
 ## Executive dashboard
 * **Data freshness**: {freshness["status"]} (latest input bar: {freshness["latest_input_bar_date"]}; basis: {freshness["freshness_basis"]}; wall-clock staleness: {freshness["wall_clock_staleness"]})
 * **Validation status**: {payload["validation_status"]}
@@ -3111,6 +4077,10 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Decision Ledger**: `{payload["decision_ledger_status"]}` at `{payload["decision_ledger_path"]}`; append status `{payload["decision_ledger_append_status"]}`; entries: {payload["decision_ledger_entry_count"]}
 * **Review input**: `{payload["review_input_status"]}`; path `{payload["review_input_path"]}`; hash `{payload["review_input_sha256"]}`; reviewer `{payload["reviewer_source"]}`
 * **Review classification**: `{payload["review_classification"]}`; blockers: {review_blockers_text}; repair items: {review_repair_items_text}; selected next action: `{payload["review_selected_next_action"]}`
+* **Work order exports**:
+```json
+{exports_json}
+```
 * **Assistant packet version**: {payload["assistant_packet_version"]}
 * **Previous packet found**: {str(delta["previous_packet_found"]).lower()}
 * **History ledger path**: `{payload["history_ledger_path"]}`
@@ -3155,6 +4125,8 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
         sort_keys=True,
         separators=(",", ":"),
     )
+    selector_json = _json_markdown(payload["next_action_selector"])
+    exports_json = _json_markdown(payload["work_order_exports"])
     meaningful_changes_text = _history_meaningful_changes_text(delta)
 
     return f"""# Daily Packet Review Handoff
@@ -3207,6 +4179,16 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **review_minor_notes**: `{review_minor_notes_text}`
 * **review_selected_next_action**: `{payload["review_selected_next_action"]}`
 
+## Next action selector
+```json
+{selector_json}
+```
+
+## Work order exports
+```json
+{exports_json}
+```
+
 ## Executive action queue
 {action_lines}
 
@@ -3249,6 +4231,17 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         ("review_handoff", artifact_paths.get("review_handoff")),
         ("decision_ledger", artifact_paths.get("decision_ledger")),
         ("review_inputs", artifact_paths.get("review_inputs")),
+        ("work_orders", artifact_paths.get("work_orders")),
+        (
+            "gpt_next_action_handoff",
+            artifact_paths.get("gpt_next_action_handoff"),
+        ),
+        ("codex_work_order", artifact_paths.get("codex_work_order")),
+        (
+            "antigravity_review_order",
+            artifact_paths.get("antigravity_review_order"),
+        ),
+        ("claude_critique_order", artifact_paths.get("claude_critique_order")),
     ]
     return "\n".join(
         f"* **{name}**: `{path}`"
@@ -3401,6 +4394,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["decision_ledger"] = _artifact_metadata(
             decision_ledger_path
         )
+    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
+    for artifact_id, filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS:
+        work_order_path = work_orders_dir / filename
+        if work_order_path.exists():
+            indexed_artifacts[artifact_id] = _artifact_metadata(work_order_path)
     history_delta = dict(payload["history_delta"])
     return {
         "schema_version": _SCHEMA_VERSION,
@@ -3476,6 +4474,8 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "review_minor_notes": list(payload["review_minor_notes"]),
         "review_selected_next_action": payload["review_selected_next_action"],
         "review_decision": dict(payload["review_decision"]),
+        "next_action_selector": dict(payload["next_action_selector"]),
+        "work_order_exports": dict(payload["work_order_exports"]),
         "previous_packet_found": history_delta["previous_packet_found"],
         "previous_as_of_date": history_delta["previous_as_of_date"],
         "current_as_of_date": history_delta["current_as_of_date"],

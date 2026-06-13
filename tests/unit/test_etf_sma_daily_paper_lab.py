@@ -88,6 +88,68 @@ def _assert_research_board_item_shape(item: dict[str, object]) -> None:
     assert isinstance(item["notes"], list)
 
 
+def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
+    assert set(selector) == {
+        "next_action_selector_version",
+        "status",
+        "priority",
+        "selected_next_action_id",
+        "selected_next_action_type",
+        "selected_work_order",
+        "selected_work_order_path",
+        "selected_owner",
+        "rationale",
+        "reason_codes",
+        "blocks_offline_build",
+        "requires_daniel",
+        "hard_gate_required",
+        "broker_action_allowed",
+        "capital_action_allowed",
+        "llm_runtime_calls_allowed",
+        "network_runtime_calls_allowed",
+        "safety_scope",
+        "forbidden_actions",
+        "source_state",
+    }
+    assert selector["next_action_selector_version"] == (
+        "assistant_v1.6_next_action_selector"
+    )
+    assert selector["priority"] in {"P0", "P1", "P2", "P3"}
+    assert str(selector["selected_work_order_path"]).endswith(".md")
+    assert "work_orders/" in str(selector["selected_work_order_path"]).replace(
+        "\\",
+        "/",
+    )
+    assert isinstance(selector["reason_codes"], list)
+    assert isinstance(selector["forbidden_actions"], list)
+    assert isinstance(selector["source_state"], dict)
+    assert selector["broker_action_allowed"] is False
+    assert selector["capital_action_allowed"] is False
+    assert selector["llm_runtime_calls_allowed"] is False
+    assert selector["network_runtime_calls_allowed"] is False
+
+
+def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
+    assert exports["work_order_exports_version"] == "assistant_v1.6_work_order_exports"
+    assert exports["status"] == "generated"
+    assert exports["artifact_count"] == 4
+    assert exports["generation_mode"] == "deterministic_offline_markdown_only"
+    assert exports["runtime_callouts_performed"] is False
+    assert str(exports["directory"]).endswith("work_orders")
+    artifacts = exports["artifacts"]
+    assert isinstance(artifacts, dict)
+    assert set(artifacts) == {
+        "gpt_next_action_handoff",
+        "codex_work_order",
+        "antigravity_review_order",
+        "claude_critique_order",
+    }
+    for artifact_id, artifact in artifacts.items():
+        assert artifact["status"] == "generated"
+        assert artifact["path"].endswith(".md")
+        assert artifact_id in artifact["path"]
+
+
 def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     expected_check_ids = [
         "required_packet_artifacts_exist",
@@ -106,13 +168,15 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "review_classification_normalized",
         "review_input_path_hash_recorded_when_present",
         "review_selected_next_action_safety_scoped",
+        "next_action_selector_safety_scoped",
+        "work_order_exports_generated",
     ]
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "16/16 required checks passed; 0 failed; 0 warnings"
+        "18/18 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 16
+    assert container["quality_gate_passed_required_count"] == 18
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -181,6 +245,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "status": "review_input_not_found",
         "selected_next_action": "await_offline_review_input",
     }
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    assert payload["next_action_selector"]["status"] == (
+        "operator_support_review_ingest_selected"
+    )
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "collect_offline_review_feedback"
+    )
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "gpt_next_action_handoff"
+    )
+    assert payload["next_action_selector"]["blocks_offline_build"] is False
+    _assert_work_order_exports_shape(payload["work_order_exports"])
     delta = payload["history_delta"]
     assert delta["previous_packet_found"] is False
     assert delta["previous_as_of_date"] is None
@@ -215,7 +291,32 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         payload["artifact_presence_status"]["artifacts"]["review_handoff"]["exists"]
         is True
     )
+    assert (
+        payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
+            "exists"
+        ]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"]["codex_work_order"]["exists"]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"]["antigravity_review_order"][
+            "exists"
+        ]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"]["claude_critique_order"][
+            "exists"
+        ]
+        is True
+    )
     assert payload["artifacts"]["review_handoff"].endswith("review_handoff.md")
+    assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
+        "work_orders/gpt_next_action_handoff.md"
+    )
     _assert_quality_gate_pass(payload)
     assert payload["executive_dashboard"]["quality_gate_status"] == "pass"
     assert payload["executive_dashboard"]["review_handoff_path"].endswith(
@@ -290,6 +391,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "operating_brief.md").exists()
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
+    assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
+    assert (output_root / "work_orders" / "codex_work_order.md").exists()
+    assert (output_root / "work_orders" / "antigravity_review_order.md").exists()
+    assert (output_root / "work_orders" / "claude_critique_order.md").exists()
     assert (output_root / "review_handoff.md").exists()
     assert (output_root / "history_ledger.jsonl").exists()
     assert not (output_root / "decision_ledger.jsonl").exists()
@@ -320,6 +425,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "decision_ledger.jsonl" in brief
     assert "review_input_not_found" in brief
     assert "await_offline_review_input" in brief
+    assert "## Next Action Selector" in brief
+    assert "collect_offline_review_feedback" in brief
+    assert "Work order exports" in brief
+    assert "work_orders/gpt_next_action_handoff.md" in brief
     assert "**Missing required fields**: []" in brief
     assert "**Artifact presence status**: pass" in brief
     assert "**Previous packet found**: false" in brief
@@ -350,6 +459,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["review_input_status"] == "review_input_not_found"
     assert record["review_classification"] == "missing"
     assert record["review_selected_next_action"] == "await_offline_review_input"
+    assert record["next_action_selector"] == payload["next_action_selector"]
+    assert record["work_order_exports"] == payload["work_order_exports"]
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -391,6 +502,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["review_input_status"] == "review_input_not_found"
     assert manifest["review_classification"] == "missing"
     assert manifest["review_selected_next_action"] == "await_offline_review_input"
+    assert manifest["next_action_selector"] == payload["next_action_selector"]
+    assert manifest["work_order_exports"] == payload["work_order_exports"]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -401,8 +514,33 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "operating_record" in manifest["indexed_artifacts"]
     assert "review_handoff" in manifest["indexed_artifacts"]
     assert "history_ledger" in manifest["indexed_artifacts"]
+    assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
+    assert "codex_work_order" in manifest["indexed_artifacts"]
+    assert "antigravity_review_order" in manifest["indexed_artifacts"]
+    assert "claude_critique_order" in manifest["indexed_artifacts"]
     assert "decision_ledger" not in manifest["indexed_artifacts"]
     assert "manifest" not in manifest["indexed_artifacts"]
+
+    work_order_texts = [
+        (output_root / "work_orders" / "gpt_next_action_handoff.md").read_text(
+            encoding="utf-8"
+        ),
+        (output_root / "work_orders" / "codex_work_order.md").read_text(
+            encoding="utf-8"
+        ),
+        (output_root / "work_orders" / "antigravity_review_order.md").read_text(
+            encoding="utf-8"
+        ),
+        (output_root / "work_orders" / "claude_critique_order.md").read_text(
+            encoding="utf-8"
+        ),
+    ]
+    for work_order in work_order_texts:
+        assert "Assistant v1.6 - Agent Work Order Export + Next Action Selector" in work_order
+        assert "collect_offline_review_feedback" in work_order
+        assert "Do not commit unless GPT/Daniel explicitly asks after review." in work_order
+        assert "Do not perform broker reads." in work_order
+        assert "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py" in work_order
 
     history_lines = (output_root / "history_ledger.jsonl").read_text(
         encoding="utf-8"
@@ -666,6 +804,8 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Trading desk state",
         "## Quality gate result",
         "## Decision ledger",
+        "## Next action selector",
+        "## Work order exports",
         "## Executive action queue",
         "## Research board",
         "## History delta",
@@ -694,6 +834,11 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "review_handoff.md",
         "decision_ledger.jsonl",
         "review_inputs",
+        "work_orders",
+        "gpt_next_action_handoff.md",
+        "codex_work_order.md",
+        "antigravity_review_order.md",
+        "claude_critique_order.md",
     ):
         assert artifact_name in handoff
 
@@ -753,6 +898,17 @@ def test_etf_sma_daily_paper_lab_ingests_review_feedback_decision_ledger(
     assert payload["review_selected_next_action"] == (
         "repair offline packet artifacts and rerun daily lab"
     )
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    assert payload["next_action_selector"]["status"] == "repair_work_order_selected"
+    assert payload["next_action_selector"]["priority"] == "P1"
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "repair_review_feedback_before_next_packet_use"
+    )
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "codex_work_order"
+    )
+    assert payload["next_action_selector"]["blocks_offline_build"] is True
+    _assert_work_order_exports_shape(payload["work_order_exports"])
     action_ids = [action["action_id"] for action in payload["executive_action_queue"]]
     assert action_ids == [
         "repair_review_feedback_before_next_packet_use",
@@ -821,6 +977,52 @@ def test_etf_sma_daily_paper_lab_ingests_review_feedback_decision_ledger(
     assert rerun_payload["decision_ledger_append_status"] == "already_recorded"
 
 
+def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
+    tmp_path: Path,
+) -> None:
+    """Accepted review input lets the selector choose the next safe offline action."""
+    output_root = tmp_path / "paper_lab_out"
+    review_inputs = output_root / "review_inputs"
+    review_inputs.mkdir(parents=True)
+    (review_inputs / "gpt_review.md").write_text(
+        "\n".join(
+            (
+                "reviewer: GPT",
+                "classification: accepted",
+                "blocking_findings: none",
+                "minor_notes: none",
+                "recommended_next_action: continue offline packet history",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    _assert_quality_gate_pass(payload)
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    assert payload["review_classification"] == "accepted"
+    assert payload["next_action_selector"]["status"] == "safe_offline_action_selected"
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "quantify_spy_sma_baseline_confidence"
+    )
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "codex_work_order"
+    )
+    assert payload["next_action_selector"]["blocks_offline_build"] is False
+    assert payload["next_action_selector"]["broker_action_allowed"] is False
+    assert payload["next_action_selector"]["llm_runtime_calls_allowed"] is False
+
+
 def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     tmp_path: Path,
 ) -> None:
@@ -852,7 +1054,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "13/16 required checks passed; 3 failed; 0 warnings"
+        "15/18 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
