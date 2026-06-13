@@ -37,6 +37,8 @@ _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
 _ASSISTANT_VERSION = "assistant_v1"
 _ASSISTANT_PACKET_VERSION = "assistant_v1.1"
+_ASSISTANT_ACTION_QUEUE_VERSION = "assistant_v1.3_action_queue"
+_RESEARCH_BOARD_VERSION = "assistant_v1.3_research_board"
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
@@ -74,6 +76,9 @@ _REQUIRED_PACKET_FIELDS = (
     "assistant_packet_version",
     "history_ledger_path",
     "history_delta",
+    "executive_action_queue",
+    "executive_action_summary",
+    "research_lab",
 )
 _REQUIRED_MANIFEST_FIELDS = (
     "input_data_path",
@@ -94,6 +99,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "artifact_presence_status",
     "history_ledger_path",
     "history_delta",
+    "executive_action_queue",
+    "executive_action_summary",
 )
 _REQUIRED_DELTA_FIELDS = (
     "previous_packet_found",
@@ -128,6 +135,55 @@ _BRIEF_REQUIRED_VALUE_FIELDS = (
     "blocker_status",
     "broker_state_mode",
     "next_operator_action",
+)
+_REQUIRED_ACTION_QUEUE_FIELDS = (
+    "action_id",
+    "priority",
+    "action_type",
+    "title",
+    "rationale",
+    "reason_codes",
+    "blocked_by",
+    "requires_daniel",
+    "hard_gate_required",
+    "expected_artifact_or_command",
+    "safety_scope",
+)
+_REQUIRED_RESEARCH_BOARD_FIELDS = (
+    "candidate_name",
+    "status",
+    "hypothesis",
+    "evidence_status",
+    "confidence_status",
+    "missing_evidence",
+    "next_research_action",
+    "promotion_blockers",
+    "safety_scope",
+    "notes",
+)
+_ACTION_PRIORITIES = ("P0", "P1", "P2", "P3")
+_ACTION_PRIORITY_RANK = {
+    priority: rank for rank, priority in enumerate(_ACTION_PRIORITIES)
+}
+_ACTION_TYPES = (
+    "operator_action",
+    "research_action",
+    "validation_action",
+    "blocked_action",
+    "noop",
+)
+_RESEARCH_BOARD_STATUSES = (
+    "active_baseline",
+    "candidate",
+    "backlog",
+    "rejected",
+    "blocked",
+)
+_P0_VALIDATION_FIELD_MARKERS = (
+    "paper_submit_authorized_false_or_not_authorized",
+    "broker_state_observed_false",
+    "broker_state_mode_offline_or_not_observed",
+    "safety_labels",
 )
 _NOT_AUTHORIZED_STATUSES = {
     "not_authorized",
@@ -169,11 +225,13 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
 
     payload = build_etf_sma_daily_paper_lab(config)
     _apply_history_delta(payload, previous_history_entry)
+    _apply_executive_action_queue(payload)
 
     _write_packet_artifacts(output_root=output_root, payload=payload)
     validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
     _apply_packet_validation(payload, validation)
     _apply_history_delta(payload, previous_history_entry)
+    _apply_executive_action_queue(payload)
 
     history_entry = _build_history_entry(
         payload=payload,
@@ -261,6 +319,288 @@ def _apply_packet_validation(
     payload["executive_dashboard"]["artifact_presence_status"] = dict(
         payload["artifact_presence_status"]
     )
+
+
+def _apply_executive_action_queue(payload: dict[str, Any]) -> None:
+    action_queue = _build_executive_action_queue(payload)
+    action_summary = _build_executive_action_summary(action_queue)
+    payload["executive_action_queue_version"] = _ASSISTANT_ACTION_QUEUE_VERSION
+    payload["executive_action_queue"] = action_queue
+    payload["executive_action_summary"] = action_summary
+    payload["daniel_action_required_now"] = action_summary["daniel_action_required"]
+    payload["executive_dashboard"]["executive_action_queue"] = list(action_queue)
+    payload["executive_dashboard"]["executive_action_summary"] = dict(action_summary)
+    if "executive_summary" in payload:
+        payload["executive_summary"]["daniel_action_required"] = action_summary[
+            "daniel_action_status"
+        ]
+
+
+def _build_executive_action_queue(payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    actions: list[dict[str, Any]] = []
+    validation_status = str(payload.get("validation_status", "pending"))
+    if validation_status == "fail":
+        actions.append(_validation_action(payload))
+
+    if str(payload.get("posture")) == "insufficient_history":
+        slow_window = int(payload.get("sma_slow_window", 200))
+        actions.append(
+            _action_queue_item(
+                action_id="provide_missing_offline_daily_history",
+                priority="P1",
+                action_type="operator_action",
+                title="Supply enough offline daily bars for the SMA baseline",
+                rationale=(
+                    f"The baseline has fewer than {slow_window} usable as-of bars, "
+                    "so the preview remains blocked until the local input data is "
+                    "refreshed."
+                ),
+                reason_codes=[
+                    "insufficient_history",
+                    f"slow_sma_window_{slow_window}_not_met",
+                    "offline_input_required",
+                ],
+                blocked_by=[
+                    str(payload.get("sma_posture_status", "insufficient_history"))
+                ],
+                requires_daniel=True,
+                hard_gate_required=False,
+                expected_artifact_or_command=(
+                    "refresh offline SPY daily CSV input, then rerun "
+                    f"{_SCRIPT} -OutputRoot runs/daily_lab/latest"
+                ),
+                safety_scope="offline_data_refresh_only_no_broker_access",
+            )
+        )
+
+    history_delta = payload.get("history_delta")
+    if _history_delta_needs_review(history_delta):
+        actions.append(
+            _action_queue_item(
+                action_id="review_material_history_delta",
+                priority="P1",
+                action_type="operator_action",
+                title="Review material daily packet delta",
+                rationale=(
+                    "A tracked posture, blocker, or validation field changed "
+                    "relative to the prior packet in this output-root history."
+                ),
+                reason_codes=_history_delta_reason_codes(history_delta),
+                blocked_by=[],
+                requires_daniel=True,
+                hard_gate_required=False,
+                expected_artifact_or_command="review operating_brief.md and history_ledger.jsonl",
+                safety_scope="offline_review_only_no_broker_access",
+            )
+        )
+
+    research_lab = payload.get("research_lab")
+    if _research_confidence_not_quantified(research_lab):
+        actions.append(
+            _action_queue_item(
+                action_id="quantify_spy_sma_baseline_confidence",
+                priority="P2",
+                action_type="research_action",
+                title="Quantify confidence for the SPY SMA 50/200 baseline",
+                rationale=(
+                    "The research board explicitly marks confidence as not yet "
+                    "quantified, so the next research improvement is an offline "
+                    "confidence packet for the existing baseline."
+                ),
+                reason_codes=[
+                    "research_confidence_not_quantified",
+                    "active_baseline_confidence_gap",
+                    "offline_research_backlog",
+                ],
+                blocked_by=["strategy_confidence_not_yet_quantified"],
+                requires_daniel=False,
+                hard_gate_required=False,
+                expected_artifact_or_command=(
+                    "future offline research artifact quantifying baseline confidence"
+                ),
+                safety_scope="offline_research_only_no_new_strategy_no_broker_access",
+            )
+        )
+
+    if not any(action["requires_daniel"] for action in actions):
+        actions.append(
+            _action_queue_item(
+                action_id="no_daniel_action_required_now",
+                priority="P3",
+                action_type="noop",
+                title="No Daniel action required now",
+                rationale=(
+                    "The packet is an offline preview, broker state was not "
+                    "observed, and no paper submit authorization is present."
+                ),
+                reason_codes=[
+                    "no_human_action_required",
+                    "broker_state_not_observed",
+                    "paper_submit_not_authorized",
+                ],
+                blocked_by=[],
+                requires_daniel=False,
+                hard_gate_required=False,
+                expected_artifact_or_command="none",
+                safety_scope=(
+                    "offline_preview_only; broker_state_not_observed; future "
+                    "broker reads require a separately scoped hard gate"
+                ),
+            )
+        )
+
+    return sorted(
+        actions,
+        key=lambda item: (
+            _ACTION_PRIORITY_RANK[item["priority"]],
+            item["action_id"],
+        ),
+    )
+
+
+def _validation_action(payload: Mapping[str, Any]) -> dict[str, Any]:
+    missing_fields = [
+        str(item) for item in payload.get("missing_required_fields", [])
+    ]
+    priority = _validation_failure_priority(missing_fields)
+    if priority == "P0":
+        return _action_queue_item(
+            action_id="validation_safety_invariant_failure",
+            priority="P0",
+            action_type="validation_action",
+            title="Stop for packet safety invariant failure",
+            rationale=(
+                "Validation failed on a safety-critical field. Normal daily-lab "
+                "workflow must stop until the packet is repaired."
+            ),
+            reason_codes=["validation_failed", "safety_invariant_failure"],
+            blocked_by=missing_fields,
+            requires_daniel=True,
+            hard_gate_required=True,
+            expected_artifact_or_command="repair packet safety invariant before use",
+            safety_scope="offline_validation_stop_no_broker_access_no_submit",
+        )
+
+    artifact_status = payload.get("artifact_presence_status")
+    artifact_state = "artifact_presence_unknown"
+    if isinstance(artifact_status, Mapping):
+        artifact_state = str(artifact_status.get("status", artifact_state))
+    return _action_queue_item(
+        action_id="validation_packet_repair_required",
+        priority="P1",
+        action_type="validation_action",
+        title="Repair daily packet validation failure",
+        rationale=(
+            "Validation failed on packet completeness or artifact presence, but "
+            "no safety-critical broker or submit invariant was violated."
+        ),
+        reason_codes=["validation_failed", artifact_state],
+        blocked_by=missing_fields,
+        requires_daniel=True,
+        hard_gate_required=False,
+        expected_artifact_or_command="rerun offline packet generation after repair",
+        safety_scope="offline_validation_repair_no_broker_access",
+    )
+
+
+def _validation_failure_priority(missing_fields: list[str]) -> str:
+    for field_name in missing_fields:
+        if any(marker in field_name for marker in _P0_VALIDATION_FIELD_MARKERS):
+            return "P0"
+    return "P1"
+
+
+def _action_queue_item(
+    *,
+    action_id: str,
+    priority: str,
+    action_type: str,
+    title: str,
+    rationale: str,
+    reason_codes: list[str],
+    blocked_by: list[str],
+    requires_daniel: bool,
+    hard_gate_required: bool,
+    expected_artifact_or_command: str,
+    safety_scope: str,
+) -> dict[str, Any]:
+    return {
+        "action_id": action_id,
+        "priority": priority,
+        "action_type": action_type,
+        "title": title,
+        "rationale": rationale,
+        "reason_codes": list(reason_codes),
+        "blocked_by": list(blocked_by),
+        "requires_daniel": requires_daniel,
+        "hard_gate_required": hard_gate_required,
+        "expected_artifact_or_command": expected_artifact_or_command,
+        "safety_scope": safety_scope,
+    }
+
+
+def _build_executive_action_summary(
+    action_queue: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    highest_priority = action_queue[0]["priority"] if action_queue else "P3"
+    daniel_required = any(bool(item["requires_daniel"]) for item in action_queue)
+    if daniel_required:
+        daniel_action_status = (
+            "Yes: review the P0/P1 executive action queue item before relying "
+            "on this packet."
+        )
+    else:
+        daniel_action_status = (
+            "No: Daniel does not need to do anything now. The packet remains "
+            "offline_preview_only with broker_state_not_observed."
+        )
+    return {
+        "daniel_action_required": daniel_required,
+        "daniel_action_status": daniel_action_status,
+        "highest_priority": highest_priority,
+        "queue_length": len(action_queue),
+    }
+
+
+def _history_delta_needs_review(delta: Any) -> bool:
+    if not isinstance(delta, Mapping):
+        return False
+    return any(
+        bool(delta.get(field_name))
+        for field_name in (
+            "posture_changed",
+            "blocker_status_changed",
+            "validation_status_changed",
+        )
+    )
+
+
+def _history_delta_reason_codes(delta: Any) -> list[str]:
+    if not isinstance(delta, Mapping):
+        return ["history_delta_unavailable"]
+    reason_codes = []
+    if delta.get("posture_changed"):
+        reason_codes.append("posture_changed")
+    if delta.get("blocker_status_changed"):
+        reason_codes.append("blocker_status_changed")
+    if delta.get("validation_status_changed"):
+        reason_codes.append("validation_status_changed")
+    return reason_codes or ["history_delta_review"]
+
+
+def _research_confidence_not_quantified(research_lab: Any) -> bool:
+    if not isinstance(research_lab, Mapping):
+        return False
+    values = [str(research_lab.get("confidence_status", ""))]
+    board = research_lab.get(
+        "research_board",
+        research_lab.get("candidate_strategy_board"),
+    )
+    if isinstance(board, list):
+        for item in board:
+            if isinstance(item, Mapping):
+                values.append(str(item.get("confidence_status", "")))
+    return any("not_yet_quantified" in value for value in values)
 
 
 def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
@@ -357,7 +697,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "broker_state_mode": broker_state_mode,
         "broker_state_observed": False,
         "broker_state_claim": (
-            "No broker positions or open orders were read; this packet makes no "
+            "Broker positions and open orders were not read; this packet makes no "
             "position or order-state claim."
         ),
         "paper_submit_authorized": False,
@@ -401,6 +741,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "status": sma_status,
         },
         "research_lab": research_lab,
+        "research_board": list(research_lab["research_board"]),
+        "executive_action_queue_version": _ASSISTANT_ACTION_QUEUE_VERSION,
+        "executive_action_queue": [],
+        "executive_action_summary": {
+            "daniel_action_required": False,
+            "daniel_action_status": "Action queue has not been evaluated yet.",
+            "highest_priority": "P3",
+            "queue_length": 0,
+        },
+        "daniel_action_required_now": False,
         "executive_dashboard": {
             "data_freshness": data_freshness,
             "validation_status": "pending",
@@ -417,6 +767,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "system_health": "offline_assistant_packet_ready",
             "safety_labels": list(_REQUIRED_LABELS),
             "next_operator_action": next_operator_action,
+            "executive_action_queue": [],
+            "executive_action_summary": {},
         },
     }
     payload["executive_summary"] = {
@@ -425,6 +777,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "current_blocker": blocker_status,
         "daniel_action_required": _daniel_action_required(posture),
     }
+    _apply_executive_action_queue(payload)
     return payload
 
 
@@ -962,6 +1315,28 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(
         _missing_history_delta_fields("history_delta", packet.get("history_delta"))
     )
+    missing.extend(
+        _missing_action_queue_fields(
+            "executive_action_queue",
+            packet.get("executive_action_queue"),
+        )
+    )
+    missing.extend(
+        _missing_research_board_fields(
+            "research_board",
+            packet.get("research_board"),
+        )
+    )
+    research_lab = packet.get("research_lab")
+    if isinstance(research_lab, Mapping):
+        missing.extend(
+            _missing_research_board_fields(
+                "research_lab.research_board",
+                research_lab.get("research_board"),
+            )
+        )
+    else:
+        missing.append("research_lab")
     return missing
 
 
@@ -991,6 +1366,18 @@ def _missing_manifest_fields(
             manifest.get("history_delta"),
         )
     )
+    missing.extend(
+        _missing_action_queue_fields(
+            "manifest.executive_action_queue",
+            manifest.get("executive_action_queue"),
+        )
+    )
+    missing.extend(
+        _missing_research_board_fields(
+            "manifest.research_board",
+            manifest.get("research_board"),
+        )
+    )
 
     for field_name in (
         "input_data_path",
@@ -1004,6 +1391,8 @@ def _missing_manifest_fields(
         "next_operator_action",
         "assistant_packet_version",
         "history_ledger_path",
+        "executive_action_queue_version",
+        "executive_action_summary",
     ):
         if field_name in packet and manifest.get(field_name) != packet.get(field_name):
             missing.append(f"manifest.{field_name}.matches_record")
@@ -1014,6 +1403,14 @@ def _missing_manifest_fields(
         and dict(manifest["history_delta"]) != dict(packet["history_delta"])
     ):
         missing.append("manifest.history_delta.matches_record")
+
+    if (
+        isinstance(packet.get("executive_action_queue"), list)
+        and isinstance(manifest.get("executive_action_queue"), list)
+        and list(manifest["executive_action_queue"])
+        != list(packet["executive_action_queue"])
+    ):
+        missing.append("manifest.executive_action_queue.matches_record")
 
     return missing
 
@@ -1031,6 +1428,60 @@ def _missing_history_delta_fields(prefix: str, delta: Any) -> list[str]:
     if not isinstance(summary_text, str) or not summary_text.strip():
         if f"{prefix}.delta_summary_text" not in missing:
             missing.append(f"{prefix}.delta_summary_text")
+    return missing
+
+
+def _missing_action_queue_fields(prefix: str, action_queue: Any) -> list[str]:
+    if not isinstance(action_queue, list) or not action_queue:
+        return [prefix]
+
+    missing: list[str] = []
+    for index, item in enumerate(action_queue):
+        item_prefix = f"{prefix}[{index}]"
+        if not isinstance(item, Mapping):
+            missing.append(item_prefix)
+            continue
+        for field_name in _REQUIRED_ACTION_QUEUE_FIELDS:
+            if field_name not in item:
+                missing.append(f"{item_prefix}.{field_name}")
+        priority = item.get("priority")
+        if priority not in _ACTION_PRIORITIES:
+            missing.append(f"{item_prefix}.priority.allowed")
+        action_type = item.get("action_type")
+        if action_type not in _ACTION_TYPES:
+            missing.append(f"{item_prefix}.action_type.allowed")
+        for list_field in ("reason_codes", "blocked_by"):
+            if list_field in item and not isinstance(item.get(list_field), list):
+                missing.append(f"{item_prefix}.{list_field}.list")
+        for bool_field in ("requires_daniel", "hard_gate_required"):
+            if bool_field in item and not isinstance(item.get(bool_field), bool):
+                missing.append(f"{item_prefix}.{bool_field}.bool")
+    return missing
+
+
+def _missing_research_board_fields(prefix: str, research_board: Any) -> list[str]:
+    if not isinstance(research_board, list) or not research_board:
+        return [prefix]
+
+    missing: list[str] = []
+    active_baseline_found = False
+    for index, item in enumerate(research_board):
+        item_prefix = f"{prefix}[{index}]"
+        if not isinstance(item, Mapping):
+            missing.append(item_prefix)
+            continue
+        for field_name in _REQUIRED_RESEARCH_BOARD_FIELDS:
+            if field_name not in item:
+                missing.append(f"{item_prefix}.{field_name}")
+        if item.get("status") not in _RESEARCH_BOARD_STATUSES:
+            missing.append(f"{item_prefix}.status.allowed")
+        if item.get("status") == "active_baseline":
+            active_baseline_found = True
+        for list_field in ("missing_evidence", "promotion_blockers", "notes"):
+            if list_field in item and not isinstance(item.get(list_field), list):
+                missing.append(f"{item_prefix}.{list_field}.list")
+    if not active_baseline_found:
+        missing.append(f"{prefix}.active_baseline")
     return missing
 
 
@@ -1060,6 +1511,28 @@ def _missing_brief_references(
     for label in _REQUIRED_LABELS:
         if label not in brief_text:
             missing.append(f"operating_brief.safety_labels.{label}")
+    if "## Executive Action Queue" not in brief_text:
+        missing.append("operating_brief.executive_action_queue.section")
+    action_queue = packet.get("executive_action_queue")
+    if isinstance(action_queue, list):
+        for item in action_queue:
+            if isinstance(item, Mapping):
+                action_id = str(item.get("action_id", ""))
+                if action_id and action_id not in brief_text:
+                    missing.append(
+                        f"operating_brief.executive_action_queue.{action_id}"
+                    )
+    if "## Research Board" not in brief_text:
+        missing.append("operating_brief.research_board.section")
+    research_board = packet.get("research_board")
+    if isinstance(research_board, list):
+        for item in research_board:
+            if isinstance(item, Mapping):
+                candidate_name = str(item.get("candidate_name", ""))
+                if candidate_name and candidate_name not in brief_text:
+                    missing.append(
+                        f"operating_brief.research_board.{candidate_name}"
+                    )
     delta = packet.get("history_delta")
     if isinstance(delta, Mapping):
         delta_summary = delta.get("delta_summary_text")
@@ -1177,42 +1650,80 @@ def _research_lab(
 ) -> dict[str, Any]:
     fast_value = sma_fast_value if sma_fast_value is not None else "not_available"
     slow_value = sma_slow_value if sma_slow_value is not None else "not_available"
-    return {
-        "active_strategy_evidence": [
-            f"{config.symbol} daily bars loaded from {_normalize_path(config.bars_csv)}",
-            (
-                f"SMA {config.sma_fast_window}/{config.sma_slow_window} evaluated "
-                f"as of {as_of_date}"
+    active_evidence = [
+        f"{config.symbol} daily bars loaded from {_normalize_path(config.bars_csv)}",
+        (
+            f"SMA {config.sma_fast_window}/{config.sma_slow_window} evaluated "
+            f"as of {as_of_date}"
+        ),
+        f"posture={posture}",
+        f"sma_status={sma_status}",
+        f"sma_fast_value={fast_value}",
+        f"sma_slow_value={slow_value}",
+    ]
+    board = [
+        {
+            "candidate_name": "SPY SMA 50/200 daily long-only baseline",
+            "status": "active_baseline",
+            "hypothesis": (
+                "SPY risk posture is risk-on when SMA50 is above SMA200 and "
+                "risk-off when SMA50 is at or below SMA200."
             ),
-            f"posture={posture}",
-            f"sma_status={sma_status}",
-            f"sma_fast_value={fast_value}",
-            f"sma_slow_value={slow_value}",
-        ],
-        "candidate_strategy_board": [
-            {
-                "candidate_name": "candidate_strategy_board_seed",
-                "status": "placeholder_not_implemented",
-                "hypothesis": (
-                    "No alternate strategy hypothesis is active in Assistant v1.1; "
-                    "SPY SMA 50/200 remains the only controlled test strategy."
-                ),
-                "required_evidence": [
-                    "operator_and_GPT_approved_candidate_definition",
-                    "offline_backtest_or_replay_evidence",
-                    "dependency_direction_and_safety_review",
-                    "paper_lab_only_promotion_packet",
-                ],
-                "next_research_action": (
-                    "draft_candidate_hypothesis_for_GPT_review_before_any_strategy_code"
-                ),
-                "promotion_blockers": [
-                    "no_candidate_strategy_selected",
-                    "no_offline_evidence_collected",
-                    "no_approval_to_expand_strategy_catalog",
-                ],
-            }
-        ],
+            "evidence_status": "daily_sma_signal_evaluated_from_offline_csv",
+            "confidence_status": "confidence_not_yet_quantified",
+            "missing_evidence": [
+                "offline_backtest_confidence_summary",
+                "drawdown_and_turnover_review",
+                "paper_fill_reconciliation_not_observed",
+            ],
+            "next_research_action": (
+                "quantify_baseline_confidence_with_offline_research_packet"
+            ),
+            "promotion_blockers": [
+                "strategy_confidence_not_yet_quantified",
+                "broker_state_not_observed",
+                "paper_submit_not_authorized",
+            ],
+            "safety_scope": "offline_research_only_no_broker_access_no_submit",
+            "notes": [
+                "This is the only active strategy path for this milestone.",
+                "Current posture evidence is reported outside the board fingerprint.",
+            ],
+        },
+        {
+            "candidate_name": "future_candidate_strategy_slot",
+            "status": "blocked",
+            "hypothesis": (
+                "No alternate strategy hypothesis is approved in this milestone; "
+                "this slot exists only to route future GPT/operator research."
+            ),
+            "evidence_status": "no_candidate_defined",
+            "confidence_status": "not_applicable_until_candidate_defined",
+            "missing_evidence": [
+                "operator_and_GPT_approved_candidate_definition",
+                "offline_backtest_or_replay_evidence",
+                "dependency_direction_and_safety_review",
+                "paper_lab_only_promotion_packet",
+            ],
+            "next_research_action": (
+                "wait_for_GPT_approved_candidate_definition_before_any_strategy_code"
+            ),
+            "promotion_blockers": [
+                "no_candidate_strategy_selected",
+                "no_offline_evidence_collected",
+                "no_approval_to_expand_strategy_catalog",
+            ],
+            "safety_scope": "metadata_only_no_new_strategy_no_broker_access",
+            "notes": [
+                "Do not implement or backtest new strategies in Assistant v1.3.",
+            ],
+        },
+    ]
+    return {
+        "research_board_version": _RESEARCH_BOARD_VERSION,
+        "active_strategy_evidence": active_evidence,
+        "research_board": board,
+        "candidate_strategy_board": board,
         "confidence_status": "confidence_not_yet_quantified",
         "missing_evidence": [
             "broker_state_not_observed",
@@ -1265,8 +1776,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     missing_evidence_lines = "\n".join(
         f"* {item}" for item in payload["research_lab"]["missing_evidence"]
     )
-    candidate_lines = _render_candidate_strategy_board(
-        payload["research_lab"]["candidate_strategy_board"]
+    action_lines = _render_executive_action_queue(payload["executive_action_queue"])
+    research_board_lines = _render_research_board(
+        payload["research_lab"]["research_board"]
     )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
@@ -1284,6 +1796,11 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Delta since prior packet**: {delta["delta_summary_text"]}
 * **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
 
+## Executive Action Queue
+* **Daniel action required now**: {str(payload["executive_action_summary"]["daniel_action_required"]).lower()}
+* **Highest priority**: {payload["executive_action_summary"]["highest_priority"]}
+{action_lines}
+
 ## Trading desk brief
 * **Active strategy**: {payload["active_strategy_name"]}
 * **Market/posture state**: {payload["sma_posture_status"]}
@@ -1294,11 +1811,11 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **As-of date**: {payload["as_of_date"]}
 * **Input data path**: `{payload["input_data_path"]}`
 
-## Research lab section
+## Research Board
 * **Active strategy evidence**:
 {evidence_lines}
-* **Candidate strategy board**:
-{candidate_lines}
+* **Board status**:
+{research_board_lines}
 * **Confidence status**: {payload["research_lab"]["confidence_status"]}
 * **Missing evidence**:
 {missing_evidence_lines}
@@ -1321,24 +1838,52 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 """
 
 
-def _render_candidate_strategy_board(candidate_board: list[Mapping[str, Any]]) -> str:
-    if not candidate_board:
-        return "* No candidate strategy placeholders are present."
+def _render_executive_action_queue(action_queue: list[Mapping[str, Any]]) -> str:
+    if not action_queue:
+        return "* No executive actions are present."
     lines = [
-        "| Candidate | Status | Hypothesis | Required evidence | Next research action | Promotion blockers |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Action | Priority | Type | Requires Daniel | Hard gate | Reason codes | Expected artifact or command | Safety scope |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in action_queue:
+        lines.append(
+            "| "
+            f"`{item['action_id']}` | "
+            f"`{item['priority']}` | "
+            f"`{item['action_type']}` | "
+            f"{str(item['requires_daniel']).lower()} | "
+            f"{str(item['hard_gate_required']).lower()} | "
+            f"{', '.join(item['reason_codes'])} | "
+            f"{item['expected_artifact_or_command']} | "
+            f"{item['safety_scope']} |"
+        )
+    return "\n".join(lines)
+
+
+def _render_research_board(candidate_board: list[Mapping[str, Any]]) -> str:
+    if not candidate_board:
+        return "* No research board entries are present."
+    lines = [
+        "| Candidate | Status | Evidence | Confidence | Missing evidence | Next research action | Promotion blockers | Safety scope |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for item in candidate_board:
         lines.append(
             "| "
             f"`{item['candidate_name']}` | "
             f"`{item['status']}` | "
-            f"{item['hypothesis']} | "
-            f"{', '.join(item['required_evidence'])} | "
+            f"{item['evidence_status']} | "
+            f"{item['confidence_status']} | "
+            f"{', '.join(item['missing_evidence'])} | "
             f"{item['next_research_action']} | "
-            f"{', '.join(item['promotion_blockers'])} |"
+            f"{', '.join(item['promotion_blockers'])} | "
+            f"{item['safety_scope']} |"
         )
     return "\n".join(lines)
+
+
+def _render_candidate_strategy_board(candidate_board: list[Mapping[str, Any]]) -> str:
+    return _render_research_board(candidate_board)
 
 
 def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
@@ -1377,6 +1922,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "artifact_paths": dict(payload["artifact_paths"]),
         "history_ledger_path": payload["history_ledger_path"],
         "history_delta": history_delta,
+        "executive_action_queue_version": payload["executive_action_queue_version"],
+        "executive_action_queue": list(payload["executive_action_queue"]),
+        "executive_action_summary": dict(payload["executive_action_summary"]),
+        "research_board_version": payload["research_lab"]["research_board_version"],
+        "research_board": list(payload["research_lab"]["research_board"]),
         "previous_packet_found": history_delta["previous_packet_found"],
         "previous_as_of_date": history_delta["previous_as_of_date"],
         "current_as_of_date": history_delta["current_as_of_date"],

@@ -1,11 +1,12 @@
-# Assistant v1 - Daily Trading Research Command Center
+# Assistant v1.3 - Executive Action Queue + Research Board Status
 
-- [x] Run credential/profile precheck before implementation.
-- [x] Inspect existing daily lab, ETF/SMA, preview, brief, manifest, validator, and script surfaces.
-- [x] Keep the existing `scripts/run_daily_paper_lab.ps1` command path.
-- [x] Assemble an offline assistant packet with Markdown brief, JSONL operating record, and manifest/index.
-- [x] Include as-of date, input data path, active strategy, SMA posture, preview decision, blockers, broker-state mode, submit authorization, next action, and safety labels.
-- [x] Keep broker state unobserved and paper submit authorization false.
-- [x] Run targeted Assistant v1 tests and safety guard tests.
+- [x] Preserve Assistant v1/v1.1/v1.2 brief, operating record, manifest, validation, and history-delta outputs.
+- [x] Add deterministic executive action queue fields to the operating record and manifest.
+- [x] Render the executive action queue near the top of the Markdown brief.
+- [x] Classify validation failures, offline data gaps, material history deltas, confidence gaps, and no-op states with deterministic priority rules.
+- [x] Upgrade the Research Board to structured status, evidence, confidence, missing-evidence, next-action, blocker, safety, and notes fields.
+- [x] Keep SPY SMA 50/200 as the active baseline without adding or backtesting new strategies.
+- [x] Keep broker state unobserved, paper submit unauthorized, and the command fully offline/broker-free.
+- [x] Run targeted Assistant v1.3 tests and safety guard tests.
 - [x] Run smoke command with disposable output root.
 - [x] Run final offline verification checks.
