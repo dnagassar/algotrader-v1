@@ -41,6 +41,8 @@ _ASSISTANT_ACTION_QUEUE_VERSION = "assistant_v1.3_action_queue"
 _RESEARCH_BOARD_VERSION = "assistant_v1.3_research_board"
 _QUALITY_GATE_VERSION = "assistant_v1.4_quality_gate"
 _REVIEW_HANDOFF_VERSION = "assistant_v1.4_review_handoff"
+_DECISION_LEDGER_VERSION = "assistant_v1.5_decision_ledger"
+_DECISION_LEDGER_ENTRY_VERSION = "assistant_v1.5_decision_ledger_entry"
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
@@ -49,6 +51,8 @@ _RECORD_FILENAME = "operating_record.jsonl"
 _MANIFEST_FILENAME = "manifest.jsonl"
 _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
 _REVIEW_HANDOFF_FILENAME = "review_handoff.md"
+_DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
+_REVIEW_INPUTS_DIRNAME = "review_inputs"
 _HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
 _REQUIRED_LABELS = [
     "paper_lab_only",
@@ -95,6 +99,15 @@ _REQUIRED_PACKET_FIELDS = (
     "quality_gate_optional_checks",
     "review_handoff_path",
     "review_handoff_status",
+    "decision_ledger_version",
+    "decision_ledger_path",
+    "decision_ledger_status",
+    "decision_ledger_append_status",
+    "decision_ledger_entry_count",
+    "review_input_status",
+    "review_classification",
+    "reviewer_source",
+    "review_selected_next_action",
 )
 _REQUIRED_MANIFEST_FIELDS = (
     "input_data_path",
@@ -129,6 +142,15 @@ _REQUIRED_MANIFEST_FIELDS = (
     "quality_gate_optional_checks",
     "review_handoff_path",
     "review_handoff_status",
+    "decision_ledger_version",
+    "decision_ledger_path",
+    "decision_ledger_status",
+    "decision_ledger_append_status",
+    "decision_ledger_entry_count",
+    "review_input_status",
+    "review_classification",
+    "reviewer_source",
+    "review_selected_next_action",
 )
 _REQUIRED_FIELDS_ALLOW_EMPTY = {
     "quality_gate_failed_checks",
@@ -136,6 +158,30 @@ _REQUIRED_FIELDS_ALLOW_EMPTY = {
     "quality_gate_required_checks",
     "quality_gate_optional_checks",
 }
+_REVIEW_CLASSIFICATIONS = (
+    "accepted",
+    "accepted-with-minor-note",
+    "needs-repair",
+    "rejected",
+)
+_REVIEW_NON_INPUT_CLASSIFICATIONS = (
+    "missing",
+    "unclassified",
+)
+_REVIEW_TEXT_SUFFIXES = (".md", ".markdown", ".txt")
+_REVIEW_FORBIDDEN_NEXT_ACTION_TERMS = (
+    "submit",
+    "cancel",
+    "replace",
+    "liquidate",
+    "live trading",
+    "live order",
+    "paper order",
+    "broker read",
+    "broker mutation",
+    "alpaca",
+    "credential",
+)
 _REQUIRED_DELTA_FIELDS = (
     "previous_packet_found",
     "previous_as_of_date",
@@ -282,6 +328,11 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
     payload["executive_dashboard"]["history_ledger_entry_sequence"] = history_entry[
         "sequence_number"
     ]
+    _write_packet_artifacts(output_root=output_root, payload=payload)
+    pre_review_quality_gate = _build_quality_gate(output_root)
+    _apply_quality_gate(payload, pre_review_quality_gate)
+    _apply_review_decision_state(payload, output_root)
+    _apply_executive_action_queue(payload)
     _write_packet_artifacts(output_root=output_root, payload=payload)
     quality_gate = _build_quality_gate(output_root)
     _apply_quality_gate(payload, quality_gate)
@@ -504,6 +555,10 @@ def _build_executive_action_queue(payload: Mapping[str, Any]) -> list[dict[str, 
             )
         )
 
+    review_classification = str(payload.get("review_classification", "missing"))
+    if review_classification in {"needs-repair", "rejected"}:
+        actions.append(_review_feedback_action(payload, review_classification))
+
     research_lab = payload.get("research_lab")
     if _research_confidence_not_quantified(research_lab):
         actions.append(
@@ -565,6 +620,64 @@ def _build_executive_action_queue(payload: Mapping[str, Any]) -> list[dict[str, 
             _ACTION_PRIORITY_RANK[item["priority"]],
             item["action_id"],
         ),
+    )
+
+
+def _review_feedback_action(
+    payload: Mapping[str, Any],
+    classification: str,
+) -> dict[str, Any]:
+    if classification == "rejected":
+        return _action_queue_item(
+            action_id="stop_on_rejected_review_feedback",
+            priority="P1",
+            action_type="blocked_action",
+            title="Stop relying on packet until rejected review feedback is repaired",
+            rationale=(
+                "An offline saved review classified this packet as rejected. "
+                "Repair must stay inside the offline packet workflow."
+            ),
+            reason_codes=[
+                "review_feedback_ingested",
+                "review_classification_rejected",
+                "offline_packet_repair_required",
+            ],
+            blocked_by=["review_classification_rejected"],
+            requires_daniel=False,
+            hard_gate_required=True,
+            expected_artifact_or_command=str(
+                payload.get(
+                    "review_selected_next_action",
+                    _default_review_next_action(classification),
+                )
+            ),
+            safety_scope="offline_review_repair_only_no_broker_access_no_submit",
+        )
+
+    return _action_queue_item(
+        action_id="repair_review_feedback_before_next_packet_use",
+        priority="P1",
+        action_type="validation_action",
+        title="Repair offline packet from review feedback",
+        rationale=(
+            "An offline saved review classified this packet as needing repair. "
+            "The next step is deterministic packet repair, not broker access."
+        ),
+        reason_codes=[
+            "review_feedback_ingested",
+            "review_classification_needs_repair",
+            "offline_packet_repair_required",
+        ],
+        blocked_by=["review_classification_needs_repair"],
+        requires_daniel=False,
+        hard_gate_required=False,
+        expected_artifact_or_command=str(
+            payload.get(
+                "review_selected_next_action",
+                _default_review_next_action(classification),
+            )
+        ),
+        safety_scope="offline_review_repair_only_no_broker_access_no_submit",
     )
 
 
@@ -759,6 +872,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
     quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
+    decision_ledger_defaults = _default_decision_ledger_fields(artifact_paths)
     sma_status = _sma_status(
         posture=posture,
         fast_window=config.sma_fast_window,
@@ -830,6 +944,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "artifact_paths": artifact_paths,
         "history_ledger_path": artifact_paths["history_ledger"],
         **quality_gate_defaults,
+        **decision_ledger_defaults,
         "history_delta": _empty_history_delta(as_of_str),
         "history_ledger_entry": {},
         "artifacts": {
@@ -839,6 +954,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "manifest": artifact_paths["manifest"],
             "history_ledger": artifact_paths["history_ledger"],
             "review_handoff": artifact_paths["review_handoff"],
+            "decision_ledger": artifact_paths["decision_ledger"],
+            "review_inputs": artifact_paths["review_inputs"],
         },
         "sma": {
             "symbol": signal.symbol,
@@ -892,6 +1009,22 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ),
             "review_handoff_path": quality_gate_defaults["review_handoff_path"],
             "review_handoff_status": quality_gate_defaults["review_handoff_status"],
+            "decision_ledger_path": decision_ledger_defaults[
+                "decision_ledger_path"
+            ],
+            "decision_ledger_status": decision_ledger_defaults[
+                "decision_ledger_status"
+            ],
+            "decision_ledger_append_status": decision_ledger_defaults[
+                "decision_ledger_append_status"
+            ],
+            "review_input_status": decision_ledger_defaults["review_input_status"],
+            "review_classification": decision_ledger_defaults[
+                "review_classification"
+            ],
+            "review_selected_next_action": decision_ledger_defaults[
+                "review_selected_next_action"
+            ],
         },
     }
     payload["executive_summary"] = {
@@ -1020,6 +1153,8 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
         "history_ledger": _normalize_path(output_root / _HISTORY_LEDGER_FILENAME),
         "review_handoff": _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME),
+        "decision_ledger": _normalize_path(output_root / _DECISION_LEDGER_FILENAME),
+        "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
     }
 
 
@@ -1039,6 +1174,37 @@ def _default_quality_gate_fields(artifact_paths: Mapping[str, str]) -> dict[str,
         "review_handoff_version": _REVIEW_HANDOFF_VERSION,
         "review_handoff_path": str(artifact_paths["review_handoff"]),
         "review_handoff_status": "not_generated",
+    }
+
+
+def _default_decision_ledger_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "decision_ledger_version": _DECISION_LEDGER_VERSION,
+        "decision_ledger_path": str(artifact_paths["decision_ledger"]),
+        "decision_ledger_status": "decision_ledger_no_review_input",
+        "decision_ledger_append_status": "not_appended_no_review_input",
+        "decision_ledger_entry_count": 0,
+        "decision_ledger_latest_entry": {},
+        "review_inputs_path": str(artifact_paths["review_inputs"]),
+        "review_input_status": "review_input_not_found",
+        "review_input_count": 0,
+        "review_input_paths": [],
+        "review_input_path": None,
+        "review_input_sha256": None,
+        "reviewer_source": "reviewer_not_supplied",
+        "review_classification": "missing",
+        "review_classification_raw": None,
+        "review_blockers": [],
+        "review_repair_items": [],
+        "review_minor_notes": [],
+        "review_selected_next_action": "await_offline_review_input",
+        "review_decision": {
+            "classification": "missing",
+            "status": "review_input_not_found",
+            "selected_next_action": "await_offline_review_input",
+        },
     }
 
 
@@ -1074,6 +1240,473 @@ def _append_history_entry(path: Path, entry: Mapping[str, Any]) -> None:
     line = json.dumps(_json_safe(entry), sort_keys=True, separators=(",", ":")) + "\n"
     with path.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(line)
+
+
+def _apply_review_decision_state(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    decision_state = _build_review_decision_state(output_root, payload)
+    payload.update(decision_state)
+    dashboard = payload["executive_dashboard"]
+    for field_name in (
+        "decision_ledger_path",
+        "decision_ledger_status",
+        "decision_ledger_append_status",
+        "decision_ledger_entry_count",
+        "review_input_status",
+        "review_input_count",
+        "review_input_path",
+        "review_input_sha256",
+        "reviewer_source",
+        "review_classification",
+        "review_selected_next_action",
+    ):
+        dashboard[field_name] = payload[field_name]
+    dashboard["review_decision"] = dict(payload["review_decision"])
+
+
+def _build_review_decision_state(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    ledger_path = output_root / _DECISION_LEDGER_FILENAME
+    input_paths = _discover_review_input_paths(output_root / _REVIEW_INPUTS_DIRNAME)
+    existing_entries = _read_decision_ledger(ledger_path)
+    existing_keys = {
+        (
+            str(entry.get("review_input_path", "")),
+            str(entry.get("review_input_sha256", "")),
+        )
+        for entry in existing_entries
+        if isinstance(entry, Mapping)
+    }
+
+    state = _default_decision_ledger_fields(_artifact_paths(output_root))
+    state["decision_ledger_entry_count"] = len(existing_entries)
+    if existing_entries:
+        state["decision_ledger_latest_entry"] = dict(existing_entries[-1])
+
+    if not input_paths:
+        input_status = (
+            "review_input_not_found"
+            if not (output_root / _REVIEW_INPUTS_DIRNAME).exists()
+            else "review_input_directory_empty"
+        )
+        ledger_status = (
+            "decision_ledger_existing_no_review_input"
+            if existing_entries
+            else "decision_ledger_no_review_input"
+        )
+        state.update(
+            {
+                "decision_ledger_status": ledger_status,
+                "decision_ledger_append_status": "not_appended_no_review_input",
+                "review_input_status": input_status,
+                "review_decision": {
+                    "classification": "missing",
+                    "status": input_status,
+                    "selected_next_action": "await_offline_review_input",
+                },
+            }
+        )
+        return state
+
+    parsed_reports = [_parse_review_input(path) for path in input_paths]
+    appended_entries: list[Mapping[str, Any]] = []
+    already_recorded_count = 0
+    for report in parsed_reports:
+        entry_key = (report["review_input_path"], report["review_input_sha256"])
+        if entry_key in existing_keys:
+            already_recorded_count += 1
+            continue
+        entry = _build_decision_ledger_entry(
+            payload=payload,
+            report=report,
+            sequence_number=len(existing_entries) + len(appended_entries) + 1,
+        )
+        _append_decision_ledger_entry(ledger_path, entry)
+        appended_entries.append(entry)
+        existing_keys.add(entry_key)
+
+    all_entries = [*existing_entries, *appended_entries]
+    selected_report = parsed_reports[-1]
+    append_status = _decision_ledger_append_status(
+        appended_count=len(appended_entries),
+        already_recorded_count=already_recorded_count,
+    )
+    ledger_status = _decision_ledger_status(
+        appended_count=len(appended_entries),
+        already_recorded_count=already_recorded_count,
+    )
+    state.update(
+        {
+            "decision_ledger_status": ledger_status,
+            "decision_ledger_append_status": append_status,
+            "decision_ledger_entry_count": len(all_entries),
+            "decision_ledger_latest_entry": dict(all_entries[-1])
+            if all_entries
+            else {},
+            "review_input_status": "review_input_ingested",
+            "review_input_count": len(parsed_reports),
+            "review_input_paths": [
+                str(report["review_input_path"]) for report in parsed_reports
+            ],
+            "review_input_path": selected_report["review_input_path"],
+            "review_input_sha256": selected_report["review_input_sha256"],
+            "reviewer_source": selected_report["reviewer_source"],
+            "review_classification": selected_report["classification"],
+            "review_classification_raw": selected_report["classification_raw"],
+            "review_blockers": list(selected_report["blockers"]),
+            "review_repair_items": list(selected_report["repair_items"]),
+            "review_minor_notes": list(selected_report["minor_notes"]),
+            "review_selected_next_action": selected_report["selected_next_action"],
+            "review_decision": {
+                "classification": selected_report["classification"],
+                "status": "review_input_ingested",
+                "reviewer_source": selected_report["reviewer_source"],
+                "blockers": list(selected_report["blockers"]),
+                "repair_items": list(selected_report["repair_items"]),
+                "minor_notes": list(selected_report["minor_notes"]),
+                "selected_next_action": selected_report["selected_next_action"],
+                "review_input_path": selected_report["review_input_path"],
+                "review_input_sha256": selected_report["review_input_sha256"],
+                "ledger_append_status": append_status,
+            },
+        }
+    )
+    return state
+
+
+def _discover_review_input_paths(input_root: Path) -> list[Path]:
+    if not input_root.exists() or not input_root.is_dir():
+        return []
+    paths = [
+        path
+        for path in input_root.iterdir()
+        if path.is_file() and path.suffix.lower() in _REVIEW_TEXT_SUFFIXES
+    ]
+    return sorted(paths, key=lambda path: _normalize_path(path))
+
+
+def _read_decision_ledger(path: Path) -> list[Mapping[str, Any]]:
+    if not path.exists():
+        return []
+    entries: list[Mapping[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValidationError(f"Decision ledger is not readable: {path}") from exc
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                f"Decision ledger line {index} is not parseable JSON: {path}"
+            ) from exc
+        if not isinstance(entry, Mapping):
+            raise ValidationError(
+                f"Decision ledger line {index} is not a JSON object: {path}"
+            )
+        entries.append(entry)
+    return entries
+
+
+def _append_decision_ledger_entry(path: Path, entry: Mapping[str, Any]) -> None:
+    line = json.dumps(_json_safe(entry), sort_keys=True, separators=(",", ":")) + "\n"
+    with path.open("a", encoding="utf-8", newline="\n") as stream:
+        stream.write(line)
+
+
+def _parse_review_input(path: Path) -> dict[str, Any]:
+    try:
+        content = path.read_bytes()
+    except OSError as exc:
+        raise ValidationError(f"Review input is not readable: {path}") from exc
+    text = content.decode("utf-8", errors="replace")
+    sections = _parse_review_sections(text)
+    classification_raw = _first_review_value(sections, "classification")
+    classification = _normalize_review_classification(classification_raw)
+    reviewer_source = _reviewer_source(sections, path)
+    blockers = _review_list(sections.get("blockers", []))
+    repair_items = _review_list(sections.get("repair_items", []))
+    minor_notes = _review_list(sections.get("minor_notes", []))
+    if classification in {"needs-repair", "rejected"} and not repair_items:
+        repair_items = list(blockers)
+    if classification == "rejected" and not blockers:
+        blockers = ["review_classification_rejected"]
+    if classification == "needs-repair" and not blockers and not repair_items:
+        repair_items = ["review_classification_needs_repair"]
+    recommended_next_action = _first_review_value(sections, "recommended_next_action")
+    selected_next_action = _safe_review_next_action(
+        recommended_next_action,
+        classification,
+    )
+    return {
+        "review_input_path": _normalize_path(path),
+        "review_input_sha256": hashlib.sha256(content).hexdigest(),
+        "review_input_size": len(content),
+        "reviewer_source": reviewer_source,
+        "classification": classification,
+        "classification_raw": classification_raw,
+        "blockers": blockers,
+        "repair_items": repair_items,
+        "minor_notes": minor_notes,
+        "recommended_next_action_raw": recommended_next_action,
+        "selected_next_action": selected_next_action,
+    }
+
+
+def _parse_review_sections(text: str) -> dict[str, list[str]]:
+    sections: dict[str, list[str]] = {}
+    active_list_key: str | None = None
+    for line in text.splitlines():
+        key_value = _review_key_value(line)
+        if key_value is not None:
+            raw_key, value = key_value
+            key = _canonical_review_key(raw_key)
+            active_list_key = None
+            if key is None:
+                continue
+            if value:
+                sections.setdefault(key, []).append(value)
+            if key in {"blockers", "repair_items", "minor_notes"}:
+                active_list_key = key
+            continue
+        stripped = line.strip()
+        if (
+            active_list_key is not None
+            and stripped.startswith(("-", "*"))
+            and stripped.strip("-* \t")
+        ):
+            sections.setdefault(active_list_key, []).append(stripped)
+    return sections
+
+
+def _review_key_value(line: str) -> tuple[str, str] | None:
+    stripped = line.strip()
+    if ":" not in stripped:
+        return None
+    key, value = stripped.split(":", 1)
+    normalized_key = _review_key_token(key)
+    if not normalized_key:
+        return None
+    return normalized_key, value.strip()
+
+
+def _review_key_token(value: str) -> str:
+    chars = []
+    previous_was_separator = False
+    for char in value.strip().lower():
+        if char.isalnum():
+            chars.append(char)
+            previous_was_separator = False
+        elif not previous_was_separator:
+            chars.append("_")
+            previous_was_separator = True
+    return "".join(chars).strip("_")
+
+
+def _canonical_review_key(key: str) -> str | None:
+    aliases = {
+        "classification": "classification",
+        "classification_recommendation": "classification",
+        "review_classification": "classification",
+        "reviewer": "reviewer_source",
+        "source": "reviewer_source",
+        "review_source": "reviewer_source",
+        "reviewer_source": "reviewer_source",
+        "blocking_findings": "blockers",
+        "blockers": "blockers",
+        "blocked_by": "blockers",
+        "repair_items": "repair_items",
+        "repair_item": "repair_items",
+        "required_repairs": "repair_items",
+        "repairs": "repair_items",
+        "minor_notes": "minor_notes",
+        "minor_note": "minor_notes",
+        "notes": "minor_notes",
+        "recommended_next_action": "recommended_next_action",
+        "selected_next_action": "recommended_next_action",
+        "next_action": "recommended_next_action",
+    }
+    return aliases.get(key)
+
+
+def _first_review_value(sections: Mapping[str, list[str]], key: str) -> str | None:
+    values = sections.get(key)
+    if not values:
+        return None
+    for value in values:
+        stripped = _strip_review_list_marker(value)
+        if stripped:
+            return stripped
+    return None
+
+
+def _normalize_review_classification(value: str | None) -> str:
+    if value is None or not value.strip():
+        return "unclassified"
+    if "|" in value:
+        return "unclassified"
+    token = _classification_token(value)
+    variants = (
+        ("accepted-with-minor-note", "accepted-with-minor-note"),
+        ("accepted-with-minor-notes", "accepted-with-minor-note"),
+        ("accepted-minor-note", "accepted-with-minor-note"),
+        ("needs-repair", "needs-repair"),
+        ("need-repair", "needs-repair"),
+        ("rejected", "rejected"),
+        ("accepted", "accepted"),
+    )
+    for prefix, classification in variants:
+        if token == prefix or token.startswith(prefix + "-"):
+            return classification
+    return "unclassified"
+
+
+def _classification_token(value: str) -> str:
+    chars = []
+    previous_was_separator = False
+    for char in value.strip().lower().replace("_", "-"):
+        if char.isalnum():
+            chars.append(char)
+            previous_was_separator = False
+        elif not previous_was_separator:
+            chars.append("-")
+            previous_was_separator = True
+    return "".join(chars).strip("-")
+
+
+def _reviewer_source(sections: Mapping[str, list[str]], path: Path) -> str:
+    detected = _first_review_value(sections, "reviewer_source")
+    if detected:
+        return _safe_single_line(detected)
+    path_stem = _review_key_token(path.stem)
+    return path_stem or "offline_review_input"
+
+
+def _review_list(values: list[str]) -> list[str]:
+    normalized: list[str] = []
+    for value in values:
+        item = _strip_review_list_marker(value)
+        if not item or _review_none_value(item):
+            continue
+        normalized.append(_safe_single_line(item))
+    return normalized
+
+
+def _strip_review_list_marker(value: str) -> str:
+    return value.strip().lstrip("-*").strip()
+
+
+def _review_none_value(value: str) -> bool:
+    token = _classification_token(value)
+    return token in {
+        "none",
+        "n-a",
+        "na",
+        "not-applicable",
+        "no-blockers",
+        "no-blocking-findings",
+        "no-repair-items",
+        "no-minor-notes",
+    } or token.startswith("none-or-")
+
+
+def _safe_single_line(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def _safe_review_next_action(
+    recommended_next_action: str | None,
+    classification: str,
+) -> str:
+    if recommended_next_action:
+        candidate = _safe_single_line(recommended_next_action)
+        if candidate and not _contains_forbidden_review_next_action(candidate):
+            return candidate
+    return _default_review_next_action(classification)
+
+
+def _contains_forbidden_review_next_action(value: str) -> bool:
+    lowered = value.lower()
+    return any(term in lowered for term in _REVIEW_FORBIDDEN_NEXT_ACTION_TERMS)
+
+
+def _default_review_next_action(classification: str) -> str:
+    if classification == "accepted":
+        return "continue_offline_packet_history"
+    if classification == "accepted-with-minor-note":
+        return "track_minor_review_note_in_offline_backlog"
+    if classification == "needs-repair":
+        return "repair_offline_packet_from_review_feedback_then_rerun_daily_lab"
+    if classification == "rejected":
+        return "stop_using_packet_until_offline_review_repair_is_complete"
+    if classification == "unclassified":
+        return "classify_offline_review_feedback_before_packet_decision"
+    return "await_offline_review_input"
+
+
+def _build_decision_ledger_entry(
+    *,
+    payload: Mapping[str, Any],
+    report: Mapping[str, Any],
+    sequence_number: int,
+) -> dict[str, Any]:
+    return {
+        "decision_ledger_entry_version": _DECISION_LEDGER_ENTRY_VERSION,
+        "sequence_number": sequence_number,
+        "packet_type": payload["packet_type"],
+        "run_id": payload["run_id"],
+        "as_of_date": payload["as_of_date"],
+        "active_strategy_name": payload["active_strategy_name"],
+        "assistant_packet_version": payload["assistant_packet_version"],
+        "quality_gate_status": payload.get("quality_gate_status", "not_evaluated"),
+        "quality_gate_score": payload.get("quality_gate_score", "not_evaluated"),
+        "validation_status": payload.get("validation_status", "not_evaluated"),
+        "reviewer_source": report["reviewer_source"],
+        "classification": report["classification"],
+        "classification_raw": report["classification_raw"],
+        "blockers": list(report["blockers"]),
+        "repair_items": list(report["repair_items"]),
+        "minor_notes": list(report["minor_notes"]),
+        "selected_next_action": report["selected_next_action"],
+        "review_input_path": report["review_input_path"],
+        "review_input_sha256": report["review_input_sha256"],
+        "review_input_size": report["review_input_size"],
+        "ledger_append_status": "appended",
+        "safety_scope": "offline_review_decision_only_no_broker_access_no_submit",
+    }
+
+
+def _decision_ledger_append_status(
+    *,
+    appended_count: int,
+    already_recorded_count: int,
+) -> str:
+    if appended_count == 1:
+        return "appended"
+    if appended_count > 1:
+        return "appended_multiple"
+    if already_recorded_count:
+        return "already_recorded"
+    return "not_appended_no_review_input"
+
+
+def _decision_ledger_status(
+    *,
+    appended_count: int,
+    already_recorded_count: int,
+) -> str:
+    if appended_count:
+        return "decision_ledger_appended"
+    if already_recorded_count:
+        return "decision_ledger_already_recorded"
+    return "decision_ledger_no_new_entry"
 
 
 def _apply_history_delta(
@@ -1478,6 +2111,19 @@ def _build_quality_gate(
     handoff_missing = _missing_review_handoff_references(
         review_handoff_text,
     )
+    decision_ledger_ok, decision_ledger_summary = _quality_decision_ledger_summary(
+        root,
+        packet_for_checks,
+    )
+    review_classification_ok, review_classification_summary = (
+        _quality_review_classification_summary(packet_for_checks)
+    )
+    review_input_hash_ok, review_input_hash_summary = (
+        _quality_review_input_hash_summary(packet_for_checks)
+    )
+    review_next_action_ok, review_next_action_summary = (
+        _quality_review_next_action_summary(packet_for_checks)
+    )
 
     required_checks = [
         _quality_check(
@@ -1545,6 +2191,26 @@ def _build_quality_gate(
             "review_handoff_references_generated_artifacts",
             not handoff_missing,
             _quality_missing_summary(handoff_missing),
+        ),
+        _quality_check(
+            "decision_ledger_status_recorded",
+            decision_ledger_ok,
+            decision_ledger_summary,
+        ),
+        _quality_check(
+            "review_classification_normalized",
+            review_classification_ok,
+            review_classification_summary,
+        ),
+        _quality_check(
+            "review_input_path_hash_recorded_when_present",
+            review_input_hash_ok,
+            review_input_hash_summary,
+        ),
+        _quality_check(
+            "review_selected_next_action_safety_scoped",
+            review_next_action_ok,
+            review_next_action_summary,
         ),
     ]
     optional_checks: list[dict[str, Any]] = []
@@ -1644,6 +2310,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Research Board",
         "## Executive dashboard",
         "Quality Gate",
+        "Decision Ledger",
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -1726,8 +2393,77 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _MANIFEST_FILENAME,
         _HISTORY_LEDGER_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
+        _DECISION_LEDGER_FILENAME,
+        _REVIEW_INPUTS_DIRNAME,
     ]
     return [token for token in required_tokens if token not in review_handoff_text]
+
+
+def _quality_decision_ledger_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    status = str(packet.get("decision_ledger_status", ""))
+    review_input_status = str(packet.get("review_input_status", ""))
+    ledger_path = output_root / _DECISION_LEDGER_FILENAME
+    ledger_exists = ledger_path.exists() and ledger_path.is_file()
+    explicit_no_review = status in {
+        "decision_ledger_no_review_input",
+        "decision_ledger_existing_no_review_input",
+    } and review_input_status in {
+        "review_input_not_found",
+        "review_input_directory_empty",
+    }
+    if ledger_exists:
+        return True, f"decision ledger artifact exists; status={status}"
+    if explicit_no_review:
+        return True, f"explicit no-review status recorded; status={status}"
+    return False, (
+        "decision ledger missing without explicit no-review status; "
+        f"status={status}; review_input_status={review_input_status}"
+    )
+
+
+def _quality_review_classification_summary(
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    classification = str(packet.get("review_classification", ""))
+    allowed = set(_REVIEW_CLASSIFICATIONS) | set(_REVIEW_NON_INPUT_CLASSIFICATIONS)
+    if classification in allowed:
+        return True, f"review_classification={classification}"
+    return False, f"review_classification={classification} is not normalized"
+
+
+def _quality_review_input_hash_summary(
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    review_input_status = str(packet.get("review_input_status", ""))
+    review_input_path = packet.get("review_input_path")
+    review_input_sha256 = packet.get("review_input_sha256")
+    if review_input_status != "review_input_ingested":
+        return True, f"review_input_status={review_input_status}"
+    if not _has_required_value(review_input_path):
+        return False, "review_input_path missing for ingested review input"
+    if not _sha256_text(review_input_sha256):
+        return False, "review_input_sha256 missing or invalid"
+    return True, f"review_input_path={review_input_path}"
+
+
+def _quality_review_next_action_summary(
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    next_action = str(packet.get("review_selected_next_action", ""))
+    if not next_action.strip():
+        return False, "review_selected_next_action missing"
+    if _contains_forbidden_review_next_action(next_action):
+        return False, "review_selected_next_action includes forbidden broker term"
+    return True, f"review_selected_next_action={next_action}"
+
+
+def _sha256_text(value: Any) -> bool:
+    if not isinstance(value, str) or len(value) != 64:
+        return False
+    return all(char in "0123456789abcdef" for char in value)
 
 
 def _review_handoff_path(packet: Mapping[str, Any], output_root: Path) -> str:
@@ -1798,6 +2534,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         )
     else:
         missing.append("research_lab")
+    missing.extend(_missing_review_decision_fields("", packet))
     return missing
 
 
@@ -1842,6 +2579,7 @@ def _missing_manifest_fields(
             manifest.get("research_board"),
         )
     )
+    missing.extend(_missing_review_decision_fields("manifest", manifest))
 
     for field_name in (
         "input_data_path",
@@ -1865,6 +2603,17 @@ def _missing_manifest_fields(
         "quality_gate_optional_checks",
         "review_handoff_path",
         "review_handoff_status",
+        "decision_ledger_path",
+        "decision_ledger_status",
+        "decision_ledger_append_status",
+        "decision_ledger_entry_count",
+        "review_input_status",
+        "review_input_count",
+        "review_input_path",
+        "review_input_sha256",
+        "reviewer_source",
+        "review_classification",
+        "review_selected_next_action",
     ):
         if field_name in packet and manifest.get(field_name) != packet.get(field_name):
             missing.append(f"manifest.{field_name}.matches_record")
@@ -1884,6 +2633,33 @@ def _missing_manifest_fields(
     ):
         missing.append("manifest.executive_action_queue.matches_record")
 
+    return missing
+
+
+def _missing_review_decision_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    classification = str(packet.get("review_classification", ""))
+    allowed_classifications = set(_REVIEW_CLASSIFICATIONS) | set(
+        _REVIEW_NON_INPUT_CLASSIFICATIONS
+    )
+    if classification not in allowed_classifications:
+        missing.append(f"{field_prefix}review_classification.allowed")
+    if not isinstance(packet.get("decision_ledger_entry_count"), int):
+        missing.append(f"{field_prefix}decision_ledger_entry_count.int")
+    selected_next_action = str(packet.get("review_selected_next_action", ""))
+    if not selected_next_action.strip():
+        missing.append(f"{field_prefix}review_selected_next_action")
+    elif _contains_forbidden_review_next_action(selected_next_action):
+        missing.append(f"{field_prefix}review_selected_next_action.safe")
+    if packet.get("review_input_status") == "review_input_ingested":
+        if not _has_required_value(packet.get("review_input_path")):
+            missing.append(f"{field_prefix}review_input_path")
+        if not _sha256_text(packet.get("review_input_sha256")):
+            missing.append(f"{field_prefix}review_input_sha256")
     return missing
 
 
@@ -1998,12 +2774,20 @@ def _missing_brief_references(
         missing.append("operating_brief.research_board.section")
     if "Quality Gate" not in brief_text:
         missing.append("operating_brief.quality_gate")
+    if "Decision Ledger" not in brief_text:
+        missing.append("operating_brief.decision_ledger")
     review_handoff_path = packet.get("review_handoff_path")
     if (
         _has_required_value(review_handoff_path)
         and str(review_handoff_path) not in brief_text
     ):
         missing.append("operating_brief.review_handoff_path")
+    decision_ledger_path = packet.get("decision_ledger_path")
+    if (
+        _has_required_value(decision_ledger_path)
+        and str(decision_ledger_path) not in brief_text
+    ):
+        missing.append("operating_brief.decision_ledger_path")
     research_board = packet.get("research_board")
     if isinstance(research_board, list):
         for item in research_board:
@@ -2270,6 +3054,16 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     failed_checks_text = "[]" if not failed_checks else ", ".join(failed_checks)
     warning_checks = payload["quality_gate_warning_checks"]
     warning_checks_text = "[]" if not warning_checks else ", ".join(warning_checks)
+    review_blockers = payload.get("review_blockers", [])
+    review_blockers_text = (
+        "[]" if not review_blockers else ", ".join(str(item) for item in review_blockers)
+    )
+    review_repair_items = payload.get("review_repair_items", [])
+    review_repair_items_text = (
+        "[]"
+        if not review_repair_items
+        else ", ".join(str(item) for item in review_repair_items)
+    )
 
     return f"""# Daily Trading Research Command Center
 
@@ -2278,6 +3072,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Evidence**: {payload["executive_summary"]["plain_english_status"]} Preview decision: `{payload["preview_decision"]}`.
 * **Risks / blockers**: {payload["blocker_status"]}. {payload["broker_state_claim"]} Paper submit authorization is `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`).
 * **Delta since prior packet**: {delta["delta_summary_text"]}
+* **Review decision**: classification `{payload["review_classification"]}`; ledger status `{payload["decision_ledger_status"]}`; append status `{payload["decision_ledger_append_status"]}`.
 * **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
 * **Quality Gate**: `{payload["quality_gate_status"]}` ({payload["quality_gate_score"]}); review handoff: `{payload["review_handoff_path"]}`.
 
@@ -2313,6 +3108,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Quality gate failed checks**: {failed_checks_text}
 * **Quality gate warning checks**: {warning_checks_text}
 * **Review handoff path**: `{payload["review_handoff_path"]}` (status: `{payload["review_handoff_status"]}`)
+* **Decision Ledger**: `{payload["decision_ledger_status"]}` at `{payload["decision_ledger_path"]}`; append status `{payload["decision_ledger_append_status"]}`; entries: {payload["decision_ledger_entry_count"]}
+* **Review input**: `{payload["review_input_status"]}`; path `{payload["review_input_path"]}`; hash `{payload["review_input_sha256"]}`; reviewer `{payload["reviewer_source"]}`
+* **Review classification**: `{payload["review_classification"]}`; blockers: {review_blockers_text}; repair items: {review_repair_items_text}; selected next action: `{payload["review_selected_next_action"]}`
 * **Assistant packet version**: {payload["assistant_packet_version"]}
 * **Previous packet found**: {str(delta["previous_packet_found"]).lower()}
 * **History ledger path**: `{payload["history_ledger_path"]}`
@@ -2339,6 +3137,21 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     )
     warning_checks_text = json.dumps(
         list(payload["quality_gate_warning_checks"]),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    review_blockers_text = json.dumps(
+        list(payload.get("review_blockers", [])),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    review_repair_items_text = json.dumps(
+        list(payload.get("review_repair_items", [])),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    review_minor_notes_text = json.dumps(
+        list(payload.get("review_minor_notes", [])),
         sort_keys=True,
         separators=(",", ":"),
     )
@@ -2377,6 +3190,23 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **warning_checks**: `{warning_checks_text}`
 * **required_fields_present**: {str(payload["quality_gate_required_fields_present"]).lower()}
 
+## Decision ledger
+* **decision_ledger_version**: `{payload["decision_ledger_version"]}`
+* **decision_ledger_status**: `{payload["decision_ledger_status"]}`
+* **decision_ledger_append_status**: `{payload["decision_ledger_append_status"]}`
+* **decision_ledger_path**: `{payload["decision_ledger_path"]}`
+* **decision_ledger_entry_count**: {payload["decision_ledger_entry_count"]}
+* **review_inputs_path**: `{payload["review_inputs_path"]}`
+* **review_input_status**: `{payload["review_input_status"]}`
+* **review_input_path**: `{payload["review_input_path"]}`
+* **review_input_sha256**: `{payload["review_input_sha256"]}`
+* **reviewer_source**: `{payload["reviewer_source"]}`
+* **review_classification**: `{payload["review_classification"]}`
+* **review_blockers**: `{review_blockers_text}`
+* **review_repair_items**: `{review_repair_items_text}`
+* **review_minor_notes**: `{review_minor_notes_text}`
+* **review_selected_next_action**: `{payload["review_selected_next_action"]}`
+
 ## Executive action queue
 {action_lines}
 
@@ -2397,7 +3227,7 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
 
 ## Reviewer instructions
-* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, active SPY SMA 50/200 baseline, history delta, safety labels, and broker-state wording.
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
 * **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
 * **Return format**:
   * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
@@ -2417,6 +3247,8 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         ("manifest", artifact_paths.get("manifest")),
         ("history_ledger", artifact_paths.get("history_ledger")),
         ("review_handoff", artifact_paths.get("review_handoff")),
+        ("decision_ledger", artifact_paths.get("decision_ledger")),
+        ("review_inputs", artifact_paths.get("review_inputs")),
     ]
     return "\n".join(
         f"* **{name}**: `{path}`"
@@ -2564,6 +3396,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
     history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
     if history_ledger_path.exists():
         indexed_artifacts["history_ledger"] = _artifact_metadata(history_ledger_path)
+    decision_ledger_path = output_root / _DECISION_LEDGER_FILENAME
+    if decision_ledger_path.exists():
+        indexed_artifacts["decision_ledger"] = _artifact_metadata(
+            decision_ledger_path
+        )
     history_delta = dict(payload["history_delta"])
     return {
         "schema_version": _SCHEMA_VERSION,
@@ -2617,6 +3454,28 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "review_handoff_version": payload["review_handoff_version"],
         "review_handoff_path": payload["review_handoff_path"],
         "review_handoff_status": payload["review_handoff_status"],
+        "decision_ledger_version": payload["decision_ledger_version"],
+        "decision_ledger_path": payload["decision_ledger_path"],
+        "decision_ledger_status": payload["decision_ledger_status"],
+        "decision_ledger_append_status": payload["decision_ledger_append_status"],
+        "decision_ledger_entry_count": payload["decision_ledger_entry_count"],
+        "decision_ledger_latest_entry": dict(
+            payload.get("decision_ledger_latest_entry", {})
+        ),
+        "review_inputs_path": payload["review_inputs_path"],
+        "review_input_status": payload["review_input_status"],
+        "review_input_count": payload["review_input_count"],
+        "review_input_paths": list(payload["review_input_paths"]),
+        "review_input_path": payload["review_input_path"],
+        "review_input_sha256": payload["review_input_sha256"],
+        "reviewer_source": payload["reviewer_source"],
+        "review_classification": payload["review_classification"],
+        "review_classification_raw": payload["review_classification_raw"],
+        "review_blockers": list(payload["review_blockers"]),
+        "review_repair_items": list(payload["review_repair_items"]),
+        "review_minor_notes": list(payload["review_minor_notes"]),
+        "review_selected_next_action": payload["review_selected_next_action"],
+        "review_decision": dict(payload["review_decision"]),
         "previous_packet_found": history_delta["previous_packet_found"],
         "previous_as_of_date": history_delta["previous_as_of_date"],
         "current_as_of_date": history_delta["current_as_of_date"],

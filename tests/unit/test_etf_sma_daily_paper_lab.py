@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import hashlib
 from pathlib import Path
 import pytest
 
@@ -101,13 +102,17 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
+        "decision_ledger_status_recorded",
+        "review_classification_normalized",
+        "review_input_path_hash_recorded_when_present",
+        "review_selected_next_action_safety_scoped",
     ]
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "12/12 required checks passed; 0 failed; 0 warnings"
+        "16/16 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 12
+    assert container["quality_gate_passed_required_count"] == 16
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -158,6 +163,24 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["missing_required_fields"] == []
     assert payload["artifact_presence_status"]["status"] == "pass"
     assert payload["history_ledger_path"].endswith("history_ledger.jsonl")
+    assert payload["decision_ledger_version"] == "assistant_v1.5_decision_ledger"
+    assert payload["decision_ledger_path"].endswith("decision_ledger.jsonl")
+    assert payload["decision_ledger_status"] == "decision_ledger_no_review_input"
+    assert payload["decision_ledger_append_status"] == (
+        "not_appended_no_review_input"
+    )
+    assert payload["decision_ledger_entry_count"] == 0
+    assert payload["review_input_status"] == "review_input_not_found"
+    assert payload["review_input_path"] is None
+    assert payload["review_input_sha256"] is None
+    assert payload["review_classification"] == "missing"
+    assert payload["reviewer_source"] == "reviewer_not_supplied"
+    assert payload["review_selected_next_action"] == "await_offline_review_input"
+    assert payload["review_decision"] == {
+        "classification": "missing",
+        "status": "review_input_not_found",
+        "selected_next_action": "await_offline_review_input",
+    }
     delta = payload["history_delta"]
     assert delta["previous_packet_found"] is False
     assert delta["previous_as_of_date"] is None
@@ -200,6 +223,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert payload["executive_dashboard"]["validation_status"] == "pass"
     assert payload["executive_dashboard"]["missing_required_fields"] == []
+    assert payload["executive_dashboard"]["decision_ledger_status"] == (
+        "decision_ledger_no_review_input"
+    )
+    assert payload["executive_dashboard"]["review_classification"] == "missing"
     assert payload["executive_action_queue_version"] == "assistant_v1.3_action_queue"
     assert payload["executive_action_summary"] == {
         "daniel_action_required": False,
@@ -265,6 +292,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "manifest.jsonl").exists()
     assert (output_root / "review_handoff.md").exists()
     assert (output_root / "history_ledger.jsonl").exists()
+    assert not (output_root / "decision_ledger.jsonl").exists()
 
     brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
     assert "## Executive summary" in brief
@@ -288,6 +316,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "**Validation status**: pass" in brief
     assert "**Quality Gate**: `pass`" in brief
     assert "review_handoff.md" in brief
+    assert "**Decision Ledger**: `decision_ledger_no_review_input`" in brief
+    assert "decision_ledger.jsonl" in brief
+    assert "review_input_not_found" in brief
+    assert "await_offline_review_input" in brief
     assert "**Missing required fields**: []" in brief
     assert "**Artifact presence status**: pass" in brief
     assert "**Previous packet found**: false" in brief
@@ -312,6 +344,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["missing_required_fields"] == []
     assert record["artifact_presence_status"]["status"] == "pass"
     _assert_quality_gate_pass(record)
+    assert record["decision_ledger_status"] == "decision_ledger_no_review_input"
+    assert record["decision_ledger_append_status"] == "not_appended_no_review_input"
+    assert record["decision_ledger_entry_count"] == 0
+    assert record["review_input_status"] == "review_input_not_found"
+    assert record["review_classification"] == "missing"
+    assert record["review_selected_next_action"] == "await_offline_review_input"
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -345,6 +383,14 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["missing_required_fields"] == []
     assert manifest["artifact_presence_status"]["status"] == "pass"
     _assert_quality_gate_pass(manifest)
+    assert manifest["decision_ledger_status"] == "decision_ledger_no_review_input"
+    assert manifest["decision_ledger_append_status"] == (
+        "not_appended_no_review_input"
+    )
+    assert manifest["decision_ledger_entry_count"] == 0
+    assert manifest["review_input_status"] == "review_input_not_found"
+    assert manifest["review_classification"] == "missing"
+    assert manifest["review_selected_next_action"] == "await_offline_review_input"
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -355,6 +401,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "operating_record" in manifest["indexed_artifacts"]
     assert "review_handoff" in manifest["indexed_artifacts"]
     assert "history_ledger" in manifest["indexed_artifacts"]
+    assert "decision_ledger" not in manifest["indexed_artifacts"]
     assert "manifest" not in manifest["indexed_artifacts"]
 
     history_lines = (output_root / "history_ledger.jsonl").read_text(
@@ -618,6 +665,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Executive summary",
         "## Trading desk state",
         "## Quality gate result",
+        "## Decision ledger",
         "## Executive action queue",
         "## Research board",
         "## History delta",
@@ -636,14 +684,141 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
     assert "No live trading was performed." in handoff
     assert "No network calls were performed." in handoff
     assert "broker_state_not_observed" in handoff
+    assert "decision_ledger_no_review_input" in handoff
+    assert "review_input_not_found" in handoff
     for artifact_name in (
         "operating_brief.md",
         "operating_record.jsonl",
         "manifest.jsonl",
         "history_ledger.jsonl",
         "review_handoff.md",
+        "decision_ledger.jsonl",
+        "review_inputs",
     ):
         assert artifact_name in handoff
+
+
+def test_etf_sma_daily_paper_lab_ingests_review_feedback_decision_ledger(
+    tmp_path: Path,
+) -> None:
+    """Saved offline review text is normalized and appended to the decision ledger."""
+    output_root = tmp_path / "paper_lab_out"
+    review_inputs = output_root / "review_inputs"
+    review_inputs.mkdir(parents=True)
+    review_file = review_inputs / "gpt_review.md"
+    review_file.write_text(
+        "\n".join(
+            (
+                "reviewer: GPT",
+                "classification: needs repair",
+                "blocking_findings:",
+                "- Decision ledger status is missing from the packet.",
+                "repair_items:",
+                "- Add deterministic decision ledger status to the daily artifacts.",
+                "minor_notes: none",
+                "recommended_next_action: repair offline packet artifacts and rerun daily lab",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    expected_hash = hashlib.sha256(review_file.read_bytes()).hexdigest()
+    assert payload["validation_status"] == "pass"
+    assert payload["quality_gate_status"] == "pass"
+    assert payload["decision_ledger_status"] == "decision_ledger_appended"
+    assert payload["decision_ledger_append_status"] == "appended"
+    assert payload["decision_ledger_entry_count"] == 1
+    assert payload["review_input_status"] == "review_input_ingested"
+    assert payload["review_input_path"].endswith("review_inputs/gpt_review.md")
+    assert payload["review_input_sha256"] == expected_hash
+    assert payload["reviewer_source"] == "GPT"
+    assert payload["review_classification"] == "needs-repair"
+    assert payload["review_blockers"] == [
+        "Decision ledger status is missing from the packet."
+    ]
+    assert payload["review_repair_items"] == [
+        "Add deterministic decision ledger status to the daily artifacts."
+    ]
+    assert payload["review_selected_next_action"] == (
+        "repair offline packet artifacts and rerun daily lab"
+    )
+    action_ids = [action["action_id"] for action in payload["executive_action_queue"]]
+    assert action_ids == [
+        "repair_review_feedback_before_next_packet_use",
+        "quantify_spy_sma_baseline_confidence",
+        "no_daniel_action_required_now",
+    ]
+    repair_action = payload["executive_action_queue"][0]
+    _assert_action_queue_item_shape(repair_action)
+    assert repair_action["priority"] == "P1"
+    assert repair_action["action_type"] == "validation_action"
+    assert repair_action["requires_daniel"] is False
+    assert repair_action["hard_gate_required"] is False
+    assert repair_action["safety_scope"] == (
+        "offline_review_repair_only_no_broker_access_no_submit"
+    )
+    assert "paper order" not in json.dumps(repair_action, sort_keys=True).lower()
+    assert "live trading" not in json.dumps(repair_action, sort_keys=True).lower()
+
+    ledger_lines = (output_root / "decision_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(ledger_lines) == 1
+    ledger_entry = json.loads(ledger_lines[0])
+    assert ledger_entry["decision_ledger_entry_version"] == (
+        "assistant_v1.5_decision_ledger_entry"
+    )
+    assert ledger_entry["sequence_number"] == 1
+    assert ledger_entry["assistant_packet_version"] == "assistant_v1.1"
+    assert ledger_entry["quality_gate_status"] == "pass"
+    assert ledger_entry["reviewer_source"] == "GPT"
+    assert ledger_entry["classification"] == "needs-repair"
+    assert ledger_entry["review_input_sha256"] == expected_hash
+    assert ledger_entry["ledger_append_status"] == "appended"
+    assert ledger_entry["safety_scope"] == (
+        "offline_review_decision_only_no_broker_access_no_submit"
+    )
+
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    assert record["review_classification"] == "needs-repair"
+    assert record["decision_ledger_status"] == "decision_ledger_appended"
+    assert manifest["review_classification"] == "needs-repair"
+    assert manifest["decision_ledger_status"] == "decision_ledger_appended"
+    assert "decision_ledger" in manifest["indexed_artifacts"]
+    assert validate_etf_sma_daily_paper_lab_packet(output_root)["validation_status"] == (
+        "pass"
+    )
+
+    rerun_payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+    rerun_ledger_lines = (output_root / "decision_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(rerun_ledger_lines) == 1
+    assert rerun_payload["decision_ledger_status"] == "decision_ledger_already_recorded"
+    assert rerun_payload["decision_ledger_append_status"] == "already_recorded"
 
 
 def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
@@ -677,7 +852,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "9/12 required checks passed; 3 failed; 0 warnings"
+        "13/16 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
