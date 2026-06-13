@@ -124,6 +124,92 @@ def _assert_research_candidate_queue_item_shape(item: dict[str, object]) -> None
     assert isinstance(item["rejection_criteria"], list)
 
 
+def _assert_paper_observation_readiness_shape(readiness: dict[str, object]) -> None:
+    assert set(readiness) == {
+        "paper_observation_readiness_version",
+        "status",
+        "artifact_path",
+        "generation_mode",
+        "readiness_status",
+        "remaining_gap",
+        "hard_gate_required",
+        "requires_daniel",
+        "approval_phrase_required",
+        "allowed_future_read_operations",
+        "forbidden_future_operations",
+        "required_preflight_booleans",
+        "expected_output_artifacts",
+        "stop_conditions",
+        "broker_state_claim_policy",
+        "broker_reads_performed",
+        "broker_mutation_performed",
+        "runtime_callouts_performed",
+        "network_calls_performed",
+        "paper_submit_authorized",
+        "profit_claim",
+        "safety_scope",
+        "broker_state_mode",
+    }
+    assert readiness["paper_observation_readiness_version"] == (
+        "assistant_v1.12_paper_observation_readiness"
+    )
+    assert readiness["status"] == "generated"
+    assert str(readiness["artifact_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    assert readiness["readiness_status"] == "hard_gate_prepared_not_authorized"
+    assert readiness["remaining_gap"] == "paper_observation_summary"
+    assert readiness["hard_gate_required"] is True
+    assert readiness["requires_daniel"] is True
+    assert "Daniel approves read-only paper observation" in str(
+        readiness["approval_phrase_required"]
+    )
+    assert "SPY_position_read" in readiness["allowed_future_read_operations"]
+    assert "SPY_open_order_read" in readiness["allowed_future_read_operations"]
+    assert "latest_paper_portfolio_snapshot_read" in readiness[
+        "allowed_future_read_operations"
+    ]
+    assert set(readiness["forbidden_future_operations"]) >= {
+        "submit",
+        "cancel",
+        "replace",
+        "close",
+        "close_all_positions",
+        "liquidate",
+        "delete",
+        "retry mutation",
+        "live trading",
+    }
+    assert readiness["required_preflight_booleans"] == {
+        "APP_PROFILE_is_paper": False,
+        "ALPACA_API_KEY_loaded": False,
+        "ALPACA_API_SECRET_KEY_loaded": False,
+        "ALPACA_SECRET_KEY_loaded": False,
+        "APCA_API_KEY_ID_loaded": False,
+        "APCA_API_SECRET_KEY_loaded": False,
+    }
+    assert "paper_observation_readiness.jsonl" in readiness[
+        "expected_output_artifacts"
+    ]
+    assert "approval_phrase_missing_or_changed" in readiness["stop_conditions"]
+    policy = readiness["broker_state_claim_policy"]
+    assert isinstance(policy, dict)
+    assert policy["current_mode"] == "broker_state_not_observed"
+    assert policy["position_state_claims_allowed"] is False
+    assert policy["open_order_state_claims_allowed"] is False
+    assert readiness["broker_reads_performed"] is False
+    assert readiness["broker_mutation_performed"] is False
+    assert readiness["runtime_callouts_performed"] is False
+    assert readiness["network_calls_performed"] is False
+    assert readiness["paper_submit_authorized"] is False
+    assert readiness["profit_claim"] == "none"
+    assert readiness["safety_scope"] == "offline_only"
+    assert readiness["broker_state_mode"] == "broker_state_not_observed"
+    serialized = json.dumps(readiness, sort_keys=True).lower()
+    assert "no positions" not in serialized
+    assert "no open orders" not in serialized
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -138,6 +224,8 @@ def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
         "selected_safe_candidate_id",
         "selected_safe_candidate_priority",
         "selected_safe_candidate_title",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "candidates",
     }
     assert queue["research_candidate_queue_version"] == (
@@ -145,6 +233,12 @@ def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     )
     assert queue["status"] == "generated"
     assert str(queue["artifact_path"]).endswith("research_candidate_queue.jsonl")
+    assert str(queue["paper_observation_readiness_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        queue["paper_observation_readiness"]
+    )
     assert queue["generation_mode"] == (
         "deterministic_offline_from_packet_evidence"
     )
@@ -194,6 +288,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "network_runtime_calls_allowed",
         "safety_scope",
         "forbidden_actions",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -207,6 +303,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     assert str(selector["research_candidate_queue_path"]).endswith(
         "research_candidate_queue.jsonl"
+    )
+    assert str(selector["paper_observation_readiness_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        selector["paper_observation_readiness"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -235,6 +337,15 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     )
     assert str(exports["baseline_evidence_metrics_path"]).endswith(
         "baseline_evidence_metrics.jsonl"
+    )
+    assert str(exports["paper_observation_readiness_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        exports["paper_observation_readiness"]
+    )
+    assert exports["paper_observation_readiness_status"] == (
+        "hard_gate_prepared_not_authorized"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -347,6 +458,8 @@ def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> N
         "baseline_metric_artifact_ingest_status",
         "baseline_metric_artifact_parse_status",
         "baseline_remaining_missing_metric_sources",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "baseline_evidence_metrics_path",
         "next_safe_metric_command",
         "paper_submit_readiness_status",
@@ -416,6 +529,12 @@ def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> N
     }
     assert isinstance(evaluation["baseline_metric_artifact_parse_status"], dict)
     assert isinstance(evaluation["baseline_remaining_missing_metric_sources"], list)
+    assert str(evaluation["paper_observation_readiness_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        evaluation["paper_observation_readiness"]
+    )
     assert str(evaluation["baseline_evidence_metrics_path"]).endswith(
         "baseline_evidence_metrics.jsonl"
     )
@@ -481,6 +600,8 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "quantified_metric_summary",
         "remaining_missing_metric_sources",
         "paper_observation_status",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "broker_state_mode",
         "paper_submit_readiness_status",
         "profit_claim",
@@ -601,6 +722,12 @@ def _assert_baseline_evidence_metrics_shape(metrics: dict[str, object]) -> None:
         "parsed",
     }
     assert metrics["paper_observation_status"] == "broker_state_not_observed"
+    assert str(metrics["paper_observation_readiness_path"]).endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        metrics["paper_observation_readiness"]
+    )
     assert metrics["broker_state_mode"] == "broker_state_not_observed"
     assert metrics["paper_submit_readiness_status"] == "not_ready_for_paper_submit"
     assert metrics["profit_claim"] == "none"
@@ -667,8 +794,10 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "research_candidate_queue_generated",
         "baseline_health_evaluation_generated",
         "baseline_evidence_metrics_generated",
+        "paper_observation_readiness_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
+        "assistant_v1_through_v1_11_outputs_preserved",
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
@@ -682,9 +811,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "23/23 required checks passed; 0 failed; 0 warnings"
+        "25/25 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 23
+    assert container["quality_gate_passed_required_count"] == 25
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -753,6 +882,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "status": "review_input_not_found",
         "selected_next_action": "await_offline_review_input",
     }
+    assert payload["paper_observation_readiness_version"] == (
+        "assistant_v1.12_paper_observation_readiness"
+    )
+    assert payload["paper_observation_readiness_path"].endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    _assert_paper_observation_readiness_shape(
+        payload["paper_observation_readiness"]
+    )
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["next_action_selector"]["status"] == (
         "operator_support_review_ingest_selected"
@@ -825,6 +963,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "paper_observation_readiness"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -856,6 +1000,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["baseline_evidence_metrics"].endswith(
         "baseline_evidence_metrics.jsonl"
     )
+    assert payload["artifacts"]["paper_observation_readiness"].endswith(
+        "paper_observation_readiness.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -874,6 +1021,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     assert payload["executive_dashboard"]["baseline_evidence_metrics"] == payload[
         "baseline_evidence_metrics"
+    ]
+    assert payload["executive_dashboard"]["paper_observation_readiness"] == payload[
+        "paper_observation_readiness"
     ]
     assert payload["executive_dashboard"]["review_classification"] == "missing"
     assert payload["executive_action_queue_version"] == "assistant_v1.3_action_queue"
@@ -1111,6 +1261,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "research_candidate_queue.jsonl").exists()
     assert (output_root / "baseline_health_evaluation.jsonl").exists()
     assert (output_root / "baseline_evidence_metrics.jsonl").exists()
+    assert (output_root / "paper_observation_readiness.jsonl").exists()
     assert (output_root / "turnover_summary.jsonl").exists()
     assert (output_root / "cost_model_summary.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
@@ -1138,6 +1289,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "baseline_health_evaluation.jsonl" in brief
     assert "## Baseline Evidence Metrics" in brief
     assert "baseline_evidence_metrics.jsonl" in brief
+    assert "## Paper Observation Readiness" in brief
+    assert "paper_observation_readiness.jsonl" in brief
+    assert "hard_gate_prepared_not_authorized" in brief
+    assert "Daniel approves read-only paper observation" in brief
     assert "metrics_partially_available" in brief
     assert "metric_artifacts_partially_ingested" in brief
     assert "Metric artifact ingest status" in brief
@@ -1296,6 +1451,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["baseline_evidence_metrics"] == payload[
         "baseline_evidence_metrics"
     ]
+    assert manifest["paper_observation_readiness_version"] == (
+        "assistant_v1.12_paper_observation_readiness"
+    )
+    assert manifest["paper_observation_readiness_path"].endswith(
+        "paper_observation_readiness.jsonl"
+    )
+    assert manifest["paper_observation_readiness"] == payload[
+        "paper_observation_readiness"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -1309,6 +1473,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "research_candidate_queue" in manifest["indexed_artifacts"]
     assert "baseline_health_evaluation" in manifest["indexed_artifacts"]
     assert "baseline_evidence_metrics" in manifest["indexed_artifacts"]
+    assert "paper_observation_readiness" in manifest["indexed_artifacts"]
     assert "turnover_summary" in manifest["indexed_artifacts"]
     assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
@@ -1334,13 +1499,16 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.11 - Turnover and Cost Model Evidence Materialization"
+            "Assistant v1.12 - Paper Observation Readiness Packet"
             in work_order
         )
         assert "collect_offline_review_feedback" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
+        assert "paper_observation_readiness.jsonl" in work_order
+        assert "## Paper observation readiness" in work_order
+        assert "hard_gate_prepared_not_authorized" in work_order
         assert "turnover_summary.jsonl" in work_order
         assert "cost_model_summary.jsonl" in work_order
         assert "paper_observation_summary" in work_order
@@ -1875,6 +2043,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Research candidate queue",
         "## Baseline health evaluation",
         "## Baseline evidence metrics",
+        "## Paper observation readiness",
         "## History delta",
         "## Safety assessment",
         "## Reviewer instructions",
@@ -1894,6 +2063,8 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
     assert "usable_control_harness" in handoff
     assert "baseline_health_evaluation.jsonl" in handoff
     assert "baseline_evidence_metrics.jsonl" in handoff
+    assert "paper_observation_readiness.jsonl" in handoff
+    assert "hard_gate_prepared_not_authorized" in handoff
     assert "metrics_partially_available" in handoff
     assert "etf-sma-authorized-adjusted-baseline-metrics" in handoff
     assert (
@@ -1912,6 +2083,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "research_candidate_queue.jsonl",
         "baseline_health_evaluation.jsonl",
         "baseline_evidence_metrics.jsonl",
+        "paper_observation_readiness.jsonl",
         "turnover_summary.jsonl",
         "cost_model_summary.jsonl",
         "review_inputs",
@@ -2151,11 +2323,12 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "20/23 required checks passed; 3 failed; 0 warnings"
+        "21/25 required checks passed; 4 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
         "required_operating_record_fields_exist",
+        "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
 

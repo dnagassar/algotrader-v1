@@ -1,11 +1,10 @@
-# Assistant v1.11 - Turnover and Cost Model Evidence Materialization
+# Assistant v1.12 - Paper Observation Readiness Packet
 
-- [x] Preserve Assistant v1/v1.1/v1.2/v1.3/v1.4/v1.5/v1.6/v1.7/v1.8/v1.9/v1.10 brief, operating record, manifest, validation, history-delta, executive action queue, research board, review handoff, decision-ledger, selector, work-order, research-candidate queue, baseline-health, and baseline-evidence behavior.
-- [x] Materialize deterministic local `turnover_summary.jsonl` from SPY SMA 50/200 signal-transition evidence under the selected daily-lab output root.
-- [x] Materialize deterministic local `cost_model_summary.jsonl` as an assumptions-only cost-model inventory that explicitly refuses per-trade and total-cost estimates without fill, spread, notional, and commission-schedule sources.
-- [x] Ingest turnover and cost-model artifacts into `baseline_evidence_metrics` with explicit artifact paths, hashes, parse statuses, ingest statuses, metric statuses, and remaining missing metric sources.
-- [x] Preserve `paper_observation_summary` as the only broker-read hard-gated metric source after all deterministic offline metric artifacts are present.
-- [x] Keep `profit_claim=none`, `paper_submit_readiness_status=not_ready_for_paper_submit`, `broker_state_not_observed`, and no broker/network/runtime dependency behavior intact.
-- [x] Update quality-gate checks, research candidate queue, baseline-health evaluation, next-action selector, work-order exports, operating brief, review handoff, operating record, and manifest for v1.11 turnover/cost evidence.
-- [x] Make prerequisite artifact chains explicit in generated work orders: daily packet output root, v1.10 prerequisite metric materialization, rerun daily packet for ingest, and leave paper observation hard-gated.
-- [ ] Complete required verification, including targeted test, safety guard group, offline verifier, v1.11 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.
+- [x] Preserve Assistant v1/v1.1/v1.2/v1.3/v1.4/v1.5/v1.6/v1.7/v1.8/v1.9/v1.10/v1.11 brief, operating record, manifest, validation, history-delta, executive action queue, research board, review handoff, decision-ledger, selector, work-order, research-candidate queue, baseline-health, baseline-evidence, turnover, and cost-model behavior.
+- [x] Add deterministic offline `paper_observation_readiness` metadata to the daily assistant packet without performing broker reads, broker mutation, paper submit, network calls, credential access, or live trading.
+- [x] Emit `paper_observation_readiness.jsonl` as a one-record JSONL artifact under the selected daily-lab output root.
+- [x] Define the future read-only broker observation scope, explicit Daniel approval phrase, expected outputs, required preflight booleans, stop conditions, broker-state claim policy, forbidden operations, and offline-only safety scope.
+- [x] Keep `broker_state_mode=broker_state_not_observed`, `paper_submit_authorized=false`, `profit_claim=none`, and position/order-state absence claims forbidden.
+- [x] Surface `paper_observation_readiness` in `operating_record.jsonl`, `manifest.jsonl`, `operating_brief.md`, `review_handoff.md`, `baseline_evidence_metrics`, `baseline_health_evaluation`, `research_candidate_queue`, `next_action_selector`, and work-order exports.
+- [x] Update deterministic quality-gate checks for readiness artifact existence, manifest indexing, approval phrase, no broker read, broker-state wording, no position/order-state absence claim, paper-submit lockout, profit claim, live-trading prohibition, and preservation of v1 through v1.11 outputs.
+- [ ] Complete required verification, including targeted test, safety guard group, offline verifier, v1.12 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.

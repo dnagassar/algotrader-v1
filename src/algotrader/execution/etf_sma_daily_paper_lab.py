@@ -48,11 +48,14 @@ _WORK_ORDER_EXPORTS_VERSION = "assistant_v1.6_work_order_exports"
 _RESEARCH_CANDIDATE_QUEUE_VERSION = "assistant_v1.7_research_candidate_queue"
 _BASELINE_HEALTH_EVALUATION_VERSION = "assistant_v1.8_baseline_health_evaluation"
 _BASELINE_EVIDENCE_METRICS_VERSION = "assistant_v1.9_baseline_evidence_metrics"
-_PHASE_NAME = "Assistant v1.11 - Turnover and Cost Model Evidence Materialization"
+_PAPER_OBSERVATION_READINESS_VERSION = (
+    "assistant_v1.12_paper_observation_readiness"
+)
+_PHASE_NAME = "Assistant v1.12 - Paper Observation Readiness Packet"
 _PHASE_GOAL = (
-    "Materialize and ingest deterministic local turnover and cost-model "
-    "evidence for the active SPY SMA 50/200 control harness while preserving "
-    "paper-submit and broker safety lockouts."
+    "Create an offline-only hard-gate packet for the remaining "
+    "paper_observation_summary evidence gap while preserving paper-submit and "
+    "broker safety lockouts."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -70,6 +73,13 @@ _DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
 _RESEARCH_CANDIDATE_QUEUE_FILENAME = "research_candidate_queue.jsonl"
 _BASELINE_HEALTH_EVALUATION_FILENAME = "baseline_health_evaluation.jsonl"
 _BASELINE_EVIDENCE_METRICS_FILENAME = "baseline_evidence_metrics.jsonl"
+_PAPER_OBSERVATION_READINESS_FILENAME = "paper_observation_readiness.jsonl"
+_PAPER_OBSERVATION_APPROVAL_PHRASE = (
+    "Daniel approves read-only paper observation for SPY paper lab: "
+    "account/clock/status, SPY position, SPY open orders, and latest paper "
+    "portfolio snapshot only; no submit/cancel/replace/close/liquidate/delete/"
+    "retry mutation/live trading."
+)
 _BASELINE_METRIC_MATERIALIZATION_FILENAME = (
     "baseline_authorized_adjusted_metrics.jsonl"
 )
@@ -113,6 +123,7 @@ _EXPECTED_ARTIFACTS = (
     ("operating_brief", _BRIEF_FILENAME),
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
+    ("paper_observation_readiness", _PAPER_OBSERVATION_READINESS_FILENAME),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -145,6 +156,9 @@ _REQUIRED_PACKET_FIELDS = (
     "research_candidate_queue_version",
     "research_candidate_queue_path",
     "research_candidate_queue",
+    "paper_observation_readiness_version",
+    "paper_observation_readiness_path",
+    "paper_observation_readiness",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -199,6 +213,9 @@ _REQUIRED_MANIFEST_FIELDS = (
     "research_candidate_queue_version",
     "research_candidate_queue_path",
     "research_candidate_queue",
+    "paper_observation_readiness_version",
+    "paper_observation_readiness_path",
+    "paper_observation_readiness",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -395,6 +412,8 @@ _REQUIRED_RESEARCH_CANDIDATE_QUEUE_FIELDS = (
     "selected_safe_candidate_id",
     "selected_safe_candidate_priority",
     "selected_safe_candidate_title",
+    "paper_observation_readiness_path",
+    "paper_observation_readiness",
     "candidates",
 )
 _REQUIRED_RESEARCH_CANDIDATE_FIELDS = (
@@ -486,6 +505,8 @@ _REQUIRED_BASELINE_HEALTH_EVALUATION_FIELDS = (
     "baseline_metric_artifact_ingest_status",
     "baseline_metric_artifact_parse_status",
     "baseline_remaining_missing_metric_sources",
+    "paper_observation_readiness_path",
+    "paper_observation_readiness",
     "baseline_evidence_metrics_path",
     "next_safe_metric_command",
     "paper_submit_readiness_status",
@@ -540,6 +561,8 @@ _REQUIRED_BASELINE_EVIDENCE_METRICS_FIELDS = (
     "quantified_metric_summary",
     "remaining_missing_metric_sources",
     "paper_observation_status",
+    "paper_observation_readiness_path",
+    "paper_observation_readiness",
     "broker_state_mode",
     "paper_submit_readiness_status",
     "profit_claim",
@@ -551,6 +574,31 @@ _REQUIRED_BASELINE_EVIDENCE_METRICS_FIELDS = (
     "requires_daniel",
     "hard_gate_required",
     "safety_scope",
+)
+_REQUIRED_PAPER_OBSERVATION_READINESS_FIELDS = (
+    "paper_observation_readiness_version",
+    "status",
+    "artifact_path",
+    "generation_mode",
+    "readiness_status",
+    "remaining_gap",
+    "hard_gate_required",
+    "requires_daniel",
+    "approval_phrase_required",
+    "allowed_future_read_operations",
+    "forbidden_future_operations",
+    "required_preflight_booleans",
+    "expected_output_artifacts",
+    "stop_conditions",
+    "broker_state_claim_policy",
+    "broker_reads_performed",
+    "broker_mutation_performed",
+    "runtime_callouts_performed",
+    "network_calls_performed",
+    "paper_submit_authorized",
+    "profit_claim",
+    "safety_scope",
+    "broker_state_mode",
 )
 _RESEARCH_CANDIDATE_FORBIDDEN_TERMS = (
     "submit_order",
@@ -709,6 +757,7 @@ def _write_packet_artifacts(
     output_root: Path,
     payload: dict[str, Any],
 ) -> None:
+    _apply_paper_observation_readiness(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -717,6 +766,7 @@ def _write_packet_artifacts(
     _write_research_candidate_queue_artifact(output_root, payload)
     _write_baseline_evidence_metrics_artifact(output_root, payload)
     _write_baseline_health_evaluation_artifact(output_root, payload)
+    _write_paper_observation_readiness_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -737,6 +787,27 @@ def _write_packet_artifacts(
     manifest_data = _build_manifest(output_root, payload)
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
+
+def _apply_paper_observation_readiness(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    readiness = _build_paper_observation_readiness(payload, artifact_paths)
+    payload["paper_observation_readiness_version"] = (
+        _PAPER_OBSERVATION_READINESS_VERSION
+    )
+    payload["paper_observation_readiness_path"] = str(
+        artifact_paths["paper_observation_readiness"]
+    )
+    payload["paper_observation_readiness"] = readiness
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["paper_observation_readiness_path"] = payload[
+            "paper_observation_readiness_path"
+        ]
+        dashboard["paper_observation_readiness"] = dict(readiness)
 
 
 def _apply_research_candidate_queue(
@@ -803,6 +874,7 @@ def _build_baseline_evidence_metrics(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     active_baseline = _active_baseline_record(payload)
+    readiness = _paper_observation_readiness_record(payload, artifact_paths)
     output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
     metric_artifact_ingest = _ingest_baseline_metric_artifacts(output_root)
     metric_artifact_records = metric_artifact_ingest.pop("_records")
@@ -921,6 +993,10 @@ def _build_baseline_evidence_metrics(
         ),
         "remaining_missing_metric_sources": remaining_missing_sources,
         "paper_observation_status": "broker_state_not_observed",
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": dict(readiness),
         "broker_state_mode": str(
             payload.get("broker_state_mode", "broker_state_not_observed")
         ),
@@ -1469,6 +1545,7 @@ def _build_baseline_health_evaluation(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     active_baseline = _active_baseline_record(payload)
+    readiness = _paper_observation_readiness_record(payload, artifact_paths)
     missing_evidence = _baseline_missing_evidence(payload, active_baseline)
     health_status = _baseline_health_status(payload, active_baseline)
     evidence_status = _baseline_evidence_status(active_baseline, missing_evidence)
@@ -1549,6 +1626,10 @@ def _build_baseline_health_evaluation(
                 metrics_record.get("missing_metric_sources", []),
             )
         ),
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": dict(readiness),
         "baseline_evidence_metrics_path": str(
             payload.get(
                 "baseline_evidence_metrics_path",
@@ -1766,6 +1847,7 @@ def _build_research_candidate_queue(
     payload: Mapping[str, Any],
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
+    readiness = _paper_observation_readiness_record(payload, artifact_paths)
     candidates: list[dict[str, Any]] = []
     if _research_candidate_needs_p0_repair(payload):
         candidates.append(_quality_gate_repair_candidate(payload))
@@ -1843,6 +1925,10 @@ def _build_research_candidate_queue(
             if selected_safe_candidate is not None
             else None
         ),
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": dict(readiness),
         "candidates": candidates,
     }
 
@@ -2045,9 +2131,9 @@ def _baseline_evidence_metrics_candidate(
             "signal evidence from locally materialized quantitative baseline metrics."
         ),
         rationale=(
-            "Assistant v1.11 should ingest the v1.10 prerequisite metric artifacts "
-            "plus deterministic turnover and cost-model summaries without broker "
-            "or network access."
+            "Assistant v1.12 preserves v1.11 metric artifact ingest while adding "
+            "the offline-only paper observation readiness hard gate without "
+            "broker or network access."
         ),
         evidence_sources=[
             "baseline_evidence_metrics",
@@ -2223,12 +2309,10 @@ def _paper_lab_observation_readiness_candidate(payload: Mapping[str, Any]) -> di
             "safety_labels",
         ],
         required_data=[
-            "offline readiness checklist",
-            "Daniel-scoped hard gate before any future broker-facing observation",
+            _PAPER_OBSERVATION_READINESS_FILENAME,
+            "Daniel-scoped hard gate before any future read-only observation",
         ],
-        expected_artifact_or_command=(
-            "future offline readiness checklist only; no broker-facing command"
-        ),
+        expected_artifact_or_command=_PAPER_OBSERVATION_READINESS_FILENAME,
         priority="P2",
         status="blocked",
         blocked_by=["broker_state_not_observed", "paper_submit_not_authorized"],
@@ -2467,6 +2551,20 @@ def _write_baseline_evidence_metrics_artifact(
     record = metrics if isinstance(metrics, Mapping) else {}
     line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
     (output_root / _BASELINE_EVIDENCE_METRICS_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _write_paper_observation_readiness_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    readiness = payload.get("paper_observation_readiness")
+    record = readiness if isinstance(readiness, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _PAPER_OBSERVATION_READINESS_FILENAME).write_text(
         line,
         encoding="utf-8",
         newline="\n",
@@ -2959,6 +3057,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     baseline_evidence_metrics_defaults = _default_baseline_evidence_metrics_fields(
         artifact_paths
     )
+    paper_observation_readiness_defaults = (
+        _default_paper_observation_readiness_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3037,6 +3138,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **decision_ledger_defaults,
         **research_candidate_queue_defaults,
         **baseline_evidence_metrics_defaults,
+        **paper_observation_readiness_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3056,6 +3158,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "baseline_evidence_metrics": artifact_paths[
                 "baseline_evidence_metrics"
+            ],
+            "paper_observation_readiness": artifact_paths[
+                "paper_observation_readiness"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3155,6 +3260,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "baseline_evidence_metrics": dict(
                 baseline_evidence_metrics_defaults["baseline_evidence_metrics"]
+            ),
+            "paper_observation_readiness_path": (
+                paper_observation_readiness_defaults[
+                    "paper_observation_readiness_path"
+                ]
+            ),
+            "paper_observation_readiness": dict(
+                paper_observation_readiness_defaults[
+                    "paper_observation_readiness"
+                ]
             ),
             "next_action_selector": dict(
                 next_action_selector_defaults["next_action_selector"]
@@ -3520,6 +3635,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "baseline_evidence_metrics": _normalize_path(
             output_root / _BASELINE_EVIDENCE_METRICS_FILENAME
         ),
+        "paper_observation_readiness": _normalize_path(
+            output_root / _PAPER_OBSERVATION_READINESS_FILENAME
+        ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
         "gpt_next_action_handoff": _normalize_path(
@@ -3590,6 +3708,7 @@ def _default_decision_ledger_fields(
 def _default_research_candidate_queue_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
     return {
         "research_candidate_queue_version": _RESEARCH_CANDIDATE_QUEUE_VERSION,
         "research_candidate_queue_path": str(
@@ -3613,6 +3732,10 @@ def _default_research_candidate_queue_fields(
             "selected_safe_candidate_id": None,
             "selected_safe_candidate_priority": None,
             "selected_safe_candidate_title": None,
+            "paper_observation_readiness_path": str(
+                artifact_paths["paper_observation_readiness"]
+            ),
+            "paper_observation_readiness": dict(readiness),
             "candidates": [],
         },
     }
@@ -3624,6 +3747,7 @@ def _default_baseline_health_evaluation_fields(
     next_safe_metric_command = _baseline_evidence_next_safe_metric_command(
         artifact_paths
     )
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
     return {
         "baseline_health_evaluation_version": _BASELINE_HEALTH_EVALUATION_VERSION,
         "baseline_health_evaluation_path": str(
@@ -3661,6 +3785,10 @@ def _default_baseline_health_evaluation_fields(
                 for artifact_id, _filename in _BASELINE_METRIC_ARTIFACTS
             },
             "baseline_remaining_missing_metric_sources": [],
+            "paper_observation_readiness_path": str(
+                artifact_paths["paper_observation_readiness"]
+            ),
+            "paper_observation_readiness": dict(readiness),
             "baseline_evidence_metrics_path": str(
                 artifact_paths["baseline_evidence_metrics"]
             ),
@@ -3688,6 +3816,7 @@ def _default_baseline_evidence_metrics_fields(
 ) -> dict[str, Any]:
     next_artifacts = _baseline_metric_next_artifacts(artifact_paths)
     output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
     artifact_paths_by_id = {
         artifact_id: _normalize_path(output_root / filename)
         for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS
@@ -3750,6 +3879,10 @@ def _default_baseline_evidence_metrics_fields(
             "quantified_metric_summary": {},
             "remaining_missing_metric_sources": list(missing_sources),
             "paper_observation_status": "broker_state_not_observed",
+            "paper_observation_readiness_path": str(
+                artifact_paths["paper_observation_readiness"]
+            ),
+            "paper_observation_readiness": dict(readiness),
             "broker_state_mode": "broker_state_not_observed",
             "paper_submit_readiness_status": "not_ready_for_paper_submit",
             "profit_claim": "none",
@@ -3772,9 +3905,127 @@ def _default_baseline_evidence_metrics_fields(
     }
 
 
+def _default_paper_observation_readiness_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
+    readiness["status"] = "not_generated"
+    readiness["readiness_status"] = "offline_readiness_packet_not_generated"
+    return {
+        "paper_observation_readiness_version": (
+            _PAPER_OBSERVATION_READINESS_VERSION
+        ),
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": readiness,
+    }
+
+
+def _build_paper_observation_readiness(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    broker_state_mode = str(
+        payload.get("broker_state_mode", "broker_state_not_observed")
+    )
+    if broker_state_mode != "broker_state_not_observed":
+        broker_state_mode = "broker_state_not_observed"
+    return {
+        "paper_observation_readiness_version": (
+            _PAPER_OBSERVATION_READINESS_VERSION
+        ),
+        "status": "generated",
+        "artifact_path": str(artifact_paths["paper_observation_readiness"]),
+        "generation_mode": "deterministic_offline_hard_gate_packet",
+        "readiness_status": "hard_gate_prepared_not_authorized",
+        "remaining_gap": "paper_observation_summary",
+        "hard_gate_required": True,
+        "requires_daniel": True,
+        "approval_phrase_required": _PAPER_OBSERVATION_APPROVAL_PHRASE,
+        "allowed_future_read_operations": [
+            "account_clock_status_read_if_needed",
+            "SPY_position_read",
+            "SPY_open_order_read",
+            "latest_paper_portfolio_snapshot_read",
+        ],
+        "forbidden_future_operations": [
+            "submit",
+            "cancel",
+            "replace",
+            "close",
+            "close_all_positions",
+            "liquidate",
+            "delete",
+            "retry mutation",
+            "live trading",
+        ],
+        "required_preflight_booleans": {
+            "APP_PROFILE_is_paper": False,
+            "ALPACA_API_KEY_loaded": False,
+            "ALPACA_API_SECRET_KEY_loaded": False,
+            "ALPACA_SECRET_KEY_loaded": False,
+            "APCA_API_KEY_ID_loaded": False,
+            "APCA_API_SECRET_KEY_loaded": False,
+        },
+        "expected_output_artifacts": [
+            _PAPER_OBSERVATION_READINESS_FILENAME,
+            "future_paper_observation_summary.jsonl_after_explicit_approval",
+            "future_operating_record_and_manifest_broker_state_evidence",
+        ],
+        "stop_conditions": [
+            "any_required_preflight_boolean_is_true",
+            "approval_phrase_missing_or_changed",
+            "requested_scope_expands_beyond_SPY_read_only_observation",
+            "requested_action_is_submit_cancel_replace_close_close_all_positions_liquidate_delete_or_retry_mutation",
+            "live_trading_requested",
+            "paper_or_live_mode_change_requested",
+            "credential_value_would_be_printed",
+            "broker_response_is_ambiguous",
+            "broker_read_attempted_during_this_offline_readiness_milestone",
+        ],
+        "broker_state_claim_policy": {
+            "current_mode": broker_state_mode,
+            "claim_status": "broker_state_not_observed",
+            "position_state_claims_allowed": False,
+            "open_order_state_claims_allowed": False,
+            "policy": (
+                "State only that broker state was not observed; do not infer "
+                "position or open-order state until a separately approved "
+                "read-only observation artifact exists."
+            ),
+            "forbidden_claim_types": [
+                "position_absence_claim",
+                "open_order_absence_claim",
+                "cash_or_equity_claim_without_read",
+                "broker_state_present_tense_claim",
+            ],
+        },
+        "broker_reads_performed": False,
+        "broker_mutation_performed": False,
+        "runtime_callouts_performed": False,
+        "network_calls_performed": False,
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+        "broker_state_mode": broker_state_mode,
+    }
+
+
+def _paper_observation_readiness_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    readiness = payload.get("paper_observation_readiness")
+    if isinstance(readiness, Mapping):
+        return dict(readiness)
+    return _build_paper_observation_readiness(payload, artifact_paths)
+
+
 def _default_next_action_selector_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -3802,6 +4053,10 @@ def _default_next_action_selector_fields(
             "network_runtime_calls_allowed": False,
             "safety_scope": "offline_text_artifacts_only_no_broker_no_network_no_submit",
             "forbidden_actions": _forbidden_behavior_lines(),
+            "paper_observation_readiness_path": str(
+                artifact_paths["paper_observation_readiness"]
+            ),
+            "paper_observation_readiness": dict(readiness),
             "source_state": {},
         }
     }
@@ -3811,6 +4066,7 @@ def _default_work_order_export_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
+    readiness = _build_paper_observation_readiness({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -3824,6 +4080,13 @@ def _default_work_order_export_fields(
             ),
             "baseline_evidence_metrics_path": str(
                 artifact_paths["baseline_evidence_metrics"]
+            ),
+            "paper_observation_readiness_path": str(
+                artifact_paths["paper_observation_readiness"]
+            ),
+            "paper_observation_readiness": dict(readiness),
+            "paper_observation_readiness_status": str(
+                readiness["readiness_status"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -4252,6 +4515,19 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("baseline_evidence_metrics"), Mapping)
             else []
         ),
+        "paper_observation_readiness_status": str(
+            payload.get("paper_observation_readiness", {}).get(
+                "readiness_status",
+                "offline_readiness_packet_missing",
+            )
+            if isinstance(payload.get("paper_observation_readiness"), Mapping)
+            else "offline_readiness_packet_missing"
+        ),
+        "paper_observation_readiness": dict(
+            payload.get("paper_observation_readiness", {})
+            if isinstance(payload.get("paper_observation_readiness"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -4314,6 +4590,14 @@ def _selector_result(
         "network_runtime_calls_allowed": False,
         "safety_scope": "offline_text_artifacts_only_no_broker_no_network_no_submit",
         "forbidden_actions": _forbidden_behavior_lines(),
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": dict(
+            source_state.get("paper_observation_readiness", {})
+            if isinstance(source_state.get("paper_observation_readiness"), Mapping)
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -4387,6 +4671,7 @@ def _apply_work_order_exports(
         selected_candidate_id = selector.get("selected_research_candidate_id")
     metrics = payload.get("baseline_evidence_metrics")
     metrics_record = metrics if isinstance(metrics, Mapping) else {}
+    readiness = _paper_observation_readiness_record(payload, artifact_paths)
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -4397,6 +4682,13 @@ def _apply_work_order_exports(
         "research_candidate_queue_path": str(artifact_paths["research_candidate_queue"]),
         "baseline_evidence_metrics_path": str(
             artifact_paths["baseline_evidence_metrics"]
+        ),
+        "paper_observation_readiness_path": str(
+            artifact_paths["paper_observation_readiness"]
+        ),
+        "paper_observation_readiness": dict(readiness),
+        "paper_observation_readiness_status": str(
+            readiness.get("readiness_status", "offline_readiness_packet_missing")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -5422,12 +5714,22 @@ def _build_quality_gate(
     baseline_metrics_ok, baseline_metrics_summary = (
         _quality_baseline_evidence_metrics_summary(root, packet_for_checks)
     )
+    readiness_ok, readiness_summary = (
+        _quality_paper_observation_readiness_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
     )
     turnover_cost_ok, turnover_cost_summary = (
         _quality_turnover_cost_artifact_summary(root, packet_for_checks)
+    )
+    legacy_outputs_ok, legacy_outputs_summary = (
+        _quality_legacy_outputs_preserved_summary(artifact_presence_status)
     )
 
     required_checks = [
@@ -5498,6 +5800,11 @@ def _build_quality_gate(
             baseline_metrics_summary,
         ),
         _quality_check(
+            "paper_observation_readiness_generated",
+            readiness_ok,
+            readiness_summary,
+        ),
+        _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
             metric_ingest_ok,
             metric_ingest_summary,
@@ -5506,6 +5813,11 @@ def _build_quality_gate(
             "turnover_and_cost_model_artifacts_explicit",
             turnover_cost_ok,
             turnover_cost_summary,
+        ),
+        _quality_check(
+            "assistant_v1_through_v1_11_outputs_preserved",
+            legacy_outputs_ok,
+            legacy_outputs_summary,
         ),
         _quality_check(
             "history_delta_exists",
@@ -5651,6 +5963,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Research Candidate Queue",
         "## Baseline Health Evaluation",
         "## Baseline Evidence Metrics",
+        "## Paper Observation Readiness",
         "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
@@ -5659,6 +5972,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         _RESEARCH_CANDIDATE_QUEUE_FILENAME,
         _BASELINE_HEALTH_EVALUATION_FILENAME,
         _BASELINE_EVIDENCE_METRICS_FILENAME,
+        _PAPER_OBSERVATION_READINESS_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -5845,6 +6159,104 @@ def _quality_baseline_evidence_metrics_summary(
         f"{metrics['evidence_snapshot_status']}; "
         f"next_safe_metric_command={metrics['next_safe_metric_command']}"
     )
+
+
+def _quality_paper_observation_readiness_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_paper_observation_readiness_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    readiness = packet["paper_observation_readiness"]
+    assert isinstance(readiness, Mapping)
+    artifact_path = output_root / _PAPER_OBSERVATION_READINESS_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_PAPER_OBSERVATION_READINESS_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, f"{_PAPER_OBSERVATION_READINESS_FILENAME} must be one JSONL record"
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_PAPER_OBSERVATION_READINESS_FILENAME} is not JSON"
+    if artifact_record != readiness:
+        return False, "paper observation readiness artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("paper_observation_readiness")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index paper_observation_readiness"
+    if not str(indexed.get("path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        return False, "manifest readiness artifact path is not explicit"
+    if readiness["approval_phrase_required"] != _PAPER_OBSERVATION_APPROVAL_PHRASE:
+        return False, "approval phrase is not explicit"
+    if readiness["broker_reads_performed"] is not False:
+        return False, "broker read was performed"
+    if readiness["broker_state_mode"] != "broker_state_not_observed":
+        return False, "broker state wording changed"
+    if readiness["paper_submit_authorized"] is not False:
+        return False, "paper_submit_authorized is not false"
+    if readiness["profit_claim"] != "none":
+        return False, "profit_claim is not none"
+    forbidden_ops = {
+        str(item) for item in readiness.get("forbidden_future_operations", [])
+    }
+    if "live trading" not in forbidden_ops:
+        return False, "live trading is not explicitly forbidden"
+    serialized = json.dumps(
+        _json_safe(readiness),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    for forbidden in _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS:
+        if forbidden in serialized:
+            return False, f"forbidden broker-state claim found: {forbidden}"
+    return True, (
+        "paper observation readiness generated; broker_reads_performed=false; "
+        "broker_state_mode=broker_state_not_observed; paper_submit_authorized=false"
+    )
+
+
+def _quality_legacy_outputs_preserved_summary(
+    artifact_presence_status: Mapping[str, Any],
+) -> tuple[bool, str]:
+    artifacts = artifact_presence_status.get("artifacts")
+    if not isinstance(artifacts, Mapping):
+        return False, "artifact presence map missing"
+    legacy_artifact_ids = (
+        "operating_brief",
+        "operating_record",
+        "manifest",
+        "research_candidate_queue",
+        "baseline_health_evaluation",
+        "baseline_evidence_metrics",
+        "review_handoff",
+        "gpt_next_action_handoff",
+        "codex_work_order",
+        "antigravity_review_order",
+        "claude_critique_order",
+    )
+    missing = [
+        artifact_id
+        for artifact_id in legacy_artifact_ids
+        if not (
+            isinstance(artifacts.get(artifact_id), Mapping)
+            and artifacts[artifact_id].get("exists") is True
+            and artifacts[artifact_id].get("non_empty") is True
+        )
+    ]
+    if missing:
+        return False, "legacy_outputs_missing=" + ",".join(missing)
+    return True, "v1 through v1.11 expected outputs remain present and non-empty"
 
 
 def _quality_metric_artifact_ingest_summary(
@@ -6227,6 +6639,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         )
     )
     missing.extend(_missing_research_candidate_queue_fields("", packet))
+    missing.extend(_missing_paper_observation_readiness_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -6287,6 +6700,7 @@ def _missing_manifest_fields(
         )
     )
     missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
+    missing.extend(_missing_paper_observation_readiness_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -6310,6 +6724,9 @@ def _missing_manifest_fields(
         "research_candidate_queue_version",
         "research_candidate_queue_path",
         "research_candidate_queue",
+        "paper_observation_readiness_version",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -6363,6 +6780,14 @@ def _missing_manifest_fields(
         != dict(packet["research_candidate_queue"])
     ):
         missing.append("manifest.research_candidate_queue.matches_record")
+
+    if (
+        isinstance(packet.get("paper_observation_readiness"), Mapping)
+        and isinstance(manifest.get("paper_observation_readiness"), Mapping)
+        and dict(manifest["paper_observation_readiness"])
+        != dict(packet["paper_observation_readiness"])
+    ):
+        missing.append("manifest.paper_observation_readiness.matches_record")
 
     if (
         isinstance(packet.get("baseline_health_evaluation"), Mapping)
@@ -6463,6 +6888,16 @@ def _missing_research_candidate_queue_fields(
     ):
         if field_name not in queue:
             missing.append(f"{field_prefix}research_candidate_queue.{field_name}")
+    if not str(queue.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}research_candidate_queue.paper_observation_readiness_path"
+        )
+    if not isinstance(queue.get("paper_observation_readiness"), Mapping):
+        missing.append(
+            f"{field_prefix}research_candidate_queue.paper_observation_readiness.object"
+        )
     for index, candidate in enumerate(candidates):
         candidate_prefix = (
             f"{field_prefix}research_candidate_queue.candidates.{index}"
@@ -6491,6 +6926,161 @@ def _missing_research_candidate_queue_fields(
                 missing.append(f"{candidate_prefix}.{bool_field}.bool")
         if _research_candidate_contains_forbidden_term(candidate):
             missing.append(f"{candidate_prefix}.safe")
+    return missing
+
+
+def _missing_paper_observation_readiness_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    readiness = packet.get("paper_observation_readiness")
+    if not isinstance(readiness, Mapping):
+        return [f"{field_prefix}paper_observation_readiness"]
+    for field_name in _REQUIRED_PAPER_OBSERVATION_READINESS_FIELDS:
+        if field_name not in readiness:
+            missing.append(f"{field_prefix}paper_observation_readiness.{field_name}")
+    if (
+        packet.get("paper_observation_readiness_version")
+        != _PAPER_OBSERVATION_READINESS_VERSION
+    ):
+        missing.append(f"{field_prefix}paper_observation_readiness_version")
+    if (
+        readiness.get("paper_observation_readiness_version")
+        != _PAPER_OBSERVATION_READINESS_VERSION
+    ):
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.paper_observation_readiness_version"
+        )
+    if not str(packet.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(f"{field_prefix}paper_observation_readiness_path")
+    if not str(readiness.get("artifact_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(f"{field_prefix}paper_observation_readiness.artifact_path")
+    if readiness.get("status") not in {"generated", "not_generated"}:
+        missing.append(f"{field_prefix}paper_observation_readiness.status.allowed")
+    if readiness.get("readiness_status") not in {
+        "hard_gate_prepared_not_authorized",
+        "offline_readiness_packet_not_generated",
+    }:
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.readiness_status"
+        )
+    if readiness.get("remaining_gap") != "paper_observation_summary":
+        missing.append(f"{field_prefix}paper_observation_readiness.remaining_gap")
+    for true_field in ("hard_gate_required", "requires_daniel"):
+        if readiness.get(true_field) is not True:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.{true_field}.true"
+            )
+    if readiness.get("approval_phrase_required") != _PAPER_OBSERVATION_APPROVAL_PHRASE:
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.approval_phrase_required"
+        )
+    if not isinstance(readiness.get("allowed_future_read_operations"), list):
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.allowed_future_read_operations.list"
+        )
+    if not isinstance(readiness.get("forbidden_future_operations"), list):
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.forbidden_future_operations.list"
+        )
+    else:
+        forbidden_ops = {str(item) for item in readiness["forbidden_future_operations"]}
+        for operation in (
+            "submit",
+            "cancel",
+            "replace",
+            "close",
+            "close_all_positions",
+            "liquidate",
+            "delete",
+            "retry mutation",
+            "live trading",
+        ):
+            if operation not in forbidden_ops:
+                missing.append(
+                    f"{field_prefix}paper_observation_readiness.forbidden_future_operations.{operation}"
+                )
+    preflight = readiness.get("required_preflight_booleans")
+    if not isinstance(preflight, Mapping):
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.required_preflight_booleans.object"
+        )
+    else:
+        for key in (
+            "APP_PROFILE_is_paper",
+            "ALPACA_API_KEY_loaded",
+            "ALPACA_API_SECRET_KEY_loaded",
+            "ALPACA_SECRET_KEY_loaded",
+            "APCA_API_KEY_ID_loaded",
+            "APCA_API_SECRET_KEY_loaded",
+        ):
+            if preflight.get(key) is not False:
+                missing.append(
+                    f"{field_prefix}paper_observation_readiness.required_preflight_booleans.{key}.false"
+                )
+    for list_field in ("expected_output_artifacts", "stop_conditions"):
+        if not isinstance(readiness.get(list_field), list):
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.{list_field}.list"
+            )
+    if isinstance(readiness.get("expected_output_artifacts"), list):
+        if _PAPER_OBSERVATION_READINESS_FILENAME not in {
+            str(item) for item in readiness["expected_output_artifacts"]
+        }:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.expected_output_artifacts.current_artifact"
+            )
+    if not isinstance(readiness.get("broker_state_claim_policy"), Mapping):
+        missing.append(
+            f"{field_prefix}paper_observation_readiness.broker_state_claim_policy.object"
+        )
+    else:
+        policy = readiness["broker_state_claim_policy"]
+        if policy.get("current_mode") != "broker_state_not_observed":
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.broker_state_claim_policy.current_mode"
+            )
+        if policy.get("position_state_claims_allowed") is not False:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.broker_state_claim_policy.position_state_claims_allowed.false"
+            )
+        if policy.get("open_order_state_claims_allowed") is not False:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.broker_state_claim_policy.open_order_state_claims_allowed.false"
+            )
+    for false_field in (
+        "broker_reads_performed",
+        "broker_mutation_performed",
+        "runtime_callouts_performed",
+        "network_calls_performed",
+        "paper_submit_authorized",
+    ):
+        if readiness.get(false_field) is not False:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.{false_field}.false"
+            )
+    if readiness.get("profit_claim") != "none":
+        missing.append(f"{field_prefix}paper_observation_readiness.profit_claim")
+    if readiness.get("safety_scope") != "offline_only":
+        missing.append(f"{field_prefix}paper_observation_readiness.safety_scope")
+    if readiness.get("broker_state_mode") != "broker_state_not_observed":
+        missing.append(f"{field_prefix}paper_observation_readiness.broker_state_mode")
+    serialized = json.dumps(
+        _json_safe(readiness),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    for forbidden in _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS:
+        if forbidden in serialized:
+            missing.append(
+                f"{field_prefix}paper_observation_readiness.forbidden_broker_state_claim.{forbidden}"
+            )
     return missing
 
 
@@ -6561,6 +7151,16 @@ def _missing_baseline_health_evaluation_fields(
     ):
         missing.append(
             f"{field_prefix}baseline_health_evaluation.baseline_remaining_missing_metric_sources.list"
+        )
+    if not str(evaluation.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.paper_observation_readiness_path"
+        )
+    if not isinstance(evaluation.get("paper_observation_readiness"), Mapping):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.paper_observation_readiness.object"
         )
     if not str(evaluation.get("baseline_evidence_metrics_path", "")).strip():
         missing.append(
@@ -6770,6 +7370,16 @@ def _missing_baseline_evidence_metrics_fields(
         missing.append(
             f"{field_prefix}baseline_evidence_metrics.paper_submit_readiness_status"
         )
+    if not str(metrics.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}baseline_evidence_metrics.paper_observation_readiness_path"
+        )
+    if not isinstance(metrics.get("paper_observation_readiness"), Mapping):
+        missing.append(
+            f"{field_prefix}baseline_evidence_metrics.paper_observation_readiness.object"
+        )
     if metrics.get("profit_claim") != "none":
         missing.append(f"{field_prefix}baseline_evidence_metrics.profit_claim")
     for list_field in (
@@ -6844,6 +7454,8 @@ def _missing_next_action_selector_fields(
         "network_runtime_calls_allowed",
         "safety_scope",
         "forbidden_actions",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
         "source_state",
     )
     for field_name in required_fields:
@@ -6886,6 +7498,16 @@ def _missing_next_action_selector_fields(
         missing.append(f"{field_prefix}next_action_selector.forbidden_actions.list")
     if not isinstance(selector.get("source_state"), Mapping):
         missing.append(f"{field_prefix}next_action_selector.source_state.object")
+    if not str(selector.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector.paper_observation_readiness_path"
+        )
+    if not isinstance(selector.get("paper_observation_readiness"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector.paper_observation_readiness.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -6928,6 +7550,9 @@ def _missing_work_order_export_fields(
         "runtime_callouts_performed",
         "research_candidate_queue_path",
         "baseline_evidence_metrics_path",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
+        "paper_observation_readiness_status",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -6971,6 +7596,20 @@ def _missing_work_order_export_fields(
     if not str(exports.get("baseline_evidence_metrics_path", "")).strip():
         missing.append(
             f"{field_prefix}work_order_exports.baseline_evidence_metrics_path"
+        )
+    if not str(exports.get("paper_observation_readiness_path", "")).endswith(
+        _PAPER_OBSERVATION_READINESS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports.paper_observation_readiness_path"
+        )
+    if not isinstance(exports.get("paper_observation_readiness"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports.paper_observation_readiness.object"
+        )
+    if not str(exports.get("paper_observation_readiness_status", "")).strip():
+        missing.append(
+            f"{field_prefix}work_order_exports.paper_observation_readiness_status"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -7598,6 +8237,8 @@ def _render_work_order_markdown(
     queue = payload["research_candidate_queue"]
     baseline_health = payload["baseline_health_evaluation"]
     baseline_metrics = payload["baseline_evidence_metrics"]
+    readiness = payload["paper_observation_readiness"]
+    readiness_json = _json_markdown(readiness)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -7665,6 +8306,20 @@ def _render_work_order_markdown(
 * **Available metric sources**: {", ".join(baseline_metrics["available_metric_sources"])}
 * **Remaining missing metric sources**: {", ".join(baseline_metrics["remaining_missing_metric_sources"])}
 
+## Paper observation readiness
+* **Artifact**: `{payload["paper_observation_readiness_path"]}`
+* **Readiness status**: `{readiness["readiness_status"]}`
+* **Remaining gap**: `{readiness["remaining_gap"]}`
+* **Hard gate required**: {str(readiness["hard_gate_required"]).lower()}
+* **Requires Daniel**: {str(readiness["requires_daniel"]).lower()}
+* **Broker-state mode**: `{readiness["broker_state_mode"]}`
+* **Paper submit authorized**: {str(readiness["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{readiness["profit_claim"]}`
+* **Approval phrase required**: `{readiness["approval_phrase_required"]}`
+```json
+{readiness_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -7684,9 +8339,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_11_smoke`
-* `python -m algotrader.cli etf-sma-authorized-adjusted-baseline-metrics --symbol SPY --run-id spy_sma_50_200_baseline_metrics --run-log runs/daily_lab/v_assistant_v1_11_smoke/baseline_authorized_adjusted_metrics.jsonl --summary-path runs/daily_lab/v_assistant_v1_11_smoke/offline_backtest_confidence_summary.jsonl --source-evidence-path runs/daily_lab/v_assistant_v1_11_smoke/adjusted_close_evidence.jsonl --format json`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_11_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_12_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -7698,6 +8351,7 @@ def _render_work_order_markdown(
 * `research_candidate_queue.jsonl`
 * `baseline_health_evaluation.jsonl`
 * `baseline_evidence_metrics.jsonl`
+* `paper_observation_readiness.jsonl`
 * `baseline_authorized_adjusted_metrics.jsonl`
 * `offline_backtest_confidence_summary.jsonl`
 * `adjusted_close_evidence.jsonl`
@@ -7715,18 +8369,14 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Commands added or changed.
 6. Behavior implemented.
-7. Turnover materialization result.
-8. Cost-model materialization result.
-9. Artifact ingest fields and final ingest status.
-10. Remaining missing metric sources.
-11. Selected next safe action/command.
-12. Smoke artifact paths and quality gate result.
-13. Tests run and exact results.
-14. Safety assessment.
-15. Known limitations.
-16. Whether any runtime artifacts under `runs/` were staged.
-17. Final `git status --short`.
-18. Commit recommendation.
+7. Output artifacts produced, including `paper_observation_readiness.jsonl`.
+8. Quality gate result.
+9. Tests run and exact results.
+10. Safety assessment.
+11. Broker-read/broker-mutation/paper-submit/live-trading confirmation.
+12. Final `git status --short`.
+13. Untracked files intentionally left untouched.
+14. Recommended commit message.
 
 ## Commit instruction
 Do not commit unless GPT/Daniel explicitly asks after review.
@@ -7746,6 +8396,7 @@ def _forbidden_behavior_lines() -> list[str]:
         "Do not perform broker reads.",
         "Do not perform broker mutation.",
         "Do not submit paper orders.",
+        "Do not cancel, replace, close, close_all_positions, liquidate, delete, or retry broker mutation.",
         "Do not add live trading support.",
         "Do not add broker SDK imports.",
         "Do not add network calls.",
@@ -7778,6 +8429,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     )
     baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
+    readiness_json = _json_markdown(payload["paper_observation_readiness"])
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -7844,6 +8496,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Queue status**: `{payload["research_candidate_queue"]["status"]}`
 * **Top candidate**: `{payload["research_candidate_queue"]["top_candidate_id"]}` ({payload["research_candidate_queue"]["top_candidate_priority"]})
 * **Selected safe candidate**: `{payload["research_candidate_queue"]["selected_safe_candidate_id"]}` ({payload["research_candidate_queue"]["selected_safe_candidate_priority"]})
+* **Paper observation readiness**: `{payload["paper_observation_readiness"]["readiness_status"]}` at `{payload["paper_observation_readiness_path"]}`
 {research_candidate_queue_lines}
 
 ## Baseline Health Evaluation
@@ -7878,6 +8531,20 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Next safe metric command**: `{payload["baseline_evidence_metrics"]["next_safe_metric_command"]}`
 ```json
 {baseline_metrics_json}
+```
+
+## Paper Observation Readiness
+* **Artifact**: `{payload["paper_observation_readiness_path"]}`
+* **Readiness status**: `{payload["paper_observation_readiness"]["readiness_status"]}`
+* **Remaining gap**: `{payload["paper_observation_readiness"]["remaining_gap"]}`
+* **Hard gate required**: {str(payload["paper_observation_readiness"]["hard_gate_required"]).lower()}
+* **Requires Daniel**: {str(payload["paper_observation_readiness"]["requires_daniel"]).lower()}
+* **Broker-state mode**: `{payload["paper_observation_readiness"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["paper_observation_readiness"]["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{payload["paper_observation_readiness"]["profit_claim"]}`
+* **Approval phrase required**: `{payload["paper_observation_readiness"]["approval_phrase_required"]}`
+```json
+{readiness_json}
 ```
 
 ## Next Action Selector
@@ -7922,6 +8589,7 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     )
     baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
+    readiness_json = _json_markdown(payload["paper_observation_readiness"])
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -8053,6 +8721,21 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {baseline_metrics_json}
 ```
 
+## Paper observation readiness
+* **paper_observation_readiness_version**: `{payload["paper_observation_readiness_version"]}`
+* **paper_observation_readiness_path**: `{payload["paper_observation_readiness_path"]}`
+* **readiness_status**: `{payload["paper_observation_readiness"]["readiness_status"]}`
+* **remaining_gap**: `{payload["paper_observation_readiness"]["remaining_gap"]}`
+* **hard_gate_required**: {str(payload["paper_observation_readiness"]["hard_gate_required"]).lower()}
+* **requires_daniel**: {str(payload["paper_observation_readiness"]["requires_daniel"]).lower()}
+* **broker_state_mode**: `{payload["paper_observation_readiness"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["paper_observation_readiness"]["paper_submit_authorized"]).lower()}
+* **profit_claim**: `{payload["paper_observation_readiness"]["profit_claim"]}`
+* **approval_phrase_required**: `{payload["paper_observation_readiness"]["approval_phrase_required"]}`
+```json
+{readiness_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -8099,6 +8782,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "baseline_evidence_metrics",
             artifact_paths.get("baseline_evidence_metrics"),
+        ),
+        (
+            "paper_observation_readiness",
+            artifact_paths.get("paper_observation_readiness"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -8313,6 +9000,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["baseline_evidence_metrics"] = _artifact_metadata(
             baseline_evidence_metrics_path
         )
+    paper_observation_readiness_path = (
+        output_root / _PAPER_OBSERVATION_READINESS_FILENAME
+    )
+    if paper_observation_readiness_path.exists():
+        indexed_artifacts["paper_observation_readiness"] = _artifact_metadata(
+            paper_observation_readiness_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -8374,6 +9068,15 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "baseline_evidence_metrics_path": payload["baseline_evidence_metrics_path"],
         "baseline_evidence_metrics": dict(payload["baseline_evidence_metrics"]),
+        "paper_observation_readiness_version": payload[
+            "paper_observation_readiness_version"
+        ],
+        "paper_observation_readiness_path": payload[
+            "paper_observation_readiness_path"
+        ],
+        "paper_observation_readiness": dict(
+            payload["paper_observation_readiness"]
+        ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
