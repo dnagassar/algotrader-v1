@@ -249,6 +249,93 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         assert artifact_id in artifact["path"]
 
 
+def _assert_baseline_health_evaluation_shape(evaluation: dict[str, object]) -> None:
+    assert set(evaluation) == {
+        "baseline_health_evaluation_version",
+        "status",
+        "artifact_path",
+        "generation_mode",
+        "baseline_id",
+        "baseline_name",
+        "baseline_role",
+        "active_symbol",
+        "active_strategy",
+        "as_of_date",
+        "posture_status",
+        "preview_decision",
+        "broker_state_mode",
+        "blocker_status",
+        "quality_gate_status",
+        "decision_ledger_status",
+        "research_candidate_queue_status",
+        "health_status",
+        "confidence_status",
+        "evidence_status",
+        "paper_submit_readiness_status",
+        "known_strengths",
+        "known_weaknesses",
+        "missing_evidence",
+        "required_next_artifacts",
+        "next_safe_test",
+        "promotion_criteria",
+        "deprecation_criteria",
+        "replacement_research_status",
+        "requires_daniel",
+        "hard_gate_required",
+        "safety_scope",
+    }
+    assert evaluation["baseline_health_evaluation_version"] == (
+        "assistant_v1.8_baseline_health_evaluation"
+    )
+    assert evaluation["status"] == "generated"
+    assert str(evaluation["artifact_path"]).endswith("baseline_health_evaluation.jsonl")
+    assert evaluation["generation_mode"] == (
+        "deterministic_offline_from_packet_evidence"
+    )
+    assert evaluation["baseline_id"] == "spy_sma_50_200_daily_long_only"
+    assert evaluation["baseline_name"] == "SPY SMA 50/200 daily long-only baseline"
+    assert evaluation["baseline_role"] == (
+        "controlled_baseline_harness_for_assistant_evaluation"
+    )
+    assert evaluation["active_symbol"] == "SPY"
+    assert evaluation["active_strategy"] == "SMA 50/200"
+    assert evaluation["broker_state_mode"] == "broker_state_not_observed"
+    assert evaluation["blocker_status"] == "broker_state_not_observed"
+    assert evaluation["health_status"] in {
+        "usable_control_harness",
+        "evidence_incomplete",
+        "blocked_by_quality_gate",
+        "blocked_by_safety",
+        "not_ready_for_paper_submit",
+        "deprecated_candidate",
+    }
+    assert evaluation["evidence_status"] in {
+        "daily_signal_evidence_available",
+        "evidence_incomplete",
+        "not_evaluated",
+    }
+    assert evaluation["paper_submit_readiness_status"] == (
+        "not_ready_for_paper_submit"
+    )
+    assert evaluation["next_safe_test"] == (
+        "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
+        "-k baseline_health_evaluation"
+    )
+    for list_field in (
+        "known_strengths",
+        "known_weaknesses",
+        "missing_evidence",
+        "required_next_artifacts",
+        "promotion_criteria",
+        "deprecation_criteria",
+    ):
+        assert isinstance(evaluation[list_field], list)
+    assert isinstance(evaluation["requires_daniel"], bool)
+    assert isinstance(evaluation["hard_gate_required"], bool)
+    assert "offline_preview_only" in str(evaluation["safety_scope"])
+    assert "broker_state_not_observed" in json.dumps(evaluation, sort_keys=True)
+
+
 def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     expected_check_ids = [
         "required_packet_artifacts_exist",
@@ -261,6 +348,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "executive_action_queue_priorities_deterministic",
         "research_board_has_spy_sma_50_200_active_baseline",
         "research_candidate_queue_generated",
+        "baseline_health_evaluation_generated",
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
@@ -274,9 +362,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "19/19 required checks passed; 0 failed; 0 warnings"
+        "20/20 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 19
+    assert container["quality_gate_passed_required_count"] == 20
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -405,6 +493,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "baseline_health_evaluation"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -430,6 +524,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["research_candidate_queue"].endswith(
         "research_candidate_queue.jsonl"
     )
+    assert payload["artifacts"]["baseline_health_evaluation"].endswith(
+        "baseline_health_evaluation.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -443,6 +540,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["executive_dashboard"]["decision_ledger_status"] == (
         "decision_ledger_no_review_input"
     )
+    assert payload["executive_dashboard"]["baseline_health_evaluation"] == payload[
+        "baseline_health_evaluation"
+    ]
     assert payload["executive_dashboard"]["review_classification"] == "missing"
     assert payload["executive_action_queue_version"] == "assistant_v1.3_action_queue"
     assert payload["executive_action_summary"] == {
@@ -514,6 +614,33 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "future_non_sma_strategy_research_slot",
         "strategy_candidate_intake_requirements",
     ]
+    assert payload["baseline_health_evaluation_version"] == (
+        "assistant_v1.8_baseline_health_evaluation"
+    )
+    assert payload["baseline_health_evaluation_path"].endswith(
+        "baseline_health_evaluation.jsonl"
+    )
+    _assert_baseline_health_evaluation_shape(payload["baseline_health_evaluation"])
+    baseline_health = payload["baseline_health_evaluation"]
+    assert baseline_health["as_of_date"] == "2025-07-20"
+    assert baseline_health["posture_status"] == "risk_on: SMA50 is above SMA200"
+    assert baseline_health["preview_decision"] == "offline_preview_bullish_risk_on"
+    assert baseline_health["quality_gate_status"] == "pass"
+    assert baseline_health["decision_ledger_status"] == (
+        "decision_ledger_no_review_input"
+    )
+    assert baseline_health["research_candidate_queue_status"] == "generated"
+    assert baseline_health["health_status"] == "usable_control_harness"
+    assert baseline_health["confidence_status"] == "confidence_not_yet_quantified"
+    assert baseline_health["evidence_status"] == "evidence_incomplete"
+    assert "offline_backtest_confidence_summary" in baseline_health[
+        "missing_evidence"
+    ]
+    assert "buy_and_hold_benchmark_status" in baseline_health[
+        "required_next_artifacts"
+    ]
+    assert baseline_health["requires_daniel"] is False
+    assert baseline_health["hard_gate_required"] is False
 
     # Labels verification
     for label in (
@@ -534,7 +661,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
     assert (output_root / "research_candidate_queue.jsonl").exists()
-    assert (output_root / "research_candidate_queue.jsonl").exists()
+    assert (output_root / "baseline_health_evaluation.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
     assert (output_root / "work_orders" / "codex_work_order.md").exists()
     assert (output_root / "work_orders" / "antigravity_review_order.md").exists()
@@ -556,6 +683,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "## Research Board" in brief
     assert "## Research Candidate Queue" in brief
     assert "research_candidate_queue.jsonl" in brief
+    assert "## Baseline Health Evaluation" in brief
+    assert "baseline_health_evaluation.jsonl" in brief
+    assert "usable_control_harness" in brief
+    assert (
+        "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
+        "-k baseline_health_evaluation"
+    ) in brief
     assert "offline_review_evidence_gap" in brief
     assert "baseline_health_evaluation_spy_sma_50_200" in brief
     assert "## Executive dashboard" in brief
@@ -616,6 +750,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "research_candidate_queue.jsonl"
     )
     assert record["research_candidate_queue"] == payload["research_candidate_queue"]
+    assert record["baseline_health_evaluation_version"] == (
+        "assistant_v1.8_baseline_health_evaluation"
+    )
+    assert record["baseline_health_evaluation_path"].endswith(
+        "baseline_health_evaluation.jsonl"
+    )
+    assert record["baseline_health_evaluation"] == payload[
+        "baseline_health_evaluation"
+    ]
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -666,6 +809,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "research_candidate_queue.jsonl"
     )
     assert manifest["research_candidate_queue"] == payload["research_candidate_queue"]
+    assert manifest["baseline_health_evaluation_version"] == (
+        "assistant_v1.8_baseline_health_evaluation"
+    )
+    assert manifest["baseline_health_evaluation_path"].endswith(
+        "baseline_health_evaluation.jsonl"
+    )
+    assert manifest["baseline_health_evaluation"] == payload[
+        "baseline_health_evaluation"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -677,6 +829,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "review_handoff" in manifest["indexed_artifacts"]
     assert "history_ledger" in manifest["indexed_artifacts"]
     assert "research_candidate_queue" in manifest["indexed_artifacts"]
+    assert "baseline_health_evaluation" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
     assert "codex_work_order" in manifest["indexed_artifacts"]
     assert "antigravity_review_order" in manifest["indexed_artifacts"]
@@ -699,9 +852,16 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         ),
     ]
     for work_order in work_order_texts:
-        assert "Assistant v1.7 - Research Candidate Evidence Queue" in work_order
+        assert "Assistant v1.8 - Baseline Health Evaluation Packet" in work_order
         assert "collect_offline_review_feedback" in work_order
         assert "research_candidate_queue.jsonl" in work_order
+        assert "baseline_health_evaluation.jsonl" in work_order
+        assert "## Baseline health evaluation" in work_order
+        assert "usable_control_harness" in work_order
+        assert (
+            "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
+            "-k baseline_health_evaluation"
+        ) in work_order
         assert "offline_review_evidence_gap" in work_order
         assert "Do not commit unless GPT/Daniel explicitly asks after review." in work_order
         assert "Do not perform broker reads." in work_order
@@ -734,6 +894,14 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert len(queue_lines) == queue["candidate_count"]
     queue_records = [json.loads(line) for line in queue_lines]
     assert queue_records == queue["candidates"]
+
+    baseline_health_lines = (
+        output_root / "baseline_health_evaluation.jsonl"
+    ).read_text(encoding="utf-8").splitlines()
+    assert len(baseline_health_lines) == 1
+    assert json.loads(baseline_health_lines[0]) == payload[
+        "baseline_health_evaluation"
+    ]
 
 
 def test_etf_sma_daily_paper_lab_second_run_delta_compares_prior_packet(
@@ -981,6 +1149,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Executive action queue",
         "## Research board",
         "## Research candidate queue",
+        "## Baseline health evaluation",
         "## History delta",
         "## Safety assessment",
         "## Reviewer instructions",
@@ -997,6 +1166,12 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
     assert "No live trading was performed." in handoff
     assert "No network calls were performed." in handoff
     assert "broker_state_not_observed" in handoff
+    assert "usable_control_harness" in handoff
+    assert "baseline_health_evaluation.jsonl" in handoff
+    assert (
+        "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
+        "-k baseline_health_evaluation"
+    ) in handoff
     assert "decision_ledger_no_review_input" in handoff
     assert "review_input_not_found" in handoff
     for artifact_name in (
@@ -1007,6 +1182,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "review_handoff.md",
         "decision_ledger.jsonl",
         "research_candidate_queue.jsonl",
+        "baseline_health_evaluation.jsonl",
         "review_inputs",
         "work_orders",
         "gpt_next_action_handoff.md",
@@ -1233,7 +1409,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "16/19 required checks passed; 3 failed; 0 warnings"
+        "17/20 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",

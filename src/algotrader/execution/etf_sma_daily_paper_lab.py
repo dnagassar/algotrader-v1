@@ -46,14 +46,19 @@ _DECISION_LEDGER_ENTRY_VERSION = "assistant_v1.5_decision_ledger_entry"
 _NEXT_ACTION_SELECTOR_VERSION = "assistant_v1.6_next_action_selector"
 _WORK_ORDER_EXPORTS_VERSION = "assistant_v1.6_work_order_exports"
 _RESEARCH_CANDIDATE_QUEUE_VERSION = "assistant_v1.7_research_candidate_queue"
-_PHASE_NAME = "Assistant v1.7 - Research Candidate Evidence Queue"
+_BASELINE_HEALTH_EVALUATION_VERSION = "assistant_v1.8_baseline_health_evaluation"
+_PHASE_NAME = "Assistant v1.8 - Baseline Health Evaluation Packet"
 _PHASE_GOAL = (
-    "Maintain a deterministic offline research candidate queue that ranks what "
-    "the trading research assistant should investigate next from packet evidence."
+    "Generate a deterministic offline baseline-health evaluation for the active "
+    "SPY SMA 50/200 control harness and route the next safe research test."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
+_BASELINE_HEALTH_NEXT_SAFE_TEST = (
+    "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
+    "-k baseline_health_evaluation"
+)
 _BRIEF_FILENAME = "operating_brief.md"
 _RECORD_FILENAME = "operating_record.jsonl"
 _MANIFEST_FILENAME = "manifest.jsonl"
@@ -61,6 +66,7 @@ _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
 _REVIEW_HANDOFF_FILENAME = "review_handoff.md"
 _DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
 _RESEARCH_CANDIDATE_QUEUE_FILENAME = "research_candidate_queue.jsonl"
+_BASELINE_HEALTH_EVALUATION_FILENAME = "baseline_health_evaluation.jsonl"
 _REVIEW_INPUTS_DIRNAME = "review_inputs"
 _WORK_ORDERS_DIRNAME = "work_orders"
 _GPT_WORK_ORDER_FILENAME = "gpt_next_action_handoff.md"
@@ -83,6 +89,7 @@ _EXPECTED_ARTIFACTS = (
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
+    ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("review_handoff", _REVIEW_HANDOFF_FILENAME),
     ("gpt_next_action_handoff", f"{_WORK_ORDERS_DIRNAME}/{_GPT_WORK_ORDER_FILENAME}"),
     ("codex_work_order", f"{_WORK_ORDERS_DIRNAME}/{_CODEX_WORK_ORDER_FILENAME}"),
@@ -112,6 +119,9 @@ _REQUIRED_PACKET_FIELDS = (
     "research_candidate_queue_version",
     "research_candidate_queue_path",
     "research_candidate_queue",
+    "baseline_health_evaluation_version",
+    "baseline_health_evaluation_path",
+    "baseline_health_evaluation",
     "quality_gate_status",
     "quality_gate_score",
     "quality_gate_passed_required_count",
@@ -160,6 +170,9 @@ _REQUIRED_MANIFEST_FIELDS = (
     "research_candidate_queue_version",
     "research_candidate_queue_path",
     "research_candidate_queue",
+    "baseline_health_evaluation_version",
+    "baseline_health_evaluation_path",
+    "baseline_health_evaluation",
     "quality_gate_status",
     "quality_gate_score",
     "quality_gate_passed_required_count",
@@ -371,6 +384,53 @@ _REQUIRED_RESEARCH_CANDIDATE_FIELDS = (
     "rejection_criteria",
     "next_safe_test",
 )
+_BASELINE_HEALTH_STATUSES = (
+    "usable_control_harness",
+    "evidence_incomplete",
+    "blocked_by_quality_gate",
+    "blocked_by_safety",
+    "not_ready_for_paper_submit",
+    "deprecated_candidate",
+)
+_BASELINE_EVIDENCE_STATUSES = (
+    "daily_signal_evidence_available",
+    "evidence_incomplete",
+    "not_evaluated",
+)
+_REQUIRED_BASELINE_HEALTH_EVALUATION_FIELDS = (
+    "baseline_health_evaluation_version",
+    "status",
+    "artifact_path",
+    "generation_mode",
+    "baseline_id",
+    "baseline_name",
+    "baseline_role",
+    "active_symbol",
+    "active_strategy",
+    "as_of_date",
+    "posture_status",
+    "preview_decision",
+    "broker_state_mode",
+    "blocker_status",
+    "quality_gate_status",
+    "decision_ledger_status",
+    "research_candidate_queue_status",
+    "health_status",
+    "confidence_status",
+    "evidence_status",
+    "paper_submit_readiness_status",
+    "known_strengths",
+    "known_weaknesses",
+    "missing_evidence",
+    "required_next_artifacts",
+    "next_safe_test",
+    "promotion_criteria",
+    "deprecation_criteria",
+    "replacement_research_status",
+    "requires_daniel",
+    "hard_gate_required",
+    "safety_scope",
+)
 _RESEARCH_CANDIDATE_FORBIDDEN_TERMS = (
     "submit_order",
     "place_order",
@@ -524,9 +584,11 @@ def _write_packet_artifacts(
     payload: dict[str, Any],
 ) -> None:
     _apply_research_candidate_queue(payload, output_root)
+    _apply_baseline_health_evaluation(payload, output_root)
     _apply_next_action_selector(payload, output_root)
     _apply_work_order_exports(payload, output_root)
     _write_research_candidate_queue_artifact(output_root, payload)
+    _write_baseline_health_evaluation_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -566,6 +628,255 @@ def _apply_research_candidate_queue(
             "research_candidate_queue_path"
         ]
         dashboard["research_candidate_queue"] = dict(queue)
+
+
+def _apply_baseline_health_evaluation(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    evaluation = _build_baseline_health_evaluation(payload, artifact_paths)
+    payload["baseline_health_evaluation_version"] = (
+        _BASELINE_HEALTH_EVALUATION_VERSION
+    )
+    payload["baseline_health_evaluation_path"] = str(
+        artifact_paths["baseline_health_evaluation"]
+    )
+    payload["baseline_health_evaluation"] = evaluation
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["baseline_health_evaluation_path"] = payload[
+            "baseline_health_evaluation_path"
+        ]
+        dashboard["baseline_health_evaluation"] = dict(evaluation)
+
+
+def _build_baseline_health_evaluation(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    active_baseline = _active_baseline_record(payload)
+    missing_evidence = _baseline_missing_evidence(payload, active_baseline)
+    health_status = _baseline_health_status(payload, active_baseline)
+    evidence_status = _baseline_evidence_status(active_baseline, missing_evidence)
+    known_strengths = _baseline_known_strengths(payload, active_baseline)
+    known_weaknesses = _baseline_known_weaknesses(payload, missing_evidence)
+    return {
+        "baseline_health_evaluation_version": _BASELINE_HEALTH_EVALUATION_VERSION,
+        "status": "generated",
+        "artifact_path": str(artifact_paths["baseline_health_evaluation"]),
+        "generation_mode": "deterministic_offline_from_packet_evidence",
+        "baseline_id": "spy_sma_50_200_daily_long_only",
+        "baseline_name": str(
+            active_baseline.get(
+                "candidate_name",
+                "SPY SMA 50/200 daily long-only baseline",
+            )
+        ),
+        "baseline_role": "controlled_baseline_harness_for_assistant_evaluation",
+        "active_symbol": str(payload.get("symbol", _DEFAULT_SYMBOL)),
+        "active_strategy": "SMA 50/200",
+        "as_of_date": str(payload.get("as_of_date", "as_of_date_missing")),
+        "posture_status": str(
+            payload.get("sma_posture_status", payload.get("posture", "unknown"))
+        ),
+        "preview_decision": str(
+            payload.get("preview_decision", "preview_decision_missing")
+        ),
+        "broker_state_mode": str(
+            payload.get("broker_state_mode", "broker_state_not_observed")
+        ),
+        "blocker_status": str(
+            payload.get("blocker_status", "broker_state_not_observed")
+        ),
+        "quality_gate_status": str(payload.get("quality_gate_status", "not_evaluated")),
+        "decision_ledger_status": str(
+            payload.get("decision_ledger_status", "decision_ledger_status_missing")
+        ),
+        "research_candidate_queue_status": _research_candidate_queue_status(payload),
+        "health_status": health_status,
+        "confidence_status": str(
+            active_baseline.get(
+                "confidence_status",
+                payload.get("research_lab", {}).get(
+                    "confidence_status",
+                    "confidence_not_yet_quantified",
+                )
+                if isinstance(payload.get("research_lab"), Mapping)
+                else "confidence_not_yet_quantified",
+            )
+        ),
+        "evidence_status": evidence_status,
+        "paper_submit_readiness_status": "not_ready_for_paper_submit",
+        "known_strengths": known_strengths,
+        "known_weaknesses": known_weaknesses,
+        "missing_evidence": missing_evidence,
+        "required_next_artifacts": [
+            "offline_backtest_confidence_summary",
+            "drawdown_summary",
+            "turnover_summary",
+            "buy_and_hold_benchmark_status",
+            "baseline_evidence_gap_summary",
+        ],
+        "next_safe_test": _BASELINE_HEALTH_NEXT_SAFE_TEST,
+        "promotion_criteria": [
+            "quality_gate_status remains pass",
+            "decision ledger records accepted or accepted-with-minor-note review",
+            "offline confidence, drawdown, turnover, and benchmark artifacts exist",
+            "broker_state_not_observed wording remains intact until a separate read-only milestone observes broker state",
+            "paper-submit promotion requires a separately scoped Daniel hard gate",
+            "artifact makes no profit claim",
+        ],
+        "deprecation_criteria": [
+            "quality gate cannot be repaired without weakening safety invariants",
+            "local daily history is insufficient and cannot be refreshed safely",
+            "required offline evidence remains unavailable after the evidence-gap test",
+            "Daniel/GPT approve a replacement control harness with explicit intake evidence",
+        ],
+        "replacement_research_status": _replacement_research_status(payload),
+        "requires_daniel": _baseline_requires_daniel(payload, health_status),
+        "hard_gate_required": False,
+        "safety_scope": (
+            "offline_preview_only_no_broker_access_no_submit_no_profit_claim"
+        ),
+    }
+
+
+def _active_baseline_record(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    board = payload.get("research_board")
+    if not isinstance(board, list):
+        research_lab = payload.get("research_lab")
+        board = (
+            research_lab.get("research_board", [])
+            if isinstance(research_lab, Mapping)
+            else []
+        )
+    for item in board:
+        if isinstance(item, Mapping) and item.get("status") == "active_baseline":
+            return item
+    return {}
+
+
+def _baseline_missing_evidence(
+    payload: Mapping[str, Any],
+    active_baseline: Mapping[str, Any],
+) -> list[str]:
+    evidence: list[str] = []
+    for source in (
+        active_baseline.get("missing_evidence"),
+        payload.get("research_lab", {}).get("missing_evidence", [])
+        if isinstance(payload.get("research_lab"), Mapping)
+        else [],
+    ):
+        if isinstance(source, list):
+            for item in source:
+                text = str(item)
+                if text and text not in evidence:
+                    evidence.append(text)
+    return evidence
+
+
+def _baseline_health_status(
+    payload: Mapping[str, Any],
+    active_baseline: Mapping[str, Any],
+) -> str:
+    if not active_baseline:
+        return "deprecated_candidate"
+    if str(payload.get("quality_gate_status", "not_evaluated")) == "fail":
+        return "blocked_by_quality_gate"
+    if not _paper_submit_not_authorized(payload):
+        return "blocked_by_safety"
+    if payload.get("broker_state_mode") not in {
+        "broker_state_not_observed",
+        "offline_preview_only",
+    }:
+        return "blocked_by_safety"
+    if str(payload.get("posture", "")) == "insufficient_history":
+        return "evidence_incomplete"
+    return "usable_control_harness"
+
+
+def _baseline_evidence_status(
+    active_baseline: Mapping[str, Any],
+    missing_evidence: list[str],
+) -> str:
+    if missing_evidence:
+        return "evidence_incomplete"
+    if active_baseline:
+        return "daily_signal_evidence_available"
+    return "not_evaluated"
+
+
+def _baseline_known_strengths(
+    payload: Mapping[str, Any],
+    active_baseline: Mapping[str, Any],
+) -> list[str]:
+    strengths = [
+        "active baseline is restricted to SPY",
+        "SMA 50/200 posture is generated from local offline daily bars",
+        "preview decision is explicitly offline_preview_only",
+        "broker state wording remains broker_state_not_observed",
+        "paper submit remains not_authorized",
+    ]
+    if active_baseline:
+        strengths.append("research board identifies the active baseline explicitly")
+    if str(payload.get("quality_gate_status")) == "pass":
+        strengths.append("quality gate passed for the generated packet")
+    return strengths
+
+
+def _baseline_known_weaknesses(
+    payload: Mapping[str, Any],
+    missing_evidence: list[str],
+) -> list[str]:
+    weaknesses = [
+        "strategy confidence is not yet quantified",
+        "broker_state_not_observed means positions and open orders were not read",
+        "paper-submit readiness is not established",
+    ]
+    if missing_evidence:
+        weaknesses.append("offline evidence gaps remain: " + ", ".join(missing_evidence))
+    if str(payload.get("review_classification", "missing")) in {
+        "missing",
+        "unclassified",
+    }:
+        weaknesses.append("decision-ledger review evidence is not yet accepted")
+    return weaknesses
+
+
+def _research_candidate_queue_status(payload: Mapping[str, Any]) -> str:
+    queue = payload.get("research_candidate_queue")
+    if isinstance(queue, Mapping):
+        return str(queue.get("status", "research_candidate_queue_missing"))
+    return "research_candidate_queue_missing"
+
+
+def _replacement_research_status(payload: Mapping[str, Any]) -> str:
+    queue = payload.get("research_candidate_queue")
+    if not isinstance(queue, Mapping):
+        return "replacement_research_not_evaluated"
+    candidates = queue.get("candidates")
+    if not isinstance(candidates, list):
+        return "replacement_research_not_evaluated"
+    candidate_ids = {
+        str(candidate.get("candidate_id"))
+        for candidate in candidates
+        if isinstance(candidate, Mapping)
+    }
+    if "future_non_sma_strategy_research_slot" in candidate_ids:
+        return "future_research_slot_blocked_pending_strategy_intake_requirements"
+    if "strategy_candidate_intake_requirements" in candidate_ids:
+        return "strategy_intake_requirements_queued"
+    return "no_replacement_research_candidate_selected"
+
+
+def _baseline_requires_daniel(
+    payload: Mapping[str, Any],
+    health_status: str,
+) -> bool:
+    if health_status == "blocked_by_safety":
+        return True
+    return str(payload.get("posture", "")) == "insufficient_history"
 
 
 def _build_research_candidate_queue(
@@ -856,11 +1167,9 @@ def _baseline_health_evaluation_candidate(payload: Mapping[str, Any]) -> dict[st
         required_data=[
             "local SPY daily CSV",
             "current SMA 50/200 signal output",
-            "offline backtest confidence summary if already produced",
+            "current quality gate, decision-ledger, and research queue status",
         ],
-        expected_artifact_or_command=(
-            "future offline baseline_health_evaluation artifact from local data only"
-        ),
+        expected_artifact_or_command=_BASELINE_HEALTH_EVALUATION_FILENAME,
         priority="P2",
         status="queued",
         blocked_by=[],
@@ -876,7 +1185,7 @@ def _baseline_health_evaluation_candidate(payload: Mapping[str, Any]) -> dict[st
             "research expands the SMA catalog",
             "research relies on broker access, network calls, or nonlocal services",
         ],
-        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py -k research_candidate_queue",
+        next_safe_test=_BASELINE_HEALTH_NEXT_SAFE_TEST,
     )
 
 
@@ -1186,6 +1495,20 @@ def _write_research_candidate_queue_artifact(
     ]
     (output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME).write_text(
         "\n".join(lines) + ("\n" if lines else ""),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _write_baseline_health_evaluation_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    evaluation = payload.get("baseline_health_evaluation")
+    record = evaluation if isinstance(evaluation, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _BASELINE_HEALTH_EVALUATION_FILENAME).write_text(
+        line,
         encoding="utf-8",
         newline="\n",
     )
@@ -1660,6 +1983,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     research_candidate_queue_defaults = _default_research_candidate_queue_fields(
         artifact_paths
     )
+    baseline_health_evaluation_defaults = (
+        _default_baseline_health_evaluation_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -1737,6 +2063,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **quality_gate_defaults,
         **decision_ledger_defaults,
         **research_candidate_queue_defaults,
+        **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
         "history_delta": _empty_history_delta(as_of_str),
@@ -1750,6 +2077,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "review_handoff": artifact_paths["review_handoff"],
             "decision_ledger": artifact_paths["decision_ledger"],
             "research_candidate_queue": artifact_paths["research_candidate_queue"],
+            "baseline_health_evaluation": artifact_paths[
+                "baseline_health_evaluation"
+            ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
             "gpt_next_action_handoff": artifact_paths[
@@ -1834,6 +2164,14 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "research_candidate_queue": dict(
                 research_candidate_queue_defaults["research_candidate_queue"]
+            ),
+            "baseline_health_evaluation_path": (
+                baseline_health_evaluation_defaults[
+                    "baseline_health_evaluation_path"
+                ]
+            ),
+            "baseline_health_evaluation": dict(
+                baseline_health_evaluation_defaults["baseline_health_evaluation"]
             ),
             "next_action_selector": dict(
                 next_action_selector_defaults["next_action_selector"]
@@ -1974,6 +2312,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "research_candidate_queue": _normalize_path(
             output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME
         ),
+        "baseline_health_evaluation": _normalize_path(
+            output_root / _BASELINE_HEALTH_EVALUATION_FILENAME
+        ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
         "gpt_next_action_handoff": _normalize_path(
@@ -2068,6 +2409,55 @@ def _default_research_candidate_queue_fields(
             "selected_safe_candidate_priority": None,
             "selected_safe_candidate_title": None,
             "candidates": [],
+        },
+    }
+
+
+def _default_baseline_health_evaluation_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "baseline_health_evaluation_version": _BASELINE_HEALTH_EVALUATION_VERSION,
+        "baseline_health_evaluation_path": str(
+            artifact_paths["baseline_health_evaluation"]
+        ),
+        "baseline_health_evaluation": {
+            "baseline_health_evaluation_version": (
+                _BASELINE_HEALTH_EVALUATION_VERSION
+            ),
+            "status": "not_generated",
+            "artifact_path": str(artifact_paths["baseline_health_evaluation"]),
+            "generation_mode": "deterministic_offline_from_packet_evidence",
+            "baseline_id": "spy_sma_50_200_daily_long_only",
+            "baseline_name": "SPY SMA 50/200 daily long-only baseline",
+            "baseline_role": "controlled_baseline_harness_for_assistant_evaluation",
+            "active_symbol": _DEFAULT_SYMBOL,
+            "active_strategy": "SMA 50/200",
+            "as_of_date": "not_evaluated",
+            "posture_status": "not_evaluated",
+            "preview_decision": "not_evaluated",
+            "broker_state_mode": "broker_state_not_observed",
+            "blocker_status": "broker_state_not_observed",
+            "quality_gate_status": "not_evaluated",
+            "decision_ledger_status": "decision_ledger_no_review_input",
+            "research_candidate_queue_status": "not_generated",
+            "health_status": "evidence_incomplete",
+            "confidence_status": "confidence_not_yet_quantified",
+            "evidence_status": "not_evaluated",
+            "paper_submit_readiness_status": "not_ready_for_paper_submit",
+            "known_strengths": [],
+            "known_weaknesses": [],
+            "missing_evidence": [],
+            "required_next_artifacts": [],
+            "next_safe_test": _BASELINE_HEALTH_NEXT_SAFE_TEST,
+            "promotion_criteria": [],
+            "deprecation_criteria": [],
+            "replacement_research_status": "replacement_research_not_evaluated",
+            "requires_daniel": False,
+            "hard_gate_required": False,
+            "safety_scope": (
+                "offline_preview_only_no_broker_access_no_submit_no_profit_claim"
+            ),
         },
     }
 
@@ -3508,6 +3898,9 @@ def _build_quality_gate(
     candidate_queue_ok, candidate_queue_summary = (
         _quality_research_candidate_queue_summary(root, packet_for_checks)
     )
+    baseline_health_ok, baseline_health_summary = (
+        _quality_baseline_health_evaluation_summary(root, packet_for_checks)
+    )
 
     required_checks = [
         _quality_check(
@@ -3565,6 +3958,11 @@ def _build_quality_gate(
             "research_candidate_queue_generated",
             candidate_queue_ok,
             candidate_queue_summary,
+        ),
+        _quality_check(
+            "baseline_health_evaluation_generated",
+            baseline_health_ok,
+            baseline_health_summary,
         ),
         _quality_check(
             "history_delta_exists",
@@ -3708,12 +4106,14 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Trading desk brief",
         "## Research Board",
         "## Research Candidate Queue",
+        "## Baseline Health Evaluation",
         "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
         "Decision Ledger",
         "Work order exports",
         _RESEARCH_CANDIDATE_QUEUE_FILENAME,
+        _BASELINE_HEALTH_EVALUATION_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -3839,6 +4239,37 @@ def _quality_research_candidate_queue_summary(
     )
 
 
+def _quality_baseline_health_evaluation_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_baseline_health_evaluation_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    evaluation = packet["baseline_health_evaluation"]
+    assert isinstance(evaluation, Mapping)
+    artifact_path = output_root / _BASELINE_HEALTH_EVALUATION_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_BASELINE_HEALTH_EVALUATION_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, f"{_BASELINE_HEALTH_EVALUATION_FILENAME} must be one JSONL record"
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_BASELINE_HEALTH_EVALUATION_FILENAME} is not JSON"
+    if artifact_record != evaluation:
+        return False, "baseline health artifact does not match packet"
+    return True, (
+        "baseline health evaluation generated; health_status="
+        f"{evaluation['health_status']}; next_safe_test={evaluation['next_safe_test']}"
+    )
+
+
 def _missing_safety_labels(packet: Mapping[str, Any]) -> list[str]:
     labels = packet.get("safety_labels")
     if not isinstance(labels, list):
@@ -3857,6 +4288,7 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _REVIEW_HANDOFF_FILENAME,
         _DECISION_LEDGER_FILENAME,
         _RESEARCH_CANDIDATE_QUEUE_FILENAME,
+        _BASELINE_HEALTH_EVALUATION_FILENAME,
         _REVIEW_INPUTS_DIRNAME,
         _WORK_ORDERS_DIRNAME,
         _GPT_WORK_ORDER_FILENAME,
@@ -3977,6 +4409,9 @@ def _quality_work_order_exports_summary(
             _PHASE_NAME,
             "## Research candidate queue",
             _RESEARCH_CANDIDATE_QUEUE_FILENAME,
+            "## Baseline health evaluation",
+            _BASELINE_HEALTH_EVALUATION_FILENAME,
+            _BASELINE_HEALTH_NEXT_SAFE_TEST,
             "Do not commit unless GPT/Daniel explicitly asks after review.",
             "## Forbidden behavior",
             "## Required tests",
@@ -4058,6 +4493,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         )
     )
     missing.extend(_missing_research_candidate_queue_fields("", packet))
+    missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
     if isinstance(research_lab, Mapping):
         missing.extend(
@@ -4116,6 +4552,7 @@ def _missing_manifest_fields(
         )
     )
     missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
+    missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
     missing.extend(_missing_next_action_selector_fields("manifest", manifest))
     missing.extend(_missing_work_order_export_fields("manifest", manifest))
@@ -4137,6 +4574,9 @@ def _missing_manifest_fields(
         "research_candidate_queue_version",
         "research_candidate_queue_path",
         "research_candidate_queue",
+        "baseline_health_evaluation_version",
+        "baseline_health_evaluation_path",
+        "baseline_health_evaluation",
         "quality_gate_status",
         "quality_gate_score",
         "quality_gate_failed_checks",
@@ -4184,6 +4624,14 @@ def _missing_manifest_fields(
         != dict(packet["research_candidate_queue"])
     ):
         missing.append("manifest.research_candidate_queue.matches_record")
+
+    if (
+        isinstance(packet.get("baseline_health_evaluation"), Mapping)
+        and isinstance(manifest.get("baseline_health_evaluation"), Mapping)
+        and dict(manifest["baseline_health_evaluation"])
+        != dict(packet["baseline_health_evaluation"])
+    ):
+        missing.append("manifest.baseline_health_evaluation.matches_record")
 
     return missing
 
@@ -4296,6 +4744,92 @@ def _missing_research_candidate_queue_fields(
                 missing.append(f"{candidate_prefix}.{bool_field}.bool")
         if _research_candidate_contains_forbidden_term(candidate):
             missing.append(f"{candidate_prefix}.safe")
+    return missing
+
+
+def _missing_baseline_health_evaluation_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    evaluation = packet.get("baseline_health_evaluation")
+    if not isinstance(evaluation, Mapping):
+        return [f"{field_prefix}baseline_health_evaluation"]
+    for field_name in _REQUIRED_BASELINE_HEALTH_EVALUATION_FIELDS:
+        if field_name not in evaluation:
+            missing.append(f"{field_prefix}baseline_health_evaluation.{field_name}")
+    if (
+        packet.get("baseline_health_evaluation_version")
+        != _BASELINE_HEALTH_EVALUATION_VERSION
+    ):
+        missing.append(f"{field_prefix}baseline_health_evaluation_version")
+    if (
+        evaluation.get("baseline_health_evaluation_version")
+        != _BASELINE_HEALTH_EVALUATION_VERSION
+    ):
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.baseline_health_evaluation_version"
+        )
+    if not str(packet.get("baseline_health_evaluation_path", "")).strip():
+        missing.append(f"{field_prefix}baseline_health_evaluation_path")
+    if not str(evaluation.get("artifact_path", "")).strip():
+        missing.append(f"{field_prefix}baseline_health_evaluation.artifact_path")
+    if evaluation.get("status") not in {"generated", "not_generated"}:
+        missing.append(f"{field_prefix}baseline_health_evaluation.status.allowed")
+    if evaluation.get("health_status") not in _BASELINE_HEALTH_STATUSES:
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.health_status.allowed"
+        )
+    if evaluation.get("evidence_status") not in _BASELINE_EVIDENCE_STATUSES:
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.evidence_status.allowed"
+        )
+    if evaluation.get("active_symbol") != _DEFAULT_SYMBOL:
+        missing.append(f"{field_prefix}baseline_health_evaluation.active_symbol")
+    if evaluation.get("active_strategy") != "SMA 50/200":
+        missing.append(f"{field_prefix}baseline_health_evaluation.active_strategy")
+    if evaluation.get("broker_state_mode") not in {
+        "broker_state_not_observed",
+        "offline_preview_only",
+    }:
+        missing.append(f"{field_prefix}baseline_health_evaluation.broker_state_mode")
+    if evaluation.get("paper_submit_readiness_status") != "not_ready_for_paper_submit":
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.paper_submit_readiness_status"
+        )
+    if evaluation.get("next_safe_test") != _BASELINE_HEALTH_NEXT_SAFE_TEST:
+        missing.append(f"{field_prefix}baseline_health_evaluation.next_safe_test")
+    for list_field in (
+        "known_strengths",
+        "known_weaknesses",
+        "missing_evidence",
+        "required_next_artifacts",
+        "promotion_criteria",
+        "deprecation_criteria",
+    ):
+        if list_field in evaluation and not isinstance(evaluation.get(list_field), list):
+            missing.append(
+                f"{field_prefix}baseline_health_evaluation.{list_field}.list"
+            )
+    for bool_field in ("requires_daniel", "hard_gate_required"):
+        if bool_field in evaluation and not isinstance(evaluation.get(bool_field), bool):
+            missing.append(
+                f"{field_prefix}baseline_health_evaluation.{bool_field}.bool"
+            )
+    serialized = json.dumps(
+        _json_safe(evaluation),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    if "broker_state_not_observed" not in serialized:
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.broker_state_not_observed"
+        )
+    if "offline_preview_only" not in serialized:
+        missing.append(
+            f"{field_prefix}baseline_health_evaluation.offline_preview_only"
+        )
     return missing
 
 
@@ -4575,6 +5109,22 @@ def _missing_brief_references(
                     )
     if "## Research Board" not in brief_text:
         missing.append("operating_brief.research_board.section")
+    if "## Baseline Health Evaluation" not in brief_text:
+        missing.append("operating_brief.baseline_health_evaluation.section")
+    baseline_health = packet.get("baseline_health_evaluation")
+    if isinstance(baseline_health, Mapping):
+        for field_name in ("health_status", "evidence_status", "next_safe_test"):
+            value = baseline_health.get(field_name)
+            if _has_required_value(value) and str(value) not in brief_text:
+                missing.append(
+                    f"operating_brief.baseline_health_evaluation.{field_name}"
+                )
+    baseline_health_path = packet.get("baseline_health_evaluation_path")
+    if (
+        _has_required_value(baseline_health_path)
+        and str(baseline_health_path) not in brief_text
+    ):
+        missing.append("operating_brief.baseline_health_evaluation_path")
     if "Quality Gate" not in brief_text:
         missing.append("operating_brief.quality_gate")
     if "Decision Ledger" not in brief_text:
@@ -4961,6 +5511,7 @@ def _render_work_order_markdown(
 ) -> str:
     selector = payload["next_action_selector"]
     queue = payload["research_candidate_queue"]
+    baseline_health = payload["baseline_health_evaluation"]
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -5003,6 +5554,14 @@ def _render_work_order_markdown(
 {selected_candidate_json}
 ```
 
+## Baseline health evaluation
+* **Health status**: `{baseline_health["health_status"]}`
+* **Evidence status**: `{baseline_health["evidence_status"]}`
+* **Confidence status**: `{baseline_health["confidence_status"]}`
+* **Artifact**: `{payload["baseline_health_evaluation_path"]}`
+* **Selected next safe test**: `{baseline_health["next_safe_test"]}`
+* **Safety scope**: `{baseline_health["safety_scope"]}`
+
 {extra_sections}
 
 ## Forbidden behavior
@@ -5019,7 +5578,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_7_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_8_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -5029,6 +5588,7 @@ def _render_work_order_markdown(
 * `history_ledger.jsonl`
 * `review_handoff.md`
 * `research_candidate_queue.jsonl`
+* `baseline_health_evaluation.jsonl`
 * `work_orders/gpt_next_action_handoff.md`
 * `work_orders/codex_work_order.md`
 * `work_orders/antigravity_review_order.md`
@@ -5041,14 +5601,15 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Commands added or changed.
 6. Behavior implemented.
-7. Research candidate queue fields and top candidates.
-8. Smoke artifact paths and quality gate result.
-9. Tests run and exact results.
-10. Safety assessment.
-11. Known limitations.
-12. Whether any runtime artifacts under `runs/` were staged.
-13. Final `git status --short`.
-14. Commit recommendation.
+7. Baseline-health fields and final health status.
+8. Selected next safe test.
+9. Smoke artifact paths and quality gate result.
+10. Tests run and exact results.
+11. Safety assessment.
+12. Known limitations.
+13. Whether any runtime artifacts under `runs/` were staged.
+14. Final `git status --short`.
+15. Commit recommendation.
 
 ## Commit instruction
 Do not commit unless GPT/Daniel explicitly asks after review.
@@ -5098,6 +5659,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     research_candidate_queue_lines = _render_research_candidate_queue(
         payload["research_candidate_queue"]
     )
+    baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -5166,6 +5728,15 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Selected safe candidate**: `{payload["research_candidate_queue"]["selected_safe_candidate_id"]}` ({payload["research_candidate_queue"]["selected_safe_candidate_priority"]})
 {research_candidate_queue_lines}
 
+## Baseline Health Evaluation
+* **Artifact**: `{payload["baseline_health_evaluation_path"]}`
+* **Health status**: `{payload["baseline_health_evaluation"]["health_status"]}`
+* **Evidence status**: `{payload["baseline_health_evaluation"]["evidence_status"]}`
+* **Selected next safe test**: `{payload["baseline_health_evaluation"]["next_safe_test"]}`
+```json
+{baseline_health_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -5206,6 +5777,7 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     research_candidate_queue_lines = _render_research_candidate_queue(
         payload["research_candidate_queue"]
     )
+    baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -5309,6 +5881,16 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **selected_safe_candidate_id**: `{payload["research_candidate_queue"]["selected_safe_candidate_id"]}`
 {research_candidate_queue_lines}
 
+## Baseline health evaluation
+* **baseline_health_evaluation_version**: `{payload["baseline_health_evaluation_version"]}`
+* **baseline_health_evaluation_path**: `{payload["baseline_health_evaluation_path"]}`
+* **health_status**: `{payload["baseline_health_evaluation"]["health_status"]}`
+* **evidence_status**: `{payload["baseline_health_evaluation"]["evidence_status"]}`
+* **next_safe_test**: `{payload["baseline_health_evaluation"]["next_safe_test"]}`
+```json
+{baseline_health_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -5323,7 +5905,7 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
 
 ## Reviewer instructions
-* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, baseline-health evaluation status, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
 * **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
 * **Return format**:
   * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
@@ -5347,6 +5929,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "research_candidate_queue",
             artifact_paths.get("research_candidate_queue"),
+        ),
+        (
+            "baseline_health_evaluation",
+            artifact_paths.get("baseline_health_evaluation"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -5541,6 +6127,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["research_candidate_queue"] = _artifact_metadata(
             research_candidate_queue_path
         )
+    baseline_health_evaluation_path = (
+        output_root / _BASELINE_HEALTH_EVALUATION_FILENAME
+    )
+    if baseline_health_evaluation_path.exists():
+        indexed_artifacts["baseline_health_evaluation"] = _artifact_metadata(
+            baseline_health_evaluation_path
+        )
     work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
     for artifact_id, filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS:
         work_order_path = work_orders_dir / filename
@@ -5584,6 +6177,15 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "research_candidate_queue_path": payload["research_candidate_queue_path"],
         "research_candidate_queue": dict(payload["research_candidate_queue"]),
+        "baseline_health_evaluation_version": payload[
+            "baseline_health_evaluation_version"
+        ],
+        "baseline_health_evaluation_path": payload[
+            "baseline_health_evaluation_path"
+        ],
+        "baseline_health_evaluation": dict(
+            payload["baseline_health_evaluation"]
+        ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
