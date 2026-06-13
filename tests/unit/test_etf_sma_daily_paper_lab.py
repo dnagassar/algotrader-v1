@@ -87,6 +87,42 @@ def _assert_research_board_item_shape(item: dict[str, object]) -> None:
     assert isinstance(item["notes"], list)
 
 
+def _assert_quality_gate_pass(container: dict[str, object]) -> None:
+    expected_check_ids = [
+        "required_packet_artifacts_exist",
+        "required_operating_record_fields_exist",
+        "required_manifest_fields_exist",
+        "markdown_brief_references_key_assistant_sections",
+        "broker_state_mode_explicit",
+        "broker_not_observed_has_no_position_order_claim",
+        "paper_submit_not_authorized",
+        "executive_action_queue_priorities_deterministic",
+        "research_board_has_spy_sma_50_200_active_baseline",
+        "history_delta_exists",
+        "safety_labels_exist",
+        "review_handoff_references_generated_artifacts",
+    ]
+    assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
+    assert container["quality_gate_status"] == "pass"
+    assert container["quality_gate_score"] == (
+        "12/12 required checks passed; 0 failed; 0 warnings"
+    )
+    assert container["quality_gate_passed_required_count"] == 12
+    assert container["quality_gate_failed_required_count"] == 0
+    assert container["quality_gate_warning_count"] == 0
+    assert container["quality_gate_required_fields_present"] is True
+    assert container["quality_gate_failed_checks"] == []
+    assert container["quality_gate_warning_checks"] == []
+    assert container["quality_gate_optional_checks"] == []
+    required_checks = container["quality_gate_required_checks"]
+    assert isinstance(required_checks, list)
+    assert [check["check_id"] for check in required_checks] == expected_check_ids
+    assert all(check["status"] == "pass" for check in required_checks)
+    assert container["review_handoff_version"] == "assistant_v1.4_review_handoff"
+    assert str(container["review_handoff_path"]).endswith("review_handoff.md")
+    assert container["review_handoff_status"] == "generated"
+
+
 def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     """Test successful run with 200 bullish bars."""
     output_root = tmp_path / "paper_lab_out"
@@ -152,6 +188,16 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert payload["artifact_presence_status"]["artifacts"]["manifest"]["exists"] is True
+    assert (
+        payload["artifact_presence_status"]["artifacts"]["review_handoff"]["exists"]
+        is True
+    )
+    assert payload["artifacts"]["review_handoff"].endswith("review_handoff.md")
+    _assert_quality_gate_pass(payload)
+    assert payload["executive_dashboard"]["quality_gate_status"] == "pass"
+    assert payload["executive_dashboard"]["review_handoff_path"].endswith(
+        "review_handoff.md"
+    )
     assert payload["executive_dashboard"]["validation_status"] == "pass"
     assert payload["executive_dashboard"]["missing_required_fields"] == []
     assert payload["executive_action_queue_version"] == "assistant_v1.3_action_queue"
@@ -217,6 +263,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "operating_brief.md").exists()
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
+    assert (output_root / "review_handoff.md").exists()
     assert (output_root / "history_ledger.jsonl").exists()
 
     brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
@@ -239,6 +286,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "blocked" in brief
     assert "**Assistant packet version**: assistant_v1.1" in brief
     assert "**Validation status**: pass" in brief
+    assert "**Quality Gate**: `pass`" in brief
+    assert "review_handoff.md" in brief
     assert "**Missing required fields**: []" in brief
     assert "**Artifact presence status**: pass" in brief
     assert "**Previous packet found**: false" in brief
@@ -262,6 +311,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["validation_status"] == "pass"
     assert record["missing_required_fields"] == []
     assert record["artifact_presence_status"]["status"] == "pass"
+    _assert_quality_gate_pass(record)
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -294,6 +344,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["validation_status"] == "pass"
     assert manifest["missing_required_fields"] == []
     assert manifest["artifact_presence_status"]["status"] == "pass"
+    _assert_quality_gate_pass(manifest)
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -302,6 +353,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["delta_summary_text"] == delta["delta_summary_text"]
     assert "assistant_brief" in manifest["indexed_artifacts"]
     assert "operating_record" in manifest["indexed_artifacts"]
+    assert "review_handoff" in manifest["indexed_artifacts"]
     assert "history_ledger" in manifest["indexed_artifacts"]
     assert "manifest" not in manifest["indexed_artifacts"]
 
@@ -533,6 +585,105 @@ def test_etf_sma_daily_paper_lab_validator_reports_missing_fields_and_artifacts(
         "safety_labels",
         "paper_submit_authorized_false_or_not_authorized",
     ]
+    assert validation["quality_gate_status"] == "fail"
+    assert "required_packet_artifacts_exist" in validation["quality_gate_failed_checks"]
+    assert (
+        "required_operating_record_fields_exist"
+        in validation["quality_gate_failed_checks"]
+    )
+    assert "required_manifest_fields_exist" in validation["quality_gate_failed_checks"]
+
+
+def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
+    tmp_path: Path,
+) -> None:
+    """Review handoff is paste-ready and carries the required safety assessment."""
+    output_root = tmp_path / "paper_lab_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    handoff_path = output_root / "review_handoff.md"
+    assert handoff_path.exists()
+    assert payload["review_handoff_path"].endswith("review_handoff.md")
+    handoff = handoff_path.read_text(encoding="utf-8")
+    for section in (
+        "## Classification request",
+        "## Packet identity",
+        "## Executive summary",
+        "## Trading desk state",
+        "## Quality gate result",
+        "## Executive action queue",
+        "## Research board",
+        "## History delta",
+        "## Safety assessment",
+        "## Reviewer instructions",
+    ):
+        assert section in handoff
+    assert "accepted-with-minor-note" in handoff
+    assert (
+        "classification: accepted|accepted-with-minor-note|needs-repair|rejected"
+        in handoff
+    )
+    assert "No broker reads were performed by this command." in handoff
+    assert "No broker mutation was performed." in handoff
+    assert "No paper submit was performed." in handoff
+    assert "No live trading was performed." in handoff
+    assert "No network calls were performed." in handoff
+    assert "broker_state_not_observed" in handoff
+    for artifact_name in (
+        "operating_brief.md",
+        "operating_record.jsonl",
+        "manifest.jsonl",
+        "history_ledger.jsonl",
+        "review_handoff.md",
+    ):
+        assert artifact_name in handoff
+
+
+def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
+    tmp_path: Path,
+) -> None:
+    """Removing required v1.4 packet pieces creates repeatable gate failures."""
+    output_root = tmp_path / "paper_lab_out"
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    record_path = output_root / "operating_record.jsonl"
+    record = json.loads(record_path.read_text(encoding="utf-8").splitlines()[0])
+    del record["quality_gate_status"]
+    record_path.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (output_root / "review_handoff.md").unlink()
+
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+    repeated_validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+
+    assert validation == repeated_validation
+    assert validation["quality_gate_status"] == "fail"
+    assert validation["review_handoff_status"] == "missing"
+    assert validation["quality_gate_score"] == (
+        "9/12 required checks passed; 3 failed; 0 warnings"
+    )
+    assert validation["quality_gate_failed_checks"] == [
+        "required_packet_artifacts_exist",
+        "required_operating_record_fields_exist",
+        "review_handoff_references_generated_artifacts",
+    ]
 
 
 def test_etf_sma_daily_paper_lab_validation_failure_priority_is_deterministic(
@@ -606,6 +757,20 @@ def test_etf_sma_daily_paper_lab_broker_not_observed_makes_no_position_claim(
     assert "makes no position or order-state claim" in broker_claim
     assert "no positions" not in broker_claim
     assert "no open orders" not in broker_claim
+    output_root = tmp_path / "paper_lab_out"
+    packet_text = "\n".join(
+        (
+            (output_root / "operating_brief.md").read_text(encoding="utf-8"),
+            (output_root / "review_handoff.md").read_text(encoding="utf-8"),
+            json.dumps(payload, sort_keys=True),
+        )
+    ).lower()
+    assert "no positions" not in packet_text
+    assert "no open orders" not in packet_text
+    assert payload["quality_gate_status"] == "pass"
+    assert "broker_not_observed_has_no_position_order_claim" not in payload[
+        "quality_gate_failed_checks"
+    ]
     assert all(
         "broker_state_not_observed" in action["safety_scope"]
         or "no_broker_access" in action["safety_scope"]
@@ -628,6 +793,8 @@ def test_etf_sma_daily_paper_lab_paper_submit_false_never_queues_submit(
 
     assert payload["paper_submit_authorized"] is False
     assert payload["paper_submit_authorization_status"] == "not_authorized"
+    assert payload["quality_gate_status"] == "pass"
+    assert "paper_submit_not_authorized" not in payload["quality_gate_failed_checks"]
     forbidden_recommendations = (
         "submit_order",
         "place_order",

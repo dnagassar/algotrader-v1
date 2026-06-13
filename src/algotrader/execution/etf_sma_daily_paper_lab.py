@@ -39,6 +39,8 @@ _ASSISTANT_VERSION = "assistant_v1"
 _ASSISTANT_PACKET_VERSION = "assistant_v1.1"
 _ASSISTANT_ACTION_QUEUE_VERSION = "assistant_v1.3_action_queue"
 _RESEARCH_BOARD_VERSION = "assistant_v1.3_research_board"
+_QUALITY_GATE_VERSION = "assistant_v1.4_quality_gate"
+_REVIEW_HANDOFF_VERSION = "assistant_v1.4_review_handoff"
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
@@ -46,6 +48,7 @@ _BRIEF_FILENAME = "operating_brief.md"
 _RECORD_FILENAME = "operating_record.jsonl"
 _MANIFEST_FILENAME = "manifest.jsonl"
 _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
+_REVIEW_HANDOFF_FILENAME = "review_handoff.md"
 _HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
 _REQUIRED_LABELS = [
     "paper_lab_only",
@@ -61,6 +64,7 @@ _EXPECTED_ARTIFACTS = (
     ("operating_brief", _BRIEF_FILENAME),
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
+    ("review_handoff", _REVIEW_HANDOFF_FILENAME),
 )
 _REQUIRED_PACKET_FIELDS = (
     "input_data_path",
@@ -79,6 +83,18 @@ _REQUIRED_PACKET_FIELDS = (
     "executive_action_queue",
     "executive_action_summary",
     "research_lab",
+    "quality_gate_status",
+    "quality_gate_score",
+    "quality_gate_passed_required_count",
+    "quality_gate_failed_required_count",
+    "quality_gate_warning_count",
+    "quality_gate_required_fields_present",
+    "quality_gate_failed_checks",
+    "quality_gate_warning_checks",
+    "quality_gate_required_checks",
+    "quality_gate_optional_checks",
+    "review_handoff_path",
+    "review_handoff_status",
 )
 _REQUIRED_MANIFEST_FIELDS = (
     "input_data_path",
@@ -101,7 +117,25 @@ _REQUIRED_MANIFEST_FIELDS = (
     "history_delta",
     "executive_action_queue",
     "executive_action_summary",
+    "quality_gate_status",
+    "quality_gate_score",
+    "quality_gate_passed_required_count",
+    "quality_gate_failed_required_count",
+    "quality_gate_warning_count",
+    "quality_gate_required_fields_present",
+    "quality_gate_failed_checks",
+    "quality_gate_warning_checks",
+    "quality_gate_required_checks",
+    "quality_gate_optional_checks",
+    "review_handoff_path",
+    "review_handoff_status",
 )
+_REQUIRED_FIELDS_ALLOW_EMPTY = {
+    "quality_gate_failed_checks",
+    "quality_gate_warning_checks",
+    "quality_gate_required_checks",
+    "quality_gate_optional_checks",
+}
 _REQUIRED_DELTA_FIELDS = (
     "previous_packet_found",
     "previous_as_of_date",
@@ -189,6 +223,12 @@ _NOT_AUTHORIZED_STATUSES = {
     "not_authorized",
     "paper_submit_not_authorized",
 }
+_FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS = (
+    "no positions",
+    "no open orders",
+    "zero positions",
+    "zero open orders",
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -243,6 +283,9 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
         "sequence_number"
     ]
     _write_packet_artifacts(output_root=output_root, payload=payload)
+    quality_gate = _build_quality_gate(output_root)
+    _apply_quality_gate(payload, quality_gate)
+    _write_packet_artifacts(output_root=output_root, payload=payload)
 
     return payload
 
@@ -278,11 +321,13 @@ def validate_etf_sma_daily_paper_lab_packet(
         )
         else "fail"
     )
+    quality_gate = _build_quality_gate(root, packet_payload)
     return {
         "assistant_packet_version": _ASSISTANT_PACKET_VERSION,
         "validation_status": validation_status,
         "missing_required_fields": missing_required_fields,
         "artifact_presence_status": artifact_presence_status,
+        **quality_gate,
     }
 
 
@@ -297,6 +342,13 @@ def _write_packet_artifacts(
 
     brief_file = output_root / _BRIEF_FILENAME
     brief_file.write_text(_render_brief_markdown(payload), encoding="utf-8", newline="\n")
+
+    review_handoff_file = output_root / _REVIEW_HANDOFF_FILENAME
+    review_handoff_file.write_text(
+        _render_review_handoff_markdown(payload),
+        encoding="utf-8",
+        newline="\n",
+    )
 
     manifest_file = output_root / _MANIFEST_FILENAME
     manifest_data = _build_manifest(output_root, payload)
@@ -319,6 +371,64 @@ def _apply_packet_validation(
     payload["executive_dashboard"]["artifact_presence_status"] = dict(
         payload["artifact_presence_status"]
     )
+
+
+def _apply_quality_gate(
+    payload: dict[str, Any],
+    quality_gate: Mapping[str, Any],
+) -> None:
+    payload["quality_gate_version"] = str(
+        quality_gate.get("quality_gate_version", _QUALITY_GATE_VERSION)
+    )
+    payload["quality_gate_status"] = str(quality_gate["quality_gate_status"])
+    payload["quality_gate_score"] = str(quality_gate["quality_gate_score"])
+    payload["quality_gate_passed_required_count"] = int(
+        quality_gate["quality_gate_passed_required_count"]
+    )
+    payload["quality_gate_failed_required_count"] = int(
+        quality_gate["quality_gate_failed_required_count"]
+    )
+    payload["quality_gate_warning_count"] = int(
+        quality_gate["quality_gate_warning_count"]
+    )
+    payload["quality_gate_required_fields_present"] = bool(
+        quality_gate["quality_gate_required_fields_present"]
+    )
+    payload["quality_gate_failed_checks"] = list(
+        quality_gate["quality_gate_failed_checks"]
+    )
+    payload["quality_gate_warning_checks"] = list(
+        quality_gate["quality_gate_warning_checks"]
+    )
+    payload["quality_gate_required_checks"] = list(
+        quality_gate["quality_gate_required_checks"]
+    )
+    payload["quality_gate_optional_checks"] = list(
+        quality_gate["quality_gate_optional_checks"]
+    )
+    payload["review_handoff_version"] = str(
+        quality_gate.get("review_handoff_version", _REVIEW_HANDOFF_VERSION)
+    )
+    payload["review_handoff_path"] = str(quality_gate["review_handoff_path"])
+    payload["review_handoff_status"] = str(quality_gate["review_handoff_status"])
+    payload["executive_dashboard"]["quality_gate_status"] = payload[
+        "quality_gate_status"
+    ]
+    payload["executive_dashboard"]["quality_gate_score"] = payload[
+        "quality_gate_score"
+    ]
+    payload["executive_dashboard"]["quality_gate_failed_checks"] = list(
+        payload["quality_gate_failed_checks"]
+    )
+    payload["executive_dashboard"]["quality_gate_warning_checks"] = list(
+        payload["quality_gate_warning_checks"]
+    )
+    payload["executive_dashboard"]["review_handoff_path"] = payload[
+        "review_handoff_path"
+    ]
+    payload["executive_dashboard"]["review_handoff_status"] = payload[
+        "review_handoff_status"
+    ]
 
 
 def _apply_executive_action_queue(payload: dict[str, Any]) -> None:
@@ -648,6 +758,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     broker_state_mode = "broker_state_not_observed"
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
+    quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
     sma_status = _sma_status(
         posture=posture,
         fast_window=config.sma_fast_window,
@@ -718,6 +829,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "system_health": "offline_assistant_packet_ready",
         "artifact_paths": artifact_paths,
         "history_ledger_path": artifact_paths["history_ledger"],
+        **quality_gate_defaults,
         "history_delta": _empty_history_delta(as_of_str),
         "history_ledger_entry": {},
         "artifacts": {
@@ -726,6 +838,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "operating_record": artifact_paths["operating_record"],
             "manifest": artifact_paths["manifest"],
             "history_ledger": artifact_paths["history_ledger"],
+            "review_handoff": artifact_paths["review_handoff"],
         },
         "sma": {
             "symbol": signal.symbol,
@@ -769,6 +882,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "next_operator_action": next_operator_action,
             "executive_action_queue": [],
             "executive_action_summary": {},
+            "quality_gate_status": quality_gate_defaults["quality_gate_status"],
+            "quality_gate_score": quality_gate_defaults["quality_gate_score"],
+            "quality_gate_failed_checks": list(
+                quality_gate_defaults["quality_gate_failed_checks"]
+            ),
+            "quality_gate_warning_checks": list(
+                quality_gate_defaults["quality_gate_warning_checks"]
+            ),
+            "review_handoff_path": quality_gate_defaults["review_handoff_path"],
+            "review_handoff_status": quality_gate_defaults["review_handoff_status"],
         },
     }
     payload["executive_summary"] = {
@@ -896,6 +1019,26 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
         "history_ledger": _normalize_path(output_root / _HISTORY_LEDGER_FILENAME),
+        "review_handoff": _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME),
+    }
+
+
+def _default_quality_gate_fields(artifact_paths: Mapping[str, str]) -> dict[str, Any]:
+    return {
+        "quality_gate_version": _QUALITY_GATE_VERSION,
+        "quality_gate_status": "not_evaluated",
+        "quality_gate_score": "0/0 required checks passed; 0 failed; 0 warnings",
+        "quality_gate_passed_required_count": 0,
+        "quality_gate_failed_required_count": 0,
+        "quality_gate_warning_count": 0,
+        "quality_gate_required_fields_present": False,
+        "quality_gate_failed_checks": [],
+        "quality_gate_warning_checks": [],
+        "quality_gate_required_checks": [],
+        "quality_gate_optional_checks": [],
+        "review_handoff_version": _REVIEW_HANDOFF_VERSION,
+        "review_handoff_path": str(artifact_paths["review_handoff"]),
+        "review_handoff_status": "not_generated",
     }
 
 
@@ -1283,10 +1426,328 @@ def _read_jsonl_mapping(
     return record, []
 
 
+def _build_quality_gate(
+    output_root: Path | str,
+    packet: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    root = Path(output_root)
+    record, record_failures = _read_packet_record(root / _RECORD_FILENAME)
+    manifest, manifest_failures = _read_manifest_record(root / _MANIFEST_FILENAME)
+    packet_for_checks: Mapping[str, Any]
+    if record is not None:
+        packet_for_checks = record
+    elif isinstance(packet, Mapping):
+        packet_for_checks = packet
+    else:
+        packet_for_checks = {}
+
+    brief_text = _read_text_or_empty(root / _BRIEF_FILENAME)
+    review_handoff_path = root / _REVIEW_HANDOFF_FILENAME
+    review_handoff_text = _read_text_or_empty(review_handoff_path)
+    artifact_presence_status = _artifact_presence_status(root)
+
+    record_missing = list(record_failures)
+    if record is None:
+        record_missing.append("operating_record.packet")
+    else:
+        record_missing.extend(_missing_packet_fields(record))
+
+    manifest_missing = list(manifest_failures)
+    if manifest is None:
+        manifest_missing.append("manifest.record")
+    else:
+        manifest_missing.extend(_missing_manifest_fields(root, packet_for_checks))
+
+    brief_missing = _missing_key_brief_sections(brief_text)
+    broker_claim_forbidden = _forbidden_broker_state_claims(
+        packet_for_checks,
+        brief_text,
+        review_handoff_text,
+    )
+    action_queue_ok, action_queue_summary = _quality_action_queue_summary(
+        packet_for_checks.get("executive_action_queue")
+    )
+    research_board_ok, research_board_summary = _quality_research_board_summary(
+        packet_for_checks
+    )
+    history_delta_missing = _missing_history_delta_fields(
+        "history_delta",
+        packet_for_checks.get("history_delta"),
+    )
+    safety_label_missing = _missing_safety_labels(packet_for_checks)
+    handoff_missing = _missing_review_handoff_references(
+        review_handoff_text,
+    )
+
+    required_checks = [
+        _quality_check(
+            "required_packet_artifacts_exist",
+            artifact_presence_status["status"] == "pass",
+            _quality_artifact_summary(artifact_presence_status),
+        ),
+        _quality_check(
+            "required_operating_record_fields_exist",
+            not record_missing,
+            _quality_missing_summary(record_missing),
+        ),
+        _quality_check(
+            "required_manifest_fields_exist",
+            not manifest_missing,
+            _quality_missing_summary(manifest_missing),
+        ),
+        _quality_check(
+            "markdown_brief_references_key_assistant_sections",
+            not brief_missing,
+            _quality_missing_summary(brief_missing),
+        ),
+        _quality_check(
+            "broker_state_mode_explicit",
+            packet_for_checks.get("broker_state_mode")
+            in {"broker_state_not_observed", "offline_preview_only"},
+            f"broker_state_mode={packet_for_checks.get('broker_state_mode')}",
+        ),
+        _quality_check(
+            "broker_not_observed_has_no_position_order_claim",
+            not broker_claim_forbidden,
+            _quality_missing_summary(broker_claim_forbidden),
+        ),
+        _quality_check(
+            "paper_submit_not_authorized",
+            _paper_submit_not_authorized(packet_for_checks),
+            (
+                "paper_submit_authorized="
+                f"{packet_for_checks.get('paper_submit_authorized')}; "
+                "paper_submit_authorization_status="
+                f"{packet_for_checks.get('paper_submit_authorization_status')}"
+            ),
+        ),
+        _quality_check(
+            "executive_action_queue_priorities_deterministic",
+            action_queue_ok,
+            action_queue_summary,
+        ),
+        _quality_check(
+            "research_board_has_spy_sma_50_200_active_baseline",
+            research_board_ok,
+            research_board_summary,
+        ),
+        _quality_check(
+            "history_delta_exists",
+            not history_delta_missing,
+            _quality_missing_summary(history_delta_missing),
+        ),
+        _quality_check(
+            "safety_labels_exist",
+            not safety_label_missing,
+            _quality_missing_summary(safety_label_missing),
+        ),
+        _quality_check(
+            "review_handoff_references_generated_artifacts",
+            not handoff_missing,
+            _quality_missing_summary(handoff_missing),
+        ),
+    ]
+    optional_checks: list[dict[str, Any]] = []
+
+    failed_checks = [
+        check["check_id"] for check in required_checks if check["status"] == "fail"
+    ]
+    warning_checks = [
+        check["check_id"]
+        for check in optional_checks
+        if check["status"] in {"warn", "fail"}
+    ]
+    passed_required_count = sum(
+        1 for check in required_checks if check["status"] == "pass"
+    )
+    failed_required_count = len(failed_checks)
+    warning_count = len(warning_checks)
+    if failed_checks:
+        quality_gate_status = "fail"
+    elif warning_checks:
+        quality_gate_status = "warn"
+    else:
+        quality_gate_status = "pass"
+
+    review_handoff_status = (
+        "generated"
+        if review_handoff_path.exists()
+        and review_handoff_path.is_file()
+        and review_handoff_path.stat().st_size > 0
+        else "missing"
+    )
+    quality_gate_score = (
+        f"{passed_required_count}/{len(required_checks)} required checks passed; "
+        f"{failed_required_count} failed; {warning_count} warnings"
+    )
+    review_handoff_path_text = _review_handoff_path(packet_for_checks, root)
+    return {
+        "quality_gate_version": _QUALITY_GATE_VERSION,
+        "quality_gate_status": quality_gate_status,
+        "quality_gate_score": quality_gate_score,
+        "quality_gate_passed_required_count": passed_required_count,
+        "quality_gate_failed_required_count": failed_required_count,
+        "quality_gate_warning_count": warning_count,
+        "quality_gate_required_fields_present": not record_missing
+        and not manifest_missing,
+        "quality_gate_failed_checks": failed_checks,
+        "quality_gate_warning_checks": warning_checks,
+        "quality_gate_required_checks": required_checks,
+        "quality_gate_optional_checks": optional_checks,
+        "review_handoff_version": _REVIEW_HANDOFF_VERSION,
+        "review_handoff_path": review_handoff_path_text,
+        "review_handoff_status": review_handoff_status,
+    }
+
+
+def _quality_check(check_id: str, passed: bool, summary: str) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "pass" if passed else "fail",
+        "summary": summary,
+    }
+
+
+def _read_text_or_empty(path: Path) -> str:
+    if not path.exists():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+
+def _quality_artifact_summary(status: Mapping[str, Any]) -> str:
+    missing = list(status.get("missing_artifacts", []))
+    empty = list(status.get("empty_artifacts", []))
+    if not missing and not empty:
+        return "all required packet artifacts exist and are non-empty"
+    parts = []
+    if missing:
+        parts.append("missing=" + ",".join(str(item) for item in missing))
+    if empty:
+        parts.append("empty=" + ",".join(str(item) for item in empty))
+    return "; ".join(parts)
+
+
+def _quality_missing_summary(missing: list[str]) -> str:
+    if not missing:
+        return "all required items present"
+    return "missing_or_failed=" + ",".join(missing)
+
+
+def _missing_key_brief_sections(brief_text: str) -> list[str]:
+    required_tokens = [
+        "## Executive summary",
+        "## Executive Action Queue",
+        "## Trading desk brief",
+        "## Research Board",
+        "## Executive dashboard",
+        "Quality Gate",
+        _REVIEW_HANDOFF_FILENAME,
+    ]
+    return [token for token in required_tokens if token not in brief_text]
+
+
+def _forbidden_broker_state_claims(
+    packet: Mapping[str, Any],
+    brief_text: str,
+    review_handoff_text: str,
+) -> list[str]:
+    broker_state_mode = str(packet.get("broker_state_mode", ""))
+    if broker_state_mode not in {"broker_state_not_observed", "offline_preview_only"}:
+        return []
+    combined_text = (
+        json.dumps(_json_safe(packet), sort_keys=True, separators=(",", ":"))
+        + "\n"
+        + brief_text
+        + "\n"
+        + review_handoff_text
+    ).lower()
+    return [
+        forbidden
+        for forbidden in _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS
+        if forbidden in combined_text
+    ]
+
+
+def _quality_action_queue_summary(action_queue: Any) -> tuple[bool, str]:
+    missing = _missing_action_queue_fields("executive_action_queue", action_queue)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    assert isinstance(action_queue, list)
+    expected = sorted(
+        action_queue,
+        key=lambda item: (
+            _ACTION_PRIORITY_RANK[str(item["priority"])],
+            str(item["action_id"]),
+        ),
+    )
+    if list(action_queue) != expected:
+        return False, "executive action queue is not sorted by priority/action_id"
+    return True, "executive action queue exists with deterministic priorities"
+
+
+def _quality_research_board_summary(packet: Mapping[str, Any]) -> tuple[bool, str]:
+    board = packet.get("research_board")
+    if not isinstance(board, list):
+        research_lab = packet.get("research_lab")
+        if isinstance(research_lab, Mapping):
+            board = research_lab.get("research_board")
+    missing = _missing_research_board_fields("research_board", board)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    assert isinstance(board, list)
+    for item in board:
+        if not isinstance(item, Mapping):
+            continue
+        candidate_name = str(item.get("candidate_name", ""))
+        if (
+            item.get("status") == "active_baseline"
+            and "SPY SMA 50/200" in candidate_name
+        ):
+            return True, "SPY SMA 50/200 active_baseline is present"
+    return False, "SPY SMA 50/200 active_baseline is missing"
+
+
+def _missing_safety_labels(packet: Mapping[str, Any]) -> list[str]:
+    labels = packet.get("safety_labels")
+    if not isinstance(labels, list):
+        return ["safety_labels"]
+    return [label for label in _REQUIRED_LABELS if label not in labels]
+
+
+def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
+    if not review_handoff_text:
+        return [_REVIEW_HANDOFF_FILENAME]
+    required_tokens = [
+        _BRIEF_FILENAME,
+        _RECORD_FILENAME,
+        _MANIFEST_FILENAME,
+        _HISTORY_LEDGER_FILENAME,
+        _REVIEW_HANDOFF_FILENAME,
+    ]
+    return [token for token in required_tokens if token not in review_handoff_text]
+
+
+def _review_handoff_path(packet: Mapping[str, Any], output_root: Path) -> str:
+    artifact_paths = packet.get("artifact_paths")
+    if isinstance(artifact_paths, Mapping) and _has_required_value(
+        artifact_paths.get("review_handoff")
+    ):
+        return str(artifact_paths["review_handoff"])
+    if _has_required_value(packet.get("review_handoff_path")):
+        return str(packet["review_handoff_path"])
+    return _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME)
+
+
 def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing: list[str] = []
     for field_name in _REQUIRED_PACKET_FIELDS:
-        if not _has_required_value(packet.get(field_name)):
+        if field_name in _REQUIRED_FIELDS_ALLOW_EMPTY:
+            if field_name not in packet or packet.get(field_name) is None:
+                missing.append(field_name)
+        elif not _has_required_value(packet.get(field_name)):
             missing.append(field_name)
 
     if (
@@ -1356,6 +1817,9 @@ def _missing_manifest_fields(
                 list,
             ):
                 missing.append(f"manifest.{field_name}")
+        elif field_name in _REQUIRED_FIELDS_ALLOW_EMPTY:
+            if field_name not in manifest or manifest.get(field_name) is None:
+                missing.append(f"manifest.{field_name}")
         elif not _has_required_value(manifest.get(field_name)):
             missing.append(f"manifest.{field_name}")
     if not _paper_submit_not_authorized(manifest):
@@ -1393,6 +1857,14 @@ def _missing_manifest_fields(
         "history_ledger_path",
         "executive_action_queue_version",
         "executive_action_summary",
+        "quality_gate_status",
+        "quality_gate_score",
+        "quality_gate_failed_checks",
+        "quality_gate_warning_checks",
+        "quality_gate_required_checks",
+        "quality_gate_optional_checks",
+        "review_handoff_path",
+        "review_handoff_status",
     ):
         if field_name in packet and manifest.get(field_name) != packet.get(field_name):
             missing.append(f"manifest.{field_name}.matches_record")
@@ -1524,6 +1996,14 @@ def _missing_brief_references(
                     )
     if "## Research Board" not in brief_text:
         missing.append("operating_brief.research_board.section")
+    if "Quality Gate" not in brief_text:
+        missing.append("operating_brief.quality_gate")
+    review_handoff_path = packet.get("review_handoff_path")
+    if (
+        _has_required_value(review_handoff_path)
+        and str(review_handoff_path) not in brief_text
+    ):
+        missing.append("operating_brief.review_handoff_path")
     research_board = packet.get("research_board")
     if isinstance(research_board, list):
         for item in research_board:
@@ -1786,6 +2266,10 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     missing_required_fields_text = (
         "[]" if not missing_required_fields else ", ".join(missing_required_fields)
     )
+    failed_checks = payload["quality_gate_failed_checks"]
+    failed_checks_text = "[]" if not failed_checks else ", ".join(failed_checks)
+    warning_checks = payload["quality_gate_warning_checks"]
+    warning_checks_text = "[]" if not warning_checks else ", ".join(warning_checks)
 
     return f"""# Daily Trading Research Command Center
 
@@ -1795,6 +2279,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Risks / blockers**: {payload["blocker_status"]}. {payload["broker_state_claim"]} Paper submit authorization is `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`).
 * **Delta since prior packet**: {delta["delta_summary_text"]}
 * **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
+* **Quality Gate**: `{payload["quality_gate_status"]}` ({payload["quality_gate_score"]}); review handoff: `{payload["review_handoff_path"]}`.
 
 ## Executive Action Queue
 * **Daniel action required now**: {str(payload["executive_action_summary"]["daniel_action_required"]).lower()}
@@ -1824,6 +2309,10 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 ## Executive dashboard
 * **Data freshness**: {freshness["status"]} (latest input bar: {freshness["latest_input_bar_date"]}; basis: {freshness["freshness_basis"]}; wall-clock staleness: {freshness["wall_clock_staleness"]})
 * **Validation status**: {payload["validation_status"]}
+* **Quality Gate**: `{payload["quality_gate_status"]}` ({payload["quality_gate_score"]})
+* **Quality gate failed checks**: {failed_checks_text}
+* **Quality gate warning checks**: {warning_checks_text}
+* **Review handoff path**: `{payload["review_handoff_path"]}` (status: `{payload["review_handoff_status"]}`)
 * **Assistant packet version**: {payload["assistant_packet_version"]}
 * **Previous packet found**: {str(delta["previous_packet_found"]).lower()}
 * **History ledger path**: `{payload["history_ledger_path"]}`
@@ -1836,6 +2325,186 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {labels_list}
 * **Next operator action**: {payload["next_operator_action"]}
 """
+
+
+def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
+    artifact_lines = _render_generated_artifacts(payload)
+    action_lines = _render_review_action_queue(payload["executive_action_queue"])
+    research_lines = _render_review_research_board(payload["research_board"])
+    delta = payload["history_delta"]
+    failed_checks_text = json.dumps(
+        list(payload["quality_gate_failed_checks"]),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    warning_checks_text = json.dumps(
+        list(payload["quality_gate_warning_checks"]),
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    meaningful_changes_text = _history_meaningful_changes_text(delta)
+
+    return f"""# Daily Packet Review Handoff
+
+## Classification request
+Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `needs-repair`, or `rejected`.
+
+## Packet identity
+* **assistant_packet_version**: `{payload["assistant_packet_version"]}`
+* **review_handoff_version**: `{payload["review_handoff_version"]}`
+* **as_of_date**: `{payload["as_of_date"]}`
+* **active_strategy_name**: {payload["active_strategy_name"]}
+* **output_root**: `{_review_output_root(payload)}`
+* **generated artifacts**:
+{artifact_lines}
+
+## Executive summary
+* **What is happening**: {payload["executive_summary"]["plain_english_status"]}
+* **What the system thinks**: {payload["current_recommendation"]}
+* **Daniel action**: {payload["executive_summary"]["daniel_action_required"]}
+
+## Trading desk state
+* **Posture/status**: `{payload["posture"]}`; {payload["sma_posture_status"]}
+* **Preview decision**: `{payload["preview_decision"]}`
+* **Blocker status**: `{payload["blocker_status"]}`
+* **Broker-state mode**: `{payload["broker_state_mode"]}`
+* **Paper submit authorization status**: `{payload["paper_submit_authorization_status"]}` (`paper_submit_authorized=false`)
+
+## Quality gate result
+* **quality_gate_status**: `{payload["quality_gate_status"]}`
+* **quality_gate_score**: {payload["quality_gate_score"]}
+* **failed_checks**: `{failed_checks_text}`
+* **warning_checks**: `{warning_checks_text}`
+* **required_fields_present**: {str(payload["quality_gate_required_fields_present"]).lower()}
+
+## Executive action queue
+{action_lines}
+
+## Research board
+{research_lines}
+
+## History delta
+* **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
+* **meaningful changes**: {meaningful_changes_text}
+* **delta_summary_text**: {delta["delta_summary_text"]}
+
+## Safety assessment
+* No broker reads were performed by this command.
+* No broker mutation was performed.
+* No paper submit was performed.
+* No live trading was performed.
+* No network calls were performed.
+* Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
+
+## Reviewer instructions
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, active SPY SMA 50/200 baseline, history delta, safety labels, and broker-state wording.
+* **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
+* **Return format**:
+  * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
+  * `blocking_findings: <none or concise bullets>`
+  * `minor_notes: <none or concise bullets>`
+  * `recommended_next_action: <one sentence>`
+"""
+
+
+def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
+    artifact_paths = payload.get("artifact_paths")
+    if not isinstance(artifact_paths, Mapping):
+        artifact_paths = {}
+    ordered_artifacts = [
+        ("operating_brief", artifact_paths.get("assistant_brief")),
+        ("operating_record", artifact_paths.get("operating_record")),
+        ("manifest", artifact_paths.get("manifest")),
+        ("history_ledger", artifact_paths.get("history_ledger")),
+        ("review_handoff", artifact_paths.get("review_handoff")),
+    ]
+    return "\n".join(
+        f"* **{name}**: `{path}`"
+        for name, path in ordered_artifacts
+        if _has_required_value(path)
+    )
+
+
+def _render_review_action_queue(action_queue: Any) -> str:
+    if not isinstance(action_queue, list) or not action_queue:
+        return "* No executive actions are present."
+    lines = [
+        "| action_id | priority | action_type | title | requires_daniel | hard_gate_required | reason_codes |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in action_queue:
+        if not isinstance(item, Mapping):
+            continue
+        lines.append(
+            "| "
+            f"`{item['action_id']}` | "
+            f"`{item['priority']}` | "
+            f"`{item['action_type']}` | "
+            f"{item['title']} | "
+            f"{str(item['requires_daniel']).lower()} | "
+            f"{str(item['hard_gate_required']).lower()} | "
+            f"{', '.join(item['reason_codes'])} |"
+        )
+    return "\n".join(lines)
+
+
+def _render_review_research_board(research_board: Any) -> str:
+    if not isinstance(research_board, list) or not research_board:
+        return "* Research board is missing."
+    active_baseline = _active_baseline_name(research_board)
+    lines = [
+        f"* **Active baseline**: {active_baseline}",
+        "| entry | status | confidence status | missing evidence | next research action |",
+        "| --- | --- | --- | --- | --- |",
+    ]
+    for item in research_board:
+        if not isinstance(item, Mapping):
+            continue
+        lines.append(
+            "| "
+            f"`{item['candidate_name']}` | "
+            f"`{item['status']}` | "
+            f"`{item['confidence_status']}` | "
+            f"{', '.join(item['missing_evidence'])} | "
+            f"{item['next_research_action']} |"
+        )
+    return "\n".join(lines)
+
+
+def _active_baseline_name(research_board: list[Any]) -> str:
+    for item in research_board:
+        if isinstance(item, Mapping) and item.get("status") == "active_baseline":
+            return str(item.get("candidate_name", "active_baseline_name_missing"))
+    return "active_baseline_missing"
+
+
+def _history_meaningful_changes_text(delta: Mapping[str, Any]) -> str:
+    changed_fields = [
+        field_name
+        for field_name in (
+            "posture_changed",
+            "preview_decision_changed",
+            "blocker_status_changed",
+            "validation_status_changed",
+            "broker_state_mode_changed",
+            "research_board_changed",
+            "next_operator_action_changed",
+        )
+        if bool(delta.get(field_name))
+    ]
+    if not changed_fields:
+        return "none"
+    return ", ".join(changed_fields)
+
+
+def _review_output_root(payload: Mapping[str, Any]) -> str:
+    review_handoff_path = str(payload["review_handoff_path"])
+    suffix = "/" + _REVIEW_HANDOFF_FILENAME
+    if review_handoff_path.endswith(suffix):
+        return review_handoff_path[: -len(suffix)]
+    if review_handoff_path.endswith("\\" + _REVIEW_HANDOFF_FILENAME):
+        return review_handoff_path[: -(len(_REVIEW_HANDOFF_FILENAME) + 1)]
+    return str(Path(review_handoff_path).parent)
 
 
 def _render_executive_action_queue(action_queue: list[Mapping[str, Any]]) -> str:
@@ -1890,6 +2559,7 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
     indexed_artifacts = {
         "assistant_brief": _artifact_metadata(output_root / _BRIEF_FILENAME),
         "operating_record": _artifact_metadata(output_root / _RECORD_FILENAME),
+        "review_handoff": _artifact_metadata(output_root / _REVIEW_HANDOFF_FILENAME),
     }
     history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
     if history_ledger_path.exists():
@@ -1927,6 +2597,26 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "executive_action_summary": dict(payload["executive_action_summary"]),
         "research_board_version": payload["research_lab"]["research_board_version"],
         "research_board": list(payload["research_lab"]["research_board"]),
+        "quality_gate_version": payload["quality_gate_version"],
+        "quality_gate_status": payload["quality_gate_status"],
+        "quality_gate_score": payload["quality_gate_score"],
+        "quality_gate_passed_required_count": payload[
+            "quality_gate_passed_required_count"
+        ],
+        "quality_gate_failed_required_count": payload[
+            "quality_gate_failed_required_count"
+        ],
+        "quality_gate_warning_count": payload["quality_gate_warning_count"],
+        "quality_gate_required_fields_present": payload[
+            "quality_gate_required_fields_present"
+        ],
+        "quality_gate_failed_checks": list(payload["quality_gate_failed_checks"]),
+        "quality_gate_warning_checks": list(payload["quality_gate_warning_checks"]),
+        "quality_gate_required_checks": list(payload["quality_gate_required_checks"]),
+        "quality_gate_optional_checks": list(payload["quality_gate_optional_checks"]),
+        "review_handoff_version": payload["review_handoff_version"],
+        "review_handoff_path": payload["review_handoff_path"],
+        "review_handoff_status": payload["review_handoff_status"],
         "previous_packet_found": history_delta["previous_packet_found"],
         "previous_as_of_date": history_delta["previous_as_of_date"],
         "current_as_of_date": history_delta["current_as_of_date"],
