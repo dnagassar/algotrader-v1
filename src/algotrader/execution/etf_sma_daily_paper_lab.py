@@ -45,10 +45,11 @@ _DECISION_LEDGER_VERSION = "assistant_v1.5_decision_ledger"
 _DECISION_LEDGER_ENTRY_VERSION = "assistant_v1.5_decision_ledger_entry"
 _NEXT_ACTION_SELECTOR_VERSION = "assistant_v1.6_next_action_selector"
 _WORK_ORDER_EXPORTS_VERSION = "assistant_v1.6_work_order_exports"
-_PHASE_NAME = "Assistant v1.6 - Agent Work Order Export + Next Action Selector"
+_RESEARCH_CANDIDATE_QUEUE_VERSION = "assistant_v1.7_research_candidate_queue"
+_PHASE_NAME = "Assistant v1.7 - Research Candidate Evidence Queue"
 _PHASE_GOAL = (
-    "Emit deterministic, offline, paste-ready work orders and a next-action "
-    "selector from the daily assistant packet."
+    "Maintain a deterministic offline research candidate queue that ranks what "
+    "the trading research assistant should investigate next from packet evidence."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -59,6 +60,7 @@ _MANIFEST_FILENAME = "manifest.jsonl"
 _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
 _REVIEW_HANDOFF_FILENAME = "review_handoff.md"
 _DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
+_RESEARCH_CANDIDATE_QUEUE_FILENAME = "research_candidate_queue.jsonl"
 _REVIEW_INPUTS_DIRNAME = "review_inputs"
 _WORK_ORDERS_DIRNAME = "work_orders"
 _GPT_WORK_ORDER_FILENAME = "gpt_next_action_handoff.md"
@@ -80,6 +82,7 @@ _EXPECTED_ARTIFACTS = (
     ("operating_brief", _BRIEF_FILENAME),
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
+    ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("review_handoff", _REVIEW_HANDOFF_FILENAME),
     ("gpt_next_action_handoff", f"{_WORK_ORDERS_DIRNAME}/{_GPT_WORK_ORDER_FILENAME}"),
     ("codex_work_order", f"{_WORK_ORDERS_DIRNAME}/{_CODEX_WORK_ORDER_FILENAME}"),
@@ -106,6 +109,9 @@ _REQUIRED_PACKET_FIELDS = (
     "executive_action_queue",
     "executive_action_summary",
     "research_lab",
+    "research_candidate_queue_version",
+    "research_candidate_queue_path",
+    "research_candidate_queue",
     "quality_gate_status",
     "quality_gate_score",
     "quality_gate_passed_required_count",
@@ -151,6 +157,9 @@ _REQUIRED_MANIFEST_FIELDS = (
     "history_delta",
     "executive_action_queue",
     "executive_action_summary",
+    "research_candidate_queue_version",
+    "research_candidate_queue_path",
+    "research_candidate_queue",
     "quality_gate_status",
     "quality_gate_score",
     "quality_gate_passed_required_count",
@@ -322,6 +331,70 @@ _RESEARCH_BOARD_STATUSES = (
     "rejected",
     "blocked",
 )
+_RESEARCH_CANDIDATE_STATUSES = (
+    "queued",
+    "waiting_for_review",
+    "blocked",
+    "repair_required",
+)
+_REQUIRED_RESEARCH_CANDIDATE_QUEUE_FIELDS = (
+    "research_candidate_queue_version",
+    "status",
+    "artifact_path",
+    "generation_mode",
+    "priority_rules",
+    "candidate_count",
+    "top_candidate_id",
+    "top_candidate_priority",
+    "top_candidate_title",
+    "selected_safe_candidate_id",
+    "selected_safe_candidate_priority",
+    "selected_safe_candidate_title",
+    "candidates",
+)
+_REQUIRED_RESEARCH_CANDIDATE_FIELDS = (
+    "candidate_id",
+    "candidate_type",
+    "title",
+    "hypothesis",
+    "rationale",
+    "evidence_sources",
+    "required_data",
+    "expected_artifact_or_command",
+    "priority",
+    "status",
+    "blocked_by",
+    "safety_scope",
+    "requires_daniel",
+    "hard_gate_required",
+    "promotion_criteria",
+    "rejection_criteria",
+    "next_safe_test",
+)
+_RESEARCH_CANDIDATE_FORBIDDEN_TERMS = (
+    "submit_order",
+    "place_order",
+    "cancel_order",
+    "replace_order",
+    "close_order",
+    "liquidate",
+    "live trading",
+    "live order",
+    "paper order",
+    "paper submit",
+    "paper_submit_authorized=true",
+    "broker read",
+    "broker mutation",
+    "load_secret",
+    "load_credential",
+    "credential",
+    "secret",
+    "paid service",
+    "paid tool",
+    "new account",
+    "capital deployment",
+    "alpaca",
+)
 _P0_VALIDATION_FIELD_MARKERS = (
     "paper_submit_authorized_false_or_not_authorized",
     "broker_state_observed_false",
@@ -450,8 +523,10 @@ def _write_packet_artifacts(
     output_root: Path,
     payload: dict[str, Any],
 ) -> None:
+    _apply_research_candidate_queue(payload, output_root)
     _apply_next_action_selector(payload, output_root)
     _apply_work_order_exports(payload, output_root)
+    _write_research_candidate_queue_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -472,6 +547,648 @@ def _write_packet_artifacts(
     manifest_data = _build_manifest(output_root, payload)
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
+
+def _apply_research_candidate_queue(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    queue = _build_research_candidate_queue(payload, artifact_paths)
+    payload["research_candidate_queue_version"] = _RESEARCH_CANDIDATE_QUEUE_VERSION
+    payload["research_candidate_queue_path"] = str(
+        artifact_paths["research_candidate_queue"]
+    )
+    payload["research_candidate_queue"] = queue
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["research_candidate_queue_path"] = payload[
+            "research_candidate_queue_path"
+        ]
+        dashboard["research_candidate_queue"] = dict(queue)
+
+
+def _build_research_candidate_queue(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    candidates: list[dict[str, Any]] = []
+    if _research_candidate_needs_p0_repair(payload):
+        candidates.append(_quality_gate_repair_candidate(payload))
+
+    if str(payload.get("validation_status", "pending")) == "fail":
+        missing_fields = [str(item) for item in payload.get("missing_required_fields", [])]
+        if _validation_failure_priority(missing_fields) != "P0":
+            candidates.append(_packet_completeness_repair_candidate(payload))
+
+    if str(payload.get("posture")) == "insufficient_history":
+        candidates.append(_offline_daily_history_gap_candidate(payload))
+
+    review_classification = str(payload.get("review_classification", "missing"))
+    if review_classification in {"needs-repair", "rejected"}:
+        candidates.append(_offline_packet_review_repair_candidate(payload))
+    elif str(payload.get("review_input_status", "review_input_not_found")) in {
+        "review_input_not_found",
+        "review_input_directory_empty",
+    }:
+        candidates.append(_offline_review_evidence_gap_candidate(payload))
+
+    candidates.extend(
+        [
+            _baseline_health_evaluation_candidate(payload),
+            _buy_and_hold_benchmark_candidate(payload),
+            _current_baseline_evidence_gap_candidate(payload),
+            _paper_lab_observation_readiness_candidate(payload),
+            _strategy_candidate_intake_candidate(payload),
+            _future_non_sma_strategy_slot_candidate(payload),
+        ]
+    )
+    candidates = sorted(
+        candidates,
+        key=lambda item: (
+            _ACTION_PRIORITY_RANK[str(item["priority"])],
+            str(item["candidate_id"]),
+        ),
+    )
+    top_candidate = candidates[0] if candidates else None
+    selected_safe_candidate = _first_safe_research_candidate_from_list(candidates)
+    return {
+        "research_candidate_queue_version": _RESEARCH_CANDIDATE_QUEUE_VERSION,
+        "status": "generated",
+        "artifact_path": str(artifact_paths["research_candidate_queue"]),
+        "generation_mode": "deterministic_offline_from_packet_evidence",
+        "priority_rules": {
+            "P0": "safety invariant or quality gate failure",
+            "P1": "missing operator/data/review evidence required to interpret current packet",
+            "P2": "offline research work that improves strategy evaluation",
+            "P3": "backlog or future enhancements",
+        },
+        "candidate_count": len(candidates),
+        "top_candidate_id": (
+            str(top_candidate["candidate_id"]) if top_candidate is not None else None
+        ),
+        "top_candidate_priority": (
+            str(top_candidate["priority"]) if top_candidate is not None else None
+        ),
+        "top_candidate_title": (
+            str(top_candidate["title"]) if top_candidate is not None else None
+        ),
+        "selected_safe_candidate_id": (
+            str(selected_safe_candidate["candidate_id"])
+            if selected_safe_candidate is not None
+            else None
+        ),
+        "selected_safe_candidate_priority": (
+            str(selected_safe_candidate["priority"])
+            if selected_safe_candidate is not None
+            else None
+        ),
+        "selected_safe_candidate_title": (
+            str(selected_safe_candidate["title"])
+            if selected_safe_candidate is not None
+            else None
+        ),
+        "candidates": candidates,
+    }
+
+
+def _research_candidate_needs_p0_repair(payload: Mapping[str, Any]) -> bool:
+    if str(payload.get("quality_gate_status", "not_evaluated")) == "fail":
+        return True
+    if str(payload.get("validation_status", "pending")) != "fail":
+        return False
+    missing_fields = [str(item) for item in payload.get("missing_required_fields", [])]
+    return _validation_failure_priority(missing_fields) == "P0"
+
+
+def _quality_gate_repair_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    failed_checks = [str(item) for item in payload.get("quality_gate_failed_checks", [])]
+    missing_fields = [str(item) for item in payload.get("missing_required_fields", [])]
+    return _research_candidate_item(
+        candidate_id="quality_gate_or_safety_invariant_repair",
+        candidate_type="safety_repair",
+        title="Repair packet quality gate or safety invariant failure",
+        hypothesis=(
+            "The assistant should not rank ordinary research until the packet "
+            "quality gate and safety invariants are repaired."
+        ),
+        rationale=(
+            "P0 repair outranks research because packet evidence is not safe to "
+            "interpret while required checks are failing."
+        ),
+        evidence_sources=[
+            "quality_gate_status",
+            "quality_gate_failed_checks",
+            "validation_status",
+            "missing_required_fields",
+        ],
+        required_data=[
+            f"quality_gate_status={payload.get('quality_gate_status')}",
+            f"validation_status={payload.get('validation_status')}",
+            "failed_checks=" + ",".join(failed_checks),
+            "missing_required_fields=" + ",".join(missing_fields),
+        ],
+        expected_artifact_or_command="repair offline packet artifacts and rerun daily lab",
+        priority="P0",
+        status="repair_required",
+        blocked_by=[*failed_checks, *missing_fields] or ["quality_gate_or_validation_pending"],
+        safety_scope="offline_packet_repair_only_no_broker_access_no_submit",
+        requires_daniel=True,
+        hard_gate_required=True,
+        promotion_criteria=[
+            "quality_gate_status returns pass",
+            "validation_status returns pass",
+            "safety labels and broker_state_not_observed wording remain intact",
+        ],
+        rejection_criteria=[
+            "packet repair requires broker access",
+            "packet repair weakens paper-submit lockout",
+        ],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py",
+    )
+
+
+def _packet_completeness_repair_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    missing_fields = [str(item) for item in payload.get("missing_required_fields", [])]
+    return _research_candidate_item(
+        candidate_id="packet_completeness_repair",
+        candidate_type="packet_repair",
+        title="Repair missing packet completeness evidence",
+        hypothesis=(
+            "Completeness repair should happen before interpreting weaker research "
+            "signals from the packet."
+        ),
+        rationale="The packet validation failed without a safety invariant breach.",
+        evidence_sources=["validation_status", "missing_required_fields"],
+        required_data=missing_fields or ["missing_required_fields_not_populated"],
+        expected_artifact_or_command="repair deterministic packet fields and rerun daily lab",
+        priority="P1",
+        status="repair_required",
+        blocked_by=missing_fields,
+        safety_scope="offline_packet_repair_only_no_broker_access_no_submit",
+        requires_daniel=True,
+        hard_gate_required=False,
+        promotion_criteria=["validation_status returns pass"],
+        rejection_criteria=["repair requires broker or network access"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py",
+    )
+
+
+def _offline_daily_history_gap_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    slow_window = int(payload.get("sma_slow_window", 200))
+    return _research_candidate_item(
+        candidate_id="offline_daily_history_gap",
+        candidate_type="offline_data_gap",
+        title="Provide enough offline daily bars for the active baseline",
+        hypothesis=(
+            "The assistant cannot interpret the active baseline until the local "
+            f"input has at least {slow_window} usable as-of bars."
+        ),
+        rationale=str(payload.get("sma_posture_status", "insufficient_history")),
+        evidence_sources=["posture", "sma_posture_status", "sma_slow_window"],
+        required_data=[f"at least {slow_window} usable local daily bars for SPY"],
+        expected_artifact_or_command=(
+            "refresh offline SPY daily CSV input, then rerun "
+            f"{_SCRIPT} -OutputRoot runs/daily_lab/latest"
+        ),
+        priority="P1",
+        status="blocked",
+        blocked_by=["insufficient_history"],
+        safety_scope="offline_data_refresh_only_no_broker_access",
+        requires_daniel=True,
+        hard_gate_required=False,
+        promotion_criteria=["posture is no longer insufficient_history"],
+        rejection_criteria=["data source requires protected broker material or network access in pytest"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py",
+    )
+
+
+def _offline_packet_review_repair_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    classification = str(payload.get("review_classification", "missing"))
+    return _research_candidate_item(
+        candidate_id="offline_packet_review_repair",
+        candidate_type="review_repair",
+        title="Repair packet issues identified by offline review",
+        hypothesis=(
+            "Review feedback must be resolved before the assistant promotes new "
+            "research work from this packet."
+        ),
+        rationale=f"review_classification={classification}",
+        evidence_sources=[
+            "review_classification",
+            "review_blockers",
+            "review_repair_items",
+            "review_selected_next_action",
+        ],
+        required_data=[
+            "review_blockers="
+            + ",".join(str(item) for item in payload.get("review_blockers", [])),
+            "review_repair_items="
+            + ",".join(str(item) for item in payload.get("review_repair_items", [])),
+        ],
+        expected_artifact_or_command=str(
+            payload.get("review_selected_next_action", "repair offline packet artifacts")
+        ),
+        priority="P1",
+        status="repair_required",
+        blocked_by=[f"review_classification_{classification}"],
+        safety_scope="offline_review_repair_only_no_broker_access_no_submit",
+        requires_daniel=False,
+        hard_gate_required=classification == "rejected",
+        promotion_criteria=["review_classification returns accepted or accepted-with-minor-note"],
+        rejection_criteria=["review repair requires broker access or runtime external calls"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py",
+    )
+
+
+def _offline_review_evidence_gap_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    review_status = str(payload.get("review_input_status", "review_input_not_found"))
+    return _research_candidate_item(
+        candidate_id="offline_review_evidence_gap",
+        candidate_type="review_evidence_gap",
+        title="Collect offline review evidence for the current packet",
+        hypothesis=(
+            "A saved review classification makes the assistant's next research "
+            "routing more reliable than unreviewed packet intuition."
+        ),
+        rationale=f"review_input_status={review_status}",
+        evidence_sources=[
+            "review_input_status",
+            "decision_ledger_status",
+            "review_classification",
+        ],
+        required_data=["offline review text saved under review_inputs/"],
+        expected_artifact_or_command="save offline review feedback, then rerun daily lab",
+        priority="P1",
+        status="waiting_for_review",
+        blocked_by=[review_status],
+        safety_scope="offline_review_ingest_only_no_broker_access_no_submit",
+        requires_daniel=False,
+        hard_gate_required=False,
+        promotion_criteria=[
+            "decision ledger records accepted or accepted-with-minor-note review",
+            "review_selected_next_action remains safety scoped",
+        ],
+        rejection_criteria=["review requests broker access, external services, or capital action"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py",
+    )
+
+
+def _baseline_health_evaluation_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _research_candidate_item(
+        candidate_id="baseline_health_evaluation_spy_sma_50_200",
+        candidate_type="baseline_evaluation",
+        title="Build baseline health evaluation for SPY SMA 50/200",
+        hypothesis=(
+            "The assistant becomes more useful when it can summarize baseline "
+            "health beyond the current daily posture."
+        ),
+        rationale=(
+            "The research board marks confidence as not yet quantified and names "
+            "offline backtest confidence, drawdown, and turnover evidence gaps."
+        ),
+        evidence_sources=[
+            "research_board.active_baseline",
+            "research_lab.confidence_status",
+            "research_lab.missing_evidence",
+            "sma posture fields",
+        ],
+        required_data=[
+            "local SPY daily CSV",
+            "current SMA 50/200 signal output",
+            "offline backtest confidence summary if already produced",
+        ],
+        expected_artifact_or_command=(
+            "future offline baseline_health_evaluation artifact from local data only"
+        ),
+        priority="P2",
+        status="queued",
+        blocked_by=[],
+        safety_scope="offline_research_only_no_new_strategy_no_broker_access",
+        requires_daniel=False,
+        hard_gate_required=False,
+        promotion_criteria=[
+            "baseline evidence includes drawdown, turnover, and confidence summary",
+            "artifact makes no profit claim",
+            "artifact keeps broker_state_not_observed wording when no broker state is observed",
+        ],
+        rejection_criteria=[
+            "research expands the SMA catalog",
+            "research relies on broker access, network calls, or nonlocal services",
+        ],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py -k research_candidate_queue",
+    )
+
+
+def _buy_and_hold_benchmark_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _research_candidate_item(
+        candidate_id="benchmark_buy_and_hold_comparison_spy",
+        candidate_type="benchmark_comparison",
+        title="Track buy-and-hold benchmark comparison status",
+        hypothesis=(
+            "The assistant should know whether the active baseline has a local "
+            "buy-and-hold comparison before interpreting strategy quality."
+        ),
+        rationale=(
+            "A benchmark status item separates missing evidence from evaluated "
+            "evidence without adding another strategy variant."
+        ),
+        evidence_sources=["research_lab.missing_evidence", "artifact_paths"],
+        required_data=[
+            "existing local benchmark comparison artifact if one is already available",
+            "otherwise an explicit benchmark_missing status",
+        ],
+        expected_artifact_or_command=(
+            "future offline benchmark status artifact; no broker or network access"
+        ),
+        priority="P2",
+        status="queued",
+        blocked_by=[],
+        safety_scope="offline_research_only_no_new_strategy_no_broker_access",
+        requires_daniel=False,
+        hard_gate_required=False,
+        promotion_criteria=[
+            "benchmark status is explicit as available or missing",
+            "comparison uses local deterministic inputs only",
+        ],
+        rejection_criteria=["benchmark work requires external APIs or capital action"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py -k research_candidate_queue",
+    )
+
+
+def _current_baseline_evidence_gap_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    research_lab = payload.get("research_lab")
+    missing_evidence: list[str] = []
+    if isinstance(research_lab, Mapping):
+        missing_evidence = [str(item) for item in research_lab.get("missing_evidence", [])]
+    return _research_candidate_item(
+        candidate_id="current_baseline_evidence_gap_map",
+        candidate_type="evidence_gap",
+        title="Map evidence gaps for the current active baseline",
+        hypothesis=(
+            "The assistant can route better research work when active-baseline "
+            "evidence gaps are explicit and stable across packets."
+        ),
+        rationale="missing_evidence=" + ",".join(missing_evidence),
+        evidence_sources=["research_lab.missing_evidence", "history_delta"],
+        required_data=missing_evidence or ["research_lab.missing_evidence"],
+        expected_artifact_or_command=(
+            "future offline evidence_gap_summary artifact from packet fields"
+        ),
+        priority="P2",
+        status="queued",
+        blocked_by=[],
+        safety_scope="offline_research_only_no_broker_access_no_submit",
+        requires_daniel=False,
+        hard_gate_required=False,
+        promotion_criteria=[
+            "evidence gaps are classified as data, review, benchmark, or observation gaps",
+            "gap summary is deterministic from packet evidence",
+        ],
+        rejection_criteria=["gap summary recommends broker access without a hard gate"],
+        next_safe_test="python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py -k research_candidate_queue",
+    )
+
+
+def _paper_lab_observation_readiness_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _research_candidate_item(
+        candidate_id="paper_lab_observation_readiness",
+        candidate_type="paper_lab_readiness",
+        title="Define paper-lab observation readiness criteria",
+        hypothesis=(
+            "Before any paper-lab observation is scoped, the assistant should "
+            "state exactly which offline packet conditions would make observation useful."
+        ),
+        rationale=(
+            "Broker state remains broker_state_not_observed and paper-submit "
+            "authorization remains not_authorized."
+        ),
+        evidence_sources=[
+            "broker_state_mode",
+            "paper_submit_authorization_status",
+            "safety_labels",
+        ],
+        required_data=[
+            "offline readiness checklist",
+            "Daniel-scoped hard gate before any future broker-facing observation",
+        ],
+        expected_artifact_or_command=(
+            "future offline readiness checklist only; no broker-facing command"
+        ),
+        priority="P2",
+        status="blocked",
+        blocked_by=["broker_state_not_observed", "paper_submit_not_authorized"],
+        safety_scope="offline_readiness_metadata_only_no_broker_access_no_submit",
+        requires_daniel=True,
+        hard_gate_required=True,
+        promotion_criteria=[
+            "readiness criteria are documented without observing broker state",
+            "Daniel explicitly scopes any later hard gate outside this command",
+        ],
+        rejection_criteria=[
+            "readiness work asks for protected broker material",
+            "readiness work recommends order or capital action",
+        ],
+        next_safe_test="review research_candidate_queue.jsonl and operating_brief.md only",
+    )
+
+
+def _strategy_candidate_intake_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _research_candidate_item(
+        candidate_id="strategy_candidate_intake_requirements",
+        candidate_type="strategy_intake",
+        title="Define strategy candidate intake requirements",
+        hypothesis=(
+            "Future strategy work should enter through a fixed evidence intake "
+            "checklist instead of manual intuition or milestone churn."
+        ),
+        rationale=(
+            "The current product is the assistant, not indefinite expansion of "
+            "the active SMA baseline."
+        ),
+        evidence_sources=["research_board.future_candidate_strategy_slot"],
+        required_data=[
+            "candidate hypothesis",
+            "required offline data",
+            "benchmark expectation",
+            "safety and dependency-direction review",
+        ],
+        expected_artifact_or_command="future offline strategy_candidate_intake.md",
+        priority="P3",
+        status="queued",
+        blocked_by=[],
+        safety_scope="offline_metadata_only_no_strategy_code_no_broker_access",
+        requires_daniel=False,
+        hard_gate_required=False,
+        promotion_criteria=[
+            "intake rejects candidates without offline evidence requirements",
+            "intake preserves no broker, network, LLM, or runtime agent calls",
+        ],
+        rejection_criteria=["intake weakens live-mode or paper-submit lockout"],
+        next_safe_test="python -m pytest tests\\unit\\test_dependency_direction.py",
+    )
+
+
+def _future_non_sma_strategy_slot_candidate(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _research_candidate_item(
+        candidate_id="future_non_sma_strategy_research_slot",
+        candidate_type="future_strategy_slot",
+        title="Reserve blocked non-SMA strategy research slot",
+        hypothesis=(
+            "The assistant can acknowledge future non-SMA research without "
+            "implementing it before evidence requirements are defined."
+        ),
+        rationale=(
+            "A blocked slot prevents endless SMA catalog expansion while keeping "
+            "future research visible."
+        ),
+        evidence_sources=["research_board.future_candidate_strategy_slot"],
+        required_data=[
+            "approved candidate definition",
+            "offline evidence requirements",
+            "promotion and rejection criteria",
+        ],
+        expected_artifact_or_command=(
+            "no implementation until evidence requirements are defined"
+        ),
+        priority="P3",
+        status="blocked",
+        blocked_by=[
+            "candidate_definition_missing",
+            "evidence_requirements_missing",
+        ],
+        safety_scope="metadata_only_no_strategy_code_no_broker_access",
+        requires_daniel=True,
+        hard_gate_required=True,
+        promotion_criteria=[
+            "Daniel/GPT approve a candidate definition",
+            "offline evidence requirements are documented first",
+        ],
+        rejection_criteria=[
+            "candidate requires broker access",
+            "candidate requires external nonlocal services or protected material",
+        ],
+        next_safe_test="review strategy_candidate_intake_requirements first",
+    )
+
+
+def _research_candidate_item(
+    *,
+    candidate_id: str,
+    candidate_type: str,
+    title: str,
+    hypothesis: str,
+    rationale: str,
+    evidence_sources: list[str],
+    required_data: list[str],
+    expected_artifact_or_command: str,
+    priority: str,
+    status: str,
+    blocked_by: list[str],
+    safety_scope: str,
+    requires_daniel: bool,
+    hard_gate_required: bool,
+    promotion_criteria: list[str],
+    rejection_criteria: list[str],
+    next_safe_test: str,
+) -> dict[str, Any]:
+    return {
+        "candidate_id": candidate_id,
+        "candidate_type": candidate_type,
+        "title": title,
+        "hypothesis": hypothesis,
+        "rationale": rationale,
+        "evidence_sources": list(evidence_sources),
+        "required_data": list(required_data),
+        "expected_artifact_or_command": expected_artifact_or_command,
+        "priority": priority,
+        "status": status,
+        "blocked_by": list(blocked_by),
+        "safety_scope": safety_scope,
+        "requires_daniel": requires_daniel,
+        "hard_gate_required": hard_gate_required,
+        "promotion_criteria": list(promotion_criteria),
+        "rejection_criteria": list(rejection_criteria),
+        "next_safe_test": next_safe_test,
+    }
+
+
+def _first_safe_research_candidate_from_list(
+    candidates: list[Mapping[str, Any]],
+) -> Mapping[str, Any] | None:
+    for candidate in candidates:
+        if candidate.get("priority") not in {"P2", "P3"}:
+            continue
+        if candidate.get("status") != "queued":
+            continue
+        if candidate.get("requires_daniel") is not False:
+            continue
+        if candidate.get("hard_gate_required") is not False:
+            continue
+        if _research_candidate_contains_forbidden_term(candidate):
+            continue
+        return candidate
+    return None
+
+
+def _first_safe_research_candidate(payload: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    queue = payload.get("research_candidate_queue")
+    if not isinstance(queue, Mapping):
+        return None
+    candidates = queue.get("candidates")
+    if not isinstance(candidates, list):
+        return None
+    candidate_mappings = [item for item in candidates if isinstance(item, Mapping)]
+    return _first_safe_research_candidate_from_list(candidate_mappings)
+
+
+def _research_candidate_by_id(
+    payload: Mapping[str, Any],
+    candidate_id: str,
+) -> Mapping[str, Any] | None:
+    queue = payload.get("research_candidate_queue")
+    if not isinstance(queue, Mapping):
+        return None
+    candidates = queue.get("candidates")
+    if not isinstance(candidates, list):
+        return None
+    for candidate in candidates:
+        if isinstance(candidate, Mapping) and candidate.get("candidate_id") == candidate_id:
+            return candidate
+    return None
+
+
+def _research_candidate_contains_forbidden_term(candidate: Mapping[str, Any]) -> bool:
+    candidate_text = json.dumps(
+        _json_safe(candidate),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    return any(term in candidate_text for term in _RESEARCH_CANDIDATE_FORBIDDEN_TERMS)
+
+
+def _write_research_candidate_queue_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    queue = payload.get("research_candidate_queue")
+    candidates: Any = []
+    if isinstance(queue, Mapping):
+        candidates = queue.get("candidates", [])
+    if not isinstance(candidates, list):
+        candidates = []
+    line_values = [
+        item for item in candidates if isinstance(item, Mapping)
+    ]
+    lines = [
+        json.dumps(_json_safe(item), sort_keys=True, separators=(",", ":"))
+        for item in line_values
+    ]
+    (output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME).write_text(
+        "\n".join(lines) + ("\n" if lines else ""),
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _apply_packet_validation(
@@ -940,6 +1657,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     artifact_paths = _artifact_paths(output_root)
     quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
     decision_ledger_defaults = _default_decision_ledger_fields(artifact_paths)
+    research_candidate_queue_defaults = _default_research_candidate_queue_fields(
+        artifact_paths
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -1016,6 +1736,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "history_ledger_path": artifact_paths["history_ledger"],
         **quality_gate_defaults,
         **decision_ledger_defaults,
+        **research_candidate_queue_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
         "history_delta": _empty_history_delta(as_of_str),
@@ -1028,6 +1749,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "history_ledger": artifact_paths["history_ledger"],
             "review_handoff": artifact_paths["review_handoff"],
             "decision_ledger": artifact_paths["decision_ledger"],
+            "research_candidate_queue": artifact_paths["research_candidate_queue"],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
             "gpt_next_action_handoff": artifact_paths[
@@ -1107,6 +1829,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "review_selected_next_action": decision_ledger_defaults[
                 "review_selected_next_action"
             ],
+            "research_candidate_queue_path": research_candidate_queue_defaults[
+                "research_candidate_queue_path"
+            ],
+            "research_candidate_queue": dict(
+                research_candidate_queue_defaults["research_candidate_queue"]
+            ),
             "next_action_selector": dict(
                 next_action_selector_defaults["next_action_selector"]
             ),
@@ -1243,6 +1971,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "history_ledger": _normalize_path(output_root / _HISTORY_LEDGER_FILENAME),
         "review_handoff": _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME),
         "decision_ledger": _normalize_path(output_root / _DECISION_LEDGER_FILENAME),
+        "research_candidate_queue": _normalize_path(
+            output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME
+        ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
         "gpt_next_action_handoff": _normalize_path(
@@ -1310,6 +2041,37 @@ def _default_decision_ledger_fields(
     }
 
 
+def _default_research_candidate_queue_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "research_candidate_queue_version": _RESEARCH_CANDIDATE_QUEUE_VERSION,
+        "research_candidate_queue_path": str(
+            artifact_paths["research_candidate_queue"]
+        ),
+        "research_candidate_queue": {
+            "research_candidate_queue_version": _RESEARCH_CANDIDATE_QUEUE_VERSION,
+            "status": "not_generated",
+            "artifact_path": str(artifact_paths["research_candidate_queue"]),
+            "generation_mode": "deterministic_offline_from_packet_evidence",
+            "priority_rules": {
+                "P0": "safety invariant or quality gate failure",
+                "P1": "missing operator/data/review evidence required to interpret current packet",
+                "P2": "offline research work that improves strategy evaluation",
+                "P3": "backlog or future enhancements",
+            },
+            "candidate_count": 0,
+            "top_candidate_id": None,
+            "top_candidate_priority": None,
+            "top_candidate_title": None,
+            "selected_safe_candidate_id": None,
+            "selected_safe_candidate_priority": None,
+            "selected_safe_candidate_title": None,
+            "candidates": [],
+        },
+    }
+
+
 def _default_next_action_selector_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -1321,10 +2083,16 @@ def _default_next_action_selector_fields(
             "selected_next_action_id": "prepare_daily_packet_for_quality_gate",
             "selected_next_action_type": "packet_preparation",
             "selected_work_order": "gpt_next_action_handoff",
-            "selected_work_order_path": str(artifact_paths["gpt_next_action_handoff"]),
-            "selected_owner": "GPT",
-            "rationale": "Packet artifacts have not completed final quality-gate evaluation.",
-            "reason_codes": ["quality_gate_not_yet_evaluated"],
+        "selected_work_order_path": str(artifact_paths["gpt_next_action_handoff"]),
+        "selected_owner": "GPT",
+        "selected_research_candidate_id": None,
+        "selected_research_candidate_priority": None,
+        "selected_research_candidate_title": None,
+        "research_candidate_queue_path": str(
+            artifact_paths["research_candidate_queue"]
+        ),
+        "rationale": "Packet artifacts have not completed final quality-gate evaluation.",
+        "reason_codes": ["quality_gate_not_yet_evaluated"],
             "blocks_offline_build": False,
             "requires_daniel": False,
             "hard_gate_required": False,
@@ -1350,6 +2118,11 @@ def _default_work_order_export_fields(
             "artifact_count": len(_WORK_ORDER_ARTIFACTS),
             "generation_mode": "deterministic_offline_markdown_only",
             "runtime_callouts_performed": False,
+            "research_candidate_queue_path": str(
+                artifact_paths["research_candidate_queue"]
+            ),
+            "top_research_candidate_id": None,
+            "selected_research_candidate_id": None,
             "safety_scope": "offline_text_export_only_no_broker_no_network_no_llm_calls",
             "artifacts": _work_order_export_artifacts(artifact_paths, "not_generated"),
         }
@@ -1451,6 +2224,10 @@ def _build_next_action_selector(
             blocks_offline_build=True,
             requires_daniel=bool(p0_action.get("requires_daniel")),
             hard_gate_required=True,
+            selected_research_candidate=_research_candidate_by_id(
+                payload,
+                "quality_gate_or_safety_invariant_repair",
+            ),
         )
 
     review_classification = str(payload.get("review_classification", "missing"))
@@ -1487,6 +2264,10 @@ def _build_next_action_selector(
             blocks_offline_build=True,
             requires_daniel=False,
             hard_gate_required=review_classification == "rejected",
+            selected_research_candidate=_research_candidate_by_id(
+                payload,
+                "offline_packet_review_repair",
+            ),
         )
 
     quality_gate_status = str(payload.get("quality_gate_status", "not_evaluated"))
@@ -1508,6 +2289,10 @@ def _build_next_action_selector(
             blocks_offline_build=True,
             requires_daniel=False,
             hard_gate_required=False,
+            selected_research_candidate=_research_candidate_by_id(
+                payload,
+                "quality_gate_or_safety_invariant_repair",
+            ),
         )
 
     review_input_status = str(payload.get("review_input_status", "review_input_not_found"))
@@ -1515,11 +2300,19 @@ def _build_next_action_selector(
         "review_input_not_found",
         "review_input_directory_empty",
     }:
+        review_candidate = _research_candidate_by_id(
+            payload,
+            "offline_review_evidence_gap",
+        )
         return _selector_result(
             artifact_paths=artifact_paths,
             source_state=source_state,
             status="operator_support_review_ingest_selected",
-            priority="P2",
+            priority=(
+                str(review_candidate.get("priority"))
+                if review_candidate is not None
+                else "P1"
+            ),
             selected_next_action_id="collect_offline_review_feedback",
             selected_next_action_type="operator_support_review_ingest",
             selected_work_order="gpt_next_action_handoff",
@@ -1532,6 +2325,31 @@ def _build_next_action_selector(
             blocks_offline_build=False,
             requires_daniel=False,
             hard_gate_required=False,
+            selected_research_candidate=review_candidate,
+        )
+
+    research_candidate = _first_safe_research_candidate(payload)
+    if research_candidate is not None:
+        return _selector_result(
+            artifact_paths=artifact_paths,
+            source_state=source_state,
+            status="safe_offline_research_candidate_selected",
+            priority=str(research_candidate.get("priority", "P2")),
+            selected_next_action_id=str(research_candidate["candidate_id"]),
+            selected_next_action_type="research_candidate",
+            selected_work_order="codex_work_order",
+            selected_owner="Codex",
+            rationale=str(research_candidate["rationale"]),
+            reason_codes=[
+                "quality_gate_passed",
+                "decision_ledger_allows_research_candidate",
+                f"research_candidate_priority_{research_candidate['priority']}",
+                str(research_candidate["candidate_id"]),
+            ],
+            blocks_offline_build=False,
+            requires_daniel=False,
+            hard_gate_required=False,
+            selected_research_candidate=research_candidate,
         )
 
     next_safe_action = _first_safe_offline_action(actions)
@@ -1555,6 +2373,7 @@ def _build_next_action_selector(
             blocks_offline_build=False,
             requires_daniel=bool(next_safe_action.get("requires_daniel")),
             hard_gate_required=bool(next_safe_action.get("hard_gate_required")),
+            selected_research_candidate=None,
         )
 
     return _selector_result(
@@ -1574,6 +2393,7 @@ def _build_next_action_selector(
         blocks_offline_build=False,
         requires_daniel=False,
         hard_gate_required=False,
+        selected_research_candidate=None,
     )
 
 
@@ -1612,6 +2432,30 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("history_delta"), Mapping)
             else "history_delta_missing"
         ),
+        "research_candidate_queue_status": str(
+            payload.get("research_candidate_queue", {}).get(
+                "status",
+                "research_candidate_queue_missing",
+            )
+            if isinstance(payload.get("research_candidate_queue"), Mapping)
+            else "research_candidate_queue_missing"
+        ),
+        "top_research_candidate_id": str(
+            payload.get("research_candidate_queue", {}).get(
+                "top_candidate_id",
+                "top_candidate_missing",
+            )
+            if isinstance(payload.get("research_candidate_queue"), Mapping)
+            else "top_candidate_missing"
+        ),
+        "selected_safe_research_candidate_id": str(
+            payload.get("research_candidate_queue", {}).get(
+                "selected_safe_candidate_id",
+                "selected_safe_candidate_missing",
+            )
+            if isinstance(payload.get("research_candidate_queue"), Mapping)
+            else "selected_safe_candidate_missing"
+        ),
     }
 
 
@@ -1630,8 +2474,24 @@ def _selector_result(
     blocks_offline_build: bool,
     requires_daniel: bool,
     hard_gate_required: bool,
+    selected_research_candidate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected_work_order_path = str(artifact_paths[selected_work_order])
+    candidate_id = (
+        str(selected_research_candidate["candidate_id"])
+        if selected_research_candidate is not None
+        else None
+    )
+    candidate_priority = (
+        str(selected_research_candidate["priority"])
+        if selected_research_candidate is not None
+        else None
+    )
+    candidate_title = (
+        str(selected_research_candidate["title"])
+        if selected_research_candidate is not None
+        else None
+    )
     return {
         "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
         "status": status,
@@ -1641,6 +2501,12 @@ def _selector_result(
         "selected_work_order": selected_work_order,
         "selected_work_order_path": selected_work_order_path,
         "selected_owner": selected_owner,
+        "selected_research_candidate_id": candidate_id,
+        "selected_research_candidate_priority": candidate_priority,
+        "selected_research_candidate_title": candidate_title,
+        "research_candidate_queue_path": str(
+            artifact_paths["research_candidate_queue"]
+        ),
         "rationale": rationale,
         "reason_codes": list(reason_codes),
         "blocks_offline_build": blocks_offline_build,
@@ -1715,6 +2581,14 @@ def _apply_work_order_exports(
     output_root: Path,
 ) -> None:
     artifact_paths = _artifact_paths(output_root)
+    queue = payload.get("research_candidate_queue")
+    top_candidate_id = None
+    if isinstance(queue, Mapping):
+        top_candidate_id = queue.get("top_candidate_id")
+    selector = payload.get("next_action_selector")
+    selected_candidate_id = None
+    if isinstance(selector, Mapping):
+        selected_candidate_id = selector.get("selected_research_candidate_id")
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -1722,6 +2596,9 @@ def _apply_work_order_exports(
         "artifact_count": len(_WORK_ORDER_ARTIFACTS),
         "generation_mode": "deterministic_offline_markdown_only",
         "runtime_callouts_performed": False,
+        "research_candidate_queue_path": str(artifact_paths["research_candidate_queue"]),
+        "top_research_candidate_id": top_candidate_id,
+        "selected_research_candidate_id": selected_candidate_id,
         "safety_scope": "offline_text_export_only_no_broker_no_network_no_llm_calls",
         "artifacts": _work_order_export_artifacts(artifact_paths, "generated"),
     }
@@ -2628,6 +3505,9 @@ def _build_quality_gate(
         root,
         packet_for_checks,
     )
+    candidate_queue_ok, candidate_queue_summary = (
+        _quality_research_candidate_queue_summary(root, packet_for_checks)
+    )
 
     required_checks = [
         _quality_check(
@@ -2680,6 +3560,11 @@ def _build_quality_gate(
             "research_board_has_spy_sma_50_200_active_baseline",
             research_board_ok,
             research_board_summary,
+        ),
+        _quality_check(
+            "research_candidate_queue_generated",
+            candidate_queue_ok,
+            candidate_queue_summary,
         ),
         _quality_check(
             "history_delta_exists",
@@ -2822,11 +3707,13 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Executive Action Queue",
         "## Trading desk brief",
         "## Research Board",
+        "## Research Candidate Queue",
         "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
         "Decision Ledger",
         "Work order exports",
+        _RESEARCH_CANDIDATE_QUEUE_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -2889,8 +3776,67 @@ def _quality_research_board_summary(packet: Mapping[str, Any]) -> tuple[bool, st
             item.get("status") == "active_baseline"
             and "SPY SMA 50/200" in candidate_name
         ):
-            return True, "SPY SMA 50/200 active_baseline is present"
+                return True, "SPY SMA 50/200 active_baseline is present"
     return False, "SPY SMA 50/200 active_baseline is missing"
+
+
+def _quality_research_candidate_queue_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_research_candidate_queue_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    queue = packet["research_candidate_queue"]
+    assert isinstance(queue, Mapping)
+    queue_path = output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME
+    if not queue_path.exists() or not queue_path.is_file():
+        return False, f"{_RESEARCH_CANDIDATE_QUEUE_FILENAME} missing"
+    if queue_path.stat().st_size <= 0:
+        return False, f"{_RESEARCH_CANDIDATE_QUEUE_FILENAME} empty"
+    candidates = queue["candidates"]
+    assert isinstance(candidates, list)
+    expected = sorted(
+        candidates,
+        key=lambda item: (
+            _ACTION_PRIORITY_RANK[str(item["priority"])],
+            str(item["candidate_id"]),
+        ),
+    )
+    if list(candidates) != expected:
+        return False, "research candidates are not sorted by priority/candidate_id"
+    if queue["candidate_count"] != len(candidates):
+        return False, "candidate_count does not match candidates length"
+    if candidates:
+        top = candidates[0]
+        if queue["top_candidate_id"] != top["candidate_id"]:
+            return False, "top_candidate_id does not match first sorted candidate"
+        if queue["top_candidate_priority"] != top["priority"]:
+            return False, "top_candidate_priority does not match first sorted candidate"
+    artifact_lines = [
+        line.strip()
+        for line in queue_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != len(candidates):
+        return False, "queue artifact line count does not match candidates length"
+    for index, line in enumerate(artifact_lines):
+        try:
+            artifact_candidate = json.loads(line)
+        except json.JSONDecodeError:
+            return False, f"queue artifact line {index + 1} is not JSON"
+        if artifact_candidate != candidates[index]:
+            return False, f"queue artifact line {index + 1} does not match packet"
+    for candidate in candidates:
+        if _research_candidate_contains_forbidden_term(candidate):
+            return False, (
+                "research candidate contains forbidden broker, order, credential, "
+                "paid-tool, account, or capital term"
+            )
+    return True, (
+        "research candidate queue generated; top_candidate_id="
+        f"{queue['top_candidate_id']}; candidate_count={queue['candidate_count']}"
+    )
 
 
 def _missing_safety_labels(packet: Mapping[str, Any]) -> list[str]:
@@ -2910,6 +3856,7 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _HISTORY_LEDGER_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
         _DECISION_LEDGER_FILENAME,
+        _RESEARCH_CANDIDATE_QUEUE_FILENAME,
         _REVIEW_INPUTS_DIRNAME,
         _WORK_ORDERS_DIRNAME,
         _GPT_WORK_ORDER_FILENAME,
@@ -3028,6 +3975,8 @@ def _quality_work_order_exports_summary(
             continue
         for token in (
             _PHASE_NAME,
+            "## Research candidate queue",
+            _RESEARCH_CANDIDATE_QUEUE_FILENAME,
             "Do not commit unless GPT/Daniel explicitly asks after review.",
             "## Forbidden behavior",
             "## Required tests",
@@ -3108,6 +4057,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
             packet.get("research_board"),
         )
     )
+    missing.extend(_missing_research_candidate_queue_fields("", packet))
     research_lab = packet.get("research_lab")
     if isinstance(research_lab, Mapping):
         missing.extend(
@@ -3165,6 +4115,7 @@ def _missing_manifest_fields(
             manifest.get("research_board"),
         )
     )
+    missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
     missing.extend(_missing_next_action_selector_fields("manifest", manifest))
     missing.extend(_missing_work_order_export_fields("manifest", manifest))
@@ -3183,6 +4134,9 @@ def _missing_manifest_fields(
         "history_ledger_path",
         "executive_action_queue_version",
         "executive_action_summary",
+        "research_candidate_queue_version",
+        "research_candidate_queue_path",
+        "research_candidate_queue",
         "quality_gate_status",
         "quality_gate_score",
         "quality_gate_failed_checks",
@@ -3223,6 +4177,14 @@ def _missing_manifest_fields(
     ):
         missing.append("manifest.executive_action_queue.matches_record")
 
+    if (
+        isinstance(packet.get("research_candidate_queue"), Mapping)
+        and isinstance(manifest.get("research_candidate_queue"), Mapping)
+        and dict(manifest["research_candidate_queue"])
+        != dict(packet["research_candidate_queue"])
+    ):
+        missing.append("manifest.research_candidate_queue.matches_record")
+
     return missing
 
 
@@ -3253,6 +4215,90 @@ def _missing_review_decision_fields(
     return missing
 
 
+def _missing_research_candidate_queue_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    queue = packet.get("research_candidate_queue")
+    if not isinstance(queue, Mapping):
+        return [f"{field_prefix}research_candidate_queue"]
+    for field_name in _REQUIRED_RESEARCH_CANDIDATE_QUEUE_FIELDS:
+        if field_name not in queue:
+            missing.append(f"{field_prefix}research_candidate_queue.{field_name}")
+    if (
+        packet.get("research_candidate_queue_version")
+        != _RESEARCH_CANDIDATE_QUEUE_VERSION
+    ):
+        missing.append(f"{field_prefix}research_candidate_queue_version")
+    if queue.get("research_candidate_queue_version") != _RESEARCH_CANDIDATE_QUEUE_VERSION:
+        missing.append(
+            f"{field_prefix}research_candidate_queue.research_candidate_queue_version"
+        )
+    if queue.get("status") not in {"generated", "not_generated"}:
+        missing.append(f"{field_prefix}research_candidate_queue.status.allowed")
+    if not str(packet.get("research_candidate_queue_path", "")).strip():
+        missing.append(f"{field_prefix}research_candidate_queue_path")
+    if not str(queue.get("artifact_path", "")).strip():
+        missing.append(f"{field_prefix}research_candidate_queue.artifact_path")
+    if not isinstance(queue.get("priority_rules"), Mapping):
+        missing.append(f"{field_prefix}research_candidate_queue.priority_rules")
+    else:
+        for priority in _ACTION_PRIORITIES:
+            if priority not in queue["priority_rules"]:
+                missing.append(
+                    f"{field_prefix}research_candidate_queue.priority_rules.{priority}"
+                )
+    candidates = queue.get("candidates")
+    if not isinstance(candidates, list):
+        missing.append(f"{field_prefix}research_candidate_queue.candidates")
+        return missing
+    if not isinstance(queue.get("candidate_count"), int):
+        missing.append(f"{field_prefix}research_candidate_queue.candidate_count.int")
+    elif queue["candidate_count"] != len(candidates):
+        missing.append(f"{field_prefix}research_candidate_queue.candidate_count")
+    for field_name in (
+        "top_candidate_id",
+        "top_candidate_priority",
+        "top_candidate_title",
+        "selected_safe_candidate_id",
+        "selected_safe_candidate_priority",
+        "selected_safe_candidate_title",
+    ):
+        if field_name not in queue:
+            missing.append(f"{field_prefix}research_candidate_queue.{field_name}")
+    for index, candidate in enumerate(candidates):
+        candidate_prefix = (
+            f"{field_prefix}research_candidate_queue.candidates.{index}"
+        )
+        if not isinstance(candidate, Mapping):
+            missing.append(candidate_prefix)
+            continue
+        for field_name in _REQUIRED_RESEARCH_CANDIDATE_FIELDS:
+            if field_name not in candidate:
+                missing.append(f"{candidate_prefix}.{field_name}")
+        if candidate.get("priority") not in _ACTION_PRIORITIES:
+            missing.append(f"{candidate_prefix}.priority.allowed")
+        if candidate.get("status") not in _RESEARCH_CANDIDATE_STATUSES:
+            missing.append(f"{candidate_prefix}.status.allowed")
+        for list_field in (
+            "evidence_sources",
+            "required_data",
+            "blocked_by",
+            "promotion_criteria",
+            "rejection_criteria",
+        ):
+            if list_field in candidate and not isinstance(candidate.get(list_field), list):
+                missing.append(f"{candidate_prefix}.{list_field}.list")
+        for bool_field in ("requires_daniel", "hard_gate_required"):
+            if bool_field in candidate and not isinstance(candidate.get(bool_field), bool):
+                missing.append(f"{candidate_prefix}.{bool_field}.bool")
+        if _research_candidate_contains_forbidden_term(candidate):
+            missing.append(f"{candidate_prefix}.safe")
+    return missing
+
+
 def _missing_next_action_selector_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -3272,6 +4318,10 @@ def _missing_next_action_selector_fields(
         "selected_work_order",
         "selected_work_order_path",
         "selected_owner",
+        "selected_research_candidate_id",
+        "selected_research_candidate_priority",
+        "selected_research_candidate_title",
+        "research_candidate_queue_path",
         "rationale",
         "reason_codes",
         "blocks_offline_build",
@@ -3325,6 +4375,16 @@ def _missing_next_action_selector_fields(
         missing.append(f"{field_prefix}next_action_selector.forbidden_actions.list")
     if not isinstance(selector.get("source_state"), Mapping):
         missing.append(f"{field_prefix}next_action_selector.source_state.object")
+    if not str(selector.get("research_candidate_queue_path", "")).strip():
+        missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
+    selected_candidate_priority = selector.get("selected_research_candidate_priority")
+    if (
+        selected_candidate_priority is not None
+        and selected_candidate_priority not in _ACTION_PRIORITIES
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector.selected_research_candidate_priority.allowed"
+        )
     selected_action_id = str(selector.get("selected_next_action_id", ""))
     if not selected_action_id.strip():
         missing.append(f"{field_prefix}next_action_selector.selected_next_action_id")
@@ -3355,6 +4415,9 @@ def _missing_work_order_export_fields(
         "artifact_count",
         "generation_mode",
         "runtime_callouts_performed",
+        "research_candidate_queue_path",
+        "top_research_candidate_id",
+        "selected_research_candidate_id",
         "safety_scope",
         "artifacts",
     )
@@ -3373,6 +4436,15 @@ def _missing_work_order_export_fields(
         missing.append(
             f"{field_prefix}work_order_exports.runtime_callouts_performed.false"
         )
+    if not str(exports.get("research_candidate_queue_path", "")).strip():
+        missing.append(f"{field_prefix}work_order_exports.research_candidate_queue_path")
+    for optional_text_field in (
+        "top_research_candidate_id",
+        "selected_research_candidate_id",
+    ):
+        if optional_text_field in exports and exports.get(optional_text_field) is not None:
+            if not str(exports.get(optional_text_field, "")).strip():
+                missing.append(f"{field_prefix}work_order_exports.{optional_text_field}")
     artifacts = exports.get("artifacts")
     if not isinstance(artifacts, Mapping):
         missing.append(f"{field_prefix}work_order_exports.artifacts")
@@ -3888,6 +4960,16 @@ def _render_work_order_markdown(
     extra_sections: str,
 ) -> str:
     selector = payload["next_action_selector"]
+    queue = payload["research_candidate_queue"]
+    selected_candidate_id = selector.get("selected_research_candidate_id")
+    selected_candidate = (
+        _research_candidate_by_id(payload, str(selected_candidate_id))
+        if selected_candidate_id is not None
+        else None
+    )
+    selected_candidate_json = _json_markdown(
+        dict(selected_candidate) if selected_candidate is not None else {}
+    )
     return f"""# {title}
 
 ## Phase
@@ -3910,6 +4992,17 @@ def _render_work_order_markdown(
 {_json_markdown(selector)}
 ```
 
+## Research candidate queue
+* **Queue artifact**: `{payload["research_candidate_queue_path"]}`
+* **Queue status**: `{queue["status"]}`
+* **Top candidate**: `{queue["top_candidate_id"]}` ({queue["top_candidate_priority"]})
+* **Selected safe candidate**: `{queue["selected_safe_candidate_id"]}` ({queue["selected_safe_candidate_priority"]})
+* **Selector candidate reference**: `{selector["selected_research_candidate_id"]}`
+
+```json
+{selected_candidate_json}
+```
+
 {extra_sections}
 
 ## Forbidden behavior
@@ -3926,7 +5019,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_6_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_7_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -3935,6 +5028,7 @@ def _render_work_order_markdown(
 * `manifest.jsonl`
 * `history_ledger.jsonl`
 * `review_handoff.md`
+* `research_candidate_queue.jsonl`
 * `work_orders/gpt_next_action_handoff.md`
 * `work_orders/codex_work_order.md`
 * `work_orders/antigravity_review_order.md`
@@ -3947,7 +5041,7 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Commands added or changed.
 6. Behavior implemented.
-7. Work-order artifacts produced.
+7. Research candidate queue fields and top candidates.
 8. Smoke artifact paths and quality gate result.
 9. Tests run and exact results.
 10. Safety assessment.
@@ -4000,6 +5094,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     action_lines = _render_executive_action_queue(payload["executive_action_queue"])
     research_board_lines = _render_research_board(
         payload["research_lab"]["research_board"]
+    )
+    research_candidate_queue_lines = _render_research_candidate_queue(
+        payload["research_candidate_queue"]
     )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
@@ -4062,6 +5159,13 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {missing_evidence_lines}
 * **Next research action**: {payload["research_lab"]["next_research_action"]}
 
+## Research Candidate Queue
+* **Queue artifact**: `{payload["research_candidate_queue_path"]}`
+* **Queue status**: `{payload["research_candidate_queue"]["status"]}`
+* **Top candidate**: `{payload["research_candidate_queue"]["top_candidate_id"]}` ({payload["research_candidate_queue"]["top_candidate_priority"]})
+* **Selected safe candidate**: `{payload["research_candidate_queue"]["selected_safe_candidate_id"]}` ({payload["research_candidate_queue"]["selected_safe_candidate_priority"]})
+{research_candidate_queue_lines}
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -4099,6 +5203,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     artifact_lines = _render_generated_artifacts(payload)
     action_lines = _render_review_action_queue(payload["executive_action_queue"])
     research_lines = _render_review_research_board(payload["research_board"])
+    research_candidate_queue_lines = _render_research_candidate_queue(
+        payload["research_candidate_queue"]
+    )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -4195,6 +5302,13 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 ## Research board
 {research_lines}
 
+## Research candidate queue
+* **research_candidate_queue_version**: `{payload["research_candidate_queue_version"]}`
+* **research_candidate_queue_path**: `{payload["research_candidate_queue_path"]}`
+* **top_candidate_id**: `{payload["research_candidate_queue"]["top_candidate_id"]}`
+* **selected_safe_candidate_id**: `{payload["research_candidate_queue"]["selected_safe_candidate_id"]}`
+{research_candidate_queue_lines}
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -4209,7 +5323,7 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
 
 ## Reviewer instructions
-* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
 * **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
 * **Return format**:
   * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
@@ -4230,6 +5344,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         ("history_ledger", artifact_paths.get("history_ledger")),
         ("review_handoff", artifact_paths.get("review_handoff")),
         ("decision_ledger", artifact_paths.get("decision_ledger")),
+        (
+            "research_candidate_queue",
+            artifact_paths.get("research_candidate_queue"),
+        ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
         (
@@ -4376,6 +5494,30 @@ def _render_research_board(candidate_board: list[Mapping[str, Any]]) -> str:
     return "\n".join(lines)
 
 
+def _render_research_candidate_queue(queue: Mapping[str, Any]) -> str:
+    candidates = queue.get("candidates")
+    if not isinstance(candidates, list) or not candidates:
+        return "* No research candidates are present."
+    lines = [
+        "| Candidate | Priority | Type | Status | Requires Daniel | Hard gate | Next safe test |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for item in candidates:
+        if not isinstance(item, Mapping):
+            continue
+        lines.append(
+            "| "
+            f"`{item['candidate_id']}` | "
+            f"`{item['priority']}` | "
+            f"`{item['candidate_type']}` | "
+            f"`{item['status']}` | "
+            f"{str(item['requires_daniel']).lower()} | "
+            f"{str(item['hard_gate_required']).lower()} | "
+            f"{item['next_safe_test']} |"
+        )
+    return "\n".join(lines)
+
+
 def _render_candidate_strategy_board(candidate_board: list[Mapping[str, Any]]) -> str:
     return _render_research_board(candidate_board)
 
@@ -4393,6 +5535,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
     if decision_ledger_path.exists():
         indexed_artifacts["decision_ledger"] = _artifact_metadata(
             decision_ledger_path
+        )
+    research_candidate_queue_path = output_root / _RESEARCH_CANDIDATE_QUEUE_FILENAME
+    if research_candidate_queue_path.exists():
+        indexed_artifacts["research_candidate_queue"] = _artifact_metadata(
+            research_candidate_queue_path
         )
     work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
     for artifact_id, filename, _audience, _purpose in _WORK_ORDER_ARTIFACTS:
@@ -4432,6 +5579,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "executive_action_summary": dict(payload["executive_action_summary"]),
         "research_board_version": payload["research_lab"]["research_board_version"],
         "research_board": list(payload["research_lab"]["research_board"]),
+        "research_candidate_queue_version": payload[
+            "research_candidate_queue_version"
+        ],
+        "research_candidate_queue_path": payload["research_candidate_queue_path"],
+        "research_candidate_queue": dict(payload["research_candidate_queue"]),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],

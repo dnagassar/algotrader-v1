@@ -88,6 +88,87 @@ def _assert_research_board_item_shape(item: dict[str, object]) -> None:
     assert isinstance(item["notes"], list)
 
 
+def _assert_research_candidate_queue_item_shape(item: dict[str, object]) -> None:
+    assert set(item) == {
+        "candidate_id",
+        "candidate_type",
+        "title",
+        "hypothesis",
+        "rationale",
+        "evidence_sources",
+        "required_data",
+        "expected_artifact_or_command",
+        "priority",
+        "status",
+        "blocked_by",
+        "safety_scope",
+        "requires_daniel",
+        "hard_gate_required",
+        "promotion_criteria",
+        "rejection_criteria",
+        "next_safe_test",
+    }
+    assert item["priority"] in {"P0", "P1", "P2", "P3"}
+    assert item["status"] in {
+        "queued",
+        "waiting_for_review",
+        "blocked",
+        "repair_required",
+    }
+    assert isinstance(item["evidence_sources"], list)
+    assert isinstance(item["required_data"], list)
+    assert isinstance(item["blocked_by"], list)
+    assert isinstance(item["requires_daniel"], bool)
+    assert isinstance(item["hard_gate_required"], bool)
+    assert isinstance(item["promotion_criteria"], list)
+    assert isinstance(item["rejection_criteria"], list)
+
+
+def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
+    assert set(queue) == {
+        "research_candidate_queue_version",
+        "status",
+        "artifact_path",
+        "generation_mode",
+        "priority_rules",
+        "candidate_count",
+        "top_candidate_id",
+        "top_candidate_priority",
+        "top_candidate_title",
+        "selected_safe_candidate_id",
+        "selected_safe_candidate_priority",
+        "selected_safe_candidate_title",
+        "candidates",
+    }
+    assert queue["research_candidate_queue_version"] == (
+        "assistant_v1.7_research_candidate_queue"
+    )
+    assert queue["status"] == "generated"
+    assert str(queue["artifact_path"]).endswith("research_candidate_queue.jsonl")
+    assert queue["generation_mode"] == (
+        "deterministic_offline_from_packet_evidence"
+    )
+    assert queue["priority_rules"] == {
+        "P0": "safety invariant or quality gate failure",
+        "P1": "missing operator/data/review evidence required to interpret current packet",
+        "P2": "offline research work that improves strategy evaluation",
+        "P3": "backlog or future enhancements",
+    }
+    candidates = queue["candidates"]
+    assert isinstance(candidates, list)
+    assert queue["candidate_count"] == len(candidates)
+    assert candidates
+    for item in candidates:
+        _assert_research_candidate_queue_item_shape(item)
+    priorities = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    assert candidates == sorted(
+        candidates,
+        key=lambda item: (priorities[item["priority"]], item["candidate_id"]),
+    )
+    assert queue["top_candidate_id"] == candidates[0]["candidate_id"]
+    assert queue["top_candidate_priority"] == candidates[0]["priority"]
+
+
 def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     assert set(selector) == {
         "next_action_selector_version",
@@ -98,6 +179,10 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "selected_work_order",
         "selected_work_order_path",
         "selected_owner",
+        "selected_research_candidate_id",
+        "selected_research_candidate_priority",
+        "selected_research_candidate_title",
+        "research_candidate_queue_path",
         "rationale",
         "reason_codes",
         "blocks_offline_build",
@@ -120,6 +205,16 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "\\",
         "/",
     )
+    assert str(selector["research_candidate_queue_path"]).endswith(
+        "research_candidate_queue.jsonl"
+    )
+    if selector["selected_research_candidate_priority"] is not None:
+        assert selector["selected_research_candidate_priority"] in {
+            "P0",
+            "P1",
+            "P2",
+            "P3",
+        }
     assert isinstance(selector["reason_codes"], list)
     assert isinstance(selector["forbidden_actions"], list)
     assert isinstance(selector["source_state"], dict)
@@ -135,6 +230,10 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert exports["artifact_count"] == 4
     assert exports["generation_mode"] == "deterministic_offline_markdown_only"
     assert exports["runtime_callouts_performed"] is False
+    assert str(exports["research_candidate_queue_path"]).endswith(
+        "research_candidate_queue.jsonl"
+    )
+    assert exports["top_research_candidate_id"]
     assert str(exports["directory"]).endswith("work_orders")
     artifacts = exports["artifacts"]
     assert isinstance(artifacts, dict)
@@ -161,6 +260,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "paper_submit_not_authorized",
         "executive_action_queue_priorities_deterministic",
         "research_board_has_spy_sma_50_200_active_baseline",
+        "research_candidate_queue_generated",
         "history_delta_exists",
         "safety_labels_exist",
         "review_handoff_references_generated_artifacts",
@@ -174,9 +274,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "18/18 required checks passed; 0 failed; 0 warnings"
+        "19/19 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 18
+    assert container["quality_gate_passed_required_count"] == 19
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -255,8 +355,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["next_action_selector"]["selected_work_order"] == (
         "gpt_next_action_handoff"
     )
+    assert payload["next_action_selector"]["priority"] == "P1"
+    assert payload["next_action_selector"]["selected_research_candidate_id"] == (
+        "offline_review_evidence_gap"
+    )
     assert payload["next_action_selector"]["blocks_offline_build"] is False
     _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert payload["work_order_exports"]["selected_research_candidate_id"] == (
+        "offline_review_evidence_gap"
+    )
     delta = payload["history_delta"]
     assert delta["previous_packet_found"] is False
     assert delta["previous_as_of_date"] is None
@@ -292,6 +399,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "research_candidate_queue"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -314,6 +427,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert payload["artifacts"]["review_handoff"].endswith("review_handoff.md")
+    assert payload["artifacts"]["research_candidate_queue"].endswith(
+        "research_candidate_queue.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -372,6 +488,32 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "strategy_confidence_not_yet_quantified" in active_baseline[
         "promotion_blockers"
     ]
+    assert payload["research_candidate_queue_version"] == (
+        "assistant_v1.7_research_candidate_queue"
+    )
+    assert payload["research_candidate_queue_path"].endswith(
+        "research_candidate_queue.jsonl"
+    )
+    _assert_research_candidate_queue_shape(payload["research_candidate_queue"])
+    queue = payload["research_candidate_queue"]
+    assert queue["top_candidate_id"] == "offline_review_evidence_gap"
+    assert queue["top_candidate_priority"] == "P1"
+    assert queue["selected_safe_candidate_id"] == (
+        "baseline_health_evaluation_spy_sma_50_200"
+    )
+    assert queue["selected_safe_candidate_priority"] == "P2"
+    candidate_ids = [
+        candidate["candidate_id"] for candidate in queue["candidates"]
+    ]
+    assert candidate_ids == [
+        "offline_review_evidence_gap",
+        "baseline_health_evaluation_spy_sma_50_200",
+        "benchmark_buy_and_hold_comparison_spy",
+        "current_baseline_evidence_gap_map",
+        "paper_lab_observation_readiness",
+        "future_non_sma_strategy_research_slot",
+        "strategy_candidate_intake_requirements",
+    ]
 
     # Labels verification
     for label in (
@@ -391,6 +533,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "operating_brief.md").exists()
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
+    assert (output_root / "research_candidate_queue.jsonl").exists()
+    assert (output_root / "research_candidate_queue.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
     assert (output_root / "work_orders" / "codex_work_order.md").exists()
     assert (output_root / "work_orders" / "antigravity_review_order.md").exists()
@@ -410,6 +554,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "**Daniel action required now**: false" in brief
     assert "## Trading desk brief" in brief
     assert "## Research Board" in brief
+    assert "## Research Candidate Queue" in brief
+    assert "research_candidate_queue.jsonl" in brief
+    assert "offline_review_evidence_gap" in brief
+    assert "baseline_health_evaluation_spy_sma_50_200" in brief
     assert "## Executive dashboard" in brief
     assert "paper_submit_authorized=false" in brief
     assert "broker_state_not_observed" in brief
@@ -461,6 +609,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["review_selected_next_action"] == "await_offline_review_input"
     assert record["next_action_selector"] == payload["next_action_selector"]
     assert record["work_order_exports"] == payload["work_order_exports"]
+    assert record["research_candidate_queue_version"] == (
+        "assistant_v1.7_research_candidate_queue"
+    )
+    assert record["research_candidate_queue_path"].endswith(
+        "research_candidate_queue.jsonl"
+    )
+    assert record["research_candidate_queue"] == payload["research_candidate_queue"]
     assert record["history_delta"] == delta
     assert record["history_ledger_path"].endswith("history_ledger.jsonl")
     assert record["executive_action_queue"] == payload["executive_action_queue"]
@@ -504,6 +659,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["review_selected_next_action"] == "await_offline_review_input"
     assert manifest["next_action_selector"] == payload["next_action_selector"]
     assert manifest["work_order_exports"] == payload["work_order_exports"]
+    assert manifest["research_candidate_queue_version"] == (
+        "assistant_v1.7_research_candidate_queue"
+    )
+    assert manifest["research_candidate_queue_path"].endswith(
+        "research_candidate_queue.jsonl"
+    )
+    assert manifest["research_candidate_queue"] == payload["research_candidate_queue"]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -514,6 +676,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "operating_record" in manifest["indexed_artifacts"]
     assert "review_handoff" in manifest["indexed_artifacts"]
     assert "history_ledger" in manifest["indexed_artifacts"]
+    assert "research_candidate_queue" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
     assert "codex_work_order" in manifest["indexed_artifacts"]
     assert "antigravity_review_order" in manifest["indexed_artifacts"]
@@ -536,8 +699,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         ),
     ]
     for work_order in work_order_texts:
-        assert "Assistant v1.6 - Agent Work Order Export + Next Action Selector" in work_order
+        assert "Assistant v1.7 - Research Candidate Evidence Queue" in work_order
         assert "collect_offline_review_feedback" in work_order
+        assert "research_candidate_queue.jsonl" in work_order
+        assert "offline_review_evidence_gap" in work_order
         assert "Do not commit unless GPT/Daniel explicitly asks after review." in work_order
         assert "Do not perform broker reads." in work_order
         assert "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py" in work_order
@@ -562,6 +727,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert validation["validation_status"] == "pass"
     assert validation["missing_required_fields"] == []
     assert validation["artifact_presence_status"]["status"] == "pass"
+
+    queue_lines = (output_root / "research_candidate_queue.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    assert len(queue_lines) == queue["candidate_count"]
+    queue_records = [json.loads(line) for line in queue_lines]
+    assert queue_records == queue["candidates"]
 
 
 def test_etf_sma_daily_paper_lab_second_run_delta_compares_prior_packet(
@@ -808,6 +980,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Work order exports",
         "## Executive action queue",
         "## Research board",
+        "## Research candidate queue",
         "## History delta",
         "## Safety assessment",
         "## Reviewer instructions",
@@ -833,6 +1006,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "history_ledger.jsonl",
         "review_handoff.md",
         "decision_ledger.jsonl",
+        "research_candidate_queue.jsonl",
         "review_inputs",
         "work_orders",
         "gpt_next_action_handoff.md",
@@ -1011,9 +1185,14 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
     _assert_quality_gate_pass(payload)
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["review_classification"] == "accepted"
-    assert payload["next_action_selector"]["status"] == "safe_offline_action_selected"
+    assert payload["next_action_selector"]["status"] == (
+        "safe_offline_research_candidate_selected"
+    )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "quantify_spy_sma_baseline_confidence"
+        "baseline_health_evaluation_spy_sma_50_200"
+    )
+    assert payload["next_action_selector"]["selected_research_candidate_id"] == (
+        "baseline_health_evaluation_spy_sma_50_200"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -1054,7 +1233,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "15/18 required checks passed; 3 failed; 0 warnings"
+        "16/19 required checks passed; 3 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
