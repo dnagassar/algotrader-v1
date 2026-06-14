@@ -343,6 +343,127 @@ def _assert_strategy_comparison_scaffold_shape(scaffold: dict[str, object]) -> N
     assert scaffold["required_evidence_before_promotion"]
 
 
+def _assert_candidate_strategy_evidence_template_shape(
+    template: dict[str, object],
+) -> None:
+    assert set(template) == {
+        "template_status",
+        "evidence_mode",
+        "baseline_strategy_id",
+        "baseline_strategy_role",
+        "candidate_families",
+        "required_evidence_sections",
+        "minimum_promotion_requirements",
+        "rejection_criteria",
+        "comparison_against_baseline",
+        "offline_artifacts_required",
+        "human_readable_review_questions",
+        "selected_next_safe_action",
+        "why_selected",
+        "why_no_strategy_implementation_yet",
+        "broker_state_mode",
+        "safety_scope",
+        "paper_submit_authorized",
+        "profit_claim",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+    }
+    assert template["template_status"] == "ready"
+    assert template["evidence_mode"] == "offline_strategy_evidence_template_only"
+    assert template["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert template["baseline_strategy_role"] == "control_harness"
+    assert template["selected_next_safe_action"] == (
+        "materialize_candidate_evidence_requirements"
+    )
+    assert "requires an offline evidence template" in str(
+        template["why_no_strategy_implementation_yet"]
+    ).lower()
+    assert "deterministic comparison requirements first" in str(
+        template["why_no_strategy_implementation_yet"]
+    ).lower()
+    assert template["broker_state_mode"] == "broker_state_not_observed"
+    assert template["safety_scope"] == "offline_only"
+    assert template["paper_submit_authorized"] is False
+    assert template["profit_claim"] == "none"
+    assert template["hard_gate_required"] is False
+    assert template["requires_daniel"] is False
+    assert template["daniel_action_required_now"] is False
+
+    families = template["candidate_families"]
+    assert isinstance(families, list)
+    assert families
+    assert {family["candidate_family_id"] for family in families} == {
+        "momentum_or_trend_candidate",
+        "mean_reversion_candidate",
+        "volatility_or_regime_filter_candidate",
+    }
+    for family in families:
+        assert set(family) == {
+            "candidate_family_id",
+            "candidate_family_label",
+            "current_status",
+            "implementation_status",
+            "evidence_status",
+            "promotion_status",
+            "required_inputs",
+            "required_metrics",
+            "required_safety_checks",
+            "broker_dependency",
+            "hard_gate_required",
+            "safety_scope",
+        }
+        assert family["implementation_status"] == "not_implemented"
+        assert family["broker_dependency"] == "none"
+        assert family["hard_gate_required"] is False
+        assert family["safety_scope"] == "offline_only"
+        assert isinstance(family["required_inputs"], list)
+        assert family["required_inputs"]
+        assert isinstance(family["required_metrics"], list)
+        assert family["required_metrics"]
+        assert isinstance(family["required_safety_checks"], list)
+        assert family["required_safety_checks"]
+
+    assert template["required_evidence_sections"] == [
+        "hypothesis",
+        "market_universe",
+        "data_requirements",
+        "feature_requirements",
+        "signal_definition",
+        "risk_definition",
+        "backtest_requirements",
+        "cost_model_requirements",
+        "benchmark_requirements",
+        "regime_analysis_requirements",
+        "turnover_requirements",
+        "drawdown_requirements",
+        "failure_modes",
+        "paper_observation_requirements",
+        "promotion_gate",
+        "rejection_gate",
+    ]
+    assert isinstance(template["minimum_promotion_requirements"], list)
+    assert template["minimum_promotion_requirements"]
+    assert "offline deterministic implementation exists" in template[
+        "minimum_promotion_requirements"
+    ]
+    assert "no broker/network/LLM imports in strategy path" in template[
+        "minimum_promotion_requirements"
+    ]
+    assert isinstance(template["rejection_criteria"], list)
+    assert template["rejection_criteria"]
+    assert "broker dependency in research path" in template["rejection_criteria"]
+    assert isinstance(template["comparison_against_baseline"], dict)
+    assert template["comparison_against_baseline"]["baseline_strategy_id"] == (
+        "spy_sma_50_200_control"
+    )
+    assert "candidate_strategy_evidence_template.jsonl" in template[
+        "offline_artifacts_required"
+    ]
+    assert isinstance(template["human_readable_review_questions"], list)
+    assert template["human_readable_review_questions"]
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -427,6 +548,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "research_board_prioritization",
         "strategy_comparison_scaffold_path",
         "strategy_comparison_scaffold",
+        "candidate_strategy_evidence_template_path",
+        "candidate_strategy_evidence_template",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -458,6 +581,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     _assert_strategy_comparison_scaffold_shape(
         selector["strategy_comparison_scaffold"]
+    )
+    assert str(selector["candidate_strategy_evidence_template_path"]).endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+    _assert_candidate_strategy_evidence_template_shape(
+        selector["candidate_strategy_evidence_template"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -510,6 +639,13 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         exports["strategy_comparison_scaffold"]
     )
     assert exports["strategy_comparison_scaffold_status"] == "ready"
+    assert str(exports["candidate_strategy_evidence_template_path"]).endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+    _assert_candidate_strategy_evidence_template_shape(
+        exports["candidate_strategy_evidence_template"]
+    )
+    assert exports["candidate_strategy_evidence_template_status"] == "ready"
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
         "metric_artifacts_partially_ingested",
@@ -959,6 +1095,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "baseline_evidence_metrics_generated",
         "paper_observation_readiness_generated",
         "strategy_comparison_scaffold_generated",
+        "candidate_strategy_evidence_template_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
         "assistant_v1_through_v1_11_outputs_preserved",
@@ -975,9 +1112,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "26/26 required checks passed; 0 failed; 0 warnings"
+        "27/27 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 26
+    assert container["quality_gate_passed_required_count"] == 27
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -1064,6 +1201,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     _assert_research_board_prioritization_shape(
         payload["research_board_prioritization"]
     )
+    assert payload["strategy_comparison_scaffold_path"].endswith(
+        "strategy_comparison_scaffold.jsonl"
+    )
+    _assert_strategy_comparison_scaffold_shape(
+        payload["strategy_comparison_scaffold"]
+    )
+    assert payload["candidate_strategy_evidence_template_path"].endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+    _assert_candidate_strategy_evidence_template_shape(
+        payload["candidate_strategy_evidence_template"]
+    )
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["next_action_selector"]["status"] == (
         "operator_support_review_ingest_selected"
@@ -1148,6 +1297,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "strategy_comparison_scaffold"
+        ]["exists"]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "candidate_strategy_evidence_template"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -1182,6 +1343,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["paper_observation_readiness"].endswith(
         "paper_observation_readiness.jsonl"
     )
+    assert payload["artifacts"]["candidate_strategy_evidence_template"].endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -1198,6 +1362,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["executive_dashboard"]["baseline_health_evaluation"] == payload[
         "baseline_health_evaluation"
     ]
+    assert payload["executive_dashboard"]["candidate_strategy_evidence_template"] == (
+        payload["candidate_strategy_evidence_template"]
+    )
     assert payload["executive_dashboard"]["baseline_evidence_metrics"] == payload[
         "baseline_evidence_metrics"
     ]
@@ -1441,6 +1608,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "baseline_health_evaluation.jsonl").exists()
     assert (output_root / "baseline_evidence_metrics.jsonl").exists()
     assert (output_root / "paper_observation_readiness.jsonl").exists()
+    assert (output_root / "candidate_strategy_evidence_template.jsonl").exists()
     assert (output_root / "turnover_summary.jsonl").exists()
     assert (output_root / "cost_model_summary.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
@@ -1470,6 +1638,11 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "baseline_evidence_metrics.jsonl" in brief
     assert "## Paper Observation Readiness" in brief
     assert "paper_observation_readiness.jsonl" in brief
+    assert "## Candidate Strategy Evidence Template" in brief
+    assert "candidate_strategy_evidence_template.jsonl" in brief
+    assert "offline_strategy_evidence_template_only" in brief
+    assert "materialize_candidate_evidence_requirements" in brief
+    assert "Candidate implementation requires an offline evidence template" in brief
     assert "hard_gate_prepared_not_authorized" in brief
     assert "Daniel approves read-only paper observation" in brief
     assert "metrics_partially_available" in brief
@@ -1537,6 +1710,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert record["review_input_status"] == "review_input_not_found"
     assert record["review_classification"] == "missing"
     assert record["review_selected_next_action"] == "await_offline_review_input"
+    assert record["candidate_strategy_evidence_template_path"].endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+    assert record["candidate_strategy_evidence_template"] == payload[
+        "candidate_strategy_evidence_template"
+    ]
     assert record["next_action_selector"] == payload["next_action_selector"]
     assert record["work_order_exports"] == payload["work_order_exports"]
     assert record["research_candidate_queue_version"] == (
@@ -1648,6 +1827,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["research_board_prioritization"] == payload[
         "research_board_prioritization"
     ]
+    assert manifest["candidate_strategy_evidence_template_path"].endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+    assert manifest["candidate_strategy_evidence_template"] == payload[
+        "candidate_strategy_evidence_template"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -1663,6 +1848,11 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "baseline_evidence_metrics" in manifest["indexed_artifacts"]
     assert "paper_observation_readiness" in manifest["indexed_artifacts"]
     assert "research_board_prioritization" in manifest["indexed_artifacts"]
+    assert "strategy_comparison_scaffold" in manifest["indexed_artifacts"]
+    assert "candidate_strategy_evidence_template" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["candidate_strategy_evidence_template"][
+        "path"
+    ].endswith("candidate_strategy_evidence_template.jsonl")
     assert "turnover_summary" in manifest["indexed_artifacts"]
     assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
@@ -1688,7 +1878,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.14 - Offline Strategy Comparison Scaffold"
+            "Assistant v1.15 - Candidate Strategy Evidence Template"
             in work_order
         )
         assert "collect_offline_review_feedback" in work_order
@@ -1698,9 +1888,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "paper_observation_readiness.jsonl" in work_order
         assert "research_board_prioritization.jsonl" in work_order
         assert "strategy_comparison_scaffold.jsonl" in work_order
+        assert "candidate_strategy_evidence_template.jsonl" in work_order
         assert "## Paper observation readiness" in work_order
         assert "## Research board prioritization" in work_order
         assert "## Strategy comparison scaffold" in work_order
+        assert "## Candidate strategy evidence template" in work_order
+        assert "offline_strategy_evidence_template_only" in work_order
+        assert "materialize_candidate_evidence_requirements" in work_order
         assert "hard_gate_prepared_not_authorized" in work_order
         assert "turnover_summary.jsonl" in work_order
         assert "cost_model_summary.jsonl" in work_order
@@ -2516,12 +2710,13 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "21/26 required checks passed; 5 failed; 0 warnings"
+        "21/27 required checks passed; 6 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
         "required_operating_record_fields_exist",
         "strategy_comparison_scaffold_generated",
+        "candidate_strategy_evidence_template_generated",
         "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
@@ -2868,6 +3063,88 @@ def test_etf_sma_daily_paper_lab_strategy_comparison_scaffold(
     )
     assert payload["quality_gate_status"] == "pass"
     assert "strategy_comparison_scaffold_generated" not in payload[
+        "quality_gate_failed_checks"
+    ]
+    validation_result = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+    assert validation_result["validation_status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_candidate_strategy_evidence_template(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.15 candidate strategy evidence template artifact and wiring."""
+    output_root = tmp_path / "paper_lab_candidate_template_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    template_file = output_root / "candidate_strategy_evidence_template.jsonl"
+    assert template_file.exists()
+    lines = template_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_candidate_strategy_evidence_template_shape(data)
+    _assert_candidate_strategy_evidence_template_shape(
+        payload["candidate_strategy_evidence_template"]
+    )
+    assert data == payload["candidate_strategy_evidence_template"]
+    assert payload["candidate_strategy_evidence_template_path"].endswith(
+        "candidate_strategy_evidence_template.jsonl"
+    )
+
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    assert manifest["candidate_strategy_evidence_template"] == data
+    assert record["candidate_strategy_evidence_template"] == data
+    assert "candidate_strategy_evidence_template" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["candidate_strategy_evidence_template"][
+        "path"
+    ].endswith("candidate_strategy_evidence_template.jsonl")
+
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    handoff = (output_root / "review_handoff.md").read_text(encoding="utf-8")
+    assert "## Candidate Strategy Evidence Template" in brief
+    assert "## Candidate Strategy Evidence Template" in handoff
+    assert "candidate_strategy_evidence_template.jsonl" in brief
+    assert "candidate_strategy_evidence_template.jsonl" in handoff
+    assert "offline_strategy_evidence_template_only" in brief
+    assert "materialize_candidate_evidence_requirements" in handoff
+
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert (
+        payload["next_action_selector"]["candidate_strategy_evidence_template"]
+        == data
+    )
+    assert (
+        payload["work_order_exports"]["candidate_strategy_evidence_template"]
+        == data
+    )
+    assert data["template_status"] == "ready"
+    assert data["evidence_mode"] == "offline_strategy_evidence_template_only"
+    assert data["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert data["broker_state_mode"] == "broker_state_not_observed"
+    assert data["safety_scope"] == "offline_only"
+    assert data["paper_submit_authorized"] is False
+    assert data["profit_claim"] == "none"
+    assert data["daniel_action_required_now"] is False
+    assert payload["quality_gate_status"] == "pass"
+    assert "candidate_strategy_evidence_template_generated" not in payload[
         "quality_gate_failed_checks"
     ]
     validation_result = validate_etf_sma_daily_paper_lab_packet(
