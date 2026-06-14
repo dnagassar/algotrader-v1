@@ -63,11 +63,14 @@ _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_VERSION = (
 _CANDIDATE_EVIDENCE_REQUIREMENTS_VERSION = (
     "assistant_v1.16_candidate_evidence_requirements"
 )
-_PHASE_NAME = "Assistant v1.16 - Materialized Candidate Evidence Requirements"
+_CANDIDATE_EVIDENCE_COLLECTION_PLAN_VERSION = (
+    "assistant_v1.17_candidate_evidence_collection_plan"
+)
+_PHASE_NAME = "Assistant v1.17 - Candidate Evidence Collection Plan"
 _PHASE_GOAL = (
-    "Materialize deterministic offline evidence requirements for candidate "
-    "strategy families before any implementation, promotion, paper observation, "
-    "broker read, paper submit, or live trading."
+    "Turn deterministic offline candidate evidence requirements into a concrete "
+    "collection plan before any strategy implementation, promotion, paper "
+    "observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -92,6 +95,9 @@ _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME = (
     "candidate_strategy_evidence_template.jsonl"
 )
 _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME = "candidate_evidence_requirements.jsonl"
+_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME = (
+    "candidate_evidence_collection_plan.jsonl"
+)
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -149,6 +155,10 @@ _EXPECTED_ARTIFACTS = (
         _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
     ),
     ("candidate_evidence_requirements", _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME),
+    (
+        "candidate_evidence_collection_plan",
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME,
+    ),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -193,6 +203,8 @@ _REQUIRED_PACKET_FIELDS = (
     "candidate_strategy_evidence_template",
     "candidate_evidence_requirements_path",
     "candidate_evidence_requirements",
+    "candidate_evidence_collection_plan_path",
+    "candidate_evidence_collection_plan",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -259,6 +271,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "candidate_strategy_evidence_template",
     "candidate_evidence_requirements_path",
     "candidate_evidence_requirements",
+    "candidate_evidence_collection_plan_path",
+    "candidate_evidence_collection_plan",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -776,6 +790,56 @@ _REQUIRED_CANDIDATE_EVIDENCE_REQUIREMENT_FIELDS = (
     "hard_gate_required",
     "safety_scope",
 )
+_REQUIRED_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FIELDS = (
+    "collection_plan_status",
+    "collection_plan_mode",
+    "baseline_strategy_id",
+    "baseline_strategy_role",
+    "candidate_collection_plans",
+    "shared_collection_steps",
+    "data_collection_requirements",
+    "metric_collection_requirements",
+    "safety_collection_requirements",
+    "expected_offline_artifacts",
+    "blocked_until_collected",
+    "selected_next_safe_action",
+    "why_selected",
+    "why_no_strategy_implementation_yet",
+    "broker_state_mode",
+    "safety_scope",
+    "paper_submit_authorized",
+    "profit_claim",
+    "hard_gate_required",
+    "requires_daniel",
+    "daniel_action_required_now",
+)
+_REQUIRED_CANDIDATE_EVIDENCE_COLLECTION_PLAN_ENTRY_FIELDS = (
+    "candidate_family_id",
+    "candidate_family_label",
+    "current_status",
+    "implementation_status",
+    "evidence_status",
+    "collection_status",
+    "promotion_status",
+    "collection_steps",
+    "data_inputs_to_collect",
+    "features_to_define",
+    "signal_rules_to_specify",
+    "risk_rules_to_specify",
+    "backtest_outputs_to_collect",
+    "cost_outputs_to_collect",
+    "benchmark_outputs_to_collect",
+    "regime_outputs_to_collect",
+    "turnover_outputs_to_collect",
+    "drawdown_outputs_to_collect",
+    "failure_modes_to_review",
+    "safety_checks_to_run",
+    "expected_artifacts",
+    "blocked_until_collected",
+    "broker_dependency",
+    "hard_gate_required",
+    "safety_scope",
+)
 _REQUIRED_CANDIDATE_EVIDENCE_SECTIONS = (
     "hypothesis",
     "market_universe",
@@ -974,6 +1038,7 @@ def _write_packet_artifacts(
     _apply_strategy_comparison_scaffold(payload, output_root)
     _apply_candidate_strategy_evidence_template(payload, output_root)
     _apply_candidate_evidence_requirements(payload, output_root)
+    _apply_candidate_evidence_collection_plan(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -987,6 +1052,7 @@ def _write_packet_artifacts(
     _write_strategy_comparison_scaffold_artifact(output_root, payload)
     _write_candidate_strategy_evidence_template_artifact(output_root, payload)
     _write_candidate_evidence_requirements_artifact(output_root, payload)
+    _write_candidate_evidence_collection_plan_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -2865,6 +2931,20 @@ def _write_candidate_evidence_requirements_artifact(
     )
 
 
+def _write_candidate_evidence_collection_plan_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    collection_plan = payload.get("candidate_evidence_collection_plan")
+    record = collection_plan if isinstance(collection_plan, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _apply_packet_validation(
     payload: dict[str, Any],
     validation: Mapping[str, Any],
@@ -3366,6 +3446,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     candidate_evidence_requirements_defaults = (
         _default_candidate_evidence_requirements_fields(artifact_paths)
     )
+    candidate_evidence_collection_plan_defaults = (
+        _default_candidate_evidence_collection_plan_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3449,6 +3532,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **strategy_comparison_scaffold_defaults,
         **candidate_strategy_evidence_template_defaults,
         **candidate_evidence_requirements_defaults,
+        **candidate_evidence_collection_plan_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3483,6 +3567,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "candidate_evidence_requirements": artifact_paths[
                 "candidate_evidence_requirements"
+            ],
+            "candidate_evidence_collection_plan": artifact_paths[
+                "candidate_evidence_collection_plan"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3991,6 +4078,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "candidate_evidence_requirements": _normalize_path(
             output_root / _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+        ),
+        "candidate_evidence_collection_plan": _normalize_path(
+            output_root / _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -4968,6 +5058,372 @@ def _apply_candidate_evidence_requirements(
         dashboard["candidate_evidence_requirements"] = dict(requirements)
 
 
+def _build_candidate_evidence_collection_plan(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    del payload, artifact_paths
+    shared_collection_steps = [
+        "confirm deterministic offline data source",
+        "confirm explicit data basis",
+        "define candidate hypothesis",
+        "define feature calculations",
+        "define signal rule",
+        "define risk rule",
+        "define backtest window",
+        "define benchmark comparison against spy_sma_50_200_control",
+        "define transaction cost assumption",
+        "collect turnover estimate",
+        "collect drawdown evidence",
+        "collect regime sensitivity evidence",
+        "run dependency-direction guard",
+        "run default pytest network guard",
+        "run broker mutation invariant",
+        "confirm no broker dependency in research path",
+        "confirm no LLM/agent dependency in strategy path",
+        (
+            "defer paper observation until Daniel explicitly scopes broker read "
+            "or paper gate"
+        ),
+    ]
+    expected_offline_artifacts = [
+        "candidate_hypothesis_packet",
+        "candidate_data_requirements_packet",
+        "candidate_signal_spec_packet",
+        "candidate_risk_spec_packet",
+        "candidate_backtest_result_packet",
+        "candidate_baseline_comparison_packet",
+        "candidate_cost_turnover_packet",
+        "candidate_regime_drawdown_packet",
+        "candidate_safety_review_packet",
+        "candidate_promotion_decision_packet",
+    ]
+    blocked_until_collected = [
+        "candidate_hypothesis_packet_collected",
+        "candidate_data_requirements_packet_collected",
+        "candidate_signal_spec_packet_collected",
+        "candidate_risk_spec_packet_collected",
+        "candidate_backtest_result_packet_collected",
+        "candidate_baseline_comparison_packet_collected",
+        "candidate_cost_turnover_packet_collected",
+        "candidate_regime_drawdown_packet_collected",
+        "candidate_safety_review_packet_collected",
+        "candidate_evidence_compared_against_spy_sma_50_200_control",
+    ]
+    safety_checks = [
+        "dependency-direction guard",
+        "default pytest network guard",
+        "broker mutation invariant",
+        "no broker dependency in research path",
+        "no LLM/agent dependency in strategy path",
+        "paper submit remains unauthorized",
+        "live trading remains forbidden",
+    ]
+    candidate_collection_plans = [
+        _candidate_evidence_collection_plan_entry(
+            candidate_family_id="momentum_or_trend_candidate",
+            candidate_family_label="Momentum or trend candidate",
+            collection_steps=[
+                "collect fixed momentum or trend hypothesis",
+                "collect as-of bar window and data-basis statement",
+                "collect deterministic trend or momentum feature definitions",
+                "collect entry and exit rule specification",
+                "collect risk cap and risk-off behavior specification",
+                "collect offline backtest and baseline comparison outputs",
+                "collect turnover, cost, drawdown, and regime evidence",
+                "collect offline safety review outputs",
+            ],
+            features_to_define=[
+                "trend_or_momentum_feature_calculated_from_as_of_bars_only",
+                "fixed_lookback_window_and_parameter_values",
+                "ranking_or_filter_basis_without_optimizer_dependency",
+            ],
+            signal_rules_to_specify=[
+                "deterministic_long_flat_or_ranked_entry_rule",
+                "deterministic_exit_or_deallocation_rule",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            risk_rules_to_specify=[
+                "max_position_notional_or_weight",
+                "position_concentration_limit",
+                "risk_off_or_stop_condition_defined_before_backtest",
+            ],
+            regime_outputs_to_collect=[
+                "trend_regime_performance_split",
+                "range_bound_regime_performance_split",
+                "high_volatility_regime_performance_split",
+            ],
+            failure_modes_to_review=[
+                "late_trend_entry_after_move",
+                "whipsaw_in_range_bound_periods",
+                "excessive_turnover_after_costs",
+            ],
+            safety_checks_to_run=safety_checks,
+        ),
+        _candidate_evidence_collection_plan_entry(
+            candidate_family_id="mean_reversion_candidate",
+            candidate_family_label="Mean reversion candidate",
+            collection_steps=[
+                "collect fixed mean-reversion hypothesis",
+                "collect as-of bar window and data-basis statement",
+                "collect reference-price deviation feature definitions",
+                "collect entry, exit, and failed-reversion rule specification",
+                "collect adverse-trend and cooldown risk rules",
+                "collect offline backtest and baseline comparison outputs",
+                "collect turnover, cost, drawdown, and regime evidence",
+                "collect offline safety review outputs",
+            ],
+            features_to_define=[
+                "deviation_from_reference_price_feature",
+                "reversion_horizon_definition",
+                "entry_and_exit_thresholds_fixed_before_test",
+            ],
+            signal_rules_to_specify=[
+                "deterministic_oversold_or_overextended_entry_rule",
+                "deterministic_mean_reversion_exit_rule",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            risk_rules_to_specify=[
+                "max_position_notional_or_weight",
+                "adverse_trend_or_failed_reversion_exit_rule",
+                "trade_cooldown_or_frequency_limit_if_applicable",
+            ],
+            regime_outputs_to_collect=[
+                "trend_regime_failure_review",
+                "range_bound_regime_performance_split",
+                "high_volatility_regime_performance_split",
+            ],
+            failure_modes_to_review=[
+                "catching_falling_market_or_failed_reversion",
+                "threshold_overfit_to_single_sample",
+                "excessive_trade_frequency_after_costs",
+            ],
+            safety_checks_to_run=safety_checks,
+        ),
+        _candidate_evidence_collection_plan_entry(
+            candidate_family_id="volatility_or_regime_filter_candidate",
+            candidate_family_label="Volatility or regime filter candidate",
+            collection_steps=[
+                "collect fixed volatility or regime-filter hypothesis",
+                "collect as-of bar window and data-basis statement",
+                "collect regime-state feature and threshold definitions",
+                "collect filter activation and deactivation rule specification",
+                "collect risk-reduction and ambiguous-state behavior rules",
+                "collect offline backtest and baseline comparison outputs",
+                "collect turnover, cost, drawdown, and regime evidence",
+                "collect offline safety review outputs",
+            ],
+            features_to_define=[
+                "volatility_or_regime_state_feature",
+                "filter_thresholds_fixed_before_test",
+                "interaction_with_baseline_or_candidate_signal_defined",
+            ],
+            signal_rules_to_specify=[
+                "deterministic_risk_on_or_risk_off_filter_rule",
+                "deterministic_filter_update_frequency",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            risk_rules_to_specify=[
+                "risk_reduction_or_exposure_cap_rule",
+                "filter_override_limits",
+                "behavior_when_regime_state_is_ambiguous_or_missing",
+            ],
+            regime_outputs_to_collect=[
+                "low_volatility_regime_performance_split",
+                "high_volatility_regime_performance_split",
+                "regime_transition_period_review",
+            ],
+            failure_modes_to_review=[
+                "filter_lag_during_fast_regime_change",
+                "false_risk_off_during_recovery",
+                "ambiguous_state_or_missing_data_behavior",
+            ],
+            safety_checks_to_run=safety_checks,
+        ),
+    ]
+    return {
+        "collection_plan_status": "ready",
+        "collection_plan_mode": "offline_candidate_evidence_collection_plan_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "candidate_collection_plans": candidate_collection_plans,
+        "shared_collection_steps": shared_collection_steps,
+        "data_collection_requirements": [
+            "deterministic offline source and immutable input snapshot",
+            "explicit adjusted/raw/total-return data basis",
+            "as-of-date filter and no-lookahead rule",
+            "fixed universe definition",
+            "missing data policy",
+            "sample window and usable bar count",
+        ],
+        "metric_collection_requirements": [
+            "daily equity curve",
+            "return summary",
+            "benchmark comparison against spy_sma_50_200_control",
+            "transaction cost and slippage assumptions",
+            "turnover estimate",
+            "maximum drawdown and drawdown duration",
+            "regime sensitivity evidence",
+            "failure mode review",
+        ],
+        "safety_collection_requirements": safety_checks,
+        "expected_offline_artifacts": expected_offline_artifacts,
+        "blocked_until_collected": blocked_until_collected,
+        "selected_next_safe_action": "build_candidate_evidence_collection_status",
+        "why_selected": (
+            "This is the next useful deterministic offline research artifact "
+            "after the collection plan: it records whether each required "
+            "candidate evidence item has been collected without implementing "
+            "or promoting any strategy."
+        ),
+        "why_no_strategy_implementation_yet": (
+            "Candidate strategy implementation remains blocked until the "
+            "offline evidence collection plan is executed and evidence is "
+            "compared against the baseline."
+        ),
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+        "hard_gate_required": False,
+        "requires_daniel": False,
+        "daniel_action_required_now": False,
+    }
+
+
+def _candidate_evidence_collection_plan_entry(
+    *,
+    candidate_family_id: str,
+    candidate_family_label: str,
+    collection_steps: list[str],
+    features_to_define: list[str],
+    signal_rules_to_specify: list[str],
+    risk_rules_to_specify: list[str],
+    regime_outputs_to_collect: list[str],
+    failure_modes_to_review: list[str],
+    safety_checks_to_run: list[str],
+) -> dict[str, Any]:
+    blocked_until_collected = [
+        "candidate_hypothesis_packet_collected",
+        "candidate_data_requirements_packet_collected",
+        "candidate_signal_spec_packet_collected",
+        "candidate_risk_spec_packet_collected",
+        "candidate_backtest_result_packet_collected",
+        "candidate_baseline_comparison_packet_collected",
+        "candidate_cost_turnover_packet_collected",
+        "candidate_regime_drawdown_packet_collected",
+        "candidate_safety_review_packet_collected",
+    ]
+    return {
+        "candidate_family_id": candidate_family_id,
+        "candidate_family_label": candidate_family_label,
+        "current_status": "collection_plan_ready_candidate_unimplemented",
+        "implementation_status": "not_implemented",
+        "evidence_status": "evidence_not_collected",
+        "collection_status": "ready_to_collect_offline_evidence",
+        "promotion_status": "promotion_blocked_pending_evidence_collection",
+        "collection_steps": list(collection_steps),
+        "data_inputs_to_collect": [
+            "deterministic_offline_data_source",
+            "explicit_adjusted_or_raw_price_basis",
+            "as_of_date_filter",
+            "fixed_universe_definition",
+            "missing_data_policy",
+        ],
+        "features_to_define": list(features_to_define),
+        "signal_rules_to_specify": list(signal_rules_to_specify),
+        "risk_rules_to_specify": list(risk_rules_to_specify),
+        "backtest_outputs_to_collect": [
+            "daily_equity_curve",
+            "trade_or_position_ledger",
+            "return_summary",
+            "benchmark_relative_return_summary",
+            "sample_window_and_bar_count",
+        ],
+        "cost_outputs_to_collect": [
+            "transaction_cost_assumption",
+            "slippage_assumption",
+            "turnover_after_costs",
+            "cost_sensitivity_summary",
+        ],
+        "benchmark_outputs_to_collect": [
+            "spy_sma_50_200_control_comparison",
+            "buy_and_hold_spy_comparison_if_data_available",
+            "same_sample_window_comparison",
+        ],
+        "regime_outputs_to_collect": list(regime_outputs_to_collect),
+        "turnover_outputs_to_collect": [
+            "annualized_turnover_estimate",
+            "trade_count_by_period",
+            "holding_period_distribution",
+            "turnover_vs_cost_sensitivity",
+        ],
+        "drawdown_outputs_to_collect": [
+            "maximum_drawdown",
+            "drawdown_duration",
+            "worst_period_review",
+            "drawdown_vs_baseline",
+        ],
+        "failure_modes_to_review": list(failure_modes_to_review),
+        "safety_checks_to_run": list(safety_checks_to_run),
+        "expected_artifacts": [
+            f"{candidate_family_id}_hypothesis_packet",
+            f"{candidate_family_id}_signal_spec_packet",
+            f"{candidate_family_id}_risk_spec_packet",
+            f"{candidate_family_id}_backtest_result_packet",
+            f"{candidate_family_id}_baseline_comparison_packet",
+            f"{candidate_family_id}_safety_review_packet",
+        ],
+        "blocked_until_collected": blocked_until_collected,
+        "broker_dependency": "none",
+        "hard_gate_required": False,
+        "safety_scope": "offline_only",
+    }
+
+
+def _default_candidate_evidence_collection_plan_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    collection_plan = _build_candidate_evidence_collection_plan({}, artifact_paths)
+    return {
+        "candidate_evidence_collection_plan_path": str(
+            artifact_paths["candidate_evidence_collection_plan"]
+        ),
+        "candidate_evidence_collection_plan": collection_plan,
+    }
+
+
+def _candidate_evidence_collection_plan_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    collection_plan = payload.get("candidate_evidence_collection_plan")
+    if isinstance(collection_plan, Mapping):
+        return dict(collection_plan)
+    return _build_candidate_evidence_collection_plan(payload, artifact_paths)
+
+
+def _apply_candidate_evidence_collection_plan(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    collection_plan = _build_candidate_evidence_collection_plan(
+        payload,
+        artifact_paths,
+    )
+    payload["candidate_evidence_collection_plan_path"] = str(
+        artifact_paths["candidate_evidence_collection_plan"]
+    )
+    payload["candidate_evidence_collection_plan"] = collection_plan
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["candidate_evidence_collection_plan_path"] = payload[
+            "candidate_evidence_collection_plan_path"
+        ]
+        dashboard["candidate_evidence_collection_plan"] = dict(collection_plan)
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -5093,6 +5549,7 @@ def _default_next_action_selector_fields(
     scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     template = _build_candidate_strategy_evidence_template({}, artifact_paths)
     requirements = _build_candidate_evidence_requirements({}, artifact_paths)
+    collection_plan = _build_candidate_evidence_collection_plan({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -5140,6 +5597,10 @@ def _default_next_action_selector_fields(
                 artifact_paths["candidate_evidence_requirements"]
             ),
             "candidate_evidence_requirements": dict(requirements),
+            "candidate_evidence_collection_plan_path": str(
+                artifact_paths["candidate_evidence_collection_plan"]
+            ),
+            "candidate_evidence_collection_plan": dict(collection_plan),
             "source_state": {},
         }
     }
@@ -5154,6 +5615,7 @@ def _default_work_order_export_fields(
     scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     template = _build_candidate_strategy_evidence_template({}, artifact_paths)
     requirements = _build_candidate_evidence_requirements({}, artifact_paths)
+    collection_plan = _build_candidate_evidence_collection_plan({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -5202,6 +5664,13 @@ def _default_work_order_export_fields(
             "candidate_evidence_requirements": dict(requirements),
             "candidate_evidence_requirements_status": str(
                 requirements["requirements_status"]
+            ),
+            "candidate_evidence_collection_plan_path": str(
+                artifact_paths["candidate_evidence_collection_plan"]
+            ),
+            "candidate_evidence_collection_plan": dict(collection_plan),
+            "candidate_evidence_collection_plan_status": str(
+                collection_plan["collection_plan_status"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -5663,6 +6132,11 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("candidate_evidence_requirements"), Mapping)
             else {}
         ),
+        "candidate_evidence_collection_plan": dict(
+            payload.get("candidate_evidence_collection_plan", {})
+            if isinstance(payload.get("candidate_evidence_collection_plan"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -5768,6 +6242,17 @@ def _selector_result(
             if isinstance(source_state.get("candidate_evidence_requirements"), Mapping)
             else {}
         ),
+        "candidate_evidence_collection_plan_path": str(
+            artifact_paths["candidate_evidence_collection_plan"]
+        ),
+        "candidate_evidence_collection_plan": dict(
+            source_state.get("candidate_evidence_collection_plan", {})
+            if isinstance(
+                source_state.get("candidate_evidence_collection_plan"),
+                Mapping,
+            )
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -5846,6 +6331,10 @@ def _apply_work_order_exports(
     scaffold = _strategy_comparison_scaffold_record(payload, artifact_paths)
     template = _candidate_strategy_evidence_template_record(payload, artifact_paths)
     requirements = _candidate_evidence_requirements_record(payload, artifact_paths)
+    collection_plan = _candidate_evidence_collection_plan_record(
+        payload,
+        artifact_paths,
+    )
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -5891,6 +6380,13 @@ def _apply_work_order_exports(
         "candidate_evidence_requirements": dict(requirements),
         "candidate_evidence_requirements_status": str(
             requirements.get("requirements_status", "ready")
+        ),
+        "candidate_evidence_collection_plan_path": str(
+            artifact_paths["candidate_evidence_collection_plan"]
+        ),
+        "candidate_evidence_collection_plan": dict(collection_plan),
+        "candidate_evidence_collection_plan_status": str(
+            collection_plan.get("collection_plan_status", "ready")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -6942,6 +7438,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    collection_plan_ok, collection_plan_summary = (
+        _quality_candidate_evidence_collection_plan_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -7039,6 +7542,11 @@ def _build_quality_gate(
             "candidate_evidence_requirements_generated",
             requirements_ok,
             requirements_summary,
+        ),
+        _quality_check(
+            "candidate_evidence_collection_plan_generated",
+            collection_plan_ok,
+            collection_plan_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -7202,6 +7710,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Paper Observation Readiness",
         "## Candidate Strategy Evidence Template",
         "## Candidate Evidence Requirements",
+        "## Candidate Evidence Collection Plan",
         "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
@@ -7213,6 +7722,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         _PAPER_OBSERVATION_READINESS_FILENAME,
         _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
         _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME,
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -7635,6 +8145,66 @@ def _quality_candidate_evidence_requirements_summary(
     )
 
 
+def _quality_candidate_evidence_collection_plan_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_candidate_evidence_collection_plan_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    collection_plan = packet["candidate_evidence_collection_plan"]
+    assert isinstance(collection_plan, Mapping)
+    artifact_path = output_root / _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME} is not JSON"
+    if artifact_record != collection_plan:
+        return False, "candidate evidence collection plan artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("candidate_evidence_collection_plan")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index candidate_evidence_collection_plan"
+    if not str(indexed.get("path", "")).endswith(
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    ):
+        return False, "manifest candidate collection plan artifact path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME not in text:
+            return False, (
+                f"{text_name} does not reference candidate collection plan artifact"
+            )
+        if "Candidate Evidence Collection Plan" not in text:
+            return False, (
+                f"{text_name} does not include candidate collection plan section"
+            )
+    return True, (
+        "candidate evidence collection plan generated; "
+        "collection_plan_status=ready; "
+        "collection_plan_mode=offline_candidate_evidence_collection_plan_only; "
+        "selected_next_safe_action=build_candidate_evidence_collection_status"
+    )
+
+
 def _quality_legacy_outputs_preserved_summary(
     artifact_presence_status: Mapping[str, Any],
 ) -> tuple[bool, str]:
@@ -7839,6 +8409,9 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _BASELINE_EVIDENCE_METRICS_FILENAME,
         _STRATEGY_COMPARISON_SCAFFOLD_FILENAME,
         _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME,
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME,
+        "Candidate Evidence Collection Plan",
         _REVIEW_INPUTS_DIRNAME,
         _WORK_ORDERS_DIRNAME,
         _GPT_WORK_ORDER_FILENAME,
@@ -7970,6 +8543,9 @@ def _quality_work_order_exports_summary(
             "## Candidate Evidence Requirements",
             _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME,
             "build_candidate_evidence_collection_plan",
+            "## Candidate Evidence Collection Plan",
+            _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME,
+            "build_candidate_evidence_collection_status",
             _BASELINE_HEALTH_NEXT_SAFE_TEST,
             "## Prerequisite artifact chain",
             _BASELINE_TURNOVER_SUMMARY_FILENAME,
@@ -8062,6 +8638,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_strategy_comparison_scaffold_fields("", packet))
     missing.extend(_missing_candidate_strategy_evidence_template_fields("", packet))
     missing.extend(_missing_candidate_evidence_requirements_fields("", packet))
+    missing.extend(_missing_candidate_evidence_collection_plan_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -8129,6 +8706,9 @@ def _missing_manifest_fields(
         _missing_candidate_strategy_evidence_template_fields("manifest", manifest)
     )
     missing.extend(_missing_candidate_evidence_requirements_fields("manifest", manifest))
+    missing.extend(
+        _missing_candidate_evidence_collection_plan_fields("manifest", manifest)
+    )
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -8162,6 +8742,10 @@ def _missing_manifest_fields(
         "strategy_comparison_scaffold",
         "candidate_strategy_evidence_template_path",
         "candidate_strategy_evidence_template",
+        "candidate_evidence_requirements_path",
+        "candidate_evidence_requirements",
+        "candidate_evidence_collection_plan_path",
+        "candidate_evidence_collection_plan",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -9050,6 +9634,200 @@ def _missing_candidate_evidence_requirements_fields(
     return missing
 
 
+def _missing_candidate_evidence_collection_plan_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    collection_plan = packet.get("candidate_evidence_collection_plan")
+    if not isinstance(collection_plan, Mapping):
+        return [f"{field_prefix}candidate_evidence_collection_plan"]
+    for field_name in _REQUIRED_CANDIDATE_EVIDENCE_COLLECTION_PLAN_FIELDS:
+        if field_name not in collection_plan:
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan.{field_name}"
+            )
+    if not str(packet.get("candidate_evidence_collection_plan_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    ):
+        missing.append(f"{field_prefix}candidate_evidence_collection_plan_path")
+    expected_values = {
+        "collection_plan_status": "ready",
+        "collection_plan_mode": "offline_candidate_evidence_collection_plan_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "selected_next_safe_action": "build_candidate_evidence_collection_status",
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "profit_claim": "none",
+    }
+    for field_name, expected_value in expected_values.items():
+        if collection_plan.get(field_name) != expected_value:
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan.{field_name}"
+            )
+    if _selector_contains_forbidden_action(
+        str(collection_plan.get("selected_next_safe_action", ""))
+    ):
+        missing.append(
+            f"{field_prefix}candidate_evidence_collection_plan."
+            "selected_next_safe_action.safe"
+        )
+    if "offline" not in str(collection_plan.get("why_selected", "")).lower():
+        missing.append(
+            f"{field_prefix}candidate_evidence_collection_plan.why_selected"
+        )
+    implementation_reason = str(
+        collection_plan.get("why_no_strategy_implementation_yet", "")
+    ).lower()
+    if (
+        "candidate strategy implementation remains blocked"
+        not in implementation_reason
+        or "offline evidence collection plan is executed"
+        not in implementation_reason
+        or "evidence is compared against the baseline"
+        not in implementation_reason
+    ):
+        missing.append(
+            f"{field_prefix}candidate_evidence_collection_plan."
+            "why_no_strategy_implementation_yet"
+        )
+    for false_field in (
+        "paper_submit_authorized",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+    ):
+        if collection_plan.get(false_field) is not False:
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan."
+                f"{false_field}.false"
+            )
+    candidate_plans = collection_plan.get("candidate_collection_plans")
+    if not isinstance(candidate_plans, list) or not candidate_plans:
+        missing.append(
+            f"{field_prefix}candidate_evidence_collection_plan."
+            "candidate_collection_plans"
+        )
+    else:
+        candidate_ids: set[str] = set()
+        for index, item in enumerate(candidate_plans):
+            item_prefix = (
+                f"{field_prefix}candidate_evidence_collection_plan."
+                f"candidate_collection_plans[{index}]"
+            )
+            if not isinstance(item, Mapping):
+                missing.append(item_prefix)
+                continue
+            for field_name in _REQUIRED_CANDIDATE_EVIDENCE_COLLECTION_PLAN_ENTRY_FIELDS:
+                if field_name not in item:
+                    missing.append(f"{item_prefix}.{field_name}")
+            candidate_ids.add(str(item.get("candidate_family_id", "")))
+            expected_entry_values = {
+                "implementation_status": "not_implemented",
+                "evidence_status": "evidence_not_collected",
+                "collection_status": "ready_to_collect_offline_evidence",
+                "promotion_status": "promotion_blocked_pending_evidence_collection",
+                "broker_dependency": "none",
+                "safety_scope": "offline_only",
+            }
+            for field_name, expected_value in expected_entry_values.items():
+                if item.get(field_name) != expected_value:
+                    missing.append(f"{item_prefix}.{field_name}")
+            if item.get("hard_gate_required") is not False:
+                missing.append(f"{item_prefix}.hard_gate_required.false")
+            for list_field in (
+                "collection_steps",
+                "data_inputs_to_collect",
+                "features_to_define",
+                "signal_rules_to_specify",
+                "risk_rules_to_specify",
+                "backtest_outputs_to_collect",
+                "cost_outputs_to_collect",
+                "benchmark_outputs_to_collect",
+                "regime_outputs_to_collect",
+                "turnover_outputs_to_collect",
+                "drawdown_outputs_to_collect",
+                "failure_modes_to_review",
+                "safety_checks_to_run",
+                "expected_artifacts",
+                "blocked_until_collected",
+            ):
+                if not isinstance(item.get(list_field), list) or not item.get(
+                    list_field
+                ):
+                    missing.append(f"{item_prefix}.{list_field}")
+        for candidate_id in _REQUIRED_CANDIDATE_FAMILY_IDS:
+            if candidate_id not in candidate_ids:
+                missing.append(
+                    f"{field_prefix}candidate_evidence_collection_plan."
+                    f"candidate_collection_plans.{candidate_id}"
+                )
+    for list_field in (
+        "shared_collection_steps",
+        "data_collection_requirements",
+        "metric_collection_requirements",
+        "safety_collection_requirements",
+        "expected_offline_artifacts",
+        "blocked_until_collected",
+    ):
+        if not isinstance(collection_plan.get(list_field), list) or not collection_plan.get(
+            list_field
+        ):
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan.{list_field}"
+            )
+    shared_steps = collection_plan.get("shared_collection_steps", [])
+    for shared_step in (
+        "confirm deterministic offline data source",
+        "confirm explicit data basis",
+        "define candidate hypothesis",
+        "define feature calculations",
+        "define signal rule",
+        "define risk rule",
+        "define backtest window",
+        "define benchmark comparison against spy_sma_50_200_control",
+        "define transaction cost assumption",
+        "collect turnover estimate",
+        "collect drawdown evidence",
+        "collect regime sensitivity evidence",
+        "run dependency-direction guard",
+        "run default pytest network guard",
+        "run broker mutation invariant",
+        "confirm no broker dependency in research path",
+        "confirm no LLM/agent dependency in strategy path",
+        (
+            "defer paper observation until Daniel explicitly scopes broker read "
+            "or paper gate"
+        ),
+    ):
+        if shared_step not in shared_steps:
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan."
+                f"shared_collection_steps.{shared_step}"
+            )
+    expected_artifacts = collection_plan.get("expected_offline_artifacts", [])
+    for artifact_name in (
+        "candidate_hypothesis_packet",
+        "candidate_data_requirements_packet",
+        "candidate_signal_spec_packet",
+        "candidate_risk_spec_packet",
+        "candidate_backtest_result_packet",
+        "candidate_baseline_comparison_packet",
+        "candidate_cost_turnover_packet",
+        "candidate_regime_drawdown_packet",
+        "candidate_safety_review_packet",
+        "candidate_promotion_decision_packet",
+    ):
+        if artifact_name not in expected_artifacts:
+            missing.append(
+                f"{field_prefix}candidate_evidence_collection_plan."
+                f"expected_offline_artifacts.{artifact_name}"
+            )
+    return missing
+
+
 def _missing_baseline_health_evaluation_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -9430,6 +10208,8 @@ def _missing_next_action_selector_fields(
         "candidate_strategy_evidence_template",
         "candidate_evidence_requirements_path",
         "candidate_evidence_requirements",
+        "candidate_evidence_collection_plan_path",
+        "candidate_evidence_collection_plan",
         "source_state",
     )
     for field_name in required_fields:
@@ -9526,6 +10306,18 @@ def _missing_next_action_selector_fields(
             f"{field_prefix}next_action_selector."
             "candidate_evidence_requirements.object"
         )
+    if not str(selector.get("candidate_evidence_collection_plan_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_evidence_collection_plan_path"
+        )
+    if not isinstance(selector.get("candidate_evidence_collection_plan"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_evidence_collection_plan.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -9583,6 +10375,9 @@ def _missing_work_order_export_fields(
         "candidate_evidence_requirements_path",
         "candidate_evidence_requirements",
         "candidate_evidence_requirements_status",
+        "candidate_evidence_collection_plan_path",
+        "candidate_evidence_collection_plan",
+        "candidate_evidence_collection_plan_status",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -9702,6 +10497,23 @@ def _missing_work_order_export_fields(
         missing.append(
             f"{field_prefix}work_order_exports."
             "candidate_evidence_requirements_status"
+        )
+    if not str(exports.get("candidate_evidence_collection_plan_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_collection_plan_path"
+        )
+    if not isinstance(exports.get("candidate_evidence_collection_plan"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_collection_plan.object"
+        )
+    if exports.get("candidate_evidence_collection_plan_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_collection_plan_status"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -10339,6 +11151,8 @@ def _render_work_order_markdown(
     template_json = _json_markdown(template)
     requirements = payload["candidate_evidence_requirements"]
     requirements_json = _json_markdown(requirements)
+    collection_plan = payload["candidate_evidence_collection_plan"]
+    collection_plan_json = _json_markdown(collection_plan)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -10491,6 +11305,25 @@ def _render_work_order_markdown(
 {requirements_json}
 ```
 
+## Candidate Evidence Collection Plan
+* **Artifact**: `{payload["candidate_evidence_collection_plan_path"]}`
+* **Collection plan status**: `{collection_plan["collection_plan_status"]}`
+* **Collection plan mode**: `{collection_plan["collection_plan_mode"]}`
+* **Baseline strategy**: `{collection_plan["baseline_strategy_id"]}`
+* **Baseline role**: `{collection_plan["baseline_strategy_role"]}`
+* **Candidate collection plans**: {len(collection_plan["candidate_collection_plans"])}
+* **Shared collection steps**: {collection_plan["shared_collection_steps"]}
+* **Expected offline artifacts**: {collection_plan["expected_offline_artifacts"]}
+* **Selected next safe action**: `{collection_plan["selected_next_safe_action"]}`
+* **Why no strategy implementation yet**: {collection_plan["why_no_strategy_implementation_yet"]}
+* **Safety scope**: `{collection_plan["safety_scope"]}`
+* **Broker-state mode**: `{collection_plan["broker_state_mode"]}`
+* **Paper submit authorized**: {str(collection_plan["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{collection_plan["profit_claim"]}`
+```json
+{collection_plan_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -10510,7 +11343,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_16_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_17_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -10527,6 +11360,7 @@ def _render_work_order_markdown(
 * `strategy_comparison_scaffold.jsonl`
 * `candidate_strategy_evidence_template.jsonl`
 * `candidate_evidence_requirements.jsonl`
+* `candidate_evidence_collection_plan.jsonl`
 * `baseline_authorized_adjusted_metrics.jsonl`
 * `offline_backtest_confidence_summary.jsonl`
 * `adjusted_close_evidence.jsonl`
@@ -10544,15 +11378,16 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Behavior implemented.
 6. Output artifacts produced.
-7. Candidate evidence requirements summary.
+7. Candidate evidence collection plan summary.
 8. Top selected next safe action.
 9. Quality gate result.
 10. Tests run and exact results.
-11. Safety assessment.
-12. Broker-read/broker-mutation/paper-submit/live-trading confirmation.
-13. Final `git status --short`.
-14. Untracked files intentionally left untouched.
-15. Recommended commit message.
+11. Full pytest result.
+12. Safety assessment.
+13. Broker-read/broker-mutation/paper-submit/live-trading confirmation.
+14. Final `git status --short`.
+15. Untracked files intentionally left untouched.
+16. Recommended commit message.
 
 ## Commit instruction
 Do not commit unless GPT/Daniel explicitly asks after review.
@@ -10610,6 +11445,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     template_json = _json_markdown(payload["candidate_strategy_evidence_template"])
     requirements_json = _json_markdown(payload["candidate_evidence_requirements"])
+    collection_plan_json = _json_markdown(
+        payload["candidate_evidence_collection_plan"]
+    )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -10806,6 +11644,26 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {requirements_json}
 ```
 
+## Candidate Evidence Collection Plan
+* **Artifact**: `{payload["candidate_evidence_collection_plan_path"]}`
+* **Collection plan status**: `{payload["candidate_evidence_collection_plan"]["collection_plan_status"]}`
+* **Collection plan mode**: `{payload["candidate_evidence_collection_plan"]["collection_plan_mode"]}`
+* **Baseline strategy**: `{payload["candidate_evidence_collection_plan"]["baseline_strategy_id"]}`
+* **Baseline role**: `{payload["candidate_evidence_collection_plan"]["baseline_strategy_role"]}`
+* **Candidate collection plans**: {len(payload["candidate_evidence_collection_plan"]["candidate_collection_plans"])}
+* **Shared collection steps**: {payload["candidate_evidence_collection_plan"]["shared_collection_steps"]}
+* **Expected offline artifacts**: {payload["candidate_evidence_collection_plan"]["expected_offline_artifacts"]}
+* **Selected next safe action**: `{payload["candidate_evidence_collection_plan"]["selected_next_safe_action"]}`
+* **Why selected**: {payload["candidate_evidence_collection_plan"]["why_selected"]}
+* **Why no strategy implementation yet**: {payload["candidate_evidence_collection_plan"]["why_no_strategy_implementation_yet"]}
+* **Safety scope**: `{payload["candidate_evidence_collection_plan"]["safety_scope"]}`
+* **Broker-state mode**: `{payload["candidate_evidence_collection_plan"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["candidate_evidence_collection_plan"]["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{payload["candidate_evidence_collection_plan"]["profit_claim"]}`
+```json
+{collection_plan_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -10853,6 +11711,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     template_json = _json_markdown(payload["candidate_strategy_evidence_template"])
     requirements_json = _json_markdown(payload["candidate_evidence_requirements"])
+    collection_plan_json = _json_markdown(
+        payload["candidate_evidence_collection_plan"]
+    )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -11080,6 +11941,30 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {requirements_json}
 ```
 
+## Candidate Evidence Collection Plan
+* **candidate_evidence_collection_plan_path**: `{payload["candidate_evidence_collection_plan_path"]}`
+* **collection_plan_status**: `{payload["candidate_evidence_collection_plan"]["collection_plan_status"]}`
+* **collection_plan_mode**: `{payload["candidate_evidence_collection_plan"]["collection_plan_mode"]}`
+* **baseline_strategy_id**: `{payload["candidate_evidence_collection_plan"]["baseline_strategy_id"]}`
+* **baseline_strategy_role**: `{payload["candidate_evidence_collection_plan"]["baseline_strategy_role"]}`
+* **candidate_collection_plan_count**: {len(payload["candidate_evidence_collection_plan"]["candidate_collection_plans"])}
+* **shared_collection_steps**: `{payload["candidate_evidence_collection_plan"]["shared_collection_steps"]}`
+* **data_collection_requirements**: `{payload["candidate_evidence_collection_plan"]["data_collection_requirements"]}`
+* **metric_collection_requirements**: `{payload["candidate_evidence_collection_plan"]["metric_collection_requirements"]}`
+* **safety_collection_requirements**: `{payload["candidate_evidence_collection_plan"]["safety_collection_requirements"]}`
+* **expected_offline_artifacts**: `{payload["candidate_evidence_collection_plan"]["expected_offline_artifacts"]}`
+* **blocked_until_collected**: `{payload["candidate_evidence_collection_plan"]["blocked_until_collected"]}`
+* **selected_next_safe_action**: `{payload["candidate_evidence_collection_plan"]["selected_next_safe_action"]}`
+* **why_selected**: {payload["candidate_evidence_collection_plan"]["why_selected"]}
+* **why_no_strategy_implementation_yet**: {payload["candidate_evidence_collection_plan"]["why_no_strategy_implementation_yet"]}
+* **safety_scope**: `{payload["candidate_evidence_collection_plan"]["safety_scope"]}`
+* **broker_state_mode**: `{payload["candidate_evidence_collection_plan"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["candidate_evidence_collection_plan"]["paper_submit_authorized"]).lower()}
+* **profit_claim**: `{payload["candidate_evidence_collection_plan"]["profit_claim"]}`
+```json
+{collection_plan_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -11146,6 +12031,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "candidate_evidence_requirements",
             artifact_paths.get("candidate_evidence_requirements"),
+        ),
+        (
+            "candidate_evidence_collection_plan",
+            artifact_paths.get("candidate_evidence_collection_plan"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -11395,6 +12284,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["candidate_evidence_requirements"] = _artifact_metadata(
             candidate_evidence_requirements_path
         )
+    candidate_evidence_collection_plan_path = (
+        output_root / _CANDIDATE_EVIDENCE_COLLECTION_PLAN_FILENAME
+    )
+    if candidate_evidence_collection_plan_path.exists():
+        indexed_artifacts["candidate_evidence_collection_plan"] = _artifact_metadata(
+            candidate_evidence_collection_plan_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -11491,6 +12387,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "candidate_evidence_requirements": dict(
             payload["candidate_evidence_requirements"]
+        ),
+        "candidate_evidence_collection_plan_path": payload[
+            "candidate_evidence_collection_plan_path"
+        ],
+        "candidate_evidence_collection_plan": dict(
+            payload["candidate_evidence_collection_plan"]
         ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
