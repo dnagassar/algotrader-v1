@@ -210,6 +210,59 @@ def _assert_paper_observation_readiness_shape(readiness: dict[str, object]) -> N
     assert "no open orders" not in serialized
 
 
+def _assert_research_board_prioritization_shape(prioritization: dict[str, object]) -> None:
+    assert set(prioritization) == {
+        "research_board_prioritization_version",
+        "prioritization_status",
+        "research_mode",
+        "candidate_count",
+        "ranking_method",
+        "ranking_weights",
+        "ranked_candidates",
+        "top_candidate",
+        "selected_next_safe_action",
+        "why_selected",
+        "why_not_broker_observation_yet",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+        "safety_scope",
+        "broker_state_mode",
+        "paper_submit_authorized",
+        "profit_claim",
+    }
+    assert prioritization["research_board_prioritization_version"] == (
+        "assistant_v1.13_research_board_prioritization"
+    )
+    assert prioritization["prioritization_status"] == "ranked"
+    assert prioritization["research_mode"] == "offline_research_planning_only"
+    assert prioritization["candidate_count"] == 3
+    assert prioritization["ranking_method"] == "deterministic_offline_safety_hierarchy"
+    assert prioritization["ranking_weights"] == {
+        "safety_priority": 1.0,
+        "offline_feasibility": 1.0,
+        "daniel_approval_deferral": -1.0,
+    }
+    assert prioritization["top_candidate"] == "build_offline_strategy_comparison_scaffold"
+    assert prioritization["selected_next_safe_action"] == "build_offline_strategy_comparison_scaffold"
+    assert "broker reads require daniel" in str(prioritization["why_not_broker_observation_yet"]).lower()
+    assert prioritization["hard_gate_required"] is False
+    assert prioritization["requires_daniel"] is False
+    assert prioritization["daniel_action_required_now"] is False
+    assert prioritization["safety_scope"] == "offline_only"
+    assert prioritization["broker_state_mode"] == "broker_state_not_observed"
+    assert prioritization["paper_submit_authorized"] is False
+    assert prioritization["profit_claim"] == "none"
+    candidates = prioritization["ranked_candidates"]
+    assert isinstance(candidates, list)
+    assert len(candidates) == 3
+    assert {c["candidate_id"] for c in candidates} == {
+        "build_offline_strategy_comparison_scaffold",
+        "prepare_candidate_strategy_evidence_template",
+        "paper_observation_readiness_deferred"
+    }
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -290,6 +343,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "forbidden_actions",
         "paper_observation_readiness_path",
         "paper_observation_readiness",
+        "research_board_prioritization_path",
+        "research_board_prioritization",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -309,6 +364,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     _assert_paper_observation_readiness_shape(
         selector["paper_observation_readiness"]
+    )
+    assert str(selector["research_board_prioritization_path"]).endswith(
+        "research_board_prioritization.jsonl"
+    )
+    _assert_research_board_prioritization_shape(
+        selector["research_board_prioritization"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -347,6 +408,13 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert exports["paper_observation_readiness_status"] == (
         "hard_gate_prepared_not_authorized"
     )
+    assert str(exports["research_board_prioritization_path"]).endswith(
+        "research_board_prioritization.jsonl"
+    )
+    _assert_research_board_prioritization_shape(
+        exports["research_board_prioritization"]
+    )
+    assert exports["research_board_prioritization_status"] == "ranked"
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
         "metric_artifacts_partially_ingested",
@@ -891,6 +959,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     _assert_paper_observation_readiness_shape(
         payload["paper_observation_readiness"]
     )
+    assert payload["research_board_prioritization_version"] == (
+        "assistant_v1.13_research_board_prioritization"
+    )
+    assert payload["research_board_prioritization_path"].endswith(
+        "research_board_prioritization.jsonl"
+    )
+    _assert_research_board_prioritization_shape(
+        payload["research_board_prioritization"]
+    )
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["next_action_selector"]["status"] == (
         "operator_support_review_ingest_selected"
@@ -965,6 +1042,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (
         payload["artifact_presence_status"]["artifacts"][
             "paper_observation_readiness"
+        ]["exists"]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "research_board_prioritization"
         ]["exists"]
         is True
     )
@@ -1460,6 +1543,15 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["paper_observation_readiness"] == payload[
         "paper_observation_readiness"
     ]
+    assert manifest["research_board_prioritization_version"] == (
+        "assistant_v1.13_research_board_prioritization"
+    )
+    assert manifest["research_board_prioritization_path"].endswith(
+        "research_board_prioritization.jsonl"
+    )
+    assert manifest["research_board_prioritization"] == payload[
+        "research_board_prioritization"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -1474,6 +1566,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "baseline_health_evaluation" in manifest["indexed_artifacts"]
     assert "baseline_evidence_metrics" in manifest["indexed_artifacts"]
     assert "paper_observation_readiness" in manifest["indexed_artifacts"]
+    assert "research_board_prioritization" in manifest["indexed_artifacts"]
     assert "turnover_summary" in manifest["indexed_artifacts"]
     assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
@@ -1499,7 +1592,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.12 - Paper Observation Readiness Packet"
+            "Assistant v1.13A - Minimal Research Board Prioritization Artifact"
             in work_order
         )
         assert "collect_offline_review_feedback" in work_order
@@ -1507,7 +1600,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
         assert "paper_observation_readiness.jsonl" in work_order
+        assert "research_board_prioritization.jsonl" in work_order
         assert "## Paper observation readiness" in work_order
+        assert "## Research board prioritization" in work_order
         assert "hard_gate_prepared_not_authorized" in work_order
         assert "turnover_summary.jsonl" in work_order
         assert "cost_model_summary.jsonl" in work_order
@@ -2580,3 +2675,33 @@ def test_etf_sma_daily_paper_lab_cli_invocation(tmp_path: Path) -> None:
     assert (output_root / "operating_brief.md").exists()
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
+    assert (output_root / "research_board_prioritization.jsonl").exists()
+
+
+def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -> None:
+    """Explicitly verify research board prioritization generation and validator logic."""
+    output_root = tmp_path / "paper_lab_prioritization_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    config = EtfSmaDailyPaperLabConfig(
+        output_root=output_root,
+        bars_csv=bars_csv,
+        as_of_date="2025-07-20",
+        symbol="SPY",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(config)
+
+    # Verify output file exists and is populated
+    prioritization_file = output_root / "research_board_prioritization.jsonl"
+    assert prioritization_file.exists()
+    lines = prioritization_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_research_board_prioritization_shape(data)
+    _assert_research_board_prioritization_shape(payload["research_board_prioritization"])
+
+    # Verify validation logic passes
+    validation_result = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation_result["validation_status"] == "pass"

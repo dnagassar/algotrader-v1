@@ -51,11 +51,13 @@ _BASELINE_EVIDENCE_METRICS_VERSION = "assistant_v1.9_baseline_evidence_metrics"
 _PAPER_OBSERVATION_READINESS_VERSION = (
     "assistant_v1.12_paper_observation_readiness"
 )
-_PHASE_NAME = "Assistant v1.12 - Paper Observation Readiness Packet"
+_RESEARCH_BOARD_PRIORITIZATION_VERSION = (
+    "assistant_v1.13_research_board_prioritization"
+)
+_PHASE_NAME = "Assistant v1.13A - Minimal Research Board Prioritization Artifact"
 _PHASE_GOAL = (
-    "Create an offline-only hard-gate packet for the remaining "
-    "paper_observation_summary evidence gap while preserving paper-submit and "
-    "broker safety lockouts."
+    "Add the minimal deterministic offline prioritization object "
+    "research_board_prioritization while preserving all offline safety lockouts."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -74,6 +76,7 @@ _RESEARCH_CANDIDATE_QUEUE_FILENAME = "research_candidate_queue.jsonl"
 _BASELINE_HEALTH_EVALUATION_FILENAME = "baseline_health_evaluation.jsonl"
 _BASELINE_EVIDENCE_METRICS_FILENAME = "baseline_evidence_metrics.jsonl"
 _PAPER_OBSERVATION_READINESS_FILENAME = "paper_observation_readiness.jsonl"
+_RESEARCH_BOARD_PRIORITIZATION_FILENAME = "research_board_prioritization.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -124,6 +127,7 @@ _EXPECTED_ARTIFACTS = (
     ("operating_record", _RECORD_FILENAME),
     ("manifest", _MANIFEST_FILENAME),
     ("paper_observation_readiness", _PAPER_OBSERVATION_READINESS_FILENAME),
+    ("research_board_prioritization", _RESEARCH_BOARD_PRIORITIZATION_FILENAME),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -159,6 +163,9 @@ _REQUIRED_PACKET_FIELDS = (
     "paper_observation_readiness_version",
     "paper_observation_readiness_path",
     "paper_observation_readiness",
+    "research_board_prioritization_version",
+    "research_board_prioritization_path",
+    "research_board_prioritization",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -216,6 +223,9 @@ _REQUIRED_MANIFEST_FIELDS = (
     "paper_observation_readiness_version",
     "paper_observation_readiness_path",
     "paper_observation_readiness",
+    "research_board_prioritization_version",
+    "research_board_prioritization_path",
+    "research_board_prioritization",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -595,10 +605,29 @@ _REQUIRED_PAPER_OBSERVATION_READINESS_FIELDS = (
     "broker_mutation_performed",
     "runtime_callouts_performed",
     "network_calls_performed",
-    "paper_submit_authorized",
     "profit_claim",
     "safety_scope",
     "broker_state_mode",
+)
+_REQUIRED_RESEARCH_BOARD_PRIORITIZATION_FIELDS = (
+    "research_board_prioritization_version",
+    "prioritization_status",
+    "research_mode",
+    "candidate_count",
+    "ranking_method",
+    "ranking_weights",
+    "ranked_candidates",
+    "top_candidate",
+    "selected_next_safe_action",
+    "why_selected",
+    "why_not_broker_observation_yet",
+    "hard_gate_required",
+    "requires_daniel",
+    "daniel_action_required_now",
+    "safety_scope",
+    "broker_state_mode",
+    "paper_submit_authorized",
+    "profit_claim",
 )
 _RESEARCH_CANDIDATE_FORBIDDEN_TERMS = (
     "submit_order",
@@ -758,6 +787,7 @@ def _write_packet_artifacts(
     payload: dict[str, Any],
 ) -> None:
     _apply_paper_observation_readiness(payload, output_root)
+    _apply_research_board_prioritization(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -767,6 +797,7 @@ def _write_packet_artifacts(
     _write_baseline_evidence_metrics_artifact(output_root, payload)
     _write_baseline_health_evaluation_artifact(output_root, payload)
     _write_paper_observation_readiness_artifact(output_root, payload)
+    _write_research_board_prioritization_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -2571,6 +2602,20 @@ def _write_paper_observation_readiness_artifact(
     )
 
 
+def _write_research_board_prioritization_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    prioritization = payload.get("research_board_prioritization")
+    record = prioritization if isinstance(prioritization, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _RESEARCH_BOARD_PRIORITIZATION_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _apply_packet_validation(
     payload: dict[str, Any],
     validation: Mapping[str, Any],
@@ -3060,6 +3105,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     paper_observation_readiness_defaults = (
         _default_paper_observation_readiness_fields(artifact_paths)
     )
+    research_board_prioritization_defaults = (
+        _default_research_board_prioritization_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3139,6 +3187,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **research_candidate_queue_defaults,
         **baseline_evidence_metrics_defaults,
         **paper_observation_readiness_defaults,
+        **research_board_prioritization_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3161,6 +3210,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "paper_observation_readiness": artifact_paths[
                 "paper_observation_readiness"
+            ],
+            "research_board_prioritization": artifact_paths[
+                "research_board_prioritization"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3269,6 +3321,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "paper_observation_readiness": dict(
                 paper_observation_readiness_defaults[
                     "paper_observation_readiness"
+                ]
+            ),
+            "research_board_prioritization_path": (
+                research_board_prioritization_defaults[
+                    "research_board_prioritization_path"
+                ]
+            ),
+            "research_board_prioritization": dict(
+                research_board_prioritization_defaults[
+                    "research_board_prioritization"
                 ]
             ),
             "next_action_selector": dict(
@@ -3638,6 +3700,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "paper_observation_readiness": _normalize_path(
             output_root / _PAPER_OBSERVATION_READINESS_FILENAME
         ),
+        "research_board_prioritization": _normalize_path(
+            output_root / _RESEARCH_BOARD_PRIORITIZATION_FILENAME
+        ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
         "gpt_next_action_handoff": _normalize_path(
@@ -3905,6 +3970,101 @@ def _default_baseline_evidence_metrics_fields(
     }
 
 
+def _build_research_board_prioritization(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    ranked_candidates = [
+        {
+            "candidate_id": "build_offline_strategy_comparison_scaffold",
+            "priority": "P2",
+            "status": "active",
+            "requires_daniel_approval": False,
+            "rationale": "Build offline scaffold for strategy comparison."
+        },
+        {
+            "candidate_id": "prepare_candidate_strategy_evidence_template",
+            "priority": "P2",
+            "status": "active",
+            "requires_daniel_approval": False,
+            "rationale": "Template preparation for strategy evidence collection."
+        },
+        {
+            "candidate_id": "paper_observation_readiness_deferred",
+            "priority": "P3",
+            "status": "deferred",
+            "requires_daniel_approval": True,
+            "rationale": "Deferred broker observation requires Daniel's hard-gate approval."
+        }
+    ]
+    return {
+        "research_board_prioritization_version": _RESEARCH_BOARD_PRIORITIZATION_VERSION,
+        "prioritization_status": "ranked",
+        "research_mode": "offline_research_planning_only",
+        "candidate_count": len(ranked_candidates),
+        "ranking_method": "deterministic_offline_safety_hierarchy",
+        "ranking_weights": {
+            "safety_priority": 1.0,
+            "offline_feasibility": 1.0,
+            "daniel_approval_deferral": -1.0
+        },
+        "ranked_candidates": ranked_candidates,
+        "top_candidate": "build_offline_strategy_comparison_scaffold",
+        "selected_next_safe_action": "build_offline_strategy_comparison_scaffold",
+        "why_selected": "The top candidate is offline-only, feasible, and does not require Daniel's active gate approval.",
+        "why_not_broker_observation_yet": "Broker reads require Daniel's explicit scoped approval later.",
+        "hard_gate_required": False,
+        "requires_daniel": False,
+        "daniel_action_required_now": False,
+        "safety_scope": "offline_only",
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+
+
+def _default_research_board_prioritization_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    prioritization = _build_research_board_prioritization({}, artifact_paths)
+    return {
+        "research_board_prioritization_version": _RESEARCH_BOARD_PRIORITIZATION_VERSION,
+        "research_board_prioritization_path": str(
+            artifact_paths["research_board_prioritization"]
+        ),
+        "research_board_prioritization": prioritization,
+    }
+
+
+def _research_board_prioritization_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    prioritization = payload.get("research_board_prioritization")
+    if isinstance(prioritization, Mapping):
+        return dict(prioritization)
+    return _build_research_board_prioritization(payload, artifact_paths)
+
+
+def _apply_research_board_prioritization(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    prioritization = _build_research_board_prioritization(payload, artifact_paths)
+    payload["research_board_prioritization_version"] = _RESEARCH_BOARD_PRIORITIZATION_VERSION
+    payload["research_board_prioritization_path"] = str(
+        artifact_paths["research_board_prioritization"]
+    )
+    payload["research_board_prioritization"] = prioritization
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["research_board_prioritization_path"] = payload[
+            "research_board_prioritization_path"
+        ]
+        dashboard["research_board_prioritization"] = dict(prioritization)
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -4067,6 +4227,7 @@ def _default_work_order_export_fields(
 ) -> dict[str, Any]:
     output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
     readiness = _build_paper_observation_readiness({}, artifact_paths)
+    prioritization = _build_research_board_prioritization({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -4087,6 +4248,13 @@ def _default_work_order_export_fields(
             "paper_observation_readiness": dict(readiness),
             "paper_observation_readiness_status": str(
                 readiness["readiness_status"]
+            ),
+            "research_board_prioritization_path": str(
+                artifact_paths["research_board_prioritization"]
+            ),
+            "research_board_prioritization": dict(prioritization),
+            "research_board_prioritization_status": str(
+                prioritization["prioritization_status"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -4528,6 +4696,11 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("paper_observation_readiness"), Mapping)
             else {}
         ),
+        "research_board_prioritization": dict(
+            payload.get("research_board_prioritization", {})
+            if isinstance(payload.get("research_board_prioritization"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -4596,6 +4769,14 @@ def _selector_result(
         "paper_observation_readiness": dict(
             source_state.get("paper_observation_readiness", {})
             if isinstance(source_state.get("paper_observation_readiness"), Mapping)
+            else {}
+        ),
+        "research_board_prioritization_path": str(
+            artifact_paths["research_board_prioritization"]
+        ),
+        "research_board_prioritization": dict(
+            source_state.get("research_board_prioritization", {})
+            if isinstance(source_state.get("research_board_prioritization"), Mapping)
             else {}
         ),
         "source_state": dict(source_state),
@@ -4672,6 +4853,7 @@ def _apply_work_order_exports(
     metrics = payload.get("baseline_evidence_metrics")
     metrics_record = metrics if isinstance(metrics, Mapping) else {}
     readiness = _paper_observation_readiness_record(payload, artifact_paths)
+    prioritization = _research_board_prioritization_record(payload, artifact_paths)
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -4689,6 +4871,13 @@ def _apply_work_order_exports(
         "paper_observation_readiness": dict(readiness),
         "paper_observation_readiness_status": str(
             readiness.get("readiness_status", "offline_readiness_packet_missing")
+        ),
+        "research_board_prioritization_path": str(
+            artifact_paths["research_board_prioritization"]
+        ),
+        "research_board_prioritization": dict(prioritization),
+        "research_board_prioritization_status": str(
+            prioritization.get("prioritization_status", "ranked")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -6640,6 +6829,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     )
     missing.extend(_missing_research_candidate_queue_fields("", packet))
     missing.extend(_missing_paper_observation_readiness_fields("", packet))
+    missing.extend(_missing_research_board_prioritization_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -6701,6 +6891,7 @@ def _missing_manifest_fields(
     )
     missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
     missing.extend(_missing_paper_observation_readiness_fields("manifest", manifest))
+    missing.extend(_missing_research_board_prioritization_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -6727,6 +6918,9 @@ def _missing_manifest_fields(
         "paper_observation_readiness_version",
         "paper_observation_readiness_path",
         "paper_observation_readiness",
+        "research_board_prioritization_version",
+        "research_board_prioritization_path",
+        "research_board_prioritization",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -7081,6 +7275,57 @@ def _missing_paper_observation_readiness_fields(
             missing.append(
                 f"{field_prefix}paper_observation_readiness.forbidden_broker_state_claim.{forbidden}"
             )
+    return missing
+
+
+def _missing_research_board_prioritization_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    prioritization = packet.get("research_board_prioritization")
+    if not isinstance(prioritization, Mapping):
+        return [f"{field_prefix}research_board_prioritization"]
+    for field_name in _REQUIRED_RESEARCH_BOARD_PRIORITIZATION_FIELDS:
+        if field_name not in prioritization:
+            missing.append(f"{field_prefix}research_board_prioritization.{field_name}")
+    if (
+        packet.get("research_board_prioritization_version")
+        != _RESEARCH_BOARD_PRIORITIZATION_VERSION
+    ):
+        missing.append(f"{field_prefix}research_board_prioritization_version")
+    if (
+        prioritization.get("research_board_prioritization_version")
+        != _RESEARCH_BOARD_PRIORITIZATION_VERSION
+    ):
+        missing.append(
+            f"{field_prefix}research_board_prioritization.research_board_prioritization_version"
+        )
+    if not str(packet.get("research_board_prioritization_path", "")).endswith(
+        _RESEARCH_BOARD_PRIORITIZATION_FILENAME
+    ):
+        missing.append(f"{field_prefix}research_board_prioritization_path")
+    if prioritization.get("prioritization_status") not in {"ranked", "not_ranked"}:
+        missing.append(f"{field_prefix}research_board_prioritization.prioritization_status.allowed")
+    if prioritization.get("research_mode") != "offline_research_planning_only":
+        missing.append(f"{field_prefix}research_board_prioritization.research_mode")
+    if prioritization.get("safety_scope") != "offline_only":
+        missing.append(f"{field_prefix}research_board_prioritization.safety_scope")
+    if prioritization.get("broker_state_mode") != "broker_state_not_observed":
+        missing.append(f"{field_prefix}research_board_prioritization.broker_state_mode")
+    if prioritization.get("paper_submit_authorized") is not False:
+        missing.append(f"{field_prefix}research_board_prioritization.paper_submit_authorized")
+    if prioritization.get("profit_claim") != "none":
+        missing.append(f"{field_prefix}research_board_prioritization.profit_claim")
+    if prioritization.get("hard_gate_required") is not False:
+        missing.append(f"{field_prefix}research_board_prioritization.hard_gate_required")
+    if prioritization.get("requires_daniel") is not False:
+        missing.append(f"{field_prefix}research_board_prioritization.requires_daniel")
+    if prioritization.get("daniel_action_required_now") is not False:
+        missing.append(f"{field_prefix}research_board_prioritization.daniel_action_required_now")
+    if prioritization.get("selected_next_safe_action") != "build_offline_strategy_comparison_scaffold":
+        missing.append(f"{field_prefix}research_board_prioritization.selected_next_safe_action")
     return missing
 
 
@@ -7456,6 +7701,8 @@ def _missing_next_action_selector_fields(
         "forbidden_actions",
         "paper_observation_readiness_path",
         "paper_observation_readiness",
+        "research_board_prioritization_path",
+        "research_board_prioritization",
         "source_state",
     )
     for field_name in required_fields:
@@ -7508,6 +7755,16 @@ def _missing_next_action_selector_fields(
         missing.append(
             f"{field_prefix}next_action_selector.paper_observation_readiness.object"
         )
+    if not str(selector.get("research_board_prioritization_path", "")).endswith(
+        _RESEARCH_BOARD_PRIORITIZATION_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector.research_board_prioritization_path"
+        )
+    if not isinstance(selector.get("research_board_prioritization"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector.research_board_prioritization.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -7553,6 +7810,9 @@ def _missing_work_order_export_fields(
         "paper_observation_readiness_path",
         "paper_observation_readiness",
         "paper_observation_readiness_status",
+        "research_board_prioritization_path",
+        "research_board_prioritization",
+        "research_board_prioritization_status",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -7610,6 +7870,20 @@ def _missing_work_order_export_fields(
     if not str(exports.get("paper_observation_readiness_status", "")).strip():
         missing.append(
             f"{field_prefix}work_order_exports.paper_observation_readiness_status"
+        )
+    if not str(exports.get("research_board_prioritization_path", "")).endswith(
+        _RESEARCH_BOARD_PRIORITIZATION_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports.research_board_prioritization_path"
+        )
+    if not isinstance(exports.get("research_board_prioritization"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports.research_board_prioritization.object"
+        )
+    if not str(exports.get("research_board_prioritization_status", "")).strip():
+        missing.append(
+            f"{field_prefix}work_order_exports.research_board_prioritization_status"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -8239,6 +8513,8 @@ def _render_work_order_markdown(
     baseline_metrics = payload["baseline_evidence_metrics"]
     readiness = payload["paper_observation_readiness"]
     readiness_json = _json_markdown(readiness)
+    prioritization = payload["research_board_prioritization"]
+    prioritization_json = _json_markdown(prioritization)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -8318,6 +8594,26 @@ def _render_work_order_markdown(
 * **Approval phrase required**: `{readiness["approval_phrase_required"]}`
 ```json
 {readiness_json}
+```
+
+## Research board prioritization
+* **Artifact**: `{payload["research_board_prioritization_path"]}`
+* **Prioritization status**: `{prioritization["prioritization_status"]}`
+* **Research mode**: `{prioritization["research_mode"]}`
+* **Candidate count**: {prioritization["candidate_count"]}
+* **Top candidate**: `{prioritization["top_candidate"]}`
+* **Selected next safe action**: `{prioritization["selected_next_safe_action"]}`
+* **Why selected**: {prioritization["why_selected"]}
+* **Why not broker observation yet**: {prioritization["why_not_broker_observation_yet"]}
+* **Hard gate required**: {str(prioritization["hard_gate_required"]).lower()}
+* **Requires Daniel**: {str(prioritization["requires_daniel"]).lower()}
+* **Daniel action required now**: {str(prioritization["daniel_action_required_now"]).lower()}
+* **Safety scope**: `{prioritization["safety_scope"]}`
+* **Broker-state mode**: `{prioritization["broker_state_mode"]}`
+* **Paper submit authorized**: {str(prioritization["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{prioritization["profit_claim"]}`
+```json
+{prioritization_json}
 ```
 
 ## Prerequisite artifact chain
@@ -8430,6 +8726,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
     readiness_json = _json_markdown(payload["paper_observation_readiness"])
+    prioritization_json = _json_markdown(payload["research_board_prioritization"])
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -8547,6 +8844,26 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {readiness_json}
 ```
 
+## Research Board Prioritization
+* **Artifact**: `{payload["research_board_prioritization_path"]}`
+* **Prioritization status**: `{payload["research_board_prioritization"]["prioritization_status"]}`
+* **Research mode**: `{payload["research_board_prioritization"]["research_mode"]}`
+* **Candidate count**: {payload["research_board_prioritization"]["candidate_count"]}
+* **Top candidate**: `{payload["research_board_prioritization"]["top_candidate"]}`
+* **Selected next safe action**: `{payload["research_board_prioritization"]["selected_next_safe_action"]}`
+* **Why selected**: {payload["research_board_prioritization"]["why_selected"]}
+* **Why not broker observation yet**: {payload["research_board_prioritization"]["why_not_broker_observation_yet"]}
+* **Hard gate required**: {str(payload["research_board_prioritization"]["hard_gate_required"]).lower()}
+* **Requires Daniel**: {str(payload["research_board_prioritization"]["requires_daniel"]).lower()}
+* **Daniel action required now**: {str(payload["research_board_prioritization"]["daniel_action_required_now"]).lower()}
+* **Safety scope**: `{payload["research_board_prioritization"]["safety_scope"]}`
+* **Broker-state mode**: `{payload["research_board_prioritization"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["research_board_prioritization"]["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{payload["research_board_prioritization"]["profit_claim"]}`
+```json
+{prioritization_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -8590,6 +8907,7 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     baseline_health_json = _json_markdown(payload["baseline_health_evaluation"])
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
     readiness_json = _json_markdown(payload["paper_observation_readiness"])
+    prioritization_json = _json_markdown(payload["research_board_prioritization"])
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -8736,6 +9054,27 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {readiness_json}
 ```
 
+## Research board prioritization
+* **research_board_prioritization_version**: `{payload["research_board_prioritization_version"]}`
+* **research_board_prioritization_path**: `{payload["research_board_prioritization_path"]}`
+* **prioritization_status**: `{payload["research_board_prioritization"]["prioritization_status"]}`
+* **research_mode**: `{payload["research_board_prioritization"]["research_mode"]}`
+* **candidate_count**: {payload["research_board_prioritization"]["candidate_count"]}
+* **top_candidate**: `{payload["research_board_prioritization"]["top_candidate"]}`
+* **selected_next_safe_action**: `{payload["research_board_prioritization"]["selected_next_safe_action"]}`
+* **why_selected**: {payload["research_board_prioritization"]["why_selected"]}
+* **why_not_broker_observation_yet**: {payload["research_board_prioritization"]["why_not_broker_observation_yet"]}
+* **hard_gate_required**: {str(payload["research_board_prioritization"]["hard_gate_required"]).lower()}
+* **requires_daniel**: {str(payload["research_board_prioritization"]["requires_daniel"]).lower()}
+* **daniel_action_required_now**: {str(payload["research_board_prioritization"]["daniel_action_required_now"]).lower()}
+* **safety_scope**: `{payload["research_board_prioritization"]["safety_scope"]}`
+* **broker_state_mode**: `{payload["research_board_prioritization"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["research_board_prioritization"]["paper_submit_authorized"]).lower()}
+* **profit_claim**: `{payload["research_board_prioritization"]["profit_claim"]}`
+```json
+{prioritization_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -8786,6 +9125,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "paper_observation_readiness",
             artifact_paths.get("paper_observation_readiness"),
+        ),
+        (
+            "research_board_prioritization",
+            artifact_paths.get("research_board_prioritization"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -9007,6 +9350,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["paper_observation_readiness"] = _artifact_metadata(
             paper_observation_readiness_path
         )
+    research_board_prioritization_path = (
+        output_root / _RESEARCH_BOARD_PRIORITIZATION_FILENAME
+    )
+    if research_board_prioritization_path.exists():
+        indexed_artifacts["research_board_prioritization"] = _artifact_metadata(
+            research_board_prioritization_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -9076,6 +9426,15 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "paper_observation_readiness": dict(
             payload["paper_observation_readiness"]
+        ),
+        "research_board_prioritization_version": payload[
+            "research_board_prioritization_version"
+        ],
+        "research_board_prioritization_path": payload[
+            "research_board_prioritization_path"
+        ],
+        "research_board_prioritization": dict(
+            payload["research_board_prioritization"]
         ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
