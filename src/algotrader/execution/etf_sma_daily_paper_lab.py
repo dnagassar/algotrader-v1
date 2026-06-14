@@ -54,10 +54,14 @@ _PAPER_OBSERVATION_READINESS_VERSION = (
 _RESEARCH_BOARD_PRIORITIZATION_VERSION = (
     "assistant_v1.13_research_board_prioritization"
 )
-_PHASE_NAME = "Assistant v1.13A - Minimal Research Board Prioritization Artifact"
+_STRATEGY_COMPARISON_SCAFFOLD_VERSION = (
+    "assistant_v1.14_strategy_comparison_scaffold"
+)
+_PHASE_NAME = "Assistant v1.14 - Offline Strategy Comparison Scaffold"
 _PHASE_GOAL = (
-    "Add the minimal deterministic offline prioritization object "
-    "research_board_prioritization while preserving all offline safety lockouts."
+    "Add a deterministic offline strategy comparison scaffold for comparing "
+    "the SPY SMA 50/200 control harness against future candidate placeholders "
+    "while preserving all offline safety lockouts."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -77,6 +81,7 @@ _BASELINE_HEALTH_EVALUATION_FILENAME = "baseline_health_evaluation.jsonl"
 _BASELINE_EVIDENCE_METRICS_FILENAME = "baseline_evidence_metrics.jsonl"
 _PAPER_OBSERVATION_READINESS_FILENAME = "paper_observation_readiness.jsonl"
 _RESEARCH_BOARD_PRIORITIZATION_FILENAME = "research_board_prioritization.jsonl"
+_STRATEGY_COMPARISON_SCAFFOLD_FILENAME = "strategy_comparison_scaffold.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -128,6 +133,7 @@ _EXPECTED_ARTIFACTS = (
     ("manifest", _MANIFEST_FILENAME),
     ("paper_observation_readiness", _PAPER_OBSERVATION_READINESS_FILENAME),
     ("research_board_prioritization", _RESEARCH_BOARD_PRIORITIZATION_FILENAME),
+    ("strategy_comparison_scaffold", _STRATEGY_COMPARISON_SCAFFOLD_FILENAME),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -166,6 +172,8 @@ _REQUIRED_PACKET_FIELDS = (
     "research_board_prioritization_version",
     "research_board_prioritization_path",
     "research_board_prioritization",
+    "strategy_comparison_scaffold_path",
+    "strategy_comparison_scaffold",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -226,6 +234,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "research_board_prioritization_version",
     "research_board_prioritization_path",
     "research_board_prioritization",
+    "strategy_comparison_scaffold_path",
+    "strategy_comparison_scaffold",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -629,6 +639,48 @@ _REQUIRED_RESEARCH_BOARD_PRIORITIZATION_FIELDS = (
     "paper_submit_authorized",
     "profit_claim",
 )
+_REQUIRED_STRATEGY_COMPARISON_SCAFFOLD_FIELDS = (
+    "scaffold_status",
+    "comparison_mode",
+    "baseline_strategy_id",
+    "baseline_strategy_label",
+    "baseline_strategy_role",
+    "candidate_strategy_slots",
+    "comparison_dimensions",
+    "required_evidence_before_promotion",
+    "selected_next_safe_action",
+    "why_selected",
+    "why_no_strategy_replacement_yet",
+    "broker_state_mode",
+    "safety_scope",
+    "paper_submit_authorized",
+    "profit_claim",
+    "hard_gate_required",
+    "requires_daniel",
+    "daniel_action_required_now",
+)
+_REQUIRED_STRATEGY_COMPARISON_SLOT_FIELDS = (
+    "candidate_slot_id",
+    "candidate_family",
+    "implementation_status",
+    "evidence_status",
+    "promotion_status",
+    "hard_gate_required",
+    "safety_scope",
+)
+_REQUIRED_STRATEGY_COMPARISON_DIMENSIONS = (
+    "data_basis",
+    "lookback_window",
+    "signal_frequency",
+    "trade_frequency",
+    "turnover",
+    "transaction_cost_assumption",
+    "drawdown_profile",
+    "benchmark_relative_return",
+    "regime_sensitivity",
+    "paper_observation_readiness",
+    "broker_dependency",
+)
 _RESEARCH_CANDIDATE_FORBIDDEN_TERMS = (
     "submit_order",
     "place_order",
@@ -788,6 +840,7 @@ def _write_packet_artifacts(
 ) -> None:
     _apply_paper_observation_readiness(payload, output_root)
     _apply_research_board_prioritization(payload, output_root)
+    _apply_strategy_comparison_scaffold(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -798,6 +851,7 @@ def _write_packet_artifacts(
     _write_baseline_health_evaluation_artifact(output_root, payload)
     _write_paper_observation_readiness_artifact(output_root, payload)
     _write_research_board_prioritization_artifact(output_root, payload)
+    _write_strategy_comparison_scaffold_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -858,6 +912,24 @@ def _apply_research_candidate_queue(
             "research_candidate_queue_path"
         ]
         dashboard["research_candidate_queue"] = dict(queue)
+
+
+def _apply_strategy_comparison_scaffold(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    scaffold = _build_strategy_comparison_scaffold(payload, artifact_paths)
+    payload["strategy_comparison_scaffold_path"] = str(
+        artifact_paths["strategy_comparison_scaffold"]
+    )
+    payload["strategy_comparison_scaffold"] = scaffold
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["strategy_comparison_scaffold_path"] = payload[
+            "strategy_comparison_scaffold_path"
+        ]
+        dashboard["strategy_comparison_scaffold"] = dict(scaffold)
 
 
 def _apply_baseline_evidence_metrics(
@@ -2616,6 +2688,20 @@ def _write_research_board_prioritization_artifact(
     )
 
 
+def _write_strategy_comparison_scaffold_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    scaffold = payload.get("strategy_comparison_scaffold")
+    record = scaffold if isinstance(scaffold, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _STRATEGY_COMPARISON_SCAFFOLD_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _apply_packet_validation(
     payload: dict[str, Any],
     validation: Mapping[str, Any],
@@ -3108,6 +3194,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     research_board_prioritization_defaults = (
         _default_research_board_prioritization_fields(artifact_paths)
     )
+    strategy_comparison_scaffold_defaults = (
+        _default_strategy_comparison_scaffold_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3188,6 +3277,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **baseline_evidence_metrics_defaults,
         **paper_observation_readiness_defaults,
         **research_board_prioritization_defaults,
+        **strategy_comparison_scaffold_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3213,6 +3303,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "research_board_prioritization": artifact_paths[
                 "research_board_prioritization"
+            ],
+            "strategy_comparison_scaffold": artifact_paths[
+                "strategy_comparison_scaffold"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3331,6 +3424,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "research_board_prioritization": dict(
                 research_board_prioritization_defaults[
                     "research_board_prioritization"
+                ]
+            ),
+            "strategy_comparison_scaffold_path": (
+                strategy_comparison_scaffold_defaults[
+                    "strategy_comparison_scaffold_path"
+                ]
+            ),
+            "strategy_comparison_scaffold": dict(
+                strategy_comparison_scaffold_defaults[
+                    "strategy_comparison_scaffold"
                 ]
             ),
             "next_action_selector": dict(
@@ -3703,6 +3806,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "research_board_prioritization": _normalize_path(
             output_root / _RESEARCH_BOARD_PRIORITIZATION_FILENAME
         ),
+        "strategy_comparison_scaffold": _normalize_path(
+            output_root / _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+        ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
         "gpt_next_action_handoff": _normalize_path(
@@ -4065,6 +4171,100 @@ def _apply_research_board_prioritization(
         dashboard["research_board_prioritization"] = dict(prioritization)
 
 
+def _build_strategy_comparison_scaffold(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    del payload, artifact_paths
+    candidate_slots = [
+        {
+            "candidate_slot_id": "momentum_or_trend_candidate",
+            "candidate_family": "momentum_or_trend",
+            "implementation_status": "placeholder_not_implemented",
+            "evidence_status": "offline_evidence_not_yet_collected",
+            "promotion_status": "not_promotable_until_offline_evidence_comparison",
+            "hard_gate_required": False,
+            "safety_scope": "offline_only",
+        },
+        {
+            "candidate_slot_id": "mean_reversion_candidate",
+            "candidate_family": "mean_reversion",
+            "implementation_status": "placeholder_not_implemented",
+            "evidence_status": "offline_evidence_not_yet_collected",
+            "promotion_status": "not_promotable_until_offline_evidence_comparison",
+            "hard_gate_required": False,
+            "safety_scope": "offline_only",
+        },
+        {
+            "candidate_slot_id": "volatility_or_regime_filter_candidate",
+            "candidate_family": "volatility_or_regime_filter",
+            "implementation_status": "placeholder_not_implemented",
+            "evidence_status": "offline_evidence_not_yet_collected",
+            "promotion_status": "not_promotable_until_offline_evidence_comparison",
+            "hard_gate_required": False,
+            "safety_scope": "offline_only",
+        },
+    ]
+    return {
+        "scaffold_status": "ready",
+        "comparison_mode": "offline_research_scaffold_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_label": "SPY SMA 50/200 daily long-only baseline",
+        "baseline_strategy_role": "control_harness",
+        "candidate_strategy_slots": candidate_slots,
+        "comparison_dimensions": list(_REQUIRED_STRATEGY_COMPARISON_DIMENSIONS),
+        "required_evidence_before_promotion": [
+            "deterministic_offline_data_basis",
+            "fixed_lookback_window_definition",
+            "signal_and_trade_frequency_summary",
+            "turnover_and_transaction_cost_assumption",
+            "drawdown_profile_summary",
+            "benchmark_relative_return_summary",
+            "regime_sensitivity_summary",
+            "paper_observation_readiness_status_without_broker_claims",
+            "broker_dependency_absent_or_hard_gated",
+        ],
+        "selected_next_safe_action": "build_candidate_strategy_evidence_template",
+        "why_selected": (
+            "The scaffold is offline-only and prepares candidate evidence before "
+            "any future strategy implementation or promotion decision."
+        ),
+        "why_no_strategy_replacement_yet": (
+            "No replacement is considered yet; replacing the control harness "
+            "requires deterministic offline evidence comparison first."
+        ),
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+        "hard_gate_required": False,
+        "requires_daniel": False,
+        "daniel_action_required_now": False,
+    }
+
+
+def _default_strategy_comparison_scaffold_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
+    return {
+        "strategy_comparison_scaffold_path": str(
+            artifact_paths["strategy_comparison_scaffold"]
+        ),
+        "strategy_comparison_scaffold": scaffold,
+    }
+
+
+def _strategy_comparison_scaffold_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    scaffold = payload.get("strategy_comparison_scaffold")
+    if isinstance(scaffold, Mapping):
+        return dict(scaffold)
+    return _build_strategy_comparison_scaffold(payload, artifact_paths)
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -4186,6 +4386,8 @@ def _default_next_action_selector_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     readiness = _build_paper_observation_readiness({}, artifact_paths)
+    prioritization = _build_research_board_prioritization({}, artifact_paths)
+    scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -4217,6 +4419,14 @@ def _default_next_action_selector_fields(
                 artifact_paths["paper_observation_readiness"]
             ),
             "paper_observation_readiness": dict(readiness),
+            "research_board_prioritization_path": str(
+                artifact_paths["research_board_prioritization"]
+            ),
+            "research_board_prioritization": dict(prioritization),
+            "strategy_comparison_scaffold_path": str(
+                artifact_paths["strategy_comparison_scaffold"]
+            ),
+            "strategy_comparison_scaffold": dict(scaffold),
             "source_state": {},
         }
     }
@@ -4228,6 +4438,7 @@ def _default_work_order_export_fields(
     output_root = _artifact_output_root(artifact_paths["baseline_evidence_metrics"])
     readiness = _build_paper_observation_readiness({}, artifact_paths)
     prioritization = _build_research_board_prioritization({}, artifact_paths)
+    scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -4255,6 +4466,13 @@ def _default_work_order_export_fields(
             "research_board_prioritization": dict(prioritization),
             "research_board_prioritization_status": str(
                 prioritization["prioritization_status"]
+            ),
+            "strategy_comparison_scaffold_path": str(
+                artifact_paths["strategy_comparison_scaffold"]
+            ),
+            "strategy_comparison_scaffold": dict(scaffold),
+            "strategy_comparison_scaffold_status": str(
+                scaffold["scaffold_status"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -4701,6 +4919,11 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("research_board_prioritization"), Mapping)
             else {}
         ),
+        "strategy_comparison_scaffold": dict(
+            payload.get("strategy_comparison_scaffold", {})
+            if isinstance(payload.get("strategy_comparison_scaffold"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -4779,6 +5002,14 @@ def _selector_result(
             if isinstance(source_state.get("research_board_prioritization"), Mapping)
             else {}
         ),
+        "strategy_comparison_scaffold_path": str(
+            artifact_paths["strategy_comparison_scaffold"]
+        ),
+        "strategy_comparison_scaffold": dict(
+            source_state.get("strategy_comparison_scaffold", {})
+            if isinstance(source_state.get("strategy_comparison_scaffold"), Mapping)
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -4854,6 +5085,7 @@ def _apply_work_order_exports(
     metrics_record = metrics if isinstance(metrics, Mapping) else {}
     readiness = _paper_observation_readiness_record(payload, artifact_paths)
     prioritization = _research_board_prioritization_record(payload, artifact_paths)
+    scaffold = _strategy_comparison_scaffold_record(payload, artifact_paths)
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -4878,6 +5110,13 @@ def _apply_work_order_exports(
         "research_board_prioritization": dict(prioritization),
         "research_board_prioritization_status": str(
             prioritization.get("prioritization_status", "ranked")
+        ),
+        "strategy_comparison_scaffold_path": str(
+            artifact_paths["strategy_comparison_scaffold"]
+        ),
+        "strategy_comparison_scaffold": dict(scaffold),
+        "strategy_comparison_scaffold_status": str(
+            scaffold.get("scaffold_status", "ready")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -5910,6 +6149,11 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    scaffold_ok, scaffold_summary = _quality_strategy_comparison_scaffold_summary(
+        root,
+        packet_for_checks,
+        manifest if isinstance(manifest, Mapping) else {},
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -5992,6 +6236,11 @@ def _build_quality_gate(
             "paper_observation_readiness_generated",
             readiness_ok,
             readiness_summary,
+        ),
+        _quality_check(
+            "strategy_comparison_scaffold_generated",
+            scaffold_ok,
+            scaffold_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -6415,6 +6664,61 @@ def _quality_paper_observation_readiness_summary(
     )
 
 
+def _quality_strategy_comparison_scaffold_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_strategy_comparison_scaffold_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    scaffold = packet["strategy_comparison_scaffold"]
+    assert isinstance(scaffold, Mapping)
+    artifact_path = output_root / _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_STRATEGY_COMPARISON_SCAFFOLD_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_STRATEGY_COMPARISON_SCAFFOLD_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_STRATEGY_COMPARISON_SCAFFOLD_FILENAME} is not JSON"
+    if artifact_record != scaffold:
+        return False, "strategy comparison scaffold artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("strategy_comparison_scaffold")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index strategy_comparison_scaffold"
+    if not str(indexed.get("path", "")).endswith(
+        _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    ):
+        return False, "manifest scaffold artifact path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _STRATEGY_COMPARISON_SCAFFOLD_FILENAME not in text:
+            return False, f"{text_name} does not reference scaffold artifact"
+        if "Strategy Comparison Scaffold" not in text:
+            return False, f"{text_name} does not include scaffold section"
+    return True, (
+        "strategy comparison scaffold generated; scaffold_status=ready; "
+        "comparison_mode=offline_research_scaffold_only; "
+        "selected_next_safe_action=build_candidate_strategy_evidence_template"
+    )
+
+
 def _quality_legacy_outputs_preserved_summary(
     artifact_presence_status: Mapping[str, Any],
 ) -> tuple[bool, str]:
@@ -6617,6 +6921,7 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         _RESEARCH_CANDIDATE_QUEUE_FILENAME,
         _BASELINE_HEALTH_EVALUATION_FILENAME,
         _BASELINE_EVIDENCE_METRICS_FILENAME,
+        _STRATEGY_COMPARISON_SCAFFOLD_FILENAME,
         _REVIEW_INPUTS_DIRNAME,
         _WORK_ORDERS_DIRNAME,
         _GPT_WORK_ORDER_FILENAME,
@@ -6741,6 +7046,8 @@ def _quality_work_order_exports_summary(
             _BASELINE_HEALTH_EVALUATION_FILENAME,
             "## Baseline evidence metrics",
             _BASELINE_EVIDENCE_METRICS_FILENAME,
+            "## Strategy comparison scaffold",
+            _STRATEGY_COMPARISON_SCAFFOLD_FILENAME,
             _BASELINE_HEALTH_NEXT_SAFE_TEST,
             "## Prerequisite artifact chain",
             _BASELINE_TURNOVER_SUMMARY_FILENAME,
@@ -6830,6 +7137,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_research_candidate_queue_fields("", packet))
     missing.extend(_missing_paper_observation_readiness_fields("", packet))
     missing.extend(_missing_research_board_prioritization_fields("", packet))
+    missing.extend(_missing_strategy_comparison_scaffold_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -6892,6 +7200,7 @@ def _missing_manifest_fields(
     missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
     missing.extend(_missing_paper_observation_readiness_fields("manifest", manifest))
     missing.extend(_missing_research_board_prioritization_fields("manifest", manifest))
+    missing.extend(_missing_strategy_comparison_scaffold_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -6921,6 +7230,8 @@ def _missing_manifest_fields(
         "research_board_prioritization_version",
         "research_board_prioritization_path",
         "research_board_prioritization",
+        "strategy_comparison_scaffold_path",
+        "strategy_comparison_scaffold",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -7329,6 +7640,117 @@ def _missing_research_board_prioritization_fields(
     return missing
 
 
+def _missing_strategy_comparison_scaffold_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    scaffold = packet.get("strategy_comparison_scaffold")
+    if not isinstance(scaffold, Mapping):
+        return [f"{field_prefix}strategy_comparison_scaffold"]
+    for field_name in _REQUIRED_STRATEGY_COMPARISON_SCAFFOLD_FIELDS:
+        if field_name not in scaffold:
+            missing.append(f"{field_prefix}strategy_comparison_scaffold.{field_name}")
+    if not str(packet.get("strategy_comparison_scaffold_path", "")).endswith(
+        _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    ):
+        missing.append(f"{field_prefix}strategy_comparison_scaffold_path")
+    expected_values = {
+        "scaffold_status": "ready",
+        "comparison_mode": "offline_research_scaffold_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "selected_next_safe_action": "build_candidate_strategy_evidence_template",
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "profit_claim": "none",
+    }
+    for field_name, expected_value in expected_values.items():
+        if scaffold.get(field_name) != expected_value:
+            missing.append(
+                f"{field_prefix}strategy_comparison_scaffold.{field_name}"
+            )
+    if _selector_contains_forbidden_action(
+        str(scaffold.get("selected_next_safe_action", ""))
+    ):
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.selected_next_safe_action.safe"
+        )
+    for false_field in (
+        "paper_submit_authorized",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+    ):
+        if scaffold.get(false_field) is not False:
+            missing.append(
+                f"{field_prefix}strategy_comparison_scaffold.{false_field}.false"
+            )
+    if not str(scaffold.get("baseline_strategy_label", "")).strip():
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.baseline_strategy_label"
+        )
+    candidate_slots = scaffold.get("candidate_strategy_slots")
+    if not isinstance(candidate_slots, list) or not candidate_slots:
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.candidate_strategy_slots"
+        )
+    else:
+        candidate_ids: set[str] = set()
+        for index, item in enumerate(candidate_slots):
+            item_prefix = (
+                f"{field_prefix}strategy_comparison_scaffold."
+                f"candidate_strategy_slots[{index}]"
+            )
+            if not isinstance(item, Mapping):
+                missing.append(item_prefix)
+                continue
+            for field_name in _REQUIRED_STRATEGY_COMPARISON_SLOT_FIELDS:
+                if field_name not in item:
+                    missing.append(f"{item_prefix}.{field_name}")
+            candidate_ids.add(str(item.get("candidate_slot_id", "")))
+            if item.get("hard_gate_required") is not False:
+                missing.append(f"{item_prefix}.hard_gate_required.false")
+            if item.get("safety_scope") != "offline_only":
+                missing.append(f"{item_prefix}.safety_scope")
+        for candidate_id in (
+            "momentum_or_trend_candidate",
+            "mean_reversion_candidate",
+            "volatility_or_regime_filter_candidate",
+        ):
+            if candidate_id not in candidate_ids:
+                missing.append(
+                    f"{field_prefix}strategy_comparison_scaffold.candidate_strategy_slots.{candidate_id}"
+                )
+    comparison_dimensions = scaffold.get("comparison_dimensions")
+    if not isinstance(comparison_dimensions, list) or not comparison_dimensions:
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.comparison_dimensions"
+        )
+    else:
+        for dimension in _REQUIRED_STRATEGY_COMPARISON_DIMENSIONS:
+            if dimension not in comparison_dimensions:
+                missing.append(
+                    f"{field_prefix}strategy_comparison_scaffold.comparison_dimensions.{dimension}"
+                )
+    evidence = scaffold.get("required_evidence_before_promotion")
+    if not isinstance(evidence, list) or not evidence:
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.required_evidence_before_promotion"
+        )
+    if not str(scaffold.get("why_selected", "")).strip():
+        missing.append(f"{field_prefix}strategy_comparison_scaffold.why_selected")
+    replacement_reason = str(
+        scaffold.get("why_no_strategy_replacement_yet", "")
+    ).lower()
+    if "requires deterministic offline evidence comparison first" not in replacement_reason:
+        missing.append(
+            f"{field_prefix}strategy_comparison_scaffold.why_no_strategy_replacement_yet"
+        )
+    return missing
+
+
 def _missing_baseline_health_evaluation_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -7703,6 +8125,8 @@ def _missing_next_action_selector_fields(
         "paper_observation_readiness",
         "research_board_prioritization_path",
         "research_board_prioritization",
+        "strategy_comparison_scaffold_path",
+        "strategy_comparison_scaffold",
         "source_state",
     )
     for field_name in required_fields:
@@ -7765,6 +8189,16 @@ def _missing_next_action_selector_fields(
         missing.append(
             f"{field_prefix}next_action_selector.research_board_prioritization.object"
         )
+    if not str(selector.get("strategy_comparison_scaffold_path", "")).endswith(
+        _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector.strategy_comparison_scaffold_path"
+        )
+    if not isinstance(selector.get("strategy_comparison_scaffold"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector.strategy_comparison_scaffold.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -7813,6 +8247,9 @@ def _missing_work_order_export_fields(
         "research_board_prioritization_path",
         "research_board_prioritization",
         "research_board_prioritization_status",
+        "strategy_comparison_scaffold_path",
+        "strategy_comparison_scaffold",
+        "strategy_comparison_scaffold_status",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -7884,6 +8321,20 @@ def _missing_work_order_export_fields(
     if not str(exports.get("research_board_prioritization_status", "")).strip():
         missing.append(
             f"{field_prefix}work_order_exports.research_board_prioritization_status"
+        )
+    if not str(exports.get("strategy_comparison_scaffold_path", "")).endswith(
+        _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports.strategy_comparison_scaffold_path"
+        )
+    if not isinstance(exports.get("strategy_comparison_scaffold"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports.strategy_comparison_scaffold.object"
+        )
+    if exports.get("strategy_comparison_scaffold_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports.strategy_comparison_scaffold_status"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -8515,6 +8966,8 @@ def _render_work_order_markdown(
     readiness_json = _json_markdown(readiness)
     prioritization = payload["research_board_prioritization"]
     prioritization_json = _json_markdown(prioritization)
+    scaffold = payload["strategy_comparison_scaffold"]
+    scaffold_json = _json_markdown(scaffold)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -8616,6 +9069,23 @@ def _render_work_order_markdown(
 {prioritization_json}
 ```
 
+## Strategy comparison scaffold
+* **Artifact**: `{payload["strategy_comparison_scaffold_path"]}`
+* **Scaffold status**: `{scaffold["scaffold_status"]}`
+* **Comparison mode**: `{scaffold["comparison_mode"]}`
+* **Baseline strategy**: `{scaffold["baseline_strategy_id"]}`
+* **Baseline role**: `{scaffold["baseline_strategy_role"]}`
+* **Candidate slots**: {len(scaffold["candidate_strategy_slots"])}
+* **Selected next safe action**: `{scaffold["selected_next_safe_action"]}`
+* **Why no strategy replacement yet**: {scaffold["why_no_strategy_replacement_yet"]}
+* **Safety scope**: `{scaffold["safety_scope"]}`
+* **Broker-state mode**: `{scaffold["broker_state_mode"]}`
+* **Paper submit authorized**: {str(scaffold["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{scaffold["profit_claim"]}`
+```json
+{scaffold_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -8635,7 +9105,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_12_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_14_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -8648,6 +9118,8 @@ def _render_work_order_markdown(
 * `baseline_health_evaluation.jsonl`
 * `baseline_evidence_metrics.jsonl`
 * `paper_observation_readiness.jsonl`
+* `research_board_prioritization.jsonl`
+* `strategy_comparison_scaffold.jsonl`
 * `baseline_authorized_adjusted_metrics.jsonl`
 * `offline_backtest_confidence_summary.jsonl`
 * `adjusted_close_evidence.jsonl`
@@ -8663,16 +9135,17 @@ def _render_work_order_markdown(
 2. Starting branch and HEAD.
 3. Preflight credential/profile booleans.
 4. Files changed.
-5. Commands added or changed.
-6. Behavior implemented.
-7. Output artifacts produced, including `paper_observation_readiness.jsonl`.
-8. Quality gate result.
-9. Tests run and exact results.
-10. Safety assessment.
-11. Broker-read/broker-mutation/paper-submit/live-trading confirmation.
-12. Final `git status --short`.
-13. Untracked files intentionally left untouched.
-14. Recommended commit message.
+5. Behavior implemented.
+6. Output artifacts produced.
+7. Strategy comparison scaffold summary.
+8. Top selected next safe action.
+9. Quality gate result.
+10. Tests run and exact results.
+11. Safety assessment.
+12. Broker-read/broker-mutation/paper-submit/live-trading confirmation.
+13. Final `git status --short`.
+14. Untracked files intentionally left untouched.
+15. Recommended commit message.
 
 ## Commit instruction
 Do not commit unless GPT/Daniel explicitly asks after review.
@@ -8727,6 +9200,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
     readiness_json = _json_markdown(payload["paper_observation_readiness"])
     prioritization_json = _json_markdown(payload["research_board_prioritization"])
+    scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -8864,6 +9338,25 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {prioritization_json}
 ```
 
+## Strategy Comparison Scaffold
+* **Artifact**: `{payload["strategy_comparison_scaffold_path"]}`
+* **Scaffold status**: `{payload["strategy_comparison_scaffold"]["scaffold_status"]}`
+* **Comparison mode**: `{payload["strategy_comparison_scaffold"]["comparison_mode"]}`
+* **Baseline strategy**: `{payload["strategy_comparison_scaffold"]["baseline_strategy_id"]}`
+* **Baseline role**: `{payload["strategy_comparison_scaffold"]["baseline_strategy_role"]}`
+* **Candidate slots**: {len(payload["strategy_comparison_scaffold"]["candidate_strategy_slots"])}
+* **Comparison dimensions**: {payload["strategy_comparison_scaffold"]["comparison_dimensions"]}
+* **Selected next safe action**: `{payload["strategy_comparison_scaffold"]["selected_next_safe_action"]}`
+* **Why selected**: {payload["strategy_comparison_scaffold"]["why_selected"]}
+* **Why no strategy replacement yet**: {payload["strategy_comparison_scaffold"]["why_no_strategy_replacement_yet"]}
+* **Safety scope**: `{payload["strategy_comparison_scaffold"]["safety_scope"]}`
+* **Broker-state mode**: `{payload["strategy_comparison_scaffold"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["strategy_comparison_scaffold"]["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{payload["strategy_comparison_scaffold"]["profit_claim"]}`
+```json
+{scaffold_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -8908,6 +9401,7 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     baseline_metrics_json = _json_markdown(payload["baseline_evidence_metrics"])
     readiness_json = _json_markdown(payload["paper_observation_readiness"])
     prioritization_json = _json_markdown(payload["research_board_prioritization"])
+    scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -9075,6 +9569,25 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {prioritization_json}
 ```
 
+## Strategy Comparison Scaffold
+* **strategy_comparison_scaffold_path**: `{payload["strategy_comparison_scaffold_path"]}`
+* **scaffold_status**: `{payload["strategy_comparison_scaffold"]["scaffold_status"]}`
+* **comparison_mode**: `{payload["strategy_comparison_scaffold"]["comparison_mode"]}`
+* **baseline_strategy_id**: `{payload["strategy_comparison_scaffold"]["baseline_strategy_id"]}`
+* **baseline_strategy_role**: `{payload["strategy_comparison_scaffold"]["baseline_strategy_role"]}`
+* **candidate_slot_count**: {len(payload["strategy_comparison_scaffold"]["candidate_strategy_slots"])}
+* **comparison_dimensions**: `{payload["strategy_comparison_scaffold"]["comparison_dimensions"]}`
+* **selected_next_safe_action**: `{payload["strategy_comparison_scaffold"]["selected_next_safe_action"]}`
+* **why_selected**: {payload["strategy_comparison_scaffold"]["why_selected"]}
+* **why_no_strategy_replacement_yet**: {payload["strategy_comparison_scaffold"]["why_no_strategy_replacement_yet"]}
+* **safety_scope**: `{payload["strategy_comparison_scaffold"]["safety_scope"]}`
+* **broker_state_mode**: `{payload["strategy_comparison_scaffold"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["strategy_comparison_scaffold"]["paper_submit_authorized"]).lower()}
+* **profit_claim**: `{payload["strategy_comparison_scaffold"]["profit_claim"]}`
+```json
+{scaffold_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -9089,7 +9602,7 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * Broker state remains `{payload["broker_state_mode"]}`; this packet is `offline_preview_only` review material.
 
 ## Reviewer instructions
-* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, baseline-health evaluation status, baseline evidence metrics status, metric artifact ingest status, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
+* **Verify**: required artifacts, quality gate result, validation status, action queue priority order, research candidate queue priority order, strategy comparison scaffold status, baseline-health evaluation status, baseline evidence metrics status, metric artifact ingest status, active SPY SMA 50/200 baseline, history delta, decision ledger status, safety labels, and broker-state wording.
 * **Blocker**: any quality gate failure, missing required artifact, missing required field, paper submit authorization, broker observation claim, broker mutation evidence, live-trading evidence, or network dependency.
 * **Return format**:
   * `classification: accepted|accepted-with-minor-note|needs-repair|rejected`
@@ -9129,6 +9642,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "research_board_prioritization",
             artifact_paths.get("research_board_prioritization"),
+        ),
+        (
+            "strategy_comparison_scaffold",
+            artifact_paths.get("strategy_comparison_scaffold"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -9357,6 +9874,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["research_board_prioritization"] = _artifact_metadata(
             research_board_prioritization_path
         )
+    strategy_comparison_scaffold_path = (
+        output_root / _STRATEGY_COMPARISON_SCAFFOLD_FILENAME
+    )
+    if strategy_comparison_scaffold_path.exists():
+        indexed_artifacts["strategy_comparison_scaffold"] = _artifact_metadata(
+            strategy_comparison_scaffold_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -9435,6 +9959,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "research_board_prioritization": dict(
             payload["research_board_prioritization"]
+        ),
+        "strategy_comparison_scaffold_path": payload[
+            "strategy_comparison_scaffold_path"
+        ],
+        "strategy_comparison_scaffold": dict(
+            payload["strategy_comparison_scaffold"]
         ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],

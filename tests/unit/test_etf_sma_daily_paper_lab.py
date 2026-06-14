@@ -263,6 +263,86 @@ def _assert_research_board_prioritization_shape(prioritization: dict[str, object
     }
 
 
+def _assert_strategy_comparison_scaffold_shape(scaffold: dict[str, object]) -> None:
+    assert set(scaffold) == {
+        "scaffold_status",
+        "comparison_mode",
+        "baseline_strategy_id",
+        "baseline_strategy_label",
+        "baseline_strategy_role",
+        "candidate_strategy_slots",
+        "comparison_dimensions",
+        "required_evidence_before_promotion",
+        "selected_next_safe_action",
+        "why_selected",
+        "why_no_strategy_replacement_yet",
+        "broker_state_mode",
+        "safety_scope",
+        "paper_submit_authorized",
+        "profit_claim",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+    }
+    assert scaffold["scaffold_status"] == "ready"
+    assert scaffold["comparison_mode"] == "offline_research_scaffold_only"
+    assert scaffold["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert scaffold["baseline_strategy_role"] == "control_harness"
+    assert scaffold["selected_next_safe_action"] == (
+        "build_candidate_strategy_evidence_template"
+    )
+    assert "requires deterministic offline evidence comparison first" in str(
+        scaffold["why_no_strategy_replacement_yet"]
+    ).lower()
+    assert scaffold["broker_state_mode"] == "broker_state_not_observed"
+    assert scaffold["safety_scope"] == "offline_only"
+    assert scaffold["paper_submit_authorized"] is False
+    assert scaffold["profit_claim"] == "none"
+    assert scaffold["hard_gate_required"] is False
+    assert scaffold["requires_daniel"] is False
+    assert scaffold["daniel_action_required_now"] is False
+
+    slots = scaffold["candidate_strategy_slots"]
+    assert isinstance(slots, list)
+    assert slots
+    assert {slot["candidate_slot_id"] for slot in slots} == {
+        "momentum_or_trend_candidate",
+        "mean_reversion_candidate",
+        "volatility_or_regime_filter_candidate",
+    }
+    for slot in slots:
+        assert set(slot) == {
+            "candidate_slot_id",
+            "candidate_family",
+            "implementation_status",
+            "evidence_status",
+            "promotion_status",
+            "hard_gate_required",
+            "safety_scope",
+        }
+        assert slot["implementation_status"] == "placeholder_not_implemented"
+        assert slot["hard_gate_required"] is False
+        assert slot["safety_scope"] == "offline_only"
+
+    dimensions = scaffold["comparison_dimensions"]
+    assert isinstance(dimensions, list)
+    assert set(dimensions) >= {
+        "data_basis",
+        "lookback_window",
+        "signal_frequency",
+        "trade_frequency",
+        "turnover",
+        "transaction_cost_assumption",
+        "drawdown_profile",
+        "benchmark_relative_return",
+        "regime_sensitivity",
+        "paper_observation_readiness",
+        "broker_dependency",
+    }
+    assert isinstance(scaffold["required_evidence_before_promotion"], list)
+    assert scaffold["required_evidence_before_promotion"]
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -345,6 +425,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "paper_observation_readiness",
         "research_board_prioritization_path",
         "research_board_prioritization",
+        "strategy_comparison_scaffold_path",
+        "strategy_comparison_scaffold",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -370,6 +452,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     _assert_research_board_prioritization_shape(
         selector["research_board_prioritization"]
+    )
+    assert str(selector["strategy_comparison_scaffold_path"]).endswith(
+        "strategy_comparison_scaffold.jsonl"
+    )
+    _assert_strategy_comparison_scaffold_shape(
+        selector["strategy_comparison_scaffold"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -415,6 +503,13 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         exports["research_board_prioritization"]
     )
     assert exports["research_board_prioritization_status"] == "ranked"
+    assert str(exports["strategy_comparison_scaffold_path"]).endswith(
+        "strategy_comparison_scaffold.jsonl"
+    )
+    _assert_strategy_comparison_scaffold_shape(
+        exports["strategy_comparison_scaffold"]
+    )
+    assert exports["strategy_comparison_scaffold_status"] == "ready"
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
         "metric_artifacts_partially_ingested",
@@ -863,6 +958,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "baseline_health_evaluation_generated",
         "baseline_evidence_metrics_generated",
         "paper_observation_readiness_generated",
+        "strategy_comparison_scaffold_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
         "assistant_v1_through_v1_11_outputs_preserved",
@@ -879,9 +975,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "25/25 required checks passed; 0 failed; 0 warnings"
+        "26/26 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 25
+    assert container["quality_gate_passed_required_count"] == 26
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -1592,7 +1688,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.13A - Minimal Research Board Prioritization Artifact"
+            "Assistant v1.14 - Offline Strategy Comparison Scaffold"
             in work_order
         )
         assert "collect_offline_review_feedback" in work_order
@@ -1601,8 +1697,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "baseline_evidence_metrics.jsonl" in work_order
         assert "paper_observation_readiness.jsonl" in work_order
         assert "research_board_prioritization.jsonl" in work_order
+        assert "strategy_comparison_scaffold.jsonl" in work_order
         assert "## Paper observation readiness" in work_order
         assert "## Research board prioritization" in work_order
+        assert "## Strategy comparison scaffold" in work_order
         assert "hard_gate_prepared_not_authorized" in work_order
         assert "turnover_summary.jsonl" in work_order
         assert "cost_model_summary.jsonl" in work_order
@@ -2418,11 +2516,12 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "21/25 required checks passed; 4 failed; 0 warnings"
+        "21/26 required checks passed; 5 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
         "required_operating_record_fields_exist",
+        "strategy_comparison_scaffold_generated",
         "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
@@ -2676,6 +2775,7 @@ def test_etf_sma_daily_paper_lab_cli_invocation(tmp_path: Path) -> None:
     assert (output_root / "operating_record.jsonl").exists()
     assert (output_root / "manifest.jsonl").exists()
     assert (output_root / "research_board_prioritization.jsonl").exists()
+    assert (output_root / "strategy_comparison_scaffold.jsonl").exists()
 
 
 def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -> None:
@@ -2704,4 +2804,74 @@ def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -
 
     # Verify validation logic passes
     validation_result = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation_result["validation_status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_strategy_comparison_scaffold(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.14 strategy comparison scaffold artifact and packet wiring."""
+    output_root = tmp_path / "paper_lab_strategy_comparison_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    scaffold_file = output_root / "strategy_comparison_scaffold.jsonl"
+    assert scaffold_file.exists()
+    lines = scaffold_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_strategy_comparison_scaffold_shape(data)
+    _assert_strategy_comparison_scaffold_shape(
+        payload["strategy_comparison_scaffold"]
+    )
+    assert data == payload["strategy_comparison_scaffold"]
+    assert payload["strategy_comparison_scaffold_path"].endswith(
+        "strategy_comparison_scaffold.jsonl"
+    )
+
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    assert manifest["strategy_comparison_scaffold"] == data
+    assert record["strategy_comparison_scaffold"] == data
+    assert "strategy_comparison_scaffold" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["strategy_comparison_scaffold"][
+        "path"
+    ].endswith("strategy_comparison_scaffold.jsonl")
+
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    handoff = (output_root / "review_handoff.md").read_text(encoding="utf-8")
+    assert "## Strategy Comparison Scaffold" in brief
+    assert "## Strategy Comparison Scaffold" in handoff
+    assert "strategy_comparison_scaffold.jsonl" in brief
+    assert "strategy_comparison_scaffold.jsonl" in handoff
+
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert payload["next_action_selector"]["strategy_comparison_scaffold"] == data
+    assert payload["work_order_exports"]["strategy_comparison_scaffold"] == data
+    assert (
+        payload["strategy_comparison_scaffold"]["selected_next_safe_action"]
+        == "build_candidate_strategy_evidence_template"
+    )
+    assert payload["quality_gate_status"] == "pass"
+    assert "strategy_comparison_scaffold_generated" not in payload[
+        "quality_gate_failed_checks"
+    ]
+    validation_result = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
     assert validation_result["validation_status"] == "pass"

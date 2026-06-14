@@ -1,10 +1,13 @@
-# Assistant v1.12 - Paper Observation Readiness Packet
+# Assistant v1.14 - Offline Strategy Comparison Scaffold
 
-- [x] Preserve Assistant v1/v1.1/v1.2/v1.3/v1.4/v1.5/v1.6/v1.7/v1.8/v1.9/v1.10/v1.11 brief, operating record, manifest, validation, history-delta, executive action queue, research board, review handoff, decision-ledger, selector, work-order, research-candidate queue, baseline-health, baseline-evidence, turnover, and cost-model behavior.
-- [x] Add deterministic offline `paper_observation_readiness` metadata to the daily assistant packet without performing broker reads, broker mutation, paper submit, network calls, credential access, or live trading.
-- [x] Emit `paper_observation_readiness.jsonl` as a one-record JSONL artifact under the selected daily-lab output root.
-- [x] Define the future read-only broker observation scope, explicit Daniel approval phrase, expected outputs, required preflight booleans, stop conditions, broker-state claim policy, forbidden operations, and offline-only safety scope.
-- [x] Keep `broker_state_mode=broker_state_not_observed`, `paper_submit_authorized=false`, `profit_claim=none`, and position/order-state absence claims forbidden.
-- [x] Surface `paper_observation_readiness` in `operating_record.jsonl`, `manifest.jsonl`, `operating_brief.md`, `review_handoff.md`, `baseline_evidence_metrics`, `baseline_health_evaluation`, `research_candidate_queue`, `next_action_selector`, and work-order exports.
-- [x] Update deterministic quality-gate checks for readiness artifact existence, manifest indexing, approval phrase, no broker read, broker-state wording, no position/order-state absence claim, paper-submit lockout, profit claim, live-trading prohibition, and preservation of v1 through v1.11 outputs.
-- [ ] Complete required verification, including targeted test, safety guard group, offline verifier, v1.12 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.
+- [x] Preserve Assistant v1 through v1.13A behavior and offline safety lockouts.
+- [x] Add deterministic offline `strategy_comparison_scaffold` packet object.
+- [x] Emit one-record `strategy_comparison_scaffold.jsonl` under the selected daily-lab output root.
+- [x] Keep the scaffold as comparison metadata only: no new trading strategy, backtester, optimizer, broker adapter, strategy registry, broker read, broker mutation, paper submit, or live trading.
+- [x] Compare the `spy_sma_50_200_control` control harness against deterministic placeholder candidate slots for momentum/trend, mean reversion, and volatility/regime-filter families.
+- [x] Include deterministic comparison dimensions, required promotion evidence, and offline-only selected next safe action `build_candidate_strategy_evidence_template`.
+- [x] Surface the scaffold in `operating_record.jsonl`, `manifest.jsonl`, `operating_brief.md`, `review_handoff.md`, `next_action_selector`, and `work_order_exports`.
+- [x] Index `strategy_comparison_scaffold.jsonl` in manifest `indexed_artifacts`.
+- [x] Add quality-gate and validation checks for scaffold artifact existence, manifest indexing, packet equality, Markdown mentions, required values, candidate slots, comparison dimensions, and safety lockouts.
+- [x] Add unit coverage for scaffold generation, packet wiring, manifest indexing, Markdown references, selector/export links, and validation pass.
+- [x] Complete required verification, including targeted test, safety guard group, offline verifier, v1.14 smoke sequence, preflight-gated full pytest, `git diff --check`, and final git status/reporting.
