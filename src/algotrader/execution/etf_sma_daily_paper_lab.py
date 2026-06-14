@@ -60,11 +60,14 @@ _STRATEGY_COMPARISON_SCAFFOLD_VERSION = (
 _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_VERSION = (
     "assistant_v1.15_candidate_strategy_evidence_template"
 )
-_PHASE_NAME = "Assistant v1.15 - Candidate Strategy Evidence Template"
+_CANDIDATE_EVIDENCE_REQUIREMENTS_VERSION = (
+    "assistant_v1.16_candidate_evidence_requirements"
+)
+_PHASE_NAME = "Assistant v1.16 - Materialized Candidate Evidence Requirements"
 _PHASE_GOAL = (
-    "Add a deterministic offline evidence template for evaluating future "
-    "candidate strategies before any implementation, paper observation, broker "
-    "read, paper submit, or live trading."
+    "Materialize deterministic offline evidence requirements for candidate "
+    "strategy families before any implementation, promotion, paper observation, "
+    "broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -88,6 +91,7 @@ _STRATEGY_COMPARISON_SCAFFOLD_FILENAME = "strategy_comparison_scaffold.jsonl"
 _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME = (
     "candidate_strategy_evidence_template.jsonl"
 )
+_CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME = "candidate_evidence_requirements.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -144,6 +148,7 @@ _EXPECTED_ARTIFACTS = (
         "candidate_strategy_evidence_template",
         _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
     ),
+    ("candidate_evidence_requirements", _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -186,6 +191,8 @@ _REQUIRED_PACKET_FIELDS = (
     "strategy_comparison_scaffold",
     "candidate_strategy_evidence_template_path",
     "candidate_strategy_evidence_template",
+    "candidate_evidence_requirements_path",
+    "candidate_evidence_requirements",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -250,6 +257,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "strategy_comparison_scaffold",
     "candidate_strategy_evidence_template_path",
     "candidate_strategy_evidence_template",
+    "candidate_evidence_requirements_path",
+    "candidate_evidence_requirements",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -719,6 +728,54 @@ _REQUIRED_CANDIDATE_STRATEGY_FAMILY_FIELDS = (
     "hard_gate_required",
     "safety_scope",
 )
+_REQUIRED_CANDIDATE_EVIDENCE_REQUIREMENTS_FIELDS = (
+    "requirements_status",
+    "requirements_mode",
+    "baseline_strategy_id",
+    "baseline_strategy_role",
+    "candidate_requirements",
+    "shared_evidence_requirements",
+    "per_candidate_missing_evidence",
+    "promotion_blockers",
+    "rejection_triggers",
+    "next_research_artifacts_to_build",
+    "selected_next_safe_action",
+    "why_selected",
+    "why_no_strategy_implementation_yet",
+    "broker_state_mode",
+    "safety_scope",
+    "paper_submit_authorized",
+    "profit_claim",
+    "hard_gate_required",
+    "requires_daniel",
+    "daniel_action_required_now",
+)
+_REQUIRED_CANDIDATE_EVIDENCE_REQUIREMENT_FIELDS = (
+    "candidate_family_id",
+    "candidate_family_label",
+    "current_status",
+    "implementation_status",
+    "evidence_status",
+    "promotion_status",
+    "required_data_inputs",
+    "required_feature_definitions",
+    "required_signal_definition",
+    "required_risk_definition",
+    "required_backtest_outputs",
+    "required_cost_model_outputs",
+    "required_benchmark_comparisons",
+    "required_regime_analysis",
+    "required_turnover_analysis",
+    "required_drawdown_analysis",
+    "required_failure_mode_review",
+    "required_safety_checks",
+    "missing_evidence",
+    "promotion_blockers",
+    "rejection_triggers",
+    "broker_dependency",
+    "hard_gate_required",
+    "safety_scope",
+)
 _REQUIRED_CANDIDATE_EVIDENCE_SECTIONS = (
     "hypothesis",
     "market_universe",
@@ -916,6 +973,7 @@ def _write_packet_artifacts(
     _apply_research_board_prioritization(payload, output_root)
     _apply_strategy_comparison_scaffold(payload, output_root)
     _apply_candidate_strategy_evidence_template(payload, output_root)
+    _apply_candidate_evidence_requirements(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -928,6 +986,7 @@ def _write_packet_artifacts(
     _write_research_board_prioritization_artifact(output_root, payload)
     _write_strategy_comparison_scaffold_artifact(output_root, payload)
     _write_candidate_strategy_evidence_template_artifact(output_root, payload)
+    _write_candidate_evidence_requirements_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -2792,6 +2851,20 @@ def _write_candidate_strategy_evidence_template_artifact(
     )
 
 
+def _write_candidate_evidence_requirements_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    requirements = payload.get("candidate_evidence_requirements")
+    record = requirements if isinstance(requirements, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _apply_packet_validation(
     payload: dict[str, Any],
     validation: Mapping[str, Any],
@@ -3290,6 +3363,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     candidate_strategy_evidence_template_defaults = (
         _default_candidate_strategy_evidence_template_fields(artifact_paths)
     )
+    candidate_evidence_requirements_defaults = (
+        _default_candidate_evidence_requirements_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3372,6 +3448,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **research_board_prioritization_defaults,
         **strategy_comparison_scaffold_defaults,
         **candidate_strategy_evidence_template_defaults,
+        **candidate_evidence_requirements_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3403,6 +3480,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "candidate_strategy_evidence_template": artifact_paths[
                 "candidate_strategy_evidence_template"
+            ],
+            "candidate_evidence_requirements": artifact_paths[
+                "candidate_evidence_requirements"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3908,6 +3988,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "candidate_strategy_evidence_template": _normalize_path(
             output_root / _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME
+        ),
+        "candidate_evidence_requirements": _normalize_path(
+            output_root / _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -4579,6 +4662,312 @@ def _apply_candidate_strategy_evidence_template(
         dashboard["candidate_strategy_evidence_template"] = dict(template)
 
 
+def _build_candidate_evidence_requirements(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    del payload, artifact_paths
+    promotion_blockers = [
+        "candidate_strategy_not_implemented",
+        "offline_backtest_not_materialized",
+        "benchmark_comparison_missing",
+        "cost_model_evidence_missing",
+        "drawdown_evidence_missing",
+        "regime_evidence_missing",
+        "turnover_evidence_missing",
+        "paper_observation_not_authorized",
+    ]
+    rejection_triggers = [
+        "non_deterministic_signal",
+        "broker_dependency_in_research_path",
+        "network_dependency_in_default_pytest",
+        "excessive_turnover_after_costs",
+        "unacceptable_drawdown_vs_baseline",
+        "fragile_single_period_performance",
+        "missing_benchmark_comparison",
+        "missing_regime_analysis",
+    ]
+    missing_evidence = [
+        "deterministic_offline_data_source_not_selected",
+        "explicit_data_basis_not_documented",
+        "feature_calculation_definition_missing",
+        "signal_rule_definition_missing",
+        "risk_rule_definition_missing",
+        "offline_backtest_outputs_missing",
+        "transaction_cost_assumption_missing",
+        "benchmark_comparison_against_spy_sma_50_200_control_missing",
+        "turnover_estimate_missing",
+        "drawdown_evidence_missing",
+        "regime_sensitivity_evidence_missing",
+        "failure_mode_review_missing",
+    ]
+    candidate_requirements = [
+        _candidate_evidence_requirement(
+            candidate_family_id="momentum_or_trend_candidate",
+            candidate_family_label="Momentum or trend candidate",
+            required_feature_definitions=[
+                "trend_or_momentum_feature_calculated_from_as_of_bars_only",
+                "lookback_window_and_parameter_values_fixed_before_test",
+                "ranking_or_filter_basis_defined_without_optimizer_dependency",
+            ],
+            required_signal_definition=[
+                "deterministic_long_flat_or_ranked_entry_rule",
+                "deterministic_exit_or_deallocation_rule",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            required_risk_definition=[
+                "max_position_notional_or_weight",
+                "position_concentration_limit",
+                "risk_off_or_stop_condition_defined_before_backtest",
+            ],
+            required_regime_analysis=[
+                "trend_regime_performance_split",
+                "range_bound_regime_performance_split",
+                "high_volatility_regime_performance_split",
+            ],
+            promotion_blockers=promotion_blockers,
+            rejection_triggers=rejection_triggers,
+            missing_evidence=missing_evidence,
+        ),
+        _candidate_evidence_requirement(
+            candidate_family_id="mean_reversion_candidate",
+            candidate_family_label="Mean reversion candidate",
+            required_feature_definitions=[
+                "deviation_from_reference_price_feature",
+                "reversion_horizon_definition",
+                "entry_and_exit_thresholds_fixed_before_test",
+            ],
+            required_signal_definition=[
+                "deterministic_oversold_or_overextended_entry_rule",
+                "deterministic_mean_reversion_exit_rule",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            required_risk_definition=[
+                "max_position_notional_or_weight",
+                "adverse_trend_or_failed_reversion_exit_rule",
+                "trade_cooldown_or_frequency_limit_if_applicable",
+            ],
+            required_regime_analysis=[
+                "trend_regime_failure_review",
+                "range_bound_regime_performance_split",
+                "high_volatility_regime_performance_split",
+            ],
+            promotion_blockers=promotion_blockers,
+            rejection_triggers=rejection_triggers,
+            missing_evidence=missing_evidence,
+        ),
+        _candidate_evidence_requirement(
+            candidate_family_id="volatility_or_regime_filter_candidate",
+            candidate_family_label="Volatility or regime filter candidate",
+            required_feature_definitions=[
+                "volatility_or_regime_state_feature",
+                "filter_thresholds_fixed_before_test",
+                "interaction_with_baseline_or_candidate_signal_defined",
+            ],
+            required_signal_definition=[
+                "deterministic_risk_on_or_risk_off_filter_rule",
+                "deterministic_filter_update_frequency",
+                "as_of_date_signal_timing_and_no_lookahead_rule",
+            ],
+            required_risk_definition=[
+                "risk_reduction_or_exposure_cap_rule",
+                "filter_override_limits",
+                "behavior_when_regime_state_is_ambiguous_or_missing",
+            ],
+            required_regime_analysis=[
+                "low_volatility_regime_performance_split",
+                "high_volatility_regime_performance_split",
+                "regime_transition_period_review",
+            ],
+            promotion_blockers=promotion_blockers,
+            rejection_triggers=rejection_triggers,
+            missing_evidence=missing_evidence,
+        ),
+    ]
+    per_candidate_missing_evidence = {
+        str(candidate["candidate_family_id"]): list(candidate["missing_evidence"])
+        for candidate in candidate_requirements
+    }
+    return {
+        "requirements_status": "ready",
+        "requirements_mode": "offline_candidate_evidence_requirements_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "candidate_requirements": candidate_requirements,
+        "shared_evidence_requirements": [
+            "deterministic_offline_data_source",
+            "explicit_data_basis",
+            "feature_calculation_definition",
+            "signal_rule_definition",
+            "risk_rule_definition",
+            "benchmark_comparison_against_spy_sma_50_200_control",
+            "transaction_cost_assumption",
+            "turnover_estimate",
+            "drawdown_evidence",
+            "regime_sensitivity_evidence",
+            "dependency_direction_guard",
+            "default_pytest_network_guard",
+            "broker_mutation_invariant",
+            "no_broker_dependency_in_research_path",
+            "no_llm_or_agent_dependency_in_strategy_path",
+            (
+                "paper_observation_deferred_until_daniel_explicitly_scopes_"
+                "broker_read_or_paper_gate"
+            ),
+        ],
+        "per_candidate_missing_evidence": per_candidate_missing_evidence,
+        "promotion_blockers": list(promotion_blockers),
+        "rejection_triggers": list(rejection_triggers),
+        "next_research_artifacts_to_build": [
+            "candidate_evidence_collection_plan.jsonl",
+            "candidate_data_basis_specification.jsonl",
+            "candidate_signal_definition_packet.jsonl",
+            "candidate_baseline_comparison_requirements.jsonl",
+            "candidate_safety_review_requirements.jsonl",
+        ],
+        "selected_next_safe_action": "build_candidate_evidence_collection_plan",
+        "why_selected": (
+            "This is the next useful deterministic offline research artifact: it "
+            "turns candidate evidence requirements into a collection plan without "
+            "implementing or promoting any strategy."
+        ),
+        "why_no_strategy_implementation_yet": (
+            "Strategy implementation remains blocked until required offline "
+            "evidence is materialized, collected, and compared against the "
+            "baseline."
+        ),
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+        "hard_gate_required": False,
+        "requires_daniel": False,
+        "daniel_action_required_now": False,
+    }
+
+
+def _candidate_evidence_requirement(
+    *,
+    candidate_family_id: str,
+    candidate_family_label: str,
+    required_feature_definitions: list[str],
+    required_signal_definition: list[str],
+    required_risk_definition: list[str],
+    required_regime_analysis: list[str],
+    promotion_blockers: list[str],
+    rejection_triggers: list[str],
+    missing_evidence: list[str],
+) -> dict[str, Any]:
+    return {
+        "candidate_family_id": candidate_family_id,
+        "candidate_family_label": candidate_family_label,
+        "current_status": "requirements_ready_candidate_unimplemented",
+        "implementation_status": "not_implemented",
+        "evidence_status": "required_offline_evidence_missing",
+        "promotion_status": "promotion_blocked",
+        "required_data_inputs": [
+            "deterministic_offline_data_source",
+            "explicit_adjusted_or_raw_price_basis",
+            "as_of_date_filter",
+            "fixed_universe_definition",
+            "missing_data_policy",
+        ],
+        "required_feature_definitions": list(required_feature_definitions),
+        "required_signal_definition": list(required_signal_definition),
+        "required_risk_definition": list(required_risk_definition),
+        "required_backtest_outputs": [
+            "daily_equity_curve",
+            "trade_or_position_ledger",
+            "return_summary",
+            "benchmark_relative_return_summary",
+            "sample_window_and_bar_count",
+        ],
+        "required_cost_model_outputs": [
+            "transaction_cost_assumption",
+            "slippage_assumption",
+            "turnover_after_costs",
+            "cost_sensitivity_summary",
+        ],
+        "required_benchmark_comparisons": [
+            "spy_sma_50_200_control_comparison",
+            "buy_and_hold_spy_comparison_if_data_available",
+            "same_sample_window_comparison",
+        ],
+        "required_regime_analysis": list(required_regime_analysis),
+        "required_turnover_analysis": [
+            "annualized_turnover_estimate",
+            "trade_count_by_period",
+            "holding_period_distribution",
+            "turnover_vs_cost_sensitivity",
+        ],
+        "required_drawdown_analysis": [
+            "maximum_drawdown",
+            "drawdown_duration",
+            "worst_period_review",
+            "drawdown_vs_baseline",
+        ],
+        "required_failure_mode_review": [
+            "lookahead_bias_check",
+            "data_snooping_or_overfit_review",
+            "single_period_performance_fragility_review",
+            "ambiguous_signal_or_missing_data_behavior",
+        ],
+        "required_safety_checks": [
+            "dependency_direction_guard",
+            "default_pytest_network_guard",
+            "broker_mutation_invariant",
+            "no_broker_dependency_in_research_path",
+            "no_llm_or_agent_dependency_in_strategy_path",
+        ],
+        "missing_evidence": list(missing_evidence),
+        "promotion_blockers": list(promotion_blockers),
+        "rejection_triggers": list(rejection_triggers),
+        "broker_dependency": "none",
+        "hard_gate_required": False,
+        "safety_scope": "offline_only",
+    }
+
+
+def _default_candidate_evidence_requirements_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    requirements = _build_candidate_evidence_requirements({}, artifact_paths)
+    return {
+        "candidate_evidence_requirements_path": str(
+            artifact_paths["candidate_evidence_requirements"]
+        ),
+        "candidate_evidence_requirements": requirements,
+    }
+
+
+def _candidate_evidence_requirements_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    requirements = payload.get("candidate_evidence_requirements")
+    if isinstance(requirements, Mapping):
+        return dict(requirements)
+    return _build_candidate_evidence_requirements(payload, artifact_paths)
+
+
+def _apply_candidate_evidence_requirements(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    requirements = _build_candidate_evidence_requirements(payload, artifact_paths)
+    payload["candidate_evidence_requirements_path"] = str(
+        artifact_paths["candidate_evidence_requirements"]
+    )
+    payload["candidate_evidence_requirements"] = requirements
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["candidate_evidence_requirements_path"] = payload[
+            "candidate_evidence_requirements_path"
+        ]
+        dashboard["candidate_evidence_requirements"] = dict(requirements)
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -4703,6 +5092,7 @@ def _default_next_action_selector_fields(
     prioritization = _build_research_board_prioritization({}, artifact_paths)
     scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     template = _build_candidate_strategy_evidence_template({}, artifact_paths)
+    requirements = _build_candidate_evidence_requirements({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -4746,6 +5136,10 @@ def _default_next_action_selector_fields(
                 artifact_paths["candidate_strategy_evidence_template"]
             ),
             "candidate_strategy_evidence_template": dict(template),
+            "candidate_evidence_requirements_path": str(
+                artifact_paths["candidate_evidence_requirements"]
+            ),
+            "candidate_evidence_requirements": dict(requirements),
             "source_state": {},
         }
     }
@@ -4759,6 +5153,7 @@ def _default_work_order_export_fields(
     prioritization = _build_research_board_prioritization({}, artifact_paths)
     scaffold = _build_strategy_comparison_scaffold({}, artifact_paths)
     template = _build_candidate_strategy_evidence_template({}, artifact_paths)
+    requirements = _build_candidate_evidence_requirements({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -4800,6 +5195,13 @@ def _default_work_order_export_fields(
             "candidate_strategy_evidence_template": dict(template),
             "candidate_strategy_evidence_template_status": str(
                 template["template_status"]
+            ),
+            "candidate_evidence_requirements_path": str(
+                artifact_paths["candidate_evidence_requirements"]
+            ),
+            "candidate_evidence_requirements": dict(requirements),
+            "candidate_evidence_requirements_status": str(
+                requirements["requirements_status"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -5256,6 +5658,11 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             if isinstance(payload.get("candidate_strategy_evidence_template"), Mapping)
             else {}
         ),
+        "candidate_evidence_requirements": dict(
+            payload.get("candidate_evidence_requirements", {})
+            if isinstance(payload.get("candidate_evidence_requirements"), Mapping)
+            else {}
+        ),
     }
 
 
@@ -5353,6 +5760,14 @@ def _selector_result(
             )
             else {}
         ),
+        "candidate_evidence_requirements_path": str(
+            artifact_paths["candidate_evidence_requirements"]
+        ),
+        "candidate_evidence_requirements": dict(
+            source_state.get("candidate_evidence_requirements", {})
+            if isinstance(source_state.get("candidate_evidence_requirements"), Mapping)
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -5430,6 +5845,7 @@ def _apply_work_order_exports(
     prioritization = _research_board_prioritization_record(payload, artifact_paths)
     scaffold = _strategy_comparison_scaffold_record(payload, artifact_paths)
     template = _candidate_strategy_evidence_template_record(payload, artifact_paths)
+    requirements = _candidate_evidence_requirements_record(payload, artifact_paths)
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -5468,6 +5884,13 @@ def _apply_work_order_exports(
         "candidate_strategy_evidence_template": dict(template),
         "candidate_strategy_evidence_template_status": str(
             template.get("template_status", "ready")
+        ),
+        "candidate_evidence_requirements_path": str(
+            artifact_paths["candidate_evidence_requirements"]
+        ),
+        "candidate_evidence_requirements": dict(requirements),
+        "candidate_evidence_requirements_status": str(
+            requirements.get("requirements_status", "ready")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -6512,6 +6935,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    requirements_ok, requirements_summary = (
+        _quality_candidate_evidence_requirements_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -6604,6 +7034,11 @@ def _build_quality_gate(
             "candidate_strategy_evidence_template_generated",
             template_ok,
             template_summary,
+        ),
+        _quality_check(
+            "candidate_evidence_requirements_generated",
+            requirements_ok,
+            requirements_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -6766,6 +7201,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         "## Baseline Evidence Metrics",
         "## Paper Observation Readiness",
         "## Candidate Strategy Evidence Template",
+        "## Candidate Evidence Requirements",
         "## Next Action Selector",
         "## Executive dashboard",
         "Quality Gate",
@@ -6776,6 +7212,7 @@ def _missing_key_brief_sections(brief_text: str) -> list[str]:
         _BASELINE_EVIDENCE_METRICS_FILENAME,
         _PAPER_OBSERVATION_READINESS_FILENAME,
         _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME,
         _REVIEW_HANDOFF_FILENAME,
     ]
     return [token for token in required_tokens if token not in brief_text]
@@ -7141,6 +7578,63 @@ def _quality_candidate_strategy_evidence_template_summary(
     )
 
 
+def _quality_candidate_evidence_requirements_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_candidate_evidence_requirements_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    requirements = packet["candidate_evidence_requirements"]
+    assert isinstance(requirements, Mapping)
+    artifact_path = output_root / _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME} is not JSON"
+    if artifact_record != requirements:
+        return False, "candidate evidence requirements artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("candidate_evidence_requirements")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index candidate_evidence_requirements"
+    if not str(indexed.get("path", "")).endswith(
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    ):
+        return False, "manifest candidate requirements artifact path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME not in text:
+            return False, (
+                f"{text_name} does not reference candidate requirements artifact"
+            )
+        if "Candidate Evidence Requirements" not in text:
+            return False, f"{text_name} does not include candidate requirements section"
+    return True, (
+        "candidate evidence requirements generated; requirements_status=ready; "
+        "requirements_mode=offline_candidate_evidence_requirements_only; "
+        "selected_next_safe_action=build_candidate_evidence_collection_plan"
+    )
+
+
 def _quality_legacy_outputs_preserved_summary(
     artifact_presence_status: Mapping[str, Any],
 ) -> tuple[bool, str]:
@@ -7473,6 +7967,9 @@ def _quality_work_order_exports_summary(
             _STRATEGY_COMPARISON_SCAFFOLD_FILENAME,
             "## Candidate strategy evidence template",
             _CANDIDATE_STRATEGY_EVIDENCE_TEMPLATE_FILENAME,
+            "## Candidate Evidence Requirements",
+            _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME,
+            "build_candidate_evidence_collection_plan",
             _BASELINE_HEALTH_NEXT_SAFE_TEST,
             "## Prerequisite artifact chain",
             _BASELINE_TURNOVER_SUMMARY_FILENAME,
@@ -7564,6 +8061,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_research_board_prioritization_fields("", packet))
     missing.extend(_missing_strategy_comparison_scaffold_fields("", packet))
     missing.extend(_missing_candidate_strategy_evidence_template_fields("", packet))
+    missing.extend(_missing_candidate_evidence_requirements_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -7630,6 +8128,7 @@ def _missing_manifest_fields(
     missing.extend(
         _missing_candidate_strategy_evidence_template_fields("manifest", manifest)
     )
+    missing.extend(_missing_candidate_evidence_requirements_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -8347,6 +8846,210 @@ def _missing_candidate_strategy_evidence_template_fields(
     return missing
 
 
+def _missing_candidate_evidence_requirements_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    requirements = packet.get("candidate_evidence_requirements")
+    if not isinstance(requirements, Mapping):
+        return [f"{field_prefix}candidate_evidence_requirements"]
+    for field_name in _REQUIRED_CANDIDATE_EVIDENCE_REQUIREMENTS_FIELDS:
+        if field_name not in requirements:
+            missing.append(f"{field_prefix}candidate_evidence_requirements.{field_name}")
+    if not str(packet.get("candidate_evidence_requirements_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    ):
+        missing.append(f"{field_prefix}candidate_evidence_requirements_path")
+    expected_values = {
+        "requirements_status": "ready",
+        "requirements_mode": "offline_candidate_evidence_requirements_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "selected_next_safe_action": "build_candidate_evidence_collection_plan",
+        "broker_state_mode": "broker_state_not_observed",
+        "safety_scope": "offline_only",
+        "profit_claim": "none",
+    }
+    for field_name, expected_value in expected_values.items():
+        if requirements.get(field_name) != expected_value:
+            missing.append(
+                f"{field_prefix}candidate_evidence_requirements.{field_name}"
+            )
+    if _selector_contains_forbidden_action(
+        str(requirements.get("selected_next_safe_action", ""))
+    ):
+        missing.append(
+            f"{field_prefix}candidate_evidence_requirements."
+            "selected_next_safe_action.safe"
+        )
+    if "offline" not in str(requirements.get("why_selected", "")).lower():
+        missing.append(f"{field_prefix}candidate_evidence_requirements.why_selected")
+    implementation_reason = str(
+        requirements.get("why_no_strategy_implementation_yet", "")
+    ).lower()
+    if (
+        "strategy implementation remains blocked" not in implementation_reason
+        or "materialized, collected, and compared against the baseline"
+        not in implementation_reason
+    ):
+        missing.append(
+            f"{field_prefix}candidate_evidence_requirements."
+            "why_no_strategy_implementation_yet"
+        )
+    for false_field in (
+        "paper_submit_authorized",
+        "hard_gate_required",
+        "requires_daniel",
+        "daniel_action_required_now",
+    ):
+        if requirements.get(false_field) is not False:
+            missing.append(
+                f"{field_prefix}candidate_evidence_requirements."
+                f"{false_field}.false"
+            )
+    candidate_requirements = requirements.get("candidate_requirements")
+    if not isinstance(candidate_requirements, list) or not candidate_requirements:
+        missing.append(
+            f"{field_prefix}candidate_evidence_requirements.candidate_requirements"
+        )
+    else:
+        candidate_ids: set[str] = set()
+        for index, item in enumerate(candidate_requirements):
+            item_prefix = (
+                f"{field_prefix}candidate_evidence_requirements."
+                f"candidate_requirements[{index}]"
+            )
+            if not isinstance(item, Mapping):
+                missing.append(item_prefix)
+                continue
+            for field_name in _REQUIRED_CANDIDATE_EVIDENCE_REQUIREMENT_FIELDS:
+                if field_name not in item:
+                    missing.append(f"{item_prefix}.{field_name}")
+            candidate_ids.add(str(item.get("candidate_family_id", "")))
+            if item.get("implementation_status") != "not_implemented":
+                missing.append(f"{item_prefix}.implementation_status")
+            if item.get("promotion_status") != "promotion_blocked":
+                missing.append(f"{item_prefix}.promotion_status")
+            if item.get("broker_dependency") != "none":
+                missing.append(f"{item_prefix}.broker_dependency")
+            if item.get("hard_gate_required") is not False:
+                missing.append(f"{item_prefix}.hard_gate_required.false")
+            if item.get("safety_scope") != "offline_only":
+                missing.append(f"{item_prefix}.safety_scope")
+            for list_field in (
+                "required_data_inputs",
+                "required_feature_definitions",
+                "required_signal_definition",
+                "required_risk_definition",
+                "required_backtest_outputs",
+                "required_cost_model_outputs",
+                "required_benchmark_comparisons",
+                "required_regime_analysis",
+                "required_turnover_analysis",
+                "required_drawdown_analysis",
+                "required_failure_mode_review",
+                "required_safety_checks",
+                "missing_evidence",
+                "promotion_blockers",
+                "rejection_triggers",
+            ):
+                if not isinstance(item.get(list_field), list) or not item.get(
+                    list_field
+                ):
+                    missing.append(f"{item_prefix}.{list_field}")
+            if "paper_observation_not_authorized" not in item.get(
+                "promotion_blockers",
+                [],
+            ):
+                missing.append(f"{item_prefix}.promotion_blockers.paper_observation")
+        for candidate_id in _REQUIRED_CANDIDATE_FAMILY_IDS:
+            if candidate_id not in candidate_ids:
+                missing.append(
+                    f"{field_prefix}candidate_evidence_requirements."
+                    f"candidate_requirements.{candidate_id}"
+                )
+    for list_field in (
+        "shared_evidence_requirements",
+        "promotion_blockers",
+        "rejection_triggers",
+        "next_research_artifacts_to_build",
+    ):
+        if not isinstance(requirements.get(list_field), list) or not requirements.get(
+            list_field
+        ):
+            missing.append(f"{field_prefix}candidate_evidence_requirements.{list_field}")
+    shared = requirements.get("shared_evidence_requirements", [])
+    for shared_requirement in (
+        "deterministic_offline_data_source",
+        "explicit_data_basis",
+        "feature_calculation_definition",
+        "signal_rule_definition",
+        "risk_rule_definition",
+        "benchmark_comparison_against_spy_sma_50_200_control",
+        "transaction_cost_assumption",
+        "turnover_estimate",
+        "drawdown_evidence",
+        "regime_sensitivity_evidence",
+        "dependency_direction_guard",
+        "default_pytest_network_guard",
+        "broker_mutation_invariant",
+        "no_broker_dependency_in_research_path",
+        "no_llm_or_agent_dependency_in_strategy_path",
+    ):
+        if shared_requirement not in shared:
+            missing.append(
+                f"{field_prefix}candidate_evidence_requirements."
+                f"shared_evidence_requirements.{shared_requirement}"
+            )
+    per_candidate = requirements.get("per_candidate_missing_evidence")
+    if not isinstance(per_candidate, Mapping) or not per_candidate:
+        missing.append(
+            f"{field_prefix}candidate_evidence_requirements."
+            "per_candidate_missing_evidence"
+        )
+    else:
+        for candidate_id in _REQUIRED_CANDIDATE_FAMILY_IDS:
+            candidate_missing = per_candidate.get(candidate_id)
+            if not isinstance(candidate_missing, list) or not candidate_missing:
+                missing.append(
+                    f"{field_prefix}candidate_evidence_requirements."
+                    f"per_candidate_missing_evidence.{candidate_id}"
+                )
+    for blocker in (
+        "candidate_strategy_not_implemented",
+        "offline_backtest_not_materialized",
+        "benchmark_comparison_missing",
+        "cost_model_evidence_missing",
+        "drawdown_evidence_missing",
+        "regime_evidence_missing",
+        "turnover_evidence_missing",
+        "paper_observation_not_authorized",
+    ):
+        if blocker not in requirements.get("promotion_blockers", []):
+            missing.append(
+                f"{field_prefix}candidate_evidence_requirements."
+                f"promotion_blockers.{blocker}"
+            )
+    for trigger in (
+        "non_deterministic_signal",
+        "broker_dependency_in_research_path",
+        "network_dependency_in_default_pytest",
+        "excessive_turnover_after_costs",
+        "unacceptable_drawdown_vs_baseline",
+        "fragile_single_period_performance",
+        "missing_benchmark_comparison",
+        "missing_regime_analysis",
+    ):
+        if trigger not in requirements.get("rejection_triggers", []):
+            missing.append(
+                f"{field_prefix}candidate_evidence_requirements."
+                f"rejection_triggers.{trigger}"
+            )
+    return missing
+
+
 def _missing_baseline_health_evaluation_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -8725,6 +9428,8 @@ def _missing_next_action_selector_fields(
         "strategy_comparison_scaffold",
         "candidate_strategy_evidence_template_path",
         "candidate_strategy_evidence_template",
+        "candidate_evidence_requirements_path",
+        "candidate_evidence_requirements",
         "source_state",
     )
     for field_name in required_fields:
@@ -8809,6 +9514,18 @@ def _missing_next_action_selector_fields(
             f"{field_prefix}next_action_selector."
             "candidate_strategy_evidence_template.object"
         )
+    if not str(selector.get("candidate_evidence_requirements_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_evidence_requirements_path"
+        )
+    if not isinstance(selector.get("candidate_evidence_requirements"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_evidence_requirements.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -8863,6 +9580,9 @@ def _missing_work_order_export_fields(
         "candidate_strategy_evidence_template_path",
         "candidate_strategy_evidence_template",
         "candidate_strategy_evidence_template_status",
+        "candidate_evidence_requirements_path",
+        "candidate_evidence_requirements",
+        "candidate_evidence_requirements_status",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -8965,6 +9685,23 @@ def _missing_work_order_export_fields(
         missing.append(
             f"{field_prefix}work_order_exports."
             "candidate_strategy_evidence_template_status"
+        )
+    if not str(exports.get("candidate_evidence_requirements_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_requirements_path"
+        )
+    if not isinstance(exports.get("candidate_evidence_requirements"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_requirements.object"
+        )
+    if exports.get("candidate_evidence_requirements_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_evidence_requirements_status"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -9600,6 +10337,8 @@ def _render_work_order_markdown(
     scaffold_json = _json_markdown(scaffold)
     template = payload["candidate_strategy_evidence_template"]
     template_json = _json_markdown(template)
+    requirements = payload["candidate_evidence_requirements"]
+    requirements_json = _json_markdown(requirements)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -9735,6 +10474,23 @@ def _render_work_order_markdown(
 {template_json}
 ```
 
+## Candidate Evidence Requirements
+* **Artifact**: `{payload["candidate_evidence_requirements_path"]}`
+* **Requirements status**: `{requirements["requirements_status"]}`
+* **Requirements mode**: `{requirements["requirements_mode"]}`
+* **Baseline strategy**: `{requirements["baseline_strategy_id"]}`
+* **Baseline role**: `{requirements["baseline_strategy_role"]}`
+* **Candidate requirements**: {len(requirements["candidate_requirements"])}
+* **Selected next safe action**: `{requirements["selected_next_safe_action"]}`
+* **Why no strategy implementation yet**: {requirements["why_no_strategy_implementation_yet"]}
+* **Safety scope**: `{requirements["safety_scope"]}`
+* **Broker-state mode**: `{requirements["broker_state_mode"]}`
+* **Paper submit authorized**: {str(requirements["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{requirements["profit_claim"]}`
+```json
+{requirements_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -9754,7 +10510,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_15_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_16_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -9770,6 +10526,7 @@ def _render_work_order_markdown(
 * `research_board_prioritization.jsonl`
 * `strategy_comparison_scaffold.jsonl`
 * `candidate_strategy_evidence_template.jsonl`
+* `candidate_evidence_requirements.jsonl`
 * `baseline_authorized_adjusted_metrics.jsonl`
 * `offline_backtest_confidence_summary.jsonl`
 * `adjusted_close_evidence.jsonl`
@@ -9787,7 +10544,7 @@ def _render_work_order_markdown(
 4. Files changed.
 5. Behavior implemented.
 6. Output artifacts produced.
-7. Candidate strategy evidence template summary.
+7. Candidate evidence requirements summary.
 8. Top selected next safe action.
 9. Quality gate result.
 10. Tests run and exact results.
@@ -9852,6 +10609,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     prioritization_json = _json_markdown(payload["research_board_prioritization"])
     scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     template_json = _json_markdown(payload["candidate_strategy_evidence_template"])
+    requirements_json = _json_markdown(payload["candidate_evidence_requirements"])
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -10027,6 +10785,27 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {template_json}
 ```
 
+## Candidate Evidence Requirements
+* **Artifact**: `{payload["candidate_evidence_requirements_path"]}`
+* **Requirements status**: `{payload["candidate_evidence_requirements"]["requirements_status"]}`
+* **Requirements mode**: `{payload["candidate_evidence_requirements"]["requirements_mode"]}`
+* **Baseline strategy**: `{payload["candidate_evidence_requirements"]["baseline_strategy_id"]}`
+* **Baseline role**: `{payload["candidate_evidence_requirements"]["baseline_strategy_role"]}`
+* **Candidate requirements**: {len(payload["candidate_evidence_requirements"]["candidate_requirements"])}
+* **Shared evidence requirements**: {payload["candidate_evidence_requirements"]["shared_evidence_requirements"]}
+* **Promotion blockers**: {payload["candidate_evidence_requirements"]["promotion_blockers"]}
+* **Rejection triggers**: {payload["candidate_evidence_requirements"]["rejection_triggers"]}
+* **Selected next safe action**: `{payload["candidate_evidence_requirements"]["selected_next_safe_action"]}`
+* **Why selected**: {payload["candidate_evidence_requirements"]["why_selected"]}
+* **Why no strategy implementation yet**: {payload["candidate_evidence_requirements"]["why_no_strategy_implementation_yet"]}
+* **Safety scope**: `{payload["candidate_evidence_requirements"]["safety_scope"]}`
+* **Broker-state mode**: `{payload["candidate_evidence_requirements"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["candidate_evidence_requirements"]["paper_submit_authorized"]).lower()}
+* **Profit claim**: `{payload["candidate_evidence_requirements"]["profit_claim"]}`
+```json
+{requirements_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -10073,6 +10852,7 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     prioritization_json = _json_markdown(payload["research_board_prioritization"])
     scaffold_json = _json_markdown(payload["strategy_comparison_scaffold"])
     template_json = _json_markdown(payload["candidate_strategy_evidence_template"])
+    requirements_json = _json_markdown(payload["candidate_evidence_requirements"])
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -10278,6 +11058,28 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {template_json}
 ```
 
+## Candidate Evidence Requirements
+* **candidate_evidence_requirements_path**: `{payload["candidate_evidence_requirements_path"]}`
+* **requirements_status**: `{payload["candidate_evidence_requirements"]["requirements_status"]}`
+* **requirements_mode**: `{payload["candidate_evidence_requirements"]["requirements_mode"]}`
+* **baseline_strategy_id**: `{payload["candidate_evidence_requirements"]["baseline_strategy_id"]}`
+* **baseline_strategy_role**: `{payload["candidate_evidence_requirements"]["baseline_strategy_role"]}`
+* **candidate_requirement_count**: {len(payload["candidate_evidence_requirements"]["candidate_requirements"])}
+* **shared_evidence_requirements**: `{payload["candidate_evidence_requirements"]["shared_evidence_requirements"]}`
+* **per_candidate_missing_evidence**: `{payload["candidate_evidence_requirements"]["per_candidate_missing_evidence"]}`
+* **promotion_blockers**: `{payload["candidate_evidence_requirements"]["promotion_blockers"]}`
+* **rejection_triggers**: `{payload["candidate_evidence_requirements"]["rejection_triggers"]}`
+* **selected_next_safe_action**: `{payload["candidate_evidence_requirements"]["selected_next_safe_action"]}`
+* **why_selected**: {payload["candidate_evidence_requirements"]["why_selected"]}
+* **why_no_strategy_implementation_yet**: {payload["candidate_evidence_requirements"]["why_no_strategy_implementation_yet"]}
+* **safety_scope**: `{payload["candidate_evidence_requirements"]["safety_scope"]}`
+* **broker_state_mode**: `{payload["candidate_evidence_requirements"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["candidate_evidence_requirements"]["paper_submit_authorized"]).lower()}
+* **profit_claim**: `{payload["candidate_evidence_requirements"]["profit_claim"]}`
+```json
+{requirements_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -10340,6 +11142,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "candidate_strategy_evidence_template",
             artifact_paths.get("candidate_strategy_evidence_template"),
+        ),
+        (
+            "candidate_evidence_requirements",
+            artifact_paths.get("candidate_evidence_requirements"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -10582,6 +11388,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["candidate_strategy_evidence_template"] = (
             _artifact_metadata(candidate_strategy_evidence_template_path)
         )
+    candidate_evidence_requirements_path = (
+        output_root / _CANDIDATE_EVIDENCE_REQUIREMENTS_FILENAME
+    )
+    if candidate_evidence_requirements_path.exists():
+        indexed_artifacts["candidate_evidence_requirements"] = _artifact_metadata(
+            candidate_evidence_requirements_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -10672,6 +11485,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "candidate_strategy_evidence_template": dict(
             payload["candidate_strategy_evidence_template"]
+        ),
+        "candidate_evidence_requirements_path": payload[
+            "candidate_evidence_requirements_path"
+        ],
+        "candidate_evidence_requirements": dict(
+            payload["candidate_evidence_requirements"]
         ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
