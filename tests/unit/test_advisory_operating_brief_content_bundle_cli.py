@@ -132,9 +132,9 @@ def test_content_bundle_preview_does_not_read_environment(
         def __contains__(self, key: object) -> bool:
             raise AssertionError(f"environment read is not allowed: {key!r}")
 
-    monkeypatch.setattr(os, "environ", DeniedEnvironment())
-
-    assert _run_preview_cli((_COMMAND,), capsys) == _expected_export().rendered_text
+    with monkeypatch.context() as env_patch:
+        env_patch.setattr(os, "environ", DeniedEnvironment())
+        assert _run_preview_cli((_COMMAND,), capsys) == _expected_export().rendered_text
 
 
 def test_content_bundle_preview_does_not_access_network(

@@ -400,15 +400,16 @@ def test_mvp_preview_performs_no_file_io_environment_or_network(
     def deny_network(*args: object, **kwargs: object) -> None:
         raise AssertionError("network access is not allowed for MVP preview")
 
-    monkeypatch.setattr(builtins, "open", deny_file_io)
-    monkeypatch.setattr(io, "open", deny_file_io)
-    monkeypatch.setattr(os, "environ", DeniedEnvironment())
-    monkeypatch.setattr(socket, "socket", deny_network)
-    monkeypatch.setattr(socket, "create_connection", deny_network)
+    with monkeypatch.context() as guard_patch:
+        guard_patch.setattr(builtins, "open", deny_file_io)
+        guard_patch.setattr(io, "open", deny_file_io)
+        guard_patch.setattr(os, "environ", DeniedEnvironment())
+        guard_patch.setattr(socket, "socket", deny_network)
+        guard_patch.setattr(socket, "create_connection", deny_network)
 
-    assert _run_preview_cli((_COMMAND,), capsys) == (
-        render_synthetic_advisory_operating_brief_mvp_report()
-    )
+        assert _run_preview_cli((_COMMAND,), capsys) == (
+            render_synthetic_advisory_operating_brief_mvp_report()
+        )
 
 
 def test_mvp_preview_module_adds_no_forbidden_runtime_imports_or_calls() -> None:

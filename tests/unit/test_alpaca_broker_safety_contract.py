@@ -83,19 +83,20 @@ def test_constructing_broker_requires_no_credentials(monkeypatch):
 
 
 def test_constructing_broker_does_not_read_environment(monkeypatch):
-    monkeypatch.setattr(os, "environ", ExplodingEnv())
-    monkeypatch.setattr(
-        os,
-        "getenv",
-        lambda *args, **kwargs: (_ for _ in ()).throw(  # noqa: ANN002, ANN003
-            AssertionError("AlpacaPaperBroker must not read environment values")
-        ),
-    )
+    with monkeypatch.context() as env_patch:
+        env_patch.setattr(os, "environ", ExplodingEnv())
+        env_patch.setattr(
+            os,
+            "getenv",
+            lambda *args, **kwargs: (_ for _ in ()).throw(  # noqa: ANN002, ANN003
+                AssertionError("AlpacaPaperBroker must not read environment values")
+            ),
+        )
 
-    broker = AlpacaPaperBroker()
+        broker = AlpacaPaperBroker()
 
-    with pytest.raises(BrokerNotImplementedError, match="skeleton only"):
-        broker.get_account()
+        with pytest.raises(BrokerNotImplementedError, match="skeleton only"):
+            broker.get_account()
 
 
 def test_default_broker_has_no_implicit_adapter_or_client():

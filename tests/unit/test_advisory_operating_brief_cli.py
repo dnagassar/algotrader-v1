@@ -138,9 +138,10 @@ def test_preview_command_does_not_read_environment(monkeypatch, capsys) -> None:
         def __contains__(self, key: object) -> bool:
             raise AssertionError(f"environment read is not allowed: {key!r}")
 
-    monkeypatch.setattr(os, "environ", DeniedEnvironment())
+    with monkeypatch.context() as env_patch:
+        env_patch.setattr(os, "environ", DeniedEnvironment())
+        assert main([_COMMAND]) == 0
 
-    assert main([_COMMAND]) == 0
     assert capsys.readouterr().out == _expected_export().rendered_text
 
 
