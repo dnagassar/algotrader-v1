@@ -1,11 +1,10 @@
-# Assistant v1.24 — Candidate Signal Rule Status Item 004 Artifact
+# Assistant v1.25 — Candidate Gap Closure Queue Item 005
 
-- [x] Add constants and expected artifact definitions for candidate signal rule status.
-- [x] Define required fields for signal rule status and summaries.
-- [x] Implement deterministic helper and build functions for candidate signal rule status.
-- [x] Wire the candidate signal rule status artifact into all daily-lab assistant surfaces.
-- [x] Wire next-action selector logic to evaluate signal_rule_status and switch to execute_candidate_gap_closure_queue_item_005.
-- [x] Update manifest index and serialization to include the candidate signal rule status artifact.
-- [x] Add comprehensive unit tests in test_etf_sma_daily_paper_lab.py and fix assertions.
-- [x] Run environment preflight, bounded verification, verify_offline, smoke test, and artifact assertions.
-- [x] Verify git hygiene and finalize the report.
+- [x] Confirm baseline branch, HEAD, origin/main, and existing worktree status.
+- [x] Run credential/profile preflight before pytest; all danger booleans false.
+- [x] Discover deterministic queue item 005 from repo-generated queue logic.
+- [x] Retarget candidate signal-rule status to item 005 and mean reversion.
+- [x] Add explicit signal evidence, status-only specification, missing evidence, and readiness fields.
+- [x] Advance selected next safe action to execute_candidate_gap_closure_queue_item_006.
+- [x] Update packet, manifest, selector, work-order export validation, and focused tests.
+- [x] Run required verification, smoke test, artifact assertions, and final git hygiene checks.

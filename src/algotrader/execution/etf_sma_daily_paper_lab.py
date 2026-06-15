@@ -94,27 +94,27 @@ _CANDIDATE_RISK_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_004"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_VERSION = (
-    "assistant_v1.24_candidate_signal_rule_status"
+    "assistant_v1.25_candidate_signal_rule_status"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID = (
-    "candidate_gap_closure_queue_item_004"
+    "candidate_gap_closure_queue_item_005"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_004"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = (
-    "momentum_or_trend_candidate"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = (
-    "Momentum or trend candidate"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_005"
 )
-_PHASE_NAME = "Assistant v1.24 - Candidate Signal Rule Status Item 004 Artifact"
+_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = (
+    "mean_reversion_candidate"
+)
+_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = (
+    "Mean reversion candidate"
+)
+_CANDIDATE_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_006"
+)
+_PHASE_NAME = "Assistant v1.25 - Candidate Signal Rule Status Item 005 Artifact"
 _PHASE_GOAL = (
     "Materialize deterministic offline candidate signal-rule status evidence for "
-    "candidate_gap_closure_queue_item_004 before any strategy implementation, "
+    "candidate_gap_closure_queue_item_005 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -1175,6 +1175,10 @@ _REQUIRED_CANDIDATE_SIGNAL_RULE_STATUS_FIELDS = (
     "shared_scope_count",
     "candidate_signal_rule_summaries",
     "target_candidate_signal_rule_summary",
+    "target_explicit_signal_rule_evidence",
+    "target_materialized_candidate_signal_specification",
+    "target_remaining_missing_signal_rule_evidence",
+    "target_candidate_signal_readiness",
     "shared_signal_rule_gaps",
     "highest_priority_signal_rule_gaps",
     "evidence_status_summary",
@@ -1204,8 +1208,13 @@ _REQUIRED_CANDIDATE_SIGNAL_RULE_SUMMARY_FIELDS = (
     "universe_defined",
     "rebalance_or_evaluation_schedule_defined",
     "leakage_or_lookahead_guard_defined",
+    "explicit_signal_rule_evidence",
+    "materialized_candidate_signal_specification",
+    "remaining_missing_signal_rule_evidence",
+    "candidate_signal_readiness",
     "missing_signal_rule_evidence",
     "promotion_blockers",
+    "evidence_status_breakdown",
     "recommended_closure_action",
     "expected_evidence_artifact",
 )
@@ -7779,6 +7788,99 @@ def _candidate_signal_rule_evidence_status_breakdown(
     return {key: list(dict.fromkeys(values)) for key, values in breakdown.items()}
 
 
+def _candidate_signal_rule_explicit_evidence(
+    *,
+    requirement: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    status_item: Mapping[str, Any],
+    signal_gap: Mapping[str, Any],
+) -> dict[str, Any]:
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(signal_gap.get("status", "missing"))
+    blocker = str(status_item.get("blocker", "candidate_signal_rule_status_missing"))
+    evidence_items = [
+        f"candidate_signal_rule_status:{item_status}",
+        f"signal_rule_gap_status:{gap_status}",
+    ]
+    if blocker and blocker != "none":
+        evidence_items.append(f"signal_rule_blocker:{blocker}")
+    return {
+        "evidence_mode": "deterministic_local_packet_evidence_only",
+        "explicit_signal_rules_present": False,
+        "rule_source": "none_available_from_local_packet_evidence",
+        "required_signal_definition": list(
+            requirement.get("required_signal_definition", [])
+        ),
+        "planned_signal_rules_to_specify": list(
+            plan.get("signal_rules_to_specify", [])
+        ),
+        "local_evidence_items": list(dict.fromkeys(evidence_items)),
+        "collection_status": item_status,
+        "collection_blocker": blocker or "none",
+        "gap_status": gap_status,
+        "gap_label": str(signal_gap.get("gap_label", "Signal rule specification status")),
+        "broker_state_mode": "broker_state_not_observed",
+    }
+
+
+def _candidate_signal_readiness(
+    *,
+    signal_rule_evidence_status: str,
+    missing_evidence: list[str],
+) -> dict[str, Any]:
+    if signal_rule_evidence_status == "complete" and not missing_evidence:
+        readiness_status = "evidence_ready"
+    elif signal_rule_evidence_status == "blocked":
+        readiness_status = "blocked"
+    elif signal_rule_evidence_status == "not_applicable":
+        readiness_status = "not_applicable"
+    else:
+        readiness_status = "not_ready"
+    return {
+        "readiness_status": readiness_status,
+        "research_ready": False,
+        "evidence_ready": readiness_status == "evidence_ready",
+        "still_blocked": readiness_status == "blocked",
+        "remaining_missing_evidence_count": len(missing_evidence),
+        "blocking_evidence": [
+            item
+            for item in missing_evidence
+            if "blocker:" in item or item.endswith(":blocked")
+        ],
+    }
+
+
+def _candidate_signal_specification_materialization(
+    *,
+    candidate_family_id: str,
+    explicit_evidence: Mapping[str, Any],
+    missing_evidence: list[str],
+    readiness: Mapping[str, Any],
+) -> dict[str, Any]:
+    readiness_status = str(readiness.get("readiness_status", "not_ready"))
+    if readiness_status == "evidence_ready":
+        materialization_status = "ready_for_human_specification_review"
+    elif readiness_status == "blocked":
+        materialization_status = "blocked_missing_explicit_signal_rule_evidence"
+    else:
+        materialization_status = "not_materialized_missing_signal_rule_evidence"
+    return {
+        "specification_id": f"{candidate_family_id}_signal_specification",
+        "materialization_status": materialization_status,
+        "materialization_mode": "offline_status_only_no_strategy_rules_created",
+        "explicit_signal_rules_present": bool(
+            explicit_evidence.get("explicit_signal_rules_present", False)
+        ),
+        "materialized_signal_rules": [],
+        "remaining_missing_evidence": list(missing_evidence),
+        "implementation_status": "not_implemented",
+        "promotion_status": "not_promoted",
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+
+
 def _candidate_signal_rule_summary(
     *,
     requirement: Mapping[str, Any],
@@ -7804,6 +7906,22 @@ def _candidate_signal_rule_summary(
         signal_gap=signal_gap,
         missing_evidence=missing_evidence,
     )
+    explicit_evidence = _candidate_signal_rule_explicit_evidence(
+        requirement=requirement,
+        plan=plan,
+        status_item=status_item,
+        signal_gap=signal_gap,
+    )
+    readiness = _candidate_signal_readiness(
+        signal_rule_evidence_status=signal_rule_evidence_status,
+        missing_evidence=missing_evidence,
+    )
+    materialized_specification = _candidate_signal_specification_materialization(
+        candidate_family_id=candidate_family_id,
+        explicit_evidence=explicit_evidence,
+        missing_evidence=missing_evidence,
+        readiness=readiness,
+    )
     return {
         "candidate_family": candidate_family_id,
         "candidate_family_id": candidate_family_id,
@@ -7821,6 +7939,10 @@ def _candidate_signal_rule_summary(
         "universe_defined": False,
         "rebalance_or_evaluation_schedule_defined": False,
         "leakage_or_lookahead_guard_defined": False,
+        "explicit_signal_rule_evidence": explicit_evidence,
+        "materialized_candidate_signal_specification": materialized_specification,
+        "remaining_missing_signal_rule_evidence": list(missing_evidence),
+        "candidate_signal_readiness": readiness,
         "promotion_blockers": list(
             dict.fromkeys(
                 [
@@ -8005,6 +8127,37 @@ def _build_candidate_signal_rule_status(
         ),
         {},
     )
+    target_explicit_evidence = (
+        dict(target_summary.get("explicit_signal_rule_evidence", {}))
+        if isinstance(target_summary.get("explicit_signal_rule_evidence"), Mapping)
+        else {}
+    )
+    target_materialized_specification = (
+        dict(
+            target_summary.get(
+                "materialized_candidate_signal_specification",
+                {},
+            )
+        )
+        if isinstance(
+            target_summary.get("materialized_candidate_signal_specification"),
+            Mapping,
+        )
+        else {}
+    )
+    target_remaining_missing_evidence = list(
+        target_summary.get("remaining_missing_signal_rule_evidence", [])
+        if isinstance(
+            target_summary.get("remaining_missing_signal_rule_evidence"),
+            list,
+        )
+        else []
+    )
+    target_readiness = (
+        dict(target_summary.get("candidate_signal_readiness", {}))
+        if isinstance(target_summary.get("candidate_signal_readiness"), Mapping)
+        else {}
+    )
     selected_next_action = (
         next_actions[0] if next_actions else "review_candidate_signal_rule_status_artifact"
     )
@@ -8052,6 +8205,14 @@ def _build_candidate_signal_rule_status(
         "shared_scope_count": len(shared_signal_rule_gaps),
         "candidate_signal_rule_summaries": summaries,
         "target_candidate_signal_rule_summary": target_summary,
+        "target_explicit_signal_rule_evidence": target_explicit_evidence,
+        "target_materialized_candidate_signal_specification": (
+            target_materialized_specification
+        ),
+        "target_remaining_missing_signal_rule_evidence": (
+            target_remaining_missing_evidence
+        ),
+        "target_candidate_signal_readiness": target_readiness,
         "shared_signal_rule_gaps": shared_signal_rule_gaps,
         "highest_priority_signal_rule_gaps": highest_priority_signal_rule_gaps,
         "evidence_status_summary": _candidate_signal_rule_evidence_status_summary(
@@ -8068,6 +8229,9 @@ def _build_candidate_signal_rule_status(
                 f"{_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID}"
             ),
             "source_gap_id=candidate_signal_rule_status",
+            "target explicit signal-rule evidence is recorded without inventing rules",
+            "target materialized candidate signal specification remains status-only when explicit rules are missing",
+            "target readiness distinguishes research-ready, evidence-ready, blocked, and not-ready states",
             "each candidate family distinguishes complete, incomplete, blocked, and not-applicable evidence buckets",
             "each candidate family has explicit incomplete or blocked signal-rule evidence when missing",
             "candidate strategies remain unimplemented, unpromoted, and not paper-ready",
@@ -8482,6 +8646,7 @@ def _default_next_action_selector_fields(
     gap_summary = _build_candidate_evidence_gap_summary({}, artifact_paths)
     gap_closure_queue = _build_candidate_gap_closure_queue({}, artifact_paths)
     risk_rule_status = _build_candidate_risk_rule_status({}, artifact_paths)
+    signal_rule_status = _build_candidate_signal_rule_status({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -8549,6 +8714,10 @@ def _default_next_action_selector_fields(
                 artifact_paths["candidate_risk_rule_status"]
             ),
             "candidate_risk_rule_status": dict(risk_rule_status),
+            "candidate_signal_rule_status_path": str(
+                artifact_paths["candidate_signal_rule_status"]
+            ),
+            "candidate_signal_rule_status": dict(signal_rule_status),
             "source_state": {},
         }
     }
@@ -8571,6 +8740,7 @@ def _default_work_order_export_fields(
     gap_summary = _build_candidate_evidence_gap_summary({}, artifact_paths)
     gap_closure_queue = _build_candidate_gap_closure_queue({}, artifact_paths)
     risk_rule_status = _build_candidate_risk_rule_status({}, artifact_paths)
+    signal_rule_status = _build_candidate_signal_rule_status({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -8663,6 +8833,16 @@ def _default_work_order_export_fields(
             ),
             "candidate_risk_rule_status_selected_next_safe_action": str(
                 risk_rule_status["selected_next_safe_action"]
+            ),
+            "candidate_signal_rule_status_path": str(
+                artifact_paths["candidate_signal_rule_status"]
+            ),
+            "candidate_signal_rule_status": dict(signal_rule_status),
+            "candidate_signal_rule_status_status": str(
+                signal_rule_status["signal_rule_status"]
+            ),
+            "candidate_signal_rule_status_selected_next_safe_action": str(
+                signal_rule_status["selected_next_safe_action"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -14691,6 +14871,83 @@ def _missing_candidate_signal_rule_status_fields(
             f"{field_prefix}candidate_signal_rule_status."
             "target_candidate_signal_rule_summary.candidate_family_id"
         )
+    target_explicit_evidence = status.get("target_explicit_signal_rule_evidence")
+    if not isinstance(target_explicit_evidence, Mapping):
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_explicit_signal_rule_evidence"
+        )
+    elif target_explicit_evidence.get("explicit_signal_rules_present") is not False:
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_explicit_signal_rule_evidence.explicit_signal_rules_present"
+        )
+    target_materialized_specification = status.get(
+        "target_materialized_candidate_signal_specification"
+    )
+    if not isinstance(target_materialized_specification, Mapping):
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_materialized_candidate_signal_specification"
+        )
+    else:
+        if target_materialized_specification.get("implementation_status") != (
+            "not_implemented"
+        ):
+            missing.append(
+                f"{field_prefix}candidate_signal_rule_status."
+                "target_materialized_candidate_signal_specification."
+                "implementation_status"
+            )
+        if target_materialized_specification.get("promotion_status") != "not_promoted":
+            missing.append(
+                f"{field_prefix}candidate_signal_rule_status."
+                "target_materialized_candidate_signal_specification."
+                "promotion_status"
+            )
+        if target_materialized_specification.get("paper_submit_authorized") is not False:
+            missing.append(
+                f"{field_prefix}candidate_signal_rule_status."
+                "target_materialized_candidate_signal_specification."
+                "paper_submit_authorized"
+            )
+        materialized_rules = target_materialized_specification.get(
+            "materialized_signal_rules"
+        )
+        if not isinstance(materialized_rules, list) or materialized_rules:
+            missing.append(
+                f"{field_prefix}candidate_signal_rule_status."
+                "target_materialized_candidate_signal_specification."
+                "materialized_signal_rules"
+            )
+    target_remaining_missing_evidence = status.get(
+        "target_remaining_missing_signal_rule_evidence"
+    )
+    if (
+        not isinstance(target_remaining_missing_evidence, list)
+        or not target_remaining_missing_evidence
+    ):
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_remaining_missing_signal_rule_evidence"
+        )
+    target_readiness = status.get("target_candidate_signal_readiness")
+    if not isinstance(target_readiness, Mapping):
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_candidate_signal_readiness"
+        )
+    elif target_readiness.get("readiness_status") not in {
+        "research_ready",
+        "evidence_ready",
+        "blocked",
+        "not_ready",
+        "not_applicable",
+    }:
+        missing.append(
+            f"{field_prefix}candidate_signal_rule_status."
+            "target_candidate_signal_readiness.readiness_status"
+        )
     evidence_status_summary = status.get("evidence_status_summary")
     if not isinstance(evidence_status_summary, Mapping):
         missing.append(
@@ -14795,6 +15052,7 @@ def _missing_candidate_signal_rule_status_fields(
         for list_field in (
             "promotion_blockers",
             "missing_signal_rule_evidence",
+            "remaining_missing_signal_rule_evidence",
         ):
             if not isinstance(summary.get(list_field), list) or not summary.get(
                 list_field
@@ -14804,6 +15062,93 @@ def _missing_candidate_signal_rule_status_fields(
         missing_text = " ".join(str(item) for item in missing_evidence)
         if "candidate_signal_rule_status" not in missing_text:
             missing.append(f"{summary_prefix}.missing_signal_rule_evidence.explicit")
+        if summary.get("remaining_missing_signal_rule_evidence") != missing_evidence:
+            missing.append(
+                f"{summary_prefix}.remaining_missing_signal_rule_evidence.matches"
+            )
+        explicit_evidence = summary.get("explicit_signal_rule_evidence")
+        if not isinstance(explicit_evidence, Mapping):
+            missing.append(f"{summary_prefix}.explicit_signal_rule_evidence")
+        else:
+            if explicit_evidence.get("evidence_mode") != (
+                "deterministic_local_packet_evidence_only"
+            ):
+                missing.append(
+                    f"{summary_prefix}.explicit_signal_rule_evidence.evidence_mode"
+                )
+            if explicit_evidence.get("explicit_signal_rules_present") is not False:
+                missing.append(
+                    f"{summary_prefix}.explicit_signal_rule_evidence."
+                    "explicit_signal_rules_present"
+                )
+            if not isinstance(
+                explicit_evidence.get("local_evidence_items"),
+                list,
+            ) or not explicit_evidence.get("local_evidence_items"):
+                missing.append(
+                    f"{summary_prefix}.explicit_signal_rule_evidence."
+                    "local_evidence_items"
+                )
+        materialized_specification = summary.get(
+            "materialized_candidate_signal_specification"
+        )
+        if not isinstance(materialized_specification, Mapping):
+            missing.append(
+                f"{summary_prefix}.materialized_candidate_signal_specification"
+            )
+        else:
+            if materialized_specification.get("implementation_status") != (
+                "not_implemented"
+            ):
+                missing.append(
+                    f"{summary_prefix}.materialized_candidate_signal_specification."
+                    "implementation_status"
+                )
+            if materialized_specification.get("promotion_status") != "not_promoted":
+                missing.append(
+                    f"{summary_prefix}.materialized_candidate_signal_specification."
+                    "promotion_status"
+                )
+            if materialized_specification.get("broker_state_mode") != (
+                "broker_state_not_observed"
+            ):
+                missing.append(
+                    f"{summary_prefix}.materialized_candidate_signal_specification."
+                    "broker_state_mode"
+                )
+            if materialized_specification.get("paper_submit_authorized") is not False:
+                missing.append(
+                    f"{summary_prefix}.materialized_candidate_signal_specification."
+                    "paper_submit_authorized"
+                )
+            materialized_rules = materialized_specification.get(
+                "materialized_signal_rules"
+            )
+            if not isinstance(materialized_rules, list) or materialized_rules:
+                missing.append(
+                    f"{summary_prefix}.materialized_candidate_signal_specification."
+                    "materialized_signal_rules"
+                )
+        readiness = summary.get("candidate_signal_readiness")
+        if not isinstance(readiness, Mapping):
+            missing.append(f"{summary_prefix}.candidate_signal_readiness")
+        else:
+            if readiness.get("readiness_status") not in {
+                "research_ready",
+                "evidence_ready",
+                "blocked",
+                "not_ready",
+                "not_applicable",
+            }:
+                missing.append(
+                    f"{summary_prefix}.candidate_signal_readiness.readiness_status"
+                )
+            for bool_field in ("research_ready", "evidence_ready", "still_blocked"):
+                if not isinstance(readiness.get(bool_field), bool):
+                    missing.append(
+                        f"{summary_prefix}.candidate_signal_readiness."
+                        f"{bool_field}"
+                    )
         breakdown = summary.get("evidence_status_breakdown")
         if not isinstance(breakdown, Mapping):
             missing.append(f"{summary_prefix}.evidence_status_breakdown")
@@ -15253,6 +15598,8 @@ def _missing_next_action_selector_fields(
         "candidate_gap_closure_queue",
         "candidate_risk_rule_status_path",
         "candidate_risk_rule_status",
+        "candidate_signal_rule_status_path",
+        "candidate_signal_rule_status",
         "source_state",
     )
     for field_name in required_fields:
@@ -15408,6 +15755,18 @@ def _missing_next_action_selector_fields(
         missing.append(
             f"{field_prefix}next_action_selector."
             "candidate_risk_rule_status.object"
+        )
+    if not str(selector.get("candidate_signal_rule_status_path", "")).endswith(
+        _CANDIDATE_SIGNAL_RULE_STATUS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_signal_rule_status_path"
+        )
+    if not isinstance(selector.get("candidate_signal_rule_status"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_signal_rule_status.object"
         )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")

@@ -1350,6 +1350,10 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
         "shared_scope_count",
         "candidate_signal_rule_summaries",
         "target_candidate_signal_rule_summary",
+        "target_explicit_signal_rule_evidence",
+        "target_materialized_candidate_signal_specification",
+        "target_remaining_missing_signal_rule_evidence",
+        "target_candidate_signal_readiness",
         "shared_signal_rule_gaps",
         "highest_priority_signal_rule_gaps",
         "evidence_status_summary",
@@ -1364,21 +1368,21 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
         "safety_labels",
     }
     assert status["signal_rule_status_version"] == (
-        "assistant_v1.24_candidate_signal_rule_status"
+        "assistant_v1.25_candidate_signal_rule_status"
     )
     assert status["signal_rule_status"] == "ready"
     assert status["signal_rule_status_mode"] == (
         "offline_candidate_signal_rule_status_only"
     )
     assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
-    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_004"
-    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_004"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_005"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_005"
     assert status["source_gap_id"] == "candidate_signal_rule_status"
     assert (
         status["source_candidate_family_id"]
-        == "momentum_or_trend_candidate"
+        == "mean_reversion_candidate"
     )
-    assert status["source_candidate_family"] == "Momentum or trend candidate"
+    assert status["source_candidate_family"] == "Mean reversion candidate"
     assert status["source_gap_status"] == "blocked"
     assert status["source_gap_group_id"] == "strategy_definition_gaps"
     assert status["source_gap_group_label"] == "Strategy definition gaps"
@@ -1394,7 +1398,7 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
     assert status["profit_claim"] == "none"
     assert status["safety_scope"] == "offline_only"
     assert status["selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert status["selected_next_safe_action"] in status[
         "next_signal_rule_closure_actions"
@@ -1416,11 +1420,37 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
     assert status["candidate_scope_count"] == len(summaries)
     assert status["shared_scope_count"] == len(status["shared_signal_rule_gaps"])
     assert status["target_candidate_signal_rule_summary"]["candidate_family_id"] == (
-        "momentum_or_trend_candidate"
+        "mean_reversion_candidate"
     )
     assert status["target_candidate_signal_rule_summary"]["signal_rule_evidence_status"] == (
         "blocked"
     )
+    assert status["target_explicit_signal_rule_evidence"] == status[
+        "target_candidate_signal_rule_summary"
+    ]["explicit_signal_rule_evidence"]
+    assert status["target_explicit_signal_rule_evidence"][
+        "explicit_signal_rules_present"
+    ] is False
+    assert status["target_materialized_candidate_signal_specification"] == status[
+        "target_candidate_signal_rule_summary"
+    ]["materialized_candidate_signal_specification"]
+    assert status["target_materialized_candidate_signal_specification"][
+        "materialized_signal_rules"
+    ] == []
+    assert status["target_materialized_candidate_signal_specification"][
+        "implementation_status"
+    ] == "not_implemented"
+    assert status["target_remaining_missing_signal_rule_evidence"] == status[
+        "target_candidate_signal_rule_summary"
+    ]["remaining_missing_signal_rule_evidence"]
+    assert status["target_remaining_missing_signal_rule_evidence"]
+    assert status["target_candidate_signal_readiness"] == status[
+        "target_candidate_signal_rule_summary"
+    ]["candidate_signal_readiness"]
+    assert status["target_candidate_signal_readiness"]["readiness_status"] == "blocked"
+    assert status["target_candidate_signal_readiness"]["research_ready"] is False
+    assert status["target_candidate_signal_readiness"]["evidence_ready"] is False
+    assert status["target_candidate_signal_readiness"]["still_blocked"] is True
     assert status["evidence_status_summary"]["status_categories"] == [
         "complete",
         "incomplete",
@@ -1454,6 +1484,10 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
             "universe_defined",
             "rebalance_or_evaluation_schedule_defined",
             "leakage_or_lookahead_guard_defined",
+            "explicit_signal_rule_evidence",
+            "materialized_candidate_signal_specification",
+            "remaining_missing_signal_rule_evidence",
+            "candidate_signal_readiness",
             "promotion_blockers",
             "missing_signal_rule_evidence",
             "evidence_status_breakdown",
@@ -1473,6 +1507,38 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
         assert summary["universe_defined"] is False
         assert summary["rebalance_or_evaluation_schedule_defined"] is False
         assert summary["leakage_or_lookahead_guard_defined"] is False
+        assert summary["explicit_signal_rule_evidence"][
+            "evidence_mode"
+        ] == "deterministic_local_packet_evidence_only"
+        assert summary["explicit_signal_rule_evidence"][
+            "explicit_signal_rules_present"
+        ] is False
+        assert summary["explicit_signal_rule_evidence"]["local_evidence_items"]
+        assert summary["materialized_candidate_signal_specification"][
+            "materialization_mode"
+        ] == "offline_status_only_no_strategy_rules_created"
+        assert summary["materialized_candidate_signal_specification"][
+            "materialized_signal_rules"
+        ] == []
+        assert summary["materialized_candidate_signal_specification"][
+            "implementation_status"
+        ] == "not_implemented"
+        assert summary["materialized_candidate_signal_specification"][
+            "promotion_status"
+        ] == "not_promoted"
+        assert summary["materialized_candidate_signal_specification"][
+            "paper_submit_authorized"
+        ] is False
+        assert summary["materialized_candidate_signal_specification"][
+            "profit_claim"
+        ] == "none"
+        assert summary["remaining_missing_signal_rule_evidence"] == summary[
+            "missing_signal_rule_evidence"
+        ]
+        assert summary["candidate_signal_readiness"]["readiness_status"] == "blocked"
+        assert summary["candidate_signal_readiness"]["research_ready"] is False
+        assert summary["candidate_signal_readiness"]["evidence_ready"] is False
+        assert summary["candidate_signal_readiness"]["still_blocked"] is True
         assert summary["promotion_blockers"]
         assert summary["missing_signal_rule_evidence"]
         assert any(
@@ -1968,7 +2034,7 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     _assert_candidate_signal_rule_status_shape(exports["candidate_signal_rule_status"])
     assert exports["candidate_signal_rule_status_status"] == "ready"
     assert exports["candidate_signal_rule_status_selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -2591,7 +2657,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -3153,6 +3219,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "## Next Action Selector" in brief
     assert "execute_candidate_gap_closure_queue_item_004" in brief
     assert "execute_candidate_gap_closure_queue_item_005" in brief
+    assert "execute_candidate_gap_closure_queue_item_006" in brief
     assert "## Candidate Signal Rule Status" in brief
     assert "candidate_signal_rule_status.jsonl" in brief
     assert "Work order exports" in brief
@@ -3451,7 +3518,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.24 - Candidate Signal Rule Status Item 004 Artifact"
+            "Assistant v1.25 - Candidate Signal Rule Status Item 005 Artifact"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -3459,6 +3526,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "execute_candidate_gap_closure_queue_item_003" in work_order
         assert "execute_candidate_gap_closure_queue_item_004" in work_order
         assert "execute_candidate_gap_closure_queue_item_005" in work_order
+        assert "execute_candidate_gap_closure_queue_item_006" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
@@ -4261,7 +4329,7 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -5016,7 +5084,7 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -5102,10 +5170,10 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         assert "## Candidate Signal Rule Status" in markdown
         assert "candidate_signal_rule_status.jsonl" in markdown
         assert "offline_candidate_signal_rule_status_only" in markdown
-        assert "candidate_gap_closure_queue_item_004" in markdown
-        assert "momentum_or_trend_candidate" in markdown
+        assert "candidate_gap_closure_queue_item_005" in markdown
+        assert "mean_reversion_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
-        assert "execute_candidate_gap_closure_queue_item_005" in markdown
+        assert "execute_candidate_gap_closure_queue_item_006" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5118,7 +5186,7 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert data["risk_rule_status"] == "ready"
     assert data["risk_rule_status_mode"] == (
@@ -5172,7 +5240,7 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
 def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     tmp_path: Path,
 ) -> None:
-    """Verify v1.24 item-004 candidate signal-rule status artifact and wiring."""
+    """Verify v1.25 item-005 candidate signal-rule status artifact and wiring."""
     output_root = tmp_path / "paper_lab_candidate_signal_rule_status_out"
     bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
 
@@ -5219,10 +5287,10 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         assert "## Candidate Signal Rule Status" in markdown
         assert "candidate_signal_rule_status.jsonl" in markdown
         assert "offline_candidate_signal_rule_status_only" in markdown
-        assert "candidate_gap_closure_queue_item_004" in markdown
-        assert "momentum_or_trend_candidate" in markdown
+        assert "candidate_gap_closure_queue_item_005" in markdown
+        assert "mean_reversion_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
-        assert "execute_candidate_gap_closure_queue_item_005" in markdown
+        assert "execute_candidate_gap_closure_queue_item_006" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5235,18 +5303,18 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_005"
+        "execute_candidate_gap_closure_queue_item_006"
     )
     assert data["signal_rule_status"] == "ready"
     assert data["signal_rule_status_mode"] == (
         "offline_candidate_signal_rule_status_only"
     )
-    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_004"
-    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_004"
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_005"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_005"
     assert data["source_gap_id"] == "candidate_signal_rule_status"
     assert (
         data["source_candidate_family_id"]
-        == "momentum_or_trend_candidate"
+        == "mean_reversion_candidate"
     )
     assert data["source_expected_evidence_artifact"] == (
         "candidate_signal_rule_status.jsonl"
@@ -5254,8 +5322,16 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     assert data["candidate_family_count"] == 3
     assert data["candidate_scope_count"] == 3
     assert data["target_candidate_signal_rule_summary"]["candidate_family_id"] == (
-        "momentum_or_trend_candidate"
+        "mean_reversion_candidate"
     )
+    assert data["target_explicit_signal_rule_evidence"][
+        "explicit_signal_rules_present"
+    ] is False
+    assert data["target_materialized_candidate_signal_specification"][
+        "materialized_signal_rules"
+    ] == []
+    assert data["target_remaining_missing_signal_rule_evidence"]
+    assert data["target_candidate_signal_readiness"]["readiness_status"] == "blocked"
     incomplete_count = sum(
         1
         for item in data["candidate_signal_rule_summaries"]
