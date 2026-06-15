@@ -1788,6 +1788,168 @@ def _assert_candidate_risk_rule_status_shape(status: dict[str, object]) -> None:
     assert status["risk_rule_acceptance_criteria"]
 
 
+def _assert_shared_risk_rule_status_shape(status: dict[str, object]) -> None:
+    assert set(status) == {
+        "shared_risk_rule_status_version",
+        "shared_risk_rule_status",
+        "shared_risk_rule_status_mode",
+        "deterministic_scope",
+        "baseline_strategy_id",
+        "source_queue_item_id",
+        "source_action_id",
+        "source_gap_id",
+        "source_candidate_family_id",
+        "source_candidate_family",
+        "source_gap_status",
+        "source_gap_group_id",
+        "source_gap_group_label",
+        "source_closure_action",
+        "source_closure_objective",
+        "source_expected_evidence_artifact",
+        "candidate_family_count",
+        "shared_scope_count",
+        "shared_risk_rule_status_item",
+        "shared_risk_rule_gaps",
+        "candidate_risk_rule_summaries",
+        "explicit_shared_risk_rule_evidence",
+        "position_sizing_evidence",
+        "stop_or_exit_evidence",
+        "drawdown_or_exposure_control_evidence",
+        "portfolio_or_risk_cap_evidence",
+        "materialized_shared_risk_specification",
+        "remaining_missing_shared_risk_evidence",
+        "target_shared_risk_readiness",
+        "target_shared_risk_status",
+        "highest_priority_remaining_gaps",
+        "evidence_status_summary",
+        "shared_risk_rule_acceptance_criteria",
+        "next_shared_risk_rule_closure_actions",
+        "selected_next_safe_action",
+        "broker_state_mode",
+        "paper_submit_authorized",
+        "daniel_action_required_now",
+        "profit_claim",
+        "safety_scope",
+        "safety_labels",
+    }
+    assert status["shared_risk_rule_status_version"] == (
+        "assistant_v1.27_shared_risk_rule_status"
+    )
+    assert status["shared_risk_rule_status"] == "ready"
+    assert status["shared_risk_rule_status_mode"] == (
+        "offline_shared_risk_rule_status_only"
+    )
+    assert status["deterministic_scope"] == "shared_candidate_risk_rule_status"
+    assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_007"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_007"
+    assert status["source_gap_id"] == "risk_rule_status"
+    assert status["source_candidate_family_id"] == "shared"
+    assert status["source_candidate_family"] == "Shared candidate evidence"
+    assert status["source_gap_status"] == "blocked"
+    assert status["source_gap_group_id"] == "strategy_definition_gaps"
+    assert status["source_gap_group_label"] == "Strategy definition gaps"
+    assert status["source_closure_action"] == "close_strategy_definition_gaps"
+    assert "shared_risk_rule_status.jsonl" in status["source_closure_objective"]
+    assert "offline packet evidence" in status["source_closure_objective"]
+    assert status["source_expected_evidence_artifact"] == (
+        "shared_risk_rule_status.jsonl"
+    )
+    assert status["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_008"
+    )
+    assert status["selected_next_safe_action"] in status[
+        "next_shared_risk_rule_closure_actions"
+    ]
+    assert status["broker_state_mode"] == "broker_state_not_observed"
+    assert status["paper_submit_authorized"] is False
+    assert status["daniel_action_required_now"] is False
+    assert status["profit_claim"] == "none"
+    assert status["safety_scope"] == "offline_only"
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        assert label in status["safety_labels"]
+
+    assert status["shared_risk_rule_status_item"]["shared_status_id"] == (
+        "risk_rule_status"
+    )
+    assert status["shared_risk_rule_status_item"]["status"] == "blocked"
+    assert status["shared_risk_rule_status_item"]["blocker"] == (
+        "candidate_signal_rule_missing"
+    )
+    assert status["shared_risk_rule_gaps"]
+    assert status["shared_scope_count"] == len(status["shared_risk_rule_gaps"])
+    assert status["candidate_family_count"] == 3
+    assert len(status["candidate_risk_rule_summaries"]) == 3
+    assert status["explicit_shared_risk_rule_evidence"][
+        "evidence_mode"
+    ] == "deterministic_local_packet_evidence_only"
+    assert status["explicit_shared_risk_rule_evidence"][
+        "evidence_status"
+    ] == "blocked"
+    assert status["explicit_shared_risk_rule_evidence"][
+        "explicit_risk_rules_present"
+    ] is False
+    assert status["explicit_shared_risk_rule_evidence"]["local_evidence_items"]
+
+    for bucket_name in (
+        "position_sizing_evidence",
+        "stop_or_exit_evidence",
+        "drawdown_or_exposure_control_evidence",
+        "portfolio_or_risk_cap_evidence",
+    ):
+        bucket = status[bucket_name]
+        assert bucket["evidence_mode"] == "deterministic_local_packet_evidence_only"
+        assert bucket["evidence_status"] == "missing"
+        assert bucket["explicit_rules_present"] is False
+        assert isinstance(bucket["candidate_evidence"], list)
+        assert len(bucket["candidate_evidence"]) == 3
+
+    materialized = status["materialized_shared_risk_specification"]
+    assert materialized["materialization_mode"] == (
+        "offline_status_only_no_strategy_rules_created"
+    )
+    assert materialized["materialization_status"] == (
+        "blocked_missing_shared_risk_rule_evidence"
+    )
+    assert materialized["explicit_risk_rules_present"] is False
+    assert materialized["materialized_risk_rules"] == []
+    assert materialized["position_sizing_rules"] == []
+    assert materialized["stop_or_exit_rules"] == []
+    assert materialized["drawdown_or_exposure_controls"] == []
+    assert materialized["portfolio_or_risk_cap_rules"] == []
+    assert materialized["implementation_status"] == "not_implemented"
+    assert materialized["promotion_status"] == "not_promoted"
+    assert materialized["broker_state_mode"] == "broker_state_not_observed"
+    assert materialized["paper_submit_authorized"] is False
+    assert materialized["profit_claim"] == "none"
+
+    missing = status["remaining_missing_shared_risk_evidence"]
+    assert missing
+    assert any("shared_risk_rule_status:blocked" in str(item) for item in missing)
+    assert any("shared_risk_rule_gap_status:blocked" in str(item) for item in missing)
+    assert any("candidate_signal_rule_missing" in str(item) for item in missing)
+    assert status["target_shared_risk_readiness"]["readiness_status"] == "blocked"
+    assert status["target_shared_risk_readiness"]["research_ready"] is False
+    assert status["target_shared_risk_readiness"]["evidence_ready"] is False
+    assert status["target_shared_risk_readiness"]["still_blocked"] is True
+    assert status["target_shared_risk_status"]["status"] == "blocked"
+    assert status["highest_priority_remaining_gaps"]
+    assert status["evidence_status_summary"]["shared_scope_status"] == "blocked"
+    assert status["evidence_status_summary"]["shared_scope_blocked"] is True
+    assert status["evidence_status_summary"][
+        "shared_missing_evidence_explicit"
+    ] is True
+    assert status["evidence_status_summary"]["blocked"] == 3
+    assert status["shared_risk_rule_acceptance_criteria"]
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -1888,6 +2050,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "candidate_risk_rule_status",
         "candidate_signal_rule_status_path",
         "candidate_signal_rule_status",
+        "shared_risk_rule_status_path",
+        "shared_risk_rule_status",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -1967,6 +2131,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     _assert_candidate_signal_rule_status_shape(
         selector["candidate_signal_rule_status"]
+    )
+    assert str(selector["shared_risk_rule_status_path"]).endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+    _assert_shared_risk_rule_status_shape(
+        selector["shared_risk_rule_status"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -2080,6 +2250,14 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert exports["candidate_signal_rule_status_status"] == "ready"
     assert exports["candidate_signal_rule_status_selected_next_safe_action"] == (
         "execute_candidate_gap_closure_queue_item_007"
+    )
+    assert str(exports["shared_risk_rule_status_path"]).endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+    _assert_shared_risk_rule_status_shape(exports["shared_risk_rule_status"])
+    assert exports["shared_risk_rule_status_status"] == "ready"
+    assert exports["shared_risk_rule_status_selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -2538,6 +2716,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "candidate_gap_closure_queue_generated",
         "candidate_risk_rule_status_generated",
         "candidate_signal_rule_status_generated",
+        "shared_risk_rule_status_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
         "assistant_v1_through_v1_11_outputs_preserved",
@@ -2554,9 +2733,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "34/34 required checks passed; 0 failed; 0 warnings"
+        "35/35 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 34
+    assert container["quality_gate_passed_required_count"] == 35
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -2697,12 +2876,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     _assert_candidate_signal_rule_status_shape(
         payload["candidate_signal_rule_status"]
     )
+    assert payload["shared_risk_rule_status_path"].endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+    _assert_shared_risk_rule_status_shape(
+        payload["shared_risk_rule_status"]
+    )
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["next_action_selector"]["status"] == (
-        "candidate_signal_rule_status_next_action_selected"
+        "shared_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_007"
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -2825,6 +3010,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "candidate_signal_rule_status"
+        ]["exists"]
+        is True
+    )
+    assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "shared_risk_rule_status"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -2880,6 +3077,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["candidate_risk_rule_status"].endswith(
         "candidate_risk_rule_status.jsonl"
     )
+    assert payload["artifacts"]["candidate_signal_rule_status"].endswith(
+        "candidate_signal_rule_status.jsonl"
+    )
+    assert payload["artifacts"]["shared_risk_rule_status"].endswith(
+        "shared_risk_rule_status.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -2916,6 +3119,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert payload["executive_dashboard"]["candidate_risk_rule_status"] == (
         payload["candidate_risk_rule_status"]
+    )
+    assert payload["executive_dashboard"]["candidate_signal_rule_status"] == (
+        payload["candidate_signal_rule_status"]
+    )
+    assert payload["executive_dashboard"]["shared_risk_rule_status"] == (
+        payload["shared_risk_rule_status"]
     )
     assert payload["executive_dashboard"]["baseline_evidence_metrics"] == payload[
         "baseline_evidence_metrics"
@@ -3167,6 +3376,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "candidate_evidence_gap_summary.jsonl").exists()
     assert (output_root / "candidate_gap_closure_queue.jsonl").exists()
     assert (output_root / "candidate_risk_rule_status.jsonl").exists()
+    assert (output_root / "candidate_signal_rule_status.jsonl").exists()
+    assert (output_root / "shared_risk_rule_status.jsonl").exists()
     assert (output_root / "turnover_summary.jsonl").exists()
     assert (output_root / "cost_model_summary.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
@@ -3266,8 +3477,11 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "execute_candidate_gap_closure_queue_item_005" in brief
     assert "execute_candidate_gap_closure_queue_item_006" in brief
     assert "execute_candidate_gap_closure_queue_item_007" in brief
+    assert "execute_candidate_gap_closure_queue_item_008" in brief
     assert "## Candidate Signal Rule Status" in brief
     assert "candidate_signal_rule_status.jsonl" in brief
+    assert "## Shared Risk Rule Status" in brief
+    assert "shared_risk_rule_status.jsonl" in brief
     assert "Work order exports" in brief
     assert "work_orders/codex_work_order.md" in brief
     assert "**Missing required fields**: []" in brief
@@ -3341,6 +3555,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert record["candidate_risk_rule_status"] == payload[
         "candidate_risk_rule_status"
+    ]
+    assert record["candidate_signal_rule_status_path"].endswith(
+        "candidate_signal_rule_status.jsonl"
+    )
+    assert record["candidate_signal_rule_status"] == payload[
+        "candidate_signal_rule_status"
+    ]
+    assert record["shared_risk_rule_status_path"].endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+    assert record["shared_risk_rule_status"] == payload[
+        "shared_risk_rule_status"
     ]
     assert record["next_action_selector"] == payload["next_action_selector"]
     assert record["work_order_exports"] == payload["work_order_exports"]
@@ -3495,6 +3721,18 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["candidate_risk_rule_status"] == payload[
         "candidate_risk_rule_status"
     ]
+    assert manifest["candidate_signal_rule_status_path"].endswith(
+        "candidate_signal_rule_status.jsonl"
+    )
+    assert manifest["candidate_signal_rule_status"] == payload[
+        "candidate_signal_rule_status"
+    ]
+    assert manifest["shared_risk_rule_status_path"].endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+    assert manifest["shared_risk_rule_status"] == payload[
+        "shared_risk_rule_status"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -3539,6 +3777,14 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["indexed_artifacts"]["candidate_risk_rule_status"][
         "path"
     ].endswith("candidate_risk_rule_status.jsonl")
+    assert "candidate_signal_rule_status" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["candidate_signal_rule_status"][
+        "path"
+    ].endswith("candidate_signal_rule_status.jsonl")
+    assert "shared_risk_rule_status" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["shared_risk_rule_status"][
+        "path"
+    ].endswith("shared_risk_rule_status.jsonl")
     assert "turnover_summary" in manifest["indexed_artifacts"]
     assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
@@ -3564,7 +3810,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.26 - Candidate Signal Rule Status Item 006 Artifact"
+            "Assistant v1.27 - Shared Risk Rule Status Item 007 Artifact"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -3574,6 +3820,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "execute_candidate_gap_closure_queue_item_005" in work_order
         assert "execute_candidate_gap_closure_queue_item_006" in work_order
         assert "execute_candidate_gap_closure_queue_item_007" in work_order
+        assert "execute_candidate_gap_closure_queue_item_008" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
@@ -3588,6 +3835,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "candidate_gap_closure_queue.jsonl" in work_order
         assert "candidate_risk_rule_status.jsonl" in work_order
         assert "candidate_signal_rule_status.jsonl" in work_order
+        assert "shared_risk_rule_status.jsonl" in work_order
         assert "## Paper observation readiness" in work_order
         assert "## Research board prioritization" in work_order
         assert "## Strategy comparison scaffold" in work_order
@@ -4373,10 +4621,10 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
     _assert_next_action_selector_shape(payload["next_action_selector"])
     _assert_work_order_exports_shape(payload["work_order_exports"])
     assert payload["next_action_selector"]["status"] == (
-        "candidate_signal_rule_status_next_action_selected"
+        "shared_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_007"
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -4385,7 +4633,7 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
     assert payload["next_action_selector"]["blocks_offline_build"] is False
     assert payload["next_action_selector"]["broker_action_allowed"] is False
     assert payload["next_action_selector"]["llm_runtime_calls_allowed"] is False
-    assert "candidate_signal_rule_status_ready" in payload["next_action_selector"][
+    assert "shared_risk_rule_status_ready" in payload["next_action_selector"][
         "reason_codes"
     ]
     assert payload["candidate_gap_closure_queue"]["selected_next_safe_action"] == (
@@ -4424,7 +4672,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "21/34 required checks passed; 13 failed; 0 warnings"
+        "21/35 required checks passed; 14 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
@@ -4438,6 +4686,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
         "candidate_gap_closure_queue_generated",
         "candidate_risk_rule_status_generated",
         "candidate_signal_rule_status_generated",
+        "shared_risk_rule_status_generated",
         "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
@@ -5128,10 +5377,10 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
     assert payload["next_action_selector"]["candidate_gap_closure_queue"] == data
     assert payload["work_order_exports"]["candidate_gap_closure_queue"] == data
     assert payload["next_action_selector"]["status"] == (
-        "candidate_signal_rule_status_next_action_selected"
+        "shared_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_007"
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -5221,6 +5470,11 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         assert "volatility_or_regime_filter_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
         assert "execute_candidate_gap_closure_queue_item_007" in markdown
+        assert "## Shared Risk Rule Status" in markdown
+        assert "shared_risk_rule_status.jsonl" in markdown
+        assert "candidate_gap_closure_queue_item_007" in markdown
+        assert "risk_rule_status" in markdown
+        assert "execute_candidate_gap_closure_queue_item_008" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5230,10 +5484,10 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
     assert payload["next_action_selector"]["candidate_risk_rule_status"] == data
     assert payload["work_order_exports"]["candidate_risk_rule_status"] == data
     assert payload["next_action_selector"]["status"] == (
-        "candidate_signal_rule_status_next_action_selected"
+        "shared_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_007"
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert data["risk_rule_status"] == "ready"
     assert data["risk_rule_status_mode"] == (
@@ -5338,6 +5592,11 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         assert "volatility_or_regime_filter_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
         assert "execute_candidate_gap_closure_queue_item_007" in markdown
+        assert "## Shared Risk Rule Status" in markdown
+        assert "shared_risk_rule_status.jsonl" in markdown
+        assert "candidate_gap_closure_queue_item_007" in markdown
+        assert "risk_rule_status" in markdown
+        assert "execute_candidate_gap_closure_queue_item_008" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5347,10 +5606,10 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     assert payload["next_action_selector"]["candidate_signal_rule_status"] == data
     assert payload["work_order_exports"]["candidate_signal_rule_status"] == data
     assert payload["next_action_selector"]["status"] == (
-        "candidate_signal_rule_status_next_action_selected"
+        "shared_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_007"
+        "execute_candidate_gap_closure_queue_item_008"
     )
     assert data["signal_rule_status"] == "ready"
     assert data["signal_rule_status_mode"] == (
@@ -5400,6 +5659,119 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     assert data["profit_claim"] == "none"
     assert data["safety_scope"] == "offline_only"
     assert "candidate_signal_rule_status_generated" not in payload[
+        "quality_gate_failed_checks"
+    ]
+    validation_result = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+    assert validation_result["validation_status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_shared_risk_rule_status(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.27 item-007 shared risk-rule status artifact and wiring."""
+    output_root = tmp_path / "paper_lab_shared_risk_rule_status_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    status_file = output_root / "shared_risk_rule_status.jsonl"
+    assert status_file.exists()
+    lines = status_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_shared_risk_rule_status_shape(data)
+    _assert_shared_risk_rule_status_shape(payload["shared_risk_rule_status"])
+    assert data == payload["shared_risk_rule_status"]
+    assert payload["shared_risk_rule_status_path"].endswith(
+        "shared_risk_rule_status.jsonl"
+    )
+
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    assert manifest["shared_risk_rule_status"] == data
+    assert record["shared_risk_rule_status"] == data
+    assert "shared_risk_rule_status" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["shared_risk_rule_status"][
+        "path"
+    ].endswith("shared_risk_rule_status.jsonl")
+
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    handoff = (output_root / "review_handoff.md").read_text(encoding="utf-8")
+    for markdown in (brief, handoff):
+        assert "## Shared Risk Rule Status" in markdown
+        assert "shared_risk_rule_status.jsonl" in markdown
+        assert "offline_shared_risk_rule_status_only" in markdown
+        assert "candidate_gap_closure_queue_item_007" in markdown
+        assert "risk_rule_status" in markdown
+        assert "shared" in markdown
+        assert "execute_candidate_gap_closure_queue_item_008" in markdown
+        assert "broker_state_not_observed" in markdown
+        assert "paper_submit_authorized" in markdown
+        assert "profit_claim" in markdown
+
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert payload["next_action_selector"]["shared_risk_rule_status"] == data
+    assert payload["work_order_exports"]["shared_risk_rule_status"] == data
+    assert payload["next_action_selector"]["status"] == (
+        "shared_risk_rule_status_next_action_selected"
+    )
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "execute_candidate_gap_closure_queue_item_008"
+    )
+    assert payload["next_action_selector"]["selected_research_candidate_id"] is None
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "codex_work_order"
+    )
+    assert payload["next_action_selector"]["blocks_offline_build"] is False
+    assert "shared_risk_rule_status_ready" in payload["next_action_selector"][
+        "reason_codes"
+    ]
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_007"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_007"
+    assert data["source_gap_id"] == "risk_rule_status"
+    assert data["source_candidate_family_id"] == "shared"
+    assert data["source_expected_evidence_artifact"] == (
+        "shared_risk_rule_status.jsonl"
+    )
+    assert data["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_008"
+    )
+    assert data["explicit_shared_risk_rule_evidence"][
+        "explicit_risk_rules_present"
+    ] is False
+    assert data["materialized_shared_risk_specification"][
+        "materialized_risk_rules"
+    ] == []
+    assert data["materialized_shared_risk_specification"][
+        "position_sizing_rules"
+    ] == []
+    assert data["materialized_shared_risk_specification"][
+        "stop_or_exit_rules"
+    ] == []
+    assert data["remaining_missing_shared_risk_evidence"]
+    assert data["target_shared_risk_readiness"]["readiness_status"] == "blocked"
+    assert data["broker_state_mode"] == "broker_state_not_observed"
+    assert data["paper_submit_authorized"] is False
+    assert data["daniel_action_required_now"] is False
+    assert data["profit_claim"] == "none"
+    assert data["safety_scope"] == "offline_only"
+    assert "shared_risk_rule_status_generated" not in payload[
         "quality_gate_failed_checks"
     ]
     validation_result = validate_etf_sma_daily_paper_lab_packet(
