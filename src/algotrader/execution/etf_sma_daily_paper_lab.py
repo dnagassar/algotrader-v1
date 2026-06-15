@@ -94,27 +94,27 @@ _CANDIDATE_RISK_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_004"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_VERSION = (
-    "assistant_v1.25_candidate_signal_rule_status"
+    "assistant_v1.26_candidate_signal_rule_status"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID = (
-    "candidate_gap_closure_queue_item_005"
+    "candidate_gap_closure_queue_item_006"
 )
 _CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_005"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = (
-    "mean_reversion_candidate"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = (
-    "Mean reversion candidate"
-)
-_CANDIDATE_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_006"
 )
-_PHASE_NAME = "Assistant v1.25 - Candidate Signal Rule Status Item 005 Artifact"
+_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = (
+    "volatility_or_regime_filter_candidate"
+)
+_CANDIDATE_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = (
+    "Volatility or regime filter candidate"
+)
+_CANDIDATE_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_007"
+)
+_PHASE_NAME = "Assistant v1.26 - Candidate Signal Rule Status Item 006 Artifact"
 _PHASE_GOAL = (
     "Materialize deterministic offline candidate signal-rule status evidence for "
-    "candidate_gap_closure_queue_item_005 before any strategy implementation, "
+    "candidate_gap_closure_queue_item_006 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -1176,6 +1176,7 @@ _REQUIRED_CANDIDATE_SIGNAL_RULE_STATUS_FIELDS = (
     "candidate_signal_rule_summaries",
     "target_candidate_signal_rule_summary",
     "target_explicit_signal_rule_evidence",
+    "target_regime_or_volatility_condition_evidence",
     "target_materialized_candidate_signal_specification",
     "target_remaining_missing_signal_rule_evidence",
     "target_candidate_signal_readiness",
@@ -8051,6 +8052,97 @@ def _candidate_signal_rule_next_actions(
     return [str(item["action_id"]) for item in later_items if item.get("action_id")]
 
 
+def _candidate_regime_or_volatility_condition_evidence(
+    *,
+    requirement: Mapping[str, Any],
+    plan: Mapping[str, Any],
+    candidate_status: Mapping[str, Any],
+    target_summary: Mapping[str, Any],
+    explicit_signal_rule_evidence: Mapping[str, Any],
+    materialized_signal_specification: Mapping[str, Any],
+    remaining_missing_signal_rule_evidence: list[str],
+) -> dict[str, Any]:
+    evidence_items = candidate_status.get("evidence_items", [])
+    if not isinstance(evidence_items, list):
+        evidence_items = []
+    evidence_item_statuses = {
+        str(item.get("evidence_item_id")): str(item.get("status", "unknown"))
+        for item in evidence_items
+        if isinstance(item, Mapping)
+        and item.get("evidence_category")
+        in {"feature_definition", "signal_rule", "drawdown_regime"}
+    }
+    missing_evidence = requirement.get("missing_evidence", [])
+    if not isinstance(missing_evidence, list):
+        missing_evidence = []
+    condition_missing_evidence = [
+        str(item)
+        for item in missing_evidence
+        if any(token in str(item) for token in ("feature", "signal_rule", "regime"))
+    ]
+    return {
+        "condition_evidence_mode": "deterministic_local_packet_evidence_only",
+        "condition_evidence_status": str(
+            target_summary.get("signal_rule_evidence_status", "blocked")
+        ),
+        "candidate_family_id": str(
+            target_summary.get(
+                "candidate_family_id",
+                requirement.get("candidate_family_id", ""),
+            )
+        ),
+        "candidate_family_label": str(
+            target_summary.get(
+                "candidate_family_label",
+                requirement.get("candidate_family_label", ""),
+            )
+        ),
+        "explicit_volatility_or_regime_condition_present": bool(
+            explicit_signal_rule_evidence.get("explicit_signal_rules_present", False)
+        ),
+        "required_condition_features": list(
+            requirement.get("required_feature_definitions", [])
+            if isinstance(requirement.get("required_feature_definitions"), list)
+            else []
+        ),
+        "planned_condition_features_to_define": list(
+            plan.get("features_to_define", [])
+            if isinstance(plan.get("features_to_define"), list)
+            else []
+        ),
+        "planned_signal_rules_to_specify": list(
+            plan.get("signal_rules_to_specify", [])
+            if isinstance(plan.get("signal_rules_to_specify"), list)
+            else []
+        ),
+        "required_regime_analysis": list(
+            requirement.get("required_regime_analysis", [])
+            if isinstance(requirement.get("required_regime_analysis"), list)
+            else []
+        ),
+        "planned_regime_outputs_to_collect": list(
+            plan.get("regime_outputs_to_collect", [])
+            if isinstance(plan.get("regime_outputs_to_collect"), list)
+            else []
+        ),
+        "collection_status": str(candidate_status.get("current_status", "blocked")),
+        "evidence_item_statuses": evidence_item_statuses,
+        "status_only_materialization_status": str(
+            materialized_signal_specification.get(
+                "materialization_status",
+                "blocked_missing_explicit_signal_rule_evidence",
+            )
+        ),
+        "remaining_missing_condition_evidence": condition_missing_evidence,
+        "remaining_missing_signal_rule_evidence": list(
+            remaining_missing_signal_rule_evidence
+        ),
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+
+
 def _build_candidate_signal_rule_status(
     payload: Mapping[str, Any],
     artifact_paths: Mapping[str, str],
@@ -8158,6 +8250,18 @@ def _build_candidate_signal_rule_status(
         if isinstance(target_summary.get("candidate_signal_readiness"), Mapping)
         else {}
     )
+    target_requirement = dict(requirement_lookup.get(source_candidate_family_id, {}))
+    target_plan = dict(plan_lookup.get(source_candidate_family_id, {}))
+    target_collection_status = dict(status_lookup.get(source_candidate_family_id, {}))
+    target_condition_evidence = _candidate_regime_or_volatility_condition_evidence(
+        requirement=target_requirement,
+        plan=target_plan,
+        candidate_status=target_collection_status,
+        target_summary=target_summary,
+        explicit_signal_rule_evidence=target_explicit_evidence,
+        materialized_signal_specification=target_materialized_specification,
+        remaining_missing_signal_rule_evidence=target_remaining_missing_evidence,
+    )
     selected_next_action = (
         next_actions[0] if next_actions else "review_candidate_signal_rule_status_artifact"
     )
@@ -8206,6 +8310,7 @@ def _build_candidate_signal_rule_status(
         "candidate_signal_rule_summaries": summaries,
         "target_candidate_signal_rule_summary": target_summary,
         "target_explicit_signal_rule_evidence": target_explicit_evidence,
+        "target_regime_or_volatility_condition_evidence": target_condition_evidence,
         "target_materialized_candidate_signal_specification": (
             target_materialized_specification
         ),
@@ -8230,6 +8335,7 @@ def _build_candidate_signal_rule_status(
             ),
             "source_gap_id=candidate_signal_rule_status",
             "target explicit signal-rule evidence is recorded without inventing rules",
+            "target volatility/regime condition evidence is recorded as status-only local evidence",
             "target materialized candidate signal specification remains status-only when explicit rules are missing",
             "target readiness distinguishes research-ready, evidence-ready, blocked, and not-ready states",
             "each candidate family distinguishes complete, incomplete, blocked, and not-applicable evidence buckets",

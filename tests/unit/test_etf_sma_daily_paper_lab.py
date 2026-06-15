@@ -1351,6 +1351,7 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
         "candidate_signal_rule_summaries",
         "target_candidate_signal_rule_summary",
         "target_explicit_signal_rule_evidence",
+        "target_regime_or_volatility_condition_evidence",
         "target_materialized_candidate_signal_specification",
         "target_remaining_missing_signal_rule_evidence",
         "target_candidate_signal_readiness",
@@ -1368,21 +1369,21 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
         "safety_labels",
     }
     assert status["signal_rule_status_version"] == (
-        "assistant_v1.25_candidate_signal_rule_status"
+        "assistant_v1.26_candidate_signal_rule_status"
     )
     assert status["signal_rule_status"] == "ready"
     assert status["signal_rule_status_mode"] == (
         "offline_candidate_signal_rule_status_only"
     )
     assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
-    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_005"
-    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_005"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_006"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_006"
     assert status["source_gap_id"] == "candidate_signal_rule_status"
     assert (
         status["source_candidate_family_id"]
-        == "mean_reversion_candidate"
+        == "volatility_or_regime_filter_candidate"
     )
-    assert status["source_candidate_family"] == "Mean reversion candidate"
+    assert status["source_candidate_family"] == "Volatility or regime filter candidate"
     assert status["source_gap_status"] == "blocked"
     assert status["source_gap_group_id"] == "strategy_definition_gaps"
     assert status["source_gap_group_label"] == "Strategy definition gaps"
@@ -1398,7 +1399,7 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
     assert status["profit_claim"] == "none"
     assert status["safety_scope"] == "offline_only"
     assert status["selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert status["selected_next_safe_action"] in status[
         "next_signal_rule_closure_actions"
@@ -1420,7 +1421,7 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
     assert status["candidate_scope_count"] == len(summaries)
     assert status["shared_scope_count"] == len(status["shared_signal_rule_gaps"])
     assert status["target_candidate_signal_rule_summary"]["candidate_family_id"] == (
-        "mean_reversion_candidate"
+        "volatility_or_regime_filter_candidate"
     )
     assert status["target_candidate_signal_rule_summary"]["signal_rule_evidence_status"] == (
         "blocked"
@@ -1431,6 +1432,50 @@ def _assert_candidate_signal_rule_status_shape(status: dict[str, object]) -> Non
     assert status["target_explicit_signal_rule_evidence"][
         "explicit_signal_rules_present"
     ] is False
+    condition_evidence = status["target_regime_or_volatility_condition_evidence"]
+    assert condition_evidence["condition_evidence_mode"] == (
+        "deterministic_local_packet_evidence_only"
+    )
+    assert condition_evidence["condition_evidence_status"] == "blocked"
+    assert condition_evidence["candidate_family_id"] == (
+        "volatility_or_regime_filter_candidate"
+    )
+    assert condition_evidence["explicit_volatility_or_regime_condition_present"] is False
+    assert condition_evidence["required_condition_features"] == [
+        "volatility_or_regime_state_feature",
+        "filter_thresholds_fixed_before_test",
+        "interaction_with_baseline_or_candidate_signal_defined",
+    ]
+    assert condition_evidence["required_regime_analysis"] == [
+        "low_volatility_regime_performance_split",
+        "high_volatility_regime_performance_split",
+        "regime_transition_period_review",
+    ]
+    assert condition_evidence["planned_regime_outputs_to_collect"] == [
+        "low_volatility_regime_performance_split",
+        "high_volatility_regime_performance_split",
+        "regime_transition_period_review",
+    ]
+    assert condition_evidence["evidence_item_statuses"] == {
+        "candidate_feature_definition_status": "not_started",
+        "candidate_signal_rule_status": "blocked",
+        "candidate_drawdown_regime_status": "missing",
+    }
+    assert condition_evidence["status_only_materialization_status"] == (
+        "blocked_missing_explicit_signal_rule_evidence"
+    )
+    assert "feature_calculation_definition_missing" in condition_evidence[
+        "remaining_missing_condition_evidence"
+    ]
+    assert "regime_sensitivity_evidence_missing" in condition_evidence[
+        "remaining_missing_condition_evidence"
+    ]
+    assert condition_evidence["remaining_missing_signal_rule_evidence"] == status[
+        "target_remaining_missing_signal_rule_evidence"
+    ]
+    assert condition_evidence["broker_state_mode"] == "broker_state_not_observed"
+    assert condition_evidence["paper_submit_authorized"] is False
+    assert condition_evidence["profit_claim"] == "none"
     assert status["target_materialized_candidate_signal_specification"] == status[
         "target_candidate_signal_rule_summary"
     ]["materialized_candidate_signal_specification"]
@@ -2034,7 +2079,7 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     _assert_candidate_signal_rule_status_shape(exports["candidate_signal_rule_status"])
     assert exports["candidate_signal_rule_status_status"] == "ready"
     assert exports["candidate_signal_rule_status_selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -2657,7 +2702,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -3220,6 +3265,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "execute_candidate_gap_closure_queue_item_004" in brief
     assert "execute_candidate_gap_closure_queue_item_005" in brief
     assert "execute_candidate_gap_closure_queue_item_006" in brief
+    assert "execute_candidate_gap_closure_queue_item_007" in brief
     assert "## Candidate Signal Rule Status" in brief
     assert "candidate_signal_rule_status.jsonl" in brief
     assert "Work order exports" in brief
@@ -3518,7 +3564,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.25 - Candidate Signal Rule Status Item 005 Artifact"
+            "Assistant v1.26 - Candidate Signal Rule Status Item 006 Artifact"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -3527,6 +3573,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "execute_candidate_gap_closure_queue_item_004" in work_order
         assert "execute_candidate_gap_closure_queue_item_005" in work_order
         assert "execute_candidate_gap_closure_queue_item_006" in work_order
+        assert "execute_candidate_gap_closure_queue_item_007" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
@@ -4329,7 +4376,7 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -5084,7 +5131,7 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -5170,10 +5217,10 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         assert "## Candidate Signal Rule Status" in markdown
         assert "candidate_signal_rule_status.jsonl" in markdown
         assert "offline_candidate_signal_rule_status_only" in markdown
-        assert "candidate_gap_closure_queue_item_005" in markdown
-        assert "mean_reversion_candidate" in markdown
+        assert "candidate_gap_closure_queue_item_006" in markdown
+        assert "volatility_or_regime_filter_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
-        assert "execute_candidate_gap_closure_queue_item_006" in markdown
+        assert "execute_candidate_gap_closure_queue_item_007" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5186,7 +5233,7 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert data["risk_rule_status"] == "ready"
     assert data["risk_rule_status_mode"] == (
@@ -5240,7 +5287,7 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
 def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     tmp_path: Path,
 ) -> None:
-    """Verify v1.25 item-005 candidate signal-rule status artifact and wiring."""
+    """Verify v1.26 item-006 candidate signal-rule status artifact and wiring."""
     output_root = tmp_path / "paper_lab_candidate_signal_rule_status_out"
     bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
 
@@ -5287,10 +5334,10 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         assert "## Candidate Signal Rule Status" in markdown
         assert "candidate_signal_rule_status.jsonl" in markdown
         assert "offline_candidate_signal_rule_status_only" in markdown
-        assert "candidate_gap_closure_queue_item_005" in markdown
-        assert "mean_reversion_candidate" in markdown
+        assert "candidate_gap_closure_queue_item_006" in markdown
+        assert "volatility_or_regime_filter_candidate" in markdown
         assert "candidate_signal_rule_status" in markdown
-        assert "execute_candidate_gap_closure_queue_item_006" in markdown
+        assert "execute_candidate_gap_closure_queue_item_007" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -5303,18 +5350,18 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         "candidate_signal_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_006"
+        "execute_candidate_gap_closure_queue_item_007"
     )
     assert data["signal_rule_status"] == "ready"
     assert data["signal_rule_status_mode"] == (
         "offline_candidate_signal_rule_status_only"
     )
-    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_005"
-    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_005"
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_006"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_006"
     assert data["source_gap_id"] == "candidate_signal_rule_status"
     assert (
         data["source_candidate_family_id"]
-        == "mean_reversion_candidate"
+        == "volatility_or_regime_filter_candidate"
     )
     assert data["source_expected_evidence_artifact"] == (
         "candidate_signal_rule_status.jsonl"
@@ -5322,7 +5369,7 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
     assert data["candidate_family_count"] == 3
     assert data["candidate_scope_count"] == 3
     assert data["target_candidate_signal_rule_summary"]["candidate_family_id"] == (
-        "mean_reversion_candidate"
+        "volatility_or_regime_filter_candidate"
     )
     assert data["target_explicit_signal_rule_evidence"][
         "explicit_signal_rules_present"
