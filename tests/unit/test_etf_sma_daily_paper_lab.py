@@ -1159,6 +1159,175 @@ def _assert_candidate_evidence_gap_summary_shape(
     assert gap_summary["next_research_artifacts_to_build"]
 
 
+def _assert_candidate_gap_closure_queue_shape(queue: dict[str, object]) -> None:
+    assert set(queue) == {
+        "candidate_gap_closure_queue_version",
+        "queue_status",
+        "queue_mode",
+        "artifact_path",
+        "source_gap_summary_path",
+        "source_gap_summary_status",
+        "baseline_strategy_id",
+        "baseline_strategy_role",
+        "queue_item_count",
+        "queue_items",
+        "selected_queue_item_id",
+        "selected_next_safe_action",
+        "selected_next_safe_action_type",
+        "selected_work_order",
+        "selected_owner",
+        "selection_policy",
+        "generation_inputs",
+        "next_research_artifacts_to_build",
+        "allowed_scope",
+        "forbidden_scope",
+        "acceptance_criteria",
+        "why_selected",
+        "why_no_strategy_implementation_yet",
+        "broker_state_mode",
+        "broker_state_observed",
+        "paper_submit_authorized",
+        "daniel_action_required_now",
+        "profit_claim",
+        "safety_scope",
+        "safety_labels",
+    }
+    assert queue["candidate_gap_closure_queue_version"] == (
+        "assistant_v1.20_candidate_gap_closure_queue"
+    )
+    assert queue["queue_status"] == "ready"
+    assert queue["queue_mode"] == "offline_candidate_gap_closure_queue_only"
+    assert str(queue["artifact_path"]).endswith("candidate_gap_closure_queue.jsonl")
+    assert str(queue["source_gap_summary_path"]).endswith(
+        "candidate_evidence_gap_summary.jsonl"
+    )
+    assert queue["source_gap_summary_status"] == "ready"
+    assert queue["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert queue["baseline_strategy_role"] == "control_harness"
+    assert queue["selected_next_safe_action_type"] == (
+        "candidate_gap_closure_queue_item"
+    )
+    assert queue["selected_work_order"] == "codex_work_order"
+    assert queue["selected_owner"] == "Codex"
+    assert isinstance(queue["generation_inputs"], list)
+    assert "candidate_evidence_gap_summary.ranked_gap_groups" in queue[
+        "generation_inputs"
+    ]
+    assert isinstance(queue["allowed_scope"], list)
+    assert "offline evidence collection" in queue["allowed_scope"]
+    assert isinstance(queue["forbidden_scope"], list)
+    for forbidden in (
+        "broker observation",
+        "broker reads",
+        "broker mutation",
+        "paper submit",
+        "live trading",
+        "network calls",
+    ):
+        assert forbidden in queue["forbidden_scope"]
+    assert isinstance(queue["acceptance_criteria"], list)
+    assert "offline" in str(queue["why_selected"]).lower()
+    implementation_reason = str(
+        queue["why_no_strategy_implementation_yet"]
+    ).lower()
+    assert "candidate strategy implementation remains blocked" in implementation_reason
+    assert "offline evidence artifacts are materialized" in implementation_reason
+    assert "spy sma 50/200 control harness" in implementation_reason
+    assert queue["broker_state_mode"] == "broker_state_not_observed"
+    assert queue["broker_state_observed"] is False
+    assert queue["paper_submit_authorized"] is False
+    assert queue["daniel_action_required_now"] is False
+    assert queue["profit_claim"] == "none"
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "not_live_authorized",
+        "paper_lab_only",
+        "profit_claim=none",
+    ):
+        assert label in queue["safety_labels"]
+
+    queue_items = queue["queue_items"]
+    assert isinstance(queue_items, list)
+    assert queue_items
+    assert queue["queue_item_count"] == len(queue_items)
+    assert queue["selected_queue_item_id"] == queue_items[0]["queue_item_id"]
+    assert queue["selected_next_safe_action"] == queue_items[0]["action_id"]
+    assert queue["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_001"
+    )
+    assert queue["next_research_artifacts_to_build"] == [
+        item["expected_evidence_artifact"] for item in queue_items
+    ]
+    for index, item in enumerate(queue_items, start=1):
+        assert set(item) == {
+            "queue_item_id",
+            "action_id",
+            "rank",
+            "priority",
+            "action_priority",
+            "candidate_family",
+            "candidate_family_id",
+            "gap_group_id",
+            "gap_group_label",
+            "gap_id",
+            "gap_label",
+            "gap_status",
+            "closure_action",
+            "closure_objective",
+            "expected_evidence_artifact",
+            "recommended_agent",
+            "allowed_scope",
+            "forbidden_scope",
+            "acceptance_criteria",
+            "blocked_by",
+            "daniel_action_required",
+            "broker_state_mode",
+            "broker_state_observed",
+            "paper_submit_authorized",
+            "profit_claim",
+            "safety_scope",
+            "safety_labels",
+        }
+        assert item["queue_item_id"] == (
+            f"candidate_gap_closure_queue_item_{index:03d}"
+        )
+        assert item["action_id"] == (
+            f"execute_candidate_gap_closure_queue_item_{index:03d}"
+        )
+        assert item["rank"] == index
+        assert item["priority"] in {"high", "medium", "low"}
+        assert item["action_priority"] in {"P2", "P3"}
+        assert item["candidate_family"]
+        assert item["candidate_family_id"]
+        assert item["gap_group_id"]
+        assert item["gap_id"]
+        assert item["closure_action"]
+        assert "offline packet evidence" in item["closure_objective"]
+        assert str(item["expected_evidence_artifact"]).endswith(".jsonl")
+        assert item["recommended_agent"] == "Codex"
+        assert isinstance(item["allowed_scope"], list)
+        assert isinstance(item["forbidden_scope"], list)
+        assert "broker reads" in item["forbidden_scope"]
+        assert isinstance(item["acceptance_criteria"], list)
+        assert isinstance(item["blocked_by"], list)
+        assert item["daniel_action_required"] is False
+        assert item["broker_state_mode"] == "broker_state_not_observed"
+        assert item["broker_state_observed"] is False
+        assert item["paper_submit_authorized"] is False
+        assert item["profit_claim"] == "none"
+        for token in (
+            "offline_only",
+            "research_only",
+            "not_live_authorized",
+            "broker_state_not_observed",
+            "paper_submit_not_authorized",
+            "profit_claim=none",
+        ):
+            assert token in item["safety_scope"]
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -1253,6 +1422,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "candidate_evidence_collection_status",
         "candidate_evidence_gap_summary_path",
         "candidate_evidence_gap_summary",
+        "candidate_gap_closure_queue_path",
+        "candidate_gap_closure_queue",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -1314,6 +1485,12 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     )
     _assert_candidate_evidence_gap_summary_shape(
         selector["candidate_evidence_gap_summary"]
+    )
+    assert str(selector["candidate_gap_closure_queue_path"]).endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
+    _assert_candidate_gap_closure_queue_shape(
+        selector["candidate_gap_closure_queue"]
     )
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
@@ -1401,6 +1578,17 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
         exports["candidate_evidence_gap_summary"]
     )
     assert exports["candidate_evidence_gap_summary_status"] == "ready"
+    assert str(exports["candidate_gap_closure_queue_path"]).endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
+    _assert_candidate_gap_closure_queue_shape(exports["candidate_gap_closure_queue"])
+    assert exports["candidate_gap_closure_queue_status"] == "ready"
+    assert exports["candidate_gap_closure_queue_selected_item_id"] == (
+        "candidate_gap_closure_queue_item_001"
+    )
+    assert exports["candidate_gap_closure_queue_selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_001"
+    )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
         "metric_artifacts_partially_ingested",
@@ -1855,6 +2043,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "candidate_evidence_collection_plan_generated",
         "candidate_evidence_collection_status_generated",
         "candidate_evidence_gap_summary_generated",
+        "candidate_gap_closure_queue_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
         "assistant_v1_through_v1_11_outputs_preserved",
@@ -1871,9 +2060,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "31/31 required checks passed; 0 failed; 0 warnings"
+        "32/32 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 31
+    assert container["quality_gate_passed_required_count"] == 32
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -1998,23 +2187,19 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["next_action_selector"]["status"] == (
-        "operator_support_review_ingest_selected"
+        "candidate_gap_closure_queue_item_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "collect_offline_review_feedback"
+        "execute_candidate_gap_closure_queue_item_001"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
-        "gpt_next_action_handoff"
+        "codex_work_order"
     )
-    assert payload["next_action_selector"]["priority"] == "P1"
-    assert payload["next_action_selector"]["selected_research_candidate_id"] == (
-        "offline_review_evidence_gap"
-    )
+    assert payload["next_action_selector"]["priority"] == "P2"
+    assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["blocks_offline_build"] is False
     _assert_work_order_exports_shape(payload["work_order_exports"])
-    assert payload["work_order_exports"]["selected_research_candidate_id"] == (
-        "offline_review_evidence_gap"
-    )
+    assert payload["work_order_exports"]["selected_research_candidate_id"] is None
     delta = payload["history_delta"]
     assert delta["previous_packet_found"] is False
     assert delta["previous_as_of_date"] is None
@@ -2116,6 +2301,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         is True
     )
     assert (
+        payload["artifact_presence_status"]["artifacts"][
+            "candidate_gap_closure_queue"
+        ]["exists"]
+        is True
+    )
+    assert (
         payload["artifact_presence_status"]["artifacts"]["gpt_next_action_handoff"][
             "exists"
         ]
@@ -2165,6 +2356,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert payload["artifacts"]["candidate_evidence_gap_summary"].endswith(
         "candidate_evidence_gap_summary.jsonl"
     )
+    assert payload["artifacts"]["candidate_gap_closure_queue"].endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
     assert payload["artifacts"]["gpt_next_action_handoff"].endswith(
         "work_orders/gpt_next_action_handoff.md"
     )
@@ -2195,6 +2389,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert payload["executive_dashboard"]["candidate_evidence_gap_summary"] == (
         payload["candidate_evidence_gap_summary"]
+    )
+    assert payload["executive_dashboard"]["candidate_gap_closure_queue"] == (
+        payload["candidate_gap_closure_queue"]
     )
     assert payload["executive_dashboard"]["baseline_evidence_metrics"] == payload[
         "baseline_evidence_metrics"
@@ -2444,6 +2641,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert (output_root / "candidate_evidence_collection_plan.jsonl").exists()
     assert (output_root / "candidate_evidence_collection_status.jsonl").exists()
     assert (output_root / "candidate_evidence_gap_summary.jsonl").exists()
+    assert (output_root / "candidate_gap_closure_queue.jsonl").exists()
     assert (output_root / "turnover_summary.jsonl").exists()
     assert (output_root / "cost_model_summary.jsonl").exists()
     assert (output_root / "work_orders" / "gpt_next_action_handoff.md").exists()
@@ -2493,6 +2691,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "candidate_evidence_gap_summary.jsonl" in brief
     assert "offline_candidate_evidence_gap_summary_only" in brief
     assert "build_candidate_gap_closure_queue" in brief
+    assert "## Candidate Gap Closure Queue" in brief
+    assert "candidate_gap_closure_queue.jsonl" in brief
+    assert "offline_candidate_gap_closure_queue_only" in brief
+    assert "execute_candidate_gap_closure_queue_item_001" in brief
     assert "required evidence is collected, statused" in brief
     assert "Candidate implementation requires an offline evidence template" in brief
     assert "hard_gate_prepared_not_authorized" in brief
@@ -2529,9 +2731,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "review_input_not_found" in brief
     assert "await_offline_review_input" in brief
     assert "## Next Action Selector" in brief
-    assert "collect_offline_review_feedback" in brief
+    assert "execute_candidate_gap_closure_queue_item_001" in brief
     assert "Work order exports" in brief
-    assert "work_orders/gpt_next_action_handoff.md" in brief
+    assert "work_orders/codex_work_order.md" in brief
     assert "**Missing required fields**: []" in brief
     assert "**Artifact presence status**: pass" in brief
     assert "**Previous packet found**: false" in brief
@@ -2591,6 +2793,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     )
     assert record["candidate_evidence_gap_summary"] == payload[
         "candidate_evidence_gap_summary"
+    ]
+    assert record["candidate_gap_closure_queue_path"].endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
+    assert record["candidate_gap_closure_queue"] == payload[
+        "candidate_gap_closure_queue"
     ]
     assert record["next_action_selector"] == payload["next_action_selector"]
     assert record["work_order_exports"] == payload["work_order_exports"]
@@ -2733,6 +2941,12 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["candidate_evidence_gap_summary"] == payload[
         "candidate_evidence_gap_summary"
     ]
+    assert manifest["candidate_gap_closure_queue_path"].endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
+    assert manifest["candidate_gap_closure_queue"] == payload[
+        "candidate_gap_closure_queue"
+    ]
     assert manifest["history_delta"] == delta
     assert manifest["executive_action_queue"] == payload["executive_action_queue"]
     assert manifest["executive_action_summary"] == payload["executive_action_summary"]
@@ -2769,6 +2983,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert manifest["indexed_artifacts"]["candidate_evidence_gap_summary"][
         "path"
     ].endswith("candidate_evidence_gap_summary.jsonl")
+    assert "candidate_gap_closure_queue" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["candidate_gap_closure_queue"][
+        "path"
+    ].endswith("candidate_gap_closure_queue.jsonl")
     assert "turnover_summary" in manifest["indexed_artifacts"]
     assert "cost_model_summary" in manifest["indexed_artifacts"]
     assert "gpt_next_action_handoff" in manifest["indexed_artifacts"]
@@ -2794,10 +3012,10 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.19 - Candidate Evidence Gap Summary"
+            "Assistant v1.20 - Candidate Gap Closure Queue"
             in work_order
         )
-        assert "collect_offline_review_feedback" in work_order
+        assert "execute_candidate_gap_closure_queue_item_001" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
@@ -2809,6 +3027,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "candidate_evidence_collection_plan.jsonl" in work_order
         assert "candidate_evidence_collection_status.jsonl" in work_order
         assert "candidate_evidence_gap_summary.jsonl" in work_order
+        assert "candidate_gap_closure_queue.jsonl" in work_order
         assert "## Paper observation readiness" in work_order
         assert "## Research board prioritization" in work_order
         assert "## Strategy comparison scaffold" in work_order
@@ -2817,6 +3036,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "## Candidate Evidence Collection Plan" in work_order
         assert "## Candidate Evidence Collection Status" in work_order
         assert "## Candidate Evidence Gap Summary" in work_order
+        assert "## Candidate Gap Closure Queue" in work_order
         assert "offline_strategy_evidence_template_only" in work_order
         assert "materialize_candidate_evidence_requirements" in work_order
         assert "offline_candidate_evidence_requirements_only" in work_order
@@ -2827,6 +3047,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "build_candidate_evidence_gap_summary" in work_order
         assert "offline_candidate_evidence_gap_summary_only" in work_order
         assert "build_candidate_gap_closure_queue" in work_order
+        assert "offline_candidate_gap_closure_queue_only" in work_order
         assert "hard_gate_prepared_not_authorized" in work_order
         assert "turnover_summary.jsonl" in work_order
         assert "cost_model_summary.jsonl" in work_order
@@ -3363,6 +3584,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "## Baseline health evaluation",
         "## Baseline evidence metrics",
         "## Paper observation readiness",
+        "## Candidate Gap Closure Queue",
         "## History delta",
         "## Safety assessment",
         "## Reviewer instructions",
@@ -3403,6 +3625,7 @@ def test_etf_sma_daily_paper_lab_review_handoff_sections_and_safety(
         "baseline_health_evaluation.jsonl",
         "baseline_evidence_metrics.jsonl",
         "paper_observation_readiness.jsonl",
+        "candidate_gap_closure_queue.jsonl",
         "turnover_summary.jsonl",
         "cost_model_summary.jsonl",
         "review_inputs",
@@ -3584,31 +3807,24 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
     _assert_next_action_selector_shape(payload["next_action_selector"])
     assert payload["review_classification"] == "accepted"
     assert payload["next_action_selector"]["status"] == (
-        "safe_offline_research_candidate_selected"
+        "candidate_gap_closure_queue_item_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "baseline_evidence_metrics_snapshot_spy_sma_50_200"
+        "execute_candidate_gap_closure_queue_item_001"
     )
-    assert payload["next_action_selector"]["selected_research_candidate_id"] == (
-        "baseline_evidence_metrics_snapshot_spy_sma_50_200"
-    )
+    assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
     )
     assert payload["next_action_selector"]["blocks_offline_build"] is False
     assert payload["next_action_selector"]["broker_action_allowed"] is False
     assert payload["next_action_selector"]["llm_runtime_calls_allowed"] is False
-    selected_candidate = next(
-        candidate
-        for candidate in payload["research_candidate_queue"]["candidates"]
-        if (
-            candidate["candidate_id"]
-            == "baseline_evidence_metrics_snapshot_spy_sma_50_200"
-        )
-    )
-    assert "etf-sma-authorized-adjusted-baseline-metrics" in selected_candidate[
-        "expected_artifact_or_command"
+    assert "candidate_gap_closure_queue_ready" in payload["next_action_selector"][
+        "reason_codes"
     ]
+    assert payload["candidate_gap_closure_queue"]["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_001"
+    )
 
 
 def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
@@ -3642,7 +3858,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "21/31 required checks passed; 10 failed; 0 warnings"
+        "21/32 required checks passed; 11 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
@@ -3653,6 +3869,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
         "candidate_evidence_collection_plan_generated",
         "candidate_evidence_collection_status_generated",
         "candidate_evidence_gap_summary_generated",
+        "candidate_gap_closure_queue_generated",
         "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
@@ -4019,7 +4236,7 @@ def test_etf_sma_daily_paper_lab_candidate_evidence_collection_plan(
         EtfSmaDailyPaperLabConfig(
             output_root=output_root,
             bars_csv=bars_csv,
-            as_of_date="2024-10-18",
+            as_of_date="2025-07-20",
             symbol="SPY",
         )
     )
@@ -4274,6 +4491,95 @@ def test_etf_sma_daily_paper_lab_candidate_evidence_gap_summary(
     assert data["profit_claim"] == "none"
     assert data["daniel_action_required_now"] is False
     assert "candidate_evidence_gap_summary_generated" not in payload[
+        "quality_gate_failed_checks"
+    ]
+    validation_result = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+    assert validation_result["validation_status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.20 candidate gap closure queue artifact and wiring."""
+    output_root = tmp_path / "paper_lab_candidate_gap_queue_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    queue_file = output_root / "candidate_gap_closure_queue.jsonl"
+    assert queue_file.exists()
+    lines = queue_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_candidate_gap_closure_queue_shape(data)
+    _assert_candidate_gap_closure_queue_shape(
+        payload["candidate_gap_closure_queue"]
+    )
+    assert data == payload["candidate_gap_closure_queue"]
+    assert payload["candidate_gap_closure_queue_path"].endswith(
+        "candidate_gap_closure_queue.jsonl"
+    )
+
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    assert manifest["candidate_gap_closure_queue"] == data
+    assert record["candidate_gap_closure_queue"] == data
+    assert "candidate_gap_closure_queue" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["candidate_gap_closure_queue"][
+        "path"
+    ].endswith("candidate_gap_closure_queue.jsonl")
+
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    handoff = (output_root / "review_handoff.md").read_text(encoding="utf-8")
+    for markdown in (brief, handoff):
+        assert "## Candidate Gap Closure Queue" in markdown
+        assert "candidate_gap_closure_queue.jsonl" in markdown
+        assert "offline_candidate_gap_closure_queue_only" in markdown
+        assert "candidate_gap_closure_queue_item_001" in markdown
+        assert "execute_candidate_gap_closure_queue_item_001" in markdown
+        assert "broker_state_not_observed" in markdown
+        assert "profit_claim=none" in markdown
+
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert payload["next_action_selector"]["candidate_gap_closure_queue"] == data
+    assert payload["work_order_exports"]["candidate_gap_closure_queue"] == data
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "execute_candidate_gap_closure_queue_item_001"
+    )
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "codex_work_order"
+    )
+    assert data["queue_status"] == "ready"
+    assert data["queue_mode"] == "offline_candidate_gap_closure_queue_only"
+    assert data["queue_item_count"] > 0
+    assert data["selected_queue_item_id"] == (
+        "candidate_gap_closure_queue_item_001"
+    )
+    assert data["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_001"
+    )
+    assert data["broker_state_mode"] == "broker_state_not_observed"
+    assert data["broker_state_observed"] is False
+    assert data["paper_submit_authorized"] is False
+    assert data["daniel_action_required_now"] is False
+    assert data["profit_claim"] == "none"
+    assert "candidate_gap_closure_queue_generated" not in payload[
         "quality_gate_failed_checks"
     ]
     validation_result = validate_etf_sma_daily_paper_lab_packet(

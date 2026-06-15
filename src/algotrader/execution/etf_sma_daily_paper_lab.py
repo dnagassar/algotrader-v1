@@ -72,11 +72,14 @@ _CANDIDATE_EVIDENCE_COLLECTION_STATUS_VERSION = (
 _CANDIDATE_EVIDENCE_GAP_SUMMARY_VERSION = (
     "assistant_v1.19_candidate_evidence_gap_summary"
 )
-_PHASE_NAME = "Assistant v1.19 - Candidate Evidence Gap Summary"
+_CANDIDATE_GAP_CLOSURE_QUEUE_VERSION = (
+    "assistant_v1.20_candidate_gap_closure_queue"
+)
+_PHASE_NAME = "Assistant v1.20 - Candidate Gap Closure Queue"
 _PHASE_GOAL = (
-    "Summarize and rank deterministic offline candidate evidence gaps before "
-    "any strategy implementation, promotion, paper observation, broker read, "
-    "paper submit, or live trading."
+    "Convert deterministic offline candidate evidence gaps into a closure queue "
+    "before any strategy implementation, promotion, paper observation, broker "
+    "read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -108,6 +111,7 @@ _CANDIDATE_EVIDENCE_COLLECTION_STATUS_FILENAME = (
     "candidate_evidence_collection_status.jsonl"
 )
 _CANDIDATE_EVIDENCE_GAP_SUMMARY_FILENAME = "candidate_evidence_gap_summary.jsonl"
+_CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME = "candidate_gap_closure_queue.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -177,6 +181,10 @@ _EXPECTED_ARTIFACTS = (
         "candidate_evidence_gap_summary",
         _CANDIDATE_EVIDENCE_GAP_SUMMARY_FILENAME,
     ),
+    (
+        "candidate_gap_closure_queue",
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME,
+    ),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -227,6 +235,8 @@ _REQUIRED_PACKET_FIELDS = (
     "candidate_evidence_collection_status",
     "candidate_evidence_gap_summary_path",
     "candidate_evidence_gap_summary",
+    "candidate_gap_closure_queue_path",
+    "candidate_gap_closure_queue",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -299,6 +309,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "candidate_evidence_collection_status",
     "candidate_evidence_gap_summary_path",
     "candidate_evidence_gap_summary",
+    "candidate_gap_closure_queue_path",
+    "candidate_gap_closure_queue",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -975,6 +987,67 @@ _REQUIRED_CANDIDATE_EVIDENCE_GAP_GROUP_FIELDS = (
     "why_ranked_here",
     "next_gap_closure_action",
 )
+_REQUIRED_CANDIDATE_GAP_CLOSURE_QUEUE_FIELDS = (
+    "candidate_gap_closure_queue_version",
+    "queue_status",
+    "queue_mode",
+    "artifact_path",
+    "source_gap_summary_path",
+    "source_gap_summary_status",
+    "baseline_strategy_id",
+    "baseline_strategy_role",
+    "queue_item_count",
+    "queue_items",
+    "selected_queue_item_id",
+    "selected_next_safe_action",
+    "selected_next_safe_action_type",
+    "selected_work_order",
+    "selected_owner",
+    "selection_policy",
+    "generation_inputs",
+    "next_research_artifacts_to_build",
+    "allowed_scope",
+    "forbidden_scope",
+    "acceptance_criteria",
+    "why_selected",
+    "why_no_strategy_implementation_yet",
+    "broker_state_mode",
+    "broker_state_observed",
+    "paper_submit_authorized",
+    "daniel_action_required_now",
+    "profit_claim",
+    "safety_scope",
+    "safety_labels",
+)
+_REQUIRED_CANDIDATE_GAP_CLOSURE_QUEUE_ITEM_FIELDS = (
+    "queue_item_id",
+    "action_id",
+    "rank",
+    "priority",
+    "action_priority",
+    "candidate_family",
+    "candidate_family_id",
+    "gap_group_id",
+    "gap_group_label",
+    "gap_id",
+    "gap_label",
+    "gap_status",
+    "closure_action",
+    "closure_objective",
+    "expected_evidence_artifact",
+    "recommended_agent",
+    "allowed_scope",
+    "forbidden_scope",
+    "acceptance_criteria",
+    "blocked_by",
+    "daniel_action_required",
+    "broker_state_mode",
+    "broker_state_observed",
+    "paper_submit_authorized",
+    "profit_claim",
+    "safety_scope",
+    "safety_labels",
+)
 _CANDIDATE_EVIDENCE_GAP_PRIORITIES = ("high", "medium", "low")
 _REQUIRED_CANDIDATE_EVIDENCE_ITEM_FIELDS = (
     "evidence_item_id",
@@ -1194,6 +1267,7 @@ def _write_packet_artifacts(
     _apply_candidate_evidence_collection_plan(payload, output_root)
     _apply_candidate_evidence_collection_status(payload, output_root)
     _apply_candidate_evidence_gap_summary(payload, output_root)
+    _apply_candidate_gap_closure_queue(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -1210,6 +1284,7 @@ def _write_packet_artifacts(
     _write_candidate_evidence_collection_plan_artifact(output_root, payload)
     _write_candidate_evidence_collection_status_artifact(output_root, payload)
     _write_candidate_evidence_gap_summary_artifact(output_root, payload)
+    _write_candidate_gap_closure_queue_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -3130,6 +3205,20 @@ def _write_candidate_evidence_gap_summary_artifact(
     )
 
 
+def _write_candidate_gap_closure_queue_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    queue = payload.get("candidate_gap_closure_queue")
+    record = queue if isinstance(queue, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _apply_packet_validation(
     payload: dict[str, Any],
     validation: Mapping[str, Any],
@@ -3640,6 +3729,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     candidate_evidence_gap_summary_defaults = (
         _default_candidate_evidence_gap_summary_fields(artifact_paths)
     )
+    candidate_gap_closure_queue_defaults = (
+        _default_candidate_gap_closure_queue_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -3726,6 +3818,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **candidate_evidence_collection_plan_defaults,
         **candidate_evidence_collection_status_defaults,
         **candidate_evidence_gap_summary_defaults,
+        **candidate_gap_closure_queue_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -3769,6 +3862,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "candidate_evidence_gap_summary": artifact_paths[
                 "candidate_evidence_gap_summary"
+            ],
+            "candidate_gap_closure_queue": artifact_paths[
+                "candidate_gap_closure_queue"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -3917,6 +4013,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "candidate_evidence_gap_summary": dict(
                 candidate_evidence_gap_summary_defaults[
                     "candidate_evidence_gap_summary"
+                ]
+            ),
+            "candidate_gap_closure_queue_path": (
+                candidate_gap_closure_queue_defaults[
+                    "candidate_gap_closure_queue_path"
+                ]
+            ),
+            "candidate_gap_closure_queue": dict(
+                candidate_gap_closure_queue_defaults[
+                    "candidate_gap_closure_queue"
                 ]
             ),
             "next_action_selector": dict(
@@ -4306,6 +4412,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "candidate_evidence_gap_summary": _normalize_path(
             output_root / _CANDIDATE_EVIDENCE_GAP_SUMMARY_FILENAME
+        ),
+        "candidate_gap_closure_queue": _normalize_path(
+            output_root / _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -6657,6 +6766,396 @@ def _apply_candidate_evidence_gap_summary(
         dashboard["candidate_evidence_gap_summary"] = dict(gap_summary)
 
 
+def _candidate_gap_group_for_category(category: str) -> str:
+    category_groups = (
+        (
+            "strategy_definition_gaps",
+            {
+                "hypothesis",
+                "feature_definition",
+                "feature_calculation",
+                "signal_rule",
+                "risk_rule",
+            },
+        ),
+        (
+            "data_and_feature_gaps",
+            {
+                "data",
+                "data_source",
+                "data_basis",
+                "feature_definition",
+                "feature_calculation",
+            },
+        ),
+        (
+            "backtest_and_benchmark_gaps",
+            {"backtest_window", "backtest_outputs", "benchmark_comparison"},
+        ),
+        (
+            "cost_turnover_drawdown_gaps",
+            {"cost_turnover", "transaction_cost_assumption", "turnover", "drawdown"},
+        ),
+        (
+            "regime_and_failure_mode_gaps",
+            {"drawdown_regime", "regime_sensitivity", "failure_modes"},
+        ),
+        (
+            "safety_and_dependency_gaps",
+            {
+                "safety_review",
+                "dependency_direction",
+                "network_guard",
+                "broker_mutation_guard",
+                "broker_dependency",
+                "llm_agent_dependency",
+            },
+        ),
+        ("paper_observation_deferred_gaps", {"paper_observation_deferred"}),
+    )
+    for group_id, categories in category_groups:
+        if category in categories:
+            return group_id
+    return "strategy_definition_gaps"
+
+
+def _candidate_gap_lookup(
+    gap_summary: Mapping[str, Any],
+) -> dict[tuple[str, str], dict[str, Any]]:
+    lookup: dict[tuple[str, str], dict[str, Any]] = {}
+    candidate_summaries = gap_summary.get("candidate_gap_summaries", [])
+    if isinstance(candidate_summaries, list):
+        for candidate in candidate_summaries:
+            if not isinstance(candidate, Mapping):
+                continue
+            candidate_id = str(candidate.get("candidate_family_id", "unknown"))
+            candidate_label = str(
+                candidate.get("candidate_family_label", candidate_id)
+            )
+            gaps = candidate.get("evidence_gaps", [])
+            if not isinstance(gaps, list):
+                continue
+            for gap in gaps:
+                if not isinstance(gap, Mapping):
+                    continue
+                gap_record = dict(gap)
+                gap_record["candidate_family_id"] = candidate_id
+                gap_record["candidate_family"] = candidate_label
+                lookup[(candidate_id, str(gap.get("gap_id", "")))] = gap_record
+
+    shared_gaps = gap_summary.get("shared_gap_summary", [])
+    if isinstance(shared_gaps, list):
+        for gap in shared_gaps:
+            if not isinstance(gap, Mapping):
+                continue
+            gap_id = str(gap.get("shared_gap_id", ""))
+            gap_record = dict(gap)
+            gap_record["gap_id"] = gap_id
+            gap_record["gap_label"] = str(gap.get("shared_gap_label", gap_id))
+            gap_record["candidate_family_id"] = "shared"
+            gap_record["candidate_family"] = "Shared candidate evidence"
+            lookup[("shared", gap_id)] = gap_record
+    return lookup
+
+
+def _ranked_candidate_gap_group_lookup(
+    gap_summary: Mapping[str, Any],
+) -> dict[str, dict[str, Any]]:
+    groups = gap_summary.get("ranked_gap_groups", [])
+    if not isinstance(groups, list):
+        return {}
+    return {
+        str(group.get("group_id")): dict(group)
+        for group in groups
+        if isinstance(group, Mapping)
+    }
+
+
+def _candidate_gap_closure_queue_allowed_scope(group_id: str) -> list[str]:
+    base_scope = [
+        "offline evidence collection",
+        "deterministic artifact materialization",
+        "local fixture/test construction",
+        "data-quality checks",
+    ]
+    if group_id in {
+        "backtest_and_benchmark_gaps",
+        "cost_turnover_drawdown_gaps",
+        "regime_and_failure_mode_gaps",
+    }:
+        base_scope.append("comparison scaffolding")
+    if group_id == "safety_and_dependency_gaps":
+        base_scope.append("offline dependency and safety audit")
+    return base_scope
+
+
+def _candidate_gap_closure_queue_forbidden_scope() -> list[str]:
+    return [
+        "broker observation",
+        "broker reads",
+        "broker mutation",
+        "paper submit",
+        "live trading",
+        "strategy implementation",
+        "optimizer implementation",
+        "backtester implementation",
+        "strategy registry or catalog expansion",
+        "network calls",
+        "credential use",
+        "runtime LLM or agent calls in the trading path",
+    ]
+
+
+def _candidate_gap_closure_acceptance_criteria(
+    artifact_name: str,
+    gap_id: str,
+) -> list[str]:
+    return [
+        f"{artifact_name} is a deterministic offline JSONL artifact",
+        f"artifact records source gap_id={gap_id}",
+        "artifact is derived from local packet evidence or local fixtures only",
+        "artifact makes no profit claim",
+        "artifact preserves broker_state_not_observed",
+        "artifact preserves paper_submit_authorized=false",
+        "artifact does not implement, promote, or register a candidate strategy",
+        "unit coverage keeps default pytest offline, credential-free, broker-free, and network-free",
+    ]
+
+
+def _candidate_gap_action_priority(priority: str) -> str:
+    if priority == "high":
+        return "P2"
+    if priority == "medium":
+        return "P3"
+    return "P3"
+
+
+def _candidate_gap_closure_queue_item(
+    *,
+    rank: int,
+    priority_gap: Mapping[str, Any],
+    gap_detail: Mapping[str, Any],
+    group: Mapping[str, Any],
+) -> dict[str, Any]:
+    item_id = f"candidate_gap_closure_queue_item_{rank:03d}"
+    gap_id = str(priority_gap["gap_id"])
+    candidate_family_id = str(priority_gap["candidate_family_id"])
+    candidate_family = str(
+        gap_detail.get("candidate_family", candidate_family_id)
+    )
+    gap_label = str(priority_gap.get("gap_label", gap_id))
+    gap_status = str(priority_gap.get("status", gap_detail.get("status", "missing")))
+    expected_artifact = str(
+        priority_gap.get(
+            "closure_artifact",
+            gap_detail.get("closure_artifact", _candidate_gap_closure_artifact(gap_id)),
+        )
+    )
+    group_id = str(group.get("group_id", "strategy_definition_gaps"))
+    closure_action = str(
+        group.get("next_gap_closure_action", f"close_{group_id}")
+    )
+    return {
+        "queue_item_id": item_id,
+        "action_id": f"execute_{item_id}",
+        "rank": rank,
+        "priority": str(priority_gap.get("priority", "high")),
+        "action_priority": _candidate_gap_action_priority(
+            str(priority_gap.get("priority", "high"))
+        ),
+        "candidate_family": candidate_family,
+        "candidate_family_id": candidate_family_id,
+        "gap_group_id": group_id,
+        "gap_group_label": str(group.get("group_label", group_id)),
+        "gap_id": gap_id,
+        "gap_label": gap_label,
+        "gap_status": gap_status,
+        "closure_action": closure_action,
+        "closure_objective": (
+            f"Create {expected_artifact} for {gap_label} using only deterministic "
+            "offline packet evidence before any candidate implementation, "
+            "promotion, paper observation, broker read, paper submit, or live trading."
+        ),
+        "expected_evidence_artifact": expected_artifact,
+        "recommended_agent": "Codex",
+        "allowed_scope": _candidate_gap_closure_queue_allowed_scope(group_id),
+        "forbidden_scope": _candidate_gap_closure_queue_forbidden_scope(),
+        "acceptance_criteria": _candidate_gap_closure_acceptance_criteria(
+            expected_artifact,
+            gap_id,
+        ),
+        "blocked_by": [gap_status],
+        "daniel_action_required": False,
+        "broker_state_mode": "broker_state_not_observed",
+        "broker_state_observed": False,
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+        "safety_scope": (
+            "offline_only; research_only; signal_evaluation_only; "
+            "paper_lab_only; not_live_authorized; broker_state_not_observed; "
+            "paper_submit_not_authorized; profit_claim=none"
+        ),
+        "safety_labels": list(_REQUIRED_LABELS),
+    }
+
+
+def _candidate_gap_closure_queue_items(
+    gap_summary: Mapping[str, Any],
+) -> list[dict[str, Any]]:
+    gap_lookup = _candidate_gap_lookup(gap_summary)
+    group_lookup = _ranked_candidate_gap_group_lookup(gap_summary)
+    priority_gaps = gap_summary.get("highest_priority_gaps", [])
+    if not isinstance(priority_gaps, list):
+        priority_gaps = []
+
+    queue_items: list[dict[str, Any]] = []
+    for priority_gap in priority_gaps:
+        if not isinstance(priority_gap, Mapping):
+            continue
+        candidate_family_id = str(priority_gap.get("candidate_family_id", "shared"))
+        gap_id = str(priority_gap.get("gap_id", ""))
+        gap_detail = gap_lookup.get((candidate_family_id, gap_id), dict(priority_gap))
+        gap_category = str(gap_detail.get("gap_category", ""))
+        group_id = _candidate_gap_group_for_category(gap_category)
+        group = group_lookup.get(group_id, {"group_id": group_id})
+        queue_items.append(
+            _candidate_gap_closure_queue_item(
+                rank=len(queue_items) + 1,
+                priority_gap=priority_gap,
+                gap_detail=gap_detail,
+                group=group,
+            )
+        )
+    return queue_items
+
+
+def _build_candidate_gap_closure_queue(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    gap_summary = _candidate_evidence_gap_summary_record(payload, artifact_paths)
+    queue_items = _candidate_gap_closure_queue_items(gap_summary)
+    selected_item = queue_items[0] if queue_items else {}
+    selected_item_id = str(selected_item.get("queue_item_id", ""))
+    selected_action = str(
+        selected_item.get(
+            "action_id",
+            "execute_candidate_gap_closure_queue_item_001",
+        )
+    )
+    return {
+        "candidate_gap_closure_queue_version": (
+            _CANDIDATE_GAP_CLOSURE_QUEUE_VERSION
+        ),
+        "queue_status": "ready",
+        "queue_mode": "offline_candidate_gap_closure_queue_only",
+        "artifact_path": str(artifact_paths["candidate_gap_closure_queue"]),
+        "source_gap_summary_path": str(
+            artifact_paths["candidate_evidence_gap_summary"]
+        ),
+        "source_gap_summary_status": str(
+            gap_summary.get("gap_summary_status", "ready")
+        ),
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "queue_item_count": len(queue_items),
+        "queue_items": queue_items,
+        "selected_queue_item_id": selected_item_id,
+        "selected_next_safe_action": selected_action,
+        "selected_next_safe_action_type": "candidate_gap_closure_queue_item",
+        "selected_work_order": "codex_work_order",
+        "selected_owner": "Codex",
+        "selection_policy": (
+            "highest_priority_gaps_from_candidate_evidence_gap_summary_in_"
+            "deterministic_gap_order"
+        ),
+        "generation_inputs": [
+            "candidate_evidence_gap_summary.ranked_gap_groups",
+            "candidate_evidence_gap_summary.highest_priority_gaps",
+            "candidate_evidence_gap_summary.next_gap_closure_actions",
+        ],
+        "next_research_artifacts_to_build": [
+            str(item["expected_evidence_artifact"]) for item in queue_items
+        ],
+        "allowed_scope": [
+            "offline evidence collection",
+            "deterministic artifact materialization",
+            "comparison scaffolding",
+            "fixture/test construction",
+            "data-quality checks",
+        ],
+        "forbidden_scope": _candidate_gap_closure_queue_forbidden_scope(),
+        "acceptance_criteria": [
+            "candidate_gap_closure_queue.jsonl exists as one deterministic JSONL record",
+            "queue items are derived from v1.19 ranked gap groups and highest priority gaps",
+            "first selected action is a concrete queue item rather than queue construction",
+            "no queue item recommends broker observation, broker reads, broker mutation, paper submit, or live trading",
+            "queue preserves broker_state_not_observed, paper_submit_authorized=false, daniel_action_required=false, and profit_claim=none",
+        ],
+        "why_selected": (
+            "The gap summary artifact already exists, so the next useful "
+            "offline-only assistant step is to execute the first concrete gap "
+            "closure queue item."
+        ),
+        "why_no_strategy_implementation_yet": (
+            "Candidate strategy implementation remains blocked until queued "
+            "offline evidence artifacts are materialized, reviewed, and compared "
+            "against the SPY SMA 50/200 control harness."
+        ),
+        "broker_state_mode": "broker_state_not_observed",
+        "broker_state_observed": False,
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": (
+            "offline_only; research_only; signal_evaluation_only; paper_lab_only; "
+            "not_live_authorized; broker_state_not_observed; "
+            "paper_submit_not_authorized; profit_claim=none"
+        ),
+        "safety_labels": list(_REQUIRED_LABELS),
+    }
+
+
+def _default_candidate_gap_closure_queue_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    queue = _build_candidate_gap_closure_queue({}, artifact_paths)
+    return {
+        "candidate_gap_closure_queue_path": str(
+            artifact_paths["candidate_gap_closure_queue"]
+        ),
+        "candidate_gap_closure_queue": queue,
+    }
+
+
+def _candidate_gap_closure_queue_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    queue = payload.get("candidate_gap_closure_queue")
+    if isinstance(queue, Mapping):
+        return dict(queue)
+    return _build_candidate_gap_closure_queue(payload, artifact_paths)
+
+
+def _apply_candidate_gap_closure_queue(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    queue = _build_candidate_gap_closure_queue(payload, artifact_paths)
+    payload["candidate_gap_closure_queue_path"] = str(
+        artifact_paths["candidate_gap_closure_queue"]
+    )
+    payload["candidate_gap_closure_queue"] = queue
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["candidate_gap_closure_queue_path"] = payload[
+            "candidate_gap_closure_queue_path"
+        ]
+        dashboard["candidate_gap_closure_queue"] = dict(queue)
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -6788,6 +7287,7 @@ def _default_next_action_selector_fields(
         artifact_paths,
     )
     gap_summary = _build_candidate_evidence_gap_summary({}, artifact_paths)
+    gap_closure_queue = _build_candidate_gap_closure_queue({}, artifact_paths)
     return {
         "next_action_selector": {
             "next_action_selector_version": _NEXT_ACTION_SELECTOR_VERSION,
@@ -6847,6 +7347,10 @@ def _default_next_action_selector_fields(
                 artifact_paths["candidate_evidence_gap_summary"]
             ),
             "candidate_evidence_gap_summary": dict(gap_summary),
+            "candidate_gap_closure_queue_path": str(
+                artifact_paths["candidate_gap_closure_queue"]
+            ),
+            "candidate_gap_closure_queue": dict(gap_closure_queue),
             "source_state": {},
         }
     }
@@ -6867,6 +7371,7 @@ def _default_work_order_export_fields(
         artifact_paths,
     )
     gap_summary = _build_candidate_evidence_gap_summary({}, artifact_paths)
+    gap_closure_queue = _build_candidate_gap_closure_queue({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -6936,6 +7441,19 @@ def _default_work_order_export_fields(
             "candidate_evidence_gap_summary": dict(gap_summary),
             "candidate_evidence_gap_summary_status": str(
                 gap_summary["gap_summary_status"]
+            ),
+            "candidate_gap_closure_queue_path": str(
+                artifact_paths["candidate_gap_closure_queue"]
+            ),
+            "candidate_gap_closure_queue": dict(gap_closure_queue),
+            "candidate_gap_closure_queue_status": str(
+                gap_closure_queue["queue_status"]
+            ),
+            "candidate_gap_closure_queue_selected_item_id": str(
+                gap_closure_queue["selected_queue_item_id"]
+            ),
+            "candidate_gap_closure_queue_selected_next_safe_action": str(
+                gap_closure_queue["selected_next_safe_action"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -7130,6 +7648,52 @@ def _build_next_action_selector(
                 "quality_gate_or_safety_invariant_repair",
             ),
         )
+
+    gap_closure_queue = payload.get("candidate_gap_closure_queue")
+    if isinstance(gap_closure_queue, Mapping):
+        queue_items = gap_closure_queue.get("queue_items")
+        if (
+            gap_closure_queue.get("queue_status") == "ready"
+            and isinstance(queue_items, list)
+            and queue_items
+        ):
+            selected_item = queue_items[0]
+            if isinstance(selected_item, Mapping):
+                return _selector_result(
+                    artifact_paths=artifact_paths,
+                    source_state=source_state,
+                    status="candidate_gap_closure_queue_item_selected",
+                    priority=str(selected_item.get("action_priority", "P2")),
+                    selected_next_action_id=str(
+                        gap_closure_queue.get(
+                            "selected_next_safe_action",
+                            selected_item.get("action_id"),
+                        )
+                    ),
+                    selected_next_action_type="candidate_gap_closure_queue_item",
+                    selected_work_order=str(
+                        gap_closure_queue.get("selected_work_order", "codex_work_order")
+                    ),
+                    selected_owner=str(gap_closure_queue.get("selected_owner", "Codex")),
+                    rationale=str(
+                        gap_closure_queue.get(
+                            "why_selected",
+                            "Safe offline candidate gap closure queue item selected.",
+                        )
+                    ),
+                    reason_codes=[
+                        "quality_gate_not_failed",
+                        "candidate_gap_closure_queue_ready",
+                        str(selected_item.get("queue_item_id", "queue_item_missing")),
+                        str(selected_item.get("gap_group_id", "gap_group_missing")),
+                    ],
+                    blocks_offline_build=False,
+                    requires_daniel=bool(
+                        selected_item.get("daniel_action_required", False)
+                    ),
+                    hard_gate_required=False,
+                    selected_research_candidate=None,
+                )
 
     review_input_status = str(payload.get("review_input_status", "review_input_not_found"))
     if review_input_status in {
@@ -7418,6 +7982,14 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             )
             else {}
         ),
+        "candidate_gap_closure_queue": dict(
+            payload.get("candidate_gap_closure_queue", {})
+            if isinstance(
+                payload.get("candidate_gap_closure_queue"),
+                Mapping,
+            )
+            else {}
+        ),
     }
 
 
@@ -7556,6 +8128,17 @@ def _selector_result(
             )
             else {}
         ),
+        "candidate_gap_closure_queue_path": str(
+            artifact_paths["candidate_gap_closure_queue"]
+        ),
+        "candidate_gap_closure_queue": dict(
+            source_state.get("candidate_gap_closure_queue", {})
+            if isinstance(
+                source_state.get("candidate_gap_closure_queue"),
+                Mapping,
+            )
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -7646,6 +8229,10 @@ def _apply_work_order_exports(
         payload,
         artifact_paths,
     )
+    gap_closure_queue = _candidate_gap_closure_queue_record(
+        payload,
+        artifact_paths,
+    )
     exports = {
         "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
         "status": "generated",
@@ -7712,6 +8299,19 @@ def _apply_work_order_exports(
         "candidate_evidence_gap_summary": dict(gap_summary),
         "candidate_evidence_gap_summary_status": str(
             gap_summary.get("gap_summary_status", "ready")
+        ),
+        "candidate_gap_closure_queue_path": str(
+            artifact_paths["candidate_gap_closure_queue"]
+        ),
+        "candidate_gap_closure_queue": dict(gap_closure_queue),
+        "candidate_gap_closure_queue_status": str(
+            gap_closure_queue.get("queue_status", "ready")
+        ),
+        "candidate_gap_closure_queue_selected_item_id": str(
+            gap_closure_queue.get("selected_queue_item_id", "")
+        ),
+        "candidate_gap_closure_queue_selected_next_safe_action": str(
+            gap_closure_queue.get("selected_next_safe_action", "")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -8784,6 +9384,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    gap_closure_queue_ok, gap_closure_queue_summary = (
+        _quality_candidate_gap_closure_queue_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -8896,6 +9503,11 @@ def _build_quality_gate(
             "candidate_evidence_gap_summary_generated",
             gap_summary_ok,
             gap_summary_summary,
+        ),
+        _quality_check(
+            "candidate_gap_closure_queue_generated",
+            gap_closure_queue_ok,
+            gap_closure_queue_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -9683,6 +10295,67 @@ def _quality_candidate_evidence_gap_summary_summary(
     )
 
 
+def _quality_candidate_gap_closure_queue_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_candidate_gap_closure_queue_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    queue = packet["candidate_gap_closure_queue"]
+    assert isinstance(queue, Mapping)
+    artifact_path = output_root / _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME} "
+            "must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME} is not JSON"
+    if artifact_record != queue:
+        return False, "candidate gap closure queue artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("candidate_gap_closure_queue")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index candidate_gap_closure_queue"
+    if not str(indexed.get("path", "")).endswith(
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    ):
+        return False, "manifest candidate gap closure queue path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME not in text:
+            return False, (
+                f"{text_name} does not reference candidate gap closure queue"
+            )
+        if "Candidate Gap Closure Queue" not in text:
+            return False, (
+                f"{text_name} does not include candidate gap closure queue section"
+            )
+    return True, (
+        "candidate gap closure queue generated; "
+        "queue_status=ready; "
+        "queue_mode=offline_candidate_gap_closure_queue_only; "
+        f"selected_next_safe_action={queue['selected_next_safe_action']}"
+    )
+
+
 def _quality_legacy_outputs_preserved_summary(
     artifact_presence_status: Mapping[str, Any],
 ) -> tuple[bool, str]:
@@ -9894,6 +10567,8 @@ def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
         "Candidate Evidence Collection Status",
         _CANDIDATE_EVIDENCE_GAP_SUMMARY_FILENAME,
         "Candidate Evidence Gap Summary",
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME,
+        "Candidate Gap Closure Queue",
         _REVIEW_INPUTS_DIRNAME,
         _WORK_ORDERS_DIRNAME,
         _GPT_WORK_ORDER_FILENAME,
@@ -10129,6 +10804,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_candidate_evidence_collection_plan_fields("", packet))
     missing.extend(_missing_candidate_evidence_collection_status_fields("", packet))
     missing.extend(_missing_candidate_evidence_gap_summary_fields("", packet))
+    missing.extend(_missing_candidate_gap_closure_queue_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -10203,6 +10879,7 @@ def _missing_manifest_fields(
         _missing_candidate_evidence_collection_status_fields("manifest", manifest)
     )
     missing.extend(_missing_candidate_evidence_gap_summary_fields("manifest", manifest))
+    missing.extend(_missing_candidate_gap_closure_queue_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -10244,6 +10921,8 @@ def _missing_manifest_fields(
         "candidate_evidence_collection_status",
         "candidate_evidence_gap_summary_path",
         "candidate_evidence_gap_summary",
+        "candidate_gap_closure_queue_path",
+        "candidate_gap_closure_queue",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -10331,6 +11010,14 @@ def _missing_manifest_fields(
         != dict(packet["candidate_evidence_gap_summary"])
     ):
         missing.append("manifest.candidate_evidence_gap_summary.matches_record")
+
+    if (
+        isinstance(packet.get("candidate_gap_closure_queue"), Mapping)
+        and isinstance(manifest.get("candidate_gap_closure_queue"), Mapping)
+        and dict(manifest["candidate_gap_closure_queue"])
+        != dict(packet["candidate_gap_closure_queue"])
+    ):
+        missing.append("manifest.candidate_gap_closure_queue.matches_record")
 
     if (
         isinstance(packet.get("baseline_health_evaluation"), Mapping)
@@ -11897,6 +12584,214 @@ def _missing_candidate_evidence_gap_summary_fields(
     return missing
 
 
+def _missing_candidate_gap_closure_queue_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    queue = packet.get("candidate_gap_closure_queue")
+    if not isinstance(queue, Mapping):
+        return [f"{field_prefix}candidate_gap_closure_queue"]
+    for field_name in _REQUIRED_CANDIDATE_GAP_CLOSURE_QUEUE_FIELDS:
+        if field_name not in queue:
+            missing.append(f"{field_prefix}candidate_gap_closure_queue.{field_name}")
+    if not str(packet.get("candidate_gap_closure_queue_path", "")).endswith(
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    ):
+        missing.append(f"{field_prefix}candidate_gap_closure_queue_path")
+    expected_values = {
+        "candidate_gap_closure_queue_version": (
+            _CANDIDATE_GAP_CLOSURE_QUEUE_VERSION
+        ),
+        "queue_status": "ready",
+        "queue_mode": "offline_candidate_gap_closure_queue_only",
+        "source_gap_summary_status": "ready",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "baseline_strategy_role": "control_harness",
+        "selected_next_safe_action_type": "candidate_gap_closure_queue_item",
+        "selected_work_order": "codex_work_order",
+        "selected_owner": "Codex",
+        "broker_state_mode": "broker_state_not_observed",
+        "broker_state_observed": False,
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+    }
+    for field_name, expected_value in expected_values.items():
+        if queue.get(field_name) != expected_value:
+            missing.append(f"{field_prefix}candidate_gap_closure_queue.{field_name}")
+    if not str(queue.get("artifact_path", "")).endswith(
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    ):
+        missing.append(f"{field_prefix}candidate_gap_closure_queue.artifact_path")
+    if not str(queue.get("source_gap_summary_path", "")).endswith(
+        _CANDIDATE_EVIDENCE_GAP_SUMMARY_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue.source_gap_summary_path"
+        )
+    if _selector_contains_forbidden_action(
+        str(queue.get("selected_next_safe_action", ""))
+    ):
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue."
+            "selected_next_safe_action.safe"
+        )
+    if not str(queue.get("selected_next_safe_action", "")).startswith(
+        "execute_candidate_gap_closure_queue_item_"
+    ):
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue."
+            "selected_next_safe_action.concrete_item"
+        )
+    if "offline" not in str(queue.get("why_selected", "")).lower():
+        missing.append(f"{field_prefix}candidate_gap_closure_queue.why_selected")
+    implementation_reason = str(
+        queue.get("why_no_strategy_implementation_yet", "")
+    ).lower()
+    if (
+        "candidate strategy implementation remains blocked"
+        not in implementation_reason
+        or "offline evidence artifacts are materialized" not in implementation_reason
+        or "spy sma 50/200 control harness" not in implementation_reason
+    ):
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue."
+            "why_no_strategy_implementation_yet"
+        )
+    for list_field in (
+        "generation_inputs",
+        "next_research_artifacts_to_build",
+        "allowed_scope",
+        "forbidden_scope",
+        "acceptance_criteria",
+        "safety_labels",
+    ):
+        if not isinstance(queue.get(list_field), list) or not queue.get(list_field):
+            missing.append(f"{field_prefix}candidate_gap_closure_queue.{list_field}")
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "not_live_authorized",
+        "paper_lab_only",
+        "profit_claim=none",
+    ):
+        if label not in queue.get("safety_labels", []):
+            missing.append(
+                f"{field_prefix}candidate_gap_closure_queue.safety_labels.{label}"
+            )
+    serialized = json.dumps(
+        _json_safe(queue),
+        sort_keys=True,
+        separators=(",", ":"),
+    ).lower()
+    for forbidden in (
+        "paper_submit_authorized\":true",
+        "live_trading_authorized",
+        "broker_state_observed\":true",
+    ):
+        if forbidden in serialized:
+            missing.append(
+                f"{field_prefix}candidate_gap_closure_queue.forbidden.{forbidden}"
+            )
+    queue_items = queue.get("queue_items")
+    if not isinstance(queue_items, list) or not queue_items:
+        missing.append(f"{field_prefix}candidate_gap_closure_queue.queue_items")
+        return missing
+    if queue.get("queue_item_count") != len(queue_items):
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue.queue_item_count"
+        )
+    item_ids: set[str] = set()
+    action_ids: set[str] = set()
+    expected_rank = 1
+    for index, item in enumerate(queue_items):
+        item_prefix = (
+            f"{field_prefix}candidate_gap_closure_queue.queue_items[{index}]"
+        )
+        if not isinstance(item, Mapping):
+            missing.append(item_prefix)
+            continue
+        for field_name in _REQUIRED_CANDIDATE_GAP_CLOSURE_QUEUE_ITEM_FIELDS:
+            if field_name not in item:
+                missing.append(f"{item_prefix}.{field_name}")
+        item_id = str(item.get("queue_item_id", ""))
+        action_id = str(item.get("action_id", ""))
+        item_ids.add(item_id)
+        action_ids.add(action_id)
+        if item.get("rank") != expected_rank:
+            missing.append(f"{item_prefix}.rank")
+        expected_rank += 1
+        if item.get("priority") not in _CANDIDATE_EVIDENCE_GAP_PRIORITIES:
+            missing.append(f"{item_prefix}.priority.allowed")
+        if item.get("action_priority") not in _ACTION_PRIORITIES:
+            missing.append(f"{item_prefix}.action_priority.allowed")
+        if not action_id.startswith("execute_candidate_gap_closure_queue_item_"):
+            missing.append(f"{item_prefix}.action_id")
+        if not str(item.get("expected_evidence_artifact", "")).endswith(".jsonl"):
+            missing.append(f"{item_prefix}.expected_evidence_artifact")
+        if item.get("recommended_agent") not in {"Codex", "GPT", "Claude", "Antigravity"}:
+            missing.append(f"{item_prefix}.recommended_agent")
+        for list_field in (
+            "allowed_scope",
+            "forbidden_scope",
+            "acceptance_criteria",
+            "blocked_by",
+            "safety_labels",
+        ):
+            if not isinstance(item.get(list_field), list) or not item.get(list_field):
+                missing.append(f"{item_prefix}.{list_field}")
+        for false_field in (
+            "daniel_action_required",
+            "broker_state_observed",
+            "paper_submit_authorized",
+        ):
+            if item.get(false_field) is not False:
+                missing.append(f"{item_prefix}.{false_field}.false")
+        if item.get("broker_state_mode") != "broker_state_not_observed":
+            missing.append(f"{item_prefix}.broker_state_mode")
+        if item.get("profit_claim") != "none":
+            missing.append(f"{item_prefix}.profit_claim")
+        item_safety_scope = str(item.get("safety_scope", ""))
+        for safety_token in (
+            "offline_only",
+            "research_only",
+            "not_live_authorized",
+            "broker_state_not_observed",
+            "paper_submit_not_authorized",
+            "profit_claim=none",
+        ):
+            if safety_token not in item_safety_scope:
+                missing.append(f"{item_prefix}.safety_scope.{safety_token}")
+        item_text = json.dumps(
+            _json_safe(item),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).lower()
+        for forbidden_token in (
+            "broker reads allowed",
+            "broker mutation allowed",
+            "paper submit authorized",
+            "live trading authorized",
+        ):
+            if forbidden_token in item_text:
+                missing.append(f"{item_prefix}.forbidden.{forbidden_token}")
+    selected_item_id = str(queue.get("selected_queue_item_id", ""))
+    if selected_item_id not in item_ids:
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue.selected_queue_item_id"
+        )
+    selected_action = str(queue.get("selected_next_safe_action", ""))
+    if selected_action not in action_ids:
+        missing.append(
+            f"{field_prefix}candidate_gap_closure_queue."
+            "selected_next_safe_action.in_queue_items"
+        )
+    return missing
+
+
 def _missing_baseline_health_evaluation_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -12283,6 +13178,8 @@ def _missing_next_action_selector_fields(
         "candidate_evidence_collection_status",
         "candidate_evidence_gap_summary_path",
         "candidate_evidence_gap_summary",
+        "candidate_gap_closure_queue_path",
+        "candidate_gap_closure_queue",
         "source_state",
     )
     for field_name in required_fields:
@@ -12415,6 +13312,18 @@ def _missing_next_action_selector_fields(
             f"{field_prefix}next_action_selector."
             "candidate_evidence_gap_summary.object"
         )
+    if not str(selector.get("candidate_gap_closure_queue_path", "")).endswith(
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_gap_closure_queue_path"
+        )
+    if not isinstance(selector.get("candidate_gap_closure_queue"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_gap_closure_queue.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -12481,6 +13390,11 @@ def _missing_work_order_export_fields(
         "candidate_evidence_gap_summary_path",
         "candidate_evidence_gap_summary",
         "candidate_evidence_gap_summary_status",
+        "candidate_gap_closure_queue_path",
+        "candidate_gap_closure_queue",
+        "candidate_gap_closure_queue_status",
+        "candidate_gap_closure_queue_selected_item_id",
+        "candidate_gap_closure_queue_selected_next_safe_action",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -12651,6 +13565,37 @@ def _missing_work_order_export_fields(
         missing.append(
             f"{field_prefix}work_order_exports."
             "candidate_evidence_gap_summary_status"
+        )
+    if not str(exports.get("candidate_gap_closure_queue_path", "")).endswith(
+        _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_gap_closure_queue_path"
+        )
+    if not isinstance(exports.get("candidate_gap_closure_queue"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_gap_closure_queue.object"
+        )
+    if exports.get("candidate_gap_closure_queue_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_gap_closure_queue_status"
+        )
+    if not str(
+        exports.get("candidate_gap_closure_queue_selected_item_id", "")
+    ).startswith("candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_gap_closure_queue_selected_item_id"
+        )
+    if not str(
+        exports.get("candidate_gap_closure_queue_selected_next_safe_action", "")
+    ).startswith("execute_candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_gap_closure_queue_selected_next_safe_action"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -12895,6 +13840,29 @@ def _missing_brief_references(
         missing.append("operating_brief.decision_ledger")
     if "## Next Action Selector" not in brief_text:
         missing.append("operating_brief.next_action_selector.section")
+    if "## Candidate Gap Closure Queue" not in brief_text:
+        missing.append("operating_brief.candidate_gap_closure_queue.section")
+    gap_closure_queue = packet.get("candidate_gap_closure_queue")
+    if isinstance(gap_closure_queue, Mapping):
+        for field_name in (
+            "queue_status",
+            "queue_mode",
+            "selected_queue_item_id",
+            "selected_next_safe_action",
+            "broker_state_mode",
+            "profit_claim",
+        ):
+            value = gap_closure_queue.get(field_name)
+            if _has_required_value(value) and str(value) not in brief_text:
+                missing.append(
+                    f"operating_brief.candidate_gap_closure_queue.{field_name}"
+                )
+    gap_closure_queue_path = packet.get("candidate_gap_closure_queue_path")
+    if (
+        _has_required_value(gap_closure_queue_path)
+        and str(gap_closure_queue_path) not in brief_text
+    ):
+        missing.append("operating_brief.candidate_gap_closure_queue_path")
     if "Work order exports" not in brief_text:
         missing.append("operating_brief.work_order_exports")
     review_handoff_path = packet.get("review_handoff_path")
@@ -13294,6 +14262,8 @@ def _render_work_order_markdown(
     collection_status_json = _json_markdown(collection_status)
     gap_summary = payload["candidate_evidence_gap_summary"]
     gap_summary_json = _json_markdown(gap_summary)
+    gap_closure_queue = payload["candidate_gap_closure_queue"]
+    gap_closure_queue_json = _json_markdown(gap_closure_queue)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -13504,6 +14474,22 @@ def _render_work_order_markdown(
 {gap_summary_json}
 ```
 
+## Candidate Gap Closure Queue
+* **Artifact**: `{payload["candidate_gap_closure_queue_path"]}`
+* **Queue status**: `{gap_closure_queue["queue_status"]}`
+* **Queue mode**: `{gap_closure_queue["queue_mode"]}`
+* **Item count**: {gap_closure_queue["queue_item_count"]}
+* **First queue item**: `{gap_closure_queue["selected_queue_item_id"]}`
+* **Selected next safe action**: `{gap_closure_queue["selected_next_safe_action"]}`
+* **Broker-state mode**: `{gap_closure_queue["broker_state_mode"]}`
+* **Paper submit authorized**: {str(gap_closure_queue["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(gap_closure_queue["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{gap_closure_queue["profit_claim"]}`
+* **Safety scope**: `{gap_closure_queue["safety_scope"]}`
+```json
+{gap_closure_queue_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -13523,7 +14509,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_19_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_20_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -13543,6 +14529,7 @@ def _render_work_order_markdown(
 * `candidate_evidence_collection_plan.jsonl`
 * `candidate_evidence_collection_status.jsonl`
 * `candidate_evidence_gap_summary.jsonl`
+* `candidate_gap_closure_queue.jsonl`
 * `baseline_authorized_adjusted_metrics.jsonl`
 * `offline_backtest_confidence_summary.jsonl`
 * `adjusted_close_evidence.jsonl`
@@ -13637,6 +14624,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
         payload["candidate_evidence_collection_status"]
     )
     gap_summary_json = _json_markdown(payload["candidate_evidence_gap_summary"])
+    gap_closure_queue_json = _json_markdown(
+        payload["candidate_gap_closure_queue"]
+    )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -13898,6 +14888,22 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {gap_summary_json}
 ```
 
+## Candidate Gap Closure Queue
+* **Artifact**: `{payload["candidate_gap_closure_queue_path"]}`
+* **Queue status**: `{payload["candidate_gap_closure_queue"]["queue_status"]}`
+* **Queue mode**: `{payload["candidate_gap_closure_queue"]["queue_mode"]}`
+* **Item count**: {payload["candidate_gap_closure_queue"]["queue_item_count"]}
+* **First queue item**: `{payload["candidate_gap_closure_queue"]["selected_queue_item_id"]}`
+* **Selected next safe action**: `{payload["candidate_gap_closure_queue"]["selected_next_safe_action"]}`
+* **Broker-state mode**: `{payload["candidate_gap_closure_queue"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["candidate_gap_closure_queue"]["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(payload["candidate_gap_closure_queue"]["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{payload["candidate_gap_closure_queue"]["profit_claim"]}`
+* **Safety scope**: `{payload["candidate_gap_closure_queue"]["safety_scope"]}`
+```json
+{gap_closure_queue_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -13952,6 +14958,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
         payload["candidate_evidence_collection_status"]
     )
     gap_summary_json = _json_markdown(payload["candidate_evidence_gap_summary"])
+    gap_closure_queue_json = _json_markdown(
+        payload["candidate_gap_closure_queue"]
+    )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
         list(payload["quality_gate_failed_checks"]),
@@ -14251,6 +15260,22 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **profit_claim**: `{payload["candidate_evidence_gap_summary"]["profit_claim"]}`
 ```json
 {gap_summary_json}
+```
+
+## Candidate Gap Closure Queue
+* **candidate_gap_closure_queue_path**: `{payload["candidate_gap_closure_queue_path"]}`
+* **queue_status**: `{payload["candidate_gap_closure_queue"]["queue_status"]}`
+* **queue_mode**: `{payload["candidate_gap_closure_queue"]["queue_mode"]}`
+* **queue_item_count**: {payload["candidate_gap_closure_queue"]["queue_item_count"]}
+* **selected_queue_item_id**: `{payload["candidate_gap_closure_queue"]["selected_queue_item_id"]}`
+* **selected_next_safe_action**: `{payload["candidate_gap_closure_queue"]["selected_next_safe_action"]}`
+* **broker_state_mode**: `{payload["candidate_gap_closure_queue"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["candidate_gap_closure_queue"]["paper_submit_authorized"]).lower()}
+* **daniel_action_required_now**: {str(payload["candidate_gap_closure_queue"]["daniel_action_required_now"]).lower()}
+* **profit_claim**: `{payload["candidate_gap_closure_queue"]["profit_claim"]}`
+* **safety_scope**: `{payload["candidate_gap_closure_queue"]["safety_scope"]}`
+```json
+{gap_closure_queue_json}
 ```
 
 ## History delta
@@ -14601,6 +15626,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["candidate_evidence_gap_summary"] = _artifact_metadata(
             candidate_evidence_gap_summary_path
         )
+    candidate_gap_closure_queue_path = (
+        output_root / _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME
+    )
+    if candidate_gap_closure_queue_path.exists():
+        indexed_artifacts["candidate_gap_closure_queue"] = _artifact_metadata(
+            candidate_gap_closure_queue_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -14716,6 +15748,10 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "candidate_evidence_gap_summary": dict(
             payload["candidate_evidence_gap_summary"]
         ),
+        "candidate_gap_closure_queue_path": payload[
+            "candidate_gap_closure_queue_path"
+        ],
+        "candidate_gap_closure_queue": dict(payload["candidate_gap_closure_queue"]),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
