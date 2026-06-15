@@ -76,13 +76,13 @@ _CANDIDATE_GAP_CLOSURE_QUEUE_VERSION = (
     "assistant_v1.20_candidate_gap_closure_queue"
 )
 _CANDIDATE_RISK_RULE_STATUS_VERSION = (
-    "assistant_v1.21_candidate_risk_rule_status"
+    "assistant_v1.22_candidate_risk_rule_status"
 )
-_PHASE_NAME = "Assistant v1.21 - Candidate Risk Rule Status Artifact"
+_PHASE_NAME = "Assistant v1.22 - Candidate Risk Rule Status Artifact"
 _PHASE_GOAL = (
-    "Materialize deterministic offline candidate risk-rule status evidence "
-    "before any strategy implementation, promotion, paper observation, broker "
-    "read, paper submit, or live trading."
+    "Materialize deterministic offline candidate risk-rule status evidence for "
+    "candidate_gap_closure_queue_item_002 before any strategy implementation, "
+    "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -1066,11 +1066,24 @@ _REQUIRED_CANDIDATE_RISK_RULE_STATUS_FIELDS = (
     "risk_rule_status_mode",
     "baseline_strategy_id",
     "source_queue_item_id",
+    "source_action_id",
     "source_gap_id",
+    "source_candidate_family_id",
+    "source_candidate_family",
+    "source_gap_status",
+    "source_gap_group_id",
+    "source_gap_group_label",
+    "source_closure_action",
+    "source_closure_objective",
+    "source_expected_evidence_artifact",
     "candidate_family_count",
+    "candidate_scope_count",
+    "shared_scope_count",
     "candidate_risk_rule_summaries",
+    "target_candidate_risk_rule_summary",
     "shared_risk_rule_gaps",
     "highest_priority_risk_rule_gaps",
+    "evidence_status_summary",
     "risk_rule_acceptance_criteria",
     "next_risk_rule_closure_actions",
     "selected_next_safe_action",
@@ -1086,6 +1099,7 @@ _REQUIRED_CANDIDATE_RISK_RULE_SUMMARY_FIELDS = (
     "candidate_family_id",
     "candidate_family_label",
     "risk_rule_status",
+    "risk_rule_evidence_status",
     "risk_rule_defined",
     "position_sizing_defined",
     "max_loss_or_drawdown_rule_defined",
@@ -1094,6 +1108,7 @@ _REQUIRED_CANDIDATE_RISK_RULE_SUMMARY_FIELDS = (
     "data_quality_risk_rule_defined",
     "promotion_blockers",
     "missing_risk_rule_evidence",
+    "evidence_status_breakdown",
     "recommended_closure_action",
     "expected_evidence_artifact",
 )
@@ -7260,11 +7275,19 @@ def _candidate_risk_rule_queue_item(
     queue_items = queue.get("queue_items", [])
     if not isinstance(queue_items, list):
         return {}
+    first_risk_rule_item: dict[str, Any] = {}
     for item in queue_items:
         if not isinstance(item, Mapping):
             continue
-        if str(item.get("gap_id", "")) == "candidate_risk_rule_status":
+        if item.get("queue_item_id") == "candidate_gap_closure_queue_item_002":
             return dict(item)
+        if (
+            not first_risk_rule_item
+            and str(item.get("gap_id", "")) == "candidate_risk_rule_status"
+        ):
+            first_risk_rule_item = dict(item)
+    if first_risk_rule_item:
+        return first_risk_rule_item
     selected_item_id = str(queue.get("selected_queue_item_id", ""))
     for item in queue_items:
         if isinstance(item, Mapping) and item.get("queue_item_id") == selected_item_id:
@@ -7354,6 +7377,78 @@ def _candidate_missing_risk_rule_evidence(
     return list(dict.fromkeys(missing))
 
 
+def _candidate_risk_rule_evidence_status(
+    *,
+    status_item: Mapping[str, Any],
+    risk_gap: Mapping[str, Any],
+) -> str:
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(risk_gap.get("status", item_status or "missing"))
+    if item_status in {"not_applicable", "not-applicable"} or gap_status in {
+        "not_applicable",
+        "not-applicable",
+    }:
+        return "not_applicable"
+    if item_status in {"blocked"} or gap_status in {"blocked"}:
+        return "blocked"
+    if item_status in {"collected", "complete"} and gap_status in {
+        "collected",
+        "complete",
+    }:
+        return "complete"
+    return "incomplete"
+
+
+def _candidate_risk_rule_evidence_status_breakdown(
+    *,
+    status_item: Mapping[str, Any],
+    risk_gap: Mapping[str, Any],
+    missing_evidence: list[str],
+) -> dict[str, list[str]]:
+    breakdown: dict[str, list[str]] = {
+        "complete": [],
+        "incomplete": [],
+        "blocked": [],
+        "not_applicable": [],
+    }
+    evidence_item_id = str(
+        status_item.get("evidence_item_id", "candidate_risk_rule_status")
+    )
+    item_status = str(status_item.get("status", "missing"))
+    if item_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"{evidence_item_id}:{item_status}")
+    elif item_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(f"{evidence_item_id}:{item_status}")
+    elif item_status == "blocked":
+        breakdown["blocked"].append(f"{evidence_item_id}:{item_status}")
+    else:
+        breakdown["incomplete"].append(f"{evidence_item_id}:{item_status}")
+
+    gap_status = str(risk_gap.get("status", "missing"))
+    if gap_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"risk_rule_gap_status:{gap_status}")
+    elif gap_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(f"risk_rule_gap_status:{gap_status}")
+    elif gap_status == "blocked":
+        breakdown["blocked"].append(f"risk_rule_gap_status:{gap_status}")
+    else:
+        breakdown["incomplete"].append(f"risk_rule_gap_status:{gap_status}")
+
+    blocker = str(status_item.get("blocker", "none"))
+    if blocker and blocker != "none":
+        breakdown["blocked"].append(f"risk_rule_blocker:{blocker}")
+
+    for item in missing_evidence:
+        target = (
+            "blocked"
+            if "risk_rule_blocker:" in item or item.endswith(":blocked")
+            else "incomplete"
+        )
+        breakdown[target].append(item)
+
+    return {key: list(dict.fromkeys(values)) for key, values in breakdown.items()}
+
+
 def _candidate_risk_rule_summary(
     *,
     requirement: Mapping[str, Any],
@@ -7370,11 +7465,21 @@ def _candidate_risk_rule_summary(
         status_item=status_item,
         risk_gap=risk_gap,
     )
+    risk_rule_evidence_status = _candidate_risk_rule_evidence_status(
+        status_item=status_item,
+        risk_gap=risk_gap,
+    )
+    evidence_status_breakdown = _candidate_risk_rule_evidence_status_breakdown(
+        status_item=status_item,
+        risk_gap=risk_gap,
+        missing_evidence=missing_evidence,
+    )
     return {
         "candidate_family": candidate_family_id,
         "candidate_family_id": candidate_family_id,
         "candidate_family_label": str(requirement["candidate_family_label"]),
         "risk_rule_status": "incomplete",
+        "risk_rule_evidence_status": risk_rule_evidence_status,
         "risk_rule_defined": False,
         "position_sizing_defined": False,
         "max_loss_or_drawdown_rule_defined": False,
@@ -7391,10 +7496,41 @@ def _candidate_risk_rule_summary(
             )
         ),
         "missing_risk_rule_evidence": missing_evidence,
+        "evidence_status_breakdown": evidence_status_breakdown,
         "recommended_closure_action": (
             f"close_{candidate_family_id}_risk_rule_definition_gap"
         ),
         "expected_evidence_artifact": f"{candidate_family_id}_risk_spec_packet",
+    }
+
+
+def _candidate_risk_rule_evidence_status_summary(
+    summaries: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    counts = {
+        "complete": 0,
+        "incomplete": 0,
+        "blocked": 0,
+        "not_applicable": 0,
+    }
+    for summary in summaries:
+        status = str(summary.get("risk_rule_evidence_status", "incomplete"))
+        if status not in counts:
+            status = "incomplete"
+        counts[status] += 1
+    return {
+        **counts,
+        "status_categories": [
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        ],
+        "missing_evidence_explicit": all(
+            isinstance(summary.get("missing_risk_rule_evidence"), list)
+            and bool(summary.get("missing_risk_rule_evidence"))
+            for summary in summaries
+        ),
     }
 
 
@@ -7439,9 +7575,12 @@ def _build_candidate_risk_rule_status(
 
     source_item = _candidate_risk_rule_queue_item(queue)
     source_queue_item_id = str(
-        source_item.get("queue_item_id", "candidate_gap_closure_queue_item_001")
+        source_item.get("queue_item_id", "candidate_gap_closure_queue_item_002")
     )
     source_gap_id = str(source_item.get("gap_id", "candidate_risk_rule_status"))
+    source_candidate_family_id = str(
+        source_item.get("candidate_family_id", "mean_reversion_candidate")
+    )
     next_actions = _candidate_risk_rule_next_actions(
         queue,
         source_queue_item_id,
@@ -7457,6 +7596,14 @@ def _build_candidate_risk_rule_status(
         for gap in gap_summary.get("highest_priority_gaps", [])
         if isinstance(gap, Mapping) and gap.get("gap_id") == source_gap_id
     ]
+    target_summary = next(
+        (
+            dict(summary)
+            for summary in summaries
+            if summary.get("candidate_family_id") == source_candidate_family_id
+        ),
+        {},
+    )
     selected_next_action = (
         next_actions[0] if next_actions else "review_candidate_risk_rule_status_artifact"
     )
@@ -7466,17 +7613,55 @@ def _build_candidate_risk_rule_status(
         "risk_rule_status_mode": "offline_candidate_risk_rule_status_only",
         "baseline_strategy_id": "spy_sma_50_200_control",
         "source_queue_item_id": source_queue_item_id,
+        "source_action_id": str(
+            source_item.get("action_id", f"execute_{source_queue_item_id}")
+        ),
         "source_gap_id": source_gap_id,
+        "source_candidate_family_id": source_candidate_family_id,
+        "source_candidate_family": str(
+            source_item.get("candidate_family", "Mean reversion candidate")
+        ),
+        "source_gap_status": str(source_item.get("gap_status", "blocked")),
+        "source_gap_group_id": str(
+            source_item.get("gap_group_id", "strategy_definition_gaps")
+        ),
+        "source_gap_group_label": str(
+            source_item.get("gap_group_label", "Strategy definition gaps")
+        ),
+        "source_closure_action": str(
+            source_item.get("closure_action", "close_strategy_definition_gaps")
+        ),
+        "source_closure_objective": str(
+            source_item.get(
+                "closure_objective",
+                "Create candidate_risk_rule_status.jsonl using deterministic offline packet evidence.",
+            )
+        ),
+        "source_expected_evidence_artifact": str(
+            source_item.get(
+                "expected_evidence_artifact",
+                _CANDIDATE_RISK_RULE_STATUS_FILENAME,
+            )
+        ),
         "candidate_family_count": len(summaries),
+        "candidate_scope_count": len(summaries),
+        "shared_scope_count": len(shared_risk_rule_gaps),
         "candidate_risk_rule_summaries": summaries,
+        "target_candidate_risk_rule_summary": target_summary,
         "shared_risk_rule_gaps": shared_risk_rule_gaps,
         "highest_priority_risk_rule_gaps": highest_priority_risk_rule_gaps,
+        "evidence_status_summary": _candidate_risk_rule_evidence_status_summary(
+            summaries
+        ),
         "risk_rule_acceptance_criteria": [
             "candidate_risk_rule_status.jsonl exists as one deterministic JSONL record",
-            "source_queue_item_id=candidate_gap_closure_queue_item_001",
+            "source_queue_item_id=candidate_gap_closure_queue_item_002",
+            "source_candidate_family_id=mean_reversion_candidate",
             "source_gap_id=candidate_risk_rule_status",
-            "each candidate family has explicit incomplete risk-rule evidence when missing",
+            "each candidate family distinguishes complete, incomplete, blocked, and not-applicable evidence buckets",
+            "each candidate family has explicit incomplete or blocked risk-rule evidence when missing",
             "candidate strategies remain unimplemented, unpromoted, and not paper-ready",
+            "selected_next_safe_action=execute_candidate_gap_closure_queue_item_003",
             "broker_state_mode=broker_state_not_observed",
             "paper_submit_authorized=false",
             "daniel_action_required_now=false",
@@ -8060,8 +8245,9 @@ def _build_next_action_selector(
                 selected_work_order="codex_work_order",
                 selected_owner="Codex",
                 rationale=(
-                    "candidate_risk_rule_status materialized queue item 001, so "
-                    "the next deterministic offline queue item is selected."
+                    "candidate_risk_rule_status materialized the source queue "
+                    "item, so the next deterministic offline queue item is "
+                    "selected."
                 ),
                 reason_codes=[
                     "quality_gate_not_failed",
@@ -8069,7 +8255,7 @@ def _build_next_action_selector(
                     str(
                         risk_rule_status.get(
                             "source_queue_item_id",
-                            "candidate_gap_closure_queue_item_001",
+                            "candidate_gap_closure_queue_item_002",
                         )
                     ),
                     str(
@@ -10893,6 +11079,8 @@ def _quality_candidate_risk_rule_status_summary(
         "candidate risk rule status generated; "
         "risk_rule_status=ready; "
         "risk_rule_status_mode=offline_candidate_risk_rule_status_only; "
+        f"source_queue_item_id={status['source_queue_item_id']}; "
+        f"source_candidate_family_id={status['source_candidate_family_id']}; "
         f"selected_next_safe_action={status['selected_next_safe_action']}"
     )
 
@@ -13368,8 +13556,16 @@ def _missing_candidate_risk_rule_status_fields(
         "risk_rule_status": "ready",
         "risk_rule_status_mode": "offline_candidate_risk_rule_status_only",
         "baseline_strategy_id": "spy_sma_50_200_control",
-        "source_queue_item_id": "candidate_gap_closure_queue_item_001",
+        "source_queue_item_id": "candidate_gap_closure_queue_item_002",
+        "source_action_id": "execute_candidate_gap_closure_queue_item_002",
         "source_gap_id": "candidate_risk_rule_status",
+        "source_candidate_family_id": "mean_reversion_candidate",
+        "source_candidate_family": "Mean reversion candidate",
+        "source_gap_status": "blocked",
+        "source_gap_group_id": "strategy_definition_gaps",
+        "source_gap_group_label": "Strategy definition gaps",
+        "source_closure_action": "close_strategy_definition_gaps",
+        "source_expected_evidence_artifact": _CANDIDATE_RISK_RULE_STATUS_FILENAME,
         "broker_state_mode": "broker_state_not_observed",
         "paper_submit_authorized": False,
         "daniel_action_required_now": False,
@@ -13390,10 +13586,18 @@ def _missing_candidate_risk_rule_status_fields(
             f"{field_prefix}candidate_risk_rule_status."
             "selected_next_safe_action.concrete_item"
         )
-    if selected_action == "execute_candidate_gap_closure_queue_item_001":
+    if selected_action != "execute_candidate_gap_closure_queue_item_003":
         missing.append(
             f"{field_prefix}candidate_risk_rule_status."
             "selected_next_safe_action.advanced"
+        )
+    if (
+        _CANDIDATE_RISK_RULE_STATUS_FILENAME
+        not in str(status.get("source_closure_objective", ""))
+        or "offline" not in str(status.get("source_closure_objective", "")).lower()
+    ):
+        missing.append(
+            f"{field_prefix}candidate_risk_rule_status.source_closure_objective"
         )
     for label in (
         "offline_only",
@@ -13417,6 +13621,52 @@ def _missing_candidate_risk_rule_status_fields(
     ):
         if not isinstance(status.get(list_field), list) or not status.get(list_field):
             missing.append(f"{field_prefix}candidate_risk_rule_status.{list_field}")
+    target_summary = status.get("target_candidate_risk_rule_summary")
+    if not isinstance(target_summary, Mapping):
+        missing.append(
+            f"{field_prefix}candidate_risk_rule_status."
+            "target_candidate_risk_rule_summary"
+        )
+    elif target_summary.get("candidate_family_id") != "mean_reversion_candidate":
+        missing.append(
+            f"{field_prefix}candidate_risk_rule_status."
+            "target_candidate_risk_rule_summary.candidate_family_id"
+        )
+    evidence_status_summary = status.get("evidence_status_summary")
+    if not isinstance(evidence_status_summary, Mapping):
+        missing.append(
+            f"{field_prefix}candidate_risk_rule_status.evidence_status_summary"
+        )
+    else:
+        for status_name in (
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        ):
+            if not isinstance(evidence_status_summary.get(status_name), int):
+                missing.append(
+                    f"{field_prefix}candidate_risk_rule_status."
+                    f"evidence_status_summary.{status_name}"
+                )
+        if evidence_status_summary.get("missing_evidence_explicit") is not True:
+            missing.append(
+                f"{field_prefix}candidate_risk_rule_status."
+                "evidence_status_summary.missing_evidence_explicit"
+            )
+        if not isinstance(
+            evidence_status_summary.get("status_categories"),
+            list,
+        ) or set(evidence_status_summary.get("status_categories", [])) != {
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        }:
+            missing.append(
+                f"{field_prefix}candidate_risk_rule_status."
+                "evidence_status_summary.status_categories"
+            )
     if selected_action not in status.get("next_risk_rule_closure_actions", []):
         missing.append(
             f"{field_prefix}candidate_risk_rule_status."
@@ -13434,6 +13684,16 @@ def _missing_candidate_risk_rule_status_fields(
         missing.append(
             f"{field_prefix}candidate_risk_rule_status.candidate_family_count"
         )
+    if status.get("candidate_scope_count") != len(summaries):
+        missing.append(
+            f"{field_prefix}candidate_risk_rule_status.candidate_scope_count"
+        )
+    shared_risk_rule_gaps = status.get("shared_risk_rule_gaps")
+    if isinstance(shared_risk_rule_gaps, list):
+        if status.get("shared_scope_count") != len(shared_risk_rule_gaps):
+            missing.append(
+                f"{field_prefix}candidate_risk_rule_status.shared_scope_count"
+            )
     candidate_ids: set[str] = set()
     for index, summary in enumerate(summaries):
         summary_prefix = (
@@ -13452,6 +13712,13 @@ def _missing_candidate_risk_rule_status_fields(
             missing.append(f"{summary_prefix}.candidate_family")
         if summary.get("risk_rule_status") != "incomplete":
             missing.append(f"{summary_prefix}.risk_rule_status")
+        if summary.get("risk_rule_evidence_status") not in {
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        }:
+            missing.append(f"{summary_prefix}.risk_rule_evidence_status")
         for false_field in (
             "risk_rule_defined",
             "position_sizing_defined",
@@ -13474,6 +13741,33 @@ def _missing_candidate_risk_rule_status_fields(
         missing_text = " ".join(str(item) for item in missing_evidence)
         if "candidate_risk_rule_status" not in missing_text:
             missing.append(f"{summary_prefix}.missing_risk_rule_evidence.explicit")
+        breakdown = summary.get("evidence_status_breakdown")
+        if not isinstance(breakdown, Mapping):
+            missing.append(f"{summary_prefix}.evidence_status_breakdown")
+        else:
+            for status_name in (
+                "complete",
+                "incomplete",
+                "blocked",
+                "not_applicable",
+            ):
+                if not isinstance(breakdown.get(status_name), list):
+                    missing.append(
+                        f"{summary_prefix}.evidence_status_breakdown."
+                        f"{status_name}"
+                    )
+            if (
+                summary.get("risk_rule_evidence_status") == "blocked"
+                and not breakdown.get("blocked")
+            ):
+                missing.append(
+                    f"{summary_prefix}.evidence_status_breakdown.blocked.explicit"
+                )
+            if not breakdown.get("incomplete") and not breakdown.get("blocked"):
+                missing.append(
+                    f"{summary_prefix}.evidence_status_breakdown."
+                    "missing_evidence.explicit"
+                )
         if not str(summary.get("recommended_closure_action", "")).startswith(
             f"close_{candidate_id}_risk_rule_definition_gap"
         ):
@@ -14625,6 +14919,8 @@ def _missing_brief_references(
             "risk_rule_status_mode",
             "source_queue_item_id",
             "source_gap_id",
+            "source_candidate_family_id",
+            "source_expected_evidence_artifact",
             "selected_next_safe_action",
             "broker_state_mode",
             "profit_claim",
@@ -15274,8 +15570,13 @@ def _render_work_order_markdown(
 * **Risk-rule status**: `{risk_rule_status["risk_rule_status"]}`
 * **Risk-rule status mode**: `{risk_rule_status["risk_rule_status_mode"]}`
 * **Source queue item**: `{risk_rule_status["source_queue_item_id"]}`
+* **Source action**: `{risk_rule_status["source_action_id"]}`
 * **Source gap**: `{risk_rule_status["source_gap_id"]}`
+* **Source candidate**: `{risk_rule_status["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{risk_rule_status["source_expected_evidence_artifact"]}`
 * **Candidate families**: {risk_rule_status["candidate_family_count"]}
+* **Candidate/shared scope count**: {risk_rule_status["candidate_scope_count"]}/{risk_rule_status["shared_scope_count"]}
+* **Evidence status summary**: {risk_rule_status["evidence_status_summary"]}
 * **Highest-priority risk-rule gaps**: {len(risk_rule_status["highest_priority_risk_rule_gaps"])}
 * **Selected next safe action**: `{risk_rule_status["selected_next_safe_action"]}`
 * **Broker-state mode**: `{risk_rule_status["broker_state_mode"]}`
@@ -15306,7 +15607,7 @@ def _render_work_order_markdown(
 * `python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py`
 * `python -m pytest tests\\unit\\test_dependency_direction.py tests\\unit\\test_broker_mutation_surface_invariant.py tests\\unit\\test_default_pytest_network_guard.py`
 * `.\\scripts\\verify_offline.ps1`
-* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_20_smoke`
+* `.\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs/daily_lab/v_assistant_v1_22_smoke`
 * Full `python -m pytest` only after the required credential/profile preflight booleans are all false.
 
 ## Expected artifacts
@@ -15710,9 +16011,14 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Risk-rule status**: `{payload["candidate_risk_rule_status"]["risk_rule_status"]}`
 * **Risk-rule status mode**: `{payload["candidate_risk_rule_status"]["risk_rule_status_mode"]}`
 * **Source queue item**: `{payload["candidate_risk_rule_status"]["source_queue_item_id"]}`
+* **Source action**: `{payload["candidate_risk_rule_status"]["source_action_id"]}`
 * **Source gap**: `{payload["candidate_risk_rule_status"]["source_gap_id"]}`
+* **Source candidate**: `{payload["candidate_risk_rule_status"]["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{payload["candidate_risk_rule_status"]["source_expected_evidence_artifact"]}`
 * **Candidate family count**: {payload["candidate_risk_rule_status"]["candidate_family_count"]}
+* **Candidate/shared scope count**: {payload["candidate_risk_rule_status"]["candidate_scope_count"]}/{payload["candidate_risk_rule_status"]["shared_scope_count"]}
 * **Incomplete risk-rule count**: {sum(1 for item in payload["candidate_risk_rule_status"]["candidate_risk_rule_summaries"] if item["risk_rule_status"] == "incomplete")}
+* **Evidence status summary**: {payload["candidate_risk_rule_status"]["evidence_status_summary"]}
 * **Highest-priority risk-rule gaps**: {payload["candidate_risk_rule_status"]["highest_priority_risk_rule_gaps"]}
 * **Selected next safe action**: `{payload["candidate_risk_rule_status"]["selected_next_safe_action"]}`
 * **Broker-state mode**: `{payload["candidate_risk_rule_status"]["broker_state_mode"]}`
@@ -16106,8 +16412,14 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **risk_rule_status**: `{payload["candidate_risk_rule_status"]["risk_rule_status"]}`
 * **risk_rule_status_mode**: `{payload["candidate_risk_rule_status"]["risk_rule_status_mode"]}`
 * **source_queue_item_id**: `{payload["candidate_risk_rule_status"]["source_queue_item_id"]}`
+* **source_action_id**: `{payload["candidate_risk_rule_status"]["source_action_id"]}`
 * **source_gap_id**: `{payload["candidate_risk_rule_status"]["source_gap_id"]}`
+* **source_candidate_family_id**: `{payload["candidate_risk_rule_status"]["source_candidate_family_id"]}`
+* **source_expected_evidence_artifact**: `{payload["candidate_risk_rule_status"]["source_expected_evidence_artifact"]}`
 * **candidate_family_count**: {payload["candidate_risk_rule_status"]["candidate_family_count"]}
+* **candidate_scope_count**: {payload["candidate_risk_rule_status"]["candidate_scope_count"]}
+* **shared_scope_count**: {payload["candidate_risk_rule_status"]["shared_scope_count"]}
+* **evidence_status_summary**: `{payload["candidate_risk_rule_status"]["evidence_status_summary"]}`
 * **highest_priority_risk_rule_gaps**: `{payload["candidate_risk_rule_status"]["highest_priority_risk_rule_gaps"]}`
 * **next_risk_rule_closure_actions**: `{payload["candidate_risk_rule_status"]["next_risk_rule_closure_actions"]}`
 * **selected_next_safe_action**: `{payload["candidate_risk_rule_status"]["selected_next_safe_action"]}`
