@@ -76,12 +76,27 @@ _CANDIDATE_GAP_CLOSURE_QUEUE_VERSION = (
     "assistant_v1.20_candidate_gap_closure_queue"
 )
 _CANDIDATE_RISK_RULE_STATUS_VERSION = (
-    "assistant_v1.22_candidate_risk_rule_status"
+    "assistant_v1.23_candidate_risk_rule_status"
 )
-_PHASE_NAME = "Assistant v1.22 - Candidate Risk Rule Status Artifact"
+_CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID = (
+    "candidate_gap_closure_queue_item_003"
+)
+_CANDIDATE_RISK_RULE_STATUS_SOURCE_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_003"
+)
+_CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = (
+    "volatility_or_regime_filter_candidate"
+)
+_CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = (
+    "Volatility or regime filter candidate"
+)
+_CANDIDATE_RISK_RULE_STATUS_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_004"
+)
+_PHASE_NAME = "Assistant v1.23 - Candidate Risk Rule Status Item 003 Artifact"
 _PHASE_GOAL = (
     "Materialize deterministic offline candidate risk-rule status evidence for "
-    "candidate_gap_closure_queue_item_002 before any strategy implementation, "
+    "candidate_gap_closure_queue_item_003 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -7279,7 +7294,10 @@ def _candidate_risk_rule_queue_item(
     for item in queue_items:
         if not isinstance(item, Mapping):
             continue
-        if item.get("queue_item_id") == "candidate_gap_closure_queue_item_002":
+        if (
+            item.get("queue_item_id")
+            == _CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID
+        ):
             return dict(item)
         if (
             not first_risk_rule_item
@@ -7575,11 +7593,17 @@ def _build_candidate_risk_rule_status(
 
     source_item = _candidate_risk_rule_queue_item(queue)
     source_queue_item_id = str(
-        source_item.get("queue_item_id", "candidate_gap_closure_queue_item_002")
+        source_item.get(
+            "queue_item_id",
+            _CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
+        )
     )
     source_gap_id = str(source_item.get("gap_id", "candidate_risk_rule_status"))
     source_candidate_family_id = str(
-        source_item.get("candidate_family_id", "mean_reversion_candidate")
+        source_item.get(
+            "candidate_family_id",
+            _CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID,
+        )
     )
     next_actions = _candidate_risk_rule_next_actions(
         queue,
@@ -7619,7 +7643,10 @@ def _build_candidate_risk_rule_status(
         "source_gap_id": source_gap_id,
         "source_candidate_family_id": source_candidate_family_id,
         "source_candidate_family": str(
-            source_item.get("candidate_family", "Mean reversion candidate")
+            source_item.get(
+                "candidate_family",
+                _CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY,
+            )
         ),
         "source_gap_status": str(source_item.get("gap_status", "blocked")),
         "source_gap_group_id": str(
@@ -7655,13 +7682,22 @@ def _build_candidate_risk_rule_status(
         ),
         "risk_rule_acceptance_criteria": [
             "candidate_risk_rule_status.jsonl exists as one deterministic JSONL record",
-            "source_queue_item_id=candidate_gap_closure_queue_item_002",
-            "source_candidate_family_id=mean_reversion_candidate",
+            (
+                "source_queue_item_id="
+                f"{_CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID}"
+            ),
+            (
+                "source_candidate_family_id="
+                f"{_CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID}"
+            ),
             "source_gap_id=candidate_risk_rule_status",
             "each candidate family distinguishes complete, incomplete, blocked, and not-applicable evidence buckets",
             "each candidate family has explicit incomplete or blocked risk-rule evidence when missing",
             "candidate strategies remain unimplemented, unpromoted, and not paper-ready",
-            "selected_next_safe_action=execute_candidate_gap_closure_queue_item_003",
+            (
+                "selected_next_safe_action="
+                f"{_CANDIDATE_RISK_RULE_STATUS_NEXT_ACTION_ID}"
+            ),
             "broker_state_mode=broker_state_not_observed",
             "paper_submit_authorized=false",
             "daniel_action_required_now=false",
@@ -8255,7 +8291,7 @@ def _build_next_action_selector(
                     str(
                         risk_rule_status.get(
                             "source_queue_item_id",
-                            "candidate_gap_closure_queue_item_002",
+                            _CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
                         )
                     ),
                     str(
@@ -13556,11 +13592,13 @@ def _missing_candidate_risk_rule_status_fields(
         "risk_rule_status": "ready",
         "risk_rule_status_mode": "offline_candidate_risk_rule_status_only",
         "baseline_strategy_id": "spy_sma_50_200_control",
-        "source_queue_item_id": "candidate_gap_closure_queue_item_002",
-        "source_action_id": "execute_candidate_gap_closure_queue_item_002",
+        "source_queue_item_id": _CANDIDATE_RISK_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
+        "source_action_id": _CANDIDATE_RISK_RULE_STATUS_SOURCE_ACTION_ID,
         "source_gap_id": "candidate_risk_rule_status",
-        "source_candidate_family_id": "mean_reversion_candidate",
-        "source_candidate_family": "Mean reversion candidate",
+        "source_candidate_family_id": (
+            _CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID
+        ),
+        "source_candidate_family": _CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY,
         "source_gap_status": "blocked",
         "source_gap_group_id": "strategy_definition_gaps",
         "source_gap_group_label": "Strategy definition gaps",
@@ -13586,7 +13624,7 @@ def _missing_candidate_risk_rule_status_fields(
             f"{field_prefix}candidate_risk_rule_status."
             "selected_next_safe_action.concrete_item"
         )
-    if selected_action != "execute_candidate_gap_closure_queue_item_003":
+    if selected_action != _CANDIDATE_RISK_RULE_STATUS_NEXT_ACTION_ID:
         missing.append(
             f"{field_prefix}candidate_risk_rule_status."
             "selected_next_safe_action.advanced"
@@ -13627,7 +13665,10 @@ def _missing_candidate_risk_rule_status_fields(
             f"{field_prefix}candidate_risk_rule_status."
             "target_candidate_risk_rule_summary"
         )
-    elif target_summary.get("candidate_family_id") != "mean_reversion_candidate":
+    elif (
+        target_summary.get("candidate_family_id")
+        != _CANDIDATE_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID
+    ):
         missing.append(
             f"{field_prefix}candidate_risk_rule_status."
             "target_candidate_risk_rule_summary.candidate_family_id"

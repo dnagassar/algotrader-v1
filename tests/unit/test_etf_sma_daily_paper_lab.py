@@ -1364,18 +1364,21 @@ def _assert_candidate_risk_rule_status_shape(status: dict[str, object]) -> None:
         "safety_labels",
     }
     assert status["risk_rule_status_version"] == (
-        "assistant_v1.22_candidate_risk_rule_status"
+        "assistant_v1.23_candidate_risk_rule_status"
     )
     assert status["risk_rule_status"] == "ready"
     assert status["risk_rule_status_mode"] == (
         "offline_candidate_risk_rule_status_only"
     )
     assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
-    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_002"
-    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_002"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_003"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_003"
     assert status["source_gap_id"] == "candidate_risk_rule_status"
-    assert status["source_candidate_family_id"] == "mean_reversion_candidate"
-    assert status["source_candidate_family"] == "Mean reversion candidate"
+    assert (
+        status["source_candidate_family_id"]
+        == "volatility_or_regime_filter_candidate"
+    )
+    assert status["source_candidate_family"] == "Volatility or regime filter candidate"
     assert status["source_gap_status"] == "blocked"
     assert status["source_gap_group_id"] == "strategy_definition_gaps"
     assert status["source_gap_group_label"] == "Strategy definition gaps"
@@ -1391,7 +1394,7 @@ def _assert_candidate_risk_rule_status_shape(status: dict[str, object]) -> None:
     assert status["profit_claim"] == "none"
     assert status["safety_scope"] == "offline_only"
     assert status["selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert status["selected_next_safe_action"] in status[
         "next_risk_rule_closure_actions"
@@ -1413,7 +1416,7 @@ def _assert_candidate_risk_rule_status_shape(status: dict[str, object]) -> None:
     assert status["candidate_scope_count"] == len(summaries)
     assert status["shared_scope_count"] == len(status["shared_risk_rule_gaps"])
     assert status["target_candidate_risk_rule_summary"]["candidate_family_id"] == (
-        "mean_reversion_candidate"
+        "volatility_or_regime_filter_candidate"
     )
     assert status["target_candidate_risk_rule_summary"]["risk_rule_evidence_status"] == (
         "blocked"
@@ -1770,7 +1773,7 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     _assert_candidate_risk_rule_status_shape(exports["candidate_risk_rule_status"])
     assert exports["candidate_risk_rule_status_status"] == "ready"
     assert exports["candidate_risk_rule_status_selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -2386,7 +2389,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "candidate_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -2907,9 +2910,9 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "## Candidate Risk Rule Status" in brief
     assert "candidate_risk_rule_status.jsonl" in brief
     assert "offline_candidate_risk_rule_status_only" in brief
-    assert "execute_candidate_gap_closure_queue_item_002" in brief
-    assert "mean_reversion_candidate" in brief
     assert "execute_candidate_gap_closure_queue_item_003" in brief
+    assert "volatility_or_regime_filter_candidate" in brief
+    assert "execute_candidate_gap_closure_queue_item_004" in brief
     assert "required evidence is collected, statused" in brief
     assert "Candidate implementation requires an offline evidence template" in brief
     assert "hard_gate_prepared_not_authorized" in brief
@@ -2946,7 +2949,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     assert "review_input_not_found" in brief
     assert "await_offline_review_input" in brief
     assert "## Next Action Selector" in brief
-    assert "execute_candidate_gap_closure_queue_item_003" in brief
+    assert "execute_candidate_gap_closure_queue_item_004" in brief
     assert "Work order exports" in brief
     assert "work_orders/codex_work_order.md" in brief
     assert "**Missing required fields**: []" in brief
@@ -3243,12 +3246,13 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.22 - Candidate Risk Rule Status Artifact"
+            "Assistant v1.23 - Candidate Risk Rule Status Item 003 Artifact"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
         assert "execute_candidate_gap_closure_queue_item_002" in work_order
         assert "execute_candidate_gap_closure_queue_item_003" in work_order
+        assert "execute_candidate_gap_closure_queue_item_004" in work_order
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
@@ -4047,7 +4051,7 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
         "candidate_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -4801,7 +4805,7 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
         "candidate_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -4833,7 +4837,7 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
 def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
     tmp_path: Path,
 ) -> None:
-    """Verify v1.22 item-002 candidate risk-rule status artifact and wiring."""
+    """Verify v1.23 item-003 candidate risk-rule status artifact and wiring."""
     output_root = tmp_path / "paper_lab_candidate_risk_rule_status_out"
     bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
 
@@ -4880,10 +4884,10 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         assert "## Candidate Risk Rule Status" in markdown
         assert "candidate_risk_rule_status.jsonl" in markdown
         assert "offline_candidate_risk_rule_status_only" in markdown
-        assert "candidate_gap_closure_queue_item_002" in markdown
-        assert "mean_reversion_candidate" in markdown
+        assert "candidate_gap_closure_queue_item_003" in markdown
+        assert "volatility_or_regime_filter_candidate" in markdown
         assert "candidate_risk_rule_status" in markdown
-        assert "execute_candidate_gap_closure_queue_item_003" in markdown
+        assert "execute_candidate_gap_closure_queue_item_004" in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -4896,23 +4900,26 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         "candidate_risk_rule_status_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_003"
+        "execute_candidate_gap_closure_queue_item_004"
     )
     assert data["risk_rule_status"] == "ready"
     assert data["risk_rule_status_mode"] == (
         "offline_candidate_risk_rule_status_only"
     )
-    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_002"
-    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_002"
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_003"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_003"
     assert data["source_gap_id"] == "candidate_risk_rule_status"
-    assert data["source_candidate_family_id"] == "mean_reversion_candidate"
+    assert (
+        data["source_candidate_family_id"]
+        == "volatility_or_regime_filter_candidate"
+    )
     assert data["source_expected_evidence_artifact"] == (
         "candidate_risk_rule_status.jsonl"
     )
     assert data["candidate_family_count"] == 3
     assert data["candidate_scope_count"] == 3
     assert data["target_candidate_risk_rule_summary"]["candidate_family_id"] == (
-        "mean_reversion_candidate"
+        "volatility_or_regime_filter_candidate"
     )
     incomplete_count = sum(
         1
