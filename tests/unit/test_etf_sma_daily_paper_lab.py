@@ -2120,6 +2120,142 @@ def _assert_shared_signal_rule_status_shape(status: dict[str, object]) -> None:
     assert status["shared_signal_rule_acceptance_criteria"]
 
 
+def _assert_shared_benchmark_comparison_status_shape(status: dict[str, object]) -> None:
+    assert set(status) == {
+        "shared_benchmark_comparison_status_version",
+        "shared_benchmark_comparison_status",
+        "shared_benchmark_comparison_status_mode",
+        "deterministic_scope",
+        "baseline_strategy_id",
+        "source_queue_item_id",
+        "source_action_id",
+        "source_gap_id",
+        "source_candidate_family_id",
+        "source_candidate_family",
+        "source_gap_status",
+        "source_gap_group_id",
+        "source_gap_group_label",
+        "source_closure_action",
+        "source_closure_objective",
+        "source_expected_evidence_artifact",
+        "candidate_family_count",
+        "shared_scope_count",
+        "shared_benchmark_comparison_status_item",
+        "shared_benchmark_comparison_gaps",
+        "candidate_benchmark_comparison_summaries",
+        "explicit_shared_benchmark_comparison_evidence",
+        "performance_metrics_evidence",
+        "drawdown_comparison_evidence",
+        "beta_or_correlation_evidence",
+        "risk_adjusted_return_evidence",
+        "benchmark_comparison_readiness",
+        "remaining_missing_shared_benchmark_comparison_evidence",
+        "highest_priority_remaining_gaps",
+        "evidence_status_summary",
+        "shared_benchmark_comparison_acceptance_criteria",
+        "next_shared_benchmark_comparison_closure_actions",
+        "selected_next_safe_action",
+        "broker_state_mode",
+        "paper_submit_authorized",
+        "daniel_action_required_now",
+        "profit_claim",
+        "safety_scope",
+        "safety_labels",
+    }
+    assert status["shared_benchmark_comparison_status_version"] == (
+        "assistant_v1.29_shared_benchmark_comparison_status"
+    )
+    assert status["shared_benchmark_comparison_status"] == "ready"
+    assert status["shared_benchmark_comparison_status_mode"] == (
+        "offline_shared_benchmark_comparison_status_only"
+    )
+    assert status["deterministic_scope"] == "shared_candidate_benchmark_comparison_status"
+    assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_009"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_009"
+    assert status["source_gap_id"] == "benchmark_comparison_status"
+    assert status["source_candidate_family_id"] == "shared"
+    assert status["source_candidate_family"] == "Shared candidate evidence"
+    assert status["source_gap_status"] in {"blocked", "missing", "incomplete"}
+    assert status["source_gap_group_id"] == "backtest_and_benchmark_gaps"
+    assert status["source_gap_group_label"] == "Backtest and benchmark gaps"
+    assert status["source_closure_action"] == "materialize_candidate_backtest_benchmark_gap_packets"
+    assert "shared_benchmark_comparison_status.jsonl" in status["source_closure_objective"]
+    assert "offline packet evidence" in status["source_closure_objective"]
+    assert status["source_expected_evidence_artifact"] == (
+        "shared_benchmark_comparison_status.jsonl"
+    )
+    assert status["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_010"
+    )
+    assert status["selected_next_safe_action"] in status[
+        "next_shared_benchmark_comparison_closure_actions"
+    ]
+    assert status["broker_state_mode"] == "broker_state_not_observed"
+    assert status["paper_submit_authorized"] is False
+    assert status["daniel_action_required_now"] is False
+    assert status["profit_claim"] == "none"
+    assert status["safety_scope"] == "offline_only"
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        assert label in status["safety_labels"]
+
+    assert status["shared_benchmark_comparison_status_item"]["shared_status_id"] == (
+        "benchmark_comparison_status"
+    )
+    assert status["shared_benchmark_comparison_status_item"]["status"] in {"blocked", "missing", "incomplete"}
+    assert isinstance(status["shared_benchmark_comparison_status_item"].get("blocker", "none"), str)
+    assert status["shared_benchmark_comparison_gaps"]
+    assert status["shared_scope_count"] == len(status["shared_benchmark_comparison_gaps"])
+    assert status["candidate_family_count"] == 3
+    assert len(status["candidate_benchmark_comparison_summaries"]) == 3
+    assert status["explicit_shared_benchmark_comparison_evidence"][
+        "evidence_mode"
+    ] == "deterministic_local_packet_evidence_only"
+    assert status["explicit_shared_benchmark_comparison_evidence"][
+        "evidence_status"
+    ] in {"blocked", "missing", "incomplete"}
+    assert status["explicit_shared_benchmark_comparison_evidence"][
+        "explicit_benchmark_comparison_rules_present"
+    ] is False
+    assert status["explicit_shared_benchmark_comparison_evidence"]["local_evidence_items"]
+
+    for bucket_name in (
+        "performance_metrics_evidence",
+        "drawdown_comparison_evidence",
+        "beta_or_correlation_evidence",
+        "risk_adjusted_return_evidence",
+    ):
+        bucket = status[bucket_name]
+        assert bucket["evidence_mode"] == "deterministic_local_packet_evidence_only"
+        assert bucket["evidence_status"] == "missing"
+        assert bucket["explicit_rules_present"] is False
+        assert isinstance(bucket["candidate_evidence"], list)
+        assert len(bucket["candidate_evidence"]) == 3
+
+    missing = status["remaining_missing_shared_benchmark_comparison_evidence"]
+    assert missing
+    assert any(
+        "shared_benchmark_comparison_status:" in str(item)
+        for item in missing
+    )
+    assert any(
+        "shared_benchmark_comparison_gap_status:" in str(item)
+        for item in missing
+    )
+    assert status["benchmark_comparison_readiness"]["readiness_status"] in {"blocked", "not_ready"}
+    assert status["benchmark_comparison_readiness"]["research_ready"] is False
+    assert status["benchmark_comparison_readiness"]["evidence_ready"] is False
+    assert status["evidence_status_summary"]["shared_scope_status"] in {"blocked", "missing", "incomplete"}
+    assert status["shared_benchmark_comparison_acceptance_criteria"]
+
+
 def _assert_research_candidate_queue_shape(queue: dict[str, object]) -> None:
     assert set(queue) == {
         "research_candidate_queue_version",
@@ -2224,6 +2360,8 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "shared_risk_rule_status",
         "shared_signal_rule_status_path",
         "shared_signal_rule_status",
+        "shared_benchmark_comparison_status_path",
+        "shared_benchmark_comparison_status",
         "source_state",
     }
     assert selector["next_action_selector_version"] == (
@@ -2316,6 +2454,13 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     _assert_shared_signal_rule_status_shape(
         selector["shared_signal_rule_status"]
     )
+    assert str(selector["shared_benchmark_comparison_status_path"]).endswith(
+        "shared_benchmark_comparison_status.jsonl"
+    )
+    _assert_shared_benchmark_comparison_status_shape(
+        selector["shared_benchmark_comparison_status"]
+    )
+    assert selector["source_state"]
     if selector["selected_research_candidate_priority"] is not None:
         assert selector["selected_research_candidate_priority"] in {
             "P0",
@@ -2444,6 +2589,14 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert exports["shared_signal_rule_status_status"] == "ready"
     assert exports["shared_signal_rule_status_selected_next_safe_action"] == (
         "execute_candidate_gap_closure_queue_item_009"
+    )
+    assert str(exports["shared_benchmark_comparison_status_path"]).endswith(
+        "shared_benchmark_comparison_status.jsonl"
+    )
+    _assert_shared_benchmark_comparison_status_shape(exports["shared_benchmark_comparison_status"])
+    assert exports["shared_benchmark_comparison_status_status"] == "ready"
+    assert exports["shared_benchmark_comparison_status_selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_010"
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -2904,6 +3057,7 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
         "candidate_signal_rule_status_generated",
         "shared_risk_rule_status_generated",
         "shared_signal_rule_status_generated",
+        "shared_benchmark_comparison_status_generated",
         "baseline_metric_artifact_ingest_status_explicit",
         "turnover_and_cost_model_artifacts_explicit",
         "assistant_v1_through_v1_11_outputs_preserved",
@@ -2920,9 +3074,9 @@ def _assert_quality_gate_pass(container: dict[str, object]) -> None:
     assert container["quality_gate_version"] == "assistant_v1.4_quality_gate"
     assert container["quality_gate_status"] == "pass"
     assert container["quality_gate_score"] == (
-        "36/36 required checks passed; 0 failed; 0 warnings"
+        "37/37 required checks passed; 0 failed; 0 warnings"
     )
-    assert container["quality_gate_passed_required_count"] == 36
+    assert container["quality_gate_passed_required_count"] == 37
     assert container["quality_gate_failed_required_count"] == 0
     assert container["quality_gate_warning_count"] == 0
     assert container["quality_gate_required_fields_present"] is True
@@ -3997,7 +4151,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.28 - Shared Signal Rule Status Item 008 Artifact"
+            "Assistant v1.29 — Execute Candidate Gap Closure Queue Item 009"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -4862,7 +5016,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
     assert validation["quality_gate_status"] == "fail"
     assert validation["review_handoff_status"] == "missing"
     assert validation["quality_gate_score"] == (
-        "21/36 required checks passed; 15 failed; 0 warnings"
+        "21/37 required checks passed; 16 failed; 0 warnings"
     )
     assert validation["quality_gate_failed_checks"] == [
         "required_packet_artifacts_exist",
@@ -4878,6 +5032,7 @@ def test_etf_sma_daily_paper_lab_quality_gate_failure_is_deterministic(
         "candidate_signal_rule_status_generated",
         "shared_risk_rule_status_generated",
         "shared_signal_rule_status_generated",
+        "shared_benchmark_comparison_status_generated",
         "assistant_v1_through_v1_11_outputs_preserved",
         "review_handoff_references_generated_artifacts",
     ]
@@ -6057,6 +6212,100 @@ def test_etf_sma_daily_paper_lab_shared_signal_rule_status(
         "execute_candidate_gap_closure_queue_item_009"
     )
     assert "shared_signal_rule_status_generated" not in payload[
+        "quality_gate_failed_checks"
+    ]
+    validation_result = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+    assert validation_result["validation_status"] == "pass"
+
+
+def test_etf_sma_daily_paper_lab_shared_benchmark_comparison_status(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.29 item-009 shared benchmark-comparison status artifact and wiring."""
+    output_root = tmp_path / "paper_lab_shared_benchmark_comparison_status_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    status_file = output_root / "shared_benchmark_comparison_status.jsonl"
+    assert status_file.exists()
+    lines = status_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    data = json.loads(lines[0])
+
+    _assert_shared_benchmark_comparison_status_shape(data)
+    _assert_shared_benchmark_comparison_status_shape(payload["shared_benchmark_comparison_status"])
+    assert data == payload["shared_benchmark_comparison_status"]
+    assert payload["shared_benchmark_comparison_status_path"].endswith(
+        "shared_benchmark_comparison_status.jsonl"
+    )
+
+    manifest = json.loads(
+        (output_root / "manifest.jsonl").read_text(encoding="utf-8")
+    )
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    assert manifest["shared_benchmark_comparison_status"] == data
+    assert record["shared_benchmark_comparison_status"] == data
+    assert "shared_benchmark_comparison_status" in manifest["indexed_artifacts"]
+    assert manifest["indexed_artifacts"]["shared_benchmark_comparison_status"][
+        "path"
+    ].endswith("shared_benchmark_comparison_status.jsonl")
+
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    handoff = (output_root / "review_handoff.md").read_text(encoding="utf-8")
+    for markdown in (brief, handoff):
+        assert "## Shared Benchmark Comparison Status" in markdown
+        assert "shared_benchmark_comparison_status.jsonl" in markdown
+        assert "offline_shared_benchmark_comparison_status_only" in markdown
+        assert "candidate_gap_closure_queue_item_009" in markdown
+        assert "benchmark_comparison_status" in markdown
+        assert "shared" in markdown
+        assert "execute_candidate_gap_closure_queue_item_010" in markdown
+        assert "broker_state_not_observed" in markdown
+        assert "paper_submit_authorized" in markdown
+        assert "profit_claim" in markdown
+
+    _assert_next_action_selector_shape(payload["next_action_selector"])
+    _assert_work_order_exports_shape(payload["work_order_exports"])
+    assert payload["next_action_selector"]["shared_benchmark_comparison_status"] == data
+    assert payload["work_order_exports"]["shared_benchmark_comparison_status"] == data
+    assert payload["next_action_selector"]["status"] == (
+        "shared_risk_rule_status_next_action_selected"
+    )
+    assert payload["next_action_selector"]["selected_next_action_id"] == (
+        "execute_candidate_gap_closure_queue_item_008"
+    )
+    assert payload["next_action_selector"]["selected_research_candidate_id"] is None
+    assert payload["next_action_selector"]["selected_work_order"] == (
+        "codex_work_order"
+    )
+    assert payload["next_action_selector"]["blocks_offline_build"] is False
+    assert "shared_risk_rule_status_ready" in payload["next_action_selector"][
+        "reason_codes"
+    ]
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_009"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_009"
+    assert data["source_gap_id"] == "benchmark_comparison_status"
+    assert data["source_candidate_family_id"] == "shared"
+    assert data["source_expected_evidence_artifact"] == (
+        "shared_benchmark_comparison_status.jsonl"
+    )
+    assert data["selected_next_safe_action"] == (
+        "execute_candidate_gap_closure_queue_item_010"
+    )
+    assert "shared_benchmark_comparison_status_generated" not in payload[
         "quality_gate_failed_checks"
     ]
     validation_result = validate_etf_sma_daily_paper_lab_packet(

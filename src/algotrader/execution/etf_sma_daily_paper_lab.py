@@ -139,10 +139,24 @@ _SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = "Shared candidate evidence"
 _SHARED_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_009"
 )
-_PHASE_NAME = "Assistant v1.28 - Shared Signal Rule Status Item 008 Artifact"
+_SHARED_BENCHMARK_COMPARISON_STATUS_VERSION = (
+    "assistant_v1.29_shared_benchmark_comparison_status"
+)
+_SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID = (
+    "candidate_gap_closure_queue_item_009"
+)
+_SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_009"
+)
+_SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY_ID = "shared"
+_SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY = "Shared candidate evidence"
+_SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_010"
+)
+_PHASE_NAME = "Assistant v1.29 — Execute Candidate Gap Closure Queue Item 009"
 _PHASE_GOAL = (
-    "Materialize deterministic offline shared signal-rule status evidence for "
-    "candidate_gap_closure_queue_item_008 before any strategy implementation, "
+    "Materialize deterministic offline shared benchmark-comparison status evidence for "
+    "candidate_gap_closure_queue_item_009 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -180,6 +194,7 @@ _CANDIDATE_RISK_RULE_STATUS_FILENAME = "candidate_risk_rule_status.jsonl"
 _CANDIDATE_SIGNAL_RULE_STATUS_FILENAME = "candidate_signal_rule_status.jsonl"
 _SHARED_RISK_RULE_STATUS_FILENAME = "shared_risk_rule_status.jsonl"
 _SHARED_SIGNAL_RULE_STATUS_FILENAME = "shared_signal_rule_status.jsonl"
+_SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME = "shared_benchmark_comparison_status.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -265,6 +280,14 @@ _EXPECTED_ARTIFACTS = (
         "shared_risk_rule_status",
         _SHARED_RISK_RULE_STATUS_FILENAME,
     ),
+    (
+        "shared_signal_rule_status",
+        _SHARED_SIGNAL_RULE_STATUS_FILENAME,
+    ),
+    (
+        "shared_benchmark_comparison_status",
+        _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME,
+    ),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -325,6 +348,8 @@ _REQUIRED_PACKET_FIELDS = (
     "shared_risk_rule_status",
     "shared_signal_rule_status_path",
     "shared_signal_rule_status",
+    "shared_benchmark_comparison_status_path",
+    "shared_benchmark_comparison_status",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -407,6 +432,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "shared_risk_rule_status",
     "shared_signal_rule_status_path",
     "shared_signal_rule_status",
+    "shared_benchmark_comparison_status_path",
+    "shared_benchmark_comparison_status",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -1348,6 +1375,46 @@ _REQUIRED_SHARED_SIGNAL_RULE_STATUS_FIELDS = (
     "safety_scope",
     "safety_labels",
 )
+_REQUIRED_SHARED_BENCHMARK_COMPARISON_STATUS_FIELDS = (
+    "shared_benchmark_comparison_status_version",
+    "shared_benchmark_comparison_status",
+    "shared_benchmark_comparison_status_mode",
+    "deterministic_scope",
+    "baseline_strategy_id",
+    "source_queue_item_id",
+    "source_action_id",
+    "source_gap_id",
+    "source_candidate_family_id",
+    "source_candidate_family",
+    "source_gap_status",
+    "source_gap_group_id",
+    "source_gap_group_label",
+    "source_closure_action",
+    "source_closure_objective",
+    "source_expected_evidence_artifact",
+    "candidate_family_count",
+    "shared_scope_count",
+    "shared_benchmark_comparison_status_item",
+    "shared_benchmark_comparison_gaps",
+    "candidate_benchmark_comparison_summaries",
+    "explicit_shared_benchmark_comparison_evidence",
+    "performance_metrics_evidence",
+    "drawdown_comparison_evidence",
+    "beta_or_correlation_evidence",
+    "risk_adjusted_return_evidence",
+    "benchmark_comparison_readiness",
+    "highest_priority_remaining_gaps",
+    "evidence_status_summary",
+    "shared_benchmark_comparison_acceptance_criteria",
+    "next_shared_benchmark_comparison_closure_actions",
+    "selected_next_safe_action",
+    "broker_state_mode",
+    "paper_submit_authorized",
+    "daniel_action_required_now",
+    "profit_claim",
+    "safety_scope",
+    "safety_labels",
+)
 _CANDIDATE_EVIDENCE_GAP_PRIORITIES = ("high", "medium", "low")
 _REQUIRED_CANDIDATE_EVIDENCE_ITEM_FIELDS = (
     "evidence_item_id",
@@ -1572,6 +1639,7 @@ def _write_packet_artifacts(
     _apply_candidate_signal_rule_status(payload, output_root)
     _apply_shared_risk_rule_status(payload, output_root)
     _apply_shared_signal_rule_status(payload, output_root)
+    _apply_shared_benchmark_comparison_status(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -1593,6 +1661,7 @@ def _write_packet_artifacts(
     _write_candidate_signal_rule_status_artifact(output_root, payload)
     _write_shared_risk_rule_status_artifact(output_root, payload)
     _write_shared_signal_rule_status_artifact(output_root, payload)
+    _write_shared_benchmark_comparison_status_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -4821,6 +4890,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "shared_signal_rule_status": _normalize_path(
             output_root / _SHARED_SIGNAL_RULE_STATUS_FILENAME
+        ),
+        "shared_benchmark_comparison_status": _normalize_path(
+            output_root / _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -10265,6 +10337,735 @@ def _missing_shared_signal_rule_status_fields(
     return missing
 
 
+def _build_shared_benchmark_comparison_status(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    requirements = _candidate_evidence_requirements_record(payload, artifact_paths)
+    collection_status = _candidate_evidence_collection_status_record(
+        payload,
+        artifact_paths,
+    )
+    gap_summary = _candidate_evidence_gap_summary_record(payload, artifact_paths)
+    queue = _candidate_gap_closure_queue_record(payload, artifact_paths)
+
+    candidate_statuses = collection_status.get("candidate_statuses", [])
+    candidate_summaries = []
+    for candidate in candidate_statuses:
+        if not isinstance(candidate, Mapping):
+            continue
+        candidate_id = str(candidate.get("candidate_family_id", "unknown"))
+        candidate_label = str(candidate.get("candidate_family_label", candidate_id))
+        evidence_items = candidate.get("evidence_items", [])
+        status_val = "missing"
+        blocker_val = "none"
+        for item in evidence_items:
+            if isinstance(item, Mapping) and item.get("evidence_item_id") == "candidate_baseline_comparison_status":
+                status_val = str(item.get("status", "missing"))
+                blocker_val = str(item.get("blocker", "none"))
+                break
+        candidate_summaries.append({
+            "candidate_family_id": candidate_id,
+            "candidate_family": candidate_label,
+            "benchmark_comparison_status": status_val,
+            "benchmark_comparison_blocker": blocker_val,
+        })
+
+    source_item = _shared_benchmark_comparison_queue_item(queue)
+    source_queue_item_id = str(
+        source_item.get(
+            "queue_item_id",
+            _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID,
+        )
+    )
+    source_gap_id = str(source_item.get("gap_id", "benchmark_comparison_status"))
+    source_candidate_family_id = str(
+        source_item.get(
+            "candidate_family_id",
+            _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY_ID,
+        )
+    )
+    status_item = _shared_status_item(collection_status, source_gap_id)
+    benchmark_gap = _shared_gap_item(gap_summary, source_gap_id)
+    shared_benchmark_comparison_gaps = [
+        dict(gap)
+        for gap in gap_summary.get("shared_gap_summary", [])
+        if isinstance(gap, Mapping) and gap.get("gap_category") == "benchmark_comparison"
+    ]
+    highest_priority_remaining_gaps = [
+        dict(gap)
+        for gap in gap_summary.get("highest_priority_gaps", [])
+        if isinstance(gap, Mapping)
+        and str(gap.get("gap_id", "")) in {source_gap_id, "candidate_baseline_comparison_status"}
+    ]
+    evidence_status = _shared_benchmark_comparison_evidence_status(
+        status_item=status_item,
+        benchmark_gap=benchmark_gap,
+    )
+    remaining_missing_evidence = _shared_benchmark_comparison_remaining_evidence(
+        requirements=requirements,
+        status_item=status_item,
+        benchmark_gap=benchmark_gap,
+        candidate_summaries=candidate_summaries,
+    )
+    explicit_evidence = {
+        "evidence_mode": "deterministic_local_packet_evidence_only",
+        "evidence_status": evidence_status,
+        "explicit_benchmark_comparison_rules_present": False,
+        "rule_source": "none_available_from_local_packet_evidence",
+        "shared_status_id": str(status_item.get("shared_status_id", source_gap_id)),
+        "shared_status": str(status_item.get("status", "missing")),
+        "shared_status_blocker": str(
+            status_item.get("blocker", "shared_benchmark_comparison_status_missing")
+        ),
+        "shared_gap_status": str(benchmark_gap.get("status", "missing")),
+        "shared_gap_label": str(benchmark_gap.get("shared_gap_label", "Benchmark comparison status")),
+        "local_evidence_items": [
+            f"shared_benchmark_comparison_status:{status_item.get('status', 'missing')}",
+            f"shared_benchmark_comparison_gap_status:{benchmark_gap.get('status', 'missing')}",
+            f"shared_benchmark_comparison_blocker:{status_item.get('blocker', 'missing')}",
+        ],
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+    performance_metrics_evidence = _shared_benchmark_comparison_evidence_bucket(
+        bucket_id="performance_metrics_evidence",
+        bucket_label="Performance metrics evidence",
+        tokens=("return", "metrics", "profit", "cagr"),
+        candidate_summaries=candidate_summaries,
+    )
+    drawdown_comparison_evidence = _shared_benchmark_comparison_evidence_bucket(
+        bucket_id="drawdown_comparison_evidence",
+        bucket_label="Drawdown comparison evidence",
+        tokens=("drawdown", "max_drawdown", "peak_to_trough"),
+        candidate_summaries=candidate_summaries,
+    )
+    beta_or_correlation_evidence = _shared_benchmark_comparison_evidence_bucket(
+        bucket_id="beta_or_correlation_evidence",
+        bucket_label="Beta or correlation evidence",
+        tokens=("beta", "correlation", "covariance", "market_exposure"),
+        candidate_summaries=candidate_summaries,
+    )
+    risk_adjusted_return_evidence = _shared_benchmark_comparison_evidence_bucket(
+        bucket_id="risk_adjusted_return_evidence",
+        bucket_label="Risk-adjusted return evidence",
+        tokens=("sharpe", "sortino", "calmar", "risk_adjusted"),
+        candidate_summaries=candidate_summaries,
+    )
+    readiness = _shared_benchmark_comparison_readiness(
+        evidence_status=evidence_status,
+        remaining_missing_evidence=remaining_missing_evidence,
+    )
+    next_actions = _shared_benchmark_comparison_next_actions(
+        queue,
+        source_queue_item_id,
+        source_gap_id,
+    )
+    selected_next_action = (
+        next_actions[0] if next_actions else "review_shared_benchmark_comparison_status_artifact"
+    )
+    evidence_breakdown = _shared_benchmark_comparison_evidence_breakdown(
+        status_item=status_item,
+        benchmark_gap=benchmark_gap,
+        remaining_missing_evidence=remaining_missing_evidence,
+    )
+    return {
+        "shared_benchmark_comparison_status_version": _SHARED_BENCHMARK_COMPARISON_STATUS_VERSION,
+        "shared_benchmark_comparison_status": "ready",
+        "shared_benchmark_comparison_status_mode": "offline_shared_benchmark_comparison_status_only",
+        "deterministic_scope": "shared_candidate_benchmark_comparison_status",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": source_queue_item_id,
+        "source_action_id": str(
+            source_item.get("action_id", f"execute_{source_queue_item_id}")
+        ),
+        "source_gap_id": source_gap_id,
+        "source_candidate_family_id": source_candidate_family_id,
+        "source_candidate_family": str(
+            source_item.get(
+                "candidate_family",
+                _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY,
+            )
+        ),
+        "source_gap_status": str(source_item.get("gap_status", "blocked")),
+        "source_gap_group_id": str(
+            source_item.get("gap_group_id", "backtest_and_benchmark_gaps")
+        ),
+        "source_gap_group_label": str(
+            source_item.get("gap_group_label", "Backtest and benchmark gaps")
+        ),
+        "source_closure_action": str(
+            source_item.get("closure_action", "materialize_candidate_backtest_benchmark_gap_packets")
+        ),
+        "source_closure_objective": str(
+            source_item.get(
+                "closure_objective",
+                (
+                    "Create shared_benchmark_comparison_status.jsonl for Benchmark comparison status "
+                    "using only deterministic offline packet evidence before any "
+                    "candidate implementation, promotion, paper observation, broker read, "
+                    "paper submit, or live trading."
+                ),
+            )
+        ),
+        "source_expected_evidence_artifact": str(
+            source_item.get(
+                "expected_evidence_artifact",
+                _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME,
+            )
+        ),
+        "candidate_family_count": len(candidate_summaries),
+        "shared_scope_count": len(shared_benchmark_comparison_gaps),
+        "shared_benchmark_comparison_status_item": status_item,
+        "shared_benchmark_comparison_gaps": shared_benchmark_comparison_gaps,
+        "candidate_benchmark_comparison_summaries": candidate_summaries,
+        "explicit_shared_benchmark_comparison_evidence": explicit_evidence,
+        "performance_metrics_evidence": performance_metrics_evidence,
+        "drawdown_comparison_evidence": drawdown_comparison_evidence,
+        "beta_or_correlation_evidence": beta_or_correlation_evidence,
+        "risk_adjusted_return_evidence": risk_adjusted_return_evidence,
+        "benchmark_comparison_readiness": readiness,
+        "remaining_missing_shared_benchmark_comparison_evidence": remaining_missing_evidence,
+        "highest_priority_remaining_gaps": highest_priority_remaining_gaps,
+        "evidence_status_summary": {
+            "shared_scope_status": evidence_status,
+            "shared_scope_blocked": evidence_status == "blocked",
+            "shared_missing_evidence_explicit": bool(remaining_missing_evidence),
+            "shared_evidence_status_breakdown": evidence_breakdown,
+        },
+        "shared_benchmark_comparison_acceptance_criteria": [
+            "shared_benchmark_comparison_status.jsonl exists as one deterministic JSONL record",
+            f"source_queue_item_id={_SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID}",
+            "source_candidate_family_id=shared",
+            "source_gap_id=benchmark_comparison_status",
+            "explicit shared benchmark-comparison evidence is recorded without inventing rules",
+            f"selected_next_safe_action={_SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID}",
+            "broker_state_mode=broker_state_not_observed",
+            "paper_submit_authorized=false",
+            "daniel_action_required_now=false",
+            "profit_claim=none",
+            "safety_scope=offline_only",
+        ],
+        "next_shared_benchmark_comparison_closure_actions": next_actions,
+        "selected_next_safe_action": selected_next_action,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+        "safety_labels": list(_REQUIRED_LABELS),
+    }
+
+
+def _default_shared_benchmark_comparison_status_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = _build_shared_benchmark_comparison_status({}, artifact_paths)
+    return {
+        "shared_benchmark_comparison_status_path": str(
+            artifact_paths["shared_benchmark_comparison_status"]
+        ),
+        "shared_benchmark_comparison_status": status,
+    }
+
+
+def _shared_benchmark_comparison_status_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = payload.get("shared_benchmark_comparison_status")
+    if isinstance(status, Mapping):
+        return dict(status)
+    return _build_shared_benchmark_comparison_status(payload, artifact_paths)
+
+
+def _apply_shared_benchmark_comparison_status(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    status = _build_shared_benchmark_comparison_status(payload, artifact_paths)
+    payload["shared_benchmark_comparison_status_path"] = str(
+        artifact_paths["shared_benchmark_comparison_status"]
+    )
+    payload["shared_benchmark_comparison_status"] = status
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["shared_benchmark_comparison_status_path"] = payload[
+            "shared_benchmark_comparison_status_path"
+        ]
+        dashboard["shared_benchmark_comparison_status"] = dict(status)
+
+
+def _write_shared_benchmark_comparison_status_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    status = payload.get("shared_benchmark_comparison_status")
+    record = status if isinstance(status, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _quality_shared_benchmark_comparison_status_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_shared_benchmark_comparison_status_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    status = packet["shared_benchmark_comparison_status"]
+    assert isinstance(status, Mapping)
+    artifact_path = output_root / _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME} is not JSON"
+    if artifact_record != status:
+        return False, "shared benchmark comparison status artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("shared_benchmark_comparison_status")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index shared_benchmark_comparison_status"
+    if not str(indexed.get("path", "")).endswith(_SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME):
+        return False, "manifest shared benchmark comparison status path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME not in text:
+            return False, f"{text_name} does not reference shared benchmark comparison status"
+        if "Shared Benchmark Comparison Status" not in text:
+            return False, (
+                f"{text_name} does not include shared benchmark comparison status section"
+            )
+    return True, (
+        "shared benchmark comparison status generated; "
+        "shared_benchmark_comparison_status=ready; "
+        "shared_benchmark_comparison_status_mode=offline_shared_benchmark_comparison_status_only; "
+        f"source_queue_item_id={status['source_queue_item_id']}; "
+        f"source_candidate_family_id={status['source_candidate_family_id']}; "
+        f"selected_next_safe_action={status['selected_next_safe_action']}"
+    )
+
+
+def _missing_shared_benchmark_comparison_status_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    status = packet.get("shared_benchmark_comparison_status")
+    if not isinstance(status, Mapping):
+        return [f"{field_prefix}shared_benchmark_comparison_status"]
+    for field_name in _REQUIRED_SHARED_BENCHMARK_COMPARISON_STATUS_FIELDS:
+        if field_name not in status:
+            missing.append(f"{field_prefix}shared_benchmark_comparison_status.{field_name}")
+    if not str(packet.get("shared_benchmark_comparison_status_path", "")).endswith(
+        _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+    ):
+        missing.append(f"{field_prefix}shared_benchmark_comparison_status_path")
+    expected_values = {
+        "shared_benchmark_comparison_status_version": _SHARED_BENCHMARK_COMPARISON_STATUS_VERSION,
+        "shared_benchmark_comparison_status": "ready",
+        "shared_benchmark_comparison_status_mode": "offline_shared_benchmark_comparison_status_only",
+        "deterministic_scope": "shared_candidate_benchmark_comparison_status",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID,
+        "source_action_id": _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_ACTION_ID,
+        "source_gap_id": "benchmark_comparison_status",
+        "source_candidate_family_id": (
+            _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY_ID
+        ),
+        "source_candidate_family": _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY,
+        "source_gap_status": "missing",
+        "source_gap_group_id": "backtest_and_benchmark_gaps",
+        "source_gap_group_label": "Backtest and benchmark gaps",
+        "source_closure_action": "materialize_candidate_backtest_benchmark_gap_packets",
+        "source_expected_evidence_artifact": _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+    }
+    for field_name, expected_value in expected_values.items():
+        if status.get(field_name) != expected_value:
+            missing.append(f"{field_prefix}shared_benchmark_comparison_status.{field_name}")
+    selected_action = str(status.get("selected_next_safe_action", ""))
+    if _selector_contains_forbidden_action(selected_action):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status."
+            "selected_next_safe_action.safe"
+        )
+    if selected_action != _SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID:
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status."
+            "selected_next_safe_action.advanced"
+        )
+    if selected_action not in status.get("next_shared_benchmark_comparison_closure_actions", []):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status."
+            "selected_next_safe_action.in_next_shared_benchmark_comparison_closure_actions"
+        )
+    if (
+        _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+        not in str(status.get("source_closure_objective", ""))
+        or "offline" not in str(status.get("source_closure_objective", "")).lower()
+    ):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status.source_closure_objective"
+        )
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        if label not in status.get("safety_labels", []):
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status.safety_labels.{label}"
+            )
+    for list_field in (
+        "shared_benchmark_comparison_gaps",
+        "candidate_benchmark_comparison_summaries",
+        "remaining_missing_shared_benchmark_comparison_evidence",
+        "highest_priority_remaining_gaps",
+        "shared_benchmark_comparison_acceptance_criteria",
+        "next_shared_benchmark_comparison_closure_actions",
+        "safety_labels",
+    ):
+        if not isinstance(status.get(list_field), list) or not status.get(list_field):
+            missing.append(f"{field_prefix}shared_benchmark_comparison_status.{list_field}")
+    if status.get("candidate_family_count") != len(
+        status.get("candidate_benchmark_comparison_summaries", [])
+    ):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status.candidate_family_count"
+        )
+    if status.get("shared_scope_count") != len(
+        status.get("shared_benchmark_comparison_gaps", [])
+    ):
+        missing.append(f"{field_prefix}shared_benchmark_comparison_status.shared_scope_count")
+    status_item = status.get("shared_benchmark_comparison_status_item")
+    if not isinstance(status_item, Mapping):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status.shared_benchmark_comparison_status_item"
+        )
+    else:
+        if status_item.get("shared_status_id") != "benchmark_comparison_status":
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "shared_benchmark_comparison_status_item.shared_status_id"
+            )
+        if status_item.get("status") != "missing":
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "shared_benchmark_comparison_status_item.status"
+            )
+    explicit_evidence = status.get("explicit_shared_benchmark_comparison_evidence")
+    if not isinstance(explicit_evidence, Mapping):
+        missing.append(
+            f"{field_prefix}shared_benchmark_comparison_status."
+            "explicit_shared_benchmark_comparison_evidence"
+        )
+    else:
+        if explicit_evidence.get("evidence_mode") != (
+            "deterministic_local_packet_evidence_only"
+        ):
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "explicit_shared_benchmark_comparison_evidence.evidence_mode"
+            )
+        if explicit_evidence.get("explicit_benchmark_comparison_rules_present") is not False:
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "explicit_shared_benchmark_comparison_evidence.explicit_benchmark_comparison_rules_present"
+            )
+        if explicit_evidence.get("evidence_status") not in {
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        }:
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "explicit_shared_benchmark_comparison_evidence.evidence_status"
+            )
+        if not isinstance(
+            explicit_evidence.get("local_evidence_items"),
+            list,
+        ) or not explicit_evidence.get("local_evidence_items"):
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                "explicit_shared_benchmark_comparison_evidence.local_evidence_items"
+            )
+    for bucket_name in (
+        "performance_metrics_evidence",
+        "drawdown_comparison_evidence",
+        "beta_or_correlation_evidence",
+        "risk_adjusted_return_evidence",
+    ):
+        bucket = status.get(bucket_name)
+        if not isinstance(bucket, Mapping):
+            missing.append(f"{field_prefix}shared_benchmark_comparison_status.{bucket_name}")
+            continue
+        if bucket.get("evidence_mode") != "deterministic_local_packet_evidence_only":
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status.{bucket_name}.evidence_mode"
+            )
+        if bucket.get("explicit_rules_present") is not False:
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                f"{bucket_name}.explicit_rules_present"
+            )
+        if not isinstance(bucket.get("candidate_evidence"), list):
+            missing.append(
+                f"{field_prefix}shared_benchmark_comparison_status."
+                f"{bucket_name}.candidate_evidence"
+            )
+    return missing
+
+
+def _shared_benchmark_comparison_queue_item(
+    queue: Mapping[str, Any],
+) -> dict[str, Any]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return {}
+    first_item: dict[str, Any] = {}
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if (
+            item.get("queue_item_id")
+            == _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID
+        ):
+            return dict(item)
+        if (
+            not first_item
+            and str(item.get("candidate_family_id", "")) == "shared"
+            and str(item.get("gap_id", "")) == "benchmark_comparison_status"
+        ):
+            first_item = dict(item)
+    if first_item:
+        return first_item
+    return dict(queue_items[0]) if queue_items and isinstance(queue_items[0], Mapping) else {}
+
+
+def _shared_benchmark_comparison_next_actions(
+    queue: Mapping[str, Any],
+    source_queue_item_id: str,
+    source_gap_id: str,
+) -> list[str]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return []
+    source_rank = 0
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("queue_item_id") == source_queue_item_id:
+            source_rank = int(item.get("rank", 0))
+            break
+    later_items = [
+        item
+        for item in queue_items
+        if isinstance(item, Mapping)
+        and int(item.get("rank", 0)) > source_rank
+        and str(item.get("gap_id", "")) == source_gap_id
+    ]
+    if not later_items:
+        later_items = [
+            item
+            for item in queue_items
+            if isinstance(item, Mapping) and int(item.get("rank", 0)) > source_rank
+        ]
+    return [str(item["action_id"]) for item in later_items if item.get("action_id")]
+
+
+def _shared_benchmark_comparison_evidence_status(
+    *,
+    status_item: Mapping[str, Any],
+    benchmark_gap: Mapping[str, Any],
+) -> str:
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(benchmark_gap.get("status", item_status or "missing"))
+    if item_status in {"not_applicable", "not-applicable"} or gap_status in {
+        "not_applicable",
+        "not-applicable",
+    }:
+        return "not_applicable"
+    if item_status == "blocked" or gap_status == "blocked":
+        return "blocked"
+    if item_status in {"collected", "complete"} and gap_status in {
+        "collected",
+        "complete",
+    }:
+        return "complete"
+    return "incomplete"
+
+
+def _shared_benchmark_comparison_remaining_evidence(
+    *,
+    requirements: Mapping[str, Any],
+    status_item: Mapping[str, Any],
+    benchmark_gap: Mapping[str, Any],
+    candidate_summaries: list[Mapping[str, Any]],
+) -> list[str]:
+    missing: list[str] = []
+    for item in requirements.get("shared_evidence_requirements", []):
+        if item == "benchmark_comparison":
+            missing.append(f"shared_evidence_requirement:{item}")
+    status = str(status_item.get("status", "missing"))
+    if status != "collected":
+        missing.append(f"shared_benchmark_comparison_status:{status}")
+    blocker = str(status_item.get("blocker", "shared_benchmark_comparison_status_missing"))
+    if blocker and blocker != "none":
+        missing.append(f"shared_benchmark_comparison_blocker:{blocker}")
+    gap_status = str(benchmark_gap.get("status", "missing"))
+    missing.append(f"shared_benchmark_comparison_gap_status:{gap_status}")
+    for summary in candidate_summaries:
+        candidate_id = str(summary.get("candidate_family_id", "unknown"))
+        val = str(summary.get("benchmark_comparison_status", ""))
+        if val != "collected":
+            missing.append(f"{candidate_id}:candidate_baseline_comparison_status:{val}")
+    return list(dict.fromkeys(missing))
+
+
+def _shared_benchmark_comparison_evidence_breakdown(
+    *,
+    status_item: Mapping[str, Any],
+    benchmark_gap: Mapping[str, Any],
+    remaining_missing_evidence: list[str],
+) -> dict[str, list[str]]:
+    breakdown: dict[str, list[str]] = {
+        "complete": [],
+        "incomplete": [],
+        "blocked": [],
+        "not_applicable": [],
+    }
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(benchmark_gap.get("status", "missing"))
+    if item_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"shared_benchmark_comparison_status:{item_status}")
+    elif item_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(
+            f"shared_benchmark_comparison_status:{item_status}"
+        )
+    elif item_status == "blocked":
+        breakdown["blocked"].append(f"shared_benchmark_comparison_status:{item_status}")
+    else:
+        breakdown["incomplete"].append(f"shared_benchmark_comparison_status:{item_status}")
+    if gap_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"shared_benchmark_comparison_gap_status:{gap_status}")
+    elif gap_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(
+            f"shared_benchmark_comparison_gap_status:{gap_status}"
+        )
+    elif gap_status == "blocked":
+        breakdown["blocked"].append(f"shared_benchmark_comparison_gap_status:{gap_status}")
+    else:
+        breakdown["incomplete"].append(f"shared_benchmark_comparison_gap_status:{gap_status}")
+    blocker = str(status_item.get("blocker", "none"))
+    if blocker and blocker != "none":
+        breakdown["blocked"].append(f"shared_benchmark_comparison_blocker:{blocker}")
+    for item in remaining_missing_evidence:
+        target = (
+            "blocked"
+            if "blocker:" in item or item.endswith(":blocked") or "missing" in item
+            else "incomplete"
+        )
+        breakdown[target].append(item)
+    return {key: list(dict.fromkeys(values)) for key, values in breakdown.items()}
+
+
+def _shared_benchmark_comparison_evidence_bucket(
+    *,
+    bucket_id: str,
+    bucket_label: str,
+    tokens: tuple[str, ...],
+    candidate_summaries: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    candidate_evidence = []
+    for summary in candidate_summaries:
+        candidate_evidence.append(
+            {
+                "candidate_family_id": str(
+                    summary.get("candidate_family_id", "unknown")
+                ),
+                "benchmark_comparison_status": str(
+                    summary.get("benchmark_comparison_status", "incomplete")
+                ),
+                "missing_evidence": [
+                    f"missing_token_{t}"
+                    for t in tokens
+                    if str(summary.get("benchmark_comparison_status")) != "collected"
+                ],
+            }
+        )
+    return {
+        "bucket_id": bucket_id,
+        "bucket_label": bucket_label,
+        "evidence_mode": "deterministic_local_packet_evidence_only",
+        "evidence_status": "missing",
+        "explicit_rules_present": False,
+        "candidate_evidence": candidate_evidence,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+    }
+
+
+def _shared_benchmark_comparison_readiness(
+    *,
+    evidence_status: str,
+    remaining_missing_evidence: list[str],
+) -> dict[str, Any]:
+    if evidence_status == "complete" and not remaining_missing_evidence:
+        readiness_status = "evidence_ready"
+    elif evidence_status == "blocked":
+        readiness_status = "blocked"
+    elif evidence_status == "not_applicable":
+        readiness_status = "not_applicable"
+    else:
+        readiness_status = "not_ready"
+    return {
+        "readiness_status": readiness_status,
+        "research_ready": False,
+        "evidence_ready": readiness_status == "evidence_ready",
+        "still_blocked": readiness_status == "blocked",
+        "remaining_missing_evidence_count": len(remaining_missing_evidence),
+        "blocking_evidence": [
+            item
+            for item in remaining_missing_evidence
+            if "blocker:" in item or item.endswith(":blocked") or "missing" in item
+        ],
+    }
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -10500,6 +11301,7 @@ def _default_work_order_export_fields(
     signal_rule_status = _build_candidate_signal_rule_status({}, artifact_paths)
     shared_risk_rule_status = _build_shared_risk_rule_status({}, artifact_paths)
     shared_signal_rule_status = _build_shared_signal_rule_status({}, artifact_paths)
+    shared_benchmark_comparison_status = _build_shared_benchmark_comparison_status({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -10622,6 +11424,16 @@ def _default_work_order_export_fields(
             ),
             "shared_signal_rule_status_selected_next_safe_action": str(
                 shared_signal_rule_status["selected_next_safe_action"]
+            ),
+            "shared_benchmark_comparison_status_path": str(
+                artifact_paths["shared_benchmark_comparison_status"]
+            ),
+            "shared_benchmark_comparison_status": dict(shared_benchmark_comparison_status),
+            "shared_benchmark_comparison_status_status": str(
+                shared_benchmark_comparison_status["shared_benchmark_comparison_status"]
+            ),
+            "shared_benchmark_comparison_status_selected_next_safe_action": str(
+                shared_benchmark_comparison_status["selected_next_safe_action"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -10900,6 +11712,50 @@ def _build_next_action_selector(
                         shared_signal_rule_status.get(
                             "source_gap_id",
                             "signal_rule_status",
+                        )
+                    ),
+                ],
+                blocks_offline_build=False,
+                requires_daniel=False,
+                hard_gate_required=False,
+                selected_research_candidate=None,
+            )
+
+    shared_benchmark_comparison_status = payload.get("shared_benchmark_comparison_status")
+    if (
+        isinstance(shared_benchmark_comparison_status, Mapping)
+        and shared_benchmark_comparison_status.get("shared_benchmark_comparison_status") == "ready"
+    ):
+        selected_action = str(
+            shared_benchmark_comparison_status.get("selected_next_safe_action", "")
+        )
+        if selected_action and not _selector_contains_forbidden_action(selected_action):
+            return _selector_result(
+                artifact_paths=artifact_paths,
+                source_state=source_state,
+                status="shared_benchmark_comparison_status_next_action_selected",
+                priority="P2",
+                selected_next_action_id=selected_action,
+                selected_next_action_type="candidate_gap_closure_queue_item",
+                selected_work_order="codex_work_order",
+                selected_owner="Codex",
+                rationale=(
+                    "shared_benchmark_comparison_status materialized the source queue item, "
+                    "so the next deterministic offline queue item is selected."
+                ),
+                reason_codes=[
+                    "quality_gate_not_failed",
+                    "shared_benchmark_comparison_status_ready",
+                    str(
+                        shared_benchmark_comparison_status.get(
+                            "source_queue_item_id",
+                            _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_QUEUE_ITEM_ID,
+                        )
+                    ),
+                    str(
+                        shared_benchmark_comparison_status.get(
+                            "source_gap_id",
+                            "benchmark_comparison_status",
                         )
                     ),
                 ],
@@ -11368,6 +12224,14 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             )
             else {}
         ),
+        "shared_benchmark_comparison_status": dict(
+            payload.get("shared_benchmark_comparison_status", {})
+            if isinstance(
+                payload.get("shared_benchmark_comparison_status"),
+                Mapping,
+            )
+            else {}
+        ),
     }
 
 
@@ -11561,6 +12425,17 @@ def _selector_result(
             )
             else {}
         ),
+        "shared_benchmark_comparison_status_path": str(
+            artifact_paths["shared_benchmark_comparison_status"]
+        ),
+        "shared_benchmark_comparison_status": dict(
+            source_state.get("shared_benchmark_comparison_status", {})
+            if isinstance(
+                source_state.get("shared_benchmark_comparison_status"),
+                Mapping,
+            )
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -11668,6 +12543,10 @@ def _apply_work_order_exports(
         artifact_paths,
     )
     shared_signal_rule_status = _shared_signal_rule_status_record(
+        payload,
+        artifact_paths,
+    )
+    shared_benchmark_comparison_status = _shared_benchmark_comparison_status_record(
         payload,
         artifact_paths,
     )
@@ -11790,6 +12669,16 @@ def _apply_work_order_exports(
         ),
         "shared_signal_rule_status_selected_next_safe_action": str(
             shared_signal_rule_status.get("selected_next_safe_action", "")
+        ),
+        "shared_benchmark_comparison_status_path": str(
+            artifact_paths["shared_benchmark_comparison_status"]
+        ),
+        "shared_benchmark_comparison_status": dict(shared_benchmark_comparison_status),
+        "shared_benchmark_comparison_status_status": str(
+            shared_benchmark_comparison_status.get("shared_benchmark_comparison_status", "ready")
+        ),
+        "shared_benchmark_comparison_status_selected_next_safe_action": str(
+            shared_benchmark_comparison_status.get("selected_next_safe_action", "")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -12897,6 +13786,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    shared_benchmark_comparison_status_ok, shared_benchmark_comparison_status_summary = (
+        _quality_shared_benchmark_comparison_status_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -13034,6 +13930,11 @@ def _build_quality_gate(
             "shared_signal_rule_status_generated",
             shared_signal_rule_status_ok,
             shared_signal_rule_status_summary,
+        ),
+        _quality_check(
+            "shared_benchmark_comparison_status_generated",
+            shared_benchmark_comparison_status_ok,
+            shared_benchmark_comparison_status_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -14521,6 +15422,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_candidate_signal_rule_status_fields("", packet))
     missing.extend(_missing_shared_risk_rule_status_fields("", packet))
     missing.extend(_missing_shared_signal_rule_status_fields("", packet))
+    missing.extend(_missing_shared_benchmark_comparison_status_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -14599,6 +15501,8 @@ def _missing_manifest_fields(
     missing.extend(_missing_candidate_risk_rule_status_fields("manifest", manifest))
     missing.extend(_missing_candidate_signal_rule_status_fields("manifest", manifest))
     missing.extend(_missing_shared_risk_rule_status_fields("manifest", manifest))
+    missing.extend(_missing_shared_signal_rule_status_fields("manifest", manifest))
+    missing.extend(_missing_shared_benchmark_comparison_status_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -14648,6 +15552,10 @@ def _missing_manifest_fields(
         "candidate_signal_rule_status",
         "shared_risk_rule_status_path",
         "shared_risk_rule_status",
+        "shared_signal_rule_status_path",
+        "shared_signal_rule_status",
+        "shared_benchmark_comparison_status_path",
+        "shared_benchmark_comparison_status",
         "baseline_health_evaluation_version",
         "baseline_health_evaluation_path",
         "baseline_health_evaluation",
@@ -19711,6 +20619,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     shared_signal_rule_status_json = _json_markdown(
         payload["shared_signal_rule_status"]
     )
+    shared_benchmark_comparison_status_json = _json_markdown(
+        payload["shared_benchmark_comparison_status"]
+    )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -20077,6 +20988,26 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {shared_signal_rule_status_json}
 ```
 
+## Shared Benchmark Comparison Status
+* **Shared benchmark-comparison status**: `{payload["shared_benchmark_comparison_status"]["shared_benchmark_comparison_status"]}`
+* **Shared benchmark-comparison status mode**: `{payload["shared_benchmark_comparison_status"]["shared_benchmark_comparison_status_mode"]}`
+* **Source queue item**: `{payload["shared_benchmark_comparison_status"]["source_queue_item_id"]}`
+* **Source action**: `{payload["shared_benchmark_comparison_status"]["source_action_id"]}`
+* **Source gap**: `{payload["shared_benchmark_comparison_status"]["source_gap_id"]}`
+* **Source scope**: `{payload["shared_benchmark_comparison_status"]["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{payload["shared_benchmark_comparison_status"]["source_expected_evidence_artifact"]}`
+* **Evidence status summary**: {payload["shared_benchmark_comparison_status"]["evidence_status_summary"]}
+* **Target readiness**: `{payload["shared_benchmark_comparison_status"]["benchmark_comparison_readiness"]["readiness_status"]}`
+* **Selected next safe action**: `{payload["shared_benchmark_comparison_status"]["selected_next_safe_action"]}`
+* **Broker-state mode**: `{payload["shared_benchmark_comparison_status"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["shared_benchmark_comparison_status"]["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(payload["shared_benchmark_comparison_status"]["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{payload["shared_benchmark_comparison_status"]["profit_claim"]}`
+* **Safety scope**: `{payload["shared_benchmark_comparison_status"]["safety_scope"]}`
+```json
+{shared_benchmark_comparison_status_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -20145,6 +21076,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     )
     shared_signal_rule_status_json = _json_markdown(
         payload["shared_signal_rule_status"]
+    )
+    shared_benchmark_comparison_status_json = _json_markdown(
+        payload["shared_benchmark_comparison_status"]
     )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
@@ -20557,6 +21491,28 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {shared_signal_rule_status_json}
 ```
 
+## Shared Benchmark Comparison Status
+* **shared_benchmark_comparison_status_path**: `{payload["shared_benchmark_comparison_status_path"]}`
+* **shared_benchmark_comparison_status**: `{payload["shared_benchmark_comparison_status"]["shared_benchmark_comparison_status"]}`
+* **shared_benchmark_comparison_status_mode**: `{payload["shared_benchmark_comparison_status"]["shared_benchmark_comparison_status_mode"]}`
+* **source_queue_item_id**: `{payload["shared_benchmark_comparison_status"]["source_queue_item_id"]}`
+* **source_action_id**: `{payload["shared_benchmark_comparison_status"]["source_action_id"]}`
+* **source_gap_id**: `{payload["shared_benchmark_comparison_status"]["source_gap_id"]}`
+* **source_candidate_family_id**: `{payload["shared_benchmark_comparison_status"]["source_candidate_family_id"]}`
+* **source_expected_evidence_artifact**: `{payload["shared_benchmark_comparison_status"]["source_expected_evidence_artifact"]}`
+* **evidence_status_summary**: `{payload["shared_benchmark_comparison_status"]["evidence_status_summary"]}`
+* **target_readiness**: `{payload["shared_benchmark_comparison_status"]["benchmark_comparison_readiness"]["readiness_status"]}`
+* **next_shared_benchmark_comparison_closure_actions**: `{payload["shared_benchmark_comparison_status"]["next_shared_benchmark_comparison_closure_actions"]}`
+* **selected_next_safe_action**: `{payload["shared_benchmark_comparison_status"]["selected_next_safe_action"]}`
+* **broker_state_mode**: `{payload["shared_benchmark_comparison_status"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["shared_benchmark_comparison_status"]["paper_submit_authorized"]).lower()}
+* **daniel_action_required_now**: {str(payload["shared_benchmark_comparison_status"]["daniel_action_required_now"]).lower()}
+* **profit_claim**: `{payload["shared_benchmark_comparison_status"]["profit_claim"]}`
+* **safety_scope**: `{payload["shared_benchmark_comparison_status"]["safety_scope"]}`
+```json
+{shared_benchmark_comparison_status_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -20651,6 +21607,14 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "shared_risk_rule_status",
             artifact_paths.get("shared_risk_rule_status"),
+        ),
+        (
+            "shared_signal_rule_status",
+            artifact_paths.get("shared_signal_rule_status"),
+        ),
+        (
+            "shared_benchmark_comparison_status",
+            artifact_paths.get("shared_benchmark_comparison_status"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -20952,6 +21916,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["shared_signal_rule_status"] = _artifact_metadata(
             shared_signal_rule_status_path
         )
+    shared_benchmark_comparison_status_path = output_root / _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+    if shared_benchmark_comparison_status_path.exists():
+        indexed_artifacts["shared_benchmark_comparison_status"] = _artifact_metadata(
+            shared_benchmark_comparison_status_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -21087,6 +22056,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
             "shared_signal_rule_status_path"
         ],
         "shared_signal_rule_status": dict(payload["shared_signal_rule_status"]),
+        "shared_benchmark_comparison_status_path": payload[
+            "shared_benchmark_comparison_status_path"
+        ],
+        "shared_benchmark_comparison_status": dict(
+            payload["shared_benchmark_comparison_status"]
+        ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
