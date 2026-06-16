@@ -154,30 +154,30 @@ _SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_010"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_VERSION = (
-    "assistant_v1.30_candidate_backtest_result_packet"
+    "assistant_v1.31_candidate_backtest_result_packet"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID = (
-    "candidate_gap_closure_queue_item_010"
+    "candidate_gap_closure_queue_item_011"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_010"
+    "execute_candidate_gap_closure_queue_item_011"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID = (
-    "momentum_or_trend_candidate"
+    "mean_reversion_candidate"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY = (
-    "Momentum or trend candidate"
+    "Mean reversion candidate"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_011"
+    "execute_candidate_gap_closure_queue_item_012"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME = (
     "candidate_backtest_result_packet.jsonl"
 )
-_PHASE_NAME = "Assistant v1.30 — Execute Candidate Gap Closure Queue Item 010"
+_PHASE_NAME = "Assistant v1.31 — Execute Candidate Gap Closure Queue Item 011"
 _PHASE_GOAL = (
     "Materialize deterministic offline candidate backtest outputs status evidence for "
-    "candidate_gap_closure_queue_item_010 before any strategy implementation, "
+    "candidate_gap_closure_queue_item_011 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
