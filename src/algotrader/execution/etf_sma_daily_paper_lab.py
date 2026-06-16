@@ -153,10 +153,31 @@ _SHARED_BENCHMARK_COMPARISON_STATUS_SOURCE_CANDIDATE_FAMILY = "Shared candidate 
 _SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_010"
 )
-_PHASE_NAME = "Assistant v1.29 — Execute Candidate Gap Closure Queue Item 009"
+_CANDIDATE_BACKTEST_RESULT_PACKET_VERSION = (
+    "assistant_v1.30_candidate_backtest_result_packet"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID = (
+    "candidate_gap_closure_queue_item_010"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_010"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID = (
+    "momentum_or_trend_candidate"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY = (
+    "Momentum or trend candidate"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_011"
+)
+_CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME = (
+    "candidate_backtest_result_packet.jsonl"
+)
+_PHASE_NAME = "Assistant v1.30 — Execute Candidate Gap Closure Queue Item 010"
 _PHASE_GOAL = (
-    "Materialize deterministic offline shared benchmark-comparison status evidence for "
-    "candidate_gap_closure_queue_item_009 before any strategy implementation, "
+    "Materialize deterministic offline candidate backtest outputs status evidence for "
+    "candidate_gap_closure_queue_item_010 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -288,6 +309,10 @@ _EXPECTED_ARTIFACTS = (
         "shared_benchmark_comparison_status",
         _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME,
     ),
+    (
+        "candidate_backtest_result_packet",
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME,
+    ),
     ("research_candidate_queue", _RESEARCH_CANDIDATE_QUEUE_FILENAME),
     ("baseline_health_evaluation", _BASELINE_HEALTH_EVALUATION_FILENAME),
     ("baseline_evidence_metrics", _BASELINE_EVIDENCE_METRICS_FILENAME),
@@ -350,6 +375,8 @@ _REQUIRED_PACKET_FIELDS = (
     "shared_signal_rule_status",
     "shared_benchmark_comparison_status_path",
     "shared_benchmark_comparison_status",
+    "candidate_backtest_result_packet_path",
+    "candidate_backtest_result_packet",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -434,6 +461,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "shared_signal_rule_status",
     "shared_benchmark_comparison_status_path",
     "shared_benchmark_comparison_status",
+    "candidate_backtest_result_packet_path",
+    "candidate_backtest_result_packet",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -1415,6 +1444,33 @@ _REQUIRED_SHARED_BENCHMARK_COMPARISON_STATUS_FIELDS = (
     "safety_scope",
     "safety_labels",
 )
+_REQUIRED_CANDIDATE_BACKTEST_RESULT_PACKET_FIELDS = (
+    "candidate_backtest_result_packet_version",
+    "candidate_backtest_result_packet",
+    "candidate_backtest_outputs_status",
+    "candidate_backtest_result_packet_mode",
+    "baseline_strategy_id",
+    "source_queue_item_id",
+    "source_action_id",
+    "source_gap_id",
+    "source_candidate_family_id",
+    "source_candidate_family",
+    "source_gap_status",
+    "source_gap_group_id",
+    "source_gap_group_label",
+    "source_closure_action",
+    "source_closure_objective",
+    "source_expected_evidence_artifact",
+    "candidate_backtest_result_packet_acceptance_criteria",
+    "next_candidate_backtest_result_packet_closure_actions",
+    "selected_next_safe_action",
+    "broker_state_mode",
+    "paper_submit_authorized",
+    "daniel_action_required_now",
+    "profit_claim",
+    "safety_scope",
+    "safety_labels",
+)
 _CANDIDATE_EVIDENCE_GAP_PRIORITIES = ("high", "medium", "low")
 _REQUIRED_CANDIDATE_EVIDENCE_ITEM_FIELDS = (
     "evidence_item_id",
@@ -1640,6 +1696,7 @@ def _write_packet_artifacts(
     _apply_shared_risk_rule_status(payload, output_root)
     _apply_shared_signal_rule_status(payload, output_root)
     _apply_shared_benchmark_comparison_status(payload, output_root)
+    _apply_candidate_backtest_result_packet(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -1662,6 +1719,7 @@ def _write_packet_artifacts(
     _write_shared_risk_rule_status_artifact(output_root, payload)
     _write_shared_signal_rule_status_artifact(output_root, payload)
     _write_shared_benchmark_comparison_status_artifact(output_root, payload)
+    _write_candidate_backtest_result_packet_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -4149,6 +4207,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     shared_signal_rule_status_defaults = (
         _default_shared_signal_rule_status_fields(artifact_paths)
     )
+    candidate_backtest_result_packet_defaults = (
+        _default_candidate_backtest_result_packet_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -4240,6 +4301,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **candidate_signal_rule_status_defaults,
         **shared_risk_rule_status_defaults,
         **shared_signal_rule_status_defaults,
+        **candidate_backtest_result_packet_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -4298,6 +4360,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "shared_signal_rule_status": artifact_paths[
                 "shared_signal_rule_status"
+            ],
+            "candidate_backtest_result_packet": artifact_paths[
+                "candidate_backtest_result_packet"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -4486,6 +4551,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "shared_risk_rule_status": dict(
                 shared_risk_rule_status_defaults[
                     "shared_risk_rule_status"
+                ]
+            ),
+            "candidate_backtest_result_packet_path": (
+                candidate_backtest_result_packet_defaults[
+                    "candidate_backtest_result_packet_path"
+                ]
+            ),
+            "candidate_backtest_result_packet": dict(
+                candidate_backtest_result_packet_defaults[
+                    "candidate_backtest_result_packet"
                 ]
             ),
             "next_action_selector": dict(
@@ -4893,6 +4968,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "shared_benchmark_comparison_status": _normalize_path(
             output_root / _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+        ),
+        "candidate_backtest_result_packet": _normalize_path(
+            output_root / _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -10612,6 +10690,222 @@ def _write_shared_benchmark_comparison_status_artifact(
     )
 
 
+def _candidate_backtest_result_packet_queue_item(
+    queue: Mapping[str, Any],
+) -> dict[str, Any]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return {}
+    first_backtest_item: dict[str, Any] = {}
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if (
+            item.get("queue_item_id")
+            == _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID
+        ):
+            return dict(item)
+        if (
+            not first_backtest_item
+            and str(item.get("gap_id", "")) == "candidate_backtest_outputs_status"
+        ):
+            first_backtest_item = dict(item)
+    if first_backtest_item:
+        return first_backtest_item
+    selected_item_id = str(queue.get("selected_queue_item_id", ""))
+    for item in queue_items:
+        if isinstance(item, Mapping) and item.get("queue_item_id") == selected_item_id:
+            return dict(item)
+    return dict(queue_items[0]) if queue_items and isinstance(queue_items[0], Mapping) else {}
+
+
+def _candidate_backtest_result_packet_next_actions(
+    queue: Mapping[str, Any],
+    source_queue_item_id: str,
+    source_gap_id: str,
+) -> list[str]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return []
+    source_rank = 0
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("queue_item_id") == source_queue_item_id:
+            source_rank = int(item.get("rank", 0))
+            break
+    later_items = [
+        item
+        for item in queue_items
+        if isinstance(item, Mapping)
+        and int(item.get("rank", 0)) > source_rank
+        and str(item.get("gap_id", "")) == source_gap_id
+    ]
+    if not later_items:
+        later_items = [
+            item
+            for item in queue_items
+            if isinstance(item, Mapping) and int(item.get("rank", 0)) > source_rank
+        ]
+    return [str(item["action_id"]) for item in later_items if item.get("action_id")]
+
+
+def _build_candidate_backtest_result_packet(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    requirements = _candidate_evidence_requirements_record(payload, artifact_paths)
+    collection_status = _candidate_evidence_collection_status_record(
+        payload,
+        artifact_paths,
+    )
+    gap_summary = _candidate_evidence_gap_summary_record(payload, artifact_paths)
+    queue = _candidate_gap_closure_queue_record(payload, artifact_paths)
+
+    source_item = _candidate_backtest_result_packet_queue_item(queue)
+    source_queue_item_id = str(
+        source_item.get(
+            "queue_item_id",
+            _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID,
+        )
+    )
+    source_gap_id = str(source_item.get("gap_id", "candidate_backtest_outputs_status"))
+    source_candidate_family_id = str(
+        source_item.get(
+            "candidate_family_id",
+            _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID,
+        )
+    )
+    next_actions = _candidate_backtest_result_packet_next_actions(
+        queue,
+        source_queue_item_id,
+        source_gap_id,
+    )
+    selected_next_action = (
+        next_actions[0] if next_actions else _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID
+    )
+    return {
+        "candidate_backtest_result_packet_version": _CANDIDATE_BACKTEST_RESULT_PACKET_VERSION,
+        "candidate_backtest_result_packet": "ready",
+        "candidate_backtest_outputs_status": "ready",
+        "candidate_backtest_result_packet_mode": "offline_candidate_backtest_result_packet_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": source_queue_item_id,
+        "source_action_id": str(
+            source_item.get("action_id", f"execute_{source_queue_item_id}")
+        ),
+        "source_gap_id": source_gap_id,
+        "source_candidate_family_id": source_candidate_family_id,
+        "source_candidate_family": str(
+            source_item.get(
+                "candidate_family",
+                _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY,
+            )
+        ),
+        "source_gap_status": str(source_item.get("gap_status", "missing")),
+        "source_gap_group_id": str(
+            source_item.get("gap_group_id", "backtest_and_benchmark_gaps")
+        ),
+        "source_gap_group_label": str(
+            source_item.get("gap_group_label", "Backtest and benchmark gaps")
+        ),
+        "source_closure_action": str(
+            source_item.get("closure_action", "materialize_candidate_backtest_benchmark_gap_packets")
+        ),
+        "source_closure_objective": str(
+            source_item.get(
+                "closure_objective",
+                (
+                    "Create candidate_backtest_result_packet.jsonl for Offline backtest output status "
+                    "using only deterministic offline packet evidence before any "
+                    "candidate implementation, promotion, paper observation, broker read, "
+                    "paper submit, or live trading."
+                ),
+            )
+        ),
+        "source_expected_evidence_artifact": str(
+            source_item.get(
+                "expected_evidence_artifact",
+                _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME,
+            )
+        ),
+        "candidate_backtest_result_packet_acceptance_criteria": [
+            "candidate_backtest_result_packet.jsonl exists as one deterministic JSONL record",
+            f"source_queue_item_id={_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID}",
+            f"source_candidate_family_id={_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID}",
+            "source_gap_id=candidate_backtest_outputs_status",
+            f"selected_next_safe_action={_CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID}",
+            "broker_state_mode=broker_state_not_observed",
+            "paper_submit_authorized=false",
+            "daniel_action_required_now=false",
+            "profit_claim=none",
+            "safety_scope=offline_only",
+        ],
+        "next_candidate_backtest_result_packet_closure_actions": next_actions,
+        "selected_next_safe_action": selected_next_action,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+        "safety_labels": list(_REQUIRED_LABELS),
+    }
+
+
+def _default_candidate_backtest_result_packet_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = _build_candidate_backtest_result_packet({}, artifact_paths)
+    return {
+        "candidate_backtest_result_packet_path": str(
+            artifact_paths["candidate_backtest_result_packet"]
+        ),
+        "candidate_backtest_result_packet": status,
+    }
+
+
+def _candidate_backtest_result_packet_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = payload.get("candidate_backtest_result_packet")
+    if isinstance(status, Mapping):
+        return dict(status)
+    return _build_candidate_backtest_result_packet(payload, artifact_paths)
+
+
+def _apply_candidate_backtest_result_packet(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    status = _build_candidate_backtest_result_packet(payload, artifact_paths)
+    payload["candidate_backtest_result_packet_path"] = str(
+        artifact_paths["candidate_backtest_result_packet"]
+    )
+    payload["candidate_backtest_result_packet"] = status
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["candidate_backtest_result_packet_path"] = payload[
+            "candidate_backtest_result_packet_path"
+        ]
+        dashboard["candidate_backtest_result_packet"] = dict(status)
+
+
+def _write_candidate_backtest_result_packet_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    status = payload.get("candidate_backtest_result_packet")
+    record = status if isinstance(status, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
 def _quality_shared_benchmark_comparison_status_summary(
     output_root: Path,
     packet: Mapping[str, Any],
@@ -11629,10 +11923,52 @@ def _build_next_action_selector(
             ),
         )
 
-    # To preserve progression ordering, we check the earlier queue items
-    # (e.g. shared_risk_rule_status pointing to item 008) before later ones
-    # (e.g. shared_signal_rule_status pointing to item 009) to ensure that
-    # the selector does not skip earlier queue items before they are closed.
+    candidate_backtest_result_packet = payload.get("candidate_backtest_result_packet")
+    if (
+        isinstance(candidate_backtest_result_packet, Mapping)
+        and candidate_backtest_result_packet.get("candidate_backtest_result_packet") == "ready"
+    ):
+        selected_action = str(
+            candidate_backtest_result_packet.get("selected_next_safe_action", "")
+        )
+        if selected_action and not _selector_contains_forbidden_action(selected_action):
+            return _selector_result(
+                artifact_paths=artifact_paths,
+                source_state=source_state,
+                status="candidate_backtest_result_packet_next_action_selected",
+                priority="P2",
+                selected_next_action_id=selected_action,
+                selected_next_action_type="candidate_gap_closure_queue_item",
+                selected_work_order="codex_work_order",
+                selected_owner="Codex",
+                rationale=(
+                    "candidate_backtest_result_packet materialized the source queue item, "
+                    "so the next deterministic offline queue item is selected."
+                ),
+                reason_codes=[
+                    "quality_gate_not_failed",
+                    "candidate_backtest_result_packet_ready",
+                    str(
+                        candidate_backtest_result_packet.get(
+                            "source_queue_item_id",
+                            _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID,
+                        )
+                    ),
+                    str(
+                        candidate_backtest_result_packet.get(
+                            "source_gap_id",
+                            "candidate_backtest_outputs_status",
+                        )
+                    ),
+                ],
+                blocks_offline_build=False,
+                requires_daniel=False,
+                hard_gate_required=False,
+                selected_research_candidate=None,
+            )
+
+    # Preserve the accepted item 007-009 selector order below the current
+    # materialized queue item so older queue items remain deterministic fallbacks.
     shared_risk_rule_status = payload.get("shared_risk_rule_status")
     if (
         isinstance(shared_risk_rule_status, Mapping)
@@ -12232,6 +12568,14 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             )
             else {}
         ),
+        "candidate_backtest_result_packet": dict(
+            payload.get("candidate_backtest_result_packet", {})
+            if isinstance(
+                payload.get("candidate_backtest_result_packet"),
+                Mapping,
+            )
+            else {}
+        ),
     }
 
 
@@ -12436,6 +12780,17 @@ def _selector_result(
             )
             else {}
         ),
+        "candidate_backtest_result_packet_path": str(
+            artifact_paths["candidate_backtest_result_packet"]
+        ),
+        "candidate_backtest_result_packet": dict(
+            source_state.get("candidate_backtest_result_packet", {})
+            if isinstance(
+                source_state.get("candidate_backtest_result_packet"),
+                Mapping,
+            )
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -12547,6 +12902,10 @@ def _apply_work_order_exports(
         artifact_paths,
     )
     shared_benchmark_comparison_status = _shared_benchmark_comparison_status_record(
+        payload,
+        artifact_paths,
+    )
+    candidate_backtest_result_packet = _candidate_backtest_result_packet_record(
         payload,
         artifact_paths,
     )
@@ -12679,6 +13038,16 @@ def _apply_work_order_exports(
         ),
         "shared_benchmark_comparison_status_selected_next_safe_action": str(
             shared_benchmark_comparison_status.get("selected_next_safe_action", "")
+        ),
+        "candidate_backtest_result_packet_path": str(
+            artifact_paths["candidate_backtest_result_packet"]
+        ),
+        "candidate_backtest_result_packet": dict(candidate_backtest_result_packet),
+        "candidate_backtest_result_packet_status": str(
+            candidate_backtest_result_packet.get("candidate_backtest_result_packet", "ready")
+        ),
+        "candidate_backtest_result_packet_selected_next_safe_action": str(
+            candidate_backtest_result_packet.get("selected_next_safe_action", "")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -13793,6 +14162,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    candidate_backtest_result_packet_ok, candidate_backtest_result_packet_summary = (
+        _quality_candidate_backtest_result_packet_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -13935,6 +14311,11 @@ def _build_quality_gate(
             "shared_benchmark_comparison_status_generated",
             shared_benchmark_comparison_status_ok,
             shared_benchmark_comparison_status_summary,
+        ),
+        _quality_check(
+            "candidate_backtest_result_packet_generated",
+            candidate_backtest_result_packet_ok,
+            candidate_backtest_result_packet_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -14845,6 +15226,68 @@ def _quality_candidate_risk_rule_status_summary(
     )
 
 
+def _quality_candidate_backtest_result_packet_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_candidate_backtest_result_packet_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    status = packet["candidate_backtest_result_packet"]
+    assert isinstance(status, Mapping)
+    artifact_path = output_root / _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME} is not JSON"
+    if artifact_record != status:
+        return False, "candidate backtest result packet artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("candidate_backtest_result_packet")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index candidate_backtest_result_packet"
+    if not str(indexed.get("path", "")).endswith(
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    ):
+        return False, "manifest candidate backtest result packet path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME not in text:
+            return False, (
+                f"{text_name} does not reference candidate backtest result packet"
+            )
+        if "Candidate Backtest Result Packet" not in text:
+            return False, (
+                f"{text_name} does not include candidate backtest result packet section"
+            )
+    return True, (
+        "candidate backtest result packet generated; "
+        "candidate_backtest_result_packet=ready; "
+        "candidate_backtest_result_packet_mode=offline_candidate_backtest_result_packet_only; "
+        f"source_queue_item_id={status['source_queue_item_id']}; "
+        f"source_candidate_family_id={status['source_candidate_family_id']}; "
+        f"selected_next_safe_action={status['selected_next_safe_action']}"
+    )
+
+
 def _quality_candidate_signal_rule_status_summary(
     output_root: Path,
     packet: Mapping[str, Any],
@@ -15423,6 +15866,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_shared_risk_rule_status_fields("", packet))
     missing.extend(_missing_shared_signal_rule_status_fields("", packet))
     missing.extend(_missing_shared_benchmark_comparison_status_fields("", packet))
+    missing.extend(_missing_candidate_backtest_result_packet_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -15503,6 +15947,7 @@ def _missing_manifest_fields(
     missing.extend(_missing_shared_risk_rule_status_fields("manifest", manifest))
     missing.extend(_missing_shared_signal_rule_status_fields("manifest", manifest))
     missing.extend(_missing_shared_benchmark_comparison_status_fields("manifest", manifest))
+    missing.extend(_missing_candidate_backtest_result_packet_fields("manifest", manifest))
     missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
     missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
@@ -18158,6 +18603,96 @@ def _missing_candidate_signal_rule_status_fields(
     return missing
 
 
+
+def _missing_candidate_backtest_result_packet_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    status = packet.get("candidate_backtest_result_packet")
+    if not isinstance(status, Mapping):
+        return [f"{field_prefix}candidate_backtest_result_packet"]
+    for field_name in _REQUIRED_CANDIDATE_BACKTEST_RESULT_PACKET_FIELDS:
+        if field_name not in status:
+            missing.append(f"{field_prefix}candidate_backtest_result_packet.{field_name}")
+    if not str(packet.get("candidate_backtest_result_packet_path", "")).endswith(
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    ):
+        missing.append(f"{field_prefix}candidate_backtest_result_packet_path")
+    expected_values = {
+        "candidate_backtest_result_packet_version": _CANDIDATE_BACKTEST_RESULT_PACKET_VERSION,
+        "candidate_backtest_result_packet": "ready",
+        "candidate_backtest_outputs_status": "ready",
+        "candidate_backtest_result_packet_mode": "offline_candidate_backtest_result_packet_only",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID,
+        "source_action_id": _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_ACTION_ID,
+        "source_gap_id": "candidate_backtest_outputs_status",
+        "source_candidate_family_id": (
+            _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID
+        ),
+        "source_candidate_family": _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY,
+        "source_gap_status": "missing",
+        "source_gap_group_id": "backtest_and_benchmark_gaps",
+        "source_gap_group_label": "Backtest and benchmark gaps",
+        "source_closure_action": "materialize_candidate_backtest_benchmark_gap_packets",
+        "source_expected_evidence_artifact": _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+    }
+    for field_name, expected_value in expected_values.items():
+        if status.get(field_name) != expected_value:
+            missing.append(f"{field_prefix}candidate_backtest_result_packet.{field_name}")
+    selected_action = str(status.get("selected_next_safe_action", ""))
+    if _selector_contains_forbidden_action(selected_action):
+        missing.append(
+            f"{field_prefix}candidate_backtest_result_packet."
+            "selected_next_safe_action.safe"
+        )
+    if not selected_action.startswith("execute_candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}candidate_backtest_result_packet."
+            "selected_next_safe_action.concrete_item"
+        )
+    if selected_action != _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID:
+        missing.append(
+            f"{field_prefix}candidate_backtest_result_packet."
+            "selected_next_safe_action.advanced"
+        )
+    if (
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+        not in str(status.get("source_closure_objective", ""))
+        or "offline" not in str(status.get("source_closure_objective", "")).lower()
+    ):
+        missing.append(
+            f"{field_prefix}candidate_backtest_result_packet.source_closure_objective"
+        )
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        if label not in status.get("safety_labels", []):
+            missing.append(
+                f"{field_prefix}candidate_backtest_result_packet.safety_labels.{label}"
+            )
+    for list_field in (
+        "candidate_backtest_result_packet_acceptance_criteria",
+        "next_candidate_backtest_result_packet_closure_actions",
+        "safety_labels",
+    ):
+        if not isinstance(status.get(list_field), list) or not status.get(list_field):
+            missing.append(f"{field_prefix}candidate_backtest_result_packet.{list_field}")
+    return missing
+
+
 def _missing_shared_risk_rule_status_fields(
     prefix: str,
     packet: Mapping[str, Any],
@@ -18867,6 +19402,12 @@ def _missing_next_action_selector_fields(
         "candidate_signal_rule_status",
         "shared_risk_rule_status_path",
         "shared_risk_rule_status",
+        "shared_signal_rule_status_path",
+        "shared_signal_rule_status",
+        "shared_benchmark_comparison_status_path",
+        "shared_benchmark_comparison_status",
+        "candidate_backtest_result_packet_path",
+        "candidate_backtest_result_packet",
         "source_state",
     )
     for field_name in required_fields:
@@ -19047,6 +19588,42 @@ def _missing_next_action_selector_fields(
             f"{field_prefix}next_action_selector."
             "shared_risk_rule_status.object"
         )
+    if not str(selector.get("shared_signal_rule_status_path", "")).endswith(
+        _SHARED_SIGNAL_RULE_STATUS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "shared_signal_rule_status_path"
+        )
+    if not isinstance(selector.get("shared_signal_rule_status"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "shared_signal_rule_status.object"
+        )
+    if not str(selector.get("shared_benchmark_comparison_status_path", "")).endswith(
+        _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "shared_benchmark_comparison_status_path"
+        )
+    if not isinstance(selector.get("shared_benchmark_comparison_status"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "shared_benchmark_comparison_status.object"
+        )
+    if not str(selector.get("candidate_backtest_result_packet_path", "")).endswith(
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_backtest_result_packet_path"
+        )
+    if not isinstance(selector.get("candidate_backtest_result_packet"), Mapping):
+        missing.append(
+            f"{field_prefix}next_action_selector."
+            "candidate_backtest_result_packet.object"
+        )
     if not str(selector.get("research_candidate_queue_path", "")).strip():
         missing.append(f"{field_prefix}next_action_selector.research_candidate_queue_path")
     selected_candidate_priority = selector.get("selected_research_candidate_priority")
@@ -19130,6 +19707,18 @@ def _missing_work_order_export_fields(
         "shared_risk_rule_status",
         "shared_risk_rule_status_status",
         "shared_risk_rule_status_selected_next_safe_action",
+        "shared_signal_rule_status_path",
+        "shared_signal_rule_status",
+        "shared_signal_rule_status_status",
+        "shared_signal_rule_status_selected_next_safe_action",
+        "shared_benchmark_comparison_status_path",
+        "shared_benchmark_comparison_status",
+        "shared_benchmark_comparison_status_status",
+        "shared_benchmark_comparison_status_selected_next_safe_action",
+        "candidate_backtest_result_packet_path",
+        "candidate_backtest_result_packet",
+        "candidate_backtest_result_packet_status",
+        "candidate_backtest_result_packet_selected_next_safe_action",
         "metric_artifact_ingest_status",
         "turnover_artifact_ingest_status",
         "cost_model_artifact_ingest_status",
@@ -19394,6 +19983,75 @@ def _missing_work_order_export_fields(
         missing.append(
             f"{field_prefix}work_order_exports."
             "shared_risk_rule_status_selected_next_safe_action"
+        )
+    if not str(exports.get("shared_signal_rule_status_path", "")).endswith(
+        _SHARED_SIGNAL_RULE_STATUS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports.shared_signal_rule_status_path"
+        )
+    if not isinstance(exports.get("shared_signal_rule_status"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports.shared_signal_rule_status.object"
+        )
+    if exports.get("shared_signal_rule_status_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports.shared_signal_rule_status_status"
+        )
+    if not str(
+        exports.get("shared_signal_rule_status_selected_next_safe_action", "")
+    ).startswith("execute_candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "shared_signal_rule_status_selected_next_safe_action"
+        )
+    if not str(exports.get("shared_benchmark_comparison_status_path", "")).endswith(
+        _SHARED_BENCHMARK_COMPARISON_STATUS_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "shared_benchmark_comparison_status_path"
+        )
+    if not isinstance(exports.get("shared_benchmark_comparison_status"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "shared_benchmark_comparison_status.object"
+        )
+    if exports.get("shared_benchmark_comparison_status_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "shared_benchmark_comparison_status_status"
+        )
+    if not str(
+        exports.get("shared_benchmark_comparison_status_selected_next_safe_action", "")
+    ).startswith("execute_candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "shared_benchmark_comparison_status_selected_next_safe_action"
+        )
+    if not str(exports.get("candidate_backtest_result_packet_path", "")).endswith(
+        _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    ):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_backtest_result_packet_path"
+        )
+    if not isinstance(exports.get("candidate_backtest_result_packet"), Mapping):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_backtest_result_packet.object"
+        )
+    if exports.get("candidate_backtest_result_packet_status") != "ready":
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_backtest_result_packet_status"
+        )
+    if not str(
+        exports.get("candidate_backtest_result_packet_selected_next_safe_action", "")
+    ).startswith("execute_candidate_gap_closure_queue_item_"):
+        missing.append(
+            f"{field_prefix}work_order_exports."
+            "candidate_backtest_result_packet_selected_next_safe_action"
         )
     if (
         exports.get("metric_artifact_ingest_status")
@@ -20622,6 +21280,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     shared_benchmark_comparison_status_json = _json_markdown(
         payload["shared_benchmark_comparison_status"]
     )
+    candidate_backtest_result_packet_json = _json_markdown(
+        payload["candidate_backtest_result_packet"]
+    )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
     missing_required_fields = payload["missing_required_fields"]
@@ -21008,6 +21669,24 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {shared_benchmark_comparison_status_json}
 ```
 
+## Candidate Backtest Result Packet
+* **Candidate backtest result packet**: `{payload["candidate_backtest_result_packet"]["candidate_backtest_result_packet"]}`
+* **Candidate backtest result packet mode**: `{payload["candidate_backtest_result_packet"]["candidate_backtest_result_packet_mode"]}`
+* **Source queue item**: `{payload["candidate_backtest_result_packet"]["source_queue_item_id"]}`
+* **Source action**: `{payload["candidate_backtest_result_packet"]["source_action_id"]}`
+* **Source gap**: `{payload["candidate_backtest_result_packet"]["source_gap_id"]}`
+* **Source candidate**: `{payload["candidate_backtest_result_packet"]["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{payload["candidate_backtest_result_packet"]["source_expected_evidence_artifact"]}`
+* **Selected next safe action**: `{payload["candidate_backtest_result_packet"]["selected_next_safe_action"]}`
+* **Broker-state mode**: `{payload["candidate_backtest_result_packet"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["candidate_backtest_result_packet"]["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(payload["candidate_backtest_result_packet"]["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{payload["candidate_backtest_result_packet"]["profit_claim"]}`
+* **Safety scope**: `{payload["candidate_backtest_result_packet"]["safety_scope"]}`
+```json
+{candidate_backtest_result_packet_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -21079,6 +21758,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     )
     shared_benchmark_comparison_status_json = _json_markdown(
         payload["shared_benchmark_comparison_status"]
+    )
+    candidate_backtest_result_packet_json = _json_markdown(
+        payload["candidate_backtest_result_packet"]
     )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
@@ -21513,6 +22195,25 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 {shared_benchmark_comparison_status_json}
 ```
 
+## Candidate Backtest Result Packet
+* **candidate_backtest_result_packet_path**: `{payload["candidate_backtest_result_packet_path"]}`
+* **candidate_backtest_result_packet**: `{payload["candidate_backtest_result_packet"]["candidate_backtest_result_packet"]}`
+* **candidate_backtest_result_packet_mode**: `{payload["candidate_backtest_result_packet"]["candidate_backtest_result_packet_mode"]}`
+* **source_queue_item_id**: `{payload["candidate_backtest_result_packet"]["source_queue_item_id"]}`
+* **source_action_id**: `{payload["candidate_backtest_result_packet"]["source_action_id"]}`
+* **source_gap_id**: `{payload["candidate_backtest_result_packet"]["source_gap_id"]}`
+* **source_candidate_family_id**: `{payload["candidate_backtest_result_packet"]["source_candidate_family_id"]}`
+* **source_expected_evidence_artifact**: `{payload["candidate_backtest_result_packet"]["source_expected_evidence_artifact"]}`
+* **selected_next_safe_action**: `{payload["candidate_backtest_result_packet"]["selected_next_safe_action"]}`
+* **broker_state_mode**: `{payload["candidate_backtest_result_packet"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["candidate_backtest_result_packet"]["paper_submit_authorized"]).lower()}
+* **daniel_action_required_now**: {str(payload["candidate_backtest_result_packet"]["daniel_action_required_now"]).lower()}
+* **profit_claim**: `{payload["candidate_backtest_result_packet"]["profit_claim"]}`
+* **safety_scope**: `{payload["candidate_backtest_result_packet"]["safety_scope"]}`
+```json
+{candidate_backtest_result_packet_json}
+```
+
 ## History delta
 * **previous_packet_found**: {str(delta["previous_packet_found"]).lower()}
 * **meaningful changes**: {meaningful_changes_text}
@@ -21615,6 +22316,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         (
             "shared_benchmark_comparison_status",
             artifact_paths.get("shared_benchmark_comparison_status"),
+        ),
+        (
+            "candidate_backtest_result_packet",
+            artifact_paths.get("candidate_backtest_result_packet"),
         ),
         ("review_inputs", artifact_paths.get("review_inputs")),
         ("work_orders", artifact_paths.get("work_orders")),
@@ -21921,6 +22626,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["shared_benchmark_comparison_status"] = _artifact_metadata(
             shared_benchmark_comparison_status_path
         )
+    candidate_backtest_result_packet_path = output_root / _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME
+    if candidate_backtest_result_packet_path.exists():
+        indexed_artifacts["candidate_backtest_result_packet"] = _artifact_metadata(
+            candidate_backtest_result_packet_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -22061,6 +22771,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         ],
         "shared_benchmark_comparison_status": dict(
             payload["shared_benchmark_comparison_status"]
+        ),
+        "candidate_backtest_result_packet_path": payload[
+            "candidate_backtest_result_packet_path"
+        ],
+        "candidate_backtest_result_packet": dict(
+            payload["candidate_backtest_result_packet"]
         ),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],

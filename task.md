@@ -1,11 +1,8 @@
-# Assistant v1.28 - Candidate Gap Closure Queue Item 008
+# Assistant v1.30 — Execute Candidate Gap Closure Queue Item 010
 
-- [x] Confirm baseline branch, HEAD, origin/main, and existing worktree status.
-- [x] Run credential/profile preflight before pytest; all danger booleans false.
-- [x] Discover deterministic queue item 008 from repo-generated queue logic.
-- [x] Materialize shared_signal_rule_status.jsonl for shared signal-rule status.
-- [x] Preserve offline-only broker_state_not_observed and paper-submit-disabled safety fields.
-- [x] Advance selected next safe action to the next deterministic safe action after item 008.
-- [x] Update packet, manifest, selector, work-order export validation, and focused tests.
-- [x] Run required bounded verification, smoke test, artifact assertions, and final git hygiene checks.
-
+- [x] Define constants, register artifact in expected list/required fields, and integrate selector logic in src/algotrader/execution/etf_sma_daily_paper_lab.py.
+- [x] Implement builder, lifecycle functions, and queue helper functions for candidate_backtest_result_packet.
+- [x] Wire status application, writes, manifest indexing, and brief rendering in src/algotrader/execution/etf_sma_daily_paper_lab.py.
+- [x] Add validation helper and quality gate summary check function.
+- [x] Implement focused tests in tests/unit/test_etf_sma_daily_paper_lab.py.
+- [x] Verify offline, run smoke test, and perform final git hygiene checks.
