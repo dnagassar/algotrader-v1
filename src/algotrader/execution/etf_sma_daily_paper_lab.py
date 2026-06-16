@@ -125,10 +125,24 @@ _SHARED_RISK_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = "Shared candidate evidence"
 _SHARED_RISK_RULE_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_008"
 )
-_PHASE_NAME = "Assistant v1.27 - Shared Risk Rule Status Item 007 Artifact"
+_SHARED_SIGNAL_RULE_STATUS_VERSION = (
+    "assistant_v1.28_shared_signal_rule_status"
+)
+_SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID = (
+    "candidate_gap_closure_queue_item_008"
+)
+_SHARED_SIGNAL_RULE_STATUS_SOURCE_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_008"
+)
+_SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID = "shared"
+_SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY = "Shared candidate evidence"
+_SHARED_SIGNAL_RULE_STATUS_NEXT_ACTION_ID = (
+    "execute_candidate_gap_closure_queue_item_009"
+)
+_PHASE_NAME = "Assistant v1.28 - Shared Signal Rule Status Item 008 Artifact"
 _PHASE_GOAL = (
-    "Materialize deterministic offline shared risk-rule status evidence for "
-    "candidate_gap_closure_queue_item_007 before any strategy implementation, "
+    "Materialize deterministic offline shared signal-rule status evidence for "
+    "candidate_gap_closure_queue_item_008 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -165,6 +179,7 @@ _CANDIDATE_GAP_CLOSURE_QUEUE_FILENAME = "candidate_gap_closure_queue.jsonl"
 _CANDIDATE_RISK_RULE_STATUS_FILENAME = "candidate_risk_rule_status.jsonl"
 _CANDIDATE_SIGNAL_RULE_STATUS_FILENAME = "candidate_signal_rule_status.jsonl"
 _SHARED_RISK_RULE_STATUS_FILENAME = "shared_risk_rule_status.jsonl"
+_SHARED_SIGNAL_RULE_STATUS_FILENAME = "shared_signal_rule_status.jsonl"
 _PAPER_OBSERVATION_APPROVAL_PHRASE = (
     "Daniel approves read-only paper observation for SPY paper lab: "
     "account/clock/status, SPY position, SPY open orders, and latest paper "
@@ -308,6 +323,8 @@ _REQUIRED_PACKET_FIELDS = (
     "candidate_signal_rule_status",
     "shared_risk_rule_status_path",
     "shared_risk_rule_status",
+    "shared_signal_rule_status_path",
+    "shared_signal_rule_status",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -388,6 +405,8 @@ _REQUIRED_MANIFEST_FIELDS = (
     "candidate_signal_rule_status",
     "shared_risk_rule_status_path",
     "shared_risk_rule_status",
+    "shared_signal_rule_status_path",
+    "shared_signal_rule_status",
     "baseline_health_evaluation_version",
     "baseline_health_evaluation_path",
     "baseline_health_evaluation",
@@ -1285,6 +1304,50 @@ _REQUIRED_SHARED_RISK_RULE_STATUS_FIELDS = (
     "safety_scope",
     "safety_labels",
 )
+_REQUIRED_SHARED_SIGNAL_RULE_STATUS_FIELDS = (
+    "shared_signal_rule_status_version",
+    "shared_signal_rule_status",
+    "shared_signal_rule_status_mode",
+    "deterministic_scope",
+    "baseline_strategy_id",
+    "source_queue_item_id",
+    "source_action_id",
+    "source_gap_id",
+    "source_candidate_family_id",
+    "source_candidate_family",
+    "source_gap_status",
+    "source_gap_group_id",
+    "source_gap_group_label",
+    "source_closure_action",
+    "source_closure_objective",
+    "source_expected_evidence_artifact",
+    "candidate_family_count",
+    "shared_scope_count",
+    "shared_signal_rule_status_item",
+    "shared_signal_rule_gaps",
+    "candidate_signal_rule_summaries",
+    "explicit_shared_signal_rule_evidence",
+    "entry_condition_evidence",
+    "exit_condition_evidence",
+    "universe_or_filter_evidence",
+    "time_horizon_evidence",
+    "confirmation_or_invalidation_evidence",
+    "materialized_shared_signal_specification",
+    "remaining_missing_shared_signal_evidence",
+    "target_shared_signal_readiness",
+    "target_shared_signal_status",
+    "highest_priority_remaining_gaps",
+    "evidence_status_summary",
+    "shared_signal_rule_acceptance_criteria",
+    "next_shared_signal_rule_closure_actions",
+    "selected_next_safe_action",
+    "broker_state_mode",
+    "paper_submit_authorized",
+    "daniel_action_required_now",
+    "profit_claim",
+    "safety_scope",
+    "safety_labels",
+)
 _CANDIDATE_EVIDENCE_GAP_PRIORITIES = ("high", "medium", "low")
 _REQUIRED_CANDIDATE_EVIDENCE_ITEM_FIELDS = (
     "evidence_item_id",
@@ -1508,6 +1571,7 @@ def _write_packet_artifacts(
     _apply_candidate_risk_rule_status(payload, output_root)
     _apply_candidate_signal_rule_status(payload, output_root)
     _apply_shared_risk_rule_status(payload, output_root)
+    _apply_shared_signal_rule_status(payload, output_root)
     _apply_research_candidate_queue(payload, output_root)
     _apply_baseline_evidence_metrics(payload, output_root)
     _apply_baseline_health_evaluation(payload, output_root)
@@ -1528,6 +1592,7 @@ def _write_packet_artifacts(
     _write_candidate_risk_rule_status_artifact(output_root, payload)
     _write_candidate_signal_rule_status_artifact(output_root, payload)
     _write_shared_risk_rule_status_artifact(output_root, payload)
+    _write_shared_signal_rule_status_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
 
     record_file = output_root / _RECORD_FILENAME
@@ -4012,6 +4077,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     shared_risk_rule_status_defaults = (
         _default_shared_risk_rule_status_fields(artifact_paths)
     )
+    shared_signal_rule_status_defaults = (
+        _default_shared_signal_rule_status_fields(artifact_paths)
+    )
     next_action_selector_defaults = _default_next_action_selector_fields(
         artifact_paths
     )
@@ -4102,6 +4170,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         **candidate_risk_rule_status_defaults,
         **candidate_signal_rule_status_defaults,
         **shared_risk_rule_status_defaults,
+        **shared_signal_rule_status_defaults,
         **baseline_health_evaluation_defaults,
         **next_action_selector_defaults,
         **work_order_export_defaults,
@@ -4157,6 +4226,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             ],
             "shared_risk_rule_status": artifact_paths[
                 "shared_risk_rule_status"
+            ],
+            "shared_signal_rule_status": artifact_paths[
+                "shared_signal_rule_status"
             ],
             "review_inputs": artifact_paths["review_inputs"],
             "work_orders": artifact_paths["work_orders"],
@@ -4746,6 +4818,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "shared_risk_rule_status": _normalize_path(
             output_root / _SHARED_RISK_RULE_STATUS_FILENAME
+        ),
+        "shared_signal_rule_status": _normalize_path(
+            output_root / _SHARED_SIGNAL_RULE_STATUS_FILENAME
         ),
         "review_inputs": _normalize_path(output_root / _REVIEW_INPUTS_DIRNAME),
         "work_orders": _normalize_path(work_orders_dir),
@@ -9295,6 +9370,901 @@ def _apply_shared_risk_rule_status(
         dashboard["shared_risk_rule_status"] = dict(status)
 
 
+def _shared_signal_rule_queue_item(
+    queue: Mapping[str, Any],
+) -> dict[str, Any]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return {}
+    first_shared_signal_item: dict[str, Any] = {}
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if (
+            item.get("queue_item_id")
+            == _SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID
+        ):
+            return dict(item)
+        if (
+            not first_shared_signal_item
+            and str(item.get("candidate_family_id", "")) == "shared"
+            and str(item.get("gap_id", "")) == "signal_rule_status"
+        ):
+            first_shared_signal_item = dict(item)
+    if first_shared_signal_item:
+        return first_shared_signal_item
+    return dict(queue_items[0]) if queue_items and isinstance(queue_items[0], Mapping) else {}
+
+
+def _shared_signal_rule_next_actions(
+    queue: Mapping[str, Any],
+    source_queue_item_id: str,
+    source_gap_id: str,
+) -> list[str]:
+    queue_items = queue.get("queue_items", [])
+    if not isinstance(queue_items, list):
+        return []
+    source_rank = 0
+    for item in queue_items:
+        if not isinstance(item, Mapping):
+            continue
+        if item.get("queue_item_id") == source_queue_item_id:
+            source_rank = int(item.get("rank", 0))
+            break
+    later_items = [
+        item
+        for item in queue_items
+        if isinstance(item, Mapping)
+        and int(item.get("rank", 0)) > source_rank
+        and str(item.get("gap_id", "")) == source_gap_id
+    ]
+    if not later_items:
+        later_items = [
+            item
+            for item in queue_items
+            if isinstance(item, Mapping) and int(item.get("rank", 0)) > source_rank
+        ]
+    return [str(item["action_id"]) for item in later_items if item.get("action_id")]
+
+
+def _shared_signal_rule_evidence_status(
+    *,
+    status_item: Mapping[str, Any],
+    signal_gap: Mapping[str, Any],
+) -> str:
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(signal_gap.get("status", item_status or "missing"))
+    if item_status in {"not_applicable", "not-applicable"} or gap_status in {
+        "not_applicable",
+        "not-applicable",
+    }:
+        return "not_applicable"
+    if item_status == "blocked" or gap_status == "blocked":
+        return "blocked"
+    if item_status in {"collected", "complete"} and gap_status in {
+        "collected",
+        "complete",
+    }:
+        return "complete"
+    return "incomplete"
+
+
+def _shared_signal_remaining_evidence(
+    *,
+    requirements: Mapping[str, Any],
+    status_item: Mapping[str, Any],
+    signal_gap: Mapping[str, Any],
+    candidate_summaries: list[Mapping[str, Any]],
+) -> list[str]:
+    missing: list[str] = []
+    for item in requirements.get("shared_evidence_requirements", []):
+        if item == "signal_rule_definition":
+            missing.append(f"shared_evidence_requirement:{item}")
+    status = str(status_item.get("status", "missing"))
+    if status != "collected":
+        missing.append(f"shared_signal_rule_status:{status}")
+    blocker = str(status_item.get("blocker", "shared_signal_rule_status_missing"))
+    if blocker and blocker != "none":
+        missing.append(f"shared_signal_rule_blocker:{blocker}")
+    gap_status = str(signal_gap.get("status", "missing"))
+    missing.append(f"shared_signal_rule_gap_status:{gap_status}")
+    for summary in candidate_summaries:
+        candidate_id = str(summary.get("candidate_family_id", "unknown"))
+        for item in summary.get("missing_signal_rule_evidence", []):
+            missing.append(f"{candidate_id}:{item}")
+    return list(dict.fromkeys(missing))
+
+
+def _shared_signal_rule_evidence_breakdown(
+    *,
+    status_item: Mapping[str, Any],
+    signal_gap: Mapping[str, Any],
+    remaining_missing_evidence: list[str],
+) -> dict[str, list[str]]:
+    breakdown: dict[str, list[str]] = {
+        "complete": [],
+        "incomplete": [],
+        "blocked": [],
+        "not_applicable": [],
+    }
+    item_status = str(status_item.get("status", "missing"))
+    gap_status = str(signal_gap.get("status", "missing"))
+    if item_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"shared_signal_rule_status:{item_status}")
+    elif item_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(
+            f"shared_signal_rule_status:{item_status}"
+        )
+    elif item_status == "blocked":
+        breakdown["blocked"].append(f"shared_signal_rule_status:{item_status}")
+    else:
+        breakdown["incomplete"].append(f"shared_signal_rule_status:{item_status}")
+    if gap_status in {"collected", "complete"}:
+        breakdown["complete"].append(f"shared_signal_rule_gap_status:{gap_status}")
+    elif gap_status in {"not_applicable", "not-applicable"}:
+        breakdown["not_applicable"].append(
+            f"shared_signal_rule_gap_status:{gap_status}"
+        )
+    elif gap_status == "blocked":
+        breakdown["blocked"].append(f"shared_signal_rule_gap_status:{gap_status}")
+    else:
+        breakdown["incomplete"].append(f"shared_signal_rule_gap_status:{gap_status}")
+    blocker = str(status_item.get("blocker", "none"))
+    if blocker and blocker != "none":
+        breakdown["blocked"].append(f"shared_signal_rule_blocker:{blocker}")
+    for item in remaining_missing_evidence:
+        target = (
+            "blocked"
+            if "blocker:" in item or item.endswith(":blocked")
+            else "incomplete"
+        )
+        breakdown[target].append(item)
+    return {key: list(dict.fromkeys(values)) for key, values in breakdown.items()}
+
+
+def _candidate_missing_signal_items_for_tokens(
+    summary: Mapping[str, Any],
+    tokens: tuple[str, ...],
+) -> list[str]:
+    missing_items = summary.get("missing_signal_rule_evidence", [])
+    if not isinstance(missing_items, list):
+        return []
+    return [
+        str(item)
+        for item in missing_items
+        if any(token in str(item) for token in tokens)
+    ]
+
+
+def _shared_signal_evidence_bucket(
+    *,
+    bucket_id: str,
+    bucket_label: str,
+    tokens: tuple[str, ...],
+    candidate_summaries: list[Mapping[str, Any]],
+) -> dict[str, Any]:
+    candidate_evidence = []
+    for summary in candidate_summaries:
+        candidate_evidence.append(
+            {
+                "candidate_family_id": str(
+                    summary.get("candidate_family_id", "unknown")
+                ),
+                "signal_rule_status": str(
+                    summary.get("signal_rule_status", "incomplete")
+                ),
+                "signal_rule_evidence_status": str(
+                    summary.get("signal_rule_evidence_status", "incomplete")
+                ),
+                "missing_evidence": _candidate_missing_signal_items_for_tokens(
+                    summary,
+                    tokens,
+                ),
+            }
+        )
+    return {
+        "bucket_id": bucket_id,
+        "bucket_label": bucket_label,
+        "evidence_mode": "deterministic_local_packet_evidence_only",
+        "evidence_status": "missing",
+        "explicit_rules_present": False,
+        "candidate_evidence": candidate_evidence,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+    }
+
+
+def _shared_signal_rule_readiness(
+    *,
+    evidence_status: str,
+    remaining_missing_evidence: list[str],
+) -> dict[str, Any]:
+    if evidence_status == "complete" and not remaining_missing_evidence:
+        readiness_status = "evidence_ready"
+    elif evidence_status == "blocked":
+        readiness_status = "blocked"
+    elif evidence_status == "not_applicable":
+        readiness_status = "not_applicable"
+    else:
+        readiness_status = "not_ready"
+    return {
+        "readiness_status": readiness_status,
+        "research_ready": False,
+        "evidence_ready": readiness_status == "evidence_ready",
+        "still_blocked": readiness_status == "blocked",
+        "remaining_missing_evidence_count": len(remaining_missing_evidence),
+        "blocking_evidence": [
+            item
+            for item in remaining_missing_evidence
+            if "blocker:" in item or item.endswith(":blocked")
+        ],
+    }
+
+
+def _shared_signal_specification_materialization(
+    *,
+    explicit_evidence: Mapping[str, Any],
+    remaining_missing_evidence: list[str],
+    readiness: Mapping[str, Any],
+) -> dict[str, Any]:
+    readiness_status = str(readiness.get("readiness_status", "not_ready"))
+    if readiness_status == "evidence_ready":
+        materialization_status = "ready_for_human_signal_specification_review"
+    elif readiness_status == "blocked":
+        materialization_status = "blocked_missing_shared_signal_rule_evidence"
+    else:
+        materialization_status = "not_materialized_missing_shared_signal_rule_evidence"
+    return {
+        "specification_id": "shared_signal_rule_specification",
+        "materialization_status": materialization_status,
+        "materialization_mode": "offline_status_only_no_strategy_rules_created",
+        "explicit_signal_rules_present": bool(
+            explicit_evidence.get("explicit_signal_rules_present", False)
+        ),
+        "materialized_signal_rules": [],
+        "entry_conditions": [],
+        "exit_conditions": [],
+        "universe_filters": [],
+        "time_horizons": [],
+        "confirmation_rules": [],
+        "remaining_missing_evidence": list(remaining_missing_evidence),
+        "implementation_status": "not_implemented",
+        "promotion_status": "not_promoted",
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+
+
+def _build_shared_signal_rule_status(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    requirements = _candidate_evidence_requirements_record(payload, artifact_paths)
+    collection_status = _candidate_evidence_collection_status_record(
+        payload,
+        artifact_paths,
+    )
+    gap_summary = _candidate_evidence_gap_summary_record(payload, artifact_paths)
+    queue = _candidate_gap_closure_queue_record(payload, artifact_paths)
+    candidate_signal_status = _candidate_signal_rule_status_record(
+        payload,
+        artifact_paths,
+    )
+    candidate_summaries = [
+        dict(item)
+        for item in candidate_signal_status.get("candidate_signal_rule_summaries", [])
+        if isinstance(item, Mapping)
+    ]
+    source_item = _shared_signal_rule_queue_item(queue)
+    source_queue_item_id = str(
+        source_item.get(
+            "queue_item_id",
+            _SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
+        )
+    )
+    source_gap_id = str(source_item.get("gap_id", "signal_rule_status"))
+    source_candidate_family_id = str(
+        source_item.get(
+            "candidate_family_id",
+            _SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID,
+        )
+    )
+    status_item = _shared_status_item(collection_status, source_gap_id)
+    signal_gap = _shared_gap_item(gap_summary, source_gap_id)
+    shared_signal_rule_gaps = [
+        dict(gap)
+        for gap in gap_summary.get("shared_gap_summary", [])
+        if isinstance(gap, Mapping) and gap.get("gap_category") == "signal_rule"
+    ]
+    highest_priority_remaining_gaps = [
+        dict(gap)
+        for gap in gap_summary.get("highest_priority_gaps", [])
+        if isinstance(gap, Mapping)
+        and str(gap.get("gap_id", "")) in {source_gap_id, "candidate_signal_rule_status"}
+    ]
+    evidence_status = _shared_signal_rule_evidence_status(
+        status_item=status_item,
+        signal_gap=signal_gap,
+    )
+    remaining_missing_evidence = _shared_signal_remaining_evidence(
+        requirements=requirements,
+        status_item=status_item,
+        signal_gap=signal_gap,
+        candidate_summaries=candidate_summaries,
+    )
+    explicit_evidence = {
+        "evidence_mode": "deterministic_local_packet_evidence_only",
+        "evidence_status": evidence_status,
+        "explicit_signal_rules_present": False,
+        "rule_source": "none_available_from_local_packet_evidence",
+        "shared_status_id": str(status_item.get("shared_status_id", source_gap_id)),
+        "shared_status": str(status_item.get("status", "missing")),
+        "shared_status_blocker": str(
+            status_item.get("blocker", "shared_signal_rule_status_missing")
+        ),
+        "shared_gap_status": str(signal_gap.get("status", "missing")),
+        "shared_gap_label": str(signal_gap.get("shared_gap_label", "Signal rule status")),
+        "local_evidence_items": [
+            f"shared_signal_rule_status:{status_item.get('status', 'missing')}",
+            f"shared_signal_rule_gap_status:{signal_gap.get('status', 'missing')}",
+            f"shared_signal_rule_blocker:{status_item.get('blocker', 'missing')}",
+        ],
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "profit_claim": "none",
+    }
+    entry_condition_evidence = _shared_signal_evidence_bucket(
+        bucket_id="entry_condition_evidence",
+        bucket_label="Explicit shared entry condition evidence",
+        tokens=("entry", "buy", "long", "short", "trigger"),
+        candidate_summaries=candidate_summaries,
+    )
+    exit_condition_evidence = _shared_signal_evidence_bucket(
+        bucket_id="exit_condition_evidence",
+        bucket_label="Explicit shared exit condition evidence",
+        tokens=("exit", "sell", "stop", "close"),
+        candidate_summaries=candidate_summaries,
+    )
+    universe_or_filter_evidence = _shared_signal_evidence_bucket(
+        bucket_id="universe_or_filter_evidence",
+        bucket_label="Universe/filter evidence",
+        tokens=("universe", "filter", "allowlist", "screener", "spy"),
+        candidate_summaries=candidate_summaries,
+    )
+    time_horizon_evidence = _shared_signal_evidence_bucket(
+        bucket_id="time_horizon_evidence",
+        bucket_label="Time horizon evidence",
+        tokens=("horizon", "lookback", "frequency", "schedule", "rebalance", "daily"),
+        candidate_summaries=candidate_summaries,
+    )
+    confirmation_or_invalidation_evidence = _shared_signal_evidence_bucket(
+        bucket_id="confirmation_or_invalidation_evidence",
+        bucket_label="Confirmation/invalidation evidence",
+        tokens=("confirmation", "invalidation", "regime", "trend", "sma", "guard"),
+        candidate_summaries=candidate_summaries,
+    )
+    readiness = _shared_signal_rule_readiness(
+        evidence_status=evidence_status,
+        remaining_missing_evidence=remaining_missing_evidence,
+    )
+    materialized_specification = _shared_signal_specification_materialization(
+        explicit_evidence=explicit_evidence,
+        remaining_missing_evidence=remaining_missing_evidence,
+        readiness=readiness,
+    )
+    next_actions = _shared_signal_rule_next_actions(
+        queue,
+        source_queue_item_id,
+        source_gap_id,
+    )
+    selected_next_action = (
+        next_actions[0] if next_actions else "review_shared_signal_rule_status_artifact"
+    )
+    evidence_breakdown = _shared_signal_rule_evidence_breakdown(
+        status_item=status_item,
+        signal_gap=signal_gap,
+        remaining_missing_evidence=remaining_missing_evidence,
+    )
+    candidate_status_summary = _candidate_signal_rule_evidence_status_summary(
+        candidate_summaries
+    )
+    return {
+        "shared_signal_rule_status_version": _SHARED_SIGNAL_RULE_STATUS_VERSION,
+        "shared_signal_rule_status": "ready",
+        "shared_signal_rule_status_mode": "offline_shared_signal_rule_status_only",
+        "deterministic_scope": "shared_candidate_signal_rule_status",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": source_queue_item_id,
+        "source_action_id": str(
+            source_item.get("action_id", f"execute_{source_queue_item_id}")
+        ),
+        "source_gap_id": source_gap_id,
+        "source_candidate_family_id": source_candidate_family_id,
+        "source_candidate_family": str(
+            source_item.get(
+                "candidate_family",
+                _SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY,
+            )
+        ),
+        "source_gap_status": str(source_item.get("gap_status", "blocked")),
+        "source_gap_group_id": str(
+            source_item.get("gap_group_id", "strategy_definition_gaps")
+        ),
+        "source_gap_group_label": str(
+            source_item.get("gap_group_label", "Strategy definition gaps")
+        ),
+        "source_closure_action": str(
+            source_item.get("closure_action", "close_strategy_definition_gaps")
+        ),
+        "source_closure_objective": str(
+            source_item.get(
+                "closure_objective",
+                (
+                    "Create shared_signal_rule_status.jsonl for Signal rule status "
+                    "using only deterministic offline packet evidence before any "
+                    "candidate implementation, promotion, paper observation, broker read, "
+                    "paper submit, or live trading."
+                ),
+            )
+        ),
+        "source_expected_evidence_artifact": str(
+            source_item.get(
+                "expected_evidence_artifact",
+                _SHARED_SIGNAL_RULE_STATUS_FILENAME,
+            )
+        ),
+        "candidate_family_count": len(candidate_summaries),
+        "shared_scope_count": len(shared_signal_rule_gaps),
+        "shared_signal_rule_status_item": status_item,
+        "shared_signal_rule_gaps": shared_signal_rule_gaps,
+        "candidate_signal_rule_summaries": candidate_summaries,
+        "explicit_shared_signal_rule_evidence": explicit_evidence,
+        "entry_condition_evidence": entry_condition_evidence,
+        "exit_condition_evidence": exit_condition_evidence,
+        "universe_or_filter_evidence": universe_or_filter_evidence,
+        "time_horizon_evidence": time_horizon_evidence,
+        "confirmation_or_invalidation_evidence": confirmation_or_invalidation_evidence,
+        "materialized_shared_signal_specification": materialized_specification,
+        "remaining_missing_shared_signal_evidence": remaining_missing_evidence,
+        "target_shared_signal_readiness": readiness,
+        "target_shared_signal_status": {
+            "status": evidence_status,
+            "shared_status": str(status_item.get("status", "missing")),
+            "shared_gap_status": str(signal_gap.get("status", "missing")),
+            "materialization_status": str(
+                materialized_specification["materialization_status"]
+            ),
+            "research_ready": readiness["research_ready"],
+            "evidence_ready": readiness["evidence_ready"],
+            "still_blocked": readiness["still_blocked"],
+        },
+        "highest_priority_remaining_gaps": highest_priority_remaining_gaps,
+        "evidence_status_summary": {
+            **candidate_status_summary,
+            "shared_scope_status": evidence_status,
+            "shared_scope_blocked": evidence_status == "blocked",
+            "shared_missing_evidence_explicit": bool(remaining_missing_evidence),
+            "shared_evidence_status_breakdown": evidence_breakdown,
+        },
+        "shared_signal_rule_acceptance_criteria": [
+            "shared_signal_rule_status.jsonl exists as one deterministic JSONL record",
+            (
+                "source_queue_item_id="
+                f"{_SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID}"
+            ),
+            "source_candidate_family_id=shared",
+            "source_gap_id=signal_rule_status",
+            "explicit shared signal-rule evidence is recorded without inventing rules",
+            "entry condition evidence is separated from exit, universe, time-horizon, and confirmation evidence",
+            "materialized shared signal specification remains status-only when explicit rules are missing",
+            "shared readiness distinguishes research-ready, evidence-ready, blocked, and not-ready states",
+            (
+                "selected_next_safe_action="
+                f"{_SHARED_SIGNAL_RULE_STATUS_NEXT_ACTION_ID}"
+            ),
+            "broker_state_mode=broker_state_not_observed",
+            "paper_submit_authorized=false",
+            "daniel_action_required_now=false",
+            "profit_claim=none",
+            "safety_scope=offline_only",
+        ],
+        "next_shared_signal_rule_closure_actions": next_actions,
+        "selected_next_safe_action": selected_next_action,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+        "safety_labels": list(_REQUIRED_LABELS),
+    }
+
+
+def _default_shared_signal_rule_status_fields(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = _build_shared_signal_rule_status({}, artifact_paths)
+    return {
+        "shared_signal_rule_status_path": str(
+            artifact_paths["shared_signal_rule_status"]
+        ),
+        "shared_signal_rule_status": status,
+    }
+
+
+def _shared_signal_rule_status_record(
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    status = payload.get("shared_signal_rule_status")
+    if isinstance(status, Mapping):
+        return dict(status)
+    return _build_shared_signal_rule_status(payload, artifact_paths)
+
+
+def _apply_shared_signal_rule_status(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    status = _build_shared_signal_rule_status(payload, artifact_paths)
+    payload["shared_signal_rule_status_path"] = str(
+        artifact_paths["shared_signal_rule_status"]
+    )
+    payload["shared_signal_rule_status"] = status
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["shared_signal_rule_status_path"] = payload[
+            "shared_signal_rule_status_path"
+        ]
+        dashboard["shared_signal_rule_status"] = dict(status)
+
+
+def _write_shared_signal_rule_status_artifact(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> None:
+    status = payload.get("shared_signal_rule_status")
+    record = status if isinstance(status, Mapping) else {}
+    line = json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n"
+    (output_root / _SHARED_SIGNAL_RULE_STATUS_FILENAME).write_text(
+        line,
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _quality_shared_signal_rule_status_summary(
+    output_root: Path,
+    packet: Mapping[str, Any],
+    manifest: Mapping[str, Any],
+) -> tuple[bool, str]:
+    missing = _missing_shared_signal_rule_status_fields("", packet)
+    if missing:
+        return False, _quality_missing_summary(missing)
+    status = packet["shared_signal_rule_status"]
+    assert isinstance(status, Mapping)
+    artifact_path = output_root / _SHARED_SIGNAL_RULE_STATUS_FILENAME
+    if not artifact_path.exists() or not artifact_path.is_file():
+        return False, f"{_SHARED_SIGNAL_RULE_STATUS_FILENAME} missing"
+    artifact_lines = [
+        line.strip()
+        for line in artifact_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if len(artifact_lines) != 1:
+        return False, (
+            f"{_SHARED_SIGNAL_RULE_STATUS_FILENAME} must be one JSONL record"
+        )
+    try:
+        artifact_record = json.loads(artifact_lines[0])
+    except json.JSONDecodeError:
+        return False, f"{_SHARED_SIGNAL_RULE_STATUS_FILENAME} is not JSON"
+    if artifact_record != status:
+        return False, "shared signal rule status artifact does not match packet"
+    indexed_artifacts = manifest.get("indexed_artifacts")
+    if not isinstance(indexed_artifacts, Mapping):
+        return False, "manifest indexed_artifacts missing"
+    indexed = indexed_artifacts.get("shared_signal_rule_status")
+    if not isinstance(indexed, Mapping):
+        return False, "manifest does not index shared_signal_rule_status"
+    if not str(indexed.get("path", "")).endswith(_SHARED_SIGNAL_RULE_STATUS_FILENAME):
+        return False, "manifest shared signal rule status path is not explicit"
+    brief_text = _read_text_or_empty(output_root / _BRIEF_FILENAME)
+    review_handoff_text = _read_text_or_empty(output_root / _REVIEW_HANDOFF_FILENAME)
+    for text_name, text in (
+        ("operating brief", brief_text),
+        ("review handoff", review_handoff_text),
+    ):
+        if _SHARED_SIGNAL_RULE_STATUS_FILENAME not in text:
+            return False, f"{text_name} does not reference shared signal rule status"
+        if "Shared Signal Rule Status" not in text:
+            return False, (
+                f"{text_name} does not include shared signal rule status section"
+            )
+    return True, (
+        "shared signal rule status generated; "
+        "shared_signal_rule_status=ready; "
+        "shared_signal_rule_status_mode=offline_shared_signal_rule_status_only; "
+        f"source_queue_item_id={status['source_queue_item_id']}; "
+        f"source_candidate_family_id={status['source_candidate_family_id']}; "
+        f"selected_next_safe_action={status['selected_next_safe_action']}"
+    )
+
+
+def _missing_shared_signal_rule_status_fields(
+    prefix: str,
+    packet: Mapping[str, Any],
+) -> list[str]:
+    field_prefix = f"{prefix}." if prefix else ""
+    missing: list[str] = []
+    status = packet.get("shared_signal_rule_status")
+    if not isinstance(status, Mapping):
+        return [f"{field_prefix}shared_signal_rule_status"]
+    for field_name in _REQUIRED_SHARED_SIGNAL_RULE_STATUS_FIELDS:
+        if field_name not in status:
+            missing.append(f"{field_prefix}shared_signal_rule_status.{field_name}")
+    if not str(packet.get("shared_signal_rule_status_path", "")).endswith(
+        _SHARED_SIGNAL_RULE_STATUS_FILENAME
+    ):
+        missing.append(f"{field_prefix}shared_signal_rule_status_path")
+    expected_values = {
+        "shared_signal_rule_status_version": _SHARED_SIGNAL_RULE_STATUS_VERSION,
+        "shared_signal_rule_status": "ready",
+        "shared_signal_rule_status_mode": "offline_shared_signal_rule_status_only",
+        "deterministic_scope": "shared_candidate_signal_rule_status",
+        "baseline_strategy_id": "spy_sma_50_200_control",
+        "source_queue_item_id": _SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
+        "source_action_id": _SHARED_SIGNAL_RULE_STATUS_SOURCE_ACTION_ID,
+        "source_gap_id": "signal_rule_status",
+        "source_candidate_family_id": (
+            _SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY_ID
+        ),
+        "source_candidate_family": _SHARED_SIGNAL_RULE_STATUS_SOURCE_CANDIDATE_FAMILY,
+        "source_gap_status": "blocked",
+        "source_gap_group_id": "strategy_definition_gaps",
+        "source_gap_group_label": "Strategy definition gaps",
+        "source_closure_action": "close_strategy_definition_gaps",
+        "source_expected_evidence_artifact": _SHARED_SIGNAL_RULE_STATUS_FILENAME,
+        "broker_state_mode": "broker_state_not_observed",
+        "paper_submit_authorized": False,
+        "daniel_action_required_now": False,
+        "profit_claim": "none",
+        "safety_scope": "offline_only",
+    }
+    for field_name, expected_value in expected_values.items():
+        if status.get(field_name) != expected_value:
+            missing.append(f"{field_prefix}shared_signal_rule_status.{field_name}")
+    selected_action = str(status.get("selected_next_safe_action", ""))
+    if _selector_contains_forbidden_action(selected_action):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status."
+            "selected_next_safe_action.safe"
+        )
+    if selected_action != _SHARED_SIGNAL_RULE_STATUS_NEXT_ACTION_ID:
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status."
+            "selected_next_safe_action.advanced"
+        )
+    if selected_action not in status.get("next_shared_signal_rule_closure_actions", []):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status."
+            "selected_next_safe_action.in_next_shared_signal_rule_closure_actions"
+        )
+    if (
+        _SHARED_SIGNAL_RULE_STATUS_FILENAME
+        not in str(status.get("source_closure_objective", ""))
+        or "offline" not in str(status.get("source_closure_objective", "")).lower()
+    ):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status.source_closure_objective"
+        )
+    for label in (
+        "offline_only",
+        "research_only",
+        "signal_evaluation_only",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        if label not in status.get("safety_labels", []):
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status.safety_labels.{label}"
+            )
+    for list_field in (
+        "shared_signal_rule_gaps",
+        "candidate_signal_rule_summaries",
+        "remaining_missing_shared_signal_evidence",
+        "highest_priority_remaining_gaps",
+        "shared_signal_rule_acceptance_criteria",
+        "next_shared_signal_rule_closure_actions",
+        "safety_labels",
+    ):
+        if not isinstance(status.get(list_field), list) or not status.get(list_field):
+            missing.append(f"{field_prefix}shared_signal_rule_status.{list_field}")
+    if status.get("candidate_family_count") != len(
+        status.get("candidate_signal_rule_summaries", [])
+    ):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status.candidate_family_count"
+        )
+    if status.get("shared_scope_count") != len(
+        status.get("shared_signal_rule_gaps", [])
+    ):
+        missing.append(f"{field_prefix}shared_signal_rule_status.shared_scope_count")
+    status_item = status.get("shared_signal_rule_status_item")
+    if not isinstance(status_item, Mapping):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status.shared_signal_rule_status_item"
+        )
+    else:
+        if status_item.get("shared_status_id") != "signal_rule_status":
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "shared_signal_rule_status_item.shared_status_id"
+            )
+        if status_item.get("status") != "blocked":
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "shared_signal_rule_status_item.status"
+            )
+    explicit_evidence = status.get("explicit_shared_signal_rule_evidence")
+    if not isinstance(explicit_evidence, Mapping):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status."
+            "explicit_shared_signal_rule_evidence"
+        )
+    else:
+        if explicit_evidence.get("evidence_mode") != (
+            "deterministic_local_packet_evidence_only"
+        ):
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "explicit_shared_signal_rule_evidence.evidence_mode"
+            )
+        if explicit_evidence.get("explicit_signal_rules_present") is not False:
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "explicit_shared_signal_rule_evidence.explicit_signal_rules_present"
+            )
+        if explicit_evidence.get("evidence_status") not in {
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        }:
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "explicit_shared_signal_rule_evidence.evidence_status"
+            )
+        if not isinstance(
+            explicit_evidence.get("local_evidence_items"),
+            list,
+        ) or not explicit_evidence.get("local_evidence_items"):
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "explicit_shared_signal_rule_evidence.local_evidence_items"
+            )
+    for bucket_name in (
+        "entry_condition_evidence",
+        "exit_condition_evidence",
+        "universe_or_filter_evidence",
+        "time_horizon_evidence",
+        "confirmation_or_invalidation_evidence",
+    ):
+        bucket = status.get(bucket_name)
+        if not isinstance(bucket, Mapping):
+            missing.append(f"{field_prefix}shared_signal_rule_status.{bucket_name}")
+            continue
+        if bucket.get("evidence_mode") != "deterministic_local_packet_evidence_only":
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status.{bucket_name}.evidence_mode"
+            )
+        if bucket.get("explicit_rules_present") is not False:
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                f"{bucket_name}.explicit_rules_present"
+            )
+        if not isinstance(bucket.get("candidate_evidence"), list):
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                f"{bucket_name}.candidate_evidence"
+            )
+    materialized = status.get("materialized_shared_signal_specification")
+    if not isinstance(materialized, Mapping):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status."
+            "materialized_shared_signal_specification"
+        )
+    else:
+        for false_field in ("explicit_signal_rules_present", "paper_submit_authorized"):
+            if materialized.get(false_field) is not False:
+                missing.append(
+                    f"{field_prefix}shared_signal_rule_status."
+                    f"materialized_shared_signal_specification.{false_field}"
+                )
+        for empty_list_field in (
+            "materialized_signal_rules",
+            "entry_conditions",
+            "exit_conditions",
+            "universe_filters",
+            "time_horizons",
+            "confirmation_rules",
+        ):
+            if (
+                not isinstance(materialized.get(empty_list_field), list)
+                or materialized.get(empty_list_field)
+            ):
+                missing.append(
+                    f"{field_prefix}shared_signal_rule_status."
+                    "materialized_shared_signal_specification."
+                    f"{empty_list_field}"
+                )
+        if materialized.get("implementation_status") != "not_implemented":
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "materialized_shared_signal_specification.implementation_status"
+            )
+        if materialized.get("promotion_status") != "not_promoted":
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "materialized_shared_signal_specification.promotion_status"
+            )
+    readiness = status.get("target_shared_signal_readiness")
+    if not isinstance(readiness, Mapping):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status.target_shared_signal_readiness"
+        )
+    else:
+        if readiness.get("readiness_status") not in {
+            "research_ready",
+            "evidence_ready",
+            "blocked",
+            "not_ready",
+            "not_applicable",
+        }:
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "target_shared_signal_readiness.readiness_status"
+            )
+        for bool_field in ("research_ready", "evidence_ready", "still_blocked"):
+            if not isinstance(readiness.get(bool_field), bool):
+                missing.append(
+                    f"{field_prefix}shared_signal_rule_status."
+                    f"target_shared_signal_readiness.{bool_field}"
+                )
+    target_status = status.get("target_shared_signal_status")
+    if not isinstance(target_status, Mapping):
+        missing.append(
+            f"{field_prefix}shared_signal_rule_status.target_shared_signal_status"
+        )
+    else:
+        if target_status.get("status") not in {
+            "complete",
+            "incomplete",
+            "blocked",
+            "not_applicable",
+        }:
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "target_shared_signal_status.status"
+            )
+        for expected_val in ("shared_status", "shared_gap_status"):
+            if target_status.get(expected_val) != "blocked":
+                missing.append(
+                    f"{field_prefix}shared_signal_rule_status."
+                    f"target_shared_signal_status.{expected_val}"
+                )
+        if target_status.get("materialization_status") != (
+            "blocked_missing_shared_signal_rule_evidence"
+        ):
+            missing.append(
+                f"{field_prefix}shared_signal_rule_status."
+                "target_shared_signal_status.materialization_status"
+            )
+    return missing
+
+
 def _default_paper_observation_readiness_fields(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
@@ -9529,6 +10499,7 @@ def _default_work_order_export_fields(
     risk_rule_status = _build_candidate_risk_rule_status({}, artifact_paths)
     signal_rule_status = _build_candidate_signal_rule_status({}, artifact_paths)
     shared_risk_rule_status = _build_shared_risk_rule_status({}, artifact_paths)
+    shared_signal_rule_status = _build_shared_signal_rule_status({}, artifact_paths)
     return {
         "work_order_exports": {
             "work_order_exports_version": _WORK_ORDER_EXPORTS_VERSION,
@@ -9641,6 +10612,16 @@ def _default_work_order_export_fields(
             ),
             "shared_risk_rule_status_selected_next_safe_action": str(
                 shared_risk_rule_status["selected_next_safe_action"]
+            ),
+            "shared_signal_rule_status_path": str(
+                artifact_paths["shared_signal_rule_status"]
+            ),
+            "shared_signal_rule_status": dict(shared_signal_rule_status),
+            "shared_signal_rule_status_status": str(
+                shared_signal_rule_status["shared_signal_rule_status"]
+            ),
+            "shared_signal_rule_status_selected_next_safe_action": str(
+                shared_signal_rule_status["selected_next_safe_action"]
             ),
             "turnover_artifact_ingest_status": "turnover_artifact_missing",
             "cost_model_artifact_ingest_status": "cost_model_artifact_missing",
@@ -9836,6 +10817,10 @@ def _build_next_action_selector(
             ),
         )
 
+    # To preserve progression ordering, we check the earlier queue items
+    # (e.g. shared_risk_rule_status pointing to item 008) before later ones
+    # (e.g. shared_signal_rule_status pointing to item 009) to ensure that
+    # the selector does not skip earlier queue items before they are closed.
     shared_risk_rule_status = payload.get("shared_risk_rule_status")
     if (
         isinstance(shared_risk_rule_status, Mapping)
@@ -9871,6 +10856,50 @@ def _build_next_action_selector(
                         shared_risk_rule_status.get(
                             "source_gap_id",
                             "risk_rule_status",
+                        )
+                    ),
+                ],
+                blocks_offline_build=False,
+                requires_daniel=False,
+                hard_gate_required=False,
+                selected_research_candidate=None,
+            )
+
+    shared_signal_rule_status = payload.get("shared_signal_rule_status")
+    if (
+        isinstance(shared_signal_rule_status, Mapping)
+        and shared_signal_rule_status.get("shared_signal_rule_status") == "ready"
+    ):
+        selected_action = str(
+            shared_signal_rule_status.get("selected_next_safe_action", "")
+        )
+        if selected_action and not _selector_contains_forbidden_action(selected_action):
+            return _selector_result(
+                artifact_paths=artifact_paths,
+                source_state=source_state,
+                status="shared_signal_rule_status_next_action_selected",
+                priority="P2",
+                selected_next_action_id=selected_action,
+                selected_next_action_type="candidate_gap_closure_queue_item",
+                selected_work_order="codex_work_order",
+                selected_owner="Codex",
+                rationale=(
+                    "shared_signal_rule_status materialized the source queue item, "
+                    "so the next deterministic offline queue item is selected."
+                ),
+                reason_codes=[
+                    "quality_gate_not_failed",
+                    "shared_signal_rule_status_ready",
+                    str(
+                        shared_signal_rule_status.get(
+                            "source_queue_item_id",
+                            _SHARED_SIGNAL_RULE_STATUS_SOURCE_QUEUE_ITEM_ID,
+                        )
+                    ),
+                    str(
+                        shared_signal_rule_status.get(
+                            "source_gap_id",
+                            "signal_rule_status",
                         )
                     ),
                 ],
@@ -10331,6 +11360,14 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
             )
             else {}
         ),
+        "shared_signal_rule_status": dict(
+            payload.get("shared_signal_rule_status", {})
+            if isinstance(
+                payload.get("shared_signal_rule_status"),
+                Mapping,
+            )
+            else {}
+        ),
     }
 
 
@@ -10513,6 +11550,17 @@ def _selector_result(
             )
             else {}
         ),
+        "shared_signal_rule_status_path": str(
+            artifact_paths["shared_signal_rule_status"]
+        ),
+        "shared_signal_rule_status": dict(
+            source_state.get("shared_signal_rule_status", {})
+            if isinstance(
+                source_state.get("shared_signal_rule_status"),
+                Mapping,
+            )
+            else {}
+        ),
         "source_state": dict(source_state),
     }
 
@@ -10616,6 +11664,10 @@ def _apply_work_order_exports(
         artifact_paths,
     )
     shared_risk_rule_status = _shared_risk_rule_status_record(
+        payload,
+        artifact_paths,
+    )
+    shared_signal_rule_status = _shared_signal_rule_status_record(
         payload,
         artifact_paths,
     )
@@ -10728,6 +11780,16 @@ def _apply_work_order_exports(
         ),
         "shared_risk_rule_status_selected_next_safe_action": str(
             shared_risk_rule_status.get("selected_next_safe_action", "")
+        ),
+        "shared_signal_rule_status_path": str(
+            artifact_paths["shared_signal_rule_status"]
+        ),
+        "shared_signal_rule_status": dict(shared_signal_rule_status),
+        "shared_signal_rule_status_status": str(
+            shared_signal_rule_status.get("shared_signal_rule_status", "ready")
+        ),
+        "shared_signal_rule_status_selected_next_safe_action": str(
+            shared_signal_rule_status.get("selected_next_safe_action", "")
         ),
         "metric_artifact_ingest_status": str(
             metrics_record.get(
@@ -11828,6 +12890,13 @@ def _build_quality_gate(
             manifest if isinstance(manifest, Mapping) else {},
         )
     )
+    shared_signal_rule_status_ok, shared_signal_rule_status_summary = (
+        _quality_shared_signal_rule_status_summary(
+            root,
+            packet_for_checks,
+            manifest if isinstance(manifest, Mapping) else {},
+        )
+    )
     metric_ingest_ok, metric_ingest_summary = _quality_metric_artifact_ingest_summary(
         root,
         packet_for_checks,
@@ -11960,6 +13029,11 @@ def _build_quality_gate(
             "shared_risk_rule_status_generated",
             shared_risk_rule_status_ok,
             shared_risk_rule_status_summary,
+        ),
+        _quality_check(
+            "shared_signal_rule_status_generated",
+            shared_signal_rule_status_ok,
+            shared_signal_rule_status_summary,
         ),
         _quality_check(
             "baseline_metric_artifact_ingest_status_explicit",
@@ -13446,6 +14520,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_candidate_risk_rule_status_fields("", packet))
     missing.extend(_missing_candidate_signal_rule_status_fields("", packet))
     missing.extend(_missing_shared_risk_rule_status_fields("", packet))
+    missing.extend(_missing_shared_signal_rule_status_fields("", packet))
     missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
     missing.extend(_missing_baseline_health_evaluation_fields("", packet))
     research_lab = packet.get("research_lab")
@@ -18166,6 +19241,8 @@ def _render_work_order_markdown(
     signal_rule_status_json = _json_markdown(signal_rule_status)
     shared_risk_rule_status = payload["shared_risk_rule_status"]
     shared_risk_rule_status_json = _json_markdown(shared_risk_rule_status)
+    shared_signal_rule_status = payload["shared_signal_rule_status"]
+    shared_signal_rule_status_json = _json_markdown(shared_signal_rule_status)
     selected_candidate_id = selector.get("selected_research_candidate_id")
     selected_candidate = (
         _research_candidate_by_id(payload, str(selected_candidate_id))
@@ -18460,6 +19537,28 @@ def _render_work_order_markdown(
 {shared_risk_rule_status_json}
 ```
 
+## Shared Signal Rule Status
+* **Artifact**: `{payload["shared_signal_rule_status_path"]}`
+* **Shared signal-rule status**: `{shared_signal_rule_status["shared_signal_rule_status"]}`
+* **Shared signal-rule status mode**: `{shared_signal_rule_status["shared_signal_rule_status_mode"]}`
+* **Source queue item**: `{shared_signal_rule_status["source_queue_item_id"]}`
+* **Source action**: `{shared_signal_rule_status["source_action_id"]}`
+* **Source gap**: `{shared_signal_rule_status["source_gap_id"]}`
+* **Source scope**: `{shared_signal_rule_status["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{shared_signal_rule_status["source_expected_evidence_artifact"]}`
+* **Evidence status summary**: {shared_signal_rule_status["evidence_status_summary"]}
+* **Remaining missing shared signal evidence**: {len(shared_signal_rule_status["remaining_missing_shared_signal_evidence"])}
+* **Target readiness**: `{shared_signal_rule_status["target_shared_signal_readiness"]["readiness_status"]}`
+* **Selected next safe action**: `{shared_signal_rule_status["selected_next_safe_action"]}`
+* **Broker-state mode**: `{shared_signal_rule_status["broker_state_mode"]}`
+* **Paper submit authorized**: {str(shared_signal_rule_status["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(shared_signal_rule_status["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{shared_signal_rule_status["profit_claim"]}`
+* **Safety scope**: `{shared_signal_rule_status["safety_scope"]}`
+```json
+{shared_signal_rule_status_json}
+```
+
 ## Prerequisite artifact chain
 {_render_bullets(list(baseline_metrics["artifact_prerequisite_chain"]))}
 
@@ -18608,6 +19707,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     )
     shared_risk_rule_status_json = _json_markdown(
         payload["shared_risk_rule_status"]
+    )
+    shared_signal_rule_status_json = _json_markdown(
+        payload["shared_signal_rule_status"]
     )
     freshness = payload["data_freshness"]
     delta = payload["history_delta"]
@@ -18955,6 +20057,26 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 {shared_risk_rule_status_json}
 ```
 
+## Shared Signal Rule Status
+* **Shared signal-rule status**: `{payload["shared_signal_rule_status"]["shared_signal_rule_status"]}`
+* **Shared signal-rule status mode**: `{payload["shared_signal_rule_status"]["shared_signal_rule_status_mode"]}`
+* **Source queue item**: `{payload["shared_signal_rule_status"]["source_queue_item_id"]}`
+* **Source action**: `{payload["shared_signal_rule_status"]["source_action_id"]}`
+* **Source gap**: `{payload["shared_signal_rule_status"]["source_gap_id"]}`
+* **Source scope**: `{payload["shared_signal_rule_status"]["source_candidate_family_id"]}`
+* **Expected evidence artifact**: `{payload["shared_signal_rule_status"]["source_expected_evidence_artifact"]}`
+* **Evidence status summary**: {payload["shared_signal_rule_status"]["evidence_status_summary"]}
+* **Target readiness**: `{payload["shared_signal_rule_status"]["target_shared_signal_readiness"]["readiness_status"]}`
+* **Selected next safe action**: `{payload["shared_signal_rule_status"]["selected_next_safe_action"]}`
+* **Broker-state mode**: `{payload["shared_signal_rule_status"]["broker_state_mode"]}`
+* **Paper submit authorized**: {str(payload["shared_signal_rule_status"]["paper_submit_authorized"]).lower()}
+* **Daniel action required now**: {str(payload["shared_signal_rule_status"]["daniel_action_required_now"]).lower()}
+* **Profit claim**: `{payload["shared_signal_rule_status"]["profit_claim"]}`
+* **Safety scope**: `{payload["shared_signal_rule_status"]["safety_scope"]}`
+```json
+{shared_signal_rule_status_json}
+```
+
 ## Next Action Selector
 ```json
 {selector_json}
@@ -19020,6 +20142,9 @@ def _render_review_handoff_markdown(payload: Mapping[str, Any]) -> str:
     )
     shared_risk_rule_status_json = _json_markdown(
         payload["shared_risk_rule_status"]
+    )
+    shared_signal_rule_status_json = _json_markdown(
+        payload["shared_signal_rule_status"]
     )
     delta = payload["history_delta"]
     failed_checks_text = json.dumps(
@@ -19408,6 +20533,28 @@ Please classify this packet as one of: `accepted`, `accepted-with-minor-note`, `
 * **safety_scope**: `{payload["shared_risk_rule_status"]["safety_scope"]}`
 ```json
 {shared_risk_rule_status_json}
+```
+
+## Shared Signal Rule Status
+* **shared_signal_rule_status_path**: `{payload["shared_signal_rule_status_path"]}`
+* **shared_signal_rule_status**: `{payload["shared_signal_rule_status"]["shared_signal_rule_status"]}`
+* **shared_signal_rule_status_mode**: `{payload["shared_signal_rule_status"]["shared_signal_rule_status_mode"]}`
+* **source_queue_item_id**: `{payload["shared_signal_rule_status"]["source_queue_item_id"]}`
+* **source_action_id**: `{payload["shared_signal_rule_status"]["source_action_id"]}`
+* **source_gap_id**: `{payload["shared_signal_rule_status"]["source_gap_id"]}`
+* **source_candidate_family_id**: `{payload["shared_signal_rule_status"]["source_candidate_family_id"]}`
+* **source_expected_evidence_artifact**: `{payload["shared_signal_rule_status"]["source_expected_evidence_artifact"]}`
+* **evidence_status_summary**: `{payload["shared_signal_rule_status"]["evidence_status_summary"]}`
+* **target_readiness**: `{payload["shared_signal_rule_status"]["target_shared_signal_readiness"]["readiness_status"]}`
+* **next_shared_signal_rule_closure_actions**: `{payload["shared_signal_rule_status"]["next_shared_signal_rule_closure_actions"]}`
+* **selected_next_safe_action**: `{payload["shared_signal_rule_status"]["selected_next_safe_action"]}`
+* **broker_state_mode**: `{payload["shared_signal_rule_status"]["broker_state_mode"]}`
+* **paper_submit_authorized**: {str(payload["shared_signal_rule_status"]["paper_submit_authorized"]).lower()}
+* **daniel_action_required_now**: {str(payload["shared_signal_rule_status"]["daniel_action_required_now"]).lower()}
+* **profit_claim**: `{payload["shared_signal_rule_status"]["profit_claim"]}`
+* **safety_scope**: `{payload["shared_signal_rule_status"]["safety_scope"]}`
+```json
+{shared_signal_rule_status_json}
 ```
 
 ## History delta
@@ -19800,6 +20947,11 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         indexed_artifacts["shared_risk_rule_status"] = _artifact_metadata(
             shared_risk_rule_status_path
         )
+    shared_signal_rule_status_path = output_root / _SHARED_SIGNAL_RULE_STATUS_FILENAME
+    if shared_signal_rule_status_path.exists():
+        indexed_artifacts["shared_signal_rule_status"] = _artifact_metadata(
+            shared_signal_rule_status_path
+        )
     for artifact_id, filename in _BASELINE_METRIC_ARTIFACTS:
         metric_artifact_path = output_root / filename
         if metric_artifact_path.is_file():
@@ -19931,6 +21083,10 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
             "shared_risk_rule_status_path"
         ],
         "shared_risk_rule_status": dict(payload["shared_risk_rule_status"]),
+        "shared_signal_rule_status_path": payload[
+            "shared_signal_rule_status_path"
+        ],
+        "shared_signal_rule_status": dict(payload["shared_signal_rule_status"]),
         "quality_gate_version": payload["quality_gate_version"],
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
