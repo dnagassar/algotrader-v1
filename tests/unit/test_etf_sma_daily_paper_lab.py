@@ -23,6 +23,50 @@ FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "etf_sma_cycle_matrix
 _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION = (
     "candidate_gap_closure_queue_complete_no_remaining_items"
 )
+_MISSION_CONTROL_ARTIFACT_RELATIVE_PATHS = {
+    "index_path": "index.html",
+    "report_path": "assistant_report.md",
+    "mission_path": "mission_control.json",
+    "validation_path": "mission_control_validation.json",
+    "latest_run_path": "latest_run.json",
+    "data_freshness_plan_path": "data_freshness_plan.json",
+    "data_refresh_bridge_path": "data_refresh_bridge.json",
+    "data_refresh_checklist_path": "data_refresh_operator_checklist.md",
+    "operator_review_path": "operator_review.md",
+    "operating_record_path": "operating_record.jsonl",
+}
+_MISSION_CONTROL_WORK_ORDER_FILES = {
+    "codex_next_prompt.md",
+    "codex_next_work_order.json",
+    "antigravity_review_prompt.md",
+    "antigravity_review_work_order.json",
+    "claude_critique_prompt.md",
+    "claude_critique_work_order.json",
+    "gpt_report_classification_prompt.md",
+    "gpt_next_decision_context.json",
+}
+_MISSION_CONTROL_AGENT_INBOX_PATHS = (
+    Path(".agent_inbox") / "codex" / "next_task.md",
+    Path(".agent_inbox") / "codex" / "next_work_order.json",
+    Path(".agent_inbox") / "antigravity" / "review_task.md",
+    Path(".agent_inbox") / "antigravity" / "review_work_order.json",
+    Path(".agent_inbox") / "claude" / "critique_task.md",
+    Path(".agent_inbox") / "claude" / "critique_work_order.json",
+    Path(".agent_inbox") / "gpt" / "report_classification_prompt.md",
+    Path(".agent_inbox") / "gpt" / "next_decision_context.json",
+)
+_FORBIDDEN_ROUTE_FRAGMENTS = {
+    "broker_read",
+    "paper_submit",
+    "broker_mutation",
+    "live_trading",
+    "secrets_setup",
+    "secret",
+    "paid_service",
+    "external_api",
+    "strategy_promotion",
+    "safety_weakening",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -5480,6 +5524,55 @@ def _dispatcher_result(
     )
 
 
+def _read_json_artifact(path: Path) -> dict[str, object]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _assert_false_safety_flags(
+    container: dict[str, object],
+    fields: tuple[str, ...],
+) -> None:
+    for field in fields:
+        assert container[field] is False
+
+
+def _assert_expected_artifacts_exist(output_root: Path) -> dict[str, Path]:
+    paths = {
+        key: output_root / relative_path
+        for key, relative_path in _MISSION_CONTROL_ARTIFACT_RELATIVE_PATHS.items()
+    }
+    for path in paths.values():
+        assert path.exists()
+
+    work_orders_dir = output_root / "work_orders"
+    assert _MISSION_CONTROL_WORK_ORDER_FILES <= {
+        path.name for path in work_orders_dir.iterdir() if path.is_file()
+    }
+    for path in _MISSION_CONTROL_AGENT_INBOX_PATHS:
+        assert path.exists()
+
+    return paths
+
+
+def _assert_path_fields_exist(
+    container: dict[str, object],
+    fields: tuple[str, ...],
+) -> None:
+    for field in fields:
+        assert Path(str(container[field]).split("#", 1)[0]).exists()
+
+
+def _assert_no_forbidden_routes(dispatcher: dict[str, object]) -> None:
+    selected_route = str(dispatcher["selected_route"])
+    assert selected_route not in dispatcher["forbidden_routes"]
+    for fragment in _FORBIDDEN_ROUTE_FRAGMENTS:
+        assert fragment not in selected_route
+    _assert_false_safety_flags(
+        dispatcher,
+        ("broker_read_authorized", "paper_submit_authorized", "live_authorized"),
+    )
+
+
 def _assert_data_freshness_plan_shape(plan: dict[str, object]) -> None:
     assert {
         "data_freshness_status",
@@ -5527,40 +5620,32 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         )
     )
 
-    index_path = output_root / "index.html"
-    report_path = output_root / "assistant_report.md"
-    mission_path = output_root / "mission_control.json"
-    validation_path = output_root / "mission_control_validation.json"
-    latest_run_path = output_root / "latest_run.json"
-    data_freshness_plan_path = output_root / "data_freshness_plan.json"
-    data_refresh_bridge_path = output_root / "data_refresh_bridge.json"
-    data_refresh_checklist_path = output_root / "data_refresh_operator_checklist.md"
-    operator_review_path = output_root / "operator_review.md"
-    assert index_path.exists()
-    assert report_path.exists()
-    assert mission_path.exists()
-    assert validation_path.exists()
-    assert latest_run_path.exists()
-    assert data_freshness_plan_path.exists()
-    assert data_refresh_bridge_path.exists()
-    assert data_refresh_checklist_path.exists()
-    assert operator_review_path.exists()
-    assert (output_root / "operating_record.jsonl").exists()
+    paths = _assert_expected_artifacts_exist(output_root)
+    index_path = paths["index_path"]
+    report_path = paths["report_path"]
+    mission_path = paths["mission_path"]
+    validation_path = paths["validation_path"]
+    latest_run_path = paths["latest_run_path"]
+    data_freshness_plan_path = paths["data_freshness_plan_path"]
+    data_refresh_bridge_path = paths["data_refresh_bridge_path"]
+    data_refresh_checklist_path = paths["data_refresh_checklist_path"]
+    operator_review_path = paths["operator_review_path"]
 
-    mission = json.loads(mission_path.read_text(encoding="utf-8"))
+    mission = _read_json_artifact(mission_path)
     assert mission == payload["mission_control"]
     assert mission["mission_control_version"] == "assistant_v1.33_mission_control"
 
     executive = mission["executive_summary"]
-    assert executive["paper_submit_authorized"] is False
-    assert executive["live_authorized"] is False
-    assert executive["live_trading_authorized"] is False
+    _assert_false_safety_flags(
+        executive,
+        ("paper_submit_authorized", "live_authorized", "live_trading_authorized"),
+    )
     assert executive["readiness_score"]
     assert executive["validation_status"] == "passed"
     assert executive["market_signal_preview"] == "buy_preview"
     assert executive["broker_state_mode"] == "broker_state_not_observed"
 
-    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
+    latest_run = _read_json_artifact(latest_run_path)
     assert mission["latest_run"] == latest_run
     assert {
         "run_id",
@@ -5617,18 +5702,20 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "data_refresh_operator_checklist.md"
     )
     assert latest_run["validation_path"].endswith("mission_control_validation.json")
-    for field in (
-        "open_first_path",
-        "mission_control_path",
-        "assistant_report_path",
-        "operator_review_path",
-        "mission_control_json_path",
-        "data_freshness_plan_path",
-        "data_refresh_bridge_path",
-        "data_refresh_operator_checklist_path",
-        "validation_path",
-    ):
-        assert Path(str(latest_run[field]).split("#", 1)[0]).exists()
+    _assert_path_fields_exist(
+        latest_run,
+        (
+            "open_first_path",
+            "mission_control_path",
+            "assistant_report_path",
+            "operator_review_path",
+            "mission_control_json_path",
+            "data_freshness_plan_path",
+            "data_refresh_bridge_path",
+            "data_refresh_operator_checklist_path",
+            "validation_path",
+        ),
+    )
     assert latest_run["validation_status"] == "passed"
     assert latest_run["readiness_score"]
     assert latest_run["preview_decision"] == "blocked/broker_state_not_observed"
@@ -5654,10 +5741,15 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["next_safest_action"] == (
         "offline_accepted_data_refresh_bridge_checklist_improvement"
     )
-    assert latest_run["paper_submit_authorized"] is False
-    assert latest_run["live_authorized"] is False
-    assert latest_run["broker_read_performed"] is False
-    assert latest_run["broker_mutation_performed"] is False
+    _assert_false_safety_flags(
+        latest_run,
+        (
+            "paper_submit_authorized",
+            "live_authorized",
+            "broker_read_performed",
+            "broker_mutation_performed",
+        ),
+    )
     assert "paper_lab_only" in latest_run["safety_labels"]
 
     daily_latest = mission["daily_latest"]
@@ -5709,10 +5801,15 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert daily_latest["market_signal_preview"] == "buy_preview"
     assert daily_latest["blocker"] == "broker_state_not_observed"
     assert daily_latest["broker_state_mode"] == "broker_state_not_observed"
-    assert daily_latest["broker_read_performed"] is False
-    assert daily_latest["broker_mutation_performed"] is False
-    assert daily_latest["paper_submit_authorized"] is False
-    assert daily_latest["live_authorized"] is False
+    _assert_false_safety_flags(
+        daily_latest,
+        (
+            "broker_read_performed",
+            "broker_mutation_performed",
+            "paper_submit_authorized",
+            "live_authorized",
+        ),
+    )
     assert daily_latest["data_as_of"] == "2025-07-20"
     assert isinstance(daily_latest["staleness_days"], int)
     assert daily_latest["data_freshness_status"] == "stale_data_preview_only"
@@ -5741,7 +5838,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     data_plan = mission["data_freshness_plan"]
     _assert_data_freshness_plan_shape(data_plan)
-    assert data_plan == json.loads(data_freshness_plan_path.read_text(encoding="utf-8"))
+    assert data_plan == _read_json_artifact(data_freshness_plan_path)
     assert data_plan["data_freshness_status"] == "stale_data_preview_only"
     assert data_plan["data_as_of"] == "2025-07-20"
     assert data_plan["staleness_days"] == daily_latest["staleness_days"]
@@ -5759,9 +5856,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "paid_service_required\": false" in serialized_plan
 
     data_refresh_bridge = mission["data_refresh_bridge"]
-    assert data_refresh_bridge == json.loads(
-        data_refresh_bridge_path.read_text(encoding="utf-8")
-    )
+    assert data_refresh_bridge == _read_json_artifact(data_refresh_bridge_path)
     assert data_refresh_bridge["refresh_bridge_version"] == (
         "assistant_v1.38_data_refresh_bridge"
     )
@@ -5782,17 +5877,22 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert data_refresh_bridge["target_data_basis"] == "adjusted_close"
     assert data_refresh_bridge["local_operator_csv_required"] is True
     assert data_refresh_bridge["accepted_input_mode"] == "operator_supplied_local_csv"
-    assert data_refresh_bridge["external_api_required"] is False
-    assert data_refresh_bridge["secrets_required"] is False
-    assert data_refresh_bridge["broker_read_required"] is False
-    assert data_refresh_bridge["broker_mutation_required"] is False
-    assert data_refresh_bridge["paid_service_required"] is False
-    assert data_refresh_bridge["paper_submit_required"] is False
-    assert data_refresh_bridge["live_trading_required"] is False
-    assert data_refresh_bridge["paper_submit_authorized"] is False
-    assert data_refresh_bridge["live_authorized"] is False
-    assert data_refresh_bridge["broker_read_performed"] is False
-    assert data_refresh_bridge["broker_mutation_performed"] is False
+    _assert_false_safety_flags(
+        data_refresh_bridge,
+        (
+            "external_api_required",
+            "secrets_required",
+            "broker_read_required",
+            "broker_mutation_required",
+            "paid_service_required",
+            "paper_submit_required",
+            "live_trading_required",
+            "paper_submit_authorized",
+            "live_authorized",
+            "broker_read_performed",
+            "broker_mutation_performed",
+        ),
+    )
     assert data_refresh_bridge["preferred_operator_input_directory"] == (
         ".data/operator_inputs"
     )
@@ -5901,10 +6001,15 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     broker = mission["broker_state_lane"]
     assert broker["broker_state_mode"] == "broker_state_not_observed"
-    assert broker["broker_read_performed"] is False
-    assert broker["broker_mutation_performed"] is False
-    assert broker["paper_submit_authorized"] is False
-    assert broker["live_authorized"] is False
+    _assert_false_safety_flags(
+        broker,
+        (
+            "broker_read_performed",
+            "broker_mutation_performed",
+            "paper_submit_authorized",
+            "live_authorized",
+        ),
+    )
     assert broker["broker_state_status"] == "broker_state_not_observed"
     assert broker["spy_position_absence_claimed"] is False
     assert broker["spy_open_order_absence_claimed"] is False
@@ -5938,8 +6043,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     command_center = mission["agent_command_center"]
     assert command_center["generation_mode"] == "rule_based_no_llm_no_broker"
-    assert command_center["paper_submit_authorized"] is False
-    assert command_center["live_authorized"] is False
+    _assert_false_safety_flags(
+        command_center,
+        ("paper_submit_authorized", "live_authorized"),
+    )
 
     dispatcher = mission["rule_based_dispatcher_v0"]
     assert dispatcher["dispatcher_version"] == (
@@ -5953,10 +6060,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert dispatcher["selected_work_order_type"] == (
         "codex_offline_accepted_data_refresh_bridge"
     )
-    assert dispatcher["broker_read_authorized"] is False
-    assert dispatcher["paper_submit_authorized"] is False
-    assert dispatcher["live_authorized"] is False
-    assert dispatcher["selected_route"] not in dispatcher["forbidden_routes"]
+    _assert_no_forbidden_routes(dispatcher)
     assert "broker_read" in dispatcher["forbidden_routes"]
     assert "external_api_data_pull" in dispatcher["forbidden_routes"]
 
@@ -6078,8 +6182,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert validation["schema_errors"] == []
     assert validation["safety_errors"] == []
     assert validation["next_repair_action"] == "none_contract_valid"
-    assert validation["paper_submit_authorized"] is False
-    assert validation["live_authorized"] is False
+    _assert_false_safety_flags(
+        validation,
+        ("paper_submit_authorized", "live_authorized"),
+    )
 
     direct_validation = validate_mission_control_contract(
         output_root,
@@ -6088,131 +6194,90 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert direct_validation["validation_status"] == "passed"
 
 
-def test_mission_control_dispatcher_routes_validation_failure_to_codex_repair() -> None:
-    dispatcher = _dispatcher_result(validation_status="failed")
-
-    assert dispatcher["selected_rule_id"] == "mission_control_validation_failed"
-    assert dispatcher["selected_route"] == "codex_schema_safety_repair"
-    assert dispatcher["selected_work_order_type"] == "codex_schema_safety_repair"
-    assert dispatcher["paper_submit_authorized"] is False
-    assert dispatcher["live_authorized"] is False
-
-
-def test_mission_control_dispatcher_routes_stale_data_to_refresh_bridge() -> None:
-    dispatcher = _dispatcher_result(staleness_days=5)
-
-    assert dispatcher["selected_rule_id"] == "stale_data_present"
-    assert dispatcher["selected_route"] == (
-        "offline_accepted_data_refresh_bridge_checklist_improvement"
-    )
-    assert dispatcher["selected_work_order_type"] == (
-        "codex_offline_accepted_data_refresh_bridge"
-    )
-    assert "broker_read" in dispatcher["forbidden_routes"]
-    assert "paper_submit" in dispatcher["forbidden_routes"]
-    assert "broker_mutation" in dispatcher["forbidden_routes"]
-    assert "live_trading" in dispatcher["forbidden_routes"]
-    assert "external_api_data_pull" in dispatcher["forbidden_routes"]
-    assert "external_api_pull" in dispatcher["forbidden_routes"]
-    assert "secrets_setup" in dispatcher["forbidden_routes"]
-    assert "paid_service_setup" in dispatcher["forbidden_routes"]
-    assert "strategy_promotion" in dispatcher["forbidden_routes"]
-    assert "safety_weakening" in dispatcher["forbidden_routes"]
-    selected_route = str(dispatcher["selected_route"])
-    assert "broker_read" not in selected_route
-    assert "external_api" not in selected_route
-    assert "secret" not in selected_route
-    assert "paper_submit" not in selected_route
-    assert "broker_mutation" not in selected_route
-    assert "live" not in selected_route
-    assert "paid" not in selected_route
-    assert "strategy_promotion" not in selected_route
-    assert "safety_weakening" not in selected_route
-
-
-def test_mission_control_dispatcher_routes_missing_offline_validation_command() -> None:
-    dispatcher = _dispatcher_result(
-        staleness_days=5,
-        offline_validation_commands=[],
-    )
-
-    assert dispatcher["selected_rule_id"] == "offline_validation_command_missing"
-    assert dispatcher["selected_route"] == "offline_data_intake_validation_planning"
-    assert dispatcher["selected_work_order_type"] == (
-        "codex_offline_data_intake_validation_planning"
-    )
-    assert dispatcher["broker_read_authorized"] is False
-    assert dispatcher["paper_submit_authorized"] is False
-    assert dispatcher["live_authorized"] is False
-
-
-def test_mission_control_dispatcher_never_routes_broker_read_when_not_observed() -> None:
-    dispatcher = _dispatcher_result(staleness_days=0)
-
-    assert dispatcher["selected_rule_id"] == (
-        "broker_state_not_observed_and_read_not_authorized"
-    )
-    assert dispatcher["selected_route"] == "offline_dashboard_data_decision_improvement"
-    assert dispatcher["broker_read_authorized"] is False
-    assert dispatcher["selected_route"] not in dispatcher["forbidden_routes"]
-    assert "broker_read" not in str(dispatcher["selected_route"])
-
-
-def test_mission_control_dispatcher_never_selects_forbidden_routes() -> None:
+def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
     cases = [
-        _dispatcher_result(validation_status="failed"),
-        _dispatcher_result(missing_artifact="operator_review_md"),
-        _dispatcher_result(staleness_days=8),
-        _dispatcher_result(staleness_days=0),
-        _dispatcher_result(
-            staleness_days=0,
-            broker_read_performed=True,
-            blocker_status="none",
+        (
+            "validation_failure",
+            {"validation_status": "failed"},
+            "mission_control_validation_failed",
+            "codex_schema_safety_repair",
+            "codex_schema_safety_repair",
+        ),
+        (
+            "product_artifact_missing",
+            {"missing_artifact": "operator_review_md"},
+            "mission_control_product_artifact_missing_or_weak",
+            "mission_control_product_repair_to_codex",
+            "codex_product_repair",
+        ),
+        (
+            "work_order_missing",
+            {"missing_artifact": "codex_next_prompt"},
+            "work_orders_missing",
+            "middleman_reduction_repair_to_codex",
+            "codex_work_order_repair",
+        ),
+        (
+            "offline_validation_command_missing",
+            {"staleness_days": 5, "offline_validation_commands": []},
+            "offline_validation_command_missing",
+            "offline_data_intake_validation_planning",
+            "codex_offline_data_intake_validation_planning",
+        ),
+        (
+            "stale_data_refresh_bridge",
+            {"staleness_days": 5},
+            "stale_data_present",
+            "offline_accepted_data_refresh_bridge_checklist_improvement",
+            "codex_offline_accepted_data_refresh_bridge",
+        ),
+        (
+            "broker_not_observed",
+            {"staleness_days": 0},
+            "broker_state_not_observed_and_read_not_authorized",
+            "offline_dashboard_data_decision_improvement",
+            "codex_next_work_order",
+        ),
+        (
+            "valid_no_blocker",
+            {
+                "staleness_days": 0,
+                "broker_read_performed": True,
+                "blocker_status": "none",
+            },
+            "product_loop_valid_no_blocker",
+            "next_mission_control_slice",
+            "codex_next_mission_control_slice",
         ),
     ]
-    forbidden_fragments = {
-        "broker_read",
-        "paper_submit",
-        "broker_mutation",
-        "live_trading",
-        "secrets_setup",
-        "secret",
-        "paid_service",
-        "external_api",
-        "strategy_promotion",
-        "safety_weakening",
-    }
 
-    for dispatcher in cases:
-        selected_route = str(dispatcher["selected_route"])
-        assert selected_route not in dispatcher["forbidden_routes"]
-        for fragment in forbidden_fragments:
-            assert fragment not in selected_route
-        assert dispatcher["broker_read_authorized"] is False
-        assert dispatcher["paper_submit_authorized"] is False
-        assert dispatcher["live_authorized"] is False
+    for (
+        case_name,
+        dispatcher_kwargs,
+        expected_rule_id,
+        expected_route,
+        expected_work_order_type,
+    ) in cases:
+        dispatcher = _dispatcher_result(**dispatcher_kwargs)
 
-
-def test_mission_control_dispatcher_routes_missing_work_orders_to_repair() -> None:
-    dispatcher = _dispatcher_result(missing_artifact="codex_next_prompt")
-
-    assert dispatcher["selected_rule_id"] == "work_orders_missing"
-    assert dispatcher["selected_route"] == "middleman_reduction_repair_to_codex"
-    assert dispatcher["selected_work_order_type"] == "codex_work_order_repair"
-
-
-def test_mission_control_dispatcher_routes_valid_no_blocker_to_next_slice() -> None:
-    dispatcher = _dispatcher_result(
-        staleness_days=0,
-        broker_read_performed=True,
-        blocker_status="none",
-    )
-
-    assert dispatcher["selected_rule_id"] == "product_loop_valid_no_blocker"
-    assert dispatcher["selected_route"] == "next_mission_control_slice"
-    assert dispatcher["selected_work_order_type"] == (
-        "codex_next_mission_control_slice"
-    )
+        assert dispatcher["selected_rule_id"] == expected_rule_id, case_name
+        assert dispatcher["selected_route"] == expected_route, case_name
+        assert (
+            dispatcher["selected_work_order_type"] == expected_work_order_type
+        ), case_name
+        assert set(dispatcher["forbidden_routes"]) >= {
+            "broker_read",
+            "paper_submit",
+            "broker_mutation",
+            "live_trading",
+            "external_api_data_pull",
+            "external_api_pull",
+            "secrets_setup",
+            "paid_service_setup",
+            "strategy_promotion",
+            "safety_weakening",
+        }, case_name
+        _assert_no_forbidden_routes(dispatcher)
 
 
 def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> None:
@@ -6276,153 +6341,104 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         assert "Review scope:" in review_prompt_path.read_text(encoding="utf-8")
 
 
-def test_mission_control_contract_validator_fails_missing_required_artifact(
+def test_mission_control_contract_validator_fails_missing_required_artifacts(
     tmp_path: Path,
 ) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_missing_artifact_out",
+    cases = (
+        (
+            "codex_prompt",
+            "work_orders/codex_next_prompt.md",
+            "work_orders/codex_next_prompt.md",
+            "regenerate_missing_artifact:work_orders/codex_next_prompt.md",
+        ),
+        (
+            "latest_run",
+            "latest_run.json",
+            "latest_run.json",
+            "regenerate_missing_artifact:latest_run.json",
+        ),
+        (
+            "refresh_bridge",
+            "data_refresh_bridge.json",
+            "data_refresh_bridge.json",
+            "regenerate_missing_artifact:data_refresh_bridge.json",
+        ),
+        (
+            "refresh_checklist",
+            "data_refresh_operator_checklist.md",
+            "data_refresh_operator_checklist.md",
+            "regenerate_missing_artifact:data_refresh_operator_checklist.md",
+        ),
     )
-    (output_root / "work_orders" / "codex_next_prompt.md").unlink()
 
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
+    for case_name, relative_path, expected_missing, expected_repair_action in cases:
+        output_root = _generate_mission_control_output(
+            tmp_path,
+            f"paper_lab_missing_required_artifact_{case_name}_out",
+        )
+        (output_root / relative_path).unlink()
 
-    assert validation["validation_status"] == "failed"
-    assert "work_orders/codex_next_prompt.md" in validation["missing_artifacts"]
-    assert validation["next_repair_action"] == (
-        "regenerate_missing_artifact:work_orders/codex_next_prompt.md"
-    )
-    assert validation["paper_submit_authorized"] is False
-    assert validation["live_authorized"] is False
+        validation = validate_mission_control_contract(
+            output_root,
+            write_artifact=False,
+        )
+
+        assert validation["validation_status"] == "failed", case_name
+        assert expected_missing in validation["missing_artifacts"], case_name
+        assert validation["next_repair_action"] == expected_repair_action, case_name
+        _assert_false_safety_flags(
+            validation,
+            ("paper_submit_authorized", "live_authorized"),
+        )
 
 
-def test_mission_control_contract_validator_fails_missing_latest_run_artifact(
+def test_mission_control_contract_validator_fails_broken_latest_run_references(
     tmp_path: Path,
 ) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_missing_latest_run_out",
-    )
-    (output_root / "latest_run.json").unlink()
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert "latest_run.json" in validation["missing_artifacts"]
-    assert validation["next_repair_action"] == (
-        "regenerate_missing_artifact:latest_run.json"
-    )
-
-
-def test_mission_control_contract_validator_fails_missing_refresh_bridge_artifact(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_missing_refresh_bridge_out",
-    )
-    (output_root / "data_refresh_bridge.json").unlink()
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
+    cases = (
+        (
+            "operator_review_path",
+            "operator_review_path",
+            "missing_review.md",
+            (
+                "latest_run.operator_review_path.missing_target",
+                "latest_run.operator_review_path.unexpected_target",
+            ),
+        ),
+        (
+            "data_refresh_bridge_path",
+            "data_refresh_bridge_path",
+            "missing_bridge.json",
+            (
+                "latest_run.data_refresh_bridge_path.missing_target",
+                "latest_run.data_refresh_bridge_path.unexpected_target",
+                "latest_run.data_refresh_bridge_path.bridge_mismatch",
+            ),
+        ),
     )
 
-    assert validation["validation_status"] == "failed"
-    assert "data_refresh_bridge.json" in validation["missing_artifacts"]
-    assert validation["next_repair_action"] == (
-        "regenerate_missing_artifact:data_refresh_bridge.json"
-    )
+    for case_name, field, missing_filename, expected_schema_errors in cases:
+        output_root = _generate_mission_control_output(
+            tmp_path,
+            f"paper_lab_broken_latest_run_reference_{case_name}_out",
+        )
+        latest_run_path = output_root / "latest_run.json"
+        latest_run = _read_json_artifact(latest_run_path)
+        latest_run[field] = str(output_root / missing_filename)
+        latest_run_path.write_text(
+            json.dumps(latest_run, sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
+        validation = validate_mission_control_contract(
+            output_root,
+            write_artifact=False,
+        )
 
-def test_mission_control_contract_validator_fails_missing_refresh_checklist_artifact(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_missing_refresh_checklist_out",
-    )
-    (output_root / "data_refresh_operator_checklist.md").unlink()
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert "data_refresh_operator_checklist.md" in validation["missing_artifacts"]
-    assert validation["next_repair_action"] == (
-        "regenerate_missing_artifact:data_refresh_operator_checklist.md"
-    )
-
-
-def test_mission_control_contract_validator_fails_broken_latest_run_reference(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_broken_latest_run_reference_out",
-    )
-    latest_run_path = output_root / "latest_run.json"
-    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
-    latest_run["operator_review_path"] = str(output_root / "missing_review.md")
-    latest_run_path.write_text(
-        json.dumps(latest_run, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert "latest_run.operator_review_path.missing_target" in validation[
-        "schema_errors"
-    ]
-    assert "latest_run.operator_review_path.unexpected_target" in validation[
-        "schema_errors"
-    ]
-
-
-def test_mission_control_contract_validator_fails_broken_refresh_references(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_broken_refresh_reference_out",
-    )
-    latest_run_path = output_root / "latest_run.json"
-    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
-    latest_run["data_refresh_bridge_path"] = str(output_root / "missing_bridge.json")
-    latest_run_path.write_text(
-        json.dumps(latest_run, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert "latest_run.data_refresh_bridge_path.missing_target" in validation[
-        "schema_errors"
-    ]
-    assert "latest_run.data_refresh_bridge_path.unexpected_target" in validation[
-        "schema_errors"
-    ]
-    assert "latest_run.data_refresh_bridge_path.bridge_mismatch" in validation[
-        "schema_errors"
-    ]
+        assert validation["validation_status"] == "failed", case_name
+        for expected_error in expected_schema_errors:
+            assert expected_error in validation["schema_errors"], case_name
 
 
 def test_mission_control_contract_validator_fails_missing_required_section(
@@ -6485,88 +6501,69 @@ def test_mission_control_contract_validator_blocks_unobserved_broker_absence_cla
 def test_mission_control_contract_validator_blocks_stale_data_labeled_current(
     tmp_path: Path,
 ) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_stale_current_out",
-    )
-    mission = _read_mission_control(output_root)
-    market = mission["market_data_lane"]
-    assert isinstance(market, dict)
-    market["staleness_in_days"] = 5
-    market["preview_currency_status"] = "current"
-    market["preview_is_current"] = True
-    _write_mission_control(output_root, mission)
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert (
-        "mission_control.market_data_lane.stale_data_represented_as_current"
-        in validation["safety_errors"]
-    )
-
-
-def test_mission_control_contract_validator_blocks_stale_freshness_plan_current(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_stale_plan_current_out",
-    )
-    mission = _read_mission_control(output_root)
-    plan = mission["data_freshness_plan"]
-    assert isinstance(plan, dict)
-    plan["staleness_days"] = 5
-    plan["data_freshness_status"] = "current_local_data"
-    _write_mission_control(output_root, mission)
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
+    cases = (
+        (
+            "market_lane",
+            "market_data_lane",
+            {
+                "staleness_in_days": 5,
+                "preview_currency_status": "current",
+                "preview_is_current": True,
+            },
+            None,
+            (
+                "mission_control.market_data_lane.stale_data_represented_as_current",
+            ),
+        ),
+        (
+            "freshness_plan",
+            "data_freshness_plan",
+            {"staleness_days": 5, "data_freshness_status": "current_local_data"},
+            None,
+            (
+                "mission_control.data_freshness_plan.stale_data_represented_as_current",
+            ),
+        ),
+        (
+            "refresh_bridge",
+            "data_refresh_bridge",
+            {
+                "current_staleness_days": 5,
+                "current_data_freshness_status": "current_local_data",
+            },
+            "data_refresh_bridge.json",
+            (
+                "mission_control.data_refresh_bridge.stale_data_represented_as_current",
+                "data_refresh_bridge.stale_data_represented_as_current",
+            ),
+        ),
     )
 
-    assert validation["validation_status"] == "failed"
-    assert (
-        "mission_control.data_freshness_plan.stale_data_represented_as_current"
-        in validation["safety_errors"]
-    )
+    for case_name, section, updates, mirror_artifact, expected_safety_errors in cases:
+        output_root = _generate_mission_control_output(
+            tmp_path,
+            f"paper_lab_stale_current_{case_name}_out",
+        )
+        mission = _read_mission_control(output_root)
+        stale_surface = mission[section]
+        assert isinstance(stale_surface, dict)
+        stale_surface.update(updates)
+        _write_mission_control(output_root, mission)
+        if mirror_artifact is not None:
+            (output_root / mirror_artifact).write_text(
+                json.dumps(stale_surface, sort_keys=True, indent=2) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
 
+        validation = validate_mission_control_contract(
+            output_root,
+            write_artifact=False,
+        )
 
-def test_mission_control_contract_validator_blocks_stale_refresh_bridge_current(
-    tmp_path: Path,
-) -> None:
-    output_root = _generate_mission_control_output(
-        tmp_path,
-        "paper_lab_stale_bridge_current_out",
-    )
-    mission = _read_mission_control(output_root)
-    bridge = mission["data_refresh_bridge"]
-    assert isinstance(bridge, dict)
-    bridge["current_staleness_days"] = 5
-    bridge["current_data_freshness_status"] = "current_local_data"
-    _write_mission_control(output_root, mission)
-    (output_root / "data_refresh_bridge.json").write_text(
-        json.dumps(bridge, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    validation = validate_mission_control_contract(
-        output_root,
-        write_artifact=False,
-    )
-
-    assert validation["validation_status"] == "failed"
-    assert (
-        "mission_control.data_refresh_bridge.stale_data_represented_as_current"
-        in validation["safety_errors"]
-    )
-    assert "data_refresh_bridge.stale_data_represented_as_current" in validation[
-        "safety_errors"
-    ]
+        assert validation["validation_status"] == "failed", case_name
+        for expected_error in expected_safety_errors:
+            assert expected_error in validation["safety_errors"], case_name
 
 
 def test_mission_control_readiness_score_blocks_on_safety_gate_failure() -> None:
