@@ -4250,7 +4250,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow"
+            "Assistant v1.37 - Mission Control Latest Run Launcher + Stable Operator Entry Point"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -5395,6 +5395,7 @@ def test_etf_sma_daily_paper_lab_cli_invocation(tmp_path: Path) -> None:
     assert (output_root / "assistant_report.md").exists()
     assert (output_root / "mission_control.json").exists()
     assert (output_root / "mission_control_validation.json").exists()
+    assert (output_root / "latest_run.json").exists()
 
 
 def _generate_mission_control_output(tmp_path: Path, name: str) -> Path:
@@ -5438,6 +5439,7 @@ def _dispatcher_result(
         "index_html": "index.html",
         "assistant_report_md": "assistant_report.md",
         "mission_control_json": "mission_control.json",
+        "latest_run_json": "latest_run.json",
         "data_freshness_plan_json": "data_freshness_plan.json",
         "operator_review_md": "operator_review.md",
         "work_orders": "work_orders",
@@ -5521,12 +5523,14 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     report_path = output_root / "assistant_report.md"
     mission_path = output_root / "mission_control.json"
     validation_path = output_root / "mission_control_validation.json"
+    latest_run_path = output_root / "latest_run.json"
     data_freshness_plan_path = output_root / "data_freshness_plan.json"
     operator_review_path = output_root / "operator_review.md"
     assert index_path.exists()
     assert report_path.exists()
     assert mission_path.exists()
     assert validation_path.exists()
+    assert latest_run_path.exists()
     assert data_freshness_plan_path.exists()
     assert operator_review_path.exists()
     assert (output_root / "operating_record.jsonl").exists()
@@ -5544,17 +5548,95 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert executive["market_signal_preview"] == "buy_preview"
     assert executive["broker_state_mode"] == "broker_state_not_observed"
 
+    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
+    assert mission["latest_run"] == latest_run
+    assert {
+        "run_id",
+        "generated_at",
+        "output_root",
+        "open_first",
+        "open_first_path",
+        "mission_control_path",
+        "assistant_report_path",
+        "operator_review_path",
+        "daily_latest_path",
+        "mission_control_json_path",
+        "data_freshness_plan_path",
+        "validation_path",
+        "validation_status",
+        "readiness_score",
+        "preview_decision",
+        "market_signal_preview",
+        "main_blocker",
+        "broker_state_mode",
+        "data_freshness_status",
+        "staleness_days",
+        "next_safest_action",
+        "paper_submit_authorized",
+        "live_authorized",
+        "broker_read_performed",
+        "broker_mutation_performed",
+        "safety_labels",
+    } <= set(latest_run)
+    assert latest_run["open_first"] == "index.html"
+    assert latest_run["open_first_path"].endswith("index.html")
+    assert latest_run["mission_control_path"].endswith("mission_control.json")
+    assert latest_run["assistant_report_path"].endswith("assistant_report.md")
+    assert latest_run["operator_review_path"].endswith("operator_review.md")
+    assert latest_run["daily_latest_path"].endswith(
+        "mission_control.json#daily_latest"
+    )
+    assert latest_run["mission_control_json_path"].endswith("mission_control.json")
+    assert latest_run["data_freshness_plan_path"].endswith(
+        "data_freshness_plan.json"
+    )
+    assert latest_run["validation_path"].endswith("mission_control_validation.json")
+    for field in (
+        "open_first_path",
+        "mission_control_path",
+        "assistant_report_path",
+        "operator_review_path",
+        "mission_control_json_path",
+        "data_freshness_plan_path",
+        "validation_path",
+    ):
+        assert Path(str(latest_run[field]).split("#", 1)[0]).exists()
+    assert latest_run["validation_status"] == "passed"
+    assert latest_run["readiness_score"]
+    assert latest_run["preview_decision"] == "blocked/broker_state_not_observed"
+    assert latest_run["market_signal_preview"] == "buy_preview"
+    assert latest_run["main_blocker"] == "broker_state_not_observed"
+    assert latest_run["broker_state_mode"] == "broker_state_not_observed"
+    assert latest_run["data_freshness_status"] == "stale_data_preview_only"
+    assert isinstance(latest_run["staleness_days"], int)
+    assert latest_run["next_safest_action"] == (
+        "offline_data_freshness_planning_operator_review_improvement"
+    )
+    assert latest_run["paper_submit_authorized"] is False
+    assert latest_run["live_authorized"] is False
+    assert latest_run["broker_read_performed"] is False
+    assert latest_run["broker_mutation_performed"] is False
+    assert "paper_lab_only" in latest_run["safety_labels"]
+
     daily_latest = mission["daily_latest"]
     assert {
         "run_id",
         "generated_at",
         "output_root",
+        "open_first",
+        "open_first_path",
+        "latest_run_path",
+        "mission_control_path",
+        "mission_control_json_path",
+        "assistant_report_path",
+        "validation_path",
         "validation_status",
         "readiness_score",
         "preview_decision",
         "market_signal_preview",
         "blocker",
         "next_action",
+        "next_safest_action",
         "broker_state_mode",
         "broker_read_performed",
         "broker_mutation_performed",
@@ -5572,6 +5654,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "safety_labels",
     } <= set(daily_latest)
     assert daily_latest["validation_status"] == "passed"
+    assert daily_latest["open_first"] == "index.html"
+    assert daily_latest["open_first_path"] == latest_run["open_first_path"]
+    assert daily_latest["latest_run_path"].endswith("latest_run.json")
     assert daily_latest["preview_decision"] == "blocked/broker_state_not_observed"
     assert daily_latest["market_signal_preview"] == "buy_preview"
     assert daily_latest["blocker"] == "broker_state_not_observed"
@@ -5590,6 +5675,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "data_freshness_plan.json"
     )
     assert daily_latest["operator_review_path"].endswith("operator_review.md")
+    assert daily_latest["next_safest_action"] == latest_run["next_safest_action"]
 
     data_plan = mission["data_freshness_plan"]
     _assert_data_freshness_plan_shape(data_plan)
@@ -5716,6 +5802,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert indexed["mission_control"]["path"].endswith("mission_control.json")
     assert indexed["mission_control_index"]["path"].endswith("index.html")
     assert indexed["assistant_report"]["path"].endswith("assistant_report.md")
+    assert indexed["latest_run"]["path"].endswith("latest_run.json")
     assert indexed["data_freshness_plan"]["path"].endswith(
         "data_freshness_plan.json"
     )
@@ -5733,6 +5820,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     report = report_path.read_text(encoding="utf-8")
     assert "System status: `offline_mission_control_ready`" in report
+    assert "## Open First" in report
+    assert "latest_run.json" in report
     assert "Readiness score:" in report
     assert "Validation status: `passed`" in report
     assert "Market signal preview: `buy_preview`" in report
@@ -5746,6 +5835,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     index_html = index_path.read_text(encoding="utf-8")
     assert "mission_control.json" in index_html
     assert "assistant_report.md" in index_html
+    assert "latest_run.json" in index_html
+    assert "Open First" in index_html
     assert "data_freshness_plan.json" in index_html
     assert "operator_review.md" in index_html
     assert "work_orders/" in index_html
@@ -5756,6 +5847,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     operator_review = operator_review_path.read_text(encoding="utf-8")
     assert "## Executive Summary" in operator_review
+    assert "## Open First" in operator_review
+    assert "Latest-run summary:" in operator_review
     assert "System status: `offline_mission_control_ready`" in operator_review
     assert "Validation status: `passed`" in operator_review
     assert "Readiness score:" in operator_review
@@ -5771,6 +5864,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "What The Operator Should Not Do" in operator_review
     assert "What Agents Should Do Next" in operator_review
     assert "data_freshness_plan.json" in operator_review
+    assert "latest_run.json" in operator_review
     assert "operator_review.md" in operator_review
 
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
@@ -5916,12 +6010,17 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         prompt = prompt_path.read_text(encoding="utf-8")
         assert "Project path:" in prompt
         assert (
-            "Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow"
+            "Assistant v1.37 - Mission Control Latest Run Launcher + Stable Operator Entry Point"
             in prompt
         )
         assert "Goal:" in prompt
+        assert "Start-here artifacts:" in prompt
+        assert "Start with latest-run summary:" in prompt
+        assert "latest_run.json" in prompt
+        assert "Mission Control JSON" in prompt
         assert "Operator review flow inputs:" in prompt
         assert "daily_latest" in prompt
+        assert "mission_control.json" in prompt
         assert "mission_control_validation.json" in prompt
         assert "data_freshness_plan.json" in prompt
         assert "operator_review.md" in prompt
@@ -5973,6 +6072,57 @@ def test_mission_control_contract_validator_fails_missing_required_artifact(
     )
     assert validation["paper_submit_authorized"] is False
     assert validation["live_authorized"] is False
+
+
+def test_mission_control_contract_validator_fails_missing_latest_run_artifact(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_missing_latest_run_out",
+    )
+    (output_root / "latest_run.json").unlink()
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "latest_run.json" in validation["missing_artifacts"]
+    assert validation["next_repair_action"] == (
+        "regenerate_missing_artifact:latest_run.json"
+    )
+
+
+def test_mission_control_contract_validator_fails_broken_latest_run_reference(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_broken_latest_run_reference_out",
+    )
+    latest_run_path = output_root / "latest_run.json"
+    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
+    latest_run["operator_review_path"] = str(output_root / "missing_review.md")
+    latest_run_path.write_text(
+        json.dumps(latest_run, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "latest_run.operator_review_path.missing_target" in validation[
+        "schema_errors"
+    ]
+    assert "latest_run.operator_review_path.unexpected_target" in validation[
+        "schema_errors"
+    ]
 
 
 def test_mission_control_contract_validator_fails_missing_required_section(

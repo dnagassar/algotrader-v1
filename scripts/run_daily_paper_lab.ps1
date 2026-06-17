@@ -124,4 +124,36 @@ if ($null -eq $ExitCode) {
     $ExitCode = 0
 }
 
+if ($ExitCode -eq 0 -and $Format -eq "text") {
+    $IndexPath = Join-Path $AbsoluteOutputRoot "index.html"
+    $OperatorReviewPath = Join-Path $AbsoluteOutputRoot "operator_review.md"
+    $LatestRunPath = Join-Path $AbsoluteOutputRoot "latest_run.json"
+    $ValidationPath = Join-Path $AbsoluteOutputRoot "mission_control_validation.json"
+    $BrokerStateModeText = $BrokerStateMode
+
+    if (Test-Path -LiteralPath $LatestRunPath) {
+        try {
+            $LatestRun = Get-Content -LiteralPath $LatestRunPath -Raw | ConvertFrom-Json
+            if ($LatestRun.broker_state_mode) {
+                $BrokerStateModeText = [string]$LatestRun.broker_state_mode
+            }
+        }
+        catch {
+            $BrokerStateModeText = $BrokerStateMode
+        }
+    }
+
+    Write-Host ""
+    Write-Host "Mission Control generated."
+    Write-Host "Open first: $IndexPath"
+    Write-Host "Operator review: $OperatorReviewPath"
+    Write-Host "Latest run summary: $LatestRunPath"
+    Write-Host "Validation: $ValidationPath"
+    Write-Host "Paper submit authorized: false"
+    Write-Host "Live authorized: false"
+    Write-Host "Broker read performed: false"
+    Write-Host "Broker mutation performed: false"
+    Write-Host "Broker-state mode: $BrokerStateModeText"
+}
+
 exit $ExitCode
