@@ -1,19 +1,20 @@
-# Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow
+# Assistant v1.38 - Offline Accepted Data Refresh Bridge
 
-This milestone makes Mission Control more useful as a daily paper-lab operator
-console while remaining fully offline and non-broker.
+This milestone makes Mission Control more operational around stale accepted data
+without adding any data download, broker, credential, paper-submit, live-trading,
+paid-service, or strategy-promotion surface.
 
 ## Goal
 
-Produce a clear daily operator flow around stale or missing local data:
+Add a deterministic local bridge for a future operator-supplied SPY adjusted-close
+CSV:
 
-- structured `data_freshness_plan.json`
-- visible `operator_review.md`
-- Mission Control surfacing in `mission_control.json`, `assistant_report.md`,
-  `index.html`, `manifest.jsonl`, and validation
-- dispatcher routing toward offline data freshness/operator review improvement
-- generated prompts that point agents at `daily_latest`, validation, the data
-  freshness plan, and the operator review
+- `data_refresh_bridge.json`
+- `data_refresh_operator_checklist.md`
+- Mission Control, latest-run, manifest, report, operator-review, and validation
+  references to both artifacts
+- dispatcher/work-order routing toward offline accepted-data refresh bridge work
+- validator failures when bridge/checklist artifacts or references are missing
 
 ## Safety Contract
 
@@ -25,14 +26,14 @@ Produce a clear daily operator flow around stale or missing local data:
 - `broker_state_not_observed` never claims no positions or no open orders.
 - No credentials, network calls, external API setup, paid services, or broker
   SDK/client calls are required for default pytest.
-- Generated `runs/`, `.agent_inbox/`, and `docs/reviews/` artifacts must not be
-  staged or tracked.
+- Operator-supplied CSVs and generated `.data/`, `runs/`, `.agent_inbox/`, and
+  `docs/reviews/` artifacts must not be staged or tracked.
 
 ## Implementation Checklist
 
-- [x] Add deterministic data freshness planning fields and artifact.
-- [x] Add short daily operator review artifact.
-- [x] Surface freshness and operator review in Mission Control.
-- [x] Tighten deterministic dispatcher routes and forbidden routes.
-- [x] Update generated work-order prompts for the new review flow.
-- [x] Preserve Mission Control validation and offline safety invariants.
+- [x] Add deterministic data refresh bridge artifact.
+- [x] Add short operator-facing data refresh checklist artifact.
+- [x] Surface refresh bridge/checklist in Mission Control and latest-run.
+- [x] Tighten Mission Control validation for refresh artifacts and safety fields.
+- [x] Update dispatcher/work-order routing around offline data refresh.
+- [x] Preserve stale-data preview-only and broker-state-not-observed invariants.

@@ -4250,7 +4250,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.37 - Mission Control Latest Run Launcher + Stable Operator Entry Point"
+            "Assistant v1.38 - Offline Accepted Data Refresh Bridge"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -5434,6 +5434,7 @@ def _dispatcher_result(
     broker_state_mode: str = "broker_state_not_observed",
     blocker_status: str = "broker_state_not_observed",
     missing_artifact: str | None = None,
+    offline_validation_commands: list[str] | None = None,
 ) -> dict[str, object]:
     artifacts: dict[str, object] = {
         "index_html": "index.html",
@@ -5441,6 +5442,8 @@ def _dispatcher_result(
         "mission_control_json": "mission_control.json",
         "latest_run_json": "latest_run.json",
         "data_freshness_plan_json": "data_freshness_plan.json",
+        "data_refresh_bridge_json": "data_refresh_bridge.json",
+        "data_refresh_operator_checklist_md": "data_refresh_operator_checklist.md",
         "operator_review_md": "operator_review.md",
         "work_orders": "work_orders",
         "codex_next_prompt": "work_orders/codex_next_prompt.md",
@@ -5468,6 +5471,11 @@ def _dispatcher_result(
             "broker_read_performed": broker_read_performed,
         },
         decision_lane={"blocker_status": blocker_status},
+        data_refresh_bridge={
+            "offline_validation_commands": offline_validation_commands
+            if offline_validation_commands is not None
+            else ["python -m algotrader.cli etf-sma-adjusted-spy-bars-refresh-intake"],
+        },
         validation_summary={"validation_status": validation_status},
     )
 
@@ -5525,6 +5533,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     validation_path = output_root / "mission_control_validation.json"
     latest_run_path = output_root / "latest_run.json"
     data_freshness_plan_path = output_root / "data_freshness_plan.json"
+    data_refresh_bridge_path = output_root / "data_refresh_bridge.json"
+    data_refresh_checklist_path = output_root / "data_refresh_operator_checklist.md"
     operator_review_path = output_root / "operator_review.md"
     assert index_path.exists()
     assert report_path.exists()
@@ -5532,6 +5542,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert validation_path.exists()
     assert latest_run_path.exists()
     assert data_freshness_plan_path.exists()
+    assert data_refresh_bridge_path.exists()
+    assert data_refresh_checklist_path.exists()
     assert operator_review_path.exists()
     assert (output_root / "operating_record.jsonl").exists()
 
@@ -5562,6 +5574,14 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "daily_latest_path",
         "mission_control_json_path",
         "data_freshness_plan_path",
+        "data_refresh_bridge_path",
+        "data_refresh_operator_checklist_path",
+        "current_accepted_data_path",
+        "current_data_as_of",
+        "current_staleness_days",
+        "next_operator_data_action",
+        "next_agent_data_action",
+        "offline_validation_commands",
         "validation_path",
         "validation_status",
         "readiness_score",
@@ -5590,6 +5610,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["data_freshness_plan_path"].endswith(
         "data_freshness_plan.json"
     )
+    assert latest_run["data_refresh_bridge_path"].endswith(
+        "data_refresh_bridge.json"
+    )
+    assert latest_run["data_refresh_operator_checklist_path"].endswith(
+        "data_refresh_operator_checklist.md"
+    )
     assert latest_run["validation_path"].endswith("mission_control_validation.json")
     for field in (
         "open_first_path",
@@ -5598,6 +5624,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "operator_review_path",
         "mission_control_json_path",
         "data_freshness_plan_path",
+        "data_refresh_bridge_path",
+        "data_refresh_operator_checklist_path",
         "validation_path",
     ):
         assert Path(str(latest_run[field]).split("#", 1)[0]).exists()
@@ -5609,8 +5637,22 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["broker_state_mode"] == "broker_state_not_observed"
     assert latest_run["data_freshness_status"] == "stale_data_preview_only"
     assert isinstance(latest_run["staleness_days"], int)
+    assert latest_run["current_accepted_data_path"].endswith(
+        "spy_daily_bars_200_bullish.csv"
+    )
+    assert latest_run["current_data_as_of"] == "2025-07-20"
+    assert latest_run["current_staleness_days"] == latest_run["staleness_days"]
+    assert (
+        "operator-supplied SPY adjusted-close CSV"
+        in latest_run["next_operator_data_action"]
+    )
+    assert "data_refresh_bridge.json" in latest_run["next_agent_data_action"]
+    assert any(
+        "etf-sma-adjusted-spy-bars-refresh-intake" in command
+        for command in latest_run["offline_validation_commands"]
+    )
     assert latest_run["next_safest_action"] == (
-        "offline_data_freshness_planning_operator_review_improvement"
+        "offline_accepted_data_refresh_bridge_checklist_improvement"
     )
     assert latest_run["paper_submit_authorized"] is False
     assert latest_run["live_authorized"] is False
@@ -5650,6 +5692,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "next_offline_data_action",
         "operator_data_action_summary",
         "data_freshness_plan_path",
+        "data_refresh_bridge_path",
+        "data_refresh_operator_checklist_path",
+        "current_accepted_data_path",
+        "next_operator_data_action",
+        "next_agent_data_action",
+        "offline_validation_commands",
         "operator_review_path",
         "safety_labels",
     } <= set(daily_latest)
@@ -5674,6 +5722,20 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert daily_latest["data_freshness_plan_path"].endswith(
         "data_freshness_plan.json"
     )
+    assert daily_latest["data_refresh_bridge_path"].endswith(
+        "data_refresh_bridge.json"
+    )
+    assert daily_latest["data_refresh_operator_checklist_path"].endswith(
+        "data_refresh_operator_checklist.md"
+    )
+    assert daily_latest["current_accepted_data_path"].endswith(
+        "spy_daily_bars_200_bullish.csv"
+    )
+    assert "data_refresh_operator_checklist.md" in daily_latest["next_agent_data_action"]
+    assert any(
+        "etf-sma-adjusted-spy-bars-refresh-intake" in command
+        for command in daily_latest["offline_validation_commands"]
+    )
     assert daily_latest["operator_review_path"].endswith("operator_review.md")
     assert daily_latest["next_safest_action"] == latest_run["next_safest_action"]
 
@@ -5695,6 +5757,132 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "external_api_required\": false" in serialized_plan
     assert "secrets_required\": false" in serialized_plan
     assert "paid_service_required\": false" in serialized_plan
+
+    data_refresh_bridge = mission["data_refresh_bridge"]
+    assert data_refresh_bridge == json.loads(
+        data_refresh_bridge_path.read_text(encoding="utf-8")
+    )
+    assert data_refresh_bridge["refresh_bridge_version"] == (
+        "assistant_v1.38_data_refresh_bridge"
+    )
+    assert data_refresh_bridge["refresh_bridge_status"] == (
+        "stale_data_preview_only_bridge_ready"
+    )
+    assert data_refresh_bridge["current_data_freshness_status"] == (
+        "stale_data_preview_only"
+    )
+    assert data_refresh_bridge["current_accepted_data_path"].endswith(
+        "spy_daily_bars_200_bullish.csv"
+    )
+    assert data_refresh_bridge["current_accepted_data_basis"] == "close"
+    assert data_refresh_bridge["current_accepted_row_count"] == 200
+    assert data_refresh_bridge["current_data_as_of"] == "2025-07-20"
+    assert data_refresh_bridge["current_staleness_days"] == data_plan["staleness_days"]
+    assert data_refresh_bridge["target_symbol"] == "SPY"
+    assert data_refresh_bridge["target_data_basis"] == "adjusted_close"
+    assert data_refresh_bridge["local_operator_csv_required"] is True
+    assert data_refresh_bridge["accepted_input_mode"] == "operator_supplied_local_csv"
+    assert data_refresh_bridge["external_api_required"] is False
+    assert data_refresh_bridge["secrets_required"] is False
+    assert data_refresh_bridge["broker_read_required"] is False
+    assert data_refresh_bridge["broker_mutation_required"] is False
+    assert data_refresh_bridge["paid_service_required"] is False
+    assert data_refresh_bridge["paper_submit_required"] is False
+    assert data_refresh_bridge["live_trading_required"] is False
+    assert data_refresh_bridge["paper_submit_authorized"] is False
+    assert data_refresh_bridge["live_authorized"] is False
+    assert data_refresh_bridge["broker_read_performed"] is False
+    assert data_refresh_bridge["broker_mutation_performed"] is False
+    assert data_refresh_bridge["preferred_operator_input_directory"] == (
+        ".data/operator_inputs"
+    )
+    assert data_refresh_bridge["preferred_operator_input_path"].endswith(
+        "spy_tiingo_adjusted_refresh_latest.csv"
+    )
+    assert data_refresh_bridge["canonical_output_path"].endswith(
+        "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    assert {
+        "date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "adjusted_close",
+        "volume",
+    } <= set(data_refresh_bridge["expected_schema"]["required_columns"])
+    assert "symbol" in data_refresh_bridge["expected_schema"]["optional_columns"]
+    assert "adjusted_close_column_required" in data_refresh_bridge[
+        "validation_requirements"
+    ]
+    assert any(
+        "etf-sma-adjusted-spy-bars-refresh-intake" in command
+        for command in data_refresh_bridge["offline_validation_commands"]
+    )
+    assert "external_api_pull" in data_refresh_bridge["forbidden_refresh_paths"]
+    assert "operator-supplied SPY adjusted-close CSV" in data_refresh_bridge[
+        "next_operator_data_action"
+    ]
+    assert "data_refresh_operator_checklist.md" in data_refresh_bridge[
+        "next_agent_data_action"
+    ]
+    assert data_refresh_bridge["safe_to_continue_preview_only"] is True
+    assert "current" not in data_refresh_bridge["current_data_freshness_status"]
+    assert "current" not in data_refresh_bridge["refresh_bridge_status"]
+    actionable_refresh_text = " ".join(
+        [
+            data_refresh_bridge["next_operator_data_action"],
+            data_refresh_bridge["next_agent_data_action"],
+            *data_refresh_bridge["offline_validation_commands"],
+        ]
+    ).lower()
+    for forbidden_fragment in (
+        "external_api",
+        "external api",
+        "secret",
+        "broker_read",
+        "broker read",
+        "broker_mutation",
+        "broker mutation",
+        "paper_submit",
+        "paper submit",
+        "live_trading",
+        "live trading",
+        "paid_service",
+        "paid service",
+        "strategy_promotion",
+        "strategy promotion",
+        "safety_weakening",
+        "safety weakening",
+    ):
+        assert forbidden_fragment not in actionable_refresh_text
+    serialized_bridge = json.dumps(data_refresh_bridge, sort_keys=True).lower()
+    assert "external_api_required\": false" in serialized_bridge
+    assert "secrets_required\": false" in serialized_bridge
+    assert "broker_read_required\": false" in serialized_bridge
+    assert "broker_mutation_required\": false" in serialized_bridge
+    assert "paid_service_required\": false" in serialized_bridge
+    assert "paper_submit_required\": false" in serialized_bridge
+    assert "live_trading_required\": false" in serialized_bridge
+
+    refresh_checklist = data_refresh_checklist_path.read_text(encoding="utf-8")
+    assert "Data Refresh Operator Checklist" in refresh_checklist
+    assert "Status: `stale_data_preview_only`" in refresh_checklist
+    assert "spy_daily_bars_200_bullish.csv" in refresh_checklist
+    assert "Expected symbol: `SPY`" in refresh_checklist
+    assert "Expected basis: `adjusted_close`" in refresh_checklist
+    assert "date, open, high, low, close, adjusted_close, volume" in refresh_checklist
+    assert ".data/operator_inputs/spy_tiingo_adjusted_refresh_latest.csv" in (
+        refresh_checklist
+    )
+    assert "etf-sma-adjusted-spy-bars-refresh-intake" in refresh_checklist
+    assert "external_api_required=false" in refresh_checklist
+    assert "secrets_required=false" in refresh_checklist
+    assert "broker_read_required=false" in refresh_checklist
+    assert "broker_mutation_required=false" in refresh_checklist
+    assert "paper_submit_required=false" in refresh_checklist
+    assert "live_trading_required=false" in refresh_checklist
+    assert "paid_service_required=false" in refresh_checklist
 
     market = mission["market_data_lane"]
     assert market["symbol"] == "SPY"
@@ -5760,10 +5948,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert dispatcher["generation_mode"] == "deterministic_rule_based_no_llm_routing"
     assert dispatcher["selected_rule_id"] == "stale_data_present"
     assert dispatcher["selected_route"] == (
-        "offline_data_freshness_planning_operator_review_improvement"
+        "offline_accepted_data_refresh_bridge_checklist_improvement"
     )
     assert dispatcher["selected_work_order_type"] == (
-        "codex_data_freshness_operator_review_plan"
+        "codex_offline_accepted_data_refresh_bridge"
     )
     assert dispatcher["broker_read_authorized"] is False
     assert dispatcher["paper_submit_authorized"] is False
@@ -5806,6 +5994,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert indexed["data_freshness_plan"]["path"].endswith(
         "data_freshness_plan.json"
     )
+    assert indexed["data_refresh_bridge"]["path"].endswith(
+        "data_refresh_bridge.json"
+    )
+    assert indexed["data_refresh_operator_checklist"]["path"].endswith(
+        "data_refresh_operator_checklist.md"
+    )
     assert indexed["operator_review"]["path"].endswith("operator_review.md")
     assert indexed["mission_control_validation"]["path"].endswith(
         "mission_control_validation.json"
@@ -5830,6 +6024,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "live_authorized=false" in report
     assert "Data freshness status: `stale_data_preview_only`" in report
     assert "data_freshness_plan.json" in report
+    assert "data_refresh_bridge.json" in report
+    assert "data_refresh_operator_checklist.md" in report
+    assert "Next operator data action:" in report
+    assert "operator-supplied SPY adjusted-close CSV" in report
     assert "operator_review.md" in report
 
     index_html = index_path.read_text(encoding="utf-8")
@@ -5838,6 +6036,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "latest_run.json" in index_html
     assert "Open First" in index_html
     assert "data_freshness_plan.json" in index_html
+    assert "data_refresh_bridge.json" in index_html
+    assert "data_refresh_operator_checklist.md" in index_html
+    assert "spy_tiingo_adjusted_refresh_latest.csv" in index_html
     assert "operator_review.md" in index_html
     assert "work_orders/" in index_html
     assert "Validation status" in index_html
@@ -5864,6 +6065,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "What The Operator Should Not Do" in operator_review
     assert "What Agents Should Do Next" in operator_review
     assert "data_freshness_plan.json" in operator_review
+    assert "data_refresh_bridge.json" in operator_review
+    assert "data_refresh_operator_checklist.md" in operator_review
+    assert "operator-supplied SPY adjusted-close CSV" in operator_review
+    assert "etf-sma-adjusted-spy-bars-refresh-intake" in operator_review
     assert "latest_run.json" in operator_review
     assert "operator_review.md" in operator_review
 
@@ -5893,15 +6098,15 @@ def test_mission_control_dispatcher_routes_validation_failure_to_codex_repair() 
     assert dispatcher["live_authorized"] is False
 
 
-def test_mission_control_dispatcher_routes_stale_data_to_offline_freshness_plan() -> None:
+def test_mission_control_dispatcher_routes_stale_data_to_refresh_bridge() -> None:
     dispatcher = _dispatcher_result(staleness_days=5)
 
     assert dispatcher["selected_rule_id"] == "stale_data_present"
     assert dispatcher["selected_route"] == (
-        "offline_data_freshness_planning_operator_review_improvement"
+        "offline_accepted_data_refresh_bridge_checklist_improvement"
     )
     assert dispatcher["selected_work_order_type"] == (
-        "codex_data_freshness_operator_review_plan"
+        "codex_offline_accepted_data_refresh_bridge"
     )
     assert "broker_read" in dispatcher["forbidden_routes"]
     assert "paper_submit" in dispatcher["forbidden_routes"]
@@ -5923,6 +6128,22 @@ def test_mission_control_dispatcher_routes_stale_data_to_offline_freshness_plan(
     assert "paid" not in selected_route
     assert "strategy_promotion" not in selected_route
     assert "safety_weakening" not in selected_route
+
+
+def test_mission_control_dispatcher_routes_missing_offline_validation_command() -> None:
+    dispatcher = _dispatcher_result(
+        staleness_days=5,
+        offline_validation_commands=[],
+    )
+
+    assert dispatcher["selected_rule_id"] == "offline_validation_command_missing"
+    assert dispatcher["selected_route"] == "offline_data_intake_validation_planning"
+    assert dispatcher["selected_work_order_type"] == (
+        "codex_offline_data_intake_validation_planning"
+    )
+    assert dispatcher["broker_read_authorized"] is False
+    assert dispatcher["paper_submit_authorized"] is False
+    assert dispatcher["live_authorized"] is False
 
 
 def test_mission_control_dispatcher_never_routes_broker_read_when_not_observed() -> None:
@@ -6010,7 +6231,7 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         prompt = prompt_path.read_text(encoding="utf-8")
         assert "Project path:" in prompt
         assert (
-            "Assistant v1.37 - Mission Control Latest Run Launcher + Stable Operator Entry Point"
+            "Assistant v1.38 - Offline Accepted Data Refresh Bridge"
             in prompt
         )
         assert "Goal:" in prompt
@@ -6023,6 +6244,8 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         assert "mission_control.json" in prompt
         assert "mission_control_validation.json" in prompt
         assert "data_freshness_plan.json" in prompt
+        assert "data_refresh_bridge.json" in prompt
+        assert "data_refresh_operator_checklist.md" in prompt
         assert "operator_review.md" in prompt
         assert "Forbidden behavior:" in prompt
         assert "perform broker reads" in prompt
@@ -6043,6 +6266,8 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         assert "`runs/`" in prompt
         assert "`.agent_inbox/`" in prompt
         assert "`docs/reviews/`" in prompt
+        assert "`.data/`" in prompt
+        assert "`operator-supplied CSVs`" in prompt
 
     codex_prompt = prompt_paths[0].read_text(encoding="utf-8")
     assert "Allowed files:" in codex_prompt
@@ -6095,6 +6320,48 @@ def test_mission_control_contract_validator_fails_missing_latest_run_artifact(
     )
 
 
+def test_mission_control_contract_validator_fails_missing_refresh_bridge_artifact(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_missing_refresh_bridge_out",
+    )
+    (output_root / "data_refresh_bridge.json").unlink()
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "data_refresh_bridge.json" in validation["missing_artifacts"]
+    assert validation["next_repair_action"] == (
+        "regenerate_missing_artifact:data_refresh_bridge.json"
+    )
+
+
+def test_mission_control_contract_validator_fails_missing_refresh_checklist_artifact(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_missing_refresh_checklist_out",
+    )
+    (output_root / "data_refresh_operator_checklist.md").unlink()
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "data_refresh_operator_checklist.md" in validation["missing_artifacts"]
+    assert validation["next_repair_action"] == (
+        "regenerate_missing_artifact:data_refresh_operator_checklist.md"
+    )
+
+
 def test_mission_control_contract_validator_fails_broken_latest_run_reference(
     tmp_path: Path,
 ) -> None:
@@ -6121,6 +6388,39 @@ def test_mission_control_contract_validator_fails_broken_latest_run_reference(
         "schema_errors"
     ]
     assert "latest_run.operator_review_path.unexpected_target" in validation[
+        "schema_errors"
+    ]
+
+
+def test_mission_control_contract_validator_fails_broken_refresh_references(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_broken_refresh_reference_out",
+    )
+    latest_run_path = output_root / "latest_run.json"
+    latest_run = json.loads(latest_run_path.read_text(encoding="utf-8"))
+    latest_run["data_refresh_bridge_path"] = str(output_root / "missing_bridge.json")
+    latest_run_path.write_text(
+        json.dumps(latest_run, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "latest_run.data_refresh_bridge_path.missing_target" in validation[
+        "schema_errors"
+    ]
+    assert "latest_run.data_refresh_bridge_path.unexpected_target" in validation[
+        "schema_errors"
+    ]
+    assert "latest_run.data_refresh_bridge_path.bridge_mismatch" in validation[
         "schema_errors"
     ]
 
@@ -6233,6 +6533,40 @@ def test_mission_control_contract_validator_blocks_stale_freshness_plan_current(
         "mission_control.data_freshness_plan.stale_data_represented_as_current"
         in validation["safety_errors"]
     )
+
+
+def test_mission_control_contract_validator_blocks_stale_refresh_bridge_current(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_stale_bridge_current_out",
+    )
+    mission = _read_mission_control(output_root)
+    bridge = mission["data_refresh_bridge"]
+    assert isinstance(bridge, dict)
+    bridge["current_staleness_days"] = 5
+    bridge["current_data_freshness_status"] = "current_local_data"
+    _write_mission_control(output_root, mission)
+    (output_root / "data_refresh_bridge.json").write_text(
+        json.dumps(bridge, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "mission_control.data_refresh_bridge.stale_data_represented_as_current"
+        in validation["safety_errors"]
+    )
+    assert "data_refresh_bridge.stale_data_represented_as_current" in validation[
+        "safety_errors"
+    ]
 
 
 def test_mission_control_readiness_score_blocks_on_safety_gate_failure() -> None:

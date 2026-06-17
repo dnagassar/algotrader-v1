@@ -129,6 +129,8 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $OperatorReviewPath = Join-Path $AbsoluteOutputRoot "operator_review.md"
     $LatestRunPath = Join-Path $AbsoluteOutputRoot "latest_run.json"
     $ValidationPath = Join-Path $AbsoluteOutputRoot "mission_control_validation.json"
+    $DataRefreshBridgePath = Join-Path $AbsoluteOutputRoot "data_refresh_bridge.json"
+    $DataRefreshChecklistPath = Join-Path $AbsoluteOutputRoot "data_refresh_operator_checklist.md"
     $BrokerStateModeText = $BrokerStateMode
 
     if (Test-Path -LiteralPath $LatestRunPath) {
@@ -149,6 +151,8 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Operator review: $OperatorReviewPath"
     Write-Host "Latest run summary: $LatestRunPath"
     Write-Host "Validation: $ValidationPath"
+    Write-Host "Data refresh bridge: $DataRefreshBridgePath"
+    Write-Host "Data refresh checklist: $DataRefreshChecklistPath"
     Write-Host "Paper submit authorized: false"
     Write-Host "Live authorized: false"
     Write-Host "Broker read performed: false"

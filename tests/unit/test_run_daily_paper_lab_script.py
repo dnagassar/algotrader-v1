@@ -40,9 +40,13 @@ def test_run_daily_paper_lab_script_prints_operator_entry_points() -> None:
     assert "Operator review: $OperatorReviewPath" in script
     assert "Latest run summary: $LatestRunPath" in script
     assert "Validation: $ValidationPath" in script
+    assert "Data refresh bridge: $DataRefreshBridgePath" in script
+    assert "Data refresh checklist: $DataRefreshChecklistPath" in script
     assert "Paper submit authorized: false" in script
     assert "Live authorized: false" in script
     assert "Broker read performed: false" in script
     assert "Broker mutation performed: false" in script
     assert "Broker-state mode: $BrokerStateModeText" in script
     assert "latest_run.json" in script
+    assert "data_refresh_bridge.json" in script
+    assert "data_refresh_operator_checklist.md" in script
