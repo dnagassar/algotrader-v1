@@ -16,7 +16,7 @@ def test_run_daily_paper_lab_script_declares_broker_state_mode_scaffold() -> Non
         "\"alpaca_paper_read_only\")]"
     ) in script
     assert "--broker-state-mode\", $BrokerStateMode" in script
-    assert "scaffold-only in v1.34 and performs no broker read" in script
+    assert "scaffold-only and performs no broker read" in script
 
 
 def test_run_daily_paper_lab_script_preserves_offline_credential_precheck() -> None:

@@ -26,7 +26,7 @@ SMA slow window size. Defaults to 200.
 
 .PARAMETER BrokerStateMode
 Broker-state lane mode. Defaults to broker_state_not_observed. alpaca_paper_read_only
-is scaffold-only in v1.34 and performs no broker read.
+is scaffold-only and performs no broker read.
 
 .PARAMETER Format
 Output format (text or json). Defaults to text.

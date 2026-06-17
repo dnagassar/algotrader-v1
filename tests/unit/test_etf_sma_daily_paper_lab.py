@@ -4250,7 +4250,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.33 - Mission Control v0" in work_order
+            "Assistant v1.35 - Mission Control Daily Latest UX" in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
         assert "execute_candidate_gap_closure_queue_item_002" in work_order
@@ -5424,6 +5424,49 @@ def _write_mission_control(output_root: Path, mission: dict[str, object]) -> Non
     )
 
 
+def _dispatcher_result(
+    *,
+    validation_status: str = "passed",
+    staleness_days: int = 0,
+    broker_read_performed: bool = False,
+    broker_state_mode: str = "broker_state_not_observed",
+    blocker_status: str = "broker_state_not_observed",
+    missing_artifact: str | None = None,
+) -> dict[str, object]:
+    artifacts: dict[str, object] = {
+        "index_html": "index.html",
+        "assistant_report_md": "assistant_report.md",
+        "mission_control_json": "mission_control.json",
+        "work_orders": "work_orders",
+        "codex_next_prompt": "work_orders/codex_next_prompt.md",
+        "codex_next_work_order": "work_orders/codex_next_work_order.json",
+        "antigravity_review_prompt": "work_orders/antigravity_review_prompt.md",
+        "antigravity_review_work_order": (
+            "work_orders/antigravity_review_work_order.json"
+        ),
+        "claude_critique_prompt": "work_orders/claude_critique_prompt.md",
+        "claude_critique_work_order": "work_orders/claude_critique_work_order.json",
+        "gpt_report_classification_prompt": (
+            "work_orders/gpt_report_classification_prompt.md"
+        ),
+        "gpt_next_decision_context": "work_orders/gpt_next_decision_context.json",
+    }
+    if missing_artifact is not None:
+        artifacts.pop(missing_artifact)
+    return paper_lab_module._mission_control_dispatcher(
+        payload={},
+        artifacts=artifacts,
+        safety_gates={"all_clear": {"passed": True}},
+        market_data_lane={"staleness_in_days": staleness_days},
+        broker_state_lane={
+            "broker_state_mode": broker_state_mode,
+            "broker_read_performed": broker_read_performed,
+        },
+        decision_lane={"blocker_status": blocker_status},
+        validation_summary={"validation_status": validation_status},
+    )
+
+
 def test_etf_sma_daily_paper_lab_mission_control_outputs(
     tmp_path: Path,
 ) -> None:
@@ -5458,8 +5501,42 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert executive["paper_submit_authorized"] is False
     assert executive["live_authorized"] is False
     assert executive["live_trading_authorized"] is False
+    assert executive["readiness_score"]
+    assert executive["validation_status"] == "passed"
     assert executive["market_signal_preview"] == "buy_preview"
     assert executive["broker_state_mode"] == "broker_state_not_observed"
+
+    daily_latest = mission["daily_latest"]
+    assert {
+        "run_id",
+        "generated_at",
+        "output_root",
+        "validation_status",
+        "readiness_score",
+        "preview_decision",
+        "market_signal_preview",
+        "blocker",
+        "next_action",
+        "broker_state_mode",
+        "broker_read_performed",
+        "broker_mutation_performed",
+        "paper_submit_authorized",
+        "live_authorized",
+        "data_as_of",
+        "staleness_days",
+        "safety_labels",
+    } <= set(daily_latest)
+    assert daily_latest["validation_status"] == "passed"
+    assert daily_latest["preview_decision"] == "blocked/broker_state_not_observed"
+    assert daily_latest["market_signal_preview"] == "buy_preview"
+    assert daily_latest["blocker"] == "broker_state_not_observed"
+    assert daily_latest["broker_state_mode"] == "broker_state_not_observed"
+    assert daily_latest["broker_read_performed"] is False
+    assert daily_latest["broker_mutation_performed"] is False
+    assert daily_latest["paper_submit_authorized"] is False
+    assert daily_latest["live_authorized"] is False
+    assert daily_latest["data_as_of"] == "2025-07-20"
+    assert isinstance(daily_latest["staleness_days"], int)
 
     market = mission["market_data_lane"]
     assert market["symbol"] == "SPY"
@@ -5523,13 +5600,15 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "assistant_v1.33_rule_dispatcher_v0"
     )
     assert dispatcher["generation_mode"] == "deterministic_rule_based_no_llm_routing"
-    assert dispatcher["selected_rule_id"] == (
-        "broker_state_not_observed_and_read_not_authorized"
-    )
-    assert dispatcher["selected_work_order_type"] == "codex_next_work_order"
+    assert dispatcher["selected_rule_id"] == "stale_data_present"
+    assert dispatcher["selected_route"] == "offline_data_freshness_planning"
+    assert dispatcher["selected_work_order_type"] == "codex_data_freshness_plan"
     assert dispatcher["broker_read_authorized"] is False
     assert dispatcher["paper_submit_authorized"] is False
     assert dispatcher["live_authorized"] is False
+    assert dispatcher["selected_route"] not in dispatcher["forbidden_routes"]
+    assert "broker_read" in dispatcher["forbidden_routes"]
+    assert "external_api_data_pull" in dispatcher["forbidden_routes"]
 
     work_orders_dir = output_root / "work_orders"
     expected_work_orders = {
@@ -5573,6 +5652,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "no open orders" not in serialized_broker
 
     report = report_path.read_text(encoding="utf-8")
+    assert "System status: `offline_mission_control_ready`" in report
+    assert "Readiness score:" in report
+    assert "Validation status: `passed`" in report
     assert "Market signal preview: `buy_preview`" in report
     assert "Broker-state mode: `broker_state_not_observed`" in report
     assert "paper_submit_authorized=false" in report
@@ -5582,6 +5664,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "mission_control.json" in index_html
     assert "assistant_report.md" in index_html
     assert "work_orders/" in index_html
+    assert "Validation status" in index_html
+    assert "passed" in index_html
 
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
     assert validation["validation_status"] == "passed"
@@ -5597,6 +5681,91 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         write_artifact=False,
     )
     assert direct_validation["validation_status"] == "passed"
+
+
+def test_mission_control_dispatcher_routes_validation_failure_to_codex_repair() -> None:
+    dispatcher = _dispatcher_result(validation_status="failed")
+
+    assert dispatcher["selected_rule_id"] == "mission_control_validation_failed"
+    assert dispatcher["selected_route"] == "codex_schema_safety_repair"
+    assert dispatcher["selected_work_order_type"] == "codex_schema_safety_repair"
+    assert dispatcher["paper_submit_authorized"] is False
+    assert dispatcher["live_authorized"] is False
+
+
+def test_mission_control_dispatcher_routes_stale_data_to_offline_freshness_plan() -> None:
+    dispatcher = _dispatcher_result(staleness_days=5)
+
+    assert dispatcher["selected_rule_id"] == "stale_data_present"
+    assert dispatcher["selected_route"] == "offline_data_freshness_planning"
+    assert dispatcher["selected_work_order_type"] == "codex_data_freshness_plan"
+    assert "broker_read" in dispatcher["forbidden_routes"]
+    assert "external_api_data_pull" in dispatcher["forbidden_routes"]
+    assert "secrets_setup" in dispatcher["forbidden_routes"]
+    selected_route = str(dispatcher["selected_route"])
+    assert "broker_read" not in selected_route
+    assert "external_api" not in selected_route
+    assert "secret" not in selected_route
+
+
+def test_mission_control_dispatcher_never_routes_broker_read_when_not_observed() -> None:
+    dispatcher = _dispatcher_result(staleness_days=0)
+
+    assert dispatcher["selected_rule_id"] == (
+        "broker_state_not_observed_and_read_not_authorized"
+    )
+    assert dispatcher["selected_route"] == "offline_dashboard_data_decision_improvement"
+    assert dispatcher["broker_read_authorized"] is False
+    assert dispatcher["selected_route"] not in dispatcher["forbidden_routes"]
+    assert "broker_read" not in str(dispatcher["selected_route"])
+
+
+def test_mission_control_dispatcher_routes_missing_work_orders_to_repair() -> None:
+    dispatcher = _dispatcher_result(missing_artifact="codex_next_prompt")
+
+    assert dispatcher["selected_rule_id"] == "work_orders_missing"
+    assert dispatcher["selected_route"] == "middleman_reduction_repair_to_codex"
+    assert dispatcher["selected_work_order_type"] == "codex_work_order_repair"
+
+
+def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_prompt_contract_out",
+    )
+    prompt_paths = [
+        output_root / "work_orders" / "codex_next_prompt.md",
+        output_root / "work_orders" / "antigravity_review_prompt.md",
+        output_root / "work_orders" / "claude_critique_prompt.md",
+        output_root / "work_orders" / "gpt_report_classification_prompt.md",
+    ]
+
+    for prompt_path in prompt_paths:
+        prompt = prompt_path.read_text(encoding="utf-8")
+        assert "Project path:" in prompt
+        assert "Assistant v1.35 - Mission Control Daily Latest UX" in prompt
+        assert "Goal:" in prompt
+        assert "Forbidden behavior:" in prompt
+        assert "perform broker reads" in prompt
+        assert "Do not authorize paper submit." in prompt
+        assert "Required tests/review checks:" in prompt
+        assert (
+            "python -m pytest tests/unit/test_etf_sma_daily_paper_lab.py -q"
+            in prompt
+        )
+        assert "Expected report format:" in prompt
+        assert "Classification recommendation" in prompt
+        assert "Safety assessment" in prompt
+        assert (
+            "Normal pytest remains offline, deterministic, credential-free, "
+            "broker-free, and network-free."
+        ) in prompt
+
+    codex_prompt = prompt_paths[0].read_text(encoding="utf-8")
+    assert "Allowed files:" in codex_prompt
+    assert "src/algotrader/execution/etf_sma_daily_paper_lab.py" in codex_prompt
+    for review_prompt_path in prompt_paths[1:]:
+        assert "Review scope:" in review_prompt_path.read_text(encoding="utf-8")
 
 
 def test_mission_control_contract_validator_fails_missing_required_artifact(

@@ -2497,7 +2497,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="broker_state_not_observed",
         help=(
             "Broker-state lane mode. alpaca_paper_read_only is scaffold-only "
-            "in v1.34 and performs no broker read."
+            "and performs no broker read."
         ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
