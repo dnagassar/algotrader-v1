@@ -4250,7 +4250,8 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.35 - Mission Control Daily Latest UX" in work_order
+            "Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow"
+            in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
         assert "execute_candidate_gap_closure_queue_item_002" in work_order
@@ -5437,6 +5438,8 @@ def _dispatcher_result(
         "index_html": "index.html",
         "assistant_report_md": "assistant_report.md",
         "mission_control_json": "mission_control.json",
+        "data_freshness_plan_json": "data_freshness_plan.json",
+        "operator_review_md": "operator_review.md",
         "work_orders": "work_orders",
         "codex_next_prompt": "work_orders/codex_next_prompt.md",
         "codex_next_work_order": "work_orders/codex_next_work_order.json",
@@ -5467,6 +5470,37 @@ def _dispatcher_result(
     )
 
 
+def _assert_data_freshness_plan_shape(plan: dict[str, object]) -> None:
+    assert {
+        "data_freshness_status",
+        "data_as_of",
+        "generated_at",
+        "staleness_days",
+        "staleness_policy",
+        "accepted_data_path",
+        "accepted_data_basis",
+        "accepted_row_count",
+        "preview_only_reason",
+        "freshness_blocker",
+        "offline_refresh_needed",
+        "external_api_required",
+        "secrets_required",
+        "broker_read_required",
+        "paid_service_required",
+        "next_offline_data_action",
+        "operator_data_action_summary",
+        "safe_to_continue_preview_only",
+        "safety_labels",
+    } <= set(plan)
+    assert plan["external_api_required"] is False
+    assert plan["secrets_required"] is False
+    assert plan["broker_read_required"] is False
+    assert plan["paid_service_required"] is False
+    assert "paper_lab_only" in plan["safety_labels"]
+    assert "not_live_authorized" in plan["safety_labels"]
+    assert "profit_claim=none" in plan["safety_labels"]
+
+
 def test_etf_sma_daily_paper_lab_mission_control_outputs(
     tmp_path: Path,
 ) -> None:
@@ -5487,10 +5521,14 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     report_path = output_root / "assistant_report.md"
     mission_path = output_root / "mission_control.json"
     validation_path = output_root / "mission_control_validation.json"
+    data_freshness_plan_path = output_root / "data_freshness_plan.json"
+    operator_review_path = output_root / "operator_review.md"
     assert index_path.exists()
     assert report_path.exists()
     assert mission_path.exists()
     assert validation_path.exists()
+    assert data_freshness_plan_path.exists()
+    assert operator_review_path.exists()
     assert (output_root / "operating_record.jsonl").exists()
 
     mission = json.loads(mission_path.read_text(encoding="utf-8"))
@@ -5524,6 +5562,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "live_authorized",
         "data_as_of",
         "staleness_days",
+        "data_freshness_status",
+        "preview_only_reason",
+        "offline_refresh_needed",
+        "next_offline_data_action",
+        "operator_data_action_summary",
+        "data_freshness_plan_path",
+        "operator_review_path",
         "safety_labels",
     } <= set(daily_latest)
     assert daily_latest["validation_status"] == "passed"
@@ -5537,6 +5582,33 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert daily_latest["live_authorized"] is False
     assert daily_latest["data_as_of"] == "2025-07-20"
     assert isinstance(daily_latest["staleness_days"], int)
+    assert daily_latest["data_freshness_status"] == "stale_data_preview_only"
+    assert daily_latest["offline_refresh_needed"] is True
+    assert "current" not in str(daily_latest["data_freshness_status"])
+    assert "external_api" not in str(daily_latest["next_offline_data_action"])
+    assert daily_latest["data_freshness_plan_path"].endswith(
+        "data_freshness_plan.json"
+    )
+    assert daily_latest["operator_review_path"].endswith("operator_review.md")
+
+    data_plan = mission["data_freshness_plan"]
+    _assert_data_freshness_plan_shape(data_plan)
+    assert data_plan == json.loads(data_freshness_plan_path.read_text(encoding="utf-8"))
+    assert data_plan["data_freshness_status"] == "stale_data_preview_only"
+    assert data_plan["data_as_of"] == "2025-07-20"
+    assert data_plan["staleness_days"] == daily_latest["staleness_days"]
+    assert data_plan["accepted_data_path"].endswith("spy_daily_bars_200_bullish.csv")
+    assert data_plan["accepted_data_basis"] == "close"
+    assert data_plan["accepted_row_count"] == 200
+    assert data_plan["freshness_blocker"] == "stale_local_data"
+    assert data_plan["offline_refresh_needed"] is True
+    assert data_plan["safe_to_continue_preview_only"] is True
+    assert "preview only" in str(data_plan["preview_only_reason"]).lower()
+    serialized_plan = json.dumps(data_plan, sort_keys=True).lower()
+    assert "broker_read_required\": false" in serialized_plan
+    assert "external_api_required\": false" in serialized_plan
+    assert "secrets_required\": false" in serialized_plan
+    assert "paid_service_required\": false" in serialized_plan
 
     market = mission["market_data_lane"]
     assert market["symbol"] == "SPY"
@@ -5601,8 +5673,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     )
     assert dispatcher["generation_mode"] == "deterministic_rule_based_no_llm_routing"
     assert dispatcher["selected_rule_id"] == "stale_data_present"
-    assert dispatcher["selected_route"] == "offline_data_freshness_planning"
-    assert dispatcher["selected_work_order_type"] == "codex_data_freshness_plan"
+    assert dispatcher["selected_route"] == (
+        "offline_data_freshness_planning_operator_review_improvement"
+    )
+    assert dispatcher["selected_work_order_type"] == (
+        "codex_data_freshness_operator_review_plan"
+    )
     assert dispatcher["broker_read_authorized"] is False
     assert dispatcher["paper_submit_authorized"] is False
     assert dispatcher["live_authorized"] is False
@@ -5640,6 +5716,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert indexed["mission_control"]["path"].endswith("mission_control.json")
     assert indexed["mission_control_index"]["path"].endswith("index.html")
     assert indexed["assistant_report"]["path"].endswith("assistant_report.md")
+    assert indexed["data_freshness_plan"]["path"].endswith(
+        "data_freshness_plan.json"
+    )
+    assert indexed["operator_review"]["path"].endswith("operator_review.md")
     assert indexed["mission_control_validation"]["path"].endswith(
         "mission_control_validation.json"
     )
@@ -5659,13 +5739,39 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "Broker-state mode: `broker_state_not_observed`" in report
     assert "paper_submit_authorized=false" in report
     assert "live_authorized=false" in report
+    assert "Data freshness status: `stale_data_preview_only`" in report
+    assert "data_freshness_plan.json" in report
+    assert "operator_review.md" in report
 
     index_html = index_path.read_text(encoding="utf-8")
     assert "mission_control.json" in index_html
     assert "assistant_report.md" in index_html
+    assert "data_freshness_plan.json" in index_html
+    assert "operator_review.md" in index_html
     assert "work_orders/" in index_html
     assert "Validation status" in index_html
     assert "passed" in index_html
+    assert "stale_data_preview_only" in index_html
+    assert "broker_read_required" in index_html
+
+    operator_review = operator_review_path.read_text(encoding="utf-8")
+    assert "## Executive Summary" in operator_review
+    assert "System status: `offline_mission_control_ready`" in operator_review
+    assert "Validation status: `passed`" in operator_review
+    assert "Readiness score:" in operator_review
+    assert "Current preview decision: `blocked/broker_state_not_observed`" in operator_review
+    assert "Market signal preview: `buy_preview`" in operator_review
+    assert "Main blocker: `broker_state_not_observed`" in operator_review
+    assert "Broker-state mode: `broker_state_not_observed`" in operator_review
+    assert "Data freshness status: `stale_data_preview_only`" in operator_review
+    assert "paper_submit_authorized=false" in operator_review
+    assert "live_authorized=false" in operator_review
+    assert "broker_read_performed=false" in operator_review
+    assert "broker_mutation_performed=false" in operator_review
+    assert "What The Operator Should Not Do" in operator_review
+    assert "What Agents Should Do Next" in operator_review
+    assert "data_freshness_plan.json" in operator_review
+    assert "operator_review.md" in operator_review
 
     validation = json.loads(validation_path.read_text(encoding="utf-8"))
     assert validation["validation_status"] == "passed"
@@ -5697,15 +5803,32 @@ def test_mission_control_dispatcher_routes_stale_data_to_offline_freshness_plan(
     dispatcher = _dispatcher_result(staleness_days=5)
 
     assert dispatcher["selected_rule_id"] == "stale_data_present"
-    assert dispatcher["selected_route"] == "offline_data_freshness_planning"
-    assert dispatcher["selected_work_order_type"] == "codex_data_freshness_plan"
+    assert dispatcher["selected_route"] == (
+        "offline_data_freshness_planning_operator_review_improvement"
+    )
+    assert dispatcher["selected_work_order_type"] == (
+        "codex_data_freshness_operator_review_plan"
+    )
     assert "broker_read" in dispatcher["forbidden_routes"]
+    assert "paper_submit" in dispatcher["forbidden_routes"]
+    assert "broker_mutation" in dispatcher["forbidden_routes"]
+    assert "live_trading" in dispatcher["forbidden_routes"]
     assert "external_api_data_pull" in dispatcher["forbidden_routes"]
+    assert "external_api_pull" in dispatcher["forbidden_routes"]
     assert "secrets_setup" in dispatcher["forbidden_routes"]
+    assert "paid_service_setup" in dispatcher["forbidden_routes"]
+    assert "strategy_promotion" in dispatcher["forbidden_routes"]
+    assert "safety_weakening" in dispatcher["forbidden_routes"]
     selected_route = str(dispatcher["selected_route"])
     assert "broker_read" not in selected_route
     assert "external_api" not in selected_route
     assert "secret" not in selected_route
+    assert "paper_submit" not in selected_route
+    assert "broker_mutation" not in selected_route
+    assert "live" not in selected_route
+    assert "paid" not in selected_route
+    assert "strategy_promotion" not in selected_route
+    assert "safety_weakening" not in selected_route
 
 
 def test_mission_control_dispatcher_never_routes_broker_read_when_not_observed() -> None:
@@ -5720,12 +5843,61 @@ def test_mission_control_dispatcher_never_routes_broker_read_when_not_observed()
     assert "broker_read" not in str(dispatcher["selected_route"])
 
 
+def test_mission_control_dispatcher_never_selects_forbidden_routes() -> None:
+    cases = [
+        _dispatcher_result(validation_status="failed"),
+        _dispatcher_result(missing_artifact="operator_review_md"),
+        _dispatcher_result(staleness_days=8),
+        _dispatcher_result(staleness_days=0),
+        _dispatcher_result(
+            staleness_days=0,
+            broker_read_performed=True,
+            blocker_status="none",
+        ),
+    ]
+    forbidden_fragments = {
+        "broker_read",
+        "paper_submit",
+        "broker_mutation",
+        "live_trading",
+        "secrets_setup",
+        "secret",
+        "paid_service",
+        "external_api",
+        "strategy_promotion",
+        "safety_weakening",
+    }
+
+    for dispatcher in cases:
+        selected_route = str(dispatcher["selected_route"])
+        assert selected_route not in dispatcher["forbidden_routes"]
+        for fragment in forbidden_fragments:
+            assert fragment not in selected_route
+        assert dispatcher["broker_read_authorized"] is False
+        assert dispatcher["paper_submit_authorized"] is False
+        assert dispatcher["live_authorized"] is False
+
+
 def test_mission_control_dispatcher_routes_missing_work_orders_to_repair() -> None:
     dispatcher = _dispatcher_result(missing_artifact="codex_next_prompt")
 
     assert dispatcher["selected_rule_id"] == "work_orders_missing"
     assert dispatcher["selected_route"] == "middleman_reduction_repair_to_codex"
     assert dispatcher["selected_work_order_type"] == "codex_work_order_repair"
+
+
+def test_mission_control_dispatcher_routes_valid_no_blocker_to_next_slice() -> None:
+    dispatcher = _dispatcher_result(
+        staleness_days=0,
+        broker_read_performed=True,
+        blocker_status="none",
+    )
+
+    assert dispatcher["selected_rule_id"] == "product_loop_valid_no_blocker"
+    assert dispatcher["selected_route"] == "next_mission_control_slice"
+    assert dispatcher["selected_work_order_type"] == (
+        "codex_next_mission_control_slice"
+    )
 
 
 def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> None:
@@ -5743,8 +5915,16 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
     for prompt_path in prompt_paths:
         prompt = prompt_path.read_text(encoding="utf-8")
         assert "Project path:" in prompt
-        assert "Assistant v1.35 - Mission Control Daily Latest UX" in prompt
+        assert (
+            "Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow"
+            in prompt
+        )
         assert "Goal:" in prompt
+        assert "Operator review flow inputs:" in prompt
+        assert "daily_latest" in prompt
+        assert "mission_control_validation.json" in prompt
+        assert "data_freshness_plan.json" in prompt
+        assert "operator_review.md" in prompt
         assert "Forbidden behavior:" in prompt
         assert "perform broker reads" in prompt
         assert "Do not authorize paper submit." in prompt
@@ -5760,6 +5940,10 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
             "Normal pytest remains offline, deterministic, credential-free, "
             "broker-free, and network-free."
         ) in prompt
+        assert "Do not stage generated or local handoff artifacts:" in prompt
+        assert "`runs/`" in prompt
+        assert "`.agent_inbox/`" in prompt
+        assert "`docs/reviews/`" in prompt
 
     codex_prompt = prompt_paths[0].read_text(encoding="utf-8")
     assert "Allowed files:" in codex_prompt
@@ -5871,6 +6055,32 @@ def test_mission_control_contract_validator_blocks_stale_data_labeled_current(
     assert validation["validation_status"] == "failed"
     assert (
         "mission_control.market_data_lane.stale_data_represented_as_current"
+        in validation["safety_errors"]
+    )
+
+
+def test_mission_control_contract_validator_blocks_stale_freshness_plan_current(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_stale_plan_current_out",
+    )
+    mission = _read_mission_control(output_root)
+    plan = mission["data_freshness_plan"]
+    assert isinstance(plan, dict)
+    plan["staleness_days"] = 5
+    plan["data_freshness_status"] = "current_local_data"
+    _write_mission_control(output_root, mission)
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "mission_control.data_freshness_plan.stale_data_represented_as_current"
         in validation["safety_errors"]
     )
 

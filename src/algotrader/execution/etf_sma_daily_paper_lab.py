@@ -182,12 +182,17 @@ _MISSION_CONTROL_DISPATCHER_VERSION = "assistant_v1.33_rule_dispatcher_v0"
 _MISSION_CONTROL_VALIDATION_VERSION = (
     "assistant_v1.34_mission_control_contract_validation"
 )
-_PHASE_NAME = "Assistant v1.35 - Mission Control Daily Latest UX"
+_DATA_FRESHNESS_PLAN_VERSION = "assistant_v1.36_data_freshness_plan"
+_OPERATOR_REVIEW_VERSION = "assistant_v1.36_operator_review"
+_PHASE_NAME = (
+    "Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow"
+)
 _PHASE_GOAL = (
-    "Improve the visible daily Mission Control operator experience and "
-    "deterministic agent dispatch loop without broker reads, broker mutation, "
-    "paper submit, live trading, credential loading, network calls, paid "
-    "services, or strategy promotion."
+    "Make Mission Control more useful as a daily operator console by improving "
+    "offline data freshness planning and generating a clear daily operator "
+    "review flow without broker reads, broker mutation, paper submit, live "
+    "trading, credential loading, network calls, paid services, external API "
+    "setup, or strategy promotion."
 )
 _MISSION_CONTROL_ALLOWED_FILES = (
     "src/algotrader/execution/etf_sma_daily_paper_lab.py",
@@ -199,6 +204,12 @@ _MISSION_CONTROL_ALLOWED_FILES = (
     "task.md",
 )
 _MISSION_CONTROL_REQUIRED_CHECKS = (
+    (
+        "Print booleans only before normal pytest: APP_PROFILE_is_paper, "
+        "ALPACA_API_KEY_loaded, ALPACA_API_SECRET_KEY_loaded, "
+        "ALPACA_SECRET_KEY_loaded, APCA_API_KEY_ID_loaded, "
+        "APCA_API_SECRET_KEY_loaded"
+    ),
     "python -m pytest tests/unit/test_etf_sma_daily_paper_lab.py -q",
     "python -m pytest tests/unit/test_run_daily_paper_lab_script.py -q",
     (
@@ -207,6 +218,7 @@ _MISSION_CONTROL_REQUIRED_CHECKS = (
         "tests/unit/test_default_pytest_network_guard.py -q"
     ),
     ".\\scripts\\verify_offline.ps1",
+    ".\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs\\daily_lab\\smoke_v1_36_codex",
     "python -m pytest",
     "git diff --check",
     "git status --short",
@@ -219,7 +231,9 @@ _MISSION_CONTROL_EXPECTED_REPORT_FORMAT = (
     "Preflight credential/profile booleans",
     "Files changed",
     "Commands added or changed",
-    "Mission Control UX summary",
+    "Data freshness planning summary",
+    "Daily operator review summary",
+    "Mission Control surfacing summary",
     "Dispatcher/work-order summary",
     "Smoke artifacts produced",
     "Tests and command results",
@@ -238,6 +252,7 @@ _MISSION_CONTROL_FORBIDDEN_BEHAVIOR = (
     "Do not create another candidate-gap queue.",
     "Do not weaken safety gates or dependency-direction tests.",
     "Do not stage or track generated runs/ or .agent_inbox/ files.",
+    "Do not stage or track docs/reviews/ files.",
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -313,6 +328,8 @@ _MISSION_CONTROL_FILENAME = "mission_control.json"
 _MISSION_CONTROL_INDEX_FILENAME = "index.html"
 _MISSION_CONTROL_REPORT_FILENAME = "assistant_report.md"
 _MISSION_CONTROL_VALIDATION_FILENAME = "mission_control_validation.json"
+_DATA_FRESHNESS_PLAN_FILENAME = "data_freshness_plan.json"
+_OPERATOR_REVIEW_FILENAME = "operator_review.md"
 _CODEX_NEXT_PROMPT_FILENAME = "codex_next_prompt.md"
 _CODEX_NEXT_WORK_ORDER_FILENAME = "codex_next_work_order.json"
 _ANTIGRAVITY_REVIEW_PROMPT_FILENAME = "antigravity_review_prompt.md"
@@ -347,6 +364,7 @@ _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS = {
 _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "executive_summary",
     "daily_latest",
+    "data_freshness_plan",
     "market_data_lane",
     "broker_state_lane",
     "decision_lane",
@@ -370,6 +388,35 @@ _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "live_authorized",
     "data_as_of",
     "staleness_days",
+    "data_freshness_status",
+    "preview_only_reason",
+    "offline_refresh_needed",
+    "next_offline_data_action",
+    "operator_data_action_summary",
+    "data_freshness_plan_path",
+    "operator_review_path",
+    "safety_labels",
+)
+_REQUIRED_DATA_FRESHNESS_PLAN_FIELDS = (
+    "data_freshness_plan_version",
+    "data_freshness_status",
+    "data_as_of",
+    "generated_at",
+    "staleness_days",
+    "staleness_policy",
+    "accepted_data_path",
+    "accepted_data_basis",
+    "accepted_row_count",
+    "preview_only_reason",
+    "freshness_blocker",
+    "offline_refresh_needed",
+    "external_api_required",
+    "secrets_required",
+    "broker_read_required",
+    "paid_service_required",
+    "next_offline_data_action",
+    "operator_data_action_summary",
+    "safe_to_continue_preview_only",
     "safety_labels",
 )
 _REQUIRED_MISSION_CONTROL_WORK_ORDER_FILES = (
@@ -386,6 +433,8 @@ _REQUIRED_MISSION_CONTROL_FILES = (
     _MISSION_CONTROL_INDEX_FILENAME,
     _MISSION_CONTROL_REPORT_FILENAME,
     _MISSION_CONTROL_FILENAME,
+    _DATA_FRESHNESS_PLAN_FILENAME,
+    _OPERATOR_REVIEW_FILENAME,
     _RECORD_FILENAME,
     _MANIFEST_FILENAME,
     *_REQUIRED_MISSION_CONTROL_WORK_ORDER_FILES,
@@ -1940,6 +1989,16 @@ def _validate_mission_control_schema(
     else:
         schema_errors.append("mission_control.daily_latest.missing")
 
+    data_plan = mission_control.get("data_freshness_plan")
+    if isinstance(data_plan, Mapping):
+        for field in _REQUIRED_DATA_FRESHNESS_PLAN_FIELDS:
+            if field not in data_plan:
+                schema_errors.append(
+                    f"mission_control.data_freshness_plan.{field}.missing"
+                )
+    else:
+        schema_errors.append("mission_control.data_freshness_plan.missing")
+
     readiness = mission_control.get("readiness_score")
     if isinstance(readiness, Mapping):
         if readiness.get("weights") != _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS:
@@ -1973,6 +2032,7 @@ def _validate_mission_control_safety(
     safety_errors: list[str],
 ) -> None:
     market = _mapping_section(mission_control, "market_data_lane")
+    data_plan = _mapping_section(mission_control, "data_freshness_plan")
     broker = _mapping_section(mission_control, "broker_state_lane")
     decision = _mapping_section(mission_control, "decision_lane")
     executive = _mapping_section(mission_control, "executive_summary")
@@ -2080,6 +2140,22 @@ def _validate_mission_control_safety(
         safety_errors.append(
             "mission_control.market_data_lane.stale_data_represented_as_current"
         )
+    if _stale_data_plan_labeled_current(data_plan):
+        safety_errors.append(
+            "mission_control.data_freshness_plan.stale_data_represented_as_current"
+        )
+    for key in (
+        "external_api_required",
+        "secrets_required",
+        "broker_read_required",
+        "paid_service_required",
+    ):
+        _require_false(
+            data_plan,
+            key,
+            f"mission_control.data_freshness_plan.{key}",
+            safety_errors,
+        )
 
     labels = {
         str(label)
@@ -2161,6 +2237,16 @@ def _stale_market_data_labeled_current(market: Mapping[str, Any]) -> bool:
     )
 
 
+def _stale_data_plan_labeled_current(data_plan: Mapping[str, Any]) -> bool:
+    try:
+        staleness = int(str(data_plan.get("staleness_days")))
+    except (TypeError, ValueError):
+        return False
+    if staleness <= 0:
+        return False
+    return "current" in str(data_plan.get("data_freshness_status", "")).lower()
+
+
 def _contains_forbidden_broker_absence_claim(value: Any) -> bool:
     if isinstance(value, Mapping):
         return any(
@@ -2187,6 +2273,8 @@ def _validate_mission_control_manifest_references(
         "mission_control",
         "mission_control_index",
         "assistant_report",
+        "data_freshness_plan",
+        "operator_review",
         "codex_next_prompt",
         "codex_next_work_order",
         "antigravity_review_prompt",
@@ -2212,10 +2300,33 @@ def _validate_mission_control_index_references(
     for token in (
         _MISSION_CONTROL_FILENAME,
         _MISSION_CONTROL_REPORT_FILENAME,
+        _DATA_FRESHNESS_PLAN_FILENAME,
+        _OPERATOR_REVIEW_FILENAME,
         _WORK_ORDERS_DIRNAME,
     ):
         if token.lower() not in text:
             schema_errors.append(f"index_html.reference.{token}.missing")
+
+    operator_review_path = output_root / _OPERATOR_REVIEW_FILENAME
+    if operator_review_path.is_file():
+        operator_review_text = operator_review_path.read_text(encoding="utf-8").lower()
+        for token in (
+            "executive summary",
+            "system status",
+            "validation status",
+            "readiness score",
+            "preview decision",
+            "broker-state mode",
+            "data freshness status",
+            "paper_submit_authorized=false",
+            "live_authorized=false",
+            "broker_read_performed=false",
+            "broker_mutation_performed=false",
+            "what the operator should not do",
+            "what agents should do next",
+        ):
+            if token not in operator_review_text:
+                schema_errors.append(f"operator_review.reference.{token}.missing")
 
 
 def _mission_control_next_repair_action(
@@ -2314,7 +2425,10 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
     payload["mission_control_path"] = artifact_paths["mission_control"]
     payload["mission_control_index_path"] = artifact_paths["mission_control_index"]
     payload["assistant_report_path"] = artifact_paths["assistant_report"]
+    payload["data_freshness_plan_path"] = artifact_paths["data_freshness_plan"]
+    payload["operator_review_path"] = artifact_paths["operator_review"]
     payload["mission_control"] = mission_control
+    payload["data_freshness_plan"] = dict(mission_control["data_freshness_plan"])
     dashboard = payload.get("executive_dashboard")
     if isinstance(dashboard, dict):
         dashboard["mission_control_path"] = payload["mission_control_path"]
@@ -2322,6 +2436,11 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
             "mission_control_index_path"
         ]
         dashboard["assistant_report_path"] = payload["assistant_report_path"]
+        dashboard["data_freshness_plan_path"] = payload[
+            "data_freshness_plan_path"
+        ]
+        dashboard["operator_review_path"] = payload["operator_review_path"]
+        dashboard["data_freshness_plan"] = dict(payload["data_freshness_plan"])
         dashboard["mission_control"] = dict(mission_control)
     _write_mission_control_artifacts(output_root, mission_control)
 
@@ -2358,6 +2477,13 @@ def _build_mission_control(
         broker_state_lane=broker_state_lane,
     )
     artifacts = _mission_control_artifact_map(output_root, artifact_paths)
+    data_freshness_plan = _mission_control_data_freshness_plan(
+        payload=payload,
+        artifact_paths=artifact_paths,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+    )
     safety_gates = _mission_control_safety_gates(
         payload=payload,
         market_data_lane=market_data_lane,
@@ -2387,6 +2513,7 @@ def _build_mission_control(
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
         decision_lane=decision_lane,
+        data_freshness_plan=data_freshness_plan,
         readiness_score=readiness_score,
         dispatcher=dispatcher,
         validation_summary=validation_summary,
@@ -2399,6 +2526,7 @@ def _build_mission_control(
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
         decision_lane=decision_lane,
+        data_freshness_plan=data_freshness_plan,
         dispatcher=dispatcher,
     )
     agent_command_center = _mission_control_agent_command_center(
@@ -2418,6 +2546,7 @@ def _build_mission_control(
         "artifacts": artifacts,
         "executive_summary": executive_summary,
         "daily_latest": daily_latest,
+        "data_freshness_plan": data_freshness_plan,
         "mission_control_validation_summary": validation_summary,
         "market_data_lane": market_data_lane,
         "broker_state_lane": broker_state_lane,
@@ -2460,6 +2589,7 @@ def _mission_control_daily_latest(
     market_data_lane: Mapping[str, Any],
     broker_state_lane: Mapping[str, Any],
     decision_lane: Mapping[str, Any],
+    data_freshness_plan: Mapping[str, Any],
     dispatcher: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
@@ -2483,7 +2613,139 @@ def _mission_control_daily_latest(
         "data_source": market_data_lane.get("data_source_reference"),
         "data_as_of": market_data_lane.get("as_of_date"),
         "staleness_days": market_data_lane.get("staleness_in_days"),
+        "data_freshness_status": data_freshness_plan.get(
+            "data_freshness_status"
+        ),
+        "preview_only_reason": data_freshness_plan.get("preview_only_reason"),
+        "offline_refresh_needed": data_freshness_plan.get(
+            "offline_refresh_needed"
+        ),
+        "next_offline_data_action": data_freshness_plan.get(
+            "next_offline_data_action"
+        ),
+        "operator_data_action_summary": data_freshness_plan.get(
+            "operator_data_action_summary"
+        ),
+        "data_freshness_plan_path": data_freshness_plan.get("artifact_path"),
+        "operator_review_path": data_freshness_plan.get("operator_review_path"),
         "safety_labels": list(decision_lane.get("safety_labels", [])),
+    }
+
+
+def _mission_control_data_freshness_plan(
+    *,
+    payload: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    raw_staleness = market_data_lane.get("staleness_in_days")
+    staleness_days = raw_staleness if isinstance(raw_staleness, int) else None
+    row_count = _int_or_zero(market_data_lane.get("row_count"))
+    data_status = str(market_data_lane.get("preview_currency_status", "unknown"))
+    data_missing = data_status == "blocked_missing_data" or row_count <= 0
+    staleness_unknown = staleness_days is None
+    stale = not data_missing and (
+        staleness_unknown or _int_or_zero(staleness_days) > 0
+    )
+
+    if data_missing:
+        data_freshness_status = "blocked_missing_local_data"
+        freshness_blocker = "missing_local_data"
+        preview_only_reason = (
+            "Local SPY daily bars are missing or empty; no current data claim is made."
+        )
+        next_offline_data_action = (
+            "operator_provide_accepted_local_spy_daily_bars_csv_then_rerun_daily_lab"
+        )
+        operator_summary = (
+            "Provide an accepted local SPY daily bars CSV, then rerun the daily "
+            "paper-lab command. Do not add API setup, secrets, paid services, "
+            "broker reads, or broker mutation."
+        )
+    elif stale:
+        data_freshness_status = "stale_data_preview_only"
+        freshness_blocker = "stale_local_data"
+        staleness_text = (
+            "unknown" if staleness_days is None else str(staleness_days)
+        )
+        preview_only_reason = (
+            "Accepted local data is stale by "
+            f"{staleness_text} day(s); Mission Control may show a signal preview "
+            "only and must not label the data current."
+        )
+        next_offline_data_action = (
+            "operator_refresh_accepted_local_spy_daily_bars_csv_then_rerun_daily_lab"
+        )
+        operator_summary = (
+            "Refresh or replace the accepted local SPY daily bars CSV outside "
+            "this command, then rerun the daily paper-lab command. No external "
+            "API setup, secrets, paid services, broker reads, or broker mutation "
+            "are required."
+        )
+    else:
+        data_freshness_status = "current_local_data"
+        freshness_blocker = "none"
+        preview_only_reason = (
+            "Local data staleness is not blocking the preview; broker state still "
+            "remains separate and unobserved unless explicitly authorized."
+        )
+        next_offline_data_action = "continue_daily_operator_review_preview_only"
+        operator_summary = (
+            "Review the daily operator console and continue preview-only analysis. "
+            "Paper submit and live trading remain unauthorized."
+        )
+
+    return {
+        "data_freshness_plan_version": _DATA_FRESHNESS_PLAN_VERSION,
+        "artifact_path": artifact_paths["data_freshness_plan"],
+        "operator_review_path": artifact_paths["operator_review"],
+        "data_freshness_status": data_freshness_status,
+        "data_as_of": market_data_lane.get("as_of_date"),
+        "generated_at": "offline_command_runtime",
+        "run_generated_at": "offline_command_runtime",
+        "staleness_days": staleness_days,
+        "staleness_policy": {
+            "fresh_rule": "staleness_days <= 0 can be treated as local-data current",
+            "stale_rule": "staleness_days > 0 is preview-only and cannot be labeled current",
+            "unknown_rule": "unknown staleness is preview-only until local data is refreshed",
+            "refresh_mode": "operator_supplied_local_csv_only",
+        },
+        "accepted_data_path": market_data_lane.get("data_source_reference"),
+        "accepted_data_basis": market_data_lane.get("basis"),
+        "accepted_row_count": row_count,
+        "preview_only_reason": preview_only_reason,
+        "freshness_blocker": freshness_blocker,
+        "offline_refresh_needed": bool(data_missing or stale),
+        "external_api_required": False,
+        "secrets_required": False,
+        "broker_read_required": False,
+        "paid_service_required": False,
+        "next_offline_data_action": next_offline_data_action,
+        "operator_data_action_summary": operator_summary,
+        "safe_to_continue_preview_only": bool(not data_missing),
+        "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_read_performed": broker_state_lane.get("broker_read_performed"),
+        "broker_mutation_performed": broker_state_lane.get(
+            "broker_mutation_performed"
+        ),
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "preview_decision": decision_lane.get("preview_decision"),
+        "safety_labels": list(decision_lane.get("safety_labels", [])),
+        "forbidden_data_routes": [
+            "external_api_setup",
+            "external_api_pull",
+            "secrets_setup",
+            "broker_read",
+            "paper_submit",
+            "broker_mutation",
+            "live_trading",
+            "paid_service_setup",
+            "strategy_promotion",
+            "safety_weakening",
+        ],
     }
 
 
@@ -2711,6 +2973,8 @@ def _mission_control_component_scores(
         "index_html",
         "assistant_report_md",
         "mission_control_json",
+        "data_freshness_plan_json",
+        "operator_review_md",
         "work_orders",
     )
     product_score = 0.85 if all(key in artifacts for key in product_outputs) else 0.45
@@ -2828,7 +3092,7 @@ def _mission_control_dispatcher(
         },
         {
             "rule_id": "dashboard_or_report_missing_or_weak",
-            "if": "Mission Control dashboard/report missing or weak",
+            "if": "Mission Control dashboard/report/operator review missing or weak",
             "route": "mission_control_product_repair_to_codex",
         },
         {
@@ -2839,7 +3103,7 @@ def _mission_control_dispatcher(
         {
             "rule_id": "stale_data_present",
             "if": "stale data is present",
-            "route": "offline_data_freshness_planning",
+            "route": "offline_data_freshness_planning_operator_review_improvement",
         },
         {
             "rule_id": "broker_state_not_observed_and_read_not_authorized",
@@ -2896,20 +3160,22 @@ def _mission_control_dispatcher(
         selected_work_order_type = "codex_work_order_repair"
     elif stale_data_present:
         selected_rule_id = "stale_data_present"
-        selected_route = "offline_data_freshness_planning"
-        selected_work_order_type = "codex_data_freshness_plan"
+        selected_route = (
+            "offline_data_freshness_planning_operator_review_improvement"
+        )
+        selected_work_order_type = "codex_data_freshness_operator_review_plan"
     elif broker_not_observed_without_authorization:
         selected_rule_id = "broker_state_not_observed_and_read_not_authorized"
         selected_route = "offline_dashboard_data_decision_improvement"
         selected_work_order_type = "codex_next_work_order"
-    elif payload.get("review_classification") in {"missing", "unclassified"}:
-        selected_rule_id = "implementation_report_pending"
-        selected_route = "gpt_report_classification_prompt"
-        selected_work_order_type = "gpt_report_classification_prompt"
     elif no_blocker:
         selected_rule_id = "product_loop_valid_no_blocker"
         selected_route = "next_mission_control_slice"
         selected_work_order_type = "codex_next_mission_control_slice"
+    elif payload.get("review_classification") in {"missing", "unclassified"}:
+        selected_rule_id = "implementation_report_pending"
+        selected_route = "gpt_report_classification_prompt"
+        selected_work_order_type = "gpt_report_classification_prompt"
     else:
         selected_rule_id = "fallback_verification_review"
         selected_route = "verification_review"
@@ -2931,15 +3197,23 @@ def _mission_control_dispatcher(
             "broker_mutation",
             "live_trading",
             "secrets_setup",
+            "external_api_pull",
             "external_api_data_pull",
             "paid_service_setup",
+            "strategy_promotion",
             "safety_weakening",
         ],
     }
 
 
 def _mission_control_dashboard_or_report_weak(artifacts: Mapping[str, Any]) -> bool:
-    for key in ("index_html", "assistant_report_md", "mission_control_json"):
+    for key in (
+        "index_html",
+        "assistant_report_md",
+        "mission_control_json",
+        "data_freshness_plan_json",
+        "operator_review_md",
+    ):
         if not _has_required_value(artifacts.get(key)):
             return True
     return False
@@ -2966,6 +3240,7 @@ def _mission_control_executive_summary(
     market_data_lane: Mapping[str, Any],
     broker_state_lane: Mapping[str, Any],
     decision_lane: Mapping[str, Any],
+    data_freshness_plan: Mapping[str, Any],
     readiness_score: Mapping[str, Any],
     dispatcher: Mapping[str, Any],
     validation_summary: Mapping[str, Any],
@@ -2987,6 +3262,17 @@ def _mission_control_executive_summary(
         "data_as_of": market_data_lane.get("as_of_date"),
         "data_staleness": market_data_lane.get("staleness_in_days"),
         "data_staleness_status": market_data_lane.get("preview_currency_status"),
+        "data_freshness_status": data_freshness_plan.get(
+            "data_freshness_status"
+        ),
+        "preview_only_reason": data_freshness_plan.get("preview_only_reason"),
+        "offline_refresh_needed": data_freshness_plan.get(
+            "offline_refresh_needed"
+        ),
+        "next_offline_data_action": data_freshness_plan.get(
+            "next_offline_data_action"
+        ),
+        "operator_review_path": data_freshness_plan.get("operator_review_path"),
         "next_safest_action": dispatcher.get("selected_route"),
         "paper_submit_authorized": False,
         "live_authorized": False,
@@ -3040,6 +3326,14 @@ def _write_mission_control_artifacts(
         encoding="utf-8",
         newline="\n",
     )
+    _write_json(
+        output_root / _DATA_FRESHNESS_PLAN_FILENAME,
+        mission_control["data_freshness_plan"],
+    )
+    _write_text(
+        output_root / _OPERATOR_REVIEW_FILENAME,
+        _render_operator_review(mission_control),
+    )
     work_orders = _mission_control_work_orders(mission_control)
     _write_text(work_orders_dir / _CODEX_NEXT_PROMPT_FILENAME, work_orders["codex_prompt"])
     _write_json(
@@ -3084,6 +3378,8 @@ def _mission_control_artifact_map(
         "mission_control_validation_json": artifact_paths[
             "mission_control_validation"
         ],
+        "data_freshness_plan_json": artifact_paths["data_freshness_plan"],
+        "operator_review_md": artifact_paths["operator_review"],
         "operating_record_jsonl": artifact_paths["operating_record"],
         "manifest_jsonl": artifact_paths["manifest"],
         "work_orders": artifact_paths["work_orders"],
@@ -3108,6 +3404,8 @@ def _mission_control_work_order_index(
     artifact_paths: Mapping[str, str],
 ) -> dict[str, str]:
     return {
+        "data_freshness_plan": artifact_paths["data_freshness_plan"],
+        "operator_review": artifact_paths["operator_review"],
         "codex_next_prompt": artifact_paths["codex_next_prompt"],
         "codex_next_work_order": artifact_paths["codex_next_work_order"],
         "antigravity_review_prompt": artifact_paths["antigravity_review_prompt"],
@@ -3182,6 +3480,17 @@ def _mission_control_work_orders(
         "selected_route": selected_route,
         "selected_rule_id": dispatcher["selected_rule_id"],
         "input_artifacts": mission_control["artifacts"],
+        "operator_review_flow_inputs": {
+            "daily_latest_summary": "mission_control.json -> daily_latest",
+            "validation_artifact": mission_control["artifacts"][
+                "mission_control_validation_json"
+            ],
+            "data_freshness_plan": mission_control["artifacts"][
+                "data_freshness_plan_json"
+            ],
+            "operator_review": mission_control["artifacts"]["operator_review_md"],
+        },
+        "do_not_stage_paths": ["runs/", ".agent_inbox/", "docs/reviews/"],
         "safety_constraints": safety_constraints,
         "forbidden_behavior": forbidden_behavior,
         "required_tests_or_review_checks": required_checks,
@@ -3294,6 +3603,12 @@ def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
             f"Selected route: `{order['selected_route']}`",
             f"Selected rule: `{order['selected_rule_id']}`",
             "",
+            "Operator review flow inputs:",
+            "- Inspect `mission_control.json` -> `daily_latest`.",
+            f"- Inspect validation artifact: `{order['operator_review_flow_inputs']['validation_artifact']}`.",
+            f"- Inspect data freshness plan: `{order['operator_review_flow_inputs']['data_freshness_plan']}`.",
+            f"- Inspect operator review artifact: `{order['operator_review_flow_inputs']['operator_review']}`.",
+            "",
             *scope_lines,
             "",
             "Safety constraints:",
@@ -3312,6 +3627,9 @@ def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
             *[f"- {item}" for item in order["expected_report_format"]],
             "",
             f"Safety reminder: {order['normal_pytest_safety_reminder']}",
+            "",
+            "Do not stage generated or local handoff artifacts:",
+            *[f"- `{item}`" for item in order["do_not_stage_paths"]],
             "",
             "Use the referenced Mission Control artifacts as input.",
             "",
@@ -3352,9 +3670,80 @@ def _write_agent_inbox(work_orders: Mapping[str, Any]) -> None:
     )
 
 
+def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
+    executive = mission_control["executive_summary"]
+    daily_latest = mission_control["daily_latest"]
+    market = mission_control["market_data_lane"]
+    broker = mission_control["broker_state_lane"]
+    decision = mission_control["decision_lane"]
+    freshness = mission_control["data_freshness_plan"]
+    readiness = mission_control["readiness_score"]
+    validation = mission_control["mission_control_validation_summary"]
+    labels = ", ".join(f"`{label}`" for label in decision["safety_labels"])
+    return "\n".join(
+        [
+            "# Daily Operator Review",
+            "",
+            f"Operator review version: `{_OPERATOR_REVIEW_VERSION}`",
+            "",
+            "## Executive Summary",
+            f"- System status: `{executive['current_system_state']}`",
+            f"- Validation status: `{validation['validation_status']}`",
+            f"- Readiness score: `{readiness['total_score_label']}`",
+            f"- Current preview decision: `{daily_latest['preview_decision']}`",
+            f"- Market signal preview: `{daily_latest['market_signal_preview']}`",
+            f"- Main blocker: `{daily_latest['blocker']}`",
+            f"- Next safest action: `{executive['next_safest_action']}`",
+            "",
+            "## System Status",
+            f"- Broker-state mode: `{broker['broker_state_mode']}`",
+            f"- broker_read_performed={str(broker['broker_read_performed']).lower()}",
+            f"- broker_mutation_performed={str(broker['broker_mutation_performed']).lower()}",
+            "- paper_submit_authorized=false",
+            "- live_authorized=false",
+            "",
+            "## Data Freshness",
+            f"- Data freshness status: `{freshness['data_freshness_status']}`",
+            f"- Data source/path: `{freshness['accepted_data_path']}`",
+            f"- Data basis: `{freshness['accepted_data_basis']}`",
+            f"- Data as-of: `{freshness['data_as_of']}`",
+            f"- Staleness days: `{freshness['staleness_days']}`",
+            f"- Accepted row count: `{freshness['accepted_row_count']}`",
+            f"- Preview-only reason: {freshness['preview_only_reason']}",
+            f"- Offline refresh needed: `{str(freshness['offline_refresh_needed']).lower()}`",
+            f"- Next offline data action: `{freshness['next_offline_data_action']}`",
+            "",
+            "## Review Flow",
+            f"- Daily latest summary: `mission_control.json` -> `daily_latest`",
+            f"- Validation artifact: `{mission_control['artifacts']['mission_control_validation_json']}`",
+            f"- Data freshness plan: `{freshness['artifact_path']}`",
+            f"- Operator review artifact: `{freshness['operator_review_path']}`",
+            f"- Market lane status: `{market['preview_currency_status']}`",
+            f"- Decision reason: {decision['reason']}",
+            "",
+            "## What The Operator Should Not Do",
+            "- Do not submit paper orders from this packet.",
+            "- Do not run live trading or deploy live services.",
+            "- Do not add broker reads, broker mutation, credentials, secrets, paid services, or external API setup from this flow.",
+            "- Do not treat stale data as current.",
+            "",
+            "## What Agents Should Do Next",
+            "- Inspect `mission_control.json` -> `daily_latest`, `mission_control_validation.json`, `data_freshness_plan.json`, and `operator_review.md`.",
+            "- Improve offline dashboard, data freshness planning, decision clarity, tests, or work-order prompts only.",
+            "- Keep normal pytest offline, deterministic, credential-free, broker-free, and network-free.",
+            "- Do not stage generated `runs/`, `.agent_inbox/`, or `docs/reviews/` artifacts.",
+            "",
+            "## Safety Labels",
+            f"- {labels}",
+            "",
+        ]
+    )
+
+
 def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     daily_latest = mission_control["daily_latest"]
+    freshness = mission_control["data_freshness_plan"]
     market = mission_control["market_data_lane"]
     broker = mission_control["broker_state_lane"]
     decision = mission_control["decision_lane"]
@@ -3379,6 +3768,10 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
             f"`{executive['data_staleness_status']}`"
         ),
         f"- Next safest action: `{executive['next_safest_action']}`",
+        f"- Data freshness status: `{executive['data_freshness_status']}`",
+        f"- Preview-only reason: {executive['preview_only_reason']}",
+        f"- Offline refresh action: `{executive['next_offline_data_action']}`",
+        f"- Operator review: `{executive['operator_review_path']}`",
         f"- paper_submit_authorized=false",
         f"- live_authorized=false",
         "",
@@ -3398,12 +3791,34 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- live_authorized: `{str(daily_latest['live_authorized']).lower()}`",
         f"- data_as_of: `{daily_latest['data_as_of']}`",
         f"- staleness_days: `{daily_latest['staleness_days']}`",
+        f"- data_freshness_status: `{daily_latest['data_freshness_status']}`",
+        f"- preview_only_reason: {daily_latest['preview_only_reason']}",
+        f"- offline_refresh_needed: `{str(daily_latest['offline_refresh_needed']).lower()}`",
+        f"- next_offline_data_action: `{daily_latest['next_offline_data_action']}`",
+        f"- operator_review_path: `{daily_latest['operator_review_path']}`",
         "",
         "## Mission Control Artifacts",
         f"- `mission_control.json`: `{artifacts['mission_control_json']}`",
         f"- `assistant_report.md`: `{artifacts['assistant_report_md']}`",
         f"- `index.html`: `{artifacts['index_html']}`",
+        f"- `data_freshness_plan.json`: `{artifacts['data_freshness_plan_json']}`",
+        f"- `operator_review.md`: `{artifacts['operator_review_md']}`",
         f"- `work_orders/`: `{artifacts['work_orders']}`",
+        "",
+        "## Data Freshness Plan",
+        f"- Status: `{freshness['data_freshness_status']}`",
+        f"- Accepted data path: `{freshness['accepted_data_path']}`",
+        f"- Accepted data basis: `{freshness['accepted_data_basis']}`",
+        f"- Accepted row count: `{freshness['accepted_row_count']}`",
+        f"- Staleness days: `{freshness['staleness_days']}`",
+        f"- Freshness blocker: `{freshness['freshness_blocker']}`",
+        f"- Offline refresh needed: `{str(freshness['offline_refresh_needed']).lower()}`",
+        f"- External API required: `{str(freshness['external_api_required']).lower()}`",
+        f"- Secrets required: `{str(freshness['secrets_required']).lower()}`",
+        f"- Broker read required: `{str(freshness['broker_read_required']).lower()}`",
+        f"- Paid service required: `{str(freshness['paid_service_required']).lower()}`",
+        f"- Next offline data action: `{freshness['next_offline_data_action']}`",
+        f"- Operator data action summary: {freshness['operator_data_action_summary']}",
         "",
         "## Market Data Lane",
         f"- Symbol: `{market['symbol']}`",
@@ -3452,6 +3867,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
 def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     daily_latest = mission_control["daily_latest"]
+    freshness = mission_control["data_freshness_plan"]
     market = mission_control["market_data_lane"]
     broker = mission_control["broker_state_lane"]
     decision = mission_control["decision_lane"]
@@ -3501,6 +3917,10 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Data source</dt><dd>{_html_escape(str(executive["data_source"]))}</dd>
         <dt>Data as-of</dt><dd>{_html_escape(str(executive["data_as_of"]))}</dd>
         <dt>Data staleness</dt><dd>{_html_escape(str(executive["data_staleness"]))} days; {_html_escape(str(executive["data_staleness_status"]))}</dd>
+        <dt>Data freshness status</dt><dd>{_html_escape(str(executive["data_freshness_status"]))}</dd>
+        <dt>Preview-only reason</dt><dd>{_html_escape(str(executive["preview_only_reason"]))}</dd>
+        <dt>Offline refresh action</dt><dd>{_html_escape(str(executive["next_offline_data_action"]))}</dd>
+        <dt>Operator review</dt><dd><a href="{_html_escape(str(executive["operator_review_path"]))}">{_html_escape(str(executive["operator_review_path"]))}</a></dd>
         <dt>Next safest action</dt><dd>{_html_escape(str(executive["next_safest_action"]))}</dd>
         <dt>paper_submit_authorized</dt><dd>false</dd>
         <dt>live_authorized</dt><dd>false</dd>
@@ -3517,6 +3937,10 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>next_action</dt><dd>{_html_escape(str(daily_latest["next_action"]))}</dd>
         <dt>broker_read_performed</dt><dd>{str(daily_latest["broker_read_performed"]).lower()}</dd>
         <dt>broker_mutation_performed</dt><dd>{str(daily_latest["broker_mutation_performed"]).lower()}</dd>
+        <dt>data_freshness_status</dt><dd>{_html_escape(str(daily_latest["data_freshness_status"]))}</dd>
+        <dt>staleness_days</dt><dd>{_html_escape(str(daily_latest["staleness_days"]))}</dd>
+        <dt>preview_only_reason</dt><dd>{_html_escape(str(daily_latest["preview_only_reason"]))}</dd>
+        <dt>next_offline_data_action</dt><dd>{_html_escape(str(daily_latest["next_offline_data_action"]))}</dd>
       </dl>
     </section>
     <section>
@@ -3524,8 +3948,26 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
       <dl>
         <dt>mission_control.json</dt><dd><a href="{_html_escape(str(artifacts["mission_control_json"]))}">{_html_escape(str(artifacts["mission_control_json"]))}</a></dd>
         <dt>assistant_report.md</dt><dd><a href="{_html_escape(str(artifacts["assistant_report_md"]))}">{_html_escape(str(artifacts["assistant_report_md"]))}</a></dd>
+        <dt>data_freshness_plan.json</dt><dd><a href="{_html_escape(str(artifacts["data_freshness_plan_json"]))}">{_html_escape(str(artifacts["data_freshness_plan_json"]))}</a></dd>
+        <dt>operator_review.md</dt><dd><a href="{_html_escape(str(artifacts["operator_review_md"]))}">{_html_escape(str(artifacts["operator_review_md"]))}</a></dd>
         <dt>index.html</dt><dd>{_html_escape(str(artifacts["index_html"]))}</dd>
         <dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Data Freshness Plan</h2>
+      <dl>
+        <dt>Status</dt><dd>{_html_escape(str(freshness["data_freshness_status"]))}</dd>
+        <dt>Accepted data path</dt><dd>{_html_escape(str(freshness["accepted_data_path"]))}</dd>
+        <dt>Accepted data basis</dt><dd>{_html_escape(str(freshness["accepted_data_basis"]))}</dd>
+        <dt>Accepted rows</dt><dd>{_html_escape(str(freshness["accepted_row_count"]))}</dd>
+        <dt>Freshness blocker</dt><dd>{_html_escape(str(freshness["freshness_blocker"]))}</dd>
+        <dt>Offline refresh needed</dt><dd>{str(freshness["offline_refresh_needed"]).lower()}</dd>
+        <dt>external_api_required</dt><dd>{str(freshness["external_api_required"]).lower()}</dd>
+        <dt>secrets_required</dt><dd>{str(freshness["secrets_required"]).lower()}</dd>
+        <dt>broker_read_required</dt><dd>{str(freshness["broker_read_required"]).lower()}</dd>
+        <dt>paid_service_required</dt><dd>{str(freshness["paid_service_required"]).lower()}</dd>
+        <dt>Next offline data action</dt><dd>{_html_escape(str(freshness["next_offline_data_action"]))}</dd>
       </dl>
     </section>
     <section>
@@ -6278,6 +6720,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "mission_control": artifact_paths["mission_control"],
             "mission_control_index": artifact_paths["mission_control_index"],
             "assistant_report": artifact_paths["assistant_report"],
+            "data_freshness_plan": artifact_paths["data_freshness_plan"],
+            "operator_review": artifact_paths["operator_review"],
             "assistant_brief": artifact_paths["assistant_brief"],
             "operating_brief": artifact_paths["assistant_brief"],
             "operating_record": artifact_paths["operating_record"],
@@ -6910,6 +7354,10 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "mission_control_validation": _normalize_path(
             output_root / _MISSION_CONTROL_VALIDATION_FILENAME
         ),
+        "data_freshness_plan": _normalize_path(
+            output_root / _DATA_FRESHNESS_PLAN_FILENAME
+        ),
+        "operator_review": _normalize_path(output_root / _OPERATOR_REVIEW_FILENAME),
         "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
@@ -24581,6 +25029,8 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "assistant_report": output_root / _MISSION_CONTROL_REPORT_FILENAME,
         "mission_control_validation": output_root
         / _MISSION_CONTROL_VALIDATION_FILENAME,
+        "data_freshness_plan": output_root / _DATA_FRESHNESS_PLAN_FILENAME,
+        "operator_review": output_root / _OPERATOR_REVIEW_FILENAME,
         "codex_next_prompt": output_root
         / _WORK_ORDERS_DIRNAME
         / _CODEX_NEXT_PROMPT_FILENAME,
@@ -24760,6 +25210,9 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "broker_state_mode": payload["broker_state_mode"],
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
+        "data_freshness_plan_path": payload.get("data_freshness_plan_path"),
+        "data_freshness_plan": dict(payload.get("data_freshness_plan", {})),
+        "operator_review_path": payload.get("operator_review_path"),
         "next_operator_action": payload["next_operator_action"],
         "safety_labels": list(_REQUIRED_LABELS),
         "validation_status": payload["validation_status"],

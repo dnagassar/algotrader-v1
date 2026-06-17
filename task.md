@@ -1,44 +1,38 @@
-# Assistant v1.34 - Mission Control Contract Validator + UX Tightening
+# Assistant v1.36 - Offline Data Freshness Planning + Daily Operator Review Flow
 
-Direction change: the candidate gap closure queue is complete after item 012.
-This milestone does not add a new queue item, SMA catalog expansion, strategy
-promotion, optimizer, registry expansion, or backtest engine.
+This milestone makes Mission Control more useful as a daily paper-lab operator
+console while remaining fully offline and non-broker.
 
 ## Goal
 
-Produce one visible, self-contained daily paper-lab operating picture:
+Produce a clear daily operator flow around stale or missing local data:
 
-- local `index.html` dashboard
-- `assistant_report.md`
-- structured `mission_control.json`
-- deterministic readiness score
-- market-data lane
-- broker-state lane
-- decision lane
-- work-order exports
-- ignored local `.agent_inbox/` files
-- rule-based dispatcher v0
-- explicit `BrokerStateMode`
-- `alpaca_paper_read_only` scaffold only, with no broker read in v1.33
+- structured `data_freshness_plan.json`
+- visible `operator_review.md`
+- Mission Control surfacing in `mission_control.json`, `assistant_report.md`,
+  `index.html`, `manifest.jsonl`, and validation
+- dispatcher routing toward offline data freshness/operator review improvement
+- generated prompts that point agents at `daily_latest`, validation, the data
+  freshness plan, and the operator review
 
 ## Safety Contract
 
-- Default mode is `broker_state_not_observed`.
-- `alpaca_paper_read_only` is scaffold-only and reports a blocked/read-requires-authorization state.
 - Broker reads are not performed.
 - Broker mutation is not performed.
 - Paper submit is not authorized.
 - Live trading is not authorized.
-- No credentials, network calls, or broker SDK/client calls are required for default pytest.
+- Stale data is never labeled current.
+- `broker_state_not_observed` never claims no positions or no open orders.
+- No credentials, network calls, external API setup, paid services, or broker
+  SDK/client calls are required for default pytest.
+- Generated `runs/`, `.agent_inbox/`, and `docs/reviews/` artifacts must not be
+  staged or tracked.
 
 ## Implementation Checklist
 
-- [x] Add Mission Control artifact generation to the existing daily paper-lab command.
-- [x] Add deterministic readiness score with safety-gate override.
-- [x] Add rule-based dispatcher v0 and handoff/work-order exports.
-- [x] Add local ignored `.agent_inbox/` handoff files.
-- [x] Add explicit `BrokerStateMode` in config, CLI, and PowerShell launcher.
-- [x] Preserve existing offline safety rails and legacy packet validation.
-- [x] Add deterministic offline Mission Control contract validation.
-- [x] Write `mission_control_validation.json` under each generated output root.
-- [x] Tighten the top Mission Control report/dashboard summary for daily operator review.
+- [x] Add deterministic data freshness planning fields and artifact.
+- [x] Add short daily operator review artifact.
+- [x] Surface freshness and operator review in Mission Control.
+- [x] Tighten deterministic dispatcher routes and forbidden routes.
+- [x] Update generated work-order prompts for the new review flow.
+- [x] Preserve Mission Control validation and offline safety invariants.
