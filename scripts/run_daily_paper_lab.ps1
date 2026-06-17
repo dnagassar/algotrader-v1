@@ -24,6 +24,10 @@ SMA fast window size. Defaults to 50.
 .PARAMETER SmaSlowWindow
 SMA slow window size. Defaults to 200.
 
+.PARAMETER BrokerStateMode
+Broker-state lane mode. Defaults to broker_state_not_observed. alpaca_paper_read_only
+is scaffold-only in v1.33 and performs no broker read.
+
 .PARAMETER Format
 Output format (text or json). Defaults to text.
 #>
@@ -37,6 +41,8 @@ param(
     [string]$Symbol = "SPY",
     [int]$SmaFastWindow = 50,
     [int]$SmaSlowWindow = 200,
+    [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
+    [string]$BrokerStateMode = "broker_state_not_observed",
     [string]$Format = "text"
 )
 
@@ -97,6 +103,7 @@ $CliArgs = @(
     "--symbol", $Symbol,
     "--sma-fast-window", $SmaFastWindow,
     "--sma-slow-window", $SmaSlowWindow,
+    "--broker-state-mode", $BrokerStateMode,
     "--format", $Format
 )
 

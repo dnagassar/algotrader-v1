@@ -28,6 +28,7 @@ __all__ = [
     "EtfSmaDailyPaperLabConfig",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
+    "evaluate_mission_control_readiness_score",
     "validate_etf_sma_daily_paper_lab_packet",
 ]
 
@@ -174,11 +175,14 @@ _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID = (
 _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME = (
     "candidate_backtest_result_packet.jsonl"
 )
-_PHASE_NAME = "Assistant v1.32 — Execute Candidate Gap Closure Queue Item 012"
+_MISSION_CONTROL_VERSION = "assistant_v1.33_mission_control"
+_MISSION_CONTROL_READINESS_VERSION = "assistant_v1.33_readiness_score"
+_MISSION_CONTROL_DISPATCHER_VERSION = "assistant_v1.33_rule_dispatcher_v0"
+_PHASE_NAME = "Assistant v1.33 - Mission Control v0"
 _PHASE_GOAL = (
-    "Materialize deterministic offline candidate backtest outputs status evidence for "
-    "candidate_gap_closure_queue_item_012 before any strategy implementation, "
-    "promotion, paper observation, broker read, paper submit, or live trading."
+    "Build a visible daily Mission Control surface, deterministic readiness "
+    "score, rule-based dispatcher, and broker-read scaffold without broker "
+    "reads, broker mutation, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
@@ -250,7 +254,24 @@ _GPT_WORK_ORDER_FILENAME = "gpt_next_action_handoff.md"
 _CODEX_WORK_ORDER_FILENAME = "codex_work_order.md"
 _ANTIGRAVITY_WORK_ORDER_FILENAME = "antigravity_review_order.md"
 _CLAUDE_WORK_ORDER_FILENAME = "claude_critique_order.md"
+_MISSION_CONTROL_FILENAME = "mission_control.json"
+_MISSION_CONTROL_INDEX_FILENAME = "index.html"
+_MISSION_CONTROL_REPORT_FILENAME = "assistant_report.md"
+_CODEX_NEXT_PROMPT_FILENAME = "codex_next_prompt.md"
+_CODEX_NEXT_WORK_ORDER_FILENAME = "codex_next_work_order.json"
+_ANTIGRAVITY_REVIEW_PROMPT_FILENAME = "antigravity_review_prompt.md"
+_ANTIGRAVITY_REVIEW_WORK_ORDER_FILENAME = "antigravity_review_work_order.json"
+_CLAUDE_CRITIQUE_PROMPT_FILENAME = "claude_critique_prompt.md"
+_CLAUDE_CRITIQUE_WORK_ORDER_FILENAME = "claude_critique_work_order.json"
+_GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME = "gpt_report_classification_prompt.md"
+_GPT_NEXT_DECISION_CONTEXT_FILENAME = "gpt_next_decision_context.json"
+_AGENT_INBOX_DIRNAME = ".agent_inbox"
 _HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
+_BROKER_STATE_MODES = (
+    "broker_state_not_observed",
+    "offline_fixture",
+    "alpaca_paper_read_only",
+)
 _REQUIRED_LABELS = [
     "paper_lab_only",
     "signal_evaluation_only",
@@ -1577,11 +1598,19 @@ class EtfSmaDailyPaperLabConfig:
     symbol: str = _DEFAULT_SYMBOL
     sma_fast_window: int = 50
     sma_slow_window: int = 200
+    broker_state_mode: str = "broker_state_not_observed"
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _required_path(self.output_root, "output_root"))
         object.__setattr__(self, "bars_csv", _required_path(self.bars_csv, "bars_csv"))
         object.__setattr__(self, "symbol", str(self.symbol).strip().upper())
+        broker_state_mode = str(self.broker_state_mode).strip().lower()
+        if broker_state_mode not in _BROKER_STATE_MODES:
+            raise ValidationError(
+                "broker_state_mode must be one of: "
+                + ", ".join(_BROKER_STATE_MODES)
+            )
+        object.__setattr__(self, "broker_state_mode", broker_state_mode)
         if self.sma_fast_window <= 0:
             raise ValidationError("sma_fast_window must be positive.")
         if self.sma_slow_window <= 0:
@@ -1721,6 +1750,7 @@ def _write_packet_artifacts(
     _write_shared_benchmark_comparison_status_artifact(output_root, payload)
     _write_candidate_backtest_result_packet_artifact(output_root, payload)
     _write_work_order_artifacts(output_root, payload)
+    _apply_mission_control(payload, output_root)
 
     record_file = output_root / _RECORD_FILENAME
     record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
@@ -1740,6 +1770,1102 @@ def _write_packet_artifacts(
     manifest_data = _build_manifest(output_root, payload)
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
+
+def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    mission_control = _build_mission_control(payload, output_root, artifact_paths)
+    payload["mission_control_version"] = _MISSION_CONTROL_VERSION
+    payload["mission_control_path"] = artifact_paths["mission_control"]
+    payload["mission_control_index_path"] = artifact_paths["mission_control_index"]
+    payload["assistant_report_path"] = artifact_paths["assistant_report"]
+    payload["mission_control"] = mission_control
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["mission_control_path"] = payload["mission_control_path"]
+        dashboard["mission_control_index_path"] = payload[
+            "mission_control_index_path"
+        ]
+        dashboard["assistant_report_path"] = payload["assistant_report_path"]
+        dashboard["mission_control"] = dict(mission_control)
+    _write_mission_control_artifacts(output_root, mission_control)
+
+
+def _build_mission_control(
+    payload: Mapping[str, Any],
+    output_root: Path,
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    market_data_lane = _mission_control_market_data_lane(payload)
+    broker_state_lane = _mission_control_broker_state_lane(payload)
+    decision_lane = _mission_control_decision_lane(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+    )
+    artifacts = _mission_control_artifact_map(output_root, artifact_paths)
+    safety_gates = _mission_control_safety_gates(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+    )
+    readiness_score = evaluate_mission_control_readiness_score(
+        _mission_control_component_scores(
+            market_data_lane=market_data_lane,
+            broker_state_lane=broker_state_lane,
+            decision_lane=decision_lane,
+            artifacts=artifacts,
+        ),
+        safety_gates,
+    )
+    dispatcher = _mission_control_dispatcher(
+        payload=payload,
+        artifacts=artifacts,
+        safety_gates=safety_gates,
+        broker_state_lane=broker_state_lane,
+    )
+    executive_summary = _mission_control_executive_summary(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+        dispatcher=dispatcher,
+    )
+    return {
+        "schema_version": _SCHEMA_VERSION,
+        "mission_control_version": _MISSION_CONTROL_VERSION,
+        "command": _COMMAND,
+        "script": _SCRIPT,
+        "run_id": payload.get("run_id"),
+        "phase_name": _PHASE_NAME,
+        "phase_goal": _PHASE_GOAL,
+        "generated_at": "offline_command_runtime",
+        "output_root": _normalize_path(output_root),
+        "artifacts": artifacts,
+        "executive_summary": executive_summary,
+        "market_data_lane": market_data_lane,
+        "broker_state_lane": broker_state_lane,
+        "decision_lane": decision_lane,
+        "readiness_score": readiness_score,
+        "rule_based_dispatcher_v0": dispatcher,
+        "work_orders": _mission_control_work_order_index(artifact_paths),
+        "agent_inbox": _mission_control_agent_inbox_index(),
+    }
+
+
+def _mission_control_market_data_lane(payload: Mapping[str, Any]) -> dict[str, Any]:
+    input_data_path = str(payload.get("input_data_path", ""))
+    source_path = Path(input_data_path)
+    path_exists = source_path.is_file()
+    row_count = _int_or_zero(
+        _mapping_get(payload.get("sma"), "total_bar_count", default=0)
+    )
+    latest_input_bar_date = str(payload.get("latest_input_bar_date", "")).strip()
+    as_of_date = str(payload.get("as_of_date", "")).strip()
+    staleness_in_days = _staleness_in_days(latest_input_bar_date)
+    preview_currency_status = _market_preview_currency_status(
+        source_exists=path_exists,
+        row_count=row_count,
+        staleness_in_days=staleness_in_days,
+    )
+    return {
+        "symbol": str(payload.get("symbol", _DEFAULT_SYMBOL)),
+        "expected_symbol": _DEFAULT_SYMBOL,
+        "input_data_path": input_data_path,
+        "data_source_reference": input_data_path or "missing",
+        "source_mode": _market_source_mode(source_path, path_exists),
+        "basis": _csv_price_basis(source_path) if path_exists else "unknown",
+        "row_count": row_count,
+        "as_of_date": as_of_date,
+        "latest_input_bar_date": latest_input_bar_date or None,
+        "staleness_in_days": staleness_in_days,
+        "preview_currency_status": preview_currency_status,
+        "data_status": (
+            "available" if path_exists and row_count > 0 else "blocked_missing_data"
+        ),
+        "sma50": payload.get("sma_fast_value"),
+        "sma200": payload.get("sma_slow_value"),
+        "sma_fast_window": payload.get("sma_fast_window"),
+        "sma_slow_window": payload.get("sma_slow_window"),
+        "posture": _mission_control_posture(str(payload.get("posture", ""))),
+        "repo_posture": payload.get("posture"),
+        "preview_is_current": preview_currency_status == "current",
+        "stale_data_labeled_preview_only": (
+            preview_currency_status == "stale_data_preview_only"
+        ),
+    }
+
+
+def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, Any]:
+    broker_state_mode = str(
+        payload.get("broker_state_mode", "broker_state_not_observed")
+    )
+    scaffold_only = broker_state_mode == "alpaca_paper_read_only"
+    broker_state_status = (
+        "broker_read_scaffold_only"
+        if scaffold_only
+        else (
+            "offline_fixture"
+            if broker_state_mode == "offline_fixture"
+            else "broker_state_not_observed"
+        )
+    )
+    return {
+        "broker_state_mode": broker_state_mode,
+        "broker_state_status": broker_state_status,
+        "broker_read_performed": False,
+        "broker_mutation_performed": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "paper_submit_authorization_status": "not_authorized",
+        "position_state_observed": False,
+        "open_order_state_observed": False,
+        "spy_position_absence_claimed": False,
+        "spy_open_order_absence_claimed": False,
+        "broker_state_not_observed": broker_state_status
+        == "broker_state_not_observed",
+        "offline_fixture": broker_state_status == "offline_fixture",
+        "warning": (
+            "SPY position absence and SPY open-order absence remain unknown "
+            "unless broker state is observed under a future explicit "
+            "authorization."
+        ),
+        "alpaca_paper_read_only_scaffold": {
+            "available_mode": "alpaca_paper_read_only",
+            "requested": scaffold_only,
+            "broker_read_scaffold_only": scaffold_only,
+            "broker_read_requires_explicit_authorization": scaffold_only,
+            "broker_read_performed": False,
+            "network_call_performed": False,
+            "sdk_client_imported": False,
+            "status": (
+                "blocked_requires_future_explicit_authorization"
+                if scaffold_only
+                else "not_requested"
+            ),
+        },
+    }
+
+
+def _mission_control_decision_lane(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    market_signal_preview = _market_signal_preview(
+        str(market_data_lane.get("posture", "unknown"))
+    )
+    if market_data_lane.get("preview_currency_status") == "blocked_missing_data":
+        preview_decision = "blocked_missing_data"
+        blocker_status = "blocked_missing_data"
+    elif broker_state_lane.get("broker_read_performed") is not True:
+        preview_decision = "blocked/broker_state_not_observed"
+        blocker_status = "broker_state_not_observed"
+    else:
+        preview_decision = market_signal_preview
+        blocker_status = str(payload.get("blocker_status", "none"))
+    return {
+        "preview_decision": preview_decision,
+        "market_signal_preview": market_signal_preview,
+        "repo_preview_decision": payload.get("preview_decision"),
+        "reason": (
+            "Market signal is an offline preview only because broker state was "
+            "not observed and paper submit is not authorized."
+        ),
+        "blocker_status": blocker_status,
+        "next_operator_action": "review_mission_control_no_broker_action",
+        "next_gpt_action": "classify_report_and_choose_next_safe_slice",
+        "next_agent_action": "use_generated_work_orders_for_offline_improvements",
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "safety_labels": _mission_control_safety_labels(payload),
+    }
+
+
+def evaluate_mission_control_readiness_score(
+    component_scores: Mapping[str, Any],
+    safety_gates: Mapping[str, Any],
+) -> dict[str, Any]:
+    weights = {
+        "real_world_attachment": 0.40,
+        "product_readiness": 0.30,
+        "autonomy_middleman_reduction": 0.20,
+        "strategy_quality": 0.10,
+    }
+    components: dict[str, dict[str, Any]] = {}
+    for component_id, weight in weights.items():
+        raw_component = component_scores.get(component_id, {})
+        if isinstance(raw_component, Mapping):
+            score = float(raw_component.get("score", 0.0))
+            explanation = str(raw_component.get("explanation", ""))
+        else:
+            score = float(raw_component)
+            explanation = ""
+        score = max(0.0, min(score, 1.0))
+        components[component_id] = {
+            "weight": weight,
+            "score": score,
+            "weighted_points": round(score * weight * 100, 1),
+            "explanation": explanation,
+        }
+
+    normalized_gates: dict[str, dict[str, Any]] = {}
+    blocked_by: list[str] = []
+    for gate_id, raw_gate in safety_gates.items():
+        if isinstance(raw_gate, Mapping):
+            passed = bool(raw_gate.get("passed", False))
+            gate = dict(raw_gate)
+            gate["passed"] = passed
+        else:
+            passed = bool(raw_gate)
+            gate = {"passed": passed}
+        normalized_gates[str(gate_id)] = gate
+        if not passed:
+            blocked_by.append(str(gate_id))
+
+    if blocked_by:
+        total_score: float | None = None
+        status = "blocked_by_safety_gate"
+        score_valid = False
+    else:
+        total_score = round(
+            sum(component["weighted_points"] for component in components.values()),
+            1,
+        )
+        status = "valid"
+        score_valid = True
+
+    return {
+        "readiness_score_version": _MISSION_CONTROL_READINESS_VERSION,
+        "status": status,
+        "score_valid": score_valid,
+        "total_score": total_score,
+        "total_score_label": (
+            "blocked" if total_score is None else f"{total_score:.1f}/100"
+        ),
+        "weights": weights,
+        "components": components,
+        "safety_gates": normalized_gates,
+        "blocked_by": blocked_by,
+        "explanation": (
+            "Safety gates are pass/fail and override the weighted score."
+        ),
+    }
+
+
+def _mission_control_component_scores(
+    *,
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    artifacts: Mapping[str, Any],
+) -> dict[str, Any]:
+    source_mode = str(market_data_lane.get("source_mode", "unknown"))
+    if source_mode == "accepted_local_file":
+        real_world_score = 0.55
+        real_world_explanation = (
+            "Accepted local SPY bars attach the preview to real market data; "
+            "broker state remains unobserved."
+        )
+    elif source_mode == "generated_fixture":
+        real_world_score = 0.35
+        real_world_explanation = (
+            "Fixture data supports deterministic behavior but is not current "
+            "operator evidence."
+        )
+    else:
+        real_world_score = 0.10
+        real_world_explanation = "Market data is missing or unknown."
+
+    product_outputs = (
+        "index_html",
+        "assistant_report_md",
+        "mission_control_json",
+        "work_orders",
+    )
+    product_score = 0.85 if all(key in artifacts for key in product_outputs) else 0.45
+    autonomy_score = 0.75 if decision_lane.get("next_agent_action") else 0.40
+    strategy_score = (
+        0.45
+        if market_data_lane.get("posture") in {"risk_on", "risk_off"}
+        else 0.25
+    )
+    return {
+        "real_world_attachment": {
+            "score": real_world_score,
+            "explanation": real_world_explanation,
+        },
+        "product_readiness": {
+            "score": product_score,
+            "explanation": (
+                "Dashboard, assistant report, structured JSON, and handoff "
+                "work-order paths are planned and generated."
+            ),
+        },
+        "autonomy_middleman_reduction": {
+            "score": autonomy_score,
+            "explanation": (
+                "Rule-based dispatcher and local agent inbox files reduce "
+                "manual prompt assembly."
+            ),
+        },
+        "strategy_quality": {
+            "score": strategy_score,
+            "explanation": (
+                "Strategy remains the existing SPY SMA 50/200 baseline; this "
+                "milestone does not expand strategy quality."
+            ),
+        },
+    }
+
+
+def _mission_control_safety_gates(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    stale_current = (
+        market_data_lane.get("preview_currency_status") == "current"
+        and _int_or_zero(market_data_lane.get("staleness_in_days")) > 0
+    )
+    broker_claim_without_observation = (
+        broker_state_lane.get("broker_read_performed") is not True
+        and (
+            broker_state_lane.get("spy_position_absence_claimed") is True
+            or broker_state_lane.get("spy_open_order_absence_claimed") is True
+        )
+    )
+    return {
+        "broker_mutation_path_appears": {
+            "passed": broker_state_lane.get("broker_mutation_performed") is False,
+            "appears": False,
+            "summary": "No broker mutation path is exposed by Mission Control.",
+        },
+        "live_profile_url_support_appears": {
+            "passed": True,
+            "appears": False,
+            "summary": "Mission Control does not add live profile or live URL support.",
+        },
+        "credentials_printed": {
+            "passed": True,
+            "appears": False,
+            "summary": "Credential values are not read or printed.",
+        },
+        "normal_pytest_requires_network_broker_secrets": {
+            "passed": True,
+            "appears": False,
+            "summary": "Normal pytest remains offline by contract.",
+        },
+        "broker_state_claimed_without_observation": {
+            "passed": not broker_claim_without_observation,
+            "appears": broker_claim_without_observation,
+            "summary": "SPY position and open-order absence are not claimed.",
+        },
+        "paper_submit_authorized_by_default": {
+            "passed": payload.get("paper_submit_authorized") is False,
+            "authorized": False,
+            "summary": "Paper submit is not authorized by default.",
+        },
+        "stale_data_represented_as_current": {
+            "passed": not stale_current,
+            "appears": stale_current,
+            "summary": "Stale data is labeled as preview-only when stale.",
+        },
+    }
+
+
+def _mission_control_dispatcher(
+    *,
+    payload: Mapping[str, Any],
+    artifacts: Mapping[str, Any],
+    safety_gates: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    rules = [
+        {
+            "rule_id": "safety_invariant_failed",
+            "if": "any safety gate failed",
+            "route": "codex_repair_and_antigravity_review",
+        },
+        {
+            "rule_id": "dashboard_or_report_missing",
+            "if": "Mission Control dashboard/report missing",
+            "route": "mission_control_product_repair_to_codex",
+        },
+        {
+            "rule_id": "mission_control_schema_missing_fields",
+            "if": "mission_control.json missing required fields",
+            "route": "schema_repair_to_codex",
+        },
+        {
+            "rule_id": "broker_state_not_observed_and_read_not_authorized",
+            "if": "broker_state_not_observed and broker read not authorized",
+            "route": "offline_dashboard_data_decision_improvement",
+        },
+        {
+            "rule_id": "work_orders_missing",
+            "if": "work orders missing",
+            "route": "middleman_reduction_repair_to_codex",
+        },
+        {
+            "rule_id": "implementation_report_pending",
+            "if": "latest implementation report pending",
+            "route": "gpt_report_classification_prompt",
+        },
+        {
+            "rule_id": "product_loop_incomplete",
+            "if": "no blocker and product loop incomplete",
+            "route": "next_mission_control_slice",
+        },
+        {
+            "rule_id": "fallback_verification_review",
+            "if": "none matched",
+            "route": "verification_review",
+        },
+    ]
+    failed_gates = [
+        gate_id
+        for gate_id, gate in safety_gates.items()
+        if isinstance(gate, Mapping) and gate.get("passed") is not True
+    ]
+    if failed_gates:
+        selected_rule_id = "safety_invariant_failed"
+        selected_route = "codex_repair_and_antigravity_review"
+        selected_work_order_type = "codex_safety_repair"
+    elif not all(
+        key in artifacts
+        for key in ("index_html", "assistant_report_md", "mission_control_json")
+    ):
+        selected_rule_id = "dashboard_or_report_missing"
+        selected_route = "mission_control_product_repair_to_codex"
+        selected_work_order_type = "codex_product_repair"
+    elif broker_state_lane.get("broker_read_performed") is False:
+        selected_rule_id = "broker_state_not_observed_and_read_not_authorized"
+        selected_route = "offline_dashboard_data_decision_improvement"
+        selected_work_order_type = "codex_next_work_order"
+    elif "work_orders" not in artifacts:
+        selected_rule_id = "work_orders_missing"
+        selected_route = "middleman_reduction_repair_to_codex"
+        selected_work_order_type = "codex_work_order_repair"
+    elif payload.get("review_classification") in {"missing", "unclassified"}:
+        selected_rule_id = "implementation_report_pending"
+        selected_route = "gpt_report_classification_prompt"
+        selected_work_order_type = "gpt_report_classification_prompt"
+    else:
+        selected_rule_id = "fallback_verification_review"
+        selected_route = "verification_review"
+        selected_work_order_type = "antigravity_review_work_order"
+    return {
+        "dispatcher_version": _MISSION_CONTROL_DISPATCHER_VERSION,
+        "generation_mode": "deterministic_rule_based_no_llm_routing",
+        "rules": rules,
+        "selected_rule_id": selected_rule_id,
+        "selected_route": selected_route,
+        "selected_work_order_type": selected_work_order_type,
+        "broker_read_authorized": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "forbidden_routes": [
+            "broker_read_execution",
+            "paper_submit",
+            "broker_mutation",
+            "live_trading",
+            "secrets_setup",
+            "paid_service_setup",
+            "safety_weakening",
+        ],
+    }
+
+
+def _mission_control_executive_summary(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    dispatcher: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "current_system_state": (
+            "offline_mission_control_ready"
+            if market_data_lane.get("data_status") == "available"
+            else "blocked_missing_market_data"
+        ),
+        "latest_preview_decision": decision_lane.get("preview_decision"),
+        "main_blocker": decision_lane.get("blocker_status"),
+        "next_safest_action": dispatcher.get("selected_route"),
+        "paper_submit_authorized": False,
+        "live_trading_authorized": False,
+        "broker_read_performed": broker_state_lane.get("broker_read_performed"),
+        "broker_mutation_performed": broker_state_lane.get(
+            "broker_mutation_performed"
+        ),
+        "data_preview_status": market_data_lane.get("preview_currency_status"),
+        "source_packet_preview_decision": payload.get("preview_decision"),
+    }
+
+
+def _write_mission_control_artifacts(
+    output_root: Path,
+    mission_control: Mapping[str, Any],
+) -> None:
+    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
+    work_orders_dir.mkdir(parents=True, exist_ok=True)
+    (output_root / _MISSION_CONTROL_FILENAME).write_text(
+        json.dumps(_json_safe(mission_control), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (output_root / _MISSION_CONTROL_REPORT_FILENAME).write_text(
+        _render_mission_control_report(mission_control),
+        encoding="utf-8",
+        newline="\n",
+    )
+    (output_root / _MISSION_CONTROL_INDEX_FILENAME).write_text(
+        _render_mission_control_html(mission_control),
+        encoding="utf-8",
+        newline="\n",
+    )
+    work_orders = _mission_control_work_orders(mission_control)
+    _write_text(work_orders_dir / _CODEX_NEXT_PROMPT_FILENAME, work_orders["codex_prompt"])
+    _write_json(
+        work_orders_dir / _CODEX_NEXT_WORK_ORDER_FILENAME,
+        work_orders["codex_work_order"],
+    )
+    _write_text(
+        work_orders_dir / _ANTIGRAVITY_REVIEW_PROMPT_FILENAME,
+        work_orders["antigravity_prompt"],
+    )
+    _write_json(
+        work_orders_dir / _ANTIGRAVITY_REVIEW_WORK_ORDER_FILENAME,
+        work_orders["antigravity_work_order"],
+    )
+    _write_text(
+        work_orders_dir / _CLAUDE_CRITIQUE_PROMPT_FILENAME,
+        work_orders["claude_prompt"],
+    )
+    _write_json(
+        work_orders_dir / _CLAUDE_CRITIQUE_WORK_ORDER_FILENAME,
+        work_orders["claude_work_order"],
+    )
+    _write_text(
+        work_orders_dir / _GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME,
+        work_orders["gpt_prompt"],
+    )
+    _write_json(
+        work_orders_dir / _GPT_NEXT_DECISION_CONTEXT_FILENAME,
+        work_orders["gpt_context"],
+    )
+    _write_agent_inbox(work_orders)
+
+
+def _mission_control_artifact_map(
+    output_root: Path,
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "index_html": artifact_paths["mission_control_index"],
+        "assistant_report_md": artifact_paths["assistant_report"],
+        "mission_control_json": artifact_paths["mission_control"],
+        "operating_record_jsonl": artifact_paths["operating_record"],
+        "manifest_jsonl": artifact_paths["manifest"],
+        "work_orders": artifact_paths["work_orders"],
+        "codex_next_prompt": artifact_paths["codex_next_prompt"],
+        "codex_next_work_order": artifact_paths["codex_next_work_order"],
+        "antigravity_review_prompt": artifact_paths["antigravity_review_prompt"],
+        "antigravity_review_work_order": artifact_paths[
+            "antigravity_review_work_order"
+        ],
+        "claude_critique_prompt": artifact_paths["claude_critique_prompt"],
+        "claude_critique_work_order": artifact_paths["claude_critique_work_order"],
+        "gpt_report_classification_prompt": artifact_paths[
+            "gpt_report_classification_prompt"
+        ],
+        "gpt_next_decision_context": artifact_paths["gpt_next_decision_context"],
+        "agent_inbox_root": _normalize_path(Path.cwd() / _AGENT_INBOX_DIRNAME),
+        "output_root": _normalize_path(output_root),
+    }
+
+
+def _mission_control_work_order_index(
+    artifact_paths: Mapping[str, str],
+) -> dict[str, str]:
+    return {
+        "codex_next_prompt": artifact_paths["codex_next_prompt"],
+        "codex_next_work_order": artifact_paths["codex_next_work_order"],
+        "antigravity_review_prompt": artifact_paths["antigravity_review_prompt"],
+        "antigravity_review_work_order": artifact_paths[
+            "antigravity_review_work_order"
+        ],
+        "claude_critique_prompt": artifact_paths["claude_critique_prompt"],
+        "claude_critique_work_order": artifact_paths["claude_critique_work_order"],
+        "gpt_report_classification_prompt": artifact_paths[
+            "gpt_report_classification_prompt"
+        ],
+        "gpt_next_decision_context": artifact_paths["gpt_next_decision_context"],
+    }
+
+
+def _mission_control_agent_inbox_index() -> dict[str, str]:
+    root = Path.cwd() / _AGENT_INBOX_DIRNAME
+    return {
+        "codex_next_task": _normalize_path(root / "codex" / "next_task.md"),
+        "codex_next_work_order": _normalize_path(
+            root / "codex" / "next_work_order.json"
+        ),
+        "antigravity_review_task": _normalize_path(
+            root / "antigravity" / "review_task.md"
+        ),
+        "antigravity_review_work_order": _normalize_path(
+            root / "antigravity" / "review_work_order.json"
+        ),
+        "claude_critique_task": _normalize_path(
+            root / "claude" / "critique_task.md"
+        ),
+        "claude_critique_work_order": _normalize_path(
+            root / "claude" / "critique_work_order.json"
+        ),
+        "gpt_report_classification_prompt": _normalize_path(
+            root / "gpt" / "report_classification_prompt.md"
+        ),
+        "gpt_next_decision_context": _normalize_path(
+            root / "gpt" / "next_decision_context.json"
+        ),
+    }
+
+
+def _mission_control_work_orders(
+    mission_control: Mapping[str, Any],
+) -> dict[str, Any]:
+    dispatcher = mission_control["rule_based_dispatcher_v0"]
+    selected_route = dispatcher["selected_route"]
+    safety_constraints = [
+        "offline_only",
+        "no_broker_read_execution",
+        "no_broker_mutation",
+        "no_paper_submit",
+        "no_live_trading",
+        "no_credentials",
+        "no_network",
+        "do_not_weaken_safety_gates",
+    ]
+    common = {
+        "mission_control_version": mission_control["mission_control_version"],
+        "selected_route": selected_route,
+        "selected_rule_id": dispatcher["selected_rule_id"],
+        "input_artifacts": mission_control["artifacts"],
+        "safety_constraints": safety_constraints,
+    }
+    codex_order = {
+        **common,
+        "audience": "Codex",
+        "work_order_type": dispatcher["selected_work_order_type"],
+        "objective": (
+            "Continue the next offline Mission Control slice selected by the "
+            "deterministic dispatcher."
+        ),
+        "expected_outputs": [
+            "updated local deterministic tests",
+            "updated Mission Control artifacts if needed",
+            "implementation report for GPT classification",
+        ],
+    }
+    antigravity_order = {
+        **common,
+        "audience": "Antigravity",
+        "work_order_type": "independent_mission_control_review",
+        "objective": (
+            "Review Mission Control schema, dashboard/report usefulness, and "
+            "safety invariants without broker access."
+        ),
+        "expected_outputs": ["review notes", "safety findings", "repair items"],
+    }
+    claude_order = {
+        **common,
+        "audience": "Claude",
+        "work_order_type": "independent_safety_critique",
+        "objective": (
+            "Critique the Mission Control packet for overclaims, stale-data "
+            "labeling, broker-state honesty, and missing tests."
+        ),
+        "expected_outputs": ["critique", "blockers", "minor notes"],
+    }
+    gpt_context = {
+        **common,
+        "audience": "GPT",
+        "work_order_type": "source_of_truth_report_classification",
+        "classification_options": [
+            "accepted",
+            "accepted-with-minor-note",
+            "needs-repair",
+            "rejected",
+        ],
+        "decision_context": {
+            "readiness_score": mission_control["readiness_score"],
+            "market_data_lane": mission_control["market_data_lane"],
+            "broker_state_lane": mission_control["broker_state_lane"],
+            "decision_lane": mission_control["decision_lane"],
+            "dispatcher": dispatcher,
+        },
+    }
+    return {
+        "codex_prompt": _render_agent_prompt("Codex", codex_order),
+        "codex_work_order": codex_order,
+        "antigravity_prompt": _render_agent_prompt(
+            "Antigravity",
+            antigravity_order,
+        ),
+        "antigravity_work_order": antigravity_order,
+        "claude_prompt": _render_agent_prompt("Claude", claude_order),
+        "claude_work_order": claude_order,
+        "gpt_prompt": _render_agent_prompt("GPT", gpt_context),
+        "gpt_context": gpt_context,
+    }
+
+
+def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"# {audience} Mission Control Work Order",
+            "",
+            f"Selected route: `{order['selected_route']}`",
+            f"Selected rule: `{order['selected_rule_id']}`",
+            "",
+            "Safety constraints:",
+            *[f"- `{item}`" for item in order["safety_constraints"]],
+            "",
+            "Use the referenced Mission Control artifacts as input. Do not "
+            "perform broker reads, broker mutation, paper submit, live trading, "
+            "credential setup, network calls, paid-service setup, or safety "
+            "weakening.",
+            "",
+        ]
+    )
+
+
+def _write_agent_inbox(work_orders: Mapping[str, Any]) -> None:
+    root = Path.cwd() / _AGENT_INBOX_DIRNAME
+    _write_text(root / "codex" / "next_task.md", str(work_orders["codex_prompt"]))
+    _write_json(
+        root / "codex" / "next_work_order.json",
+        work_orders["codex_work_order"],
+    )
+    _write_text(
+        root / "antigravity" / "review_task.md",
+        str(work_orders["antigravity_prompt"]),
+    )
+    _write_json(
+        root / "antigravity" / "review_work_order.json",
+        work_orders["antigravity_work_order"],
+    )
+    _write_text(
+        root / "claude" / "critique_task.md",
+        str(work_orders["claude_prompt"]),
+    )
+    _write_json(
+        root / "claude" / "critique_work_order.json",
+        work_orders["claude_work_order"],
+    )
+    _write_text(
+        root / "gpt" / "report_classification_prompt.md",
+        str(work_orders["gpt_prompt"]),
+    )
+    _write_json(
+        root / "gpt" / "next_decision_context.json",
+        work_orders["gpt_context"],
+    )
+
+
+def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
+    executive = mission_control["executive_summary"]
+    market = mission_control["market_data_lane"]
+    broker = mission_control["broker_state_lane"]
+    decision = mission_control["decision_lane"]
+    readiness = mission_control["readiness_score"]
+    dispatcher = mission_control["rule_based_dispatcher_v0"]
+    lines = [
+        "# Mission Control",
+        "",
+        "## Executive Summary",
+        f"- Current system state: `{executive['current_system_state']}`",
+        f"- Latest preview decision: `{executive['latest_preview_decision']}`",
+        f"- Main blocker: `{executive['main_blocker']}`",
+        f"- Next safest action: `{executive['next_safest_action']}`",
+        f"- Paper submit authorized: `{str(executive['paper_submit_authorized']).lower()}`",
+        f"- Live trading authorized: `{str(executive['live_trading_authorized']).lower()}`",
+        "",
+        "## Market Data Lane",
+        f"- Symbol: `{market['symbol']}`",
+        f"- Input data path: `{market['input_data_path']}`",
+        f"- Source mode: `{market['source_mode']}`",
+        f"- Basis: `{market['basis']}`",
+        f"- Row count: `{market['row_count']}`",
+        f"- As-of date: `{market['as_of_date']}`",
+        f"- Staleness in days: `{market['staleness_in_days']}`",
+        f"- Preview currency status: `{market['preview_currency_status']}`",
+        f"- SMA50: `{market['sma50']}`",
+        f"- SMA200: `{market['sma200']}`",
+        f"- Posture: `{market['posture']}`",
+        "",
+        "## Broker State Lane",
+        f"- Broker state mode: `{broker['broker_state_mode']}`",
+        f"- Broker read performed: `{str(broker['broker_read_performed']).lower()}`",
+        f"- Broker mutation performed: `{str(broker['broker_mutation_performed']).lower()}`",
+        f"- Paper submit authorized: `{str(broker['paper_submit_authorized']).lower()}`",
+        f"- Live authorized: `{str(broker['live_authorized']).lower()}`",
+        f"- Broker state status: `{broker['broker_state_status']}`",
+        f"- Warning: {broker['warning']}",
+        "",
+        "## Decision Lane",
+        f"- Preview decision: `{decision['preview_decision']}`",
+        f"- Market signal preview: `{decision['market_signal_preview']}`",
+        f"- Reason: {decision['reason']}",
+        f"- Blocker status: `{decision['blocker_status']}`",
+        f"- Next agent action: `{decision['next_agent_action']}`",
+        f"- Safety labels: {', '.join(f'`{label}`' for label in decision['safety_labels'])}",
+        "",
+        "## Readiness Score",
+        f"- Status: `{readiness['status']}`",
+        f"- Score: `{readiness['total_score_label']}`",
+        f"- Weights: real-world attachment 40%, product readiness 30%, autonomy / middleman reduction 20%, strategy quality 10%",
+        "",
+        "## Rule-Based Dispatcher v0",
+        f"- Selected rule: `{dispatcher['selected_rule_id']}`",
+        f"- Selected route: `{dispatcher['selected_route']}`",
+        f"- Selected work order type: `{dispatcher['selected_work_order_type']}`",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
+    executive = mission_control["executive_summary"]
+    market = mission_control["market_data_lane"]
+    broker = mission_control["broker_state_lane"]
+    decision = mission_control["decision_lane"]
+    readiness = mission_control["readiness_score"]
+    dispatcher = mission_control["rule_based_dispatcher_v0"]
+    labels = " ".join(
+        f"<span>{_html_escape(str(label))}</span>"
+        for label in decision["safety_labels"]
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mission Control</title>
+  <style>
+    body {{ margin: 0; font-family: Arial, sans-serif; background: #f7f7f4; color: #1d2528; }}
+    header {{ padding: 24px 32px; background: #12343b; color: #ffffff; }}
+    main {{ padding: 24px 32px; display: grid; gap: 16px; }}
+    section {{ border: 1px solid #c9d1d3; background: #ffffff; border-radius: 6px; padding: 16px; }}
+    h1, h2 {{ margin: 0 0 12px; }}
+    dl {{ display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: 8px 16px; margin: 0; }}
+    dt {{ font-weight: 700; color: #425257; }}
+    dd {{ margin: 0; overflow-wrap: anywhere; }}
+    .labels {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+    .labels span {{ border: 1px solid #7a8b65; border-radius: 4px; padding: 3px 6px; background: #eef2e6; }}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Mission Control</h1>
+    <div>{_html_escape(str(mission_control["phase_name"]))}</div>
+  </header>
+  <main>
+    <section>
+      <h2>Executive Summary</h2>
+      <dl>
+        <dt>Current system state</dt><dd>{_html_escape(str(executive["current_system_state"]))}</dd>
+        <dt>Latest preview decision</dt><dd>{_html_escape(str(executive["latest_preview_decision"]))}</dd>
+        <dt>Main blocker</dt><dd>{_html_escape(str(executive["main_blocker"]))}</dd>
+        <dt>Next safest action</dt><dd>{_html_escape(str(executive["next_safest_action"]))}</dd>
+        <dt>Paper submit authorized</dt><dd>{str(executive["paper_submit_authorized"]).lower()}</dd>
+        <dt>Live trading authorized</dt><dd>{str(executive["live_trading_authorized"]).lower()}</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Market Data Lane</h2>
+      <dl>
+        <dt>Symbol</dt><dd>{_html_escape(str(market["symbol"]))}</dd>
+        <dt>Input data path</dt><dd>{_html_escape(str(market["input_data_path"]))}</dd>
+        <dt>Source mode</dt><dd>{_html_escape(str(market["source_mode"]))}</dd>
+        <dt>Basis</dt><dd>{_html_escape(str(market["basis"]))}</dd>
+        <dt>Rows</dt><dd>{market["row_count"]}</dd>
+        <dt>As of</dt><dd>{_html_escape(str(market["as_of_date"]))}</dd>
+        <dt>Staleness in days</dt><dd>{_html_escape(str(market["staleness_in_days"]))}</dd>
+        <dt>Preview status</dt><dd>{_html_escape(str(market["preview_currency_status"]))}</dd>
+        <dt>SMA50 / SMA200</dt><dd>{_html_escape(str(market["sma50"]))} / {_html_escape(str(market["sma200"]))}</dd>
+        <dt>Posture</dt><dd>{_html_escape(str(market["posture"]))}</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Broker State Lane</h2>
+      <dl>
+        <dt>Broker state mode</dt><dd>{_html_escape(str(broker["broker_state_mode"]))}</dd>
+        <dt>Broker read performed</dt><dd>{str(broker["broker_read_performed"]).lower()}</dd>
+        <dt>Broker mutation performed</dt><dd>{str(broker["broker_mutation_performed"]).lower()}</dd>
+        <dt>Paper submit authorized</dt><dd>{str(broker["paper_submit_authorized"]).lower()}</dd>
+        <dt>Live authorized</dt><dd>{str(broker["live_authorized"]).lower()}</dd>
+        <dt>Status</dt><dd>{_html_escape(str(broker["broker_state_status"]))}</dd>
+        <dt>Warning</dt><dd>{_html_escape(str(broker["warning"]))}</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Decision Lane</h2>
+      <dl>
+        <dt>Preview decision</dt><dd>{_html_escape(str(decision["preview_decision"]))}</dd>
+        <dt>Reason</dt><dd>{_html_escape(str(decision["reason"]))}</dd>
+        <dt>Blocker status</dt><dd>{_html_escape(str(decision["blocker_status"]))}</dd>
+        <dt>Next agent action</dt><dd>{_html_escape(str(decision["next_agent_action"]))}</dd>
+        <dt>Safety labels</dt><dd><div class="labels">{labels}</div></dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Readiness Score</h2>
+      <dl>
+        <dt>Status</dt><dd>{_html_escape(str(readiness["status"]))}</dd>
+        <dt>Score</dt><dd>{_html_escape(str(readiness["total_score_label"]))}</dd>
+        <dt>Weights</dt><dd>40% real-world attachment, 30% product readiness, 20% autonomy / middleman reduction, 10% strategy quality</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Rule-Based Dispatcher v0</h2>
+      <dl>
+        <dt>Selected rule</dt><dd>{_html_escape(str(dispatcher["selected_rule_id"]))}</dd>
+        <dt>Selected route</dt><dd>{_html_escape(str(dispatcher["selected_route"]))}</dd>
+        <dt>Selected work order</dt><dd>{_html_escape(str(dispatcher["selected_work_order_type"]))}</dd>
+      </dl>
+    </section>
+  </main>
+</body>
+</html>
+"""
+
+
+def _write_text(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def _write_json(path: Path, content: Mapping[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_json_safe(content), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _mapping_get(value: Any, key: str, *, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key, default)
+    return default
+
+
+def _int_or_zero(value: Any) -> int:
+    try:
+        if value is None:
+            return 0
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _staleness_in_days(latest_input_bar_date: str) -> int | None:
+    if not latest_input_bar_date:
+        return None
+    try:
+        latest_date = datetime.fromisoformat(latest_input_bar_date).date()
+    except ValueError:
+        return None
+    return (datetime.now(timezone.utc).date() - latest_date).days
+
+
+def _market_preview_currency_status(
+    *,
+    source_exists: bool,
+    row_count: int,
+    staleness_in_days: int | None,
+) -> str:
+    if not source_exists or row_count <= 0:
+        return "blocked_missing_data"
+    if staleness_in_days is None:
+        return "accepted_but_stale"
+    if staleness_in_days <= 0:
+        return "current"
+    if staleness_in_days <= 3:
+        return "accepted_but_stale"
+    return "stale_data_preview_only"
+
+
+def _market_source_mode(path: Path, path_exists: bool) -> str:
+    if not path_exists:
+        return "missing"
+    normalized = _normalize_path(path)
+    if normalized.startswith("tests/fixtures/"):
+        return "generated_fixture"
+    return "accepted_local_file"
+
+
+def _csv_price_basis(path: Path) -> str:
+    try:
+        with path.open("r", encoding="utf-8", newline="") as stream:
+            header = stream.readline().strip().lower().split(",")
+    except OSError:
+        return "unknown"
+    if "adjusted_close" in header:
+        return "adjusted_close"
+    if "close" in header:
+        return "close"
+    return "unknown"
+
+
+def _mission_control_posture(posture: str) -> str:
+    if posture == "bullish_risk_on":
+        return "risk_on"
+    if posture == "insufficient_history":
+        return "insufficient_history"
+    if posture:
+        return "risk_off"
+    return "unknown"
+
+
+def _market_signal_preview(posture: str) -> str:
+    if posture == "risk_on":
+        return "buy_preview"
+    if posture == "risk_off":
+        return "sell_preview"
+    if posture == "insufficient_history":
+        return "insufficient_history"
+    return "hold/noop"
+
+
+def _mission_control_safety_labels(payload: Mapping[str, Any]) -> list[str]:
+    labels = list(payload.get("safety_labels", []))
+    for required in (
+        "paper_lab_only",
+        "research_only",
+        "signal_evaluation_only",
+        "not_live_authorized",
+        "profit_claim=none",
+        "offline_only",
+    ):
+        if required not in labels:
+            labels.append(required)
+    return labels
+
+
+def _html_escape(value: str) -> str:
+    return (
+        value.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
 
 
 def _apply_paper_observation_readiness(
@@ -4154,7 +5280,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     preview_decision = _preview_decision(posture)
     next_operator_action = _next_operator_action(posture, config.sma_slow_window)
     blocker_status = "broker_state_not_observed"
-    broker_state_mode = "broker_state_not_observed"
+    broker_state_mode = config.broker_state_mode
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
     quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
@@ -4308,6 +5434,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "history_delta": _empty_history_delta(as_of_str),
         "history_ledger_entry": {},
         "artifacts": {
+            "mission_control": artifact_paths["mission_control"],
+            "mission_control_index": artifact_paths["mission_control_index"],
+            "assistant_report": artifact_paths["assistant_report"],
             "assistant_brief": artifact_paths["assistant_brief"],
             "operating_brief": artifact_paths["assistant_brief"],
             "operating_record": artifact_paths["operating_record"],
@@ -4374,6 +5503,24 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
                 "antigravity_review_order"
             ],
             "claude_critique_order": artifact_paths["claude_critique_order"],
+            "codex_next_prompt": artifact_paths["codex_next_prompt"],
+            "codex_next_work_order": artifact_paths["codex_next_work_order"],
+            "antigravity_review_prompt": artifact_paths[
+                "antigravity_review_prompt"
+            ],
+            "antigravity_review_work_order": artifact_paths[
+                "antigravity_review_work_order"
+            ],
+            "claude_critique_prompt": artifact_paths["claude_critique_prompt"],
+            "claude_critique_work_order": artifact_paths[
+                "claude_critique_work_order"
+            ],
+            "gpt_report_classification_prompt": artifact_paths[
+                "gpt_report_classification_prompt"
+            ],
+            "gpt_next_decision_context": artifact_paths[
+                "gpt_next_decision_context"
+            ],
         },
         "sma": {
             "symbol": signal.symbol,
@@ -4912,6 +6059,13 @@ def _normalize_path(path: Path | str) -> str:
 def _artifact_paths(output_root: Path) -> dict[str, str]:
     work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
     return {
+        "mission_control": _normalize_path(output_root / _MISSION_CONTROL_FILENAME),
+        "mission_control_index": _normalize_path(
+            output_root / _MISSION_CONTROL_INDEX_FILENAME
+        ),
+        "assistant_report": _normalize_path(
+            output_root / _MISSION_CONTROL_REPORT_FILENAME
+        ),
         "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
@@ -4985,6 +6139,30 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "claude_critique_order": _normalize_path(
             work_orders_dir / _CLAUDE_WORK_ORDER_FILENAME
+        ),
+        "codex_next_prompt": _normalize_path(
+            work_orders_dir / _CODEX_NEXT_PROMPT_FILENAME
+        ),
+        "codex_next_work_order": _normalize_path(
+            work_orders_dir / _CODEX_NEXT_WORK_ORDER_FILENAME
+        ),
+        "antigravity_review_prompt": _normalize_path(
+            work_orders_dir / _ANTIGRAVITY_REVIEW_PROMPT_FILENAME
+        ),
+        "antigravity_review_work_order": _normalize_path(
+            work_orders_dir / _ANTIGRAVITY_REVIEW_WORK_ORDER_FILENAME
+        ),
+        "claude_critique_prompt": _normalize_path(
+            work_orders_dir / _CLAUDE_CRITIQUE_PROMPT_FILENAME
+        ),
+        "claude_critique_work_order": _normalize_path(
+            work_orders_dir / _CLAUDE_CRITIQUE_WORK_ORDER_FILENAME
+        ),
+        "gpt_report_classification_prompt": _normalize_path(
+            work_orders_dir / _GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME
+        ),
+        "gpt_next_decision_context": _normalize_path(
+            work_orders_dir / _GPT_NEXT_DECISION_CONTEXT_FILENAME
         ),
     }
 
@@ -22549,6 +23727,38 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "operating_record": _artifact_metadata(output_root / _RECORD_FILENAME),
         "review_handoff": _artifact_metadata(output_root / _REVIEW_HANDOFF_FILENAME),
     }
+    mission_control_artifacts = {
+        "mission_control": output_root / _MISSION_CONTROL_FILENAME,
+        "mission_control_index": output_root / _MISSION_CONTROL_INDEX_FILENAME,
+        "assistant_report": output_root / _MISSION_CONTROL_REPORT_FILENAME,
+        "codex_next_prompt": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _CODEX_NEXT_PROMPT_FILENAME,
+        "codex_next_work_order": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _CODEX_NEXT_WORK_ORDER_FILENAME,
+        "antigravity_review_prompt": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _ANTIGRAVITY_REVIEW_PROMPT_FILENAME,
+        "antigravity_review_work_order": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _ANTIGRAVITY_REVIEW_WORK_ORDER_FILENAME,
+        "claude_critique_prompt": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _CLAUDE_CRITIQUE_PROMPT_FILENAME,
+        "claude_critique_work_order": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _CLAUDE_CRITIQUE_WORK_ORDER_FILENAME,
+        "gpt_report_classification_prompt": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME,
+        "gpt_next_decision_context": output_root
+        / _WORK_ORDERS_DIRNAME
+        / _GPT_NEXT_DECISION_CONTEXT_FILENAME,
+    }
+    for artifact_id, artifact_path in mission_control_artifacts.items():
+        if artifact_path.exists():
+            indexed_artifacts[artifact_id] = _artifact_metadata(artifact_path)
     history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
     if history_ledger_path.exists():
         indexed_artifacts["history_ledger"] = _artifact_metadata(history_ledger_path)

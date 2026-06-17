@@ -12,6 +12,7 @@ src/algotrader.egg-info/
 
 # Local research data
 .data/
+.agent_inbox/
 
 # Local secrets
 .env

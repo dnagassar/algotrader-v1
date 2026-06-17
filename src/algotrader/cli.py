@@ -2488,6 +2488,19 @@ def build_parser() -> argparse.ArgumentParser:
         help="SMA slow window size. Defaults to 200.",
     )
     etf_sma_daily_paper_lab_parser.add_argument(
+        "--broker-state-mode",
+        choices=(
+            "broker_state_not_observed",
+            "offline_fixture",
+            "alpaca_paper_read_only",
+        ),
+        default="broker_state_not_observed",
+        help=(
+            "Broker-state lane mode. alpaca_paper_read_only is scaffold-only "
+            "in v1.33 and performs no broker read."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -5903,6 +5916,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 symbol=args.symbol,
                 sma_fast_window=args.sma_fast_window,
                 sma_slow_window=args.sma_slow_window,
+                broker_state_mode=args.broker_state_mode,
             )
         )
         if args.output_format == "json":

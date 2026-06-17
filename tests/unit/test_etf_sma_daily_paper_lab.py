@@ -13,6 +13,7 @@ from algotrader.errors import ValidationError
 from algotrader.execution.etf_sma_daily_paper_lab import (
     EtfSmaDailyPaperLabConfig,
     build_etf_sma_daily_paper_lab,
+    evaluate_mission_control_readiness_score,
     run_etf_sma_daily_paper_lab,
     validate_etf_sma_daily_paper_lab_packet,
 )
@@ -4248,8 +4249,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.32 — Execute Candidate Gap Closure Queue Item 012"
-            in work_order
+            "Assistant v1.33 - Mission Control v0" in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
         assert "execute_candidate_gap_closure_queue_item_002" in work_order
@@ -5389,6 +5389,202 @@ def test_etf_sma_daily_paper_lab_cli_invocation(tmp_path: Path) -> None:
     assert (output_root / "manifest.jsonl").exists()
     assert (output_root / "research_board_prioritization.jsonl").exists()
     assert (output_root / "strategy_comparison_scaffold.jsonl").exists()
+    assert (output_root / "index.html").exists()
+    assert (output_root / "assistant_report.md").exists()
+    assert (output_root / "mission_control.json").exists()
+
+
+def test_etf_sma_daily_paper_lab_mission_control_outputs(
+    tmp_path: Path,
+) -> None:
+    """Verify v1.33 Mission Control dashboard, report, JSON, and handoffs."""
+    output_root = tmp_path / "paper_lab_mission_control_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    index_path = output_root / "index.html"
+    report_path = output_root / "assistant_report.md"
+    mission_path = output_root / "mission_control.json"
+    assert index_path.exists()
+    assert report_path.exists()
+    assert mission_path.exists()
+    assert (output_root / "operating_record.jsonl").exists()
+
+    mission = json.loads(mission_path.read_text(encoding="utf-8"))
+    assert mission == payload["mission_control"]
+    assert mission["mission_control_version"] == "assistant_v1.33_mission_control"
+
+    executive = mission["executive_summary"]
+    assert executive["paper_submit_authorized"] is False
+    assert executive["live_trading_authorized"] is False
+
+    market = mission["market_data_lane"]
+    assert market["symbol"] == "SPY"
+    assert market["source_mode"] == "generated_fixture"
+    assert market["basis"] == "close"
+    assert market["row_count"] == 200
+    assert market["as_of_date"] == "2025-07-20"
+    assert market["preview_currency_status"] in {
+        "accepted_but_stale",
+        "stale_data_preview_only",
+        "current",
+    }
+    assert market["sma50"] is not None
+    assert market["sma200"] is not None
+    assert market["posture"] == "risk_on"
+
+    broker = mission["broker_state_lane"]
+    assert broker["broker_state_mode"] == "broker_state_not_observed"
+    assert broker["broker_read_performed"] is False
+    assert broker["broker_mutation_performed"] is False
+    assert broker["paper_submit_authorized"] is False
+    assert broker["live_authorized"] is False
+    assert broker["broker_state_status"] == "broker_state_not_observed"
+    assert broker["spy_position_absence_claimed"] is False
+    assert broker["spy_open_order_absence_claimed"] is False
+    assert "absence remain unknown" in broker["warning"]
+
+    decision = mission["decision_lane"]
+    assert decision["preview_decision"] == "blocked/broker_state_not_observed"
+    assert decision["market_signal_preview"] == "buy_preview"
+    assert decision["blocker_status"] == "broker_state_not_observed"
+    assert {
+        "paper_lab_only",
+        "research_only",
+        "not_live_authorized",
+        "profit_claim=none",
+        "offline_only",
+    } <= set(decision["safety_labels"])
+
+    readiness = mission["readiness_score"]
+    assert readiness["readiness_score_version"] == (
+        "assistant_v1.33_readiness_score"
+    )
+    assert readiness["status"] == "valid"
+    assert readiness["score_valid"] is True
+    assert readiness["weights"] == {
+        "real_world_attachment": 0.40,
+        "product_readiness": 0.30,
+        "autonomy_middleman_reduction": 0.20,
+        "strategy_quality": 0.10,
+    }
+    assert all(gate["passed"] for gate in readiness["safety_gates"].values())
+
+    dispatcher = mission["rule_based_dispatcher_v0"]
+    assert dispatcher["dispatcher_version"] == (
+        "assistant_v1.33_rule_dispatcher_v0"
+    )
+    assert dispatcher["generation_mode"] == "deterministic_rule_based_no_llm_routing"
+    assert dispatcher["selected_rule_id"] == (
+        "broker_state_not_observed_and_read_not_authorized"
+    )
+    assert dispatcher["selected_work_order_type"] == "codex_next_work_order"
+    assert dispatcher["broker_read_authorized"] is False
+    assert dispatcher["paper_submit_authorized"] is False
+    assert dispatcher["live_authorized"] is False
+
+    work_orders_dir = output_root / "work_orders"
+    expected_work_orders = {
+        "codex_next_prompt.md",
+        "codex_next_work_order.json",
+        "antigravity_review_prompt.md",
+        "antigravity_review_work_order.json",
+        "claude_critique_prompt.md",
+        "claude_critique_work_order.json",
+        "gpt_report_classification_prompt.md",
+        "gpt_next_decision_context.json",
+    }
+    assert expected_work_orders <= {
+        path.name for path in work_orders_dir.iterdir() if path.is_file()
+    }
+
+    inbox_root = Path(".agent_inbox")
+    assert (inbox_root / "codex" / "next_task.md").exists()
+    assert (inbox_root / "codex" / "next_work_order.json").exists()
+    assert (inbox_root / "antigravity" / "review_task.md").exists()
+    assert (inbox_root / "antigravity" / "review_work_order.json").exists()
+    assert (inbox_root / "claude" / "critique_task.md").exists()
+    assert (inbox_root / "claude" / "critique_work_order.json").exists()
+    assert (inbox_root / "gpt" / "report_classification_prompt.md").exists()
+    assert (inbox_root / "gpt" / "next_decision_context.json").exists()
+
+    manifest = json.loads((output_root / "manifest.jsonl").read_text(encoding="utf-8"))
+    indexed = manifest["indexed_artifacts"]
+    assert indexed["mission_control"]["path"].endswith("mission_control.json")
+    assert indexed["mission_control_index"]["path"].endswith("index.html")
+    assert indexed["assistant_report"]["path"].endswith("assistant_report.md")
+    assert indexed["codex_next_work_order"]["path"].endswith(
+        "work_orders/codex_next_work_order.json"
+    )
+
+    serialized_broker = json.dumps(broker, sort_keys=True).lower()
+    assert "no positions" not in serialized_broker
+    assert "no open orders" not in serialized_broker
+
+
+def test_mission_control_readiness_score_blocks_on_safety_gate_failure() -> None:
+    score = evaluate_mission_control_readiness_score(
+        {
+            "real_world_attachment": {"score": 1.0},
+            "product_readiness": {"score": 1.0},
+            "autonomy_middleman_reduction": {"score": 1.0},
+            "strategy_quality": {"score": 1.0},
+        },
+        {
+            "broker_mutation_path_appears": {"passed": False},
+            "credentials_printed": {"passed": True},
+        },
+    )
+
+    assert score["status"] == "blocked_by_safety_gate"
+    assert score["score_valid"] is False
+    assert score["total_score"] is None
+    assert score["total_score_label"] == "blocked"
+    assert score["blocked_by"] == ["broker_mutation_path_appears"]
+
+
+def test_etf_sma_daily_paper_lab_alpaca_read_only_mode_is_scaffold_only(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_alpaca_read_only_scaffold_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+        )
+    )
+
+    mission = json.loads(
+        (output_root / "mission_control.json").read_text(encoding="utf-8")
+    )
+    broker = mission["broker_state_lane"]
+    assert payload["broker_state_mode"] == "alpaca_paper_read_only"
+    assert broker["broker_state_mode"] == "alpaca_paper_read_only"
+    assert broker["broker_state_status"] == "broker_read_scaffold_only"
+    assert broker["broker_read_performed"] is False
+    assert broker["broker_mutation_performed"] is False
+    assert broker["paper_submit_authorized"] is False
+    assert broker["live_authorized"] is False
+    scaffold = broker["alpaca_paper_read_only_scaffold"]
+    assert scaffold["requested"] is True
+    assert scaffold["broker_read_scaffold_only"] is True
+    assert scaffold["broker_read_requires_explicit_authorization"] is True
+    assert scaffold["broker_read_performed"] is False
+    assert scaffold["network_call_performed"] is False
+    assert scaffold["sdk_client_imported"] is False
 
 
 def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -> None:

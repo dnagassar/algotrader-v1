@@ -1,41 +1,41 @@
-# Assistant v1.32 — Execute Candidate Gap Closure Queue Item 012
+# Assistant v1.33 - Mission Control v0
 
-Discovered from `src/algotrader/execution/etf_sma_daily_paper_lab.py` queue
-generation (`_candidate_gap_closure_queue_items`,
-`_candidate_gap_closure_queue_item`, and `_candidate_gap_closure_artifact`) and
-confirmed by the generated offline `candidate_gap_closure_queue.jsonl` record.
+Direction change: the candidate gap closure queue is complete after item 012.
+This milestone does not add a new queue item, SMA catalog expansion, strategy
+promotion, optimizer, registry expansion, or backtest engine.
 
-## Item 012
+## Goal
 
-- queue_item_id: `candidate_gap_closure_queue_item_012`
-- action_id: `execute_candidate_gap_closure_queue_item_012`
-- gap_id: `candidate_backtest_outputs_status`
-- candidate_family: `Volatility or regime filter candidate`
-- candidate_family_id: `volatility_or_regime_filter_candidate`
-- closure_action: `materialize_candidate_backtest_benchmark_gap_packets`
-- closure_objective: `Create candidate_backtest_result_packet.jsonl for Offline backtest output status using only deterministic offline packet evidence before any candidate implementation, promotion, paper observation, broker read, paper submit, or live trading.`
-- expected_evidence_artifact: `candidate_backtest_result_packet.jsonl`
-- next deterministic safe action after item 012: none; deterministic queue item 012 is rank 12 of 12, so the artifact records `candidate_gap_closure_queue_complete_no_remaining_items`
+Produce one visible, self-contained daily paper-lab operating picture:
 
-## Acceptance Criteria
+- local `index.html` dashboard
+- `assistant_report.md`
+- structured `mission_control.json`
+- deterministic readiness score
+- market-data lane
+- broker-state lane
+- decision lane
+- work-order exports
+- ignored local `.agent_inbox/` files
+- rule-based dispatcher v0
+- explicit `BrokerStateMode`
+- `alpaca_paper_read_only` scaffold only, with no broker read in v1.33
 
-- `candidate_backtest_result_packet.jsonl` is a deterministic offline JSONL artifact.
-- Artifact records `source_queue_item_id=candidate_gap_closure_queue_item_012`.
-- Artifact records `source_gap_id=candidate_backtest_outputs_status`.
-- Artifact records `source_candidate_family_id=volatility_or_regime_filter_candidate`.
-- Artifact records `source_closure_action=materialize_candidate_backtest_benchmark_gap_packets`.
-- Artifact records `source_expected_evidence_artifact=candidate_backtest_result_packet.jsonl`.
-- Artifact records `selected_next_safe_action=candidate_gap_closure_queue_complete_no_remaining_items`.
-- Artifact records `next_candidate_backtest_result_packet_closure_actions=[]`.
-- Artifact preserves `broker_state_mode=broker_state_not_observed`.
-- Artifact preserves `paper_submit_authorized=false`.
-- Artifact preserves `profit_claim=none` and `safety_scope=offline_only`.
-- Manifest, operating record, selector, work-order exports, brief, and handoff reference the generated artifact consistently.
-- Unit coverage keeps default pytest offline, credential-free, broker-free, and network-free.
+## Safety Contract
+
+- Default mode is `broker_state_not_observed`.
+- `alpaca_paper_read_only` is scaffold-only and reports a blocked/read-requires-authorization state.
+- Broker reads are not performed.
+- Broker mutation is not performed.
+- Paper submit is not authorized.
+- Live trading is not authorized.
+- No credentials, network calls, or broker SDK/client calls are required for default pytest.
 
 ## Implementation Checklist
 
-- [x] Advance candidate backtest result packet version/source constants to item 012.
-- [x] Preserve the existing `candidate_backtest_result_packet.jsonl` artifact path and manifest/index wiring.
-- [x] Update deterministic tests to assert item 012 source binding and terminal queue-complete next action.
-- [x] Run targeted tests, safety guards, offline verification, smoke assertions, full pytest, and git hygiene checks.
+- [x] Add Mission Control artifact generation to the existing daily paper-lab command.
+- [x] Add deterministic readiness score with safety-gate override.
+- [x] Add rule-based dispatcher v0 and handoff/work-order exports.
+- [x] Add local ignored `.agent_inbox/` handoff files.
+- [x] Add explicit `BrokerStateMode` in config, CLI, and PowerShell launcher.
+- [x] Preserve existing offline safety rails and legacy packet validation.
