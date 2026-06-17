@@ -29,6 +29,7 @@ __all__ = [
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
     "evaluate_mission_control_readiness_score",
+    "validate_mission_control_contract",
     "validate_etf_sma_daily_paper_lab_packet",
 ]
 
@@ -178,6 +179,9 @@ _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME = (
 _MISSION_CONTROL_VERSION = "assistant_v1.33_mission_control"
 _MISSION_CONTROL_READINESS_VERSION = "assistant_v1.33_readiness_score"
 _MISSION_CONTROL_DISPATCHER_VERSION = "assistant_v1.33_rule_dispatcher_v0"
+_MISSION_CONTROL_VALIDATION_VERSION = (
+    "assistant_v1.34_mission_control_contract_validation"
+)
 _PHASE_NAME = "Assistant v1.33 - Mission Control v0"
 _PHASE_GOAL = (
     "Build a visible daily Mission Control surface, deterministic readiness "
@@ -257,6 +261,7 @@ _CLAUDE_WORK_ORDER_FILENAME = "claude_critique_order.md"
 _MISSION_CONTROL_FILENAME = "mission_control.json"
 _MISSION_CONTROL_INDEX_FILENAME = "index.html"
 _MISSION_CONTROL_REPORT_FILENAME = "assistant_report.md"
+_MISSION_CONTROL_VALIDATION_FILENAME = "mission_control_validation.json"
 _CODEX_NEXT_PROMPT_FILENAME = "codex_next_prompt.md"
 _CODEX_NEXT_WORK_ORDER_FILENAME = "codex_next_work_order.json"
 _ANTIGRAVITY_REVIEW_PROMPT_FILENAME = "antigravity_review_prompt.md"
@@ -282,6 +287,38 @@ _REQUIRED_LABELS = [
     "broker_state_not_observed",
     "paper_submit_not_authorized",
 ]
+_EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS = {
+    "real_world_attachment": 40,
+    "product_readiness": 30,
+    "autonomy_middleman_reduction": 20,
+    "strategy_quality": 10,
+}
+_REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
+    "executive_summary",
+    "market_data_lane",
+    "broker_state_lane",
+    "decision_lane",
+    "agent_command_center",
+    "readiness_score",
+)
+_REQUIRED_MISSION_CONTROL_WORK_ORDER_FILES = (
+    f"{_WORK_ORDERS_DIRNAME}/{_CODEX_NEXT_PROMPT_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_CODEX_NEXT_WORK_ORDER_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_ANTIGRAVITY_REVIEW_PROMPT_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_ANTIGRAVITY_REVIEW_WORK_ORDER_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_CLAUDE_CRITIQUE_PROMPT_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_CLAUDE_CRITIQUE_WORK_ORDER_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME}",
+    f"{_WORK_ORDERS_DIRNAME}/{_GPT_NEXT_DECISION_CONTEXT_FILENAME}",
+)
+_REQUIRED_MISSION_CONTROL_FILES = (
+    _MISSION_CONTROL_INDEX_FILENAME,
+    _MISSION_CONTROL_REPORT_FILENAME,
+    _MISSION_CONTROL_FILENAME,
+    _RECORD_FILENAME,
+    _MANIFEST_FILENAME,
+    *_REQUIRED_MISSION_CONTROL_WORK_ORDER_FILES,
+)
 _EXPECTED_ARTIFACTS = (
     ("operating_brief", _BRIEF_FILENAME),
     ("operating_record", _RECORD_FILENAME),
@@ -1581,9 +1618,13 @@ _NOT_AUTHORIZED_STATUSES = {
     "paper_submit_not_authorized",
 }
 _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS = (
+    "no spy position",
     "no positions",
+    "no spy open orders",
     "no open orders",
+    "zero spy position",
     "zero positions",
+    "zero spy open orders",
     "zero open orders",
 )
 
@@ -1706,6 +1747,388 @@ def validate_etf_sma_daily_paper_lab_packet(
     }
 
 
+def validate_mission_control_contract(
+    output_root: Path | str,
+    *,
+    write_artifact: bool = True,
+) -> dict[str, Any]:
+    """Validate the offline v1.33 Mission Control output contract."""
+    root = Path(output_root)
+    checked_artifacts: list[dict[str, Any]] = []
+    missing_artifacts: list[str] = []
+    schema_errors: list[str] = []
+    safety_errors: list[str] = []
+
+    for relative_path in _REQUIRED_MISSION_CONTROL_FILES:
+        artifact_path = root / relative_path
+        exists = artifact_path.is_file()
+        non_empty = exists and artifact_path.stat().st_size > 0
+        checked_artifacts.append(
+            {
+                "path": _normalize_path(artifact_path),
+                "exists": exists,
+                "non_empty": non_empty,
+            }
+        )
+        if not exists:
+            missing_artifacts.append(relative_path)
+        elif not non_empty:
+            schema_errors.append(f"{relative_path}.empty")
+
+    mission_control = _read_contract_json(
+        root / _MISSION_CONTROL_FILENAME,
+        artifact_label=_MISSION_CONTROL_FILENAME,
+        schema_errors=schema_errors,
+    )
+    manifest = _read_contract_json(
+        root / _MANIFEST_FILENAME,
+        artifact_label=_MANIFEST_FILENAME,
+        schema_errors=schema_errors,
+    )
+
+    if isinstance(mission_control, Mapping):
+        _validate_mission_control_schema(mission_control, schema_errors)
+        _validate_mission_control_safety(mission_control, safety_errors)
+    elif _MISSION_CONTROL_FILENAME not in missing_artifacts:
+        schema_errors.append("mission_control_json.not_an_object")
+
+    if isinstance(manifest, Mapping):
+        _validate_mission_control_manifest_references(manifest, schema_errors)
+    elif _MANIFEST_FILENAME not in missing_artifacts:
+        schema_errors.append("manifest_jsonl.not_an_object")
+
+    _validate_mission_control_index_references(root, schema_errors)
+
+    validation_status = (
+        "passed"
+        if not missing_artifacts and not schema_errors and not safety_errors
+        else "failed"
+    )
+    result = {
+        "validation_version": _MISSION_CONTROL_VALIDATION_VERSION,
+        "validation_status": validation_status,
+        "checked_artifacts": checked_artifacts,
+        "missing_artifacts": missing_artifacts,
+        "schema_errors": schema_errors,
+        "safety_errors": safety_errors,
+        "next_repair_action": _mission_control_next_repair_action(
+            missing_artifacts=missing_artifacts,
+            schema_errors=schema_errors,
+            safety_errors=safety_errors,
+        ),
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+    }
+    if write_artifact:
+        _write_json(root / _MISSION_CONTROL_VALIDATION_FILENAME, result)
+    return result
+
+
+def _read_contract_json(
+    path: Path,
+    *,
+    artifact_label: str,
+    schema_errors: list[str],
+) -> Any:
+    if not path.is_file():
+        return None
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        schema_errors.append(f"{artifact_label}.read_failed:{exc.__class__.__name__}")
+        return None
+
+    payload = text
+    if path.suffix == ".jsonl":
+        lines = [line for line in text.splitlines() if line.strip()]
+        if not lines:
+            schema_errors.append(f"{artifact_label}.empty_jsonl")
+            return None
+        payload = lines[-1]
+
+    try:
+        return json.loads(payload)
+    except json.JSONDecodeError:
+        schema_errors.append(f"{artifact_label}.invalid_json")
+        return None
+
+
+def _validate_mission_control_schema(
+    mission_control: Mapping[str, Any],
+    schema_errors: list[str],
+) -> None:
+    for section in _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS:
+        if not isinstance(mission_control.get(section), Mapping):
+            schema_errors.append(f"mission_control.{section}.missing_or_not_object")
+
+    readiness = mission_control.get("readiness_score")
+    if isinstance(readiness, Mapping):
+        if readiness.get("weights") != _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS:
+            schema_errors.append(
+                "mission_control.readiness_score.weights_not_40_30_20_10"
+            )
+    else:
+        schema_errors.append("mission_control.readiness_score.missing")
+
+    work_orders = mission_control.get("work_orders")
+    if isinstance(work_orders, Mapping):
+        required_keys = {
+            "codex_next_prompt",
+            "codex_next_work_order",
+            "antigravity_review_prompt",
+            "antigravity_review_work_order",
+            "claude_critique_prompt",
+            "claude_critique_work_order",
+            "gpt_report_classification_prompt",
+            "gpt_next_decision_context",
+        }
+        missing_keys = sorted(required_keys.difference(work_orders))
+        for key in missing_keys:
+            schema_errors.append(f"mission_control.work_orders.{key}.missing")
+    else:
+        schema_errors.append("mission_control.work_orders.missing_or_not_object")
+
+
+def _validate_mission_control_safety(
+    mission_control: Mapping[str, Any],
+    safety_errors: list[str],
+) -> None:
+    market = _mapping_section(mission_control, "market_data_lane")
+    broker = _mapping_section(mission_control, "broker_state_lane")
+    decision = _mapping_section(mission_control, "decision_lane")
+    executive = _mapping_section(mission_control, "executive_summary")
+    readiness = _mapping_section(mission_control, "readiness_score")
+
+    if isinstance(readiness, Mapping):
+        _validate_readiness_safety_override(readiness, safety_errors)
+
+    broker_mode = str(broker.get("broker_state_mode", ""))
+    if broker.get("broker_read_performed") is not False:
+        safety_errors.append("mission_control.broker_state_lane.broker_read_performed")
+    if broker.get("broker_mutation_performed") is not False:
+        safety_errors.append(
+            "mission_control.broker_state_lane.broker_mutation_performed"
+        )
+
+    _require_false(
+        broker,
+        "paper_submit_authorized",
+        "mission_control.broker_state_lane.paper_submit_authorized",
+        safety_errors,
+    )
+    _require_false(
+        broker,
+        "live_authorized",
+        "mission_control.broker_state_lane.live_authorized",
+        safety_errors,
+    )
+    _require_false(
+        decision,
+        "paper_submit_authorized",
+        "mission_control.decision_lane.paper_submit_authorized",
+        safety_errors,
+    )
+    _require_false(
+        decision,
+        "live_authorized",
+        "mission_control.decision_lane.live_authorized",
+        safety_errors,
+    )
+    _require_false(
+        executive,
+        "paper_submit_authorized",
+        "mission_control.executive_summary.paper_submit_authorized",
+        safety_errors,
+    )
+    _require_false(
+        executive,
+        "live_authorized",
+        "mission_control.executive_summary.live_authorized",
+        safety_errors,
+    )
+
+    if broker_mode == "broker_state_not_observed":
+        if broker.get("broker_state_not_observed") is not True:
+            safety_errors.append(
+                "mission_control.broker_state_lane.broker_state_not_observed_missing"
+            )
+    elif broker_mode == "offline_fixture":
+        if broker.get("offline_fixture") is not True:
+            safety_errors.append(
+                "mission_control.broker_state_lane.offline_fixture_missing"
+            )
+
+    if broker.get("broker_read_performed") is not True:
+        if broker.get("spy_position_absence_claimed") is not False:
+            safety_errors.append(
+                "mission_control.broker_state_lane.spy_position_absence_claimed"
+            )
+        if broker.get("spy_open_order_absence_claimed") is not False:
+            safety_errors.append(
+                "mission_control.broker_state_lane.spy_open_order_absence_claimed"
+            )
+        if _contains_forbidden_broker_absence_claim(mission_control):
+            safety_errors.append(
+                "mission_control.broker_state_not_observed.absence_claim_text"
+            )
+
+    if _stale_market_data_labeled_current(market):
+        safety_errors.append(
+            "mission_control.market_data_lane.stale_data_represented_as_current"
+        )
+
+    labels = {
+        str(label)
+        for label in decision.get("safety_labels", [])
+        if _has_required_value(label)
+    }
+    for required_label in (
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        if required_label not in labels:
+            safety_errors.append(
+                f"mission_control.decision_lane.safety_labels.{required_label}.missing"
+            )
+    if "research_only" not in labels and "signal_evaluation_only" not in labels:
+        safety_errors.append(
+            "mission_control.decision_lane.safety_labels.research_or_signal_missing"
+        )
+    if broker_mode in {"broker_state_not_observed", "offline_fixture"}:
+        if "offline_only" not in labels:
+            safety_errors.append(
+                "mission_control.decision_lane.safety_labels.offline_only.missing"
+            )
+
+
+def _validate_readiness_safety_override(
+    readiness: Mapping[str, Any],
+    safety_errors: list[str],
+) -> None:
+    gates = readiness.get("safety_gates")
+    if not isinstance(gates, Mapping):
+        safety_errors.append("mission_control.readiness_score.safety_gates.missing")
+        return
+    failed_gate_ids = [
+        str(gate_id)
+        for gate_id, gate in gates.items()
+        if isinstance(gate, Mapping) and gate.get("passed") is not True
+    ]
+    if not failed_gate_ids:
+        return
+    if (
+        readiness.get("status") != "blocked_by_safety_gate"
+        or readiness.get("score_valid") is not False
+        or readiness.get("total_score") is not None
+    ):
+        safety_errors.append(
+            "mission_control.readiness_score.safety_override_missing"
+        )
+
+
+def _mapping_section(value: Mapping[str, Any], key: str) -> Mapping[str, Any]:
+    section = value.get(key)
+    if isinstance(section, Mapping):
+        return section
+    return {}
+
+
+def _require_false(
+    mapping: Mapping[str, Any],
+    key: str,
+    error_id: str,
+    safety_errors: list[str],
+) -> None:
+    if mapping.get(key) is not False:
+        safety_errors.append(error_id)
+
+
+def _stale_market_data_labeled_current(market: Mapping[str, Any]) -> bool:
+    try:
+        staleness = int(str(market.get("staleness_in_days")))
+    except (TypeError, ValueError):
+        return False
+    if staleness <= 0:
+        return False
+    return (
+        market.get("preview_currency_status") == "current"
+        or market.get("preview_is_current") is True
+    )
+
+
+def _contains_forbidden_broker_absence_claim(value: Any) -> bool:
+    if isinstance(value, Mapping):
+        return any(
+            _contains_forbidden_broker_absence_claim(item)
+            for item in value.values()
+        )
+    if isinstance(value, (list, tuple, set)):
+        return any(_contains_forbidden_broker_absence_claim(item) for item in value)
+    if isinstance(value, str):
+        lowered = value.lower()
+        return any(claim in lowered for claim in _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS)
+    return False
+
+
+def _validate_mission_control_manifest_references(
+    manifest: Mapping[str, Any],
+    schema_errors: list[str],
+) -> None:
+    indexed = manifest.get("indexed_artifacts")
+    if not isinstance(indexed, Mapping):
+        schema_errors.append("manifest.indexed_artifacts.missing_or_not_object")
+        return
+    required_manifest_keys = (
+        "mission_control",
+        "mission_control_index",
+        "assistant_report",
+        "codex_next_prompt",
+        "codex_next_work_order",
+        "antigravity_review_prompt",
+        "antigravity_review_work_order",
+        "claude_critique_prompt",
+        "claude_critique_work_order",
+        "gpt_report_classification_prompt",
+        "gpt_next_decision_context",
+    )
+    for key in required_manifest_keys:
+        if key not in indexed:
+            schema_errors.append(f"manifest.indexed_artifacts.{key}.missing")
+
+
+def _validate_mission_control_index_references(
+    output_root: Path,
+    schema_errors: list[str],
+) -> None:
+    index_path = output_root / _MISSION_CONTROL_INDEX_FILENAME
+    if not index_path.is_file():
+        return
+    text = index_path.read_text(encoding="utf-8").lower()
+    for token in (
+        _MISSION_CONTROL_FILENAME,
+        _MISSION_CONTROL_REPORT_FILENAME,
+        _WORK_ORDERS_DIRNAME,
+    ):
+        if token.lower() not in text:
+            schema_errors.append(f"index_html.reference.{token}.missing")
+
+
+def _mission_control_next_repair_action(
+    *,
+    missing_artifacts: list[str],
+    schema_errors: list[str],
+    safety_errors: list[str],
+) -> str:
+    if missing_artifacts:
+        return f"regenerate_missing_artifact:{missing_artifacts[0]}"
+    if safety_errors:
+        return f"repair_safety_contract:{safety_errors[0]}"
+    if schema_errors:
+        return f"repair_schema_contract:{schema_errors[0]}"
+    return "none_contract_valid"
+
+
 def _write_packet_artifacts(
     *,
     output_root: Path,
@@ -1771,6 +2194,13 @@ def _write_packet_artifacts(
     manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
 
+    _apply_mission_control_contract_validation(payload, output_root)
+    record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
+    record_file.write_text(record_line, encoding="utf-8", newline="\n")
+    manifest_data = _build_manifest(output_root, payload)
+    manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
+    manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
 
 def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
     artifact_paths = _artifact_paths(output_root)
@@ -1789,6 +2219,25 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
         dashboard["assistant_report_path"] = payload["assistant_report_path"]
         dashboard["mission_control"] = dict(mission_control)
     _write_mission_control_artifacts(output_root, mission_control)
+
+
+def _apply_mission_control_contract_validation(
+    payload: dict[str, Any],
+    output_root: Path,
+) -> None:
+    artifact_paths = _artifact_paths(output_root)
+    validation = validate_mission_control_contract(output_root)
+    payload["mission_control_validation_version"] = _MISSION_CONTROL_VALIDATION_VERSION
+    payload["mission_control_validation_path"] = artifact_paths[
+        "mission_control_validation"
+    ]
+    payload["mission_control_validation"] = validation
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["mission_control_validation_path"] = payload[
+            "mission_control_validation_path"
+        ]
+        dashboard["mission_control_validation"] = dict(validation)
 
 
 def _build_mission_control(
@@ -1831,6 +2280,10 @@ def _build_mission_control(
         decision_lane=decision_lane,
         dispatcher=dispatcher,
     )
+    agent_command_center = _mission_control_agent_command_center(
+        dispatcher=dispatcher,
+        artifact_paths=artifact_paths,
+    )
     return {
         "schema_version": _SCHEMA_VERSION,
         "mission_control_version": _MISSION_CONTROL_VERSION,
@@ -1847,6 +2300,7 @@ def _build_mission_control(
         "broker_state_lane": broker_state_lane,
         "decision_lane": decision_lane,
         "readiness_score": readiness_score,
+        "agent_command_center": agent_command_center,
         "rule_based_dispatcher_v0": dispatcher,
         "work_orders": _mission_control_work_order_index(artifact_paths),
         "agent_inbox": _mission_control_agent_inbox_index(),
@@ -1987,12 +2441,7 @@ def evaluate_mission_control_readiness_score(
     component_scores: Mapping[str, Any],
     safety_gates: Mapping[str, Any],
 ) -> dict[str, Any]:
-    weights = {
-        "real_world_attachment": 0.40,
-        "product_readiness": 0.30,
-        "autonomy_middleman_reduction": 0.20,
-        "strategy_quality": 0.10,
-    }
+    weights = dict(_EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS)
     components: dict[str, dict[str, Any]] = {}
     for component_id, weight in weights.items():
         raw_component = component_scores.get(component_id, {})
@@ -2006,7 +2455,7 @@ def evaluate_mission_control_readiness_score(
         components[component_id] = {
             "weight": weight,
             "score": score,
-            "weighted_points": round(score * weight * 100, 1),
+            "weighted_points": round(score * weight, 1),
             "explanation": explanation,
         }
 
@@ -2294,9 +2743,14 @@ def _mission_control_executive_summary(
             else "blocked_missing_market_data"
         ),
         "latest_preview_decision": decision_lane.get("preview_decision"),
+        "market_signal_preview": decision_lane.get("market_signal_preview"),
         "main_blocker": decision_lane.get("blocker_status"),
+        "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "data_staleness": market_data_lane.get("staleness_in_days"),
+        "data_staleness_status": market_data_lane.get("preview_currency_status"),
         "next_safest_action": dispatcher.get("selected_route"),
         "paper_submit_authorized": False,
+        "live_authorized": False,
         "live_trading_authorized": False,
         "broker_read_performed": broker_state_lane.get("broker_read_performed"),
         "broker_mutation_performed": broker_state_lane.get(
@@ -2304,6 +2758,25 @@ def _mission_control_executive_summary(
         ),
         "data_preview_status": market_data_lane.get("preview_currency_status"),
         "source_packet_preview_decision": payload.get("preview_decision"),
+    }
+
+
+def _mission_control_agent_command_center(
+    *,
+    dispatcher: Mapping[str, Any],
+    artifact_paths: Mapping[str, str],
+) -> dict[str, Any]:
+    return {
+        "status": "deterministic_offline_dispatch_ready",
+        "generation_mode": "rule_based_no_llm_no_broker",
+        "selected_route": dispatcher.get("selected_route"),
+        "selected_work_order_type": dispatcher.get("selected_work_order_type"),
+        "next_safest_action": dispatcher.get("selected_route"),
+        "work_orders": _mission_control_work_order_index(artifact_paths),
+        "broker_read_authorized": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "forbidden_routes": list(dispatcher.get("forbidden_routes", [])),
     }
 
 
@@ -2369,6 +2842,9 @@ def _mission_control_artifact_map(
         "index_html": artifact_paths["mission_control_index"],
         "assistant_report_md": artifact_paths["assistant_report"],
         "mission_control_json": artifact_paths["mission_control"],
+        "mission_control_validation_json": artifact_paths[
+            "mission_control_validation"
+        ],
         "operating_record_jsonl": artifact_paths["operating_record"],
         "manifest_jsonl": artifact_paths["manifest"],
         "work_orders": artifact_paths["work_orders"],
@@ -2585,16 +3061,29 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     decision = mission_control["decision_lane"]
     readiness = mission_control["readiness_score"]
     dispatcher = mission_control["rule_based_dispatcher_v0"]
+    artifacts = mission_control["artifacts"]
     lines = [
         "# Mission Control",
         "",
         "## Executive Summary",
         f"- Current system state: `{executive['current_system_state']}`",
         f"- Latest preview decision: `{executive['latest_preview_decision']}`",
+        f"- Market signal preview: `{executive['market_signal_preview']}`",
         f"- Main blocker: `{executive['main_blocker']}`",
+        f"- Broker-state mode: `{executive['broker_state_mode']}`",
+        (
+            f"- Data staleness: `{executive['data_staleness']}` days; "
+            f"status `{executive['data_staleness_status']}`"
+        ),
         f"- Next safest action: `{executive['next_safest_action']}`",
-        f"- Paper submit authorized: `{str(executive['paper_submit_authorized']).lower()}`",
-        f"- Live trading authorized: `{str(executive['live_trading_authorized']).lower()}`",
+        f"- paper_submit_authorized=false",
+        f"- live_authorized=false",
+        "",
+        "## Mission Control Artifacts",
+        f"- `mission_control.json`: `{artifacts['mission_control_json']}`",
+        f"- `assistant_report.md`: `{artifacts['assistant_report_md']}`",
+        f"- `index.html`: `{artifacts['index_html']}`",
+        f"- `work_orders/`: `{artifacts['work_orders']}`",
         "",
         "## Market Data Lane",
         f"- Symbol: `{market['symbol']}`",
@@ -2647,6 +3136,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     decision = mission_control["decision_lane"]
     readiness = mission_control["readiness_score"]
     dispatcher = mission_control["rule_based_dispatcher_v0"]
+    artifacts = mission_control["artifacts"]
     labels = " ".join(
         f"<span>{_html_escape(str(label))}</span>"
         for label in decision["safety_labels"]
@@ -2681,10 +3171,22 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
       <dl>
         <dt>Current system state</dt><dd>{_html_escape(str(executive["current_system_state"]))}</dd>
         <dt>Latest preview decision</dt><dd>{_html_escape(str(executive["latest_preview_decision"]))}</dd>
+        <dt>Market signal preview</dt><dd>{_html_escape(str(executive["market_signal_preview"]))}</dd>
         <dt>Main blocker</dt><dd>{_html_escape(str(executive["main_blocker"]))}</dd>
+        <dt>Broker-state mode</dt><dd>{_html_escape(str(executive["broker_state_mode"]))}</dd>
+        <dt>Data staleness</dt><dd>{_html_escape(str(executive["data_staleness"]))} days; {_html_escape(str(executive["data_staleness_status"]))}</dd>
         <dt>Next safest action</dt><dd>{_html_escape(str(executive["next_safest_action"]))}</dd>
-        <dt>Paper submit authorized</dt><dd>{str(executive["paper_submit_authorized"]).lower()}</dd>
-        <dt>Live trading authorized</dt><dd>{str(executive["live_trading_authorized"]).lower()}</dd>
+        <dt>paper_submit_authorized</dt><dd>false</dd>
+        <dt>live_authorized</dt><dd>false</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Mission Control Artifacts</h2>
+      <dl>
+        <dt>mission_control.json</dt><dd><a href="{_html_escape(str(artifacts["mission_control_json"]))}">{_html_escape(str(artifacts["mission_control_json"]))}</a></dd>
+        <dt>assistant_report.md</dt><dd><a href="{_html_escape(str(artifacts["assistant_report_md"]))}">{_html_escape(str(artifacts["assistant_report_md"]))}</a></dd>
+        <dt>index.html</dt><dd>{_html_escape(str(artifacts["index_html"]))}</dd>
+        <dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>
       </dl>
     </section>
     <section>
@@ -6065,6 +6567,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         ),
         "assistant_report": _normalize_path(
             output_root / _MISSION_CONTROL_REPORT_FILENAME
+        ),
+        "mission_control_validation": _normalize_path(
+            output_root / _MISSION_CONTROL_VALIDATION_FILENAME
         ),
         "assistant_brief": _normalize_path(output_root / _BRIEF_FILENAME),
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
@@ -23464,6 +23969,10 @@ def _render_generated_artifacts(payload: Mapping[str, Any]) -> str:
         ("operating_brief", artifact_paths.get("assistant_brief")),
         ("operating_record", artifact_paths.get("operating_record")),
         ("manifest", artifact_paths.get("manifest")),
+        (
+            "mission_control_validation",
+            artifact_paths.get("mission_control_validation"),
+        ),
         ("history_ledger", artifact_paths.get("history_ledger")),
         ("review_handoff", artifact_paths.get("review_handoff")),
         ("decision_ledger", artifact_paths.get("decision_ledger")),
@@ -23731,6 +24240,8 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "mission_control": output_root / _MISSION_CONTROL_FILENAME,
         "mission_control_index": output_root / _MISSION_CONTROL_INDEX_FILENAME,
         "assistant_report": output_root / _MISSION_CONTROL_REPORT_FILENAME,
+        "mission_control_validation": output_root
+        / _MISSION_CONTROL_VALIDATION_FILENAME,
         "codex_next_prompt": output_root
         / _WORK_ORDERS_DIRNAME
         / _CODEX_NEXT_PROMPT_FILENAME,

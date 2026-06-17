@@ -1,4 +1,4 @@
-# Assistant v1.33 - Mission Control v0
+# Assistant v1.34 - Mission Control Contract Validator + UX Tightening
 
 Direction change: the candidate gap closure queue is complete after item 012.
 This milestone does not add a new queue item, SMA catalog expansion, strategy
@@ -39,3 +39,6 @@ Produce one visible, self-contained daily paper-lab operating picture:
 - [x] Add local ignored `.agent_inbox/` handoff files.
 - [x] Add explicit `BrokerStateMode` in config, CLI, and PowerShell launcher.
 - [x] Preserve existing offline safety rails and legacy packet validation.
+- [x] Add deterministic offline Mission Control contract validation.
+- [x] Write `mission_control_validation.json` under each generated output root.
+- [x] Tighten the top Mission Control report/dashboard summary for daily operator review.

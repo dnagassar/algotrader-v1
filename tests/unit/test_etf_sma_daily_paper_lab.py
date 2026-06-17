@@ -16,6 +16,7 @@ from algotrader.execution.etf_sma_daily_paper_lab import (
     evaluate_mission_control_readiness_score,
     run_etf_sma_daily_paper_lab,
     validate_etf_sma_daily_paper_lab_packet,
+    validate_mission_control_contract,
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "etf_sma_cycle_matrix"
@@ -5392,6 +5393,35 @@ def test_etf_sma_daily_paper_lab_cli_invocation(tmp_path: Path) -> None:
     assert (output_root / "index.html").exists()
     assert (output_root / "assistant_report.md").exists()
     assert (output_root / "mission_control.json").exists()
+    assert (output_root / "mission_control_validation.json").exists()
+
+
+def _generate_mission_control_output(tmp_path: Path, name: str) -> Path:
+    output_root = tmp_path / name
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+    return output_root
+
+
+def _read_mission_control(output_root: Path) -> dict[str, object]:
+    return json.loads(
+        (output_root / "mission_control.json").read_text(encoding="utf-8")
+    )
+
+
+def _write_mission_control(output_root: Path, mission: dict[str, object]) -> None:
+    (output_root / "mission_control.json").write_text(
+        json.dumps(mission, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def test_etf_sma_daily_paper_lab_mission_control_outputs(
@@ -5413,9 +5443,11 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     index_path = output_root / "index.html"
     report_path = output_root / "assistant_report.md"
     mission_path = output_root / "mission_control.json"
+    validation_path = output_root / "mission_control_validation.json"
     assert index_path.exists()
     assert report_path.exists()
     assert mission_path.exists()
+    assert validation_path.exists()
     assert (output_root / "operating_record.jsonl").exists()
 
     mission = json.loads(mission_path.read_text(encoding="utf-8"))
@@ -5424,7 +5456,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     executive = mission["executive_summary"]
     assert executive["paper_submit_authorized"] is False
+    assert executive["live_authorized"] is False
     assert executive["live_trading_authorized"] is False
+    assert executive["market_signal_preview"] == "buy_preview"
+    assert executive["broker_state_mode"] == "broker_state_not_observed"
 
     market = mission["market_data_lane"]
     assert market["symbol"] == "SPY"
@@ -5471,12 +5506,17 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert readiness["status"] == "valid"
     assert readiness["score_valid"] is True
     assert readiness["weights"] == {
-        "real_world_attachment": 0.40,
-        "product_readiness": 0.30,
-        "autonomy_middleman_reduction": 0.20,
-        "strategy_quality": 0.10,
+        "real_world_attachment": 40,
+        "product_readiness": 30,
+        "autonomy_middleman_reduction": 20,
+        "strategy_quality": 10,
     }
     assert all(gate["passed"] for gate in readiness["safety_gates"].values())
+
+    command_center = mission["agent_command_center"]
+    assert command_center["generation_mode"] == "rule_based_no_llm_no_broker"
+    assert command_center["paper_submit_authorized"] is False
+    assert command_center["live_authorized"] is False
 
     dispatcher = mission["rule_based_dispatcher_v0"]
     assert dispatcher["dispatcher_version"] == (
@@ -5521,6 +5561,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert indexed["mission_control"]["path"].endswith("mission_control.json")
     assert indexed["mission_control_index"]["path"].endswith("index.html")
     assert indexed["assistant_report"]["path"].endswith("assistant_report.md")
+    assert indexed["mission_control_validation"]["path"].endswith(
+        "mission_control_validation.json"
+    )
     assert indexed["codex_next_work_order"]["path"].endswith(
         "work_orders/codex_next_work_order.json"
     )
@@ -5528,6 +5571,139 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     serialized_broker = json.dumps(broker, sort_keys=True).lower()
     assert "no positions" not in serialized_broker
     assert "no open orders" not in serialized_broker
+
+    report = report_path.read_text(encoding="utf-8")
+    assert "Market signal preview: `buy_preview`" in report
+    assert "Broker-state mode: `broker_state_not_observed`" in report
+    assert "paper_submit_authorized=false" in report
+    assert "live_authorized=false" in report
+
+    index_html = index_path.read_text(encoding="utf-8")
+    assert "mission_control.json" in index_html
+    assert "assistant_report.md" in index_html
+    assert "work_orders/" in index_html
+
+    validation = json.loads(validation_path.read_text(encoding="utf-8"))
+    assert validation["validation_status"] == "passed"
+    assert validation["missing_artifacts"] == []
+    assert validation["schema_errors"] == []
+    assert validation["safety_errors"] == []
+    assert validation["next_repair_action"] == "none_contract_valid"
+    assert validation["paper_submit_authorized"] is False
+    assert validation["live_authorized"] is False
+
+    direct_validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+    assert direct_validation["validation_status"] == "passed"
+
+
+def test_mission_control_contract_validator_fails_missing_required_artifact(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_missing_artifact_out",
+    )
+    (output_root / "work_orders" / "codex_next_prompt.md").unlink()
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "work_orders/codex_next_prompt.md" in validation["missing_artifacts"]
+    assert validation["next_repair_action"] == (
+        "regenerate_missing_artifact:work_orders/codex_next_prompt.md"
+    )
+    assert validation["paper_submit_authorized"] is False
+    assert validation["live_authorized"] is False
+
+
+def test_mission_control_contract_validator_fails_missing_required_section(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_missing_section_out",
+    )
+    mission = _read_mission_control(output_root)
+    mission.pop("decision_lane")
+    _write_mission_control(output_root, mission)
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "mission_control.decision_lane.missing_or_not_object" in validation[
+        "schema_errors"
+    ]
+
+
+def test_mission_control_contract_validator_blocks_unobserved_broker_absence_claims(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_broker_absence_claim_out",
+    )
+    mission = _read_mission_control(output_root)
+    broker = mission["broker_state_lane"]
+    assert isinstance(broker, dict)
+    broker["spy_position_absence_claimed"] = True
+    broker["spy_open_order_absence_claimed"] = True
+    broker["warning"] = "No SPY position and no open orders were found."
+    _write_mission_control(output_root, mission)
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "mission_control.broker_state_lane.spy_position_absence_claimed"
+        in validation["safety_errors"]
+    )
+    assert (
+        "mission_control.broker_state_lane.spy_open_order_absence_claimed"
+        in validation["safety_errors"]
+    )
+    assert (
+        "mission_control.broker_state_not_observed.absence_claim_text"
+        in validation["safety_errors"]
+    )
+
+
+def test_mission_control_contract_validator_blocks_stale_data_labeled_current(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_stale_current_out",
+    )
+    mission = _read_mission_control(output_root)
+    market = mission["market_data_lane"]
+    assert isinstance(market, dict)
+    market["staleness_in_days"] = 5
+    market["preview_currency_status"] = "current"
+    market["preview_is_current"] = True
+    _write_mission_control(output_root, mission)
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "mission_control.market_data_lane.stale_data_represented_as_current"
+        in validation["safety_errors"]
+    )
 
 
 def test_mission_control_readiness_score_blocks_on_safety_gate_failure() -> None:
@@ -5585,6 +5761,13 @@ def test_etf_sma_daily_paper_lab_alpaca_read_only_mode_is_scaffold_only(
     assert scaffold["broker_read_performed"] is False
     assert scaffold["network_call_performed"] is False
     assert scaffold["sdk_client_imported"] is False
+
+    validation = json.loads(
+        (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
+    )
+    assert validation["validation_status"] == "passed"
+    assert validation["paper_submit_authorized"] is False
+    assert validation["live_authorized"] is False
 
 
 def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -> None:
