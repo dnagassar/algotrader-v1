@@ -18,6 +18,9 @@ from algotrader.execution.etf_sma_daily_paper_lab import (
 )
 
 FIXTURES_DIR = Path(__file__).parent.parent / "fixtures" / "etf_sma_cycle_matrix"
+_CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION = (
+    "candidate_gap_closure_queue_complete_no_remaining_items"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -2285,7 +2288,7 @@ def _assert_candidate_backtest_result_packet_shape(status: dict[str, object]) ->
         "safety_labels",
     }
     assert status["candidate_backtest_result_packet_version"] == (
-        "assistant_v1.31_candidate_backtest_result_packet"
+        "assistant_v1.32_candidate_backtest_result_packet"
     )
     assert status["candidate_backtest_result_packet"] == "ready"
     assert status["candidate_backtest_outputs_status"] == "ready"
@@ -2293,11 +2296,14 @@ def _assert_candidate_backtest_result_packet_shape(status: dict[str, object]) ->
         "offline_candidate_backtest_result_packet_only"
     )
     assert status["baseline_strategy_id"] == "spy_sma_50_200_control"
-    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_011"
-    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_011"
+    assert status["source_queue_item_id"] == "candidate_gap_closure_queue_item_012"
+    assert status["source_action_id"] == "execute_candidate_gap_closure_queue_item_012"
     assert status["source_gap_id"] == "candidate_backtest_outputs_status"
-    assert status["source_candidate_family_id"] == "mean_reversion_candidate"
-    assert status["source_candidate_family"] == "Mean reversion candidate"
+    assert (
+        status["source_candidate_family_id"]
+        == "volatility_or_regime_filter_candidate"
+    )
+    assert status["source_candidate_family"] == "Volatility or regime filter candidate"
     assert status["source_gap_status"] in {"blocked", "missing", "incomplete"}
     assert status["source_gap_group_id"] == "backtest_and_benchmark_gaps"
     assert status["source_gap_group_label"] == "Backtest and benchmark gaps"
@@ -2307,12 +2313,11 @@ def _assert_candidate_backtest_result_packet_shape(status: dict[str, object]) ->
     assert status["source_expected_evidence_artifact"] == (
         "candidate_backtest_result_packet.jsonl"
     )
-    assert status["selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+    assert (
+        status["selected_next_safe_action"]
+        == _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
-    assert status["selected_next_safe_action"] in status[
-        "next_candidate_backtest_result_packet_closure_actions"
-    ]
+    assert status["next_candidate_backtest_result_packet_closure_actions"] == []
     assert status["broker_state_mode"] == "broker_state_not_observed"
     assert status["paper_submit_authorized"] is False
     assert status["daniel_action_required_now"] is False
@@ -2687,7 +2692,7 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     )
     assert exports["candidate_backtest_result_packet_status"] == "ready"
     assert exports["candidate_backtest_result_packet_selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert exports["metric_artifact_ingest_status"] in {
         "metric_artifacts_missing",
@@ -3320,7 +3325,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -4243,7 +4248,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.31 — Execute Candidate Gap Closure Queue Item 011"
+            "Assistant v1.32 — Execute Candidate Gap Closure Queue Item 012"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -5064,7 +5069,7 @@ def test_etf_sma_daily_paper_lab_accepted_review_selects_safe_offline_action(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -5823,7 +5828,7 @@ def test_etf_sma_daily_paper_lab_candidate_gap_closure_queue(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_work_order"] == (
         "codex_work_order"
@@ -5930,7 +5935,7 @@ def test_etf_sma_daily_paper_lab_candidate_risk_rule_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert data["risk_rule_status"] == "ready"
     assert data["risk_rule_status_mode"] == (
@@ -6052,7 +6057,7 @@ def test_etf_sma_daily_paper_lab_candidate_signal_rule_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert data["signal_rule_status"] == "ready"
     assert data["signal_rule_status_mode"] == (
@@ -6175,7 +6180,7 @@ def test_etf_sma_daily_paper_lab_shared_risk_rule_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -6288,7 +6293,7 @@ def test_etf_sma_daily_paper_lab_shared_signal_rule_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -6382,7 +6387,7 @@ def test_etf_sma_daily_paper_lab_shared_benchmark_comparison_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -6623,10 +6628,10 @@ def test_etf_sma_daily_paper_lab_candidate_backtest_outputs_status(
         assert "## Candidate Backtest Result Packet" in markdown
         assert "candidate_backtest_result_packet.jsonl" in markdown
         assert "offline_candidate_backtest_result_packet_only" in markdown
-        assert "candidate_gap_closure_queue_item_011" in markdown
+        assert "candidate_gap_closure_queue_item_012" in markdown
         assert "candidate_backtest_outputs_status" in markdown
-        assert "mean_reversion_candidate" in markdown
-        assert "execute_candidate_gap_closure_queue_item_012" in markdown
+        assert "volatility_or_regime_filter_candidate" in markdown
+        assert _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION in markdown
         assert "broker_state_not_observed" in markdown
         assert "paper_submit_authorized" in markdown
         assert "profit_claim" in markdown
@@ -6639,7 +6644,7 @@ def test_etf_sma_daily_paper_lab_candidate_backtest_outputs_status(
         "candidate_backtest_result_packet_next_action_selected"
     )
     assert payload["next_action_selector"]["selected_next_action_id"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert payload["next_action_selector"]["selected_research_candidate_id"] is None
     assert payload["next_action_selector"]["selected_work_order"] == (
@@ -6649,15 +6654,18 @@ def test_etf_sma_daily_paper_lab_candidate_backtest_outputs_status(
     assert "candidate_backtest_result_packet_ready" in payload["next_action_selector"][
         "reason_codes"
     ]
-    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_011"
-    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_011"
+    assert data["source_queue_item_id"] == "candidate_gap_closure_queue_item_012"
+    assert data["source_action_id"] == "execute_candidate_gap_closure_queue_item_012"
     assert data["source_gap_id"] == "candidate_backtest_outputs_status"
-    assert data["source_candidate_family_id"] == "mean_reversion_candidate"
+    assert (
+        data["source_candidate_family_id"]
+        == "volatility_or_regime_filter_candidate"
+    )
     assert data["source_expected_evidence_artifact"] == (
         "candidate_backtest_result_packet.jsonl"
     )
     assert data["selected_next_safe_action"] == (
-        "execute_candidate_gap_closure_queue_item_012"
+        _CANDIDATE_BACKTEST_TERMINAL_NEXT_ACTION
     )
     assert "candidate_backtest_result_packet_generated" not in payload[
         "quality_gate_failed_checks"

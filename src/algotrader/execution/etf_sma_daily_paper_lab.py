@@ -154,30 +154,30 @@ _SHARED_BENCHMARK_COMPARISON_STATUS_NEXT_ACTION_ID = (
     "execute_candidate_gap_closure_queue_item_010"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_VERSION = (
-    "assistant_v1.31_candidate_backtest_result_packet"
+    "assistant_v1.32_candidate_backtest_result_packet"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_QUEUE_ITEM_ID = (
-    "candidate_gap_closure_queue_item_011"
+    "candidate_gap_closure_queue_item_012"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_011"
+    "execute_candidate_gap_closure_queue_item_012"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID = (
-    "mean_reversion_candidate"
+    "volatility_or_regime_filter_candidate"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY = (
-    "Mean reversion candidate"
+    "Volatility or regime filter candidate"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID = (
-    "execute_candidate_gap_closure_queue_item_012"
+    "candidate_gap_closure_queue_complete_no_remaining_items"
 )
 _CANDIDATE_BACKTEST_RESULT_PACKET_FILENAME = (
     "candidate_backtest_result_packet.jsonl"
 )
-_PHASE_NAME = "Assistant v1.31 — Execute Candidate Gap Closure Queue Item 011"
+_PHASE_NAME = "Assistant v1.32 — Execute Candidate Gap Closure Queue Item 012"
 _PHASE_GOAL = (
     "Materialize deterministic offline candidate backtest outputs status evidence for "
-    "candidate_gap_closure_queue_item_011 before any strategy implementation, "
+    "candidate_gap_closure_queue_item_012 before any strategy implementation, "
     "promotion, paper observation, broker read, paper submit, or live trading."
 )
 _PACKET_TYPE = "daily_trading_research_command_center"
@@ -10835,6 +10835,7 @@ def _build_candidate_backtest_result_packet(
             f"source_candidate_family_id={_CANDIDATE_BACKTEST_RESULT_PACKET_SOURCE_CANDIDATE_FAMILY_ID}",
             "source_gap_id=candidate_backtest_outputs_status",
             f"selected_next_safe_action={_CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID}",
+            "next_candidate_backtest_result_packet_closure_actions=[] because source queue item is terminal",
             "broker_state_mode=broker_state_not_observed",
             "paper_submit_authorized=false",
             "daniel_action_required_now=false",
@@ -11932,22 +11933,42 @@ def _build_next_action_selector(
             candidate_backtest_result_packet.get("selected_next_safe_action", "")
         )
         if selected_action and not _selector_contains_forbidden_action(selected_action):
+            terminal_queue_complete = (
+                selected_action == _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID
+                and not selected_action.startswith(
+                    "execute_candidate_gap_closure_queue_item_"
+                )
+            )
             return _selector_result(
                 artifact_paths=artifact_paths,
                 source_state=source_state,
                 status="candidate_backtest_result_packet_next_action_selected",
                 priority="P2",
                 selected_next_action_id=selected_action,
-                selected_next_action_type="candidate_gap_closure_queue_item",
+                selected_next_action_type=(
+                    "candidate_gap_closure_queue_terminal"
+                    if terminal_queue_complete
+                    else "candidate_gap_closure_queue_item"
+                ),
                 selected_work_order="codex_work_order",
                 selected_owner="Codex",
                 rationale=(
-                    "candidate_backtest_result_packet materialized the source queue item, "
-                    "so the next deterministic offline queue item is selected."
+                    "candidate_backtest_result_packet materialized the terminal source "
+                    "queue item, so the deterministic queue-complete marker is selected."
+                    if terminal_queue_complete
+                    else (
+                        "candidate_backtest_result_packet materialized the source queue item, "
+                        "so the next deterministic offline queue item is selected."
+                    )
                 ),
                 reason_codes=[
                     "quality_gate_not_failed",
                     "candidate_backtest_result_packet_ready",
+                    *(
+                        ["candidate_gap_closure_queue_no_remaining_items"]
+                        if terminal_queue_complete
+                        else []
+                    ),
                     str(
                         candidate_backtest_result_packet.get(
                             "source_queue_item_id",
@@ -18653,10 +18674,17 @@ def _missing_candidate_backtest_result_packet_fields(
             f"{field_prefix}candidate_backtest_result_packet."
             "selected_next_safe_action.safe"
         )
-    if not selected_action.startswith("execute_candidate_gap_closure_queue_item_"):
+    terminal_queue_complete = (
+        selected_action == _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID
+        and not selected_action.startswith("execute_candidate_gap_closure_queue_item_")
+    )
+    if (
+        not selected_action.startswith("execute_candidate_gap_closure_queue_item_")
+        and not terminal_queue_complete
+    ):
         missing.append(
             f"{field_prefix}candidate_backtest_result_packet."
-            "selected_next_safe_action.concrete_item"
+            "selected_next_safe_action.concrete_item_or_terminal"
         )
     if selected_action != _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID:
         missing.append(
@@ -18688,7 +18716,12 @@ def _missing_candidate_backtest_result_packet_fields(
         "next_candidate_backtest_result_packet_closure_actions",
         "safety_labels",
     ):
-        if not isinstance(status.get(list_field), list) or not status.get(list_field):
+        if not isinstance(status.get(list_field), list):
+            missing.append(f"{field_prefix}candidate_backtest_result_packet.{list_field}")
+        elif (
+            list_field != "next_candidate_backtest_result_packet_closure_actions"
+            and not status.get(list_field)
+        ):
             missing.append(f"{field_prefix}candidate_backtest_result_packet.{list_field}")
     return missing
 
@@ -20046,9 +20079,16 @@ def _missing_work_order_export_fields(
             f"{field_prefix}work_order_exports."
             "candidate_backtest_result_packet_status"
         )
-    if not str(
+    candidate_backtest_next_action = str(
         exports.get("candidate_backtest_result_packet_selected_next_safe_action", "")
-    ).startswith("execute_candidate_gap_closure_queue_item_"):
+    )
+    if (
+        not candidate_backtest_next_action.startswith(
+            "execute_candidate_gap_closure_queue_item_"
+        )
+        and candidate_backtest_next_action
+        != _CANDIDATE_BACKTEST_RESULT_PACKET_NEXT_ACTION_ID
+    ):
         missing.append(
             f"{field_prefix}work_order_exports."
             "candidate_backtest_result_packet_selected_next_safe_action"
