@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import hashlib
+from datetime import date, timedelta
 from pathlib import Path
 import pytest
 
@@ -5461,6 +5462,62 @@ def _generate_mission_control_output(tmp_path: Path, name: str) -> Path:
     return output_root
 
 
+def _write_shifted_spy_fixture(
+    target_csv: Path,
+    *,
+    latest_bar_date: str,
+) -> str:
+    source_lines = (FIXTURES_DIR / "spy_daily_bars_200_bullish.csv").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    rows = source_lines[1:]
+    end_date = date.fromisoformat(latest_bar_date)
+    start_date = end_date - timedelta(days=len(rows) - 1)
+    output_lines = [source_lines[0]]
+    for offset, row in enumerate(rows):
+        _, rest = row.split(",", 1)
+        output_lines.append(
+            f"{(start_date + timedelta(days=offset)).isoformat()},{rest}"
+        )
+    target_csv.parent.mkdir(parents=True, exist_ok=True)
+    target_csv.write_text(
+        "\n".join(output_lines) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return hashlib.sha256(target_csv.read_bytes()).hexdigest()
+
+
+def _write_accepted_refresh_manifest(
+    tmp_path: Path,
+    *,
+    canonical_sha256: str,
+    latest_bar_date: str,
+) -> Path:
+    manifest_path = (
+        tmp_path / "runs" / "paper_lab" / "m446_adjusted_spy_bars_refresh_manifest.jsonl"
+    )
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_record = {
+        "refresh_state": "accepted_current_adjusted_bars",
+        "expected_latest_bar_date": latest_bar_date,
+        "latest_local_bar_date": latest_bar_date,
+        "operator_input_sha256": "operator-fixture-sha",
+        "refreshed_canonical_csv_path": (
+            "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
+        ),
+        "refreshed_canonical_csv_sha256": canonical_sha256,
+        "refresh_blockers": [],
+        "refresh_warnings": [],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest_record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return manifest_path
+
+
 def _read_mission_control(output_root: Path) -> dict[str, object]:
     return json.loads(
         (output_root / "mission_control.json").read_text(encoding="utf-8")
@@ -6437,6 +6494,264 @@ def test_data_refresh_dry_run_detects_present_csv_without_ingesting(
     assert dry_run["safe_success_state"] == "ready_for_offline_intake_validation"
     assert payload["mission_control"]["rule_based_dispatcher_v0"]["selected_route"] == (
         "offline_data_refresh_ready_for_intake_validation"
+    )
+    assert validate_mission_control_contract(output_root, write_artifact=False)[
+        "validation_status"
+    ] == "passed"
+
+
+def test_daily_bar_freshness_policy_treats_latest_completed_session_as_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    latest_bar_date = "2026-06-17"
+    canonical_csv = (
+        tmp_path
+        / "runs"
+        / "operator_input"
+        / "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    canonical_sha256 = _write_shifted_spy_fixture(
+        canonical_csv,
+        latest_bar_date=latest_bar_date,
+    )
+    _write_accepted_refresh_manifest(
+        tmp_path,
+        canonical_sha256=canonical_sha256,
+        latest_bar_date=latest_bar_date,
+    )
+
+    output_root = tmp_path / "paper_lab_latest_completed_session_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=canonical_csv,
+            as_of_date=latest_bar_date,
+            symbol="SPY",
+            run_date="2026-06-18",
+        )
+    )
+
+    mission = payload["mission_control"]
+    latest_run = _read_json_artifact(output_root / "latest_run.json")
+    data_plan = _read_json_artifact(output_root / "data_freshness_plan.json")
+    bridge = _read_json_artifact(output_root / "data_refresh_bridge.json")
+    dry_run = _read_json_artifact(output_root / "data_refresh_dry_run.json")
+    dispatcher = mission["rule_based_dispatcher_v0"]
+
+    assert mission["latest_run"] == latest_run
+    assert mission["data_freshness_plan"] == data_plan
+    assert mission["data_refresh_bridge"] == bridge
+    assert mission["data_refresh_dry_run"] == dry_run
+
+    assert data_plan["data_freshness_status"] == "current_for_daily_bar_lab"
+    assert data_plan["data_as_of"] == latest_bar_date
+    assert data_plan["run_date"] == "2026-06-18"
+    assert data_plan["latest_completed_session_date"] == latest_bar_date
+    assert data_plan["staleness_days"] == 1
+    assert data_plan["freshness_blocker"] == "none"
+    assert data_plan["offline_refresh_needed"] is False
+    assert data_plan["next_offline_data_action"] == (
+        "continue_daily_operator_review_preview_only"
+    )
+
+    assert bridge["current_data_freshness_status"] == "current_for_daily_bar_lab"
+    assert bridge["current_data_as_of"] == latest_bar_date
+    assert bridge["run_date"] == "2026-06-18"
+    assert bridge["current_staleness_days"] == 1
+    assert bridge["accepted_refresh_consumed"] is True
+    assert bridge["accepted_refresh_manifest_status"] == "accepted_refresh_consumed"
+    assert bridge["accepted_data_as_of"] == latest_bar_date
+    assert bridge["accepted_canonical_csv_sha256"] == canonical_sha256
+    assert bridge["local_operator_csv_required"] is False
+    assert "No new CSV refresh is requested" in bridge["next_operator_data_action"]
+
+    assert dry_run["current_data_freshness_status"] == "current_for_daily_bar_lab"
+    assert dry_run["current_staleness_days"] == 1
+    assert dry_run["accepted_refresh_consumed"] is True
+    assert dry_run["dry_run_status"] == "accepted_refresh_consumed_preview_only"
+    assert dry_run["stale_accepted_data_consumed"] is False
+    assert dry_run["accepted_data_staleness_state"] == (
+        "accepted_refresh_consumed_not_stale"
+    )
+    assert dry_run["safe_success_state"] == "accepted_refresh_consumed"
+    assert dry_run["paper_submit_authorized"] is False
+
+    for summary in (latest_run, mission["daily_latest"]):
+        assert summary["accepted_refresh_consumed"] is True
+        assert summary["accepted_refresh_manifest_status"] == (
+            "accepted_refresh_consumed"
+        )
+        assert summary["accepted_data_as_of"] == latest_bar_date
+        assert summary["data_freshness_status"] == "current_for_daily_bar_lab"
+        assert summary["staleness_days"] == 1
+        assert summary["market_signal_preview"] == "buy_preview"
+        assert summary["preview_decision"] == "blocked/broker_state_not_observed"
+        assert summary["broker_state_mode"] == "broker_state_not_observed"
+        assert summary["paper_submit_authorized"] is False
+        assert summary["stale_accepted_data_consumed"] is False
+        assert summary["accepted_data_staleness_state"] == (
+            "accepted_refresh_consumed_not_stale"
+        )
+
+    assert latest_run["current_staleness_days"] == 1
+    assert dispatcher["selected_rule_id"] == (
+        "broker_state_not_observed_and_read_not_authorized"
+    )
+    assert dispatcher["selected_route"] == "offline_dashboard_data_decision_improvement"
+    assert dispatcher["selected_route"] not in {
+        "offline_accepted_data_staleness_resolution",
+        "offline_data_refresh_dry_run_operator_input_needed",
+        "offline_accepted_data_refresh_dry_run_checklist_improvement",
+    }
+    assert dispatcher["paper_submit_authorized"] is False
+    assert dispatcher["broker_read_authorized"] is False
+    _assert_no_forbidden_routes(dispatcher)
+
+    required_labels = {
+        "paper_lab_only",
+        "signal_evaluation_only",
+        "research_only",
+        "not_live_authorized",
+        "profit_claim=none",
+        "offline_only",
+        "broker_state_not_observed",
+        "paper_submit_not_authorized",
+    }
+    for labels in (
+        mission["daily_latest"]["safety_labels"],
+        latest_run["safety_labels"],
+        data_plan["safety_labels"],
+        bridge["safety_labels"],
+        dry_run["labels"],
+    ):
+        assert required_labels <= set(labels)
+
+    assert "current_for_daily_bar_lab" in (
+        output_root / "assistant_report.md"
+    ).read_text(encoding="utf-8")
+    assert "current_for_daily_bar_lab" in (
+        output_root / "operator_review.md"
+    ).read_text(encoding="utf-8")
+    assert "current_for_daily_bar_lab" in (
+        output_root / "index.html"
+    ).read_text(encoding="utf-8")
+    assert validate_mission_control_contract(output_root, write_artifact=False)[
+        "validation_status"
+    ] == "passed"
+
+
+def test_daily_bar_freshness_policy_keeps_same_day_data_current(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    bars_csv = tmp_path / "runs" / "operator_input" / "same_day_spy.csv"
+    _write_shifted_spy_fixture(bars_csv, latest_bar_date="2026-06-17")
+
+    output_root = tmp_path / "paper_lab_same_day_current_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2026-06-17",
+            symbol="SPY",
+            run_date="2026-06-17",
+        )
+    )
+
+    mission = payload["mission_control"]
+    data_plan = mission["data_freshness_plan"]
+    bridge = mission["data_refresh_bridge"]
+    dry_run = mission["data_refresh_dry_run"]
+
+    assert data_plan["data_freshness_status"] == "current_for_daily_bar_lab"
+    assert data_plan["staleness_days"] == 0
+    assert data_plan["offline_refresh_needed"] is False
+    assert bridge["current_data_freshness_status"] == "current_for_daily_bar_lab"
+    assert bridge["local_operator_csv_required"] is False
+    assert dry_run["dry_run_status"] == "offline_intake_not_required_current_data"
+    assert dry_run["safe_success_state"] == "current_data_no_offline_intake_required"
+    assert mission["rule_based_dispatcher_v0"]["selected_route"] == (
+        "offline_dashboard_data_decision_improvement"
+    )
+
+
+def test_daily_bar_freshness_policy_preserves_stale_refresh_routing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    bars_csv = tmp_path / "runs" / "operator_input" / "stale_spy.csv"
+    _write_shifted_spy_fixture(bars_csv, latest_bar_date="2026-06-15")
+
+    output_root = tmp_path / "paper_lab_stale_daily_bar_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2026-06-15",
+            symbol="SPY",
+            run_date="2026-06-18",
+        )
+    )
+
+    mission = payload["mission_control"]
+    data_plan = mission["data_freshness_plan"]
+    bridge = mission["data_refresh_bridge"]
+    dry_run = mission["data_refresh_dry_run"]
+    dispatcher = mission["rule_based_dispatcher_v0"]
+
+    assert data_plan["data_freshness_status"] == "stale_data_preview_only"
+    assert data_plan["staleness_days"] == 3
+    assert data_plan["freshness_blocker"] == "stale_local_data"
+    assert data_plan["offline_refresh_needed"] is True
+    assert bridge["current_data_freshness_status"] == "stale_data_preview_only"
+    assert bridge["local_operator_csv_required"] is True
+    assert dry_run["dry_run_status"] == "awaiting_operator_csv"
+    assert dispatcher["selected_rule_id"] == "stale_data_present"
+    assert dispatcher["selected_route"] == (
+        "offline_data_refresh_dry_run_operator_input_needed"
+    )
+
+
+def test_daily_bar_freshness_policy_blocks_future_dated_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    bars_csv = tmp_path / "runs" / "operator_input" / "future_spy.csv"
+    _write_shifted_spy_fixture(bars_csv, latest_bar_date="2026-06-19")
+
+    output_root = tmp_path / "paper_lab_future_dated_daily_bar_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2026-06-19",
+            symbol="SPY",
+            run_date="2026-06-18",
+        )
+    )
+
+    mission = payload["mission_control"]
+    data_plan = mission["data_freshness_plan"]
+    bridge = mission["data_refresh_bridge"]
+    dispatcher = mission["rule_based_dispatcher_v0"]
+
+    assert data_plan["data_freshness_status"] == "blocked_future_dated_local_data"
+    assert data_plan["staleness_days"] == -1
+    assert data_plan["freshness_blocker"] == "future_dated_local_data"
+    assert data_plan["offline_refresh_needed"] is True
+    assert data_plan["safe_to_continue_preview_only"] is False
+    assert bridge["current_data_freshness_status"] == (
+        "blocked_future_dated_local_data"
+    )
+    assert bridge["local_operator_csv_required"] is True
+    assert dispatcher["selected_rule_id"] == "stale_data_present"
+    assert dispatcher["selected_route"] == (
+        "offline_data_refresh_dry_run_operator_input_needed"
     )
     assert validate_mission_control_contract(output_root, write_artifact=False)[
         "validation_status"

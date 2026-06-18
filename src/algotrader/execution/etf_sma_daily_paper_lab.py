@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 import hashlib
 import json
@@ -38,6 +38,7 @@ _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonica
 _DEFAULT_REFRESH_INTAKE_MANIFEST = (
     "runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl"
 )
+_DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS = 1
 _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
 _ASSISTANT_VERSION = "assistant_v1"
@@ -1948,6 +1949,7 @@ class EtfSmaDailyPaperLabConfig:
     sma_fast_window: int = 50
     sma_slow_window: int = 200
     broker_state_mode: str = "broker_state_not_observed"
+    run_date: str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _required_path(self.output_root, "output_root"))
@@ -1966,6 +1968,11 @@ class EtfSmaDailyPaperLabConfig:
             raise ValidationError("sma_slow_window must be positive.")
         if self.sma_fast_window >= self.sma_slow_window:
             raise ValidationError("sma_fast_window must be less than sma_slow_window.")
+        if self.run_date is not None:
+            run_date = str(self.run_date).strip()
+            if _parse_iso_date(run_date) is None:
+                raise ValidationError("run_date must be in YYYY-MM-DD format.")
+            object.__setattr__(self, "run_date", run_date)
 
 
 def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
@@ -2554,53 +2561,97 @@ def _require_false(
         safety_errors.append(error_id)
 
 
-def _stale_market_data_labeled_current(market: Mapping[str, Any]) -> bool:
+def _status_value_is_current_label(value: object) -> bool:
+    if value is True:
+        return True
+    return _is_current_daily_bar_freshness_status(value)
+
+
+def _calendar_age_allows_current_label(
+    mapping: Mapping[str, Any],
+    *,
+    staleness_key: str,
+    data_date_key: str,
+) -> bool:
     try:
-        staleness = int(str(market.get("staleness_in_days")))
+        staleness = int(str(mapping.get(staleness_key)))
     except (TypeError, ValueError):
         return False
-    if staleness <= 0:
+    if staleness < 0:
         return False
-    return (
-        market.get("preview_currency_status") == "current"
-        or market.get("preview_is_current") is True
+    if staleness == 0:
+        return True
+    if staleness > _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS:
+        return False
+
+    run_date = _parse_iso_date(mapping.get("run_date"))
+    data_date = _parse_iso_date(mapping.get(data_date_key))
+    return bool(
+        run_date is not None
+        and data_date is not None
+        and (run_date - data_date).days == staleness
+    )
+
+
+def _current_label_contradicts_daily_bar_policy(
+    mapping: Mapping[str, Any],
+    *,
+    staleness_key: str,
+    data_date_key: str,
+    status_values: tuple[object, ...],
+) -> bool:
+    if not any(_status_value_is_current_label(value) for value in status_values):
+        return False
+    return not _calendar_age_allows_current_label(
+        mapping,
+        staleness_key=staleness_key,
+        data_date_key=data_date_key,
+    )
+
+
+def _stale_market_data_labeled_current(market: Mapping[str, Any]) -> bool:
+    return _current_label_contradicts_daily_bar_policy(
+        market,
+        staleness_key="staleness_in_days",
+        data_date_key="latest_input_bar_date",
+        status_values=(
+            market.get("preview_currency_status", ""),
+            market.get("preview_is_current"),
+        ),
     )
 
 
 def _stale_data_plan_labeled_current(data_plan: Mapping[str, Any]) -> bool:
-    try:
-        staleness = int(str(data_plan.get("staleness_days")))
-    except (TypeError, ValueError):
-        return False
-    if staleness <= 0:
-        return False
-    return "current" in str(data_plan.get("data_freshness_status", "")).lower()
+    return _current_label_contradicts_daily_bar_policy(
+        data_plan,
+        staleness_key="staleness_days",
+        data_date_key="data_as_of",
+        status_values=(data_plan.get("data_freshness_status", ""),),
+    )
 
 
 def _stale_data_refresh_bridge_labeled_current(
     data_refresh_bridge: Mapping[str, Any],
 ) -> bool:
-    try:
-        staleness = int(str(data_refresh_bridge.get("current_staleness_days")))
-    except (TypeError, ValueError):
-        return False
-    if staleness <= 0:
-        return False
     status_values = (
         data_refresh_bridge.get("current_data_freshness_status", ""),
         data_refresh_bridge.get("refresh_bridge_status", ""),
     )
-    return any("current" in str(value).lower() for value in status_values)
+    return _current_label_contradicts_daily_bar_policy(
+        data_refresh_bridge,
+        staleness_key="current_staleness_days",
+        data_date_key="current_data_as_of",
+        status_values=status_values,
+    )
 
 
 def _stale_latest_run_labeled_current(latest_run: Mapping[str, Any]) -> bool:
-    try:
-        staleness = int(str(latest_run.get("staleness_days")))
-    except (TypeError, ValueError):
-        return False
-    if staleness <= 0:
-        return False
-    return "current" in str(latest_run.get("data_freshness_status", "")).lower()
+    return _current_label_contradicts_daily_bar_policy(
+        latest_run,
+        staleness_key="staleness_days",
+        data_date_key="current_data_as_of",
+        status_values=(latest_run.get("data_freshness_status", ""),),
+    )
 
 
 def _validate_dispatcher_selected_routes(
@@ -3485,6 +3536,7 @@ def _mission_control_daily_latest(
         "live_authorized": False,
         "data_source": market_data_lane.get("data_source_reference"),
         "data_as_of": market_data_lane.get("as_of_date"),
+        "run_date": market_data_lane.get("run_date"),
         "staleness_days": market_data_lane.get("staleness_in_days"),
         "data_freshness_status": data_freshness_plan.get(
             "data_freshness_status"
@@ -3607,6 +3659,7 @@ def _mission_control_latest_run_entry(
             "current_accepted_data_path"
         ),
         "current_data_as_of": daily_latest.get("data_as_of"),
+        "run_date": daily_latest.get("run_date"),
         "current_staleness_days": daily_latest.get("staleness_days"),
         "next_operator_data_action": daily_latest.get(
             "next_operator_data_action"
@@ -3649,8 +3702,17 @@ def _mission_control_data_freshness_plan(
     data_status = str(market_data_lane.get("preview_currency_status", "unknown"))
     data_missing = data_status == "blocked_missing_data" or row_count <= 0
     staleness_unknown = staleness_days is None
+    future_dated = not data_missing and (
+        data_status == "blocked_future_dated_local_data"
+        or (isinstance(staleness_days, int) and staleness_days < 0)
+    )
     stale = not data_missing and (
-        staleness_unknown or _int_or_zero(staleness_days) > 0
+        not future_dated
+        and (
+            staleness_unknown
+            or _int_or_zero(staleness_days)
+            > _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS
+        )
     )
 
     if data_missing:
@@ -3666,6 +3728,23 @@ def _mission_control_data_freshness_plan(
             "Provide an accepted local SPY daily bars CSV, then rerun the daily "
             "paper-lab command. Do not add API setup, secrets, paid services, "
             "broker reads, or broker mutation."
+        )
+    elif future_dated:
+        data_freshness_status = "blocked_future_dated_local_data"
+        freshness_blocker = "future_dated_local_data"
+        preview_only_reason = (
+            "Accepted local data is future-dated relative to the deterministic "
+            "daily-lab run date; Mission Control may show no current-data claim."
+        )
+        next_offline_data_action = (
+            "operator_review_or_replace_future_dated_local_spy_daily_bars_csv_"
+            "then_rerun_daily_lab"
+        )
+        operator_summary = (
+            "Review the accepted local SPY daily bars CSV date range or replace "
+            "it with an operator-approved local file, then rerun the daily "
+            "paper-lab command. No external API setup, secrets, paid services, "
+            "broker reads, or broker mutation are required."
         )
     elif stale:
         data_freshness_status = "stale_data_preview_only"
@@ -3688,11 +3767,12 @@ def _mission_control_data_freshness_plan(
             "are required."
         )
     else:
-        data_freshness_status = "current_local_data"
+        data_freshness_status = "current_for_daily_bar_lab"
         freshness_blocker = "none"
         preview_only_reason = (
-            "Local data staleness is not blocking the preview; broker state still "
-            "remains separate and unobserved unless explicitly authorized."
+            "Local data is current for the deterministic daily-bar lab policy; "
+            "broker state still remains separate and unobserved unless explicitly "
+            "authorized."
         )
         next_offline_data_action = "continue_daily_operator_review_preview_only"
         operator_summary = (
@@ -3708,26 +3788,47 @@ def _mission_control_data_freshness_plan(
         "data_as_of": market_data_lane.get("as_of_date"),
         "generated_at": "offline_command_runtime",
         "run_generated_at": "offline_command_runtime",
+        "run_date": market_data_lane.get("run_date"),
+        "run_date_source": market_data_lane.get("run_date_source"),
         "staleness_days": staleness_days,
+        "latest_completed_session_date": market_data_lane.get(
+            "latest_completed_session_date"
+        ),
         "staleness_policy": {
-            "fresh_rule": "staleness_days <= 0 can be treated as local-data current",
-            "stale_rule": "staleness_days > 0 is preview-only and cannot be labeled current",
+            "fresh_rule": (
+                "calendar staleness of 0 or 1 day can be current for the "
+                "daily-bar lab when evaluated against an explicit run date"
+            ),
+            "stale_rule": (
+                "calendar staleness greater than 1 day is preview-only and "
+                "cannot be labeled current"
+            ),
+            "future_rule": (
+                "negative calendar staleness is future-dated and blocked from "
+                "current-data claims"
+            ),
             "unknown_rule": "unknown staleness is preview-only until local data is refreshed",
             "refresh_mode": "operator_supplied_local_csv_only",
+            "current_status": "current_for_daily_bar_lab",
+            "current_max_calendar_age_days": _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS,
+            "calendar_semantics": (
+                "narrow calendar-day grace only; no exchange-holiday calendar "
+                "is resolved by this offline command"
+            ),
         },
         "accepted_data_path": market_data_lane.get("data_source_reference"),
         "accepted_data_basis": market_data_lane.get("basis"),
         "accepted_row_count": row_count,
         "preview_only_reason": preview_only_reason,
         "freshness_blocker": freshness_blocker,
-        "offline_refresh_needed": bool(data_missing or stale),
+        "offline_refresh_needed": bool(data_missing or stale or future_dated),
         "external_api_required": False,
         "secrets_required": False,
         "broker_read_required": False,
         "paid_service_required": False,
         "next_offline_data_action": next_offline_data_action,
         "operator_data_action_summary": operator_summary,
-        "safe_to_continue_preview_only": bool(not data_missing),
+        "safe_to_continue_preview_only": bool(not data_missing and not future_dated),
         "broker_state_mode": broker_state_lane.get("broker_state_mode"),
         "broker_read_performed": broker_state_lane.get("broker_read_performed"),
         "broker_mutation_performed": broker_state_lane.get(
@@ -3800,16 +3901,39 @@ def _mission_control_data_refresh_bridge(
         canonical_output_path=canonical_output_path,
     )
     if accepted_refresh_evidence["accepted_refresh_consumed"] is True:
+        if local_operator_csv_required:
+            next_operator_data_action = (
+                "Accepted refreshed SPY adjusted-close canonical data has been "
+                "consumed by Mission Control. Do not rerun intake for the same "
+                "file; provide a corrected or newer local CSV only if the "
+                "accepted as-of date is still not current."
+            )
+            next_agent_data_action = (
+                "Use accepted_refresh_consumed, accepted_data_source, "
+                "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
+                "beyond the completed offline intake; keep broker state "
+                "unobserved and resolve the offline data freshness blocker."
+            )
+        else:
+            next_operator_data_action = (
+                "Accepted refreshed SPY adjusted-close canonical data has been "
+                "consumed by Mission Control and is current for the daily-bar "
+                "lab. No new CSV refresh is requested by this run."
+            )
+            next_agent_data_action = (
+                "Use accepted_refresh_consumed, accepted_data_source, "
+                "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
+                "beyond the completed offline intake; keep broker state "
+                "unobserved."
+            )
+    elif not local_operator_csv_required:
         next_operator_data_action = (
-            "Accepted refreshed SPY adjusted-close canonical data has been "
-            "consumed by Mission Control. Do not rerun intake for the same "
-            "file; provide a newer local CSV only if the accepted as-of date "
-            "is still stale."
+            "Local SPY daily bars are current for the daily-bar lab; no new CSV "
+            "refresh is requested by this run. Continue preview-only review."
         )
         next_agent_data_action = (
-            "Use accepted_refresh_consumed, accepted_data_source, "
-            "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
-            "beyond the completed offline intake; keep broker state unobserved."
+            "Route data freshness as current_for_daily_bar_lab and continue "
+            "offline review while keeping broker state unobserved."
         )
     else:
         next_operator_data_action = (
@@ -3834,6 +3958,7 @@ def _mission_control_data_refresh_bridge(
         "operator_checklist_path": artifact_paths[
             "data_refresh_operator_checklist"
         ],
+        "run_date": data_freshness_plan.get("run_date"),
         "current_data_freshness_status": status,
         "current_accepted_data_path": data_freshness_plan.get(
             "accepted_data_path"
@@ -4051,28 +4176,42 @@ def _mission_control_data_refresh_dry_run(
     accepted_refresh_consumed = data_refresh_bridge.get(
         "accepted_refresh_consumed"
     ) is True
-    accepted_data_stale = data_freshness_plan.get("data_freshness_status") == (
-        "stale_data_preview_only"
+    data_freshness_status = str(
+        data_freshness_plan.get("data_freshness_status", "unknown")
+    )
+    data_refresh_required = bool(data_freshness_plan.get("offline_refresh_needed"))
+    accepted_data_stale = data_freshness_status == "stale_data_preview_only"
+    accepted_data_future_dated = (
+        data_freshness_status == "blocked_future_dated_local_data"
     )
     if accepted_refresh_consumed:
         dry_run_status = (
             "accepted_refresh_consumed_stale_preview_only"
             if accepted_data_stale
-            else "accepted_refresh_consumed_preview_only"
+            else (
+                "accepted_refresh_consumed_future_dated_preview_only"
+                if accepted_data_future_dated
+                else "accepted_refresh_consumed_preview_only"
+            )
         )
-        if accepted_data_stale:
-            safe_success_state = "stale_accepted_data_consumed"
+        if accepted_data_stale or accepted_data_future_dated:
+            safe_success_state = (
+                "stale_accepted_data_consumed"
+                if accepted_data_stale
+                else "future_dated_accepted_data_blocked"
+            )
             next_operator_action = (
                 "Mission Control consumed the refreshed accepted canonical "
-                "dataset, but the accepted data remains stale for this run. "
-                "Do not rerun intake for the same file; provide a newer "
-                "offline adjusted-data CSV when available. Broker state was "
+                "dataset, but the accepted data is not current for this run. "
+                "Do not rerun intake for the same file; provide a corrected "
+                "or newer offline adjusted-data CSV when available. Broker state was "
                 "not observed, and order submission remains unauthorized."
             )
             next_agent_action = (
-                "Route this as stale accepted data after completed offline "
-                "intake consumption. Keep broker state unobserved, preserve "
-                "offline-only blockers, and do not route to order submission."
+                "Route this as accepted data requiring offline freshness "
+                "resolution after completed offline intake consumption. Keep "
+                "broker state unobserved, preserve offline-only blockers, and "
+                "do not route to order submission."
             )
             blocker_status = (
                 "stale_accepted_data_consumed_offline_preview_only_"
@@ -4091,6 +4230,18 @@ def _mission_control_data_refresh_dry_run(
                 "existing offline-only safety fields."
             )
             blocker_status = "offline_preview_only_broker_state_not_observed"
+    elif not data_refresh_required:
+        dry_run_status = "offline_intake_not_required_current_data"
+        safe_success_state = "current_data_no_offline_intake_required"
+        next_operator_action = (
+            "Current local data is within the daily-bar policy; no CSV refresh "
+            "is requested by this run."
+        )
+        next_agent_action = (
+            "Do not route to stale-data refresh work; continue offline review "
+            "with broker state unobserved."
+        )
+        blocker_status = "offline_preview_only_broker_state_not_observed"
     elif input_csv_present:
         dry_run_status = "ready_for_offline_intake_validation"
         safe_success_state = "ready_for_offline_intake_validation"
@@ -4128,6 +4279,7 @@ def _mission_control_data_refresh_dry_run(
         "artifact_path": artifact_paths["data_refresh_dry_run"],
         "bridge_artifact_path": data_refresh_bridge.get("artifact_path"),
         "operator_checklist_path": data_refresh_bridge.get("operator_checklist_path"),
+        "run_date": data_freshness_plan.get("run_date"),
         "labels": list(decision_lane.get("safety_labels", [])),
         "broker_state_mode": broker_state_lane.get("broker_state_mode"),
         "broker_state_observed": False,
@@ -4199,9 +4351,13 @@ def _mission_control_data_refresh_dry_run(
             "stale_accepted_data_consumed"
             if accepted_refresh_consumed and accepted_data_stale
             else (
+                "future_dated_accepted_data_blocked"
+                if accepted_refresh_consumed and accepted_data_future_dated
+                else (
                 "accepted_refresh_consumed_not_stale"
                 if accepted_refresh_consumed
                 else "accepted_refresh_not_consumed"
+                )
             )
         ),
         "offline_intake_command_template": command_template,
@@ -4230,12 +4386,14 @@ def _mission_control_market_data_lane(payload: Mapping[str, Any]) -> dict[str, A
     )
     latest_input_bar_date = str(payload.get("latest_input_bar_date", "")).strip()
     as_of_date = str(payload.get("as_of_date", "")).strip()
-    staleness_in_days = _staleness_in_days(latest_input_bar_date)
-    preview_currency_status = _market_preview_currency_status(
-        source_exists=path_exists,
-        row_count=row_count,
-        staleness_in_days=staleness_in_days,
+    run_date = str(payload.get("run_date", "")).strip()
+    freshness = _daily_bar_freshness_evaluation(
+        data_available=path_exists and row_count > 0,
+        latest_input_bar_date=latest_input_bar_date,
+        run_date=run_date,
     )
+    staleness_in_days = freshness["staleness_days"]
+    preview_currency_status = str(freshness["status"])
     return {
         "symbol": str(payload.get("symbol", _DEFAULT_SYMBOL)),
         "expected_symbol": _DEFAULT_SYMBOL,
@@ -4245,7 +4403,16 @@ def _mission_control_market_data_lane(payload: Mapping[str, Any]) -> dict[str, A
         "basis": _csv_price_basis(source_path) if path_exists else "unknown",
         "row_count": row_count,
         "as_of_date": as_of_date,
+        "run_date": run_date,
+        "run_date_source": payload.get("run_date_source"),
         "latest_input_bar_date": latest_input_bar_date or None,
+        "latest_completed_session_date": freshness[
+            "latest_completed_session_date"
+        ],
+        "daily_bar_current_max_calendar_age_days": (
+            _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS
+        ),
+        "daily_bar_freshness_status": preview_currency_status,
         "staleness_in_days": staleness_in_days,
         "preview_currency_status": preview_currency_status,
         "data_status": (
@@ -4257,7 +4424,9 @@ def _mission_control_market_data_lane(payload: Mapping[str, Any]) -> dict[str, A
         "sma_slow_window": payload.get("sma_slow_window"),
         "posture": _mission_control_posture(str(payload.get("posture", ""))),
         "repo_posture": payload.get("posture"),
-        "preview_is_current": preview_currency_status == "current",
+        "preview_is_current": _is_current_daily_bar_freshness_status(
+            preview_currency_status
+        ),
         "stale_data_labeled_preview_only": (
             preview_currency_status == "stale_data_preview_only"
         ),
@@ -4635,7 +4804,25 @@ def _mission_control_dispatcher(
             data_refresh_bridge,
         )
     )
-    stale_data_present = _int_or_zero(market_data_lane.get("staleness_in_days")) > 0
+    data_freshness_status = str(
+        data_refresh_bridge.get("current_data_freshness_status", "")
+    )
+    fallback_calendar_stale = (
+        not data_freshness_status
+        and _int_or_zero(market_data_lane.get("staleness_in_days"))
+        > _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS
+    )
+    stale_data_present = (
+        data_freshness_status == "stale_data_preview_only" or fallback_calendar_stale
+    )
+    data_freshness_resolution_required = data_freshness_status in {
+        "blocked_missing_local_data",
+        "blocked_future_dated_local_data",
+        "stale_data_preview_only",
+    } or (
+        fallback_calendar_stale
+        or data_refresh_bridge.get("local_operator_csv_required") is True
+    )
     dry_run_input_csv_present = data_refresh_dry_run.get("input_csv_present") is True
     accepted_refresh_consumed = (
         data_refresh_dry_run.get("accepted_refresh_consumed") is True
@@ -4675,15 +4862,19 @@ def _mission_control_dispatcher(
         selected_rule_id = "offline_validation_command_missing"
         selected_route = "offline_data_intake_validation_planning"
         selected_work_order_type = "codex_offline_data_intake_validation_planning"
-    elif dry_run_input_csv_present and dry_run_ingest_not_performed:
+    elif (
+        data_freshness_resolution_required
+        and dry_run_input_csv_present
+        and dry_run_ingest_not_performed
+    ):
         selected_rule_id = "offline_refresh_csv_present_not_ingested"
         selected_route = "offline_data_refresh_ready_for_intake_validation"
         selected_work_order_type = "codex_offline_data_refresh_ready_for_intake_validation"
-    elif stale_data_present and accepted_refresh_consumed:
+    elif data_freshness_resolution_required and accepted_refresh_consumed:
         selected_rule_id = "stale_accepted_data_consumed"
         selected_route = "offline_accepted_data_staleness_resolution"
         selected_work_order_type = "codex_offline_stale_accepted_data_followup"
-    elif stale_data_present:
+    elif data_freshness_resolution_required or stale_data_present:
         selected_rule_id = "stale_data_present"
         selected_route = (
             "offline_data_refresh_dry_run_operator_input_needed"
@@ -6034,14 +6225,83 @@ def _int_or_zero(value: Any) -> int:
         return 0
 
 
-def _staleness_in_days(latest_input_bar_date: str) -> int | None:
-    if not latest_input_bar_date:
+def _parse_iso_date(value: object) -> date | None:
+    text = str(value or "").strip()
+    if not text:
         return None
     try:
-        latest_date = datetime.fromisoformat(latest_input_bar_date).date()
+        return datetime.fromisoformat(text).date()
     except ValueError:
         return None
-    return (datetime.now(timezone.utc).date() - latest_date).days
+
+
+def _current_utc_date() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def _staleness_in_days(
+    latest_input_bar_date: str,
+    *,
+    run_date: str | date | None = None,
+) -> int | None:
+    latest_date = _parse_iso_date(latest_input_bar_date)
+    if latest_date is None:
+        return None
+    run_dt = run_date if isinstance(run_date, date) else _parse_iso_date(run_date)
+    if run_dt is None:
+        run_dt = _current_utc_date()
+    return (run_dt - latest_date).days
+
+
+def _daily_bar_freshness_evaluation(
+    *,
+    data_available: bool,
+    latest_input_bar_date: object,
+    run_date: object,
+) -> dict[str, Any]:
+    run_dt = _parse_iso_date(run_date)
+    latest_date = _parse_iso_date(latest_input_bar_date)
+    latest_completed_session_date = (
+        (run_dt - timedelta(days=1)).isoformat() if run_dt is not None else None
+    )
+
+    if not data_available:
+        return {
+            "status": "blocked_missing_data",
+            "staleness_days": None,
+            "latest_completed_session_date": latest_completed_session_date,
+        }
+
+    if latest_date is None or run_dt is None:
+        return {
+            "status": "accepted_but_stale",
+            "staleness_days": None,
+            "latest_completed_session_date": latest_completed_session_date,
+        }
+
+    staleness_days = (run_dt - latest_date).days
+    if staleness_days < 0:
+        status = "blocked_future_dated_local_data"
+    elif staleness_days <= _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS:
+        status = "current_for_daily_bar_lab"
+    else:
+        status = "stale_data_preview_only"
+
+    return {
+        "status": status,
+        "staleness_days": staleness_days,
+        "latest_completed_session_date": latest_completed_session_date,
+    }
+
+
+def _is_current_daily_bar_freshness_status(value: object) -> bool:
+    text = str(value or "").strip().lower()
+    return text in {
+        "current",
+        "current_local_data",
+        "current_for_daily_bar_lab",
+        "latest_completed_session_data_current",
+    }
 
 
 def _market_preview_currency_status(
@@ -6054,10 +6314,10 @@ def _market_preview_currency_status(
         return "blocked_missing_data"
     if staleness_in_days is None:
         return "accepted_but_stale"
-    if staleness_in_days <= 0:
-        return "current"
-    if staleness_in_days <= 3:
-        return "accepted_but_stale"
+    if staleness_in_days < 0:
+        return "blocked_future_dated_local_data"
+    if staleness_in_days <= _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS:
+        return "current_for_daily_bar_lab"
     return "stale_data_preview_only"
 
 
@@ -8521,6 +8781,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         as_of_dt = max(bar.timestamp for bar in bars)
         as_of_str = as_of_dt.strftime("%Y-%m-%d")
         as_of_source = "latest_input_bar"
+    if config.run_date is not None:
+        run_date_str = config.run_date
+        run_date_source = "explicit_config"
+    else:
+        run_date_str = _current_utc_date().isoformat()
+        run_date_source = "utc_runtime_date"
 
     latest_input_bar_date = max(bar.timestamp for bar in bars).strftime("%Y-%m-%d")
     signal = evaluate_etf_sma_signal(
@@ -8630,6 +8896,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "input_data_sha256": _sha256_file(bars_path),
         "as_of_date": as_of_str,
         "as_of_source": as_of_source,
+        "run_date": run_date_str,
+        "run_date_source": run_date_source,
         "latest_input_bar_date": latest_input_bar_date,
         "active_strategy_name": _STRATEGY_NAME,
         "strategy_name": _STRATEGY_NAME,
