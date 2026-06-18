@@ -130,14 +130,27 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $LatestRunPath = Join-Path $AbsoluteOutputRoot "latest_run.json"
     $ValidationPath = Join-Path $AbsoluteOutputRoot "mission_control_validation.json"
     $DataRefreshBridgePath = Join-Path $AbsoluteOutputRoot "data_refresh_bridge.json"
+    $DataRefreshDryRunPath = Join-Path $AbsoluteOutputRoot "data_refresh_dry_run.json"
     $DataRefreshChecklistPath = Join-Path $AbsoluteOutputRoot "data_refresh_operator_checklist.md"
     $BrokerStateModeText = $BrokerStateMode
+    $DataRefreshDryRunStatusText = "unknown"
+    $DataRefreshInputCsvPresentText = "unknown"
+    $DataRefreshIngestPerformedText = "false"
 
     if (Test-Path -LiteralPath $LatestRunPath) {
         try {
             $LatestRun = Get-Content -LiteralPath $LatestRunPath -Raw | ConvertFrom-Json
             if ($LatestRun.broker_state_mode) {
                 $BrokerStateModeText = [string]$LatestRun.broker_state_mode
+            }
+            if ($LatestRun.data_refresh_dry_run_status) {
+                $DataRefreshDryRunStatusText = [string]$LatestRun.data_refresh_dry_run_status
+            }
+            if ($null -ne $LatestRun.data_refresh_input_csv_present) {
+                $DataRefreshInputCsvPresentText = ([string]$LatestRun.data_refresh_input_csv_present).ToLowerInvariant()
+            }
+            if ($null -ne $LatestRun.data_refresh_ingest_performed) {
+                $DataRefreshIngestPerformedText = ([string]$LatestRun.data_refresh_ingest_performed).ToLowerInvariant()
             }
         }
         catch {
@@ -152,6 +165,10 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Latest run summary: $LatestRunPath"
     Write-Host "Validation: $ValidationPath"
     Write-Host "Data refresh bridge: $DataRefreshBridgePath"
+    Write-Host "Data refresh dry run: $DataRefreshDryRunPath"
+    Write-Host "Data refresh dry-run status: $DataRefreshDryRunStatusText"
+    Write-Host "Data refresh CSV present: $DataRefreshInputCsvPresentText"
+    Write-Host "Data refresh ingest performed: $DataRefreshIngestPerformedText"
     Write-Host "Data refresh checklist: $DataRefreshChecklistPath"
     Write-Host "Paper submit authorized: false"
     Write-Host "Live authorized: false"

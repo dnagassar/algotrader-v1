@@ -32,6 +32,10 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "Latest run summary: $LatestRunPath",
         "Validation: $ValidationPath",
         "Data refresh bridge: $DataRefreshBridgePath",
+        "Data refresh dry run: $DataRefreshDryRunPath",
+        "Data refresh dry-run status: $DataRefreshDryRunStatusText",
+        "Data refresh CSV present: $DataRefreshInputCsvPresentText",
+        "Data refresh ingest performed: $DataRefreshIngestPerformedText",
         "Data refresh checklist: $DataRefreshChecklistPath",
         "Paper submit authorized: false",
         "Live authorized: false",
@@ -40,6 +44,7 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "Broker-state mode: $BrokerStateModeText",
         "latest_run.json",
         "data_refresh_bridge.json",
+        "data_refresh_dry_run.json",
         "data_refresh_operator_checklist.md",
     )
     for fragment in expected_fragments:

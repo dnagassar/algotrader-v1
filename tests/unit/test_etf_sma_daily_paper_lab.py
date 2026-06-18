@@ -31,6 +31,7 @@ _MISSION_CONTROL_ARTIFACT_RELATIVE_PATHS = {
     "latest_run_path": "latest_run.json",
     "data_freshness_plan_path": "data_freshness_plan.json",
     "data_refresh_bridge_path": "data_refresh_bridge.json",
+    "data_refresh_dry_run_path": "data_refresh_dry_run.json",
     "data_refresh_checklist_path": "data_refresh_operator_checklist.md",
     "operator_review_path": "operator_review.md",
     "operating_record_path": "operating_record.jsonl",
@@ -64,6 +65,9 @@ _FORBIDDEN_ROUTE_FRAGMENTS = {
     "secret",
     "paid_service",
     "external_api",
+    "credential_setup",
+    "network_fetch",
+    "autonomous_ingest",
     "strategy_promotion",
     "safety_weakening",
 }
@@ -4294,7 +4298,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
     ]
     for work_order in work_order_texts:
         assert (
-            "Assistant v1.38 - Offline Accepted Data Refresh Bridge"
+            "Assistant v1.40 - Offline Data Refresh Intake Dry-Run UX"
             in work_order
         )
         assert "execute_candidate_gap_closure_queue_item_001" in work_order
@@ -4312,6 +4316,7 @@ def test_etf_sma_daily_paper_lab_success_bullish(tmp_path: Path) -> None:
         assert "research_candidate_queue.jsonl" in work_order
         assert "baseline_health_evaluation.jsonl" in work_order
         assert "baseline_evidence_metrics.jsonl" in work_order
+        assert "data_refresh_dry_run.json" in work_order
         assert "paper_observation_readiness.jsonl" in work_order
         assert "research_board_prioritization.jsonl" in work_order
         assert "strategy_comparison_scaffold.jsonl" in work_order
@@ -5479,6 +5484,7 @@ def _dispatcher_result(
     blocker_status: str = "broker_state_not_observed",
     missing_artifact: str | None = None,
     offline_validation_commands: list[str] | None = None,
+    input_csv_present: bool = False,
 ) -> dict[str, object]:
     artifacts: dict[str, object] = {
         "index_html": "index.html",
@@ -5487,6 +5493,7 @@ def _dispatcher_result(
         "latest_run_json": "latest_run.json",
         "data_freshness_plan_json": "data_freshness_plan.json",
         "data_refresh_bridge_json": "data_refresh_bridge.json",
+        "data_refresh_dry_run_json": "data_refresh_dry_run.json",
         "data_refresh_operator_checklist_md": "data_refresh_operator_checklist.md",
         "operator_review_md": "operator_review.md",
         "work_orders": "work_orders",
@@ -5519,6 +5526,15 @@ def _dispatcher_result(
             "offline_validation_commands": offline_validation_commands
             if offline_validation_commands is not None
             else ["python -m algotrader.cli etf-sma-adjusted-spy-bars-refresh-intake"],
+        },
+        data_refresh_dry_run={
+            "dry_run_status": (
+                "ready_for_offline_intake_validation"
+                if input_csv_present
+                else "awaiting_operator_csv"
+            ),
+            "input_csv_present": input_csv_present,
+            "ingest_performed": False,
         },
         validation_summary={"validation_status": validation_status},
     )
@@ -5604,10 +5620,74 @@ def _assert_data_freshness_plan_shape(plan: dict[str, object]) -> None:
     assert "profit_claim=none" in plan["safety_labels"]
 
 
+def _assert_data_refresh_dry_run_shape(dry_run: dict[str, object]) -> None:
+    assert {
+        "data_refresh_dry_run_version",
+        "dry_run_status",
+        "generated_at",
+        "labels",
+        "broker_state_mode",
+        "broker_state_observed",
+        "paper_submit_authorized",
+        "live_authorized",
+        "broker_read_authorized",
+        "broker_mutation_authorized",
+        "network_required",
+        "credential_required",
+        "ingest_performed",
+        "dry_run_only",
+        "input_csv_path",
+        "input_csv_present",
+        "operator_csv_tracked_by_git",
+        "generated_runs_tracked_by_git",
+        "expected_latest_bar_date_status",
+        "expected_latest_bar_date_source",
+        "current_accepted_data_as_of",
+        "current_data_freshness_status",
+        "staleness_status",
+        "offline_intake_command_template",
+        "next_operator_action",
+        "next_agent_action",
+        "blocker_status",
+    } <= set(dry_run)
+    assert dry_run["data_refresh_dry_run_version"] == (
+        "assistant_v1.40_data_refresh_dry_run"
+    )
+    assert dry_run["broker_state_mode"] == "broker_state_not_observed"
+    _assert_false_safety_flags(
+        dry_run,
+        (
+            "broker_state_observed",
+            "paper_submit_authorized",
+            "live_authorized",
+            "broker_read_authorized",
+            "broker_mutation_authorized",
+            "network_required",
+            "credential_required",
+            "ingest_performed",
+            "operator_csv_tracked_by_git",
+            "generated_runs_tracked_by_git",
+        ),
+    )
+    assert dry_run["dry_run_only"] is True
+    assert dry_run["input_csv_path"] == (
+        ".data/operator_inputs/spy_tiingo_adjusted_refresh_latest.csv"
+    )
+    assert "etf-sma-adjusted-spy-bars-refresh-intake" in str(
+        dry_run["offline_intake_command_template"]
+    )
+    assert "paper_lab_only" in dry_run["labels"]
+    assert "not_live_authorized" in dry_run["labels"]
+    assert "profit_claim=none" in dry_run["labels"]
+    assert "offline_only" in dry_run["labels"]
+
+
 def test_etf_sma_daily_paper_lab_mission_control_outputs(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Verify v1.33 Mission Control dashboard, report, JSON, and handoffs."""
+    monkeypatch.chdir(tmp_path)
     output_root = tmp_path / "paper_lab_mission_control_out"
     bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
 
@@ -5628,6 +5708,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     latest_run_path = paths["latest_run_path"]
     data_freshness_plan_path = paths["data_freshness_plan_path"]
     data_refresh_bridge_path = paths["data_refresh_bridge_path"]
+    data_refresh_dry_run_path = paths["data_refresh_dry_run_path"]
     data_refresh_checklist_path = paths["data_refresh_checklist_path"]
     operator_review_path = paths["operator_review_path"]
 
@@ -5660,6 +5741,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "mission_control_json_path",
         "data_freshness_plan_path",
         "data_refresh_bridge_path",
+        "data_refresh_dry_run_path",
+        "data_refresh_dry_run_status",
+        "data_refresh_input_csv_path",
+        "data_refresh_input_csv_present",
+        "data_refresh_ingest_performed",
+        "data_refresh_dry_run_only",
         "data_refresh_operator_checklist_path",
         "current_accepted_data_path",
         "current_data_as_of",
@@ -5698,6 +5785,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["data_refresh_bridge_path"].endswith(
         "data_refresh_bridge.json"
     )
+    assert latest_run["data_refresh_dry_run_path"].endswith(
+        "data_refresh_dry_run.json"
+    )
     assert latest_run["data_refresh_operator_checklist_path"].endswith(
         "data_refresh_operator_checklist.md"
     )
@@ -5712,6 +5802,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
             "mission_control_json_path",
             "data_freshness_plan_path",
             "data_refresh_bridge_path",
+            "data_refresh_dry_run_path",
             "data_refresh_operator_checklist_path",
             "validation_path",
         ),
@@ -5723,6 +5814,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["main_blocker"] == "broker_state_not_observed"
     assert latest_run["broker_state_mode"] == "broker_state_not_observed"
     assert latest_run["data_freshness_status"] == "stale_data_preview_only"
+    assert latest_run["data_refresh_dry_run_status"] == "awaiting_operator_csv"
+    assert latest_run["data_refresh_input_csv_path"].endswith(
+        "spy_tiingo_adjusted_refresh_latest.csv"
+    )
+    assert latest_run["data_refresh_input_csv_present"] is False
+    assert latest_run["data_refresh_ingest_performed"] is False
+    assert latest_run["data_refresh_dry_run_only"] is True
     assert isinstance(latest_run["staleness_days"], int)
     assert latest_run["current_accepted_data_path"].endswith(
         "spy_daily_bars_200_bullish.csv"
@@ -5739,7 +5837,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         for command in latest_run["offline_validation_commands"]
     )
     assert latest_run["next_safest_action"] == (
-        "offline_accepted_data_refresh_bridge_checklist_improvement"
+        "offline_data_refresh_dry_run_operator_input_needed"
     )
     _assert_false_safety_flags(
         latest_run,
@@ -5785,6 +5883,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "operator_data_action_summary",
         "data_freshness_plan_path",
         "data_refresh_bridge_path",
+        "data_refresh_dry_run_path",
+        "data_refresh_dry_run_status",
+        "data_refresh_input_csv_path",
+        "data_refresh_input_csv_present",
+        "data_refresh_ingest_performed",
+        "data_refresh_dry_run_only",
         "data_refresh_operator_checklist_path",
         "current_accepted_data_path",
         "next_operator_data_action",
@@ -5822,6 +5926,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert daily_latest["data_refresh_bridge_path"].endswith(
         "data_refresh_bridge.json"
     )
+    assert daily_latest["data_refresh_dry_run_path"].endswith(
+        "data_refresh_dry_run.json"
+    )
+    assert daily_latest["data_refresh_dry_run_status"] == "awaiting_operator_csv"
+    assert daily_latest["data_refresh_input_csv_present"] is False
+    assert daily_latest["data_refresh_ingest_performed"] is False
+    assert daily_latest["data_refresh_dry_run_only"] is True
     assert daily_latest["data_refresh_operator_checklist_path"].endswith(
         "data_refresh_operator_checklist.md"
     )
@@ -5965,8 +6076,36 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "paper_submit_required\": false" in serialized_bridge
     assert "live_trading_required\": false" in serialized_bridge
 
+    data_refresh_dry_run = mission["data_refresh_dry_run"]
+    assert data_refresh_dry_run == _read_json_artifact(data_refresh_dry_run_path)
+    _assert_data_refresh_dry_run_shape(data_refresh_dry_run)
+    assert data_refresh_dry_run["dry_run_status"] == "awaiting_operator_csv"
+    assert data_refresh_dry_run["safe_success_state"] == "input_csv_missing"
+    assert data_refresh_dry_run["input_csv_present"] is False
+    assert data_refresh_dry_run["ready_for_offline_intake_validation"] is False
+    assert data_refresh_dry_run["expected_latest_bar_date"] is None
+    assert data_refresh_dry_run["expected_latest_bar_date_status"] == (
+        "operator_required_not_determined_by_dry_run"
+    )
+    assert data_refresh_dry_run["current_accepted_data_as_of"] == "2025-07-20"
+    assert data_refresh_dry_run["current_data_freshness_status"] == (
+        "stale_data_preview_only"
+    )
+    assert data_refresh_dry_run["staleness_status"] == "stale_data_preview_only"
+    assert data_refresh_dry_run["offline_intake_command_status"] == (
+        "template_only_expected_latest_bar_date_required"
+    )
+    assert "No" not in json.dumps(data_refresh_dry_run, sort_keys=True)
+    assert "no positions" not in json.dumps(data_refresh_dry_run, sort_keys=True).lower()
+    assert "no open orders" not in json.dumps(data_refresh_dry_run, sort_keys=True).lower()
+    assert "not ingest" in str(data_refresh_dry_run["next_operator_action"]).lower()
+
     refresh_checklist = data_refresh_checklist_path.read_text(encoding="utf-8")
     assert "Data Refresh Operator Checklist" in refresh_checklist
+    assert "Dry-Run Readiness" in refresh_checklist
+    assert "Input CSV present: `false`" in refresh_checklist
+    assert "Ingest performed: `false`" in refresh_checklist
+    assert "Dry-run only: `true`" in refresh_checklist
     assert "Status: `stale_data_preview_only`" in refresh_checklist
     assert "spy_daily_bars_200_bullish.csv" in refresh_checklist
     assert "Expected symbol: `SPY`" in refresh_checklist
@@ -5986,7 +6125,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
 
     market = mission["market_data_lane"]
     assert market["symbol"] == "SPY"
-    assert market["source_mode"] == "generated_fixture"
+    assert market["source_mode"] in {"generated_fixture", "accepted_local_file"}
     assert market["basis"] == "close"
     assert market["row_count"] == 200
     assert market["as_of_date"] == "2025-07-20"
@@ -6055,14 +6194,17 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert dispatcher["generation_mode"] == "deterministic_rule_based_no_llm_routing"
     assert dispatcher["selected_rule_id"] == "stale_data_present"
     assert dispatcher["selected_route"] == (
-        "offline_accepted_data_refresh_bridge_checklist_improvement"
+        "offline_data_refresh_dry_run_operator_input_needed"
     )
     assert dispatcher["selected_work_order_type"] == (
-        "codex_offline_accepted_data_refresh_bridge"
+        "codex_offline_data_refresh_dry_run"
     )
     _assert_no_forbidden_routes(dispatcher)
     assert "broker_read" in dispatcher["forbidden_routes"]
     assert "external_api_data_pull" in dispatcher["forbidden_routes"]
+    assert "credential_setup" in dispatcher["forbidden_routes"]
+    assert "network_fetch" in dispatcher["forbidden_routes"]
+    assert "autonomous_ingest_from_external_service" in dispatcher["forbidden_routes"]
 
     work_orders_dir = output_root / "work_orders"
     expected_work_orders = {
@@ -6101,6 +6243,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert indexed["data_refresh_bridge"]["path"].endswith(
         "data_refresh_bridge.json"
     )
+    assert indexed["data_refresh_dry_run"]["path"].endswith(
+        "data_refresh_dry_run.json"
+    )
     assert indexed["data_refresh_operator_checklist"]["path"].endswith(
         "data_refresh_operator_checklist.md"
     )
@@ -6129,7 +6274,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "Data freshness status: `stale_data_preview_only`" in report
     assert "data_freshness_plan.json" in report
     assert "data_refresh_bridge.json" in report
+    assert "data_refresh_dry_run.json" in report
     assert "data_refresh_operator_checklist.md" in report
+    assert "Data Refresh Dry Run" in report
+    assert "Input CSV present: `false`" in report
+    assert "Ingest performed: `false`" in report
+    assert "Dry-run only: `true`" in report
     assert "Next operator data action:" in report
     assert "operator-supplied SPY adjusted-close CSV" in report
     assert "operator_review.md" in report
@@ -6141,7 +6291,11 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "Open First" in index_html
     assert "data_freshness_plan.json" in index_html
     assert "data_refresh_bridge.json" in index_html
+    assert "data_refresh_dry_run.json" in index_html
     assert "data_refresh_operator_checklist.md" in index_html
+    assert "Data Refresh Dry Run" in index_html
+    assert "Input CSV present" in index_html
+    assert "Ingest performed" in index_html
     assert "spy_tiingo_adjusted_refresh_latest.csv" in index_html
     assert "operator_review.md" in index_html
     assert "work_orders/" in index_html
@@ -6170,7 +6324,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "What Agents Should Do Next" in operator_review
     assert "data_freshness_plan.json" in operator_review
     assert "data_refresh_bridge.json" in operator_review
+    assert "data_refresh_dry_run.json" in operator_review
     assert "data_refresh_operator_checklist.md" in operator_review
+    assert "Dry-run status: `awaiting_operator_csv`" in operator_review
+    assert "Local refresh CSV present: `false`" in operator_review
+    assert "Ingest performed: `false`" in operator_review
+    assert "Dry-run only: `true`" in operator_review
     assert "operator-supplied SPY adjusted-close CSV" in operator_review
     assert "etf-sma-adjusted-spy-bars-refresh-intake" in operator_review
     assert "latest_run.json" in operator_review
@@ -6192,6 +6351,45 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         write_artifact=False,
     )
     assert direct_validation["validation_status"] == "passed"
+
+
+def test_data_refresh_dry_run_detects_present_csv_without_ingesting(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    operator_input = tmp_path / ".data" / "operator_inputs"
+    operator_input.mkdir(parents=True)
+    (operator_input / "spy_tiingo_adjusted_refresh_latest.csv").write_text(
+        "date,open,high,low,close,adjusted_close,volume\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    output_root = tmp_path / "paper_lab_present_csv_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    dry_run = payload["mission_control"]["data_refresh_dry_run"]
+    _assert_data_refresh_dry_run_shape(dry_run)
+    assert dry_run["input_csv_present"] is True
+    assert dry_run["dry_run_status"] == "ready_for_offline_intake_validation"
+    assert dry_run["ready_for_offline_intake_validation"] is True
+    assert dry_run["ingest_performed"] is False
+    assert dry_run["dry_run_only"] is True
+    assert dry_run["safe_success_state"] == "ready_for_offline_intake_validation"
+    assert payload["mission_control"]["rule_based_dispatcher_v0"]["selected_route"] == (
+        "offline_data_refresh_ready_for_intake_validation"
+    )
+    assert validate_mission_control_contract(output_root, write_artifact=False)[
+        "validation_status"
+    ] == "passed"
 
 
 def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
@@ -6228,8 +6426,15 @@ def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
             "stale_data_refresh_bridge",
             {"staleness_days": 5},
             "stale_data_present",
-            "offline_accepted_data_refresh_bridge_checklist_improvement",
-            "codex_offline_accepted_data_refresh_bridge",
+            "offline_data_refresh_dry_run_operator_input_needed",
+            "codex_offline_data_refresh_dry_run",
+        ),
+        (
+            "csv_present_ready_for_intake_validation",
+            {"staleness_days": 5, "input_csv_present": True},
+            "offline_refresh_csv_present_not_ingested",
+            "offline_data_refresh_ready_for_intake_validation",
+            "codex_offline_data_refresh_ready_for_intake_validation",
         ),
         (
             "broker_not_observed",
@@ -6273,6 +6478,9 @@ def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
             "external_api_data_pull",
             "external_api_pull",
             "secrets_setup",
+            "credential_setup",
+            "network_fetch",
+            "autonomous_ingest_from_external_service",
             "paid_service_setup",
             "strategy_promotion",
             "safety_weakening",
@@ -6296,7 +6504,7 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         prompt = prompt_path.read_text(encoding="utf-8")
         assert "Project path:" in prompt
         assert (
-            "Assistant v1.38 - Offline Accepted Data Refresh Bridge"
+            "Assistant v1.40 - Offline Data Refresh Intake Dry-Run UX"
             in prompt
         )
         assert "Goal:" in prompt
@@ -6310,6 +6518,7 @@ def test_mission_control_work_order_prompts_are_paste_ready(tmp_path: Path) -> N
         assert "mission_control_validation.json" in prompt
         assert "data_freshness_plan.json" in prompt
         assert "data_refresh_bridge.json" in prompt
+        assert "data_refresh_dry_run.json" in prompt
         assert "data_refresh_operator_checklist.md" in prompt
         assert "operator_review.md" in prompt
         assert "Forbidden behavior:" in prompt
@@ -6364,6 +6573,12 @@ def test_mission_control_contract_validator_fails_missing_required_artifacts(
             "regenerate_missing_artifact:data_refresh_bridge.json",
         ),
         (
+            "refresh_dry_run",
+            "data_refresh_dry_run.json",
+            "data_refresh_dry_run.json",
+            "regenerate_missing_artifact:data_refresh_dry_run.json",
+        ),
+        (
             "refresh_checklist",
             "data_refresh_operator_checklist.md",
             "data_refresh_operator_checklist.md",
@@ -6413,6 +6628,16 @@ def test_mission_control_contract_validator_fails_broken_latest_run_references(
                 "latest_run.data_refresh_bridge_path.missing_target",
                 "latest_run.data_refresh_bridge_path.unexpected_target",
                 "latest_run.data_refresh_bridge_path.bridge_mismatch",
+            ),
+        ),
+        (
+            "data_refresh_dry_run_path",
+            "data_refresh_dry_run_path",
+            "missing_dry_run.json",
+            (
+                "latest_run.data_refresh_dry_run_path.missing_target",
+                "latest_run.data_refresh_dry_run_path.unexpected_target",
+                "latest_run.data_refresh_dry_run_path.dry_run_mismatch",
             ),
         ),
     )
@@ -6496,6 +6721,51 @@ def test_mission_control_contract_validator_blocks_unobserved_broker_absence_cla
         "mission_control.broker_state_not_observed.absence_claim_text"
         in validation["safety_errors"]
     )
+
+
+def test_mission_control_contract_validator_blocks_unsafe_refresh_dry_run_flags(
+    tmp_path: Path,
+) -> None:
+    output_root = _generate_mission_control_output(
+        tmp_path,
+        "paper_lab_unsafe_refresh_dry_run_out",
+    )
+    mission = _read_mission_control(output_root)
+    dry_run = mission["data_refresh_dry_run"]
+    assert isinstance(dry_run, dict)
+    dry_run["paper_submit_authorized"] = True
+    dry_run["broker_read_authorized"] = True
+    dry_run["ingest_performed"] = True
+    dry_run["dry_run_only"] = False
+    _write_mission_control(output_root, mission)
+    (output_root / "data_refresh_dry_run.json").write_text(
+        json.dumps(dry_run, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    validation = validate_mission_control_contract(
+        output_root,
+        write_artifact=False,
+    )
+
+    assert validation["validation_status"] == "failed"
+    assert "mission_control.data_refresh_dry_run.paper_submit_authorized" in (
+        validation["safety_errors"]
+    )
+    assert "mission_control.data_refresh_dry_run.broker_read_authorized" in (
+        validation["safety_errors"]
+    )
+    assert "mission_control.data_refresh_dry_run.ingest_performed" in (
+        validation["safety_errors"]
+    )
+    assert "mission_control.data_refresh_dry_run.dry_run_only" in (
+        validation["safety_errors"]
+    )
+    assert "data_refresh_dry_run.paper_submit_authorized" in validation[
+        "safety_errors"
+    ]
+    assert "data_refresh_dry_run.ingest_performed" in validation["safety_errors"]
 
 
 def test_mission_control_contract_validator_blocks_stale_data_labeled_current(
