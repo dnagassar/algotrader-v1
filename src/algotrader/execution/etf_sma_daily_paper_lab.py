@@ -35,6 +35,9 @@ __all__ = [
 
 _DEFAULT_SYMBOL = "SPY"
 _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
+_DEFAULT_REFRESH_INTAKE_MANIFEST = (
+    "runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl"
+)
 _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
 _ASSISTANT_VERSION = "assistant_v1"
@@ -513,6 +516,12 @@ _REQUIRED_DATA_REFRESH_BRIDGE_FIELDS = (
     "current_accepted_row_count",
     "current_data_as_of",
     "current_staleness_days",
+    "accepted_refresh_consumed",
+    "accepted_refresh_manifest_path",
+    "accepted_refresh_manifest_status",
+    "accepted_canonical_csv_sha256",
+    "accepted_data_source",
+    "accepted_data_as_of",
     "target_symbol",
     "target_data_basis",
     "local_operator_csv_required",
@@ -575,6 +584,12 @@ _REQUIRED_DATA_REFRESH_DRY_RUN_FIELDS = (
     "expected_latest_bar_date",
     "current_accepted_data_as_of",
     "current_accepted_data_path",
+    "accepted_refresh_consumed",
+    "accepted_refresh_manifest_path",
+    "accepted_refresh_manifest_status",
+    "accepted_canonical_csv_sha256",
+    "accepted_data_source",
+    "accepted_data_as_of",
     "current_data_freshness_status",
     "current_staleness_days",
     "staleness_status",
@@ -3744,17 +3759,36 @@ def _mission_control_data_refresh_bridge(
         ),
         ".\\scripts\\run_daily_paper_lab.ps1 -OutputRoot runs\\daily_lab\\latest",
     ]
-    next_operator_data_action = (
-        "Place a future operator-supplied SPY adjusted-close CSV at "
-        f"{preferred_input_path}, choose the expected latest bar date, run the "
-        "offline refresh intake command, then rerun the daily paper-lab command."
+    accepted_refresh_evidence = _accepted_refresh_consumption_evidence(
+        payload=payload,
+        accepted_path=data_freshness_plan.get("accepted_data_path"),
+        accepted_as_of=data_freshness_plan.get("data_as_of"),
+        canonical_output_path=canonical_output_path,
     )
-    next_agent_data_action = (
-        "Inspect latest_run.json, operator_review.md, data_refresh_bridge.json, "
-        "data_refresh_operator_checklist.md, data_freshness_plan.json, and "
-        "mission_control_validation.json. If local CSV validation is weak or "
-        "missing, improve offline intake/validation planning only."
-    )
+    if accepted_refresh_evidence["accepted_refresh_consumed"] is True:
+        next_operator_data_action = (
+            "Accepted refreshed SPY adjusted-close canonical data has been "
+            "consumed by Mission Control. Do not rerun intake for the same "
+            "file; provide a newer local CSV only if the accepted as-of date "
+            "is still stale."
+        )
+        next_agent_data_action = (
+            "Use accepted_refresh_consumed, accepted_data_source, "
+            "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
+            "beyond the completed offline intake; keep broker state unobserved."
+        )
+    else:
+        next_operator_data_action = (
+            "Place a future operator-supplied SPY adjusted-close CSV at "
+            f"{preferred_input_path}, choose the expected latest bar date, run the "
+            "offline refresh intake command, then rerun the daily paper-lab command."
+        )
+        next_agent_data_action = (
+            "Inspect latest_run.json, operator_review.md, data_refresh_bridge.json, "
+            "data_refresh_operator_checklist.md, data_freshness_plan.json, and "
+            "mission_control_validation.json. If local CSV validation is weak or "
+            "missing, improve offline intake/validation planning only."
+        )
     return {
         "refresh_bridge_version": _DATA_REFRESH_BRIDGE_VERSION,
         "refresh_bridge_status": refresh_bridge_status,
@@ -3778,6 +3812,7 @@ def _mission_control_data_refresh_bridge(
         ),
         "current_data_as_of": data_freshness_plan.get("data_as_of"),
         "current_staleness_days": staleness_days,
+        **accepted_refresh_evidence,
         "target_symbol": _DEFAULT_SYMBOL,
         "target_data_basis": "adjusted_close",
         "local_operator_csv_required": local_operator_csv_required,
@@ -3859,6 +3894,114 @@ def _mission_control_data_refresh_bridge(
     }
 
 
+def _accepted_refresh_consumption_evidence(
+    *,
+    payload: Mapping[str, Any],
+    accepted_path: object,
+    accepted_as_of: object,
+    canonical_output_path: str,
+) -> dict[str, Any]:
+    manifest_path = Path(_DEFAULT_REFRESH_INTAKE_MANIFEST)
+    accepted_data_source = str(accepted_path or "")
+    accepted_data_as_of = str(accepted_as_of or "")
+    accepted_canonical_sha256 = str(payload.get("input_data_sha256") or "")
+    evidence: dict[str, Any] = {
+        "accepted_refresh_consumed": False,
+        "accepted_refresh_manifest_path": _DEFAULT_REFRESH_INTAKE_MANIFEST,
+        "accepted_refresh_manifest_exists": manifest_path.is_file(),
+        "accepted_refresh_manifest_status": "manifest_missing",
+        "accepted_refresh_manifest_state": "",
+        "accepted_refresh_expected_latest_bar_date": "",
+        "accepted_refresh_latest_bar_date": "",
+        "accepted_refresh_input_sha256": "",
+        "accepted_refresh_blockers": [],
+        "accepted_refresh_warnings": [],
+        "accepted_data_source": accepted_data_source,
+        "accepted_data_as_of": accepted_data_as_of,
+        "accepted_canonical_csv_sha256": accepted_canonical_sha256,
+        "accepted_refresh_consumption_checks": {
+            "manifest_state_accepted": False,
+            "canonical_path_matches_selected_data": False,
+            "canonical_sha256_matches_selected_data": False,
+            "latest_bar_date_matches_selected_as_of": False,
+        },
+    }
+    if not manifest_path.is_file():
+        return evidence
+
+    try:
+        lines = [
+            line
+            for line in manifest_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+        manifest = json.loads(lines[-1]) if lines else {}
+    except (IndexError, OSError, json.JSONDecodeError):
+        evidence["accepted_refresh_manifest_status"] = "manifest_unreadable"
+        return evidence
+
+    refresh_state = str(manifest.get("refresh_state") or "")
+    latest_bar_date = str(
+        manifest.get("latest_local_bar_date")
+        or manifest.get("date_range_end")
+        or ""
+    )
+    manifest_sha256 = str(manifest.get("refreshed_canonical_csv_sha256") or "")
+    blockers = list(manifest.get("refresh_blockers") or [])
+    path_matches = (
+        _contract_path_key(manifest.get("refreshed_canonical_csv_path"))
+        == _contract_path_key(canonical_output_path)
+        == _contract_path_key(accepted_data_source)
+    )
+    sha_matches = bool(accepted_canonical_sha256) and (
+        manifest_sha256 == accepted_canonical_sha256
+    )
+    state_accepted = refresh_state in {
+        "accepted_current_adjusted_bars",
+        "accepted_adjusted_bars_ahead_of_expected",
+    } and not blockers
+    as_of_matches = bool(latest_bar_date) and latest_bar_date == accepted_data_as_of
+
+    evidence.update(
+        {
+            "accepted_refresh_manifest_status": (
+                "accepted_refresh_consumed"
+                if state_accepted and path_matches and sha_matches and as_of_matches
+                else "accepted_refresh_manifest_not_consumed"
+            ),
+            "accepted_refresh_manifest_state": refresh_state,
+            "accepted_refresh_expected_latest_bar_date": str(
+                manifest.get("expected_latest_bar_date") or ""
+            ),
+            "accepted_refresh_latest_bar_date": latest_bar_date,
+            "accepted_refresh_input_sha256": str(
+                manifest.get("operator_input_sha256") or ""
+            ),
+            "accepted_refresh_blockers": blockers,
+            "accepted_refresh_warnings": list(
+                manifest.get("refresh_warnings") or []
+            ),
+            "accepted_refresh_consumption_checks": {
+                "manifest_state_accepted": state_accepted,
+                "canonical_path_matches_selected_data": path_matches,
+                "canonical_sha256_matches_selected_data": sha_matches,
+                "latest_bar_date_matches_selected_as_of": as_of_matches,
+            },
+        }
+    )
+    evidence["accepted_refresh_consumed"] = (
+        state_accepted and path_matches and sha_matches and as_of_matches
+    )
+    return evidence
+
+
+def _contract_path_key(value: object) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    return _normalize_path(Path(text)).replace("\\", "/")
+
+
 def _mission_control_data_refresh_dry_run(
     *,
     payload: Mapping[str, Any],
@@ -3871,7 +4014,32 @@ def _mission_control_data_refresh_dry_run(
 ) -> dict[str, Any]:
     input_csv_path = str(data_refresh_bridge["preferred_operator_input_path"])
     input_csv_present = Path(input_csv_path).is_file()
-    if input_csv_present:
+    accepted_refresh_consumed = data_refresh_bridge.get(
+        "accepted_refresh_consumed"
+    ) is True
+    if accepted_refresh_consumed:
+        stale = data_freshness_plan.get("data_freshness_status") == (
+            "stale_data_preview_only"
+        )
+        dry_run_status = (
+            "accepted_refresh_consumed_stale_preview_only"
+            if stale
+            else "accepted_refresh_consumed_preview_only"
+        )
+        safe_success_state = "accepted_refresh_consumed"
+        next_operator_action = (
+            "Mission Control consumed the refreshed accepted canonical dataset. "
+            "Do not rerun intake for the same file; provide a newer local CSV "
+            "only if the accepted as-of date is still stale."
+        )
+        next_agent_action = (
+            "Use accepted_refresh_consumed, accepted_data_source, "
+            "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
+            "beyond the completed offline intake while preserving existing "
+            "offline-only safety fields."
+        )
+        blocker_status = "offline_preview_only_broker_state_not_observed"
+    elif input_csv_present:
         dry_run_status = "ready_for_offline_intake_validation"
         safe_success_state = "ready_for_offline_intake_validation"
         next_operator_action = (
@@ -3943,6 +4111,30 @@ def _mission_control_data_refresh_dry_run(
         "expected_latest_bar_date": None,
         "current_accepted_data_as_of": data_freshness_plan.get("data_as_of"),
         "current_accepted_data_path": data_freshness_plan.get("accepted_data_path"),
+        "accepted_refresh_consumed": accepted_refresh_consumed,
+        "accepted_refresh_manifest_path": data_refresh_bridge.get(
+            "accepted_refresh_manifest_path"
+        ),
+        "accepted_refresh_manifest_exists": data_refresh_bridge.get(
+            "accepted_refresh_manifest_exists"
+        ),
+        "accepted_refresh_manifest_status": data_refresh_bridge.get(
+            "accepted_refresh_manifest_status"
+        ),
+        "accepted_refresh_manifest_state": data_refresh_bridge.get(
+            "accepted_refresh_manifest_state"
+        ),
+        "accepted_refresh_expected_latest_bar_date": data_refresh_bridge.get(
+            "accepted_refresh_expected_latest_bar_date"
+        ),
+        "accepted_refresh_latest_bar_date": data_refresh_bridge.get(
+            "accepted_refresh_latest_bar_date"
+        ),
+        "accepted_canonical_csv_sha256": data_refresh_bridge.get(
+            "accepted_canonical_csv_sha256"
+        ),
+        "accepted_data_source": data_refresh_bridge.get("accepted_data_source"),
+        "accepted_data_as_of": data_refresh_bridge.get("accepted_data_as_of"),
         "current_data_freshness_status": data_freshness_plan.get(
             "data_freshness_status"
         ),
@@ -3958,7 +4150,9 @@ def _mission_control_data_refresh_dry_run(
         "next_operator_action": next_operator_action,
         "next_agent_action": next_agent_action,
         "blocker_status": blocker_status,
-        "ready_for_offline_intake_validation": input_csv_present,
+        "ready_for_offline_intake_validation": (
+            input_csv_present and not accepted_refresh_consumed
+        ),
         "safe_success_state": safe_success_state,
     }
 
@@ -4374,8 +4568,13 @@ def _mission_control_dispatcher(
     )
     stale_data_present = _int_or_zero(market_data_lane.get("staleness_in_days")) > 0
     dry_run_input_csv_present = data_refresh_dry_run.get("input_csv_present") is True
+    accepted_refresh_consumed = (
+        data_refresh_dry_run.get("accepted_refresh_consumed") is True
+        or data_refresh_bridge.get("accepted_refresh_consumed") is True
+    )
     dry_run_ingest_not_performed = (
         data_refresh_dry_run.get("ingest_performed") is False
+        and not accepted_refresh_consumed
     )
     dry_run_waiting_for_csv = (
         data_refresh_dry_run.get("dry_run_status") == "awaiting_operator_csv"

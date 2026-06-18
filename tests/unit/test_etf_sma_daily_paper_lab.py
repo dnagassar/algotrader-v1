@@ -5485,6 +5485,7 @@ def _dispatcher_result(
     missing_artifact: str | None = None,
     offline_validation_commands: list[str] | None = None,
     input_csv_present: bool = False,
+    accepted_refresh_consumed: bool = False,
 ) -> dict[str, object]:
     artifacts: dict[str, object] = {
         "index_html": "index.html",
@@ -5526,6 +5527,7 @@ def _dispatcher_result(
             "offline_validation_commands": offline_validation_commands
             if offline_validation_commands is not None
             else ["python -m algotrader.cli etf-sma-adjusted-spy-bars-refresh-intake"],
+            "accepted_refresh_consumed": accepted_refresh_consumed,
         },
         data_refresh_dry_run={
             "dry_run_status": (
@@ -5535,6 +5537,7 @@ def _dispatcher_result(
             ),
             "input_csv_present": input_csv_present,
             "ingest_performed": False,
+            "accepted_refresh_consumed": accepted_refresh_consumed,
         },
         validation_summary={"validation_status": validation_status},
     )
@@ -5643,6 +5646,13 @@ def _assert_data_refresh_dry_run_shape(dry_run: dict[str, object]) -> None:
         "expected_latest_bar_date_status",
         "expected_latest_bar_date_source",
         "current_accepted_data_as_of",
+        "current_accepted_data_path",
+        "accepted_refresh_consumed",
+        "accepted_refresh_manifest_path",
+        "accepted_refresh_manifest_status",
+        "accepted_canonical_csv_sha256",
+        "accepted_data_source",
+        "accepted_data_as_of",
         "current_data_freshness_status",
         "staleness_status",
         "offline_intake_command_template",
@@ -6381,12 +6391,115 @@ def test_data_refresh_dry_run_detects_present_csv_without_ingesting(
     assert dry_run["input_csv_present"] is True
     assert dry_run["dry_run_status"] == "ready_for_offline_intake_validation"
     assert dry_run["ready_for_offline_intake_validation"] is True
+    assert dry_run["accepted_refresh_consumed"] is False
     assert dry_run["ingest_performed"] is False
     assert dry_run["dry_run_only"] is True
     assert dry_run["safe_success_state"] == "ready_for_offline_intake_validation"
     assert payload["mission_control"]["rule_based_dispatcher_v0"]["selected_route"] == (
         "offline_data_refresh_ready_for_intake_validation"
     )
+    assert validate_mission_control_contract(output_root, write_artifact=False)[
+        "validation_status"
+    ] == "passed"
+
+
+def test_mission_control_routes_past_consumed_refresh_manifest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    operator_input = tmp_path / ".data" / "operator_inputs"
+    operator_input.mkdir(parents=True)
+    (operator_input / "spy_tiingo_adjusted_refresh_latest.csv").write_text(
+        "date,open,high,low,close,adjusted_close,volume\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    canonical_csv = (
+        tmp_path
+        / "runs"
+        / "operator_input"
+        / "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    canonical_csv.parent.mkdir(parents=True)
+    canonical_csv.write_text(
+        (FIXTURES_DIR / "spy_daily_bars_200_bullish.csv").read_text(
+            encoding="utf-8"
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    canonical_sha256 = hashlib.sha256(canonical_csv.read_bytes()).hexdigest()
+    manifest_path = (
+        tmp_path / "runs" / "paper_lab" / "m446_adjusted_spy_bars_refresh_manifest.jsonl"
+    )
+    manifest_path.parent.mkdir(parents=True)
+    manifest_record = {
+        "refresh_state": "accepted_current_adjusted_bars",
+        "expected_latest_bar_date": "2025-07-20",
+        "latest_local_bar_date": "2025-07-20",
+        "operator_input_sha256": "operator-fixture-sha",
+        "refreshed_canonical_csv_path": (
+            "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
+        ),
+        "refreshed_canonical_csv_sha256": canonical_sha256,
+        "refresh_blockers": [],
+        "refresh_warnings": [],
+    }
+    manifest_path.write_text(
+        json.dumps(manifest_record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    output_root = tmp_path / "paper_lab_consumed_refresh_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=canonical_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+        )
+    )
+
+    mission = payload["mission_control"]
+    bridge = mission["data_refresh_bridge"]
+    dry_run = mission["data_refresh_dry_run"]
+    dispatcher = mission["rule_based_dispatcher_v0"]
+
+    assert bridge["accepted_refresh_consumed"] is True
+    assert bridge["accepted_refresh_manifest_status"] == "accepted_refresh_consumed"
+    assert bridge["accepted_data_source"].endswith(
+        "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    assert bridge["accepted_data_as_of"] == "2025-07-20"
+    assert bridge["accepted_canonical_csv_sha256"] == canonical_sha256
+    assert bridge["accepted_refresh_consumption_checks"] == {
+        "manifest_state_accepted": True,
+        "canonical_path_matches_selected_data": True,
+        "canonical_sha256_matches_selected_data": True,
+        "latest_bar_date_matches_selected_as_of": True,
+    }
+
+    _assert_data_refresh_dry_run_shape(dry_run)
+    assert dry_run["accepted_refresh_consumed"] is True
+    assert dry_run["accepted_refresh_manifest_status"] == "accepted_refresh_consumed"
+    assert dry_run["dry_run_status"] == "accepted_refresh_consumed_stale_preview_only"
+    assert dry_run["ingest_performed"] is False
+    assert dry_run["ready_for_offline_intake_validation"] is False
+    assert dry_run["accepted_data_as_of"] == "2025-07-20"
+    assert dry_run["accepted_canonical_csv_sha256"] == canonical_sha256
+
+    assert dispatcher["selected_rule_id"] == "stale_data_present"
+    assert dispatcher["selected_route"] == (
+        "offline_accepted_data_refresh_dry_run_checklist_improvement"
+    )
+    assert dispatcher["selected_route"] != (
+        "offline_data_refresh_ready_for_intake_validation"
+    )
+    assert dispatcher["broker_read_authorized"] is False
+    assert dispatcher["paper_submit_authorized"] is False
     assert validate_mission_control_contract(output_root, write_artifact=False)[
         "validation_status"
     ] == "passed"
@@ -6435,6 +6548,17 @@ def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
             "offline_refresh_csv_present_not_ingested",
             "offline_data_refresh_ready_for_intake_validation",
             "codex_offline_data_refresh_ready_for_intake_validation",
+        ),
+        (
+            "csv_present_consumed_refresh_routes_past_intake",
+            {
+                "staleness_days": 5,
+                "input_csv_present": True,
+                "accepted_refresh_consumed": True,
+            },
+            "stale_data_present",
+            "offline_accepted_data_refresh_dry_run_checklist_improvement",
+            "codex_offline_data_refresh_dry_run",
         ),
         (
             "broker_not_observed",
