@@ -3514,6 +3514,23 @@ def _mission_control_daily_latest(
             "ingest_performed"
         ),
         "data_refresh_dry_run_only": data_refresh_dry_run.get("dry_run_only"),
+        "accepted_refresh_consumed": data_refresh_dry_run.get(
+            "accepted_refresh_consumed"
+        ),
+        "accepted_refresh_manifest_status": data_refresh_dry_run.get(
+            "accepted_refresh_manifest_status"
+        ),
+        "accepted_data_source": data_refresh_dry_run.get("accepted_data_source"),
+        "accepted_data_as_of": data_refresh_dry_run.get("accepted_data_as_of"),
+        "accepted_canonical_csv_sha256": data_refresh_dry_run.get(
+            "accepted_canonical_csv_sha256"
+        ),
+        "stale_accepted_data_consumed": data_refresh_dry_run.get(
+            "stale_accepted_data_consumed"
+        ),
+        "accepted_data_staleness_state": data_refresh_dry_run.get(
+            "accepted_data_staleness_state"
+        ),
         "current_accepted_data_path": data_refresh_bridge.get(
             "current_accepted_data_path"
         ),
@@ -3569,6 +3586,23 @@ def _mission_control_latest_run_entry(
             "data_refresh_ingest_performed"
         ),
         "data_refresh_dry_run_only": daily_latest.get("data_refresh_dry_run_only"),
+        "accepted_refresh_consumed": daily_latest.get(
+            "accepted_refresh_consumed"
+        ),
+        "accepted_refresh_manifest_status": daily_latest.get(
+            "accepted_refresh_manifest_status"
+        ),
+        "accepted_data_source": daily_latest.get("accepted_data_source"),
+        "accepted_data_as_of": daily_latest.get("accepted_data_as_of"),
+        "accepted_canonical_csv_sha256": daily_latest.get(
+            "accepted_canonical_csv_sha256"
+        ),
+        "stale_accepted_data_consumed": daily_latest.get(
+            "stale_accepted_data_consumed"
+        ),
+        "accepted_data_staleness_state": daily_latest.get(
+            "accepted_data_staleness_state"
+        ),
         "current_accepted_data_path": daily_latest.get(
             "current_accepted_data_path"
         ),
@@ -4017,28 +4051,46 @@ def _mission_control_data_refresh_dry_run(
     accepted_refresh_consumed = data_refresh_bridge.get(
         "accepted_refresh_consumed"
     ) is True
+    accepted_data_stale = data_freshness_plan.get("data_freshness_status") == (
+        "stale_data_preview_only"
+    )
     if accepted_refresh_consumed:
-        stale = data_freshness_plan.get("data_freshness_status") == (
-            "stale_data_preview_only"
-        )
         dry_run_status = (
             "accepted_refresh_consumed_stale_preview_only"
-            if stale
+            if accepted_data_stale
             else "accepted_refresh_consumed_preview_only"
         )
-        safe_success_state = "accepted_refresh_consumed"
-        next_operator_action = (
-            "Mission Control consumed the refreshed accepted canonical dataset. "
-            "Do not rerun intake for the same file; provide a newer local CSV "
-            "only if the accepted as-of date is still stale."
-        )
-        next_agent_action = (
-            "Use accepted_refresh_consumed, accepted_data_source, "
-            "accepted_data_as_of, and accepted_canonical_csv_sha256 to route "
-            "beyond the completed offline intake while preserving existing "
-            "offline-only safety fields."
-        )
-        blocker_status = "offline_preview_only_broker_state_not_observed"
+        if accepted_data_stale:
+            safe_success_state = "stale_accepted_data_consumed"
+            next_operator_action = (
+                "Mission Control consumed the refreshed accepted canonical "
+                "dataset, but the accepted data remains stale for this run. "
+                "Do not rerun intake for the same file; provide a newer "
+                "offline adjusted-data CSV when available. Broker state was "
+                "not observed, and order submission remains unauthorized."
+            )
+            next_agent_action = (
+                "Route this as stale accepted data after completed offline "
+                "intake consumption. Keep broker state unobserved, preserve "
+                "offline-only blockers, and do not route to order submission."
+            )
+            blocker_status = (
+                "stale_accepted_data_consumed_offline_preview_only_"
+                "broker_state_not_observed"
+            )
+        else:
+            safe_success_state = "accepted_refresh_consumed"
+            next_operator_action = (
+                "Mission Control consumed the refreshed accepted canonical "
+                "dataset. Do not rerun intake for the same file."
+            )
+            next_agent_action = (
+                "Use accepted_refresh_consumed, accepted_data_source, "
+                "accepted_data_as_of, and accepted_canonical_csv_sha256 to "
+                "route beyond the completed offline intake while preserving "
+                "existing offline-only safety fields."
+            )
+            blocker_status = "offline_preview_only_broker_state_not_observed"
     elif input_csv_present:
         dry_run_status = "ready_for_offline_intake_validation"
         safe_success_state = "ready_for_offline_intake_validation"
@@ -4140,6 +4192,18 @@ def _mission_control_data_refresh_dry_run(
         ),
         "current_staleness_days": data_freshness_plan.get("staleness_days"),
         "staleness_status": data_freshness_plan.get("data_freshness_status"),
+        "stale_accepted_data_consumed": (
+            accepted_refresh_consumed and accepted_data_stale
+        ),
+        "accepted_data_staleness_state": (
+            "stale_accepted_data_consumed"
+            if accepted_refresh_consumed and accepted_data_stale
+            else (
+                "accepted_refresh_consumed_not_stale"
+                if accepted_refresh_consumed
+                else "accepted_refresh_not_consumed"
+            )
+        ),
         "offline_intake_command_template": command_template,
         "offline_intake_command_status": (
             "template_only_expected_latest_bar_date_required"
@@ -4518,6 +4582,11 @@ def _mission_control_dispatcher(
             "route": "middleman_reduction_repair_to_codex",
         },
         {
+            "rule_id": "stale_accepted_data_consumed",
+            "if": "accepted refresh manifest was consumed and accepted data is stale",
+            "route": "offline_accepted_data_staleness_resolution",
+        },
+        {
             "rule_id": "stale_data_present",
             "if": "stale data is present",
             "route": "offline_data_refresh_dry_run_operator_input_needed",
@@ -4610,6 +4679,10 @@ def _mission_control_dispatcher(
         selected_rule_id = "offline_refresh_csv_present_not_ingested"
         selected_route = "offline_data_refresh_ready_for_intake_validation"
         selected_work_order_type = "codex_offline_data_refresh_ready_for_intake_validation"
+    elif stale_data_present and accepted_refresh_consumed:
+        selected_rule_id = "stale_accepted_data_consumed"
+        selected_route = "offline_accepted_data_staleness_resolution"
+        selected_work_order_type = "codex_offline_stale_accepted_data_followup"
     elif stale_data_present:
         selected_rule_id = "stale_data_present"
         selected_route = (
@@ -4761,6 +4834,18 @@ def _mission_control_executive_summary(
             "ingest_performed"
         ),
         "data_refresh_dry_run_only": data_refresh_dry_run.get("dry_run_only"),
+        "accepted_refresh_consumed": data_refresh_dry_run.get(
+            "accepted_refresh_consumed"
+        ),
+        "accepted_refresh_manifest_status": data_refresh_dry_run.get(
+            "accepted_refresh_manifest_status"
+        ),
+        "accepted_data_staleness_state": data_refresh_dry_run.get(
+            "accepted_data_staleness_state"
+        ),
+        "stale_accepted_data_consumed": data_refresh_dry_run.get(
+            "stale_accepted_data_consumed"
+        ),
         "next_operator_data_action": data_refresh_bridge.get(
             "next_operator_data_action"
         ),
@@ -5291,6 +5376,10 @@ def _render_data_refresh_operator_checklist(
             f"- Input CSV present: `{str(dry_run['input_csv_present']).lower()}`",
             f"- Ingest performed: `{str(dry_run['ingest_performed']).lower()}`",
             f"- Dry-run only: `{str(dry_run['dry_run_only']).lower()}`",
+            f"- Accepted refresh consumed: `{str(dry_run['accepted_refresh_consumed']).lower()}`",
+            f"- Accepted refresh manifest status: `{dry_run['accepted_refresh_manifest_status']}`",
+            f"- Accepted data staleness state: `{dry_run['accepted_data_staleness_state']}`",
+            f"- Stale accepted data consumed: `{str(dry_run['stale_accepted_data_consumed']).lower()}`",
             f"- Expected latest bar date status: `{dry_run['expected_latest_bar_date_status']}`",
             f"- Next operator action: {dry_run['next_operator_action']}",
             f"- Next agent action: {dry_run['next_agent_action']}",
@@ -5396,6 +5485,10 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             f"- Local refresh CSV present: `{str(dry_run['input_csv_present']).lower()}`",
             f"- Ingest performed: `{str(dry_run['ingest_performed']).lower()}`",
             f"- Dry-run only: `{str(dry_run['dry_run_only']).lower()}`",
+            f"- Accepted refresh consumed: `{str(dry_run['accepted_refresh_consumed']).lower()}`",
+            f"- Accepted refresh manifest status: `{dry_run['accepted_refresh_manifest_status']}`",
+            f"- Accepted data staleness state: `{dry_run['accepted_data_staleness_state']}`",
+            f"- Stale accepted data consumed: `{str(dry_run['stale_accepted_data_consumed']).lower()}`",
             f"- Next operator data action: {bridge['next_operator_data_action']}",
             f"- Next agent data action: {bridge['next_agent_data_action']}",
             "",
@@ -5516,6 +5609,12 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- data_refresh_input_csv_present: `{str(daily_latest['data_refresh_input_csv_present']).lower()}`",
         f"- data_refresh_ingest_performed: `{str(daily_latest['data_refresh_ingest_performed']).lower()}`",
         f"- data_refresh_dry_run_only: `{str(daily_latest['data_refresh_dry_run_only']).lower()}`",
+        f"- accepted_refresh_consumed: `{str(daily_latest['accepted_refresh_consumed']).lower()}`",
+        f"- accepted_refresh_manifest_status: `{daily_latest['accepted_refresh_manifest_status']}`",
+        f"- accepted_data_source: `{daily_latest['accepted_data_source']}`",
+        f"- accepted_data_as_of: `{daily_latest['accepted_data_as_of']}`",
+        f"- accepted_data_staleness_state: `{daily_latest['accepted_data_staleness_state']}`",
+        f"- stale_accepted_data_consumed: `{str(daily_latest['stale_accepted_data_consumed']).lower()}`",
         f"- data_refresh_operator_checklist_path: `{daily_latest['data_refresh_operator_checklist_path']}`",
         f"- current_accepted_data_path: `{daily_latest['current_accepted_data_path']}`",
         f"- next_operator_data_action: {daily_latest['next_operator_data_action']}",
@@ -5559,6 +5658,11 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- Local operator CSV required: `{str(bridge['local_operator_csv_required']).lower()}`",
         f"- Preferred operator input path: `{bridge['preferred_operator_input_path']}`",
         f"- Offline validation command: `{bridge['offline_validation_commands'][0]}`",
+        f"- Accepted refresh consumed: `{str(bridge['accepted_refresh_consumed']).lower()}`",
+        f"- Accepted refresh manifest status: `{bridge['accepted_refresh_manifest_status']}`",
+        f"- Accepted data source: `{bridge['accepted_data_source']}`",
+        f"- Accepted data as-of: `{bridge['accepted_data_as_of']}`",
+        f"- Accepted canonical CSV SHA256: `{bridge['accepted_canonical_csv_sha256']}`",
         f"- Next operator data action: {bridge['next_operator_data_action']}",
         f"- Next agent data action: {bridge['next_agent_data_action']}",
         f"- external_api_required={str(bridge['external_api_required']).lower()}",
@@ -5583,6 +5687,12 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- Ingest performed: `{str(dry_run['ingest_performed']).lower()}`",
         f"- Dry-run only: `{str(dry_run['dry_run_only']).lower()}`",
         f"- Broker state mode: `{dry_run['broker_state_mode']}`",
+        f"- Accepted refresh consumed: `{str(dry_run['accepted_refresh_consumed']).lower()}`",
+        f"- Accepted refresh manifest status: `{dry_run['accepted_refresh_manifest_status']}`",
+        f"- Accepted data source: `{dry_run['accepted_data_source']}`",
+        f"- Accepted data as-of: `{dry_run['accepted_data_as_of']}`",
+        f"- Accepted data staleness state: `{dry_run['accepted_data_staleness_state']}`",
+        f"- Stale accepted data consumed: `{str(dry_run['stale_accepted_data_consumed']).lower()}`",
         f"- Next operator action: {dry_run['next_operator_action']}",
         f"- Next agent action: {dry_run['next_agent_action']}",
         f"- Blocker status: `{dry_run['blocker_status']}`",
@@ -5743,6 +5853,12 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>data_refresh_input_csv_present</dt><dd>{str(daily_latest["data_refresh_input_csv_present"]).lower()}</dd>
         <dt>data_refresh_ingest_performed</dt><dd>{str(daily_latest["data_refresh_ingest_performed"]).lower()}</dd>
         <dt>data_refresh_dry_run_only</dt><dd>{str(daily_latest["data_refresh_dry_run_only"]).lower()}</dd>
+        <dt>accepted_refresh_consumed</dt><dd>{str(daily_latest["accepted_refresh_consumed"]).lower()}</dd>
+        <dt>accepted_refresh_manifest_status</dt><dd>{_html_escape(str(daily_latest["accepted_refresh_manifest_status"]))}</dd>
+        <dt>accepted_data_source</dt><dd>{_html_escape(str(daily_latest["accepted_data_source"]))}</dd>
+        <dt>accepted_data_as_of</dt><dd>{_html_escape(str(daily_latest["accepted_data_as_of"]))}</dd>
+        <dt>accepted_data_staleness_state</dt><dd>{_html_escape(str(daily_latest["accepted_data_staleness_state"]))}</dd>
+        <dt>stale_accepted_data_consumed</dt><dd>{str(daily_latest["stale_accepted_data_consumed"]).lower()}</dd>
         <dt>data_refresh_operator_checklist_path</dt><dd>{_html_escape(str(daily_latest["data_refresh_operator_checklist_path"]))}</dd>
         <dt>current_accepted_data_path</dt><dd>{_html_escape(str(daily_latest["current_accepted_data_path"]))}</dd>
       </dl>
@@ -5790,6 +5906,11 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Target basis</dt><dd>{_html_escape(str(bridge["target_data_basis"]))}</dd>
         <dt>Preferred operator input path</dt><dd>{_html_escape(str(bridge["preferred_operator_input_path"]))}</dd>
         <dt>Offline validation command</dt><dd>{_html_escape(str(bridge["offline_validation_commands"][0]))}</dd>
+        <dt>Accepted refresh consumed</dt><dd>{str(bridge["accepted_refresh_consumed"]).lower()}</dd>
+        <dt>Accepted refresh manifest status</dt><dd>{_html_escape(str(bridge["accepted_refresh_manifest_status"]))}</dd>
+        <dt>Accepted data source</dt><dd>{_html_escape(str(bridge["accepted_data_source"]))}</dd>
+        <dt>Accepted data as-of</dt><dd>{_html_escape(str(bridge["accepted_data_as_of"]))}</dd>
+        <dt>Accepted canonical CSV SHA256</dt><dd>{_html_escape(str(bridge["accepted_canonical_csv_sha256"]))}</dd>
         <dt>external_api_required</dt><dd>{str(bridge["external_api_required"]).lower()}</dd>
         <dt>secrets_required</dt><dd>{str(bridge["secrets_required"]).lower()}</dd>
         <dt>broker_read_required</dt><dd>{str(bridge["broker_read_required"]).lower()}</dd>
@@ -5814,6 +5935,12 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Ingest performed</dt><dd>{str(dry_run["ingest_performed"]).lower()}</dd>
         <dt>Dry-run only</dt><dd>{str(dry_run["dry_run_only"]).lower()}</dd>
         <dt>Broker state mode</dt><dd>{_html_escape(str(dry_run["broker_state_mode"]))}</dd>
+        <dt>Accepted refresh consumed</dt><dd>{str(dry_run["accepted_refresh_consumed"]).lower()}</dd>
+        <dt>Accepted refresh manifest status</dt><dd>{_html_escape(str(dry_run["accepted_refresh_manifest_status"]))}</dd>
+        <dt>Accepted data source</dt><dd>{_html_escape(str(dry_run["accepted_data_source"]))}</dd>
+        <dt>Accepted data as-of</dt><dd>{_html_escape(str(dry_run["accepted_data_as_of"]))}</dd>
+        <dt>Accepted data staleness state</dt><dd>{_html_escape(str(dry_run["accepted_data_staleness_state"]))}</dd>
+        <dt>Stale accepted data consumed</dt><dd>{str(dry_run["stale_accepted_data_consumed"]).lower()}</dd>
         <dt>Next operator action</dt><dd>{_html_escape(str(dry_run["next_operator_action"]))}</dd>
         <dt>Next agent action</dt><dd>{_html_escape(str(dry_run["next_agent_action"]))}</dd>
         <dt>Blocker status</dt><dd>{_html_escape(str(dry_run["blocker_status"]))}</dd>

@@ -5655,6 +5655,8 @@ def _assert_data_refresh_dry_run_shape(dry_run: dict[str, object]) -> None:
         "accepted_data_as_of",
         "current_data_freshness_status",
         "staleness_status",
+        "stale_accepted_data_consumed",
+        "accepted_data_staleness_state",
         "offline_intake_command_template",
         "next_operator_action",
         "next_agent_action",
@@ -5690,6 +5692,8 @@ def _assert_data_refresh_dry_run_shape(dry_run: dict[str, object]) -> None:
     assert "not_live_authorized" in dry_run["labels"]
     assert "profit_claim=none" in dry_run["labels"]
     assert "offline_only" in dry_run["labels"]
+    assert "broker_state_not_observed" in dry_run["labels"]
+    assert "paper_submit_not_authorized" in dry_run["labels"]
 
 
 def test_etf_sma_daily_paper_lab_mission_control_outputs(
@@ -5757,6 +5761,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "data_refresh_input_csv_present",
         "data_refresh_ingest_performed",
         "data_refresh_dry_run_only",
+        "accepted_refresh_consumed",
+        "accepted_refresh_manifest_status",
+        "accepted_data_source",
+        "accepted_data_as_of",
+        "accepted_canonical_csv_sha256",
+        "stale_accepted_data_consumed",
+        "accepted_data_staleness_state",
         "data_refresh_operator_checklist_path",
         "current_accepted_data_path",
         "current_data_as_of",
@@ -5831,6 +5842,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert latest_run["data_refresh_input_csv_present"] is False
     assert latest_run["data_refresh_ingest_performed"] is False
     assert latest_run["data_refresh_dry_run_only"] is True
+    assert latest_run["accepted_refresh_consumed"] is False
+    assert latest_run["accepted_refresh_manifest_status"] == "manifest_missing"
+    assert latest_run["stale_accepted_data_consumed"] is False
+    assert latest_run["accepted_data_staleness_state"] == (
+        "accepted_refresh_not_consumed"
+    )
     assert isinstance(latest_run["staleness_days"], int)
     assert latest_run["current_accepted_data_path"].endswith(
         "spy_daily_bars_200_bullish.csv"
@@ -5899,6 +5916,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "data_refresh_input_csv_present",
         "data_refresh_ingest_performed",
         "data_refresh_dry_run_only",
+        "accepted_refresh_consumed",
+        "accepted_refresh_manifest_status",
+        "accepted_data_source",
+        "accepted_data_as_of",
+        "accepted_canonical_csv_sha256",
+        "stale_accepted_data_consumed",
+        "accepted_data_staleness_state",
         "data_refresh_operator_checklist_path",
         "current_accepted_data_path",
         "next_operator_data_action",
@@ -5943,6 +5967,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert daily_latest["data_refresh_input_csv_present"] is False
     assert daily_latest["data_refresh_ingest_performed"] is False
     assert daily_latest["data_refresh_dry_run_only"] is True
+    assert daily_latest["accepted_refresh_consumed"] is False
+    assert daily_latest["accepted_refresh_manifest_status"] == "manifest_missing"
+    assert daily_latest["stale_accepted_data_consumed"] is False
+    assert daily_latest["accepted_data_staleness_state"] == (
+        "accepted_refresh_not_consumed"
+    )
     assert daily_latest["data_refresh_operator_checklist_path"].endswith(
         "data_refresh_operator_checklist.md"
     )
@@ -6102,6 +6132,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "stale_data_preview_only"
     )
     assert data_refresh_dry_run["staleness_status"] == "stale_data_preview_only"
+    assert data_refresh_dry_run["stale_accepted_data_consumed"] is False
+    assert data_refresh_dry_run["accepted_data_staleness_state"] == (
+        "accepted_refresh_not_consumed"
+    )
     assert data_refresh_dry_run["offline_intake_command_status"] == (
         "template_only_expected_latest_bar_date_required"
     )
@@ -6116,6 +6150,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "Input CSV present: `false`" in refresh_checklist
     assert "Ingest performed: `false`" in refresh_checklist
     assert "Dry-run only: `true`" in refresh_checklist
+    assert "Accepted refresh consumed: `false`" in refresh_checklist
+    assert "Accepted data staleness state: `accepted_refresh_not_consumed`" in (
+        refresh_checklist
+    )
     assert "Status: `stale_data_preview_only`" in refresh_checklist
     assert "spy_daily_bars_200_bullish.csv" in refresh_checklist
     assert "Expected symbol: `SPY`" in refresh_checklist
@@ -6392,6 +6430,8 @@ def test_data_refresh_dry_run_detects_present_csv_without_ingesting(
     assert dry_run["dry_run_status"] == "ready_for_offline_intake_validation"
     assert dry_run["ready_for_offline_intake_validation"] is True
     assert dry_run["accepted_refresh_consumed"] is False
+    assert dry_run["stale_accepted_data_consumed"] is False
+    assert dry_run["accepted_data_staleness_state"] == "accepted_refresh_not_consumed"
     assert dry_run["ingest_performed"] is False
     assert dry_run["dry_run_only"] is True
     assert dry_run["safe_success_state"] == "ready_for_offline_intake_validation"
@@ -6488,18 +6528,115 @@ def test_mission_control_routes_past_consumed_refresh_manifest(
     assert dry_run["dry_run_status"] == "accepted_refresh_consumed_stale_preview_only"
     assert dry_run["ingest_performed"] is False
     assert dry_run["ready_for_offline_intake_validation"] is False
+    assert dry_run["safe_success_state"] == "stale_accepted_data_consumed"
+    assert dry_run["blocker_status"] == (
+        "stale_accepted_data_consumed_offline_preview_only_"
+        "broker_state_not_observed"
+    )
     assert dry_run["accepted_data_as_of"] == "2025-07-20"
     assert dry_run["accepted_canonical_csv_sha256"] == canonical_sha256
+    assert dry_run["stale_accepted_data_consumed"] is True
+    assert dry_run["accepted_data_staleness_state"] == "stale_accepted_data_consumed"
+    assert "newer offline adjusted-data CSV" in dry_run["next_operator_action"]
+    assert "order submission remains unauthorized" in dry_run["next_operator_action"]
+    assert "completed offline intake consumption" in dry_run["next_agent_action"]
 
-    assert dispatcher["selected_rule_id"] == "stale_data_present"
-    assert dispatcher["selected_route"] == (
-        "offline_accepted_data_refresh_dry_run_checklist_improvement"
+    latest_run = _read_json_artifact(output_root / "latest_run.json")
+    daily_latest = mission["daily_latest"]
+    for summary in (latest_run, daily_latest):
+        assert summary["accepted_refresh_consumed"] is True
+        assert summary["accepted_refresh_manifest_status"] == (
+            "accepted_refresh_consumed"
+        )
+        assert summary["accepted_data_source"].endswith(
+            "m446_spy_daily_tiingo_adjusted_canonical.csv"
+        )
+        assert summary["accepted_data_as_of"] == "2025-07-20"
+        assert summary["accepted_canonical_csv_sha256"] == canonical_sha256
+        assert summary["stale_accepted_data_consumed"] is True
+        assert summary["accepted_data_staleness_state"] == (
+            "stale_accepted_data_consumed"
+        )
+        assert summary["preview_decision"] == "blocked/broker_state_not_observed"
+        assert summary["broker_state_mode"] == "broker_state_not_observed"
+        assert summary["paper_submit_authorized"] is False
+
+    assert dispatcher["selected_rule_id"] == "stale_accepted_data_consumed"
+    assert dispatcher["selected_route"] == "offline_accepted_data_staleness_resolution"
+    assert dispatcher["selected_work_order_type"] == (
+        "codex_offline_stale_accepted_data_followup"
     )
-    assert dispatcher["selected_route"] != (
-        "offline_data_refresh_ready_for_intake_validation"
-    )
+    assert dispatcher["selected_route"] not in {
+        "offline_data_refresh_ready_for_intake_validation",
+        "offline_accepted_data_refresh_dry_run_checklist_improvement",
+    }
     assert dispatcher["broker_read_authorized"] is False
     assert dispatcher["paper_submit_authorized"] is False
+    _assert_no_forbidden_routes(dispatcher)
+
+    codex_work_order = _read_json_artifact(
+        output_root / "work_orders" / "codex_next_work_order.json"
+    )
+    assert codex_work_order["selected_rule_id"] == "stale_accepted_data_consumed"
+    assert codex_work_order["selected_route"] == (
+        "offline_accepted_data_staleness_resolution"
+    )
+    assert codex_work_order["work_order_type"] == (
+        "codex_offline_stale_accepted_data_followup"
+    )
+
+    surfaces = [
+        output_root / "mission_control.json",
+        output_root / "latest_run.json",
+        output_root / "assistant_report.md",
+        output_root / "operator_review.md",
+        output_root / "index.html",
+        output_root / "work_orders" / "codex_next_prompt.md",
+        output_root / "work_orders" / "codex_next_work_order.json",
+    ]
+    for surface in surfaces:
+        text = surface.read_text(encoding="utf-8")
+        assert (
+            "stale_accepted_data_consumed" in text
+            or "stale accepted data consumed" in text.lower()
+        ), surface
+        assert "offline_accepted_data_refresh_dry_run_checklist_improvement" not in (
+            text
+        ), surface
+        assert "codex_offline_data_refresh_dry_run" not in text, surface
+
+    evidence_surfaces = [
+        output_root / "mission_control.json",
+        output_root / "latest_run.json",
+        output_root / "assistant_report.md",
+        output_root / "operator_review.md",
+        output_root / "index.html",
+    ]
+    for surface in evidence_surfaces:
+        text = surface.read_text(encoding="utf-8")
+        assert (
+            "accepted_refresh_consumed" in text
+            or "accepted refresh consumed" in text.lower()
+        ), surface
+
+    report = (output_root / "assistant_report.md").read_text(encoding="utf-8")
+    assert "accepted_refresh_consumed: `true`" in report
+    assert "stale_accepted_data_consumed: `true`" in report
+    assert "Accepted data staleness state: `stale_accepted_data_consumed`" in report
+    assert "Broker state mode: `broker_state_not_observed`" in report
+
+    operator_review = (output_root / "operator_review.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Accepted refresh consumed: `true`" in operator_review
+    assert "Stale accepted data consumed: `true`" in operator_review
+    assert "paper_submit_authorized=false" in operator_review
+
+    index_html = (output_root / "index.html").read_text(encoding="utf-8")
+    assert "accepted_refresh_consumed</dt><dd>true" in index_html
+    assert "Stale accepted data consumed</dt><dd>true" in index_html
+    assert "broker_state_not_observed" in index_html
+
     assert validate_mission_control_contract(output_root, write_artifact=False)[
         "validation_status"
     ] == "passed"
@@ -6556,9 +6693,9 @@ def test_mission_control_dispatcher_selects_expected_safe_routes() -> None:
                 "input_csv_present": True,
                 "accepted_refresh_consumed": True,
             },
-            "stale_data_present",
-            "offline_accepted_data_refresh_dry_run_checklist_improvement",
-            "codex_offline_data_refresh_dry_run",
+            "stale_accepted_data_consumed",
+            "offline_accepted_data_staleness_resolution",
+            "codex_offline_stale_accepted_data_followup",
         ),
         (
             "broker_not_observed",
