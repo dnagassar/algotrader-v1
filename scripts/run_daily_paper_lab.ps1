@@ -26,7 +26,12 @@ SMA slow window size. Defaults to 200.
 
 .PARAMETER BrokerStateMode
 Broker-state lane mode. Defaults to broker_state_not_observed. alpaca_paper_read_only
-is scaffold-only and performs no broker read.
+consumes a local read-only broker snapshot log when BrokerSnapshotLog is supplied;
+the daily lab command itself performs no broker read.
+
+.PARAMETER BrokerSnapshotLog
+Optional local read-only paper broker snapshot reconciliation JSONL to consume
+when BrokerStateMode is alpaca_paper_read_only.
 
 .PARAMETER Format
 Output format (text or json). Defaults to text.
@@ -43,6 +48,7 @@ param(
     [int]$SmaSlowWindow = 200,
     [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
     [string]$BrokerStateMode = "broker_state_not_observed",
+    [string]$BrokerSnapshotLog,
     [string]$Format = "text"
 )
 
@@ -109,6 +115,10 @@ $CliArgs = @(
 
 if (-not [string]::IsNullOrEmpty($AsOfDate)) {
     $CliArgs += @("--as-of-date", $AsOfDate)
+}
+
+if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {
+    $CliArgs += @("--broker-snapshot-log", $BrokerSnapshotLog)
 }
 
 Push-Location -LiteralPath $RepoRoot

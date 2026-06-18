@@ -1949,6 +1949,7 @@ class EtfSmaDailyPaperLabConfig:
     sma_fast_window: int = 50
     sma_slow_window: int = 200
     broker_state_mode: str = "broker_state_not_observed"
+    broker_snapshot_log: Path | str | None = None
     run_date: str | None = None
 
     def __post_init__(self) -> None:
@@ -1962,6 +1963,17 @@ class EtfSmaDailyPaperLabConfig:
                 + ", ".join(_BROKER_STATE_MODES)
             )
         object.__setattr__(self, "broker_state_mode", broker_state_mode)
+        object.__setattr__(
+            self,
+            "broker_snapshot_log",
+            _optional_path(self.broker_snapshot_log, "broker_snapshot_log"),
+        )
+        if self.broker_snapshot_log is not None and broker_state_mode != (
+            "alpaca_paper_read_only"
+        ):
+            raise ValidationError(
+                "broker_snapshot_log requires broker_state_mode=alpaca_paper_read_only."
+            )
         if self.sma_fast_window <= 0:
             raise ValidationError("sma_fast_window must be positive.")
         if self.sma_slow_window <= 0:
@@ -4437,35 +4449,77 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
     broker_state_mode = str(
         payload.get("broker_state_mode", "broker_state_not_observed")
     )
-    scaffold_only = broker_state_mode == "alpaca_paper_read_only"
+    snapshot = _broker_snapshot(payload)
+    snapshot_consumed = bool(snapshot)
+    snapshot_observed = _broker_snapshot_observed(snapshot)
+    scaffold_only = (
+        broker_state_mode == "alpaca_paper_read_only" and not snapshot_consumed
+    )
     broker_state_status = (
-        "broker_read_scaffold_only"
-        if scaffold_only
+        _broker_snapshot_status(snapshot)
+        if snapshot_consumed
         else (
-            "offline_fixture"
-            if broker_state_mode == "offline_fixture"
-            else "broker_state_not_observed"
+            "broker_read_scaffold_only"
+            if scaffold_only
+            else (
+                "offline_fixture"
+                if broker_state_mode == "offline_fixture"
+                else "broker_state_not_observed"
+            )
         )
     )
     return {
         "broker_state_mode": broker_state_mode,
         "broker_state_status": broker_state_status,
+        "broker_state_observed": snapshot_observed,
+        "broker_snapshot_consumed": snapshot_consumed,
+        "broker_snapshot_path": str(payload.get("broker_state_snapshot_path", "")),
+        "broker_snapshot_status": str(snapshot.get("snapshot_status", "")),
+        "broker_snapshot_sha256": str(snapshot.get("snapshot_sha256", "")),
         "broker_read_performed": False,
         "broker_mutation_performed": False,
+        "broker_mutation_authorized": False,
         "paper_submit_authorized": False,
         "live_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
-        "position_state_observed": False,
-        "open_order_state_observed": False,
+        "position_state_observed": snapshot.get("positions_observed") is True,
+        "open_order_state_observed": snapshot.get("orders_observed") is True,
+        "paper_account_observed": snapshot.get("account_observed") is True,
+        "paper_account_currency": str(snapshot.get("currency", "")),
+        "spy_position_present": snapshot.get("spy_position_present") is True,
+        "spy_position_qty": str(snapshot.get("spy_position_qty", "")),
+        "position_count": _int_or_zero(snapshot.get("position_count")),
+        "position_symbols": list(snapshot.get("position_symbols", []))
+        if isinstance(snapshot.get("position_symbols"), list)
+        else [],
+        "open_order_count": _int_or_zero(snapshot.get("open_order_count")),
+        "open_order_symbols": list(snapshot.get("open_order_symbols", []))
+        if isinstance(snapshot.get("open_order_symbols"), list)
+        else [],
+        "open_spy_order_count": _int_or_zero(snapshot.get("open_spy_order_count")),
+        "unexpected_non_spy_position_present": (
+            _broker_snapshot_unexpected_non_spy_position_present(snapshot)
+        ),
+        "unexpected_non_spy_position_count": len(
+            _broker_snapshot_unexpected_non_spy_positions(snapshot)
+        ),
+        "reconciliation_state": str(snapshot.get("reconciliation_state", "")),
+        "blockers": list(snapshot.get("blockers", []))
+        if isinstance(snapshot.get("blockers"), list)
+        else [],
         "spy_position_absence_claimed": False,
         "spy_open_order_absence_claimed": False,
-        "broker_state_not_observed": broker_state_status
-        == "broker_state_not_observed",
+        "broker_state_not_observed": broker_state_status == "broker_state_not_observed",
         "offline_fixture": broker_state_status == "offline_fixture",
         "warning": (
-            "SPY position absence and SPY open-order absence remain unknown "
-            "unless broker state is observed under a future explicit "
-            "authorization."
+            "Broker state was consumed from a linked read-only snapshot artifact; "
+            "this command did not call the broker."
+            if snapshot_consumed
+            else (
+                "SPY position absence and SPY open-order absence remain unknown "
+                "unless broker state is observed under a future explicit "
+                "authorization."
+            )
         ),
         "alpaca_paper_read_only_scaffold": {
             "available_mode": "alpaca_paper_read_only",
@@ -4496,19 +4550,30 @@ def _mission_control_decision_lane(
     if market_data_lane.get("preview_currency_status") == "blocked_missing_data":
         preview_decision = "blocked_missing_data"
         blocker_status = "blocked_missing_data"
-    elif broker_state_lane.get("broker_read_performed") is not True:
+    elif _broker_lane_open_order_present(broker_state_lane):
+        preview_decision = "blocked/open_order_present"
+        blocker_status = "open_order_present"
+    elif broker_state_lane.get("unexpected_non_spy_position_present") is True:
+        preview_decision = "blocked/unexpected_non_spy_position"
+        blocker_status = "unexpected_non_spy_position"
+    elif _broker_lane_unavailable(broker_state_lane):
+        preview_decision = "blocked/broker_unavailable"
+        blocker_status = "broker_unavailable"
+    elif broker_state_lane.get("broker_state_observed") is not True:
         preview_decision = "blocked/broker_state_not_observed"
         blocker_status = "broker_state_not_observed"
     else:
-        preview_decision = market_signal_preview
-        blocker_status = str(payload.get("blocker_status", "none"))
+        preview_decision = _broker_aware_market_decision(
+            market_signal_preview,
+            broker_state_lane,
+        )
+        blocker_status = "none"
     return {
         "preview_decision": preview_decision,
         "market_signal_preview": market_signal_preview,
         "repo_preview_decision": payload.get("preview_decision"),
         "reason": (
-            "Market signal is an offline preview only because broker state was "
-            "not observed and paper submit is not authorized."
+            _broker_aware_decision_reason(preview_decision, broker_state_lane)
         ),
         "blocker_status": blocker_status,
         "next_operator_action": "review_mission_control_no_broker_action",
@@ -4518,6 +4583,161 @@ def _mission_control_decision_lane(
         "live_authorized": False,
         "safety_labels": _mission_control_safety_labels(payload),
     }
+
+
+def _load_broker_state_snapshot(
+    path: Path | str | None,
+    *,
+    broker_state_mode: str,
+    symbol: str,
+) -> dict[str, Any]:
+    if path is None or broker_state_mode != "alpaca_paper_read_only":
+        return {}
+
+    snapshot_path = Path(path)
+    record, status, record_count, digest = _read_single_jsonl_artifact(snapshot_path)
+    if record is None:
+        return {
+            "snapshot_status": status,
+            "snapshot_record_count": record_count,
+            "snapshot_sha256": digest or "",
+            "artifact_path": _normalize_path(snapshot_path),
+            "broker_observation_state": "broker_unavailable",
+            "reconciliation_state": "blocked_broker_unavailable",
+            "blockers": ["broker_snapshot_unavailable"],
+        }
+
+    if str(record.get("command", "")) != (
+        "paper-lab-read-only-broker-snapshot-reconciliation"
+    ):
+        raise ValidationError(
+            "broker_snapshot_log must contain a read-only paper broker "
+            "snapshot reconciliation record."
+        )
+    if str(record.get("symbol", "")).strip().upper() != symbol.strip().upper():
+        raise ValidationError(
+            "broker_snapshot_log symbol must match the daily lab symbol."
+        )
+
+    return {
+        **dict(record),
+        "snapshot_status": status,
+        "snapshot_record_count": record_count,
+        "snapshot_sha256": digest or "",
+        "artifact_path": _normalize_path(snapshot_path),
+    }
+
+
+def _broker_snapshot(payload: Mapping[str, Any]) -> Mapping[str, Any]:
+    snapshot = payload.get("broker_state_snapshot")
+    return snapshot if isinstance(snapshot, Mapping) else {}
+
+
+def _broker_snapshot_observed(snapshot: Mapping[str, Any]) -> bool:
+    return (
+        bool(snapshot)
+        and snapshot.get("broker_observation_state") == "observed"
+        and snapshot.get("account_observed") is True
+        and snapshot.get("positions_observed") is True
+        and snapshot.get("orders_observed") is True
+    )
+
+
+def _broker_snapshot_status(snapshot: Mapping[str, Any]) -> str:
+    if _broker_snapshot_observed(snapshot):
+        return "observed"
+    state = str(snapshot.get("broker_observation_state", "")).strip()
+    if state in {
+        "broker_unavailable",
+        "live_url_detected",
+        "observation_incomplete",
+        "profile_gate_failed",
+    }:
+        return state
+    reconciliation_state = str(snapshot.get("reconciliation_state", "")).strip()
+    if reconciliation_state.startswith("blocked_"):
+        return "broker_unavailable"
+    return "broker_unavailable"
+
+
+def _broker_snapshot_unexpected_non_spy_positions(
+    snapshot: Mapping[str, Any],
+) -> list[Mapping[str, Any]]:
+    positions = snapshot.get("unexpected_non_spy_positions")
+    if not isinstance(positions, list):
+        return []
+    return [position for position in positions if isinstance(position, Mapping)]
+
+
+def _broker_snapshot_unexpected_non_spy_position_present(
+    snapshot: Mapping[str, Any],
+) -> bool:
+    return bool(_broker_snapshot_unexpected_non_spy_positions(snapshot))
+
+
+def _broker_lane_open_order_present(broker_state_lane: Mapping[str, Any]) -> bool:
+    return _int_or_zero(broker_state_lane.get("open_order_count")) > 0
+
+
+def _broker_lane_unavailable(broker_state_lane: Mapping[str, Any]) -> bool:
+    if broker_state_lane.get("broker_state_observed") is True:
+        return False
+    return str(broker_state_lane.get("broker_state_status", "")) in {
+        "broker_unavailable",
+        "live_url_detected",
+        "observation_incomplete",
+        "profile_gate_failed",
+    }
+
+
+def _broker_aware_market_decision(
+    market_signal_preview: str,
+    broker_state_lane: Mapping[str, Any],
+) -> str:
+    spy_position_present = broker_state_lane.get("spy_position_present") is True
+    spy_position_qty = _decimal_or_none(broker_state_lane.get("spy_position_qty"))
+    spy_position_nonzero = spy_position_present and (
+        spy_position_qty is None or spy_position_qty != Decimal("0")
+    )
+    if market_signal_preview == "buy_preview":
+        return "hold/noop" if spy_position_nonzero else "buy_preview"
+    if market_signal_preview == "sell_preview":
+        return "sell_preview" if spy_position_nonzero else "hold/noop"
+    if market_signal_preview == "insufficient_history":
+        return "hold/noop"
+    return "hold/noop"
+
+
+def _broker_aware_decision_reason(
+    preview_decision: str,
+    broker_state_lane: Mapping[str, Any],
+) -> str:
+    if preview_decision == "blocked/broker_state_not_observed":
+        return (
+            "Market signal is an offline preview only because broker state was "
+            "not observed and paper submit is not authorized."
+        )
+    if preview_decision == "blocked/broker_unavailable":
+        return (
+            "Read-only broker state could not be fully observed from the linked "
+            "snapshot artifact; paper submit is not authorized."
+        )
+    if preview_decision == "blocked/open_order_present":
+        return (
+            "Read-only broker snapshot reported at least one open order; paper "
+            "submit is not authorized."
+        )
+    if preview_decision == "blocked/unexpected_non_spy_position":
+        return (
+            "Read-only broker snapshot reported an unexpected non-SPY position; "
+            "paper submit is not authorized."
+        )
+    if broker_state_lane.get("broker_state_observed") is True:
+        return (
+            "Market signal was evaluated against linked read-only paper broker "
+            "state; paper submit remains unauthorized."
+        )
+    return "Paper submit is not authorized."
 
 
 def evaluate_mission_control_readiness_score(
@@ -6365,6 +6585,14 @@ def _market_signal_preview(posture: str) -> str:
 
 def _mission_control_safety_labels(payload: Mapping[str, Any]) -> list[str]:
     labels = list(payload.get("safety_labels", []))
+    if _broker_snapshot_observed(_broker_snapshot(payload)):
+        labels = [label for label in labels if label != "broker_state_not_observed"]
+        for observed_label in (
+            "read_only_broker_observation",
+            "broker_state_observed",
+        ):
+            if observed_label not in labels:
+                labels.append(observed_label)
     for required in (
         "paper_lab_only",
         "research_only",
@@ -8806,6 +9034,11 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     next_operator_action = _next_operator_action(posture, config.sma_slow_window)
     blocker_status = "broker_state_not_observed"
     broker_state_mode = config.broker_state_mode
+    broker_state_snapshot = _load_broker_state_snapshot(
+        config.broker_snapshot_log,
+        broker_state_mode=broker_state_mode,
+        symbol=config.symbol,
+    )
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
     quality_gate_defaults = _default_quality_gate_fields(artifact_paths)
@@ -8914,7 +9147,13 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "blocker_status": blocker_status,
         "blockers": [blocker_status],
         "broker_state_mode": broker_state_mode,
-        "broker_state_observed": False,
+        "broker_state_snapshot_path": (
+            _normalize_path(config.broker_snapshot_log)
+            if config.broker_snapshot_log is not None
+            else ""
+        ),
+        "broker_state_snapshot": broker_state_snapshot,
+        "broker_state_observed": _broker_snapshot_observed(broker_state_snapshot),
         "broker_state_claim": (
             "Broker positions and open orders were not read; this packet makes no "
             "position or order-state claim."
@@ -9574,6 +9813,17 @@ def _required_path(value: Path | str, field_name: str) -> Path:
             raise ValidationError(f"{field_name} is required.")
         path = Path(text)
     return path
+
+
+def _optional_path(value: Path | str | None, field_name: str) -> Path | None:
+    if value is None:
+        return None
+    if isinstance(value, Path):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    return _required_path(text, field_name)
 
 
 def _normalize_path(path: Path | str) -> str:
@@ -25239,6 +25489,15 @@ def _decimal_text(value: Decimal | None) -> str | None:
     if value is None:
         return None
     return str(value)
+
+
+def _decimal_or_none(value: Any) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        return Decimal(str(value))
+    except Exception:
+        return None
 
 
 def _json_safe(value: Any) -> Any:

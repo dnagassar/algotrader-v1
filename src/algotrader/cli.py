@@ -2501,6 +2501,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
+        "--broker-snapshot-log",
+        default=None,
+        help=(
+            "Optional local read-only paper broker snapshot reconciliation JSONL "
+            "to consume when --broker-state-mode=alpaca_paper_read_only."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -5917,6 +5925,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 sma_fast_window=args.sma_fast_window,
                 sma_slow_window=args.sma_slow_window,
                 broker_state_mode=args.broker_state_mode,
+                broker_snapshot_log=args.broker_snapshot_log,
             )
         )
         if args.output_format == "json":

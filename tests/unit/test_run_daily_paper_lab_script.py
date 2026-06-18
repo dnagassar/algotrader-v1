@@ -17,7 +17,9 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
             "\"alpaca_paper_read_only\")]"
         ),
         "--broker-state-mode\", $BrokerStateMode",
-        "scaffold-only and performs no broker read",
+        "BrokerSnapshotLog",
+        "--broker-snapshot-log",
+        "the daily lab command itself performs no broker read",
         "APP_PROFILE",
         "ALPACA_API_KEY",
         "ALPACA_API_SECRET_KEY",

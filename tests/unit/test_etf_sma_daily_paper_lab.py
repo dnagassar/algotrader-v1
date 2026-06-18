@@ -7476,6 +7476,95 @@ def test_etf_sma_daily_paper_lab_alpaca_read_only_mode_is_scaffold_only(
     assert validation["live_authorized"] is False
 
 
+def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_broker_snapshot_out"
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+    broker_snapshot_log = tmp_path / "m403_read_only_snapshot.jsonl"
+    broker_snapshot_log.write_text(
+        json.dumps(
+            {
+                "command": "paper-lab-read-only-broker-snapshot-reconciliation",
+                "symbol": "SPY",
+                "broker_observation_state": "observed",
+                "reconciliation_state": "ready_for_operator_review",
+                "account_observed": True,
+                "positions_observed": True,
+                "orders_observed": True,
+                "recent_orders_observed": True,
+                "currency": "USD",
+                "position_count": 1,
+                "position_symbols": ["SPY"],
+                "spy_position_present": True,
+                "spy_position_qty": "0.5",
+                "unexpected_non_spy_positions": [],
+                "open_order_count": 0,
+                "open_order_symbols": [],
+                "open_spy_order_count": 0,
+                "blockers": [],
+                "paper_submit_authorized": False,
+                "live_authorized": False,
+                "broker_mutation_authorized": False,
+                "submitted": False,
+                "mutated": False,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=bars_csv,
+            as_of_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    mission = json.loads(
+        (output_root / "mission_control.json").read_text(encoding="utf-8")
+    )
+    latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
+    broker = mission["broker_state_lane"]
+    decision = mission["decision_lane"]
+
+    assert payload["broker_state_observed"] is True
+    assert broker["broker_state_mode"] == "alpaca_paper_read_only"
+    assert broker["broker_state_status"] == "observed"
+    assert broker["broker_state_observed"] is True
+    assert broker["broker_snapshot_consumed"] is True
+    assert broker["broker_read_performed"] is False
+    assert broker["broker_mutation_performed"] is False
+    assert broker["paper_submit_authorized"] is False
+    assert broker["live_authorized"] is False
+    assert broker["spy_position_present"] is True
+    assert broker["spy_position_qty"] == "0.5"
+    assert broker["open_order_count"] == 0
+    assert broker["unexpected_non_spy_position_present"] is False
+    assert decision["market_signal_preview"] == "buy_preview"
+    assert decision["preview_decision"] == "hold/noop"
+    assert decision["blocker_status"] == "none"
+    assert "read_only_broker_observation" in decision["safety_labels"]
+    assert "broker_state_observed" in decision["safety_labels"]
+    assert "broker_state_not_observed" not in decision["safety_labels"]
+    assert latest["preview_decision"] == "hold/noop"
+    assert latest["main_blocker"] == "none"
+    assert latest["broker_state_mode"] == "alpaca_paper_read_only"
+    assert latest["broker_read_performed"] is False
+    assert latest["paper_submit_authorized"] is False
+
+    validation = json.loads(
+        (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
+    )
+    assert validation["validation_status"] == "passed"
+
+
 def test_etf_sma_daily_paper_lab_research_board_prioritization(tmp_path: Path) -> None:
     """Explicitly verify research board prioritization generation and validator logic."""
     output_root = tmp_path / "paper_lab_prioritization_out"
