@@ -144,6 +144,7 @@ NEXT_ACTIONS = {
     "verify_only_success": "send_report_to_gpt_for_classification_and_commit_commands",
     "commit_only_success": "review_local_commit_and_push_if_appropriate",
     "commit_and_push_success": "select_next_safe_milestone",
+    "push_authorization": "review_push_authorization_blocker_before_git_mutation",
 }
 
 
@@ -246,6 +247,7 @@ class WorkOrder:
     labels: tuple[str, ...]
     allow_no_change_fast_path: bool
     command_timeout_seconds: int | None
+    nonlocal_push_authorized: bool
 
 
 @dataclass(frozen=True)
@@ -449,6 +451,7 @@ def run_development_autopilot(
     )
     record["command_timeout_seconds"] = command_timeout_seconds
     record["work_order_command_timeout_seconds"] = work_order.command_timeout_seconds
+    record["nonlocal_push_authorized"] = work_order.nonlocal_push_authorized
     record["allow_no_change_fast_path"] = work_order.allow_no_change_fast_path
     record["no_change_fast_path_allowed"] = _no_change_fast_path_allowed(
         resolved_options.full_pytest_policy,
@@ -858,12 +861,17 @@ def run_development_autopilot(
     )
     record.update(mutation_result["record"])
     if not mutation_result["ok"]:
+        blocker = record.get("push_authorization_blocker")
         return _finish(
             artifacts,
             record,
             outcome="blocked",
             reason=str(mutation_result["reason"]),
-            next_action=NEXT_ACTIONS["repository_state"],
+            next_action=(
+                NEXT_ACTIONS["push_authorization"]
+                if blocker
+                else NEXT_ACTIONS["repository_state"]
+            ),
             exit_code=2,
             repo_root=root,
         )
@@ -1086,6 +1094,7 @@ def _load_work_order(path: Path) -> WorkOrder | str:
             if "command_timeout_seconds" in raw
             else None
         ),
+        nonlocal_push_authorized=raw.get("nonlocal_push_authorized") is True,
     )
 
 
@@ -1133,6 +1142,12 @@ def _validate_work_order_raw(raw: dict[str, object]) -> str:
         bool,
     ):
         return "invalid_work_order_schema:allow_no_change_fast_path"
+    if (
+        "nonlocal_push_authorized" in raw
+        and raw["nonlocal_push_authorized"] is not None
+        and not isinstance(raw["nonlocal_push_authorized"], bool)
+    ):
+        return "invalid_work_order_schema:nonlocal_push_authorized"
     if "command_timeout_seconds" in raw and _command_timeout_validation_error(
         raw["command_timeout_seconds"],
         field_name="command_timeout_seconds",
@@ -1639,6 +1654,21 @@ def _perform_git_mutation(
         return {"ok": False, "reason": "baseline_mismatch_before_git_mutation", "record": record}
 
     git_env = _scrubbed_env(env)
+    if git_mode == "commit_and_push":
+        remote_name = "origin"
+        record.update(
+            _push_authorization_record(
+                work_order,
+                _push_remote_provenance(repo_root, remote_name, env=git_env),
+            )
+        )
+        if record["push_authorization_blocker"]:
+            return {
+                "ok": False,
+                "reason": record["push_authorization_blocker"],
+                "record": record,
+            }
+
     add_result = _run_command(("git", "add", "--") + changed_files, cwd=repo_root, env=git_env)
     if add_result.exit_code != 0:
         return {"ok": False, "reason": "git_add_failed", "record": record}
@@ -1669,7 +1699,6 @@ def _perform_git_mutation(
 
     if git_mode == "commit_and_push":
         remote_name = "origin"
-        record.update(_push_remote_provenance(repo_root, remote_name, env=git_env))
         origin_main = _git_text(repo_root, "rev-parse", "origin/main")
         if expected_head and origin_main != expected_head:
             return {"ok": False, "reason": "origin_main_changed_before_push", "record": record}
@@ -1699,7 +1728,40 @@ def _empty_git_mutation_record() -> dict[str, object]:
         "push_remote_url_is_network": False,
         "push_remote_url_is_local_path": False,
         "push_remote_url_redacted": False,
+        "nonlocal_push_authorized": False,
+        "push_authorization_required": False,
+        "push_authorization_status": "not_applicable",
+        "push_authorization_blocker": None,
     }
+
+
+def _push_authorization_record(
+    work_order: WorkOrder,
+    provenance: Mapping[str, object],
+) -> dict[str, object]:
+    record = dict(provenance)
+    authorized = work_order.nonlocal_push_authorized
+    record["nonlocal_push_authorized"] = authorized
+
+    kind = str(record.get("push_remote_url_kind", "unknown"))
+    if kind == "local_path":
+        record["push_authorization_required"] = False
+        record["push_authorization_status"] = "local_remote_allowed"
+        record["push_authorization_blocker"] = None
+    elif kind == "network":
+        record["push_authorization_required"] = True
+        if authorized:
+            record["push_authorization_status"] = "network_remote_authorized"
+            record["push_authorization_blocker"] = None
+        else:
+            record["push_authorization_status"] = "blocked_network_remote_not_authorized"
+            record["push_authorization_blocker"] = "network_push_not_authorized"
+    else:
+        record["push_authorization_required"] = True
+        record["push_authorization_status"] = "blocked_unknown_remote"
+        record["push_authorization_blocker"] = "push_remote_unknown"
+
+    return record
 
 
 def _git_file_list(
@@ -1928,6 +1990,16 @@ def _verification_results_payload(record: Mapping[str, object]) -> dict[str, obj
             False,
         ),
         "push_remote_url_redacted": record.get("push_remote_url_redacted", False),
+        "nonlocal_push_authorized": record.get("nonlocal_push_authorized", False),
+        "push_authorization_required": record.get(
+            "push_authorization_required",
+            False,
+        ),
+        "push_authorization_status": record.get(
+            "push_authorization_status",
+            "not_applicable",
+        ),
+        "push_authorization_blocker": record.get("push_authorization_blocker"),
     }
 
 
@@ -1951,6 +2023,10 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         f"push_remote_url_is_network: {latest.get('push_remote_url_is_network', '')}",
         f"push_remote_url_is_local_path: {latest.get('push_remote_url_is_local_path', '')}",
         f"push_remote_url_redacted: {latest.get('push_remote_url_redacted', '')}",
+        f"nonlocal_push_authorized: {latest.get('nonlocal_push_authorized', '')}",
+        f"push_authorization_required: {latest.get('push_authorization_required', '')}",
+        f"push_authorization_status: {latest.get('push_authorization_status', '')}",
+        f"push_authorization_blocker: {latest.get('push_authorization_blocker', '')}",
         f"work_order_id: {latest.get('work_order_id', '')}",
         f"route_name: {latest.get('route_name', '')}",
         f"agent_exit_code: {latest.get('agent_exit_code', '')}",
@@ -1982,6 +2058,7 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
 
 def _sanitized_work_order_packet(work_order: WorkOrder) -> dict[str, object]:
     packet = dict(work_order.raw)
+    packet["nonlocal_push_authorized"] = work_order.nonlocal_push_authorized
     if "agent_prompt" in packet:
         packet["agent_prompt_sha256"] = hashlib.sha256(work_order.prompt.encode("utf-8")).hexdigest()
         packet["agent_prompt"] = "<captured-by-hash>"

@@ -613,6 +613,9 @@ def test_verify_only_mode_never_stages_commits_or_pushes(tmp_path: Path) -> None
     assert result["latest"]["staging_occurred"] is False
     assert result["latest"]["commit_occurred"] is False
     assert result["latest"]["push_occurred"] is False
+    assert result["latest"]["push_authorization_required"] is False
+    assert result["latest"]["push_authorization_status"] == "not_applicable"
+    assert result["latest"]["push_authorization_blocker"] is None
     assert _git(repo, "rev-parse", "HEAD") == head
     assert _git(repo, "diff", "--cached", "--name-only") == ""
 
@@ -664,11 +667,15 @@ def test_no_change_fast_path_skips_full_pytest_after_required_checks(
     assert latest["staging_occurred"] is False
     assert latest["commit_occurred"] is False
     assert latest["push_occurred"] is False
+    assert latest["push_authorization_required"] is False
+    assert latest["push_authorization_status"] == "not_applicable"
+    assert latest["push_authorization_blocker"] is None
     assert latest["next_action_packet"]["next_action"] == NEXT_ACTIONS["verify_only_success"]
 
     verification_results = _read_json(output_root / "verification_results.json")
     assert verification_results["full_pytest_status"] == "skipped"
     assert verification_results["full_pytest_required"] is False
+    assert verification_results["push_authorization_status"] == "not_applicable"
     assert len(verification_results["commands"]) == 3
 
     ledger_line = (output_root / "development_autopilot_ledger.jsonl").read_text(
@@ -814,8 +821,10 @@ def test_git_mutation_modes_require_full_pytest_before_mutation_outcome(
     assert result["latest"]["push_occurred"] is False
 
 
+@pytest.mark.parametrize("authorization_overrides", [None, {"nonlocal_push_authorized": False}])
 def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
     tmp_path: Path,
+    authorization_overrides: dict[str, object] | None,
 ) -> None:
     repo, head = _make_repo(tmp_path)
     remote = tmp_path / "origin.git"
@@ -828,7 +837,10 @@ def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
         tmp_path,
         head,
         allowed_files=[allowed_file],
-        overrides={"git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"]},
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            **(authorization_overrides or {}),
+        },
     )
 
     result = _run(
@@ -869,6 +881,10 @@ def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
         assert payload["push_remote_url_is_network"] is False
         assert payload["push_remote_url_is_local_path"] is True
         assert payload["push_remote_url_redacted"] is False
+        assert payload["nonlocal_push_authorized"] is False
+        assert payload["push_authorization_required"] is False
+        assert payload["push_authorization_status"] == "local_remote_allowed"
+        assert payload["push_authorization_blocker"] is None
 
     report = (output_root / "development_autopilot_report.md").read_text(
         encoding="utf-8"
@@ -878,6 +894,327 @@ def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
     assert "push_remote_url_kind: local_path" in report
     assert "push_remote_url_is_network: False" in report
     assert "push_remote_url_is_local_path: True" in report
+    assert "nonlocal_push_authorized: False" in report
+    assert "push_authorization_required: False" in report
+    assert "push_authorization_status: local_remote_allowed" in report
+    assert "push_authorization_blocker: None" in report
+
+
+@pytest.mark.parametrize(
+    "authorization_overrides",
+    [None, {"nonlocal_push_authorized": False}, {"nonlocal_push_authorized": None}],
+)
+def test_unauthorized_network_remote_blocks_before_git_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authorization_overrides: dict[str, object] | None,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    raw_url = (
+        "https://fixture-user:SECRET_SENTINEL_123@example.invalid/org/repo.git"
+        "?credential=SECRET_SENTINEL_123#SECRET_SENTINEL_123"
+    )
+    _git(repo, "remote", "add", "origin", raw_url)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            **(authorization_overrides or {}),
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path=allowed_file),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        git_mode="commit_and_push",
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "network_push_not_authorized"
+    assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["push_authorization"]
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    ledger = json.loads(
+        (output_root / "development_autopilot_ledger.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()[-1]
+    )
+    verification_results = _read_json(output_root / "verification_results.json")
+    for payload in (latest, ledger, verification_results):
+        assert payload["staging_occurred"] is False
+        assert payload["commit_occurred"] is False
+        assert payload["push_occurred"] is False
+        assert payload["staged_files"] == []
+        assert payload["committed_files"] == []
+        assert payload["push_remote_name"] == "origin"
+        assert payload["push_remote_url_sanitized"] == (
+            "https://<redacted>@example.invalid/org/repo.git?<redacted>#<redacted>"
+        )
+        assert payload["push_remote_url_kind"] == "network"
+        assert payload["push_remote_url_is_network"] is True
+        assert payload["push_remote_url_is_local_path"] is False
+        assert payload["push_remote_url_redacted"] is True
+        assert payload["nonlocal_push_authorized"] is False
+        assert payload["push_authorization_required"] is True
+        assert (
+            payload["push_authorization_status"]
+            == "blocked_network_remote_not_authorized"
+        )
+        assert payload["push_authorization_blocker"] == "network_push_not_authorized"
+
+    artifacts = _combined_artifact_text(output_root)
+    assert raw_url not in artifacts
+    assert "fixture-user" not in artifacts
+    assert "SECRET_SENTINEL_123" not in artifacts
+    assert "push_authorization_status: blocked_network_remote_not_authorized" in artifacts
+    assert "push_authorization_blocker: network_push_not_authorized" in artifacts
+
+
+def test_authorized_network_remote_reaches_intercepted_push_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    raw_url = (
+        "https://fixture-user:SECRET_SENTINEL_456@example.invalid/org/repo.git"
+        "?credential=SECRET_SENTINEL_456#SECRET_SENTINEL_456"
+    )
+    _git(repo, "remote", "add", "origin", raw_url)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "nonlocal_push_authorized": True,
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def intercepted_push_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        if command[:2] == ("git", "push"):
+            return development_autopilot.CommandResult(
+                command=command,
+                exit_code=0,
+                stdout="simulated push\n",
+            )
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(
+        development_autopilot,
+        "_run_command",
+        intercepted_push_run_command,
+    )
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path=allowed_file),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        git_mode="commit_and_push",
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 0
+    assert result["outcome"] == "accepted"
+    assert result["reason"] == "commit_and_push_success"
+    assert _command_was_called(commands, ("git", "push"))
+    assert _first_command_index(commands, ("git", "config", "--get")) < _first_command_index(
+        commands,
+        ("git", "add"),
+    )
+    assert _first_command_index(commands, ("git", "add")) < _first_command_index(
+        commands,
+        ("git", "commit"),
+    )
+    assert _first_command_index(commands, ("git", "commit")) < _first_command_index(
+        commands,
+        ("git", "push"),
+    )
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    ledger = json.loads(
+        (output_root / "development_autopilot_ledger.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()[-1]
+    )
+    verification_results = _read_json(output_root / "verification_results.json")
+    for payload in (latest, ledger, verification_results):
+        assert payload["staging_occurred"] is True
+        assert payload["commit_occurred"] is True
+        assert payload["push_occurred"] is True
+        assert payload["staged_files"] == [allowed_file]
+        assert payload["committed_files"] == [allowed_file]
+        assert payload["push_remote_url_kind"] == "network"
+        assert payload["push_remote_url_is_network"] is True
+        assert payload["push_remote_url_redacted"] is True
+        assert payload["nonlocal_push_authorized"] is True
+        assert payload["push_authorization_required"] is True
+        assert payload["push_authorization_status"] == "network_remote_authorized"
+        assert payload["push_authorization_blocker"] is None
+
+    artifacts = _combined_artifact_text(output_root)
+    assert raw_url not in artifacts
+    assert "fixture-user" not in artifacts
+    assert "SECRET_SENTINEL_456" not in artifacts
+    assert "push_authorization_status: network_remote_authorized" in artifacts
+
+
+def test_unknown_remote_blocks_even_when_nonlocal_push_is_authorized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "nonlocal_push_authorized": True,
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path=allowed_file),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        git_mode="commit_and_push",
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "push_remote_unknown"
+    assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["push_authorization"]
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    verification_results = _read_json(output_root / "verification_results.json")
+    for payload in (latest, verification_results):
+        assert payload["staging_occurred"] is False
+        assert payload["commit_occurred"] is False
+        assert payload["push_occurred"] is False
+        assert payload["staged_files"] == []
+        assert payload["committed_files"] == []
+        assert payload["push_remote_name"] == "origin"
+        assert payload["push_remote_url_sanitized"] == ""
+        assert payload["push_remote_url_kind"] == "unknown"
+        assert payload["nonlocal_push_authorized"] is True
+        assert payload["push_authorization_required"] is True
+        assert payload["push_authorization_status"] == "blocked_unknown_remote"
+        assert payload["push_authorization_blocker"] == "push_remote_unknown"
+
+
+def test_non_boolean_nonlocal_push_authorization_rejects_work_order(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    _git(repo, "remote", "add", "origin", "https://example.invalid/org/repo.git")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=["src/allowed.py"],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "nonlocal_push_authorized": "true",
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path="src/allowed.py"),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        git_mode="commit_and_push",
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "invalid_work_order_schema:nonlocal_push_authorized"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not (repo / "src" / "allowed.py").exists()
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
 
 
 def test_credential_bearing_remote_url_is_sanitized_without_raw_secret() -> None:
@@ -990,6 +1327,35 @@ def test_next_action_packet_emits_exactly_one_action(tmp_path: Path) -> None:
     assert set(packet).issuperset({"next_action"})
     assert "next_actions" not in packet
     assert isinstance(packet["next_action"], str)
+
+
+def _command_was_called(
+    commands: list[tuple[str, ...]],
+    prefix: tuple[str, ...],
+) -> bool:
+    return any(command[: len(prefix)] == prefix for command in commands)
+
+
+def _first_command_index(
+    commands: list[tuple[str, ...]],
+    prefix: tuple[str, ...],
+) -> int:
+    for index, command in enumerate(commands):
+        if command[: len(prefix)] == prefix:
+            return index
+    raise AssertionError(f"command prefix not called: {prefix!r}")
+
+
+def _combined_artifact_text(output_root: Path) -> str:
+    names = (
+        "development_autopilot_latest.json",
+        "development_autopilot_ledger.jsonl",
+        "verification_results.json",
+        "development_autopilot_report.md",
+    )
+    return "\n".join(
+        (output_root / name).read_text(encoding="utf-8") for name in names
+    )
 
 
 def _run(
