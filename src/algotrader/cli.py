@@ -3511,6 +3511,41 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Check every JSON object record for this key (can be repeated).",
     )
+    development_autopilot_parser = subparsers.add_parser(
+        "development-autopilot",
+        help="Run one safe local development-autopilot work order.",
+    )
+    development_autopilot_parser.add_argument(
+        "--output-root",
+        default="runs/development_autopilot",
+        help="Directory for development-autopilot runtime artifacts.",
+    )
+    development_autopilot_parser.add_argument(
+        "--work-order-path",
+        default=None,
+        help="Path to one JSON development work order.",
+    )
+    development_autopilot_parser.add_argument(
+        "--expected-head",
+        default=None,
+        help="Expected HEAD and origin/main commit before dispatch.",
+    )
+    development_autopilot_parser.add_argument(
+        "--agent-route",
+        default="codex",
+        help="Local builder route to use. Currently only codex is supported.",
+    )
+    development_autopilot_parser.add_argument(
+        "--agent-command",
+        default=None,
+        help="Local executable command for the builder route.",
+    )
+    development_autopilot_parser.add_argument(
+        "--git-mode",
+        choices=("verify_only", "commit_only", "commit_and_push"),
+        default="verify_only",
+        help="Git mutation mode. Defaults to verify_only.",
+    )
     return parser
 
 
@@ -3600,6 +3635,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if command == "validate-artifacts":
         return _run_validate_artifacts(args)
+    if command == "development-autopilot":
+        return _run_development_autopilot(args)
     if command == "advisory-operating-brief-package-preview":
         return _run_advisory_operating_brief_package_preview(args.output_format)
     if command == "advisory-operating-brief-mvp-preview":
@@ -12162,6 +12199,28 @@ def _add_paper_lab_run_log_options(parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Run/session id to include in paper-lab observation records.",
     )
+
+
+def _run_development_autopilot(args: argparse.Namespace) -> int:
+    from .development_autopilot import (
+        DevelopmentAutopilotOptions,
+        run_development_autopilot,
+    )
+
+    result = run_development_autopilot(
+        DevelopmentAutopilotOptions(
+            output_root=Path(args.output_root),
+            work_order_path=(
+                Path(args.work_order_path) if args.work_order_path else None
+            ),
+            expected_head=args.expected_head,
+            agent_route=args.agent_route,
+            agent_command=args.agent_command,
+            git_mode=args.git_mode,
+        )
+    )
+    print(json.dumps(result["next_action_packet"], sort_keys=True))
+    return int(result["exit_code"])
 
 
 def _run_validate_artifacts(args: argparse.Namespace) -> int:
