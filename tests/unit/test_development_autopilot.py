@@ -53,6 +53,10 @@ def test_cli_parser_registers_development_autopilot_command() -> None:
             "fake-codex",
             "--git-mode",
             "verify_only",
+            "--command-timeout-seconds",
+            "120",
+            "--full-pytest-policy",
+            "changed_files_only",
         ]
     )
 
@@ -63,6 +67,31 @@ def test_cli_parser_registers_development_autopilot_command() -> None:
     assert args.agent_route == "codex"
     assert args.agent_command == "fake-codex"
     assert args.git_mode == "verify_only"
+    assert args.command_timeout_seconds == 120
+    assert args.full_pytest_policy == "changed_files_only"
+
+
+def test_cli_parser_accepts_full_pytest_policy_always() -> None:
+    args = build_parser().parse_args(
+        ["development-autopilot", "--full-pytest-policy", "always"]
+    )
+
+    assert args.full_pytest_policy == "always"
+
+
+def test_cli_parser_accepts_full_pytest_policy_changed_files_only() -> None:
+    args = build_parser().parse_args(
+        ["development-autopilot", "--full-pytest-policy", "changed_files_only"]
+    )
+
+    assert args.full_pytest_policy == "changed_files_only"
+
+
+def test_cli_parser_rejects_invalid_full_pytest_policy() -> None:
+    with pytest.raises(SystemExit):
+        build_parser().parse_args(
+            ["development-autopilot", "--full-pytest-policy", "sometimes"]
+        )
 
 
 def test_baseline_match_and_clean_repo_state_allows_dispatch(tmp_path: Path) -> None:
@@ -180,6 +209,11 @@ def test_missing_work_order_blocks_with_exact_next_action(tmp_path: Path) -> Non
         "reason": "missing_work_order",
         "next_action": NEXT_ACTIONS["work_order"],
         "work_order_id": "",
+        "command_timeout_seconds": 1800,
+        "full_pytest_policy": "always",
+        "full_pytest_required": True,
+        "full_pytest_status": "not_started",
+        "no_change_fast_path_used": False,
     }
 
 
@@ -193,6 +227,91 @@ def test_invalid_work_order_schema_blocks(tmp_path: Path) -> None:
     assert result["outcome"] == "blocked"
     assert result["reason"].startswith("invalid_work_order_schema:")
     assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["work_order"]
+
+
+def test_missing_allow_no_change_fast_path_defaults_to_false(tmp_path: Path) -> None:
+    repo, head = _make_repo(tmp_path)
+    work_order = _write_work_order(tmp_path, head)
+    agent = _fake_agent(tmp_path)
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        agent,
+        full_pytest_policy="changed_files_only",
+    )
+
+    assert result["outcome"] == "accepted"
+    assert result["latest"]["no_change_fast_path_allowed"] is False
+    assert result["latest"]["no_change_fast_path_used"] is False
+
+
+def test_non_boolean_allow_no_change_fast_path_rejects_work_order(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={"allow_no_change_fast_path": "true"},
+    )
+
+    result = _run(repo, tmp_path / "out", work_order, head, _fake_agent(tmp_path))
+
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "invalid_work_order_schema:allow_no_change_fast_path"
+    assert not result["latest"]["route_available"]
+
+
+def test_work_order_timeout_value_must_be_positive_integer(tmp_path: Path) -> None:
+    repo, head = _make_repo(tmp_path)
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={"command_timeout_seconds": 1},
+    )
+
+    result = _run(repo, tmp_path / "out", work_order, head, _fake_agent(tmp_path))
+
+    assert result["outcome"] == "accepted"
+    assert result["latest"]["command_timeout_seconds"] == 1
+    assert result["latest"]["work_order_command_timeout_seconds"] == 1
+
+
+@pytest.mark.parametrize("value", [0, -1, "10"])
+def test_invalid_work_order_timeout_value_rejects_work_order(
+    tmp_path: Path,
+    value: object,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={"command_timeout_seconds": value},
+    )
+
+    result = _run(repo, tmp_path / "out", work_order, head, _fake_agent(tmp_path))
+
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "invalid_work_order_schema:command_timeout_seconds"
+
+
+def test_excessive_work_order_timeout_value_rejects_work_order(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={"command_timeout_seconds": 7201},
+    )
+
+    result = _run(repo, tmp_path / "out", work_order, head, _fake_agent(tmp_path))
+
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "invalid_work_order_schema:command_timeout_seconds"
 
 
 @pytest.mark.parametrize("field", HARD_GATE_FIELDS)
@@ -292,6 +411,41 @@ def test_agent_failure_records_failed_outcome_and_next_action(tmp_path: Path) ->
     assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["agent_failed"]
 
 
+def test_agent_timeout_records_status_and_stops_before_verification(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    verification_marker = tmp_path / "markers" / "verification.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        verification_commands=[_marker_command(verification_marker)],
+    )
+    agent = _fake_agent(tmp_path, sleep_seconds=5)
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        agent,
+        command_timeout_seconds=1,
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 1
+    assert result["outcome"] == "failed"
+    assert result["reason"] == "agent_command_timeout"
+    assert result["latest"]["agent_timeout"] is True
+    assert result["latest"]["verification_commands"] == []
+    assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["agent_timeout"]
+    assert not verification_marker.exists()
+    assert result["latest"]["staging_occurred"] is False
+    assert result["latest"]["commit_occurred"] is False
+    assert result["latest"]["push_occurred"] is False
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
 def test_agent_created_disallowed_file_rejects_before_commit(tmp_path: Path) -> None:
     repo, head = _make_repo(tmp_path)
     work_order = _write_work_order(tmp_path, head, allowed_files=["src/allowed.py"])
@@ -322,6 +476,88 @@ def test_failed_verification_command_produces_repair_required(tmp_path: Path) ->
     assert result["outcome"] == "repair_required"
     assert result["reason"] == "verification_failed"
     assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["verification_failed"]
+
+
+def test_verification_command_timeout_records_status_and_stops(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    repo_verification_marker = tmp_path / "markers" / "repo-verification.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        verification_commands=[_sleep_command(seconds=5)],
+    )
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        command_timeout_seconds=1,
+        repository_verification_commands=(
+            _marker_command(repo_verification_marker),
+            _marker_command(tmp_path / "markers" / "verify-offline.txt"),
+            _marker_command(tmp_path / "markers" / "full-pytest.txt"),
+        ),
+    )
+
+    assert result["exit_code"] == 1
+    assert result["outcome"] == "repair_required"
+    assert result["reason"] == "verification_command_timeout"
+    assert result["latest"]["verification_timeout"] is True
+    assert result["latest"]["verification_timeout_reason"] == "verification_command_timeout"
+    assert result["latest"]["verification_commands"][0]["timed_out"] is True
+    assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["verification_timeout"]
+    assert not repo_verification_marker.exists()
+    assert result["latest"]["staging_occurred"] is False
+    assert result["latest"]["commit_occurred"] is False
+    assert result["latest"]["push_occurred"] is False
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_full_pytest_timeout_records_status_and_stops_before_git_mutation(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    targeted_marker = tmp_path / "markers" / "targeted.txt"
+    safety_marker = tmp_path / "markers" / "safety.txt"
+    verify_marker = tmp_path / "markers" / "verify-offline.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        verification_commands=[_marker_command(targeted_marker)],
+    )
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        command_timeout_seconds=1,
+        repository_verification_commands=(
+            _marker_command(safety_marker),
+            _marker_command(verify_marker),
+            _sleep_command(seconds=5),
+        ),
+    )
+
+    assert result["exit_code"] == 1
+    assert result["outcome"] == "repair_required"
+    assert result["reason"] == "full_pytest_timeout"
+    assert result["latest"]["full_pytest_status"] == "timeout"
+    assert result["latest"]["full_pytest_exit_code"] == -1
+    assert result["latest"]["verification_timeout_reason"] == "full_pytest_timeout"
+    assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["verification_timeout"]
+    assert targeted_marker.exists()
+    assert safety_marker.exists()
+    assert verify_marker.exists()
+    assert result["latest"]["staging_occurred"] is False
+    assert result["latest"]["commit_occurred"] is False
+    assert result["latest"]["push_occurred"] is False
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
 
 
 def test_app_profile_paper_blocks_before_agent_invocation(tmp_path: Path) -> None:
@@ -378,6 +614,203 @@ def test_verify_only_mode_never_stages_commits_or_pushes(tmp_path: Path) -> None
     assert result["latest"]["push_occurred"] is False
     assert _git(repo, "rev-parse", "HEAD") == head
     assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_no_change_fast_path_skips_full_pytest_after_required_checks(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    targeted_marker = tmp_path / "markers" / "targeted.txt"
+    safety_marker = tmp_path / "markers" / "safety.txt"
+    verify_marker = tmp_path / "markers" / "verify-offline.txt"
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        verification_commands=[_marker_command(targeted_marker)],
+        overrides={"allow_no_change_fast_path": True},
+    )
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        full_pytest_policy="changed_files_only",
+        repository_verification_commands=(
+            _marker_command(safety_marker),
+            _marker_command(verify_marker),
+            _marker_command(full_marker),
+        ),
+    )
+
+    assert result["exit_code"] == 0
+    assert result["outcome"] == "accepted"
+    assert targeted_marker.exists()
+    assert safety_marker.exists()
+    assert verify_marker.exists()
+    assert not full_marker.exists()
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    assert latest["full_pytest_policy"] == "changed_files_only"
+    assert latest["full_pytest_required"] is False
+    assert latest["full_pytest_status"] == "skipped"
+    assert latest["full_pytest_skipped_reason"] == "no_source_test_script_changes"
+    assert latest["no_change_fast_path_allowed"] is True
+    assert latest["no_change_fast_path_used"] is True
+    assert latest["normal_pytest_offline_invariant_preserved"] is True
+    assert latest["staging_occurred"] is False
+    assert latest["commit_occurred"] is False
+    assert latest["push_occurred"] is False
+    assert latest["next_action_packet"]["next_action"] == NEXT_ACTIONS["verify_only_success"]
+
+    verification_results = _read_json(output_root / "verification_results.json")
+    assert verification_results["full_pytest_status"] == "skipped"
+    assert verification_results["full_pytest_required"] is False
+    assert len(verification_results["commands"]) == 3
+
+    ledger_line = (output_root / "development_autopilot_ledger.jsonl").read_text(
+        encoding="utf-8"
+    ).splitlines()[-1]
+    ledger = json.loads(ledger_line)
+    assert ledger["full_pytest_status"] == "skipped"
+    assert ledger["no_change_fast_path_used"] is True
+
+    report = (output_root / "development_autopilot_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "full_pytest_status: skipped" in report
+    assert "normal_pytest_offline_invariant_preserved: True" in report
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+
+
+def test_changed_files_only_with_source_changes_still_runs_full_pytest(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=["src/allowed.py"],
+        overrides={"allow_no_change_fast_path": True},
+    )
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path="src/allowed.py"),
+        full_pytest_policy="changed_files_only",
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["outcome"] == "accepted"
+    assert full_marker.exists()
+    assert result["latest"]["full_pytest_required"] is True
+    assert result["latest"]["full_pytest_status"] == "passed"
+    assert result["latest"]["no_change_fast_path_used"] is False
+
+
+def test_changed_files_only_without_work_order_permission_runs_full_pytest(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(tmp_path, head)
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        full_pytest_policy="changed_files_only",
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["outcome"] == "accepted"
+    assert full_marker.exists()
+    assert result["latest"]["full_pytest_required"] is True
+    assert result["latest"]["full_pytest_status"] == "passed"
+    assert result["latest"]["no_change_fast_path_allowed"] is False
+
+
+def test_always_policy_runs_full_pytest_even_with_no_changes(tmp_path: Path) -> None:
+    repo, head = _make_repo(tmp_path)
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={"allow_no_change_fast_path": True},
+    )
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        full_pytest_policy="always",
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["outcome"] == "accepted"
+    assert full_marker.exists()
+    assert result["latest"]["full_pytest_required"] is True
+    assert result["latest"]["full_pytest_status"] == "passed"
+    assert result["latest"]["no_change_fast_path_used"] is False
+
+
+@pytest.mark.parametrize("git_mode", ["commit_only", "commit_and_push"])
+def test_git_mutation_modes_require_full_pytest_before_mutation_outcome(
+    tmp_path: Path,
+    git_mode: str,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        overrides={
+            "allow_no_change_fast_path": True,
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+        },
+    )
+
+    result = _run(
+        repo,
+        tmp_path / "out",
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        git_mode=git_mode,
+        full_pytest_policy="changed_files_only",
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["reason"] == "no_changed_files_to_commit"
+    assert full_marker.exists()
+    assert result["latest"]["full_pytest_required"] is True
+    assert result["latest"]["full_pytest_status"] == "passed"
+    assert result["latest"]["no_change_fast_path_allowed"] is False
+    assert result["latest"]["commit_occurred"] is False
+    assert result["latest"]["push_occurred"] is False
 
 
 @pytest.mark.parametrize("git_mode", ["commit_only", "commit_and_push"])
@@ -477,6 +910,9 @@ def _run(
     *,
     env: dict[str, str] | None = None,
     git_mode: str = "verify_only",
+    repository_verification_commands: tuple[tuple[str, ...], ...] | None = (),
+    command_timeout_seconds: int = 1800,
+    full_pytest_policy: str = "always",
 ) -> dict[str, object]:
     return run_development_autopilot(
         DevelopmentAutopilotOptions(
@@ -485,7 +921,9 @@ def _run(
             expected_head=expected_head,
             agent_command=f"{sys.executable} {agent_command}",
             git_mode=git_mode,
-            repository_verification_commands=(),
+            repository_verification_commands=repository_verification_commands,
+            command_timeout_seconds=command_timeout_seconds,
+            full_pytest_policy=full_pytest_policy,
         ),
         repo_root=repo,
         env=_safe_env() if env is None else env,
@@ -555,6 +993,7 @@ def _fake_agent(
     *,
     write_path: str | None = None,
     exit_code: int = 0,
+    sleep_seconds: int = 0,
 ) -> Path:
     script = tmp_path / f"fake-agent-{len(list(tmp_path.glob('fake-agent-*.py')))}.py"
     write_literal = repr(write_path)
@@ -563,9 +1002,11 @@ def _fake_agent(
             [
                 "from pathlib import Path",
                 "import sys",
+                "import time",
                 "prompt = sys.stdin.read()",
-                "print('agent stdout')",
-                "print('agent stderr', file=sys.stderr)",
+                "print('agent stdout', flush=True)",
+                "print('agent stderr', file=sys.stderr, flush=True)",
+                f"time.sleep({sleep_seconds})",
                 f"write_path = {write_literal}",
                 "if write_path:",
                 "    path = Path(write_path)",
@@ -578,6 +1019,39 @@ def _fake_agent(
         encoding="utf-8",
     )
     return script
+
+
+def _marker_command(
+    marker_path: Path,
+    *,
+    text: str = "ran",
+    exit_code: int = 0,
+) -> tuple[str, ...]:
+    code = (
+        "from pathlib import Path; "
+        f"path = Path({str(marker_path)!r}); "
+        "path.parent.mkdir(parents=True, exist_ok=True); "
+        f"path.write_text({text!r}, encoding='utf-8'); "
+        f"raise SystemExit({exit_code})"
+    )
+    return (sys.executable, "-c", code)
+
+
+def _sleep_command(*, seconds: int) -> tuple[str, ...]:
+    code = f"import time; print('sleeping', flush=True); time.sleep({seconds})"
+    return (sys.executable, "-c", code)
+
+
+def _repo_verification_commands(
+    tmp_path: Path,
+    *,
+    full_marker: Path | None = None,
+) -> tuple[tuple[str, ...], ...]:
+    return (
+        _marker_command(tmp_path / "markers" / "safety.txt"),
+        _marker_command(tmp_path / "markers" / "verify-offline.txt"),
+        _marker_command(full_marker or tmp_path / "markers" / "full-pytest.txt"),
+    )
 
 
 def _safe_env(**overrides: str) -> dict[str, str]:

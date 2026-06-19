@@ -16,7 +16,11 @@ param(
     [string]$AgentRoute = "codex",
     [string]$AgentCommand,
     [ValidateSet("verify_only", "commit_only", "commit_and_push")]
-    [string]$GitMode = "verify_only"
+    [string]$GitMode = "verify_only",
+    [ValidateRange(1, 7200)]
+    [int]$CommandTimeoutSeconds = 1800,
+    [ValidateSet("always", "changed_files_only")]
+    [string]$FullPytestPolicy = "always"
 )
 
 Set-StrictMode -Version Latest
@@ -66,7 +70,9 @@ $CliArgs = @(
     "development-autopilot",
     "--output-root", $AbsoluteOutputRoot,
     "--agent-route", $AgentRoute,
-    "--git-mode", $GitMode
+    "--git-mode", $GitMode,
+    "--command-timeout-seconds", $CommandTimeoutSeconds.ToString(),
+    "--full-pytest-policy", $FullPytestPolicy
 )
 
 if (-not [string]::IsNullOrEmpty($WorkOrderPath)) {

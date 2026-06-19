@@ -3546,6 +3546,18 @@ def build_parser() -> argparse.ArgumentParser:
         default="verify_only",
         help="Git mutation mode. Defaults to verify_only.",
     )
+    development_autopilot_parser.add_argument(
+        "--command-timeout-seconds",
+        type=int,
+        default=1800,
+        help="Finite timeout for agent and verification subprocesses.",
+    )
+    development_autopilot_parser.add_argument(
+        "--full-pytest-policy",
+        choices=("always", "changed_files_only"),
+        default="always",
+        help="Policy for full pytest. Defaults to always.",
+    )
     return parser
 
 
@@ -12217,6 +12229,8 @@ def _run_development_autopilot(args: argparse.Namespace) -> int:
             agent_route=args.agent_route,
             agent_command=args.agent_command,
             git_mode=args.git_mode,
+            command_timeout_seconds=args.command_timeout_seconds,
+            full_pytest_policy=args.full_pytest_policy,
         )
     )
     print(json.dumps(result["next_action_packet"], sort_keys=True))

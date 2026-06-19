@@ -26,7 +26,13 @@ SCHEMA_VERSION = "1.0"
 SUPPORTED_WORK_ORDER_SCHEMA_VERSIONS = {"1", "1.0"}
 DEFAULT_OUTPUT_ROOT = Path("runs/development_autopilot")
 DEFAULT_AGENT_ROUTE = "codex"
+DEFAULT_COMMAND_TIMEOUT_SECONDS = 1800
+MIN_COMMAND_TIMEOUT_SECONDS = 1
+MAX_COMMAND_TIMEOUT_SECONDS = 7200
 GIT_MODES = ("verify_only", "commit_only", "commit_and_push")
+FULL_PYTEST_POLICIES = ("always", "changed_files_only")
+FULL_PYTEST_POLICY_ALWAYS = "always"
+FULL_PYTEST_POLICY_CHANGED_FILES_ONLY = "changed_files_only"
 SAFE_REQUIRED_LABELS = frozenset(
     {
         "development_autopilot_only",
@@ -133,6 +139,8 @@ NEXT_ACTIONS = {
     "agent_failed": "review_agent_failure_and_issue_repair_prompt",
     "unexpected_changes": "review_unexpected_changes_before_verification_or_commit",
     "verification_failed": "issue_repair_prompt_with_failed_checks",
+    "agent_timeout": "review_agent_timeout_and_issue_repair_prompt",
+    "verification_timeout": "issue_repair_prompt_with_timed_out_checks",
     "verify_only_success": "send_report_to_gpt_for_classification_and_commit_commands",
     "commit_only_success": "review_local_commit_and_push_if_appropriate",
     "commit_and_push_success": "select_next_safe_milestone",
@@ -148,6 +156,8 @@ class DevelopmentAutopilotOptions:
     agent_command: str | None = None
     git_mode: str = "verify_only"
     repository_verification_commands: tuple[tuple[str, ...], ...] | None = None
+    command_timeout_seconds: int = DEFAULT_COMMAND_TIMEOUT_SECONDS
+    full_pytest_policy: str = FULL_PYTEST_POLICY_ALWAYS
 
 
 @dataclass(frozen=True)
@@ -161,6 +171,10 @@ class CommandResult:
     started_at: str = ""
     ended_at: str = ""
     elapsed_seconds: float = 0.0
+    timed_out: bool = False
+    timeout_seconds: int | None = None
+    reason: str = ""
+    command_kind: str = ""
 
 
 @dataclass(frozen=True)
@@ -230,6 +244,15 @@ class WorkOrder:
     git_mode_allowed: tuple[str, ...]
     commit_message: str
     labels: tuple[str, ...]
+    allow_no_change_fast_path: bool
+    command_timeout_seconds: int | None
+
+
+@dataclass(frozen=True)
+class RepositoryVerificationPlan:
+    safety_guard_commands: tuple[tuple[str, ...], ...]
+    verify_offline_command: tuple[str, ...] | None
+    full_pytest_command: tuple[str, ...] | None
 
 
 def run_development_autopilot(
@@ -273,6 +296,7 @@ def run_development_autopilot(
         "forbidden_path_result": "not_checked",
         "verification_commands": [],
         "safety_guard_statuses": {},
+        "verify_offline_status": "not_started",
         "preflight_booleans": _preflight_booleans(process_env),
         "git_mode": resolved_options.git_mode,
         "staging_occurred": False,
@@ -289,7 +313,47 @@ def run_development_autopilot(
         "paid_service_attempted": False,
         "credential_access_attempted": False,
         "network_access_authorized": False,
+        "command_timeout_seconds": resolved_options.command_timeout_seconds,
+        "work_order_command_timeout_seconds": None,
+        "agent_timeout": False,
+        "verification_timeout": False,
+        "verification_timeout_reason": "",
+        "full_pytest_policy": resolved_options.full_pytest_policy,
+        "full_pytest_required": True,
+        "full_pytest_status": "not_started",
+        "full_pytest_exit_code": None,
+        "full_pytest_elapsed_seconds": 0.0,
+        "full_pytest_skipped_reason": "",
+        "no_change_fast_path_allowed": False,
+        "no_change_fast_path_used": False,
+        "normal_pytest_offline_invariant_preserved": True,
     }
+
+    timeout_error = _command_timeout_validation_error(
+        resolved_options.command_timeout_seconds,
+        field_name="command_timeout_seconds",
+    )
+    if timeout_error:
+        return _finish(
+            artifacts,
+            record,
+            outcome="blocked",
+            reason=timeout_error,
+            next_action=NEXT_ACTIONS["work_order"],
+            exit_code=2,
+            repo_root=root,
+        )
+
+    if resolved_options.full_pytest_policy not in FULL_PYTEST_POLICIES:
+        return _finish(
+            artifacts,
+            record,
+            outcome="blocked",
+            reason="invalid_full_pytest_policy",
+            next_action=NEXT_ACTIONS["work_order"],
+            exit_code=2,
+            repo_root=root,
+        )
 
     if resolved_options.git_mode not in GIT_MODES:
         return _finish(
@@ -381,6 +445,18 @@ def run_development_autopilot(
     record["work_order_id"] = work_order.work_order_id
     record["expected_head"] = resolved_options.expected_head or work_order.expected_head
     record["route_name"] = resolved_options.agent_route or work_order.agent_route
+    command_timeout_seconds = _effective_command_timeout_seconds(
+        resolved_options.command_timeout_seconds,
+        work_order.command_timeout_seconds,
+    )
+    record["command_timeout_seconds"] = command_timeout_seconds
+    record["work_order_command_timeout_seconds"] = work_order.command_timeout_seconds
+    record["allow_no_change_fast_path"] = work_order.allow_no_change_fast_path
+    record["no_change_fast_path_allowed"] = _no_change_fast_path_allowed(
+        resolved_options.full_pytest_policy,
+        resolved_options.git_mode,
+        work_order,
+    )
     _write_json_file(artifacts["work_order_packet"], _sanitized_work_order_packet(work_order))
 
     expected_head = resolved_options.expected_head or work_order.expected_head
@@ -457,6 +533,7 @@ def run_development_autopilot(
         artifacts["agent_stdout"],
         artifacts["agent_stderr"],
         process_env,
+        timeout_seconds=command_timeout_seconds,
     )
     record["agent_exit_code"] = agent_result.exit_code
     record["agent_started_at"] = agent_result.started_at
@@ -464,11 +541,23 @@ def run_development_autopilot(
     record["agent_elapsed_seconds"] = agent_result.elapsed_seconds
     record["agent_stdout_path"] = agent_result.stdout_path
     record["agent_stderr_path"] = agent_result.stderr_path
+    record["agent_timeout"] = agent_result.timed_out
 
     repo_after_agent = _inspect_repo(root)
     changed_after_agent = repo_after_agent.relevant_changed_files
     record["changed_files"] = list(changed_after_agent)
     record["dirty_state_after_agent"] = repo_after_agent.as_summary()
+
+    if agent_result.timed_out:
+        return _finish(
+            artifacts,
+            record,
+            outcome="failed",
+            reason="agent_command_timeout",
+            next_action=NEXT_ACTIONS["agent_timeout"],
+            exit_code=1,
+            repo_root=root,
+        )
 
     if agent_result.exit_code != 0:
         return _finish(
@@ -514,28 +603,33 @@ def run_development_autopilot(
             repo_root=root,
         )
 
-    verification_commands = work_order.required_verification_commands + _repository_verification_commands(
-        resolved_options.repository_verification_commands
-    )
-    verification_results = _run_verification_commands(
+    verification_results: list[CommandResult] = []
+    targeted_results = _run_verification_commands(
         root,
         output_root,
-        verification_commands,
+        work_order.required_verification_commands,
         process_env,
+        timeout_seconds=command_timeout_seconds,
+        command_kind="work_order_verification",
+        timeout_reason="verification_command_timeout",
     )
-    record["verification_commands"] = [
-        _command_result_record(result) for result in verification_results
-    ]
-    record["safety_guard_statuses"] = _safety_guard_statuses(verification_results)
-    _write_json_file(
-        artifacts["verification_results"],
-        {"commands": record["verification_commands"]},
-    )
+    verification_results.extend(targeted_results)
+    _update_verification_record(record, tuple(verification_results))
 
-    failed_verification = next(
-        (result for result in verification_results if result.exit_code != 0),
-        None,
-    )
+    timed_out_verification = _first_timed_out(targeted_results)
+    if timed_out_verification is not None:
+        _record_verification_timeout(record, "verification_command_timeout")
+        return _finish(
+            artifacts,
+            record,
+            outcome="repair_required",
+            reason="verification_command_timeout",
+            next_action=NEXT_ACTIONS["verification_timeout"],
+            exit_code=1,
+            repo_root=root,
+        )
+
+    failed_verification = _first_failed(targeted_results)
     if failed_verification is not None:
         return _finish(
             artifacts,
@@ -546,6 +640,92 @@ def run_development_autopilot(
             exit_code=1,
             repo_root=root,
         )
+
+    repository_plan = _repository_verification_plan(
+        resolved_options.repository_verification_commands
+    )
+    safety_guard_results = _run_verification_commands(
+        root,
+        output_root,
+        repository_plan.safety_guard_commands,
+        process_env,
+        timeout_seconds=command_timeout_seconds,
+        command_kind="safety_guard",
+        timeout_reason="safety_guard_timeout",
+        start_index=len(verification_results) + 1,
+    )
+    verification_results.extend(safety_guard_results)
+    _update_verification_record(record, tuple(verification_results))
+
+    timed_out_verification = _first_timed_out(safety_guard_results)
+    if timed_out_verification is not None:
+        _record_verification_timeout(record, "safety_guard_timeout")
+        return _finish(
+            artifacts,
+            record,
+            outcome="repair_required",
+            reason="safety_guard_timeout",
+            next_action=NEXT_ACTIONS["verification_timeout"],
+            exit_code=1,
+            repo_root=root,
+        )
+
+    failed_verification = _first_failed(safety_guard_results)
+    if failed_verification is not None:
+        return _finish(
+            artifacts,
+            record,
+            outcome="repair_required",
+            reason="verification_failed",
+            next_action=NEXT_ACTIONS["verification_failed"],
+            exit_code=1,
+            repo_root=root,
+        )
+
+    verify_offline_results: tuple[CommandResult, ...] = ()
+    if repository_plan.verify_offline_command is not None:
+        verify_offline_results = _run_verification_commands(
+            root,
+            output_root,
+            (repository_plan.verify_offline_command,),
+            process_env,
+            timeout_seconds=command_timeout_seconds,
+            command_kind="verify_offline",
+            timeout_reason="verify_offline_timeout",
+            start_index=len(verification_results) + 1,
+        )
+        verification_results.extend(verify_offline_results)
+        _update_verification_record(record, tuple(verification_results))
+
+    timed_out_verification = _first_timed_out(verify_offline_results)
+    if timed_out_verification is not None:
+        _record_verification_timeout(record, "verify_offline_timeout")
+        record["verify_offline_status"] = "timeout"
+        return _finish(
+            artifacts,
+            record,
+            outcome="repair_required",
+            reason="verify_offline_timeout",
+            next_action=NEXT_ACTIONS["verification_timeout"],
+            exit_code=1,
+            repo_root=root,
+        )
+
+    failed_verification = _first_failed(verify_offline_results)
+    if failed_verification is not None:
+        record["verify_offline_status"] = "failed"
+        return _finish(
+            artifacts,
+            record,
+            outcome="repair_required",
+            reason="verification_failed",
+            next_action=NEXT_ACTIONS["verification_failed"],
+            exit_code=1,
+            repo_root=root,
+        )
+    record["verify_offline_status"] = (
+        "passed" if verify_offline_results else "not_configured"
+    )
 
     repo_after_verification = _inspect_repo(root)
     changed_after_verification = repo_after_verification.relevant_changed_files
@@ -568,6 +748,95 @@ def run_development_autopilot(
             exit_code=2,
             repo_root=root,
         )
+
+    if _should_use_no_change_fast_path(
+        full_pytest_policy=resolved_options.full_pytest_policy,
+        git_mode=resolved_options.git_mode,
+        work_order=work_order,
+        agent_result=agent_result,
+        targeted_results=targeted_results,
+        safety_guard_results=safety_guard_results,
+        verify_offline_results=verify_offline_results,
+        repo_state=repo_after_verification,
+        repository_plan=repository_plan,
+    ):
+        record["full_pytest_required"] = False
+        record["full_pytest_status"] = "skipped"
+        record["full_pytest_exit_code"] = None
+        record["full_pytest_elapsed_seconds"] = 0.0
+        record["full_pytest_skipped_reason"] = "no_source_test_script_changes"
+        record["no_change_fast_path_used"] = True
+    elif repository_plan.full_pytest_command is None:
+        record["full_pytest_required"] = False
+        record["full_pytest_status"] = "not_configured"
+        record["full_pytest_exit_code"] = None
+        record["full_pytest_elapsed_seconds"] = 0.0
+        record["full_pytest_skipped_reason"] = "full_pytest_command_not_configured"
+    else:
+        record["full_pytest_required"] = True
+        full_pytest_results = _run_verification_commands(
+            root,
+            output_root,
+            (repository_plan.full_pytest_command,),
+            process_env,
+            timeout_seconds=command_timeout_seconds,
+            command_kind="full_pytest",
+            timeout_reason="full_pytest_timeout",
+            start_index=len(verification_results) + 1,
+        )
+        verification_results.extend(full_pytest_results)
+        _update_verification_record(record, tuple(verification_results))
+        full_pytest_result = full_pytest_results[0]
+        record["full_pytest_exit_code"] = full_pytest_result.exit_code
+        record["full_pytest_elapsed_seconds"] = full_pytest_result.elapsed_seconds
+
+        if full_pytest_result.timed_out:
+            record["full_pytest_status"] = "timeout"
+            _record_verification_timeout(record, "full_pytest_timeout")
+            return _finish(
+                artifacts,
+                record,
+                outcome="repair_required",
+                reason="full_pytest_timeout",
+                next_action=NEXT_ACTIONS["verification_timeout"],
+                exit_code=1,
+                repo_root=root,
+            )
+
+        if full_pytest_result.exit_code != 0:
+            record["full_pytest_status"] = "failed"
+            return _finish(
+                artifacts,
+                record,
+                outcome="repair_required",
+                reason="verification_failed",
+                next_action=NEXT_ACTIONS["verification_failed"],
+                exit_code=1,
+                repo_root=root,
+            )
+        record["full_pytest_status"] = "passed"
+
+        repo_after_verification = _inspect_repo(root)
+        changed_after_verification = repo_after_verification.relevant_changed_files
+        record["changed_files"] = list(changed_after_verification)
+        record["dirty_state_after_verification"] = repo_after_verification.as_summary()
+        file_policy_reason = _changed_file_policy_reason(
+            changed_after_verification,
+            allowed_files=work_order.allowed_files,
+            forbidden_paths=work_order.forbidden_paths,
+        )
+        if file_policy_reason:
+            record["allowed_files_result"] = "failed"
+            record["forbidden_path_result"] = "failed"
+            return _finish(
+                artifacts,
+                record,
+                outcome="rejected",
+                reason=file_policy_reason,
+                next_action=NEXT_ACTIONS["unexpected_changes"],
+                exit_code=2,
+                repo_root=root,
+            )
 
     if resolved_options.git_mode == "verify_only":
         return _finish(
@@ -627,6 +896,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--agent-route", default=DEFAULT_AGENT_ROUTE)
     parser.add_argument("--agent-command", default=None)
     parser.add_argument("--git-mode", choices=GIT_MODES, default="verify_only")
+    parser.add_argument(
+        "--command-timeout-seconds",
+        type=_command_timeout_seconds_arg,
+        default=DEFAULT_COMMAND_TIMEOUT_SECONDS,
+    )
+    parser.add_argument(
+        "--full-pytest-policy",
+        choices=FULL_PYTEST_POLICIES,
+        default=FULL_PYTEST_POLICY_ALWAYS,
+    )
     args = parser.parse_args(argv)
 
     result = run_development_autopilot(
@@ -637,6 +916,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             agent_route=args.agent_route,
             agent_command=args.agent_command,
             git_mode=args.git_mode,
+            command_timeout_seconds=args.command_timeout_seconds,
+            full_pytest_policy=args.full_pytest_policy,
         )
     )
     print(json.dumps(result["next_action_packet"], sort_keys=True))
@@ -801,6 +1082,12 @@ def _load_work_order(path: Path) -> WorkOrder | str:
         git_mode_allowed=tuple(str(item) for item in raw["git_mode_allowed"]),
         commit_message=str(raw["commit_message"]),
         labels=tuple(str(item) for item in raw["labels"]),
+        allow_no_change_fast_path=bool(raw.get("allow_no_change_fast_path", False)),
+        command_timeout_seconds=(
+            int(raw["command_timeout_seconds"])
+            if "command_timeout_seconds" in raw
+            else None
+        ),
     )
 
 
@@ -843,6 +1130,16 @@ def _validate_work_order_raw(raw: dict[str, object]) -> str:
         return "invalid_work_order_schema:git_mode_allowed"
     if "verify_only" not in {str(mode) for mode in git_modes}:
         return "invalid_work_order_schema:verify_only_git_mode_required"
+    if "allow_no_change_fast_path" in raw and not isinstance(
+        raw["allow_no_change_fast_path"],
+        bool,
+    ):
+        return "invalid_work_order_schema:allow_no_change_fast_path"
+    if "command_timeout_seconds" in raw and _command_timeout_validation_error(
+        raw["command_timeout_seconds"],
+        field_name="command_timeout_seconds",
+    ):
+        return "invalid_work_order_schema:command_timeout_seconds"
     if not _safe_required_string(raw.get("commit_message")):
         return "invalid_work_order_schema:commit_message"
     if not _safe_required_string(raw.get("work_order_id")):
@@ -1003,33 +1300,47 @@ def _invoke_agent(
     stdout_path: Path,
     stderr_path: Path,
     env: Mapping[str, str],
+    *,
+    timeout_seconds: int,
 ) -> CommandResult:
     child_env = _scrubbed_env(env)
     started = _utc_now_text()
     start_time = time.monotonic()
+    timed_out = False
+    exit_code = 0
     with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
         "w",
         encoding="utf-8",
     ) as stderr_file:
-        completed = subprocess.run(
-            command,
-            cwd=repo_root,
-            env=child_env,
-            input=prompt,
-            stdout=stdout_file,
-            stderr=stderr_file,
-            text=True,
-            check=False,
-        )
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=repo_root,
+                env=child_env,
+                input=prompt,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+            )
+            exit_code = completed.returncode
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            exit_code = -1
     ended = _utc_now_text()
     return CommandResult(
         command=command,
-        exit_code=completed.returncode,
+        exit_code=exit_code,
         stdout_path=str(stdout_path),
         stderr_path=str(stderr_path),
         started_at=started,
         ended_at=ended,
         elapsed_seconds=round(time.monotonic() - start_time, 6),
+        timed_out=timed_out,
+        timeout_seconds=timeout_seconds,
+        reason="agent_command_timeout" if timed_out else "",
+        command_kind="agent",
     )
 
 
@@ -1060,43 +1371,97 @@ def _repository_verification_commands(
     )
 
 
+def _repository_verification_plan(
+    override: tuple[tuple[str, ...], ...] | None,
+) -> RepositoryVerificationPlan:
+    commands = _repository_verification_commands(override)
+    if not commands:
+        return RepositoryVerificationPlan(
+            safety_guard_commands=(),
+            verify_offline_command=None,
+            full_pytest_command=None,
+        )
+    if override is None:
+        return RepositoryVerificationPlan(
+            safety_guard_commands=(commands[0],),
+            verify_offline_command=commands[1],
+            full_pytest_command=commands[2],
+        )
+    if len(commands) == 1:
+        return RepositoryVerificationPlan(
+            safety_guard_commands=(),
+            verify_offline_command=None,
+            full_pytest_command=commands[0],
+        )
+    if len(commands) == 2:
+        return RepositoryVerificationPlan(
+            safety_guard_commands=(),
+            verify_offline_command=commands[0],
+            full_pytest_command=commands[1],
+        )
+    return RepositoryVerificationPlan(
+        safety_guard_commands=commands[:-2],
+        verify_offline_command=commands[-2],
+        full_pytest_command=commands[-1],
+    )
+
+
 def _run_verification_commands(
     repo_root: Path,
     output_root: Path,
     commands: tuple[tuple[str, ...], ...],
     env: Mapping[str, str],
+    *,
+    timeout_seconds: int,
+    command_kind: str,
+    timeout_reason: str,
+    start_index: int = 1,
 ) -> tuple[CommandResult, ...]:
     results: list[CommandResult] = []
-    for index, command in enumerate(commands, start=1):
+    for index, command in enumerate(commands, start=start_index):
         stdout_path = output_root / f"verification_{index:02d}_stdout.txt"
         stderr_path = output_root / f"verification_{index:02d}_stderr.txt"
         started = _utc_now_text()
         start_time = time.monotonic()
+        timed_out = False
+        exit_code = 0
         with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
             "w",
             encoding="utf-8",
         ) as stderr_file:
-            completed = subprocess.run(
-                command,
-                cwd=repo_root,
-                env=_scrubbed_env(env),
-                stdout=stdout_file,
-                stderr=stderr_file,
-                text=True,
-                check=False,
-            )
+            try:
+                completed = subprocess.run(
+                    command,
+                    cwd=repo_root,
+                    env=_scrubbed_env(env),
+                    stdout=stdout_file,
+                    stderr=stderr_file,
+                    text=True,
+                    check=False,
+                    timeout=timeout_seconds,
+                )
+                exit_code = completed.returncode
+            except subprocess.TimeoutExpired:
+                timed_out = True
+                exit_code = -1
         ended = _utc_now_text()
         results.append(
             CommandResult(
                 command=command,
-                exit_code=completed.returncode,
+                exit_code=exit_code,
                 stdout_path=str(stdout_path),
                 stderr_path=str(stderr_path),
                 started_at=started,
                 ended_at=ended,
                 elapsed_seconds=round(time.monotonic() - start_time, 6),
+                timed_out=timed_out,
+                timeout_seconds=timeout_seconds,
+                reason=timeout_reason if timed_out else "",
+                command_kind=command_kind,
             )
         )
+        if timed_out:
+            break
     return tuple(results)
 
 
@@ -1120,6 +1485,124 @@ def _run_command(
         exit_code=completed.returncode,
         stdout=completed.stdout,
         stderr=completed.stderr,
+    )
+
+
+def _command_timeout_validation_error(value: object, *, field_name: str) -> str:
+    if isinstance(value, bool) or not isinstance(value, int):
+        return f"invalid_{field_name}"
+    if not MIN_COMMAND_TIMEOUT_SECONDS <= value <= MAX_COMMAND_TIMEOUT_SECONDS:
+        return f"invalid_{field_name}"
+    return ""
+
+
+def _command_timeout_seconds_arg(value: str) -> int:
+    import argparse
+
+    try:
+        timeout_seconds = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            "command timeout must be an integer number of seconds"
+        ) from exc
+    if _command_timeout_validation_error(
+        timeout_seconds,
+        field_name="command_timeout_seconds",
+    ):
+        raise argparse.ArgumentTypeError(
+            "command timeout must be between "
+            f"{MIN_COMMAND_TIMEOUT_SECONDS} and {MAX_COMMAND_TIMEOUT_SECONDS} seconds"
+        )
+    return timeout_seconds
+
+
+def _effective_command_timeout_seconds(
+    cli_timeout_seconds: int,
+    work_order_timeout_seconds: int | None,
+) -> int:
+    if work_order_timeout_seconds is None:
+        return cli_timeout_seconds
+    return min(cli_timeout_seconds, work_order_timeout_seconds)
+
+
+def _update_verification_record(
+    record: dict[str, object],
+    results: tuple[CommandResult, ...],
+) -> None:
+    record["verification_commands"] = [
+        _command_result_record(result) for result in results
+    ]
+    record["safety_guard_statuses"] = _safety_guard_statuses(results)
+    if any(result.timed_out for result in results):
+        record["verification_timeout"] = True
+
+
+def _first_timed_out(results: tuple[CommandResult, ...]) -> CommandResult | None:
+    return next((result for result in results if result.timed_out), None)
+
+
+def _first_failed(results: tuple[CommandResult, ...]) -> CommandResult | None:
+    return next(
+        (result for result in results if result.exit_code != 0 and not result.timed_out),
+        None,
+    )
+
+
+def _record_verification_timeout(record: dict[str, object], reason: str) -> None:
+    record["verification_timeout"] = True
+    record["verification_timeout_reason"] = reason
+
+
+def _no_change_fast_path_allowed(
+    full_pytest_policy: str,
+    git_mode: str,
+    work_order: WorkOrder,
+) -> bool:
+    return (
+        full_pytest_policy == FULL_PYTEST_POLICY_CHANGED_FILES_ONLY
+        and git_mode == "verify_only"
+        and work_order.allow_no_change_fast_path
+    )
+
+
+def _should_use_no_change_fast_path(
+    *,
+    full_pytest_policy: str,
+    git_mode: str,
+    work_order: WorkOrder,
+    agent_result: CommandResult,
+    targeted_results: tuple[CommandResult, ...],
+    safety_guard_results: tuple[CommandResult, ...],
+    verify_offline_results: tuple[CommandResult, ...],
+    repo_state: RepoState,
+    repository_plan: RepositoryVerificationPlan,
+) -> bool:
+    return (
+        _no_change_fast_path_allowed(full_pytest_policy, git_mode, work_order)
+        and repository_plan.full_pytest_command is not None
+        and agent_result.exit_code == 0
+        and not agent_result.timed_out
+        and bool(targeted_results)
+        and _all_commands_passed(targeted_results)
+        and bool(safety_guard_results)
+        and _all_commands_passed(safety_guard_results)
+        and bool(verify_offline_results)
+        and _all_commands_passed(verify_offline_results)
+        and not repo_state.relevant_changed_files
+        and not repo_state.staged_files
+        and not _repo_status_has_forbidden_runtime_artifact(repo_state)
+    )
+
+
+def _all_commands_passed(results: tuple[CommandResult, ...]) -> bool:
+    return all(result.exit_code == 0 and not result.timed_out for result in results)
+
+
+def _repo_status_has_forbidden_runtime_artifact(repo_state: RepoState) -> bool:
+    return any(
+        not _is_expected_docs_reviews_residue(entry)
+        and _is_forbidden_path(entry.path, ())
+        for entry in repo_state.status_entries
     )
 
 
@@ -1220,11 +1703,17 @@ def _finish(
         "reason": reason,
         "next_action": next_action,
         "work_order_id": record.get("work_order_id", ""),
+        "command_timeout_seconds": record.get("command_timeout_seconds"),
+        "full_pytest_policy": record.get("full_pytest_policy"),
+        "full_pytest_required": record.get("full_pytest_required"),
+        "full_pytest_status": record.get("full_pytest_status"),
+        "no_change_fast_path_used": record.get("no_change_fast_path_used"),
     }
     latest = dict(record)
     latest["next_action_packet"] = next_action_packet
     latest["artifact_paths"] = {name: str(path) for name, path in artifacts.items()}
 
+    _write_json_file(artifacts["verification_results"], _verification_results_payload(record))
     _write_json_file(artifacts["latest"], latest)
     _append_jsonl(artifacts["ledger"], record)
     _write_json_file(artifacts["next_action_packet"], next_action_packet)
@@ -1235,6 +1724,29 @@ def _finish(
         "reason": reason,
         "next_action_packet": next_action_packet,
         "latest": latest,
+    }
+
+
+def _verification_results_payload(record: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "commands": list(record.get("verification_commands", [])),
+        "command_timeout_seconds": record.get("command_timeout_seconds"),
+        "agent_timeout": record.get("agent_timeout"),
+        "verification_timeout": record.get("verification_timeout"),
+        "verification_timeout_reason": record.get("verification_timeout_reason"),
+        "safety_guard_statuses": record.get("safety_guard_statuses", {}),
+        "verify_offline_status": record.get("verify_offline_status"),
+        "full_pytest_policy": record.get("full_pytest_policy"),
+        "full_pytest_required": record.get("full_pytest_required"),
+        "full_pytest_status": record.get("full_pytest_status"),
+        "full_pytest_exit_code": record.get("full_pytest_exit_code"),
+        "full_pytest_elapsed_seconds": record.get("full_pytest_elapsed_seconds"),
+        "full_pytest_skipped_reason": record.get("full_pytest_skipped_reason"),
+        "no_change_fast_path_allowed": record.get("no_change_fast_path_allowed"),
+        "no_change_fast_path_used": record.get("no_change_fast_path_used"),
+        "normal_pytest_offline_invariant_preserved": record.get(
+            "normal_pytest_offline_invariant_preserved"
+        ),
     }
 
 
@@ -1250,6 +1762,20 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         f"work_order_id: {latest.get('work_order_id', '')}",
         f"route_name: {latest.get('route_name', '')}",
         f"agent_exit_code: {latest.get('agent_exit_code', '')}",
+        f"command_timeout_seconds: {latest.get('command_timeout_seconds', '')}",
+        f"agent_timeout: {latest.get('agent_timeout', '')}",
+        f"verification_timeout: {latest.get('verification_timeout', '')}",
+        f"verification_timeout_reason: {latest.get('verification_timeout_reason', '')}",
+        f"full_pytest_policy: {latest.get('full_pytest_policy', '')}",
+        f"full_pytest_required: {latest.get('full_pytest_required', '')}",
+        f"full_pytest_status: {latest.get('full_pytest_status', '')}",
+        f"full_pytest_exit_code: {latest.get('full_pytest_exit_code', '')}",
+        f"full_pytest_elapsed_seconds: {latest.get('full_pytest_elapsed_seconds', '')}",
+        f"full_pytest_skipped_reason: {latest.get('full_pytest_skipped_reason', '')}",
+        f"no_change_fast_path_allowed: {latest.get('no_change_fast_path_allowed', '')}",
+        f"no_change_fast_path_used: {latest.get('no_change_fast_path_used', '')}",
+        "normal_pytest_offline_invariant_preserved: "
+        f"{latest.get('normal_pytest_offline_invariant_preserved', '')}",
         "",
         "Safety:",
         "broker_read_attempted: false",
@@ -1308,6 +1834,10 @@ def _command_result_record(result: CommandResult) -> dict[str, object]:
         "started_at": result.started_at,
         "ended_at": result.ended_at,
         "elapsed_seconds": result.elapsed_seconds,
+        "timed_out": result.timed_out,
+        "timeout_seconds": result.timeout_seconds,
+        "reason": result.reason,
+        "command_kind": result.command_kind,
     }
 
 
@@ -1315,12 +1845,21 @@ def _safety_guard_statuses(results: tuple[CommandResult, ...]) -> dict[str, str]
     statuses: dict[str, str] = {}
     for result in results:
         command_text = " ".join(result.command)
+        status = (
+            "timeout"
+            if result.timed_out
+            else "passed"
+            if result.exit_code == 0
+            else "failed"
+        )
+        if result.command_kind == "safety_guard":
+            statuses.setdefault("safety_guard", status)
         if "test_dependency_direction.py" in command_text:
-            statuses["dependency_direction"] = "passed" if result.exit_code == 0 else "failed"
+            statuses["dependency_direction"] = status
         if "test_default_pytest_network_guard.py" in command_text:
-            statuses["network_guard"] = "passed" if result.exit_code == 0 else "failed"
+            statuses["network_guard"] = status
         if "test_broker_mutation_surface_invariant.py" in command_text:
-            statuses["broker_mutation_surface"] = "passed" if result.exit_code == 0 else "failed"
+            statuses["broker_mutation_surface"] = status
     return statuses
 
 
