@@ -28,6 +28,7 @@ __all__ = [
     "EtfSmaDailyPaperLabConfig",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
+    "etf_sma_daily_paper_lab_exit_status",
     "evaluate_mission_control_readiness_score",
     "validate_mission_control_contract",
     "validate_etf_sma_daily_paper_lab_packet",
@@ -279,6 +280,7 @@ _BRIEF_FILENAME = "operating_brief.md"
 _RECORD_FILENAME = "operating_record.jsonl"
 _MANIFEST_FILENAME = "manifest.jsonl"
 _HISTORY_LEDGER_FILENAME = "history_ledger.jsonl"
+_FORWARD_SIGNAL_EVIDENCE_LEDGER_FILENAME = "forward_signal_evidence_ledger.jsonl"
 _REVIEW_HANDOFF_FILENAME = "review_handoff.md"
 _DECISION_LEDGER_FILENAME = "decision_ledger.jsonl"
 _RESEARCH_CANDIDATE_QUEUE_FILENAME = "research_candidate_queue.jsonl"
@@ -358,10 +360,31 @@ _GPT_REPORT_CLASSIFICATION_PROMPT_FILENAME = "gpt_report_classification_prompt.m
 _GPT_NEXT_DECISION_CONTEXT_FILENAME = "gpt_next_decision_context.json"
 _AGENT_INBOX_DIRNAME = ".agent_inbox"
 _HISTORY_ENTRY_VERSION = "assistant_v1.2_history_entry"
+_FORWARD_SIGNAL_EVIDENCE_LEDGER_VERSION = (
+    "assistant_v1.47a_forward_signal_evidence_ledger"
+)
+_FORWARD_SIGNAL_EVIDENCE_ENTRY_VERSION = (
+    "assistant_v1.47a_forward_signal_evidence_entry"
+)
+_FORWARD_SIGNAL_HORIZON = "next_completed_session_close_to_close"
+_SIGNAL_STRATEGY_ID = "spy_sma_50_200_daily_long_only"
+_SIGNAL_STRATEGY_VERSION = "sma_50_200_v1"
 _BROKER_STATE_MODES = (
     "broker_state_not_observed",
     "offline_fixture",
     "alpaca_paper_read_only",
+)
+_NONZERO_EXIT_BROKER_STATE_STATUSES = frozenset(
+    {
+        "contradictory_snapshot",
+        "future_dated_snapshot",
+        "invalid_snapshot",
+        "live_url_detected",
+        "non_paper_or_mutation_capable_snapshot",
+        "observation_incomplete",
+        "profile_gate_failed",
+        "snapshot_context_mismatch",
+    }
 )
 _REQUIRED_LABELS = [
     "paper_lab_only",
@@ -2002,6 +2025,8 @@ def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, 
         config=config,
         payload=payload,
     )
+    _apply_daily_loop_decision(payload)
+    _apply_forward_signal_evidence_ledger(payload, config, output_root)
     _apply_history_delta(payload, previous_history_entry)
     _apply_executive_action_queue(payload)
 
@@ -2073,6 +2098,108 @@ def validate_etf_sma_daily_paper_lab_packet(
         **quality_gate,
     }
 
+
+def etf_sma_daily_paper_lab_exit_status(packet: Mapping[str, Any]) -> int:
+    """Return the process status for a completed daily paper-lab packet."""
+    if _daily_paper_lab_packet_requires_nonzero_exit(packet):
+        return 1
+    return 0
+
+
+def _daily_paper_lab_packet_requires_nonzero_exit(
+    packet: Mapping[str, Any],
+) -> bool:
+    if _mission_control_validation_requires_nonzero_exit(packet):
+        return True
+    if _section_has_unsafe_exit_authorization(packet):
+        return True
+    for section_name in (
+        "latest_run",
+        "daily_latest",
+        "mission_control",
+        "broker_state_snapshot",
+    ):
+        section = packet.get(section_name)
+        if isinstance(section, Mapping) and _section_has_unsafe_exit_authorization(
+            section
+        ):
+            return True
+    mission_control = packet.get("mission_control")
+    if isinstance(mission_control, Mapping):
+        for section_name in (
+            "broker_state_lane",
+            "decision_lane",
+            "daily_latest",
+            "executive_summary",
+            "latest_run",
+        ):
+            section = mission_control.get(section_name)
+            if isinstance(section, Mapping) and _section_has_unsafe_exit_authorization(
+                section
+            ):
+                return True
+    return any(
+        status in _NONZERO_EXIT_BROKER_STATE_STATUSES
+        for status in _broker_state_exit_status_values(packet)
+    )
+
+
+
+def _mission_control_validation_requires_nonzero_exit(
+    packet: Mapping[str, Any],
+) -> bool:
+    validation = packet.get("mission_control_validation")
+    return isinstance(validation, Mapping) and _status_is_failure(
+        validation.get("validation_status")
+    )
+
+
+def _status_is_failure(value: object) -> bool:
+    return str(value).strip().lower() in {"fail", "failed"}
+
+
+def _section_has_unsafe_exit_authorization(section: Mapping[str, Any]) -> bool:
+    for field_name in (
+        "paper_submit_authorized",
+        "live_authorized",
+        "broker_read_performed",
+        "broker_mutation_performed",
+    ):
+        if section.get(field_name) is True:
+            return True
+    return False
+
+
+def _broker_state_exit_status_values(packet: Mapping[str, Any]) -> tuple[str, ...]:
+    values: list[str] = []
+    for field_name in (
+        "daily_loop_broker_state_status",
+        "broker_state_status",
+        "main_blocker",
+    ):
+        value = str(packet.get(field_name, "")).strip()
+        if value:
+            values.append(value)
+    for section_name in ("latest_run", "daily_latest"):
+        section = packet.get(section_name)
+        if isinstance(section, Mapping):
+            for field_name in ("broker_state_status", "main_blocker"):
+                value = str(section.get(field_name, "")).strip()
+                if value:
+                    values.append(value)
+    mission_control = packet.get("mission_control")
+    if isinstance(mission_control, Mapping):
+        for section_name in ("broker_state_lane", "daily_latest", "latest_run"):
+            section = mission_control.get(section_name)
+            if isinstance(section, Mapping):
+                for field_name in ("broker_state_status", "main_blocker"):
+                    value = str(section.get(field_name, "")).strip()
+                    if value:
+                        values.append(value)
+    snapshot = packet.get("broker_state_snapshot")
+    if isinstance(snapshot, Mapping):
+        values.append(_broker_snapshot_status(snapshot))
+    return tuple(_dedupe(tuple(values)))
 
 def validate_mission_control_contract(
     output_root: Path | str,
@@ -3289,6 +3416,300 @@ def _write_packet_artifacts(
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
 
 
+def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
+    market_data_lane = _mission_control_market_data_lane(payload)
+    broker_state_lane = _mission_control_broker_state_lane(payload)
+    decision_lane = _mission_control_decision_lane(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+    )
+    payload["broker_aware_preview_decision"] = decision_lane["preview_decision"]
+    payload["daily_loop_preview_decision"] = decision_lane["preview_decision"]
+    payload["daily_loop_market_signal_preview"] = decision_lane[
+        "market_signal_preview"
+    ]
+    payload["daily_loop_blocker_status"] = decision_lane["blocker_status"]
+    payload["daily_loop_broker_state_status"] = broker_state_lane[
+        "broker_state_status"
+    ]
+    payload["exact_next_operator_action"] = decision_lane["exact_next_operator_action"]
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["broker_aware_preview_decision"] = payload[
+            "broker_aware_preview_decision"
+        ]
+        dashboard["daily_loop_blocker_status"] = payload[
+            "daily_loop_blocker_status"
+        ]
+        dashboard["exact_next_operator_action"] = payload[
+            "exact_next_operator_action"
+        ]
+
+
+def _apply_forward_signal_evidence_ledger(
+    payload: dict[str, Any],
+    config: EtfSmaDailyPaperLabConfig,
+    output_root: Path,
+) -> None:
+    ledger_path = output_root / _FORWARD_SIGNAL_EVIDENCE_LEDGER_FILENAME
+    existing_entries = _read_forward_signal_evidence_ledger(ledger_path)
+    bars = _load_bars(Path(config.bars_csv), config.symbol)
+    entries_by_key: dict[str, dict[str, Any]] = {}
+    matured_keys: list[str] = []
+
+    for existing in existing_entries:
+        key = str(existing.get("observation_key", "")).strip()
+        if not key:
+            continue
+        previous_status = str(existing.get("horizon_status", ""))
+        matured = _mature_forward_signal_evidence_entry(dict(existing), bars, payload)
+        if previous_status != "evaluated" and matured.get("horizon_status") == "evaluated":
+            matured_keys.append(key)
+        entries_by_key[key] = matured
+
+    current_entry = _build_forward_signal_evidence_entry(payload, bars)
+    current_key = current_entry["observation_key"]
+    previous_current = entries_by_key.get(current_key)
+    if previous_current is not None:
+        current_entry = {**previous_current, **current_entry}
+    current_previous_status = (
+        str(previous_current.get("horizon_status", ""))
+        if previous_current is not None
+        else ""
+    )
+    current_entry = _mature_forward_signal_evidence_entry(current_entry, bars, payload)
+    if (
+        current_previous_status
+        and current_previous_status != "evaluated"
+        and current_entry.get("horizon_status") == "evaluated"
+    ):
+        matured_keys.append(current_key)
+    entries_by_key[current_key] = current_entry
+
+    ordered_entries = [
+        entries_by_key[key]
+        for key in sorted(entries_by_key)
+    ]
+    _write_forward_signal_evidence_ledger(ledger_path, ordered_entries)
+
+    evaluated_count = sum(
+        1 for entry in ordered_entries if entry.get("horizon_status") == "evaluated"
+    )
+    pending_count = sum(
+        1 for entry in ordered_entries if entry.get("horizon_status") == "pending"
+    )
+    summary = {
+        "ledger_version": _FORWARD_SIGNAL_EVIDENCE_LEDGER_VERSION,
+        "status": "generated",
+        "artifact_path": _normalize_path(ledger_path),
+        "entry_count": len(ordered_entries),
+        "evaluated_count": evaluated_count,
+        "pending_count": pending_count,
+        "matured_observation_keys": sorted(set(matured_keys)),
+        "current_observation_key": current_key,
+        "horizon": _FORWARD_SIGNAL_HORIZON,
+        "idempotence": "logical_observation_key_replaced_on_rerun",
+        "evidence_scope": "signal_evaluation_only_not_portfolio_pnl",
+        "profit_claim": "none",
+    }
+    payload["forward_signal_evidence_ledger_path"] = _normalize_path(ledger_path)
+    payload["forward_signal_evidence_ledger_status"] = "generated"
+    payload["forward_signal_evidence_ledger_summary"] = summary
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        dashboard["forward_signal_evidence_ledger_path"] = payload[
+            "forward_signal_evidence_ledger_path"
+        ]
+        dashboard["forward_signal_evidence_ledger_status"] = payload[
+            "forward_signal_evidence_ledger_status"
+        ]
+        dashboard["forward_signal_evidence_ledger_summary"] = dict(summary)
+
+
+def _read_forward_signal_evidence_ledger(path: Path) -> list[Mapping[str, Any]]:
+    if not path.exists():
+        return []
+    entries: list[Mapping[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError as exc:
+        raise ValidationError(
+            f"Forward signal evidence ledger is not readable: {path}"
+        ) from exc
+    for index, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except json.JSONDecodeError as exc:
+            raise ValidationError(
+                "Forward signal evidence ledger line "
+                f"{index} is not parseable JSON: {path}"
+            ) from exc
+        if not isinstance(entry, Mapping):
+            raise ValidationError(
+                "Forward signal evidence ledger line "
+                f"{index} is not a JSON object: {path}"
+            )
+        entries.append(entry)
+    return entries
+
+
+def _write_forward_signal_evidence_ledger(
+    path: Path,
+    entries: list[Mapping[str, Any]],
+) -> None:
+    lines = [
+        json.dumps(_json_safe(entry), sort_keys=True, separators=(",", ":"))
+        for entry in entries
+    ]
+    path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8")
+
+
+def _build_forward_signal_evidence_entry(
+    payload: Mapping[str, Any],
+    bars: list[Bar],
+) -> dict[str, Any]:
+    signal_as_of_date = str(payload.get("as_of_date", ""))
+    observation_key = _forward_signal_observation_key(
+        symbol=str(payload.get("symbol", _DEFAULT_SYMBOL)),
+        signal_as_of_date=signal_as_of_date,
+    )
+    signal_bar = _signal_bar_for_as_of(bars, signal_as_of_date)
+    signal_bar_date = _bar_date(signal_bar) if signal_bar is not None else None
+    return {
+        "forward_signal_evidence_entry_version": (
+            _FORWARD_SIGNAL_EVIDENCE_ENTRY_VERSION
+        ),
+        "observation_key": observation_key,
+        "evidence_type": "signal_evaluation_forward_observation",
+        "symbol": str(payload.get("symbol", _DEFAULT_SYMBOL)),
+        "strategy_id": _SIGNAL_STRATEGY_ID,
+        "strategy_version": _SIGNAL_STRATEGY_VERSION,
+        "strategy_name": str(payload.get("strategy_name", _STRATEGY_NAME)),
+        "signal_as_of_date": signal_as_of_date,
+        "signal_bar_date": signal_bar_date,
+        "accepted_data_path": str(payload.get("input_data_path", "")),
+        "accepted_data_sha256": str(payload.get("input_data_sha256", "")),
+        "accepted_data_basis": _csv_price_basis(
+            Path(str(payload.get("input_data_path", "")))
+        ),
+        "accepted_data_latest_bar_date": str(payload.get("latest_input_bar_date", "")),
+        "sma_fast_window": payload.get("sma_fast_window"),
+        "sma_slow_window": payload.get("sma_slow_window"),
+        "sma50": payload.get("sma_fast_value"),
+        "sma200": payload.get("sma_slow_value"),
+        "sma_posture": payload.get("posture"),
+        "market_signal_preview": payload.get("daily_loop_market_signal_preview"),
+        "preview_decision": payload.get(
+            "daily_loop_preview_decision",
+            payload.get("preview_decision"),
+        ),
+        "blocker_status": payload.get(
+            "daily_loop_blocker_status",
+            payload.get("blocker_status"),
+        ),
+        "broker_state_mode": payload.get("broker_state_mode"),
+        "broker_state_observed": payload.get("broker_state_observed") is True,
+        "broker_state_status": payload.get("daily_loop_broker_state_status"),
+        "horizon": _FORWARD_SIGNAL_HORIZON,
+        "horizon_status": "pending",
+        "maturity_reason": "future_completed_session_bar_unavailable",
+        "signal_close": _decimal_text(signal_bar.close) if signal_bar else None,
+        "forward_close_date": None,
+        "forward_close": None,
+        "signal_evaluation_return": None,
+        "return_kind": "hypothetical_signal_forward_return",
+        "actual_broker_portfolio_pnl": None,
+        "actual_broker_portfolio_pnl_claim": "none",
+        "profit_claim": "none",
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "labels": [
+            "paper_lab_only",
+            "signal_evaluation_only",
+            "not_live_authorized",
+            "profit_claim=none",
+            "offline_only",
+        ],
+    }
+
+
+def _mature_forward_signal_evidence_entry(
+    entry: dict[str, Any],
+    bars: list[Bar],
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    signal_bar = _signal_bar_for_as_of(bars, str(entry.get("signal_as_of_date", "")))
+    if signal_bar is None:
+        entry["horizon_status"] = "pending"
+        entry["maturity_reason"] = "signal_bar_unavailable"
+        return entry
+    entry["signal_bar_date"] = _bar_date(signal_bar)
+    entry["signal_close"] = _decimal_text(signal_bar.close)
+    forward_bar = _next_bar_after(bars, signal_bar)
+    if forward_bar is None:
+        entry["horizon_status"] = "pending"
+        entry["maturity_reason"] = "future_completed_session_bar_unavailable"
+        entry["evaluation_data_path"] = str(payload.get("input_data_path", ""))
+        entry["evaluation_data_sha256"] = str(payload.get("input_data_sha256", ""))
+        return entry
+    if signal_bar.close == Decimal("0"):
+        entry["horizon_status"] = "pending"
+        entry["maturity_reason"] = "signal_close_zero"
+        return entry
+    signal_return = (forward_bar.close - signal_bar.close) / signal_bar.close
+    entry.update(
+        {
+            "horizon_status": "evaluated",
+            "maturity_reason": "next_completed_session_bar_available",
+            "forward_close_date": _bar_date(forward_bar),
+            "forward_close": _decimal_text(forward_bar.close),
+            "signal_evaluation_return": _decimal_text(signal_return),
+            "evaluation_data_path": str(payload.get("input_data_path", "")),
+            "evaluation_data_sha256": str(payload.get("input_data_sha256", "")),
+            "evaluation_data_latest_bar_date": str(
+                payload.get("latest_input_bar_date", "")
+            ),
+        }
+    )
+    return entry
+
+
+def _forward_signal_observation_key(*, symbol: str, signal_as_of_date: str) -> str:
+    return "|".join(
+        (
+            symbol.strip().upper(),
+            _SIGNAL_STRATEGY_ID,
+            signal_as_of_date,
+            _FORWARD_SIGNAL_HORIZON,
+        )
+    )
+
+
+def _signal_bar_for_as_of(bars: list[Bar], as_of_date: str) -> Bar | None:
+    as_of = _parse_iso_date(as_of_date)
+    if as_of is None:
+        return None
+    eligible = [bar for bar in bars if bar.timestamp.date() <= as_of]
+    if not eligible:
+        return None
+    return max(eligible, key=lambda bar: bar.timestamp)
+
+
+def _next_bar_after(bars: list[Bar], signal_bar: Bar) -> Bar | None:
+    later = [bar for bar in bars if bar.timestamp > signal_bar.timestamp]
+    if not later:
+        return None
+    return min(later, key=lambda bar: bar.timestamp)
+
+
+def _bar_date(bar: Bar) -> str:
+    return bar.timestamp.strftime("%Y-%m-%d")
+
+
 def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
     artifact_paths = _artifact_paths(output_root)
     mission_control = _build_mission_control(payload, output_root, artifact_paths)
@@ -3539,7 +3960,31 @@ def _mission_control_daily_latest(
         "blocker": decision_lane.get("blocker_status"),
         "next_action": dispatcher.get("selected_route"),
         "next_safest_action": dispatcher.get("selected_route"),
+        "exact_next_operator_action": decision_lane.get(
+            "exact_next_operator_action"
+        ),
         "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_state_status": broker_state_lane.get("broker_state_status"),
+        "broker_state_observed": broker_state_lane.get("broker_state_observed"),
+        "broker_snapshot_path": broker_state_lane.get("broker_snapshot_path"),
+        "broker_snapshot_observation_timestamp": broker_state_lane.get(
+            "broker_snapshot_observation_timestamp"
+        ),
+        "observed_spy_position_qty": (
+            broker_state_lane.get("spy_position_qty")
+            if broker_state_lane.get("broker_state_observed") is True
+            else None
+        ),
+        "observed_spy_open_order_count": (
+            broker_state_lane.get("open_spy_order_count")
+            if broker_state_lane.get("broker_state_observed") is True
+            else None
+        ),
+        "observed_unexpected_non_spy_position_count": (
+            broker_state_lane.get("unexpected_non_spy_position_count")
+            if broker_state_lane.get("broker_state_observed") is True
+            else None
+        ),
         "broker_read_performed": broker_state_lane.get("broker_read_performed"),
         "broker_mutation_performed": broker_state_lane.get(
             "broker_mutation_performed"
@@ -3547,6 +3992,7 @@ def _mission_control_daily_latest(
         "paper_submit_authorized": False,
         "live_authorized": False,
         "data_source": market_data_lane.get("data_source_reference"),
+        "input_market_data_sha256": payload.get("input_data_sha256"),
         "data_as_of": market_data_lane.get("as_of_date"),
         "run_date": market_data_lane.get("run_date"),
         "staleness_days": market_data_lane.get("staleness_in_days"),
@@ -3608,6 +4054,15 @@ def _mission_control_daily_latest(
             data_refresh_bridge.get("offline_validation_commands", [])
         ),
         "operator_review_path": data_freshness_plan.get("operator_review_path"),
+        "forward_signal_evidence_ledger_path": payload.get(
+            "forward_signal_evidence_ledger_path"
+        ),
+        "forward_signal_evidence_ledger_status": payload.get(
+            "forward_signal_evidence_ledger_status"
+        ),
+        "forward_signal_evidence_ledger_summary": dict(
+            payload.get("forward_signal_evidence_ledger_summary", {})
+        ),
         "safety_labels": list(decision_lane.get("safety_labels", [])),
     }
 
@@ -3670,6 +4125,7 @@ def _mission_control_latest_run_entry(
         "current_accepted_data_path": daily_latest.get(
             "current_accepted_data_path"
         ),
+        "input_market_data_sha256": daily_latest.get("input_market_data_sha256"),
         "current_data_as_of": daily_latest.get("data_as_of"),
         "run_date": daily_latest.get("run_date"),
         "current_staleness_days": daily_latest.get("staleness_days"),
@@ -3687,14 +4143,39 @@ def _mission_control_latest_run_entry(
         "market_signal_preview": daily_latest.get("market_signal_preview"),
         "main_blocker": daily_latest.get("blocker"),
         "broker_state_mode": daily_latest.get("broker_state_mode"),
+        "broker_state_status": daily_latest.get("broker_state_status"),
+        "broker_state_observed": daily_latest.get("broker_state_observed"),
+        "broker_snapshot_path": daily_latest.get("broker_snapshot_path"),
+        "broker_snapshot_observation_timestamp": daily_latest.get(
+            "broker_snapshot_observation_timestamp"
+        ),
+        "observed_spy_position_qty": daily_latest.get("observed_spy_position_qty"),
+        "observed_spy_open_order_count": daily_latest.get(
+            "observed_spy_open_order_count"
+        ),
+        "observed_unexpected_non_spy_position_count": daily_latest.get(
+            "observed_unexpected_non_spy_position_count"
+        ),
         "data_freshness_status": daily_latest.get("data_freshness_status"),
         "staleness_days": daily_latest.get("staleness_days"),
         "next_safest_action": daily_latest.get("next_safest_action"),
+        "exact_next_operator_action": daily_latest.get(
+            "exact_next_operator_action"
+        ),
         "paper_submit_authorized": False,
         "live_authorized": False,
         "broker_read_performed": daily_latest.get("broker_read_performed"),
         "broker_mutation_performed": daily_latest.get(
             "broker_mutation_performed"
+        ),
+        "forward_signal_evidence_ledger_path": daily_latest.get(
+            "forward_signal_evidence_ledger_path"
+        ),
+        "forward_signal_evidence_ledger_status": daily_latest.get(
+            "forward_signal_evidence_ledger_status"
+        ),
+        "forward_signal_evidence_ledger_summary": dict(
+            daily_latest.get("forward_signal_evidence_ledger_summary", {})
         ),
         "safety_labels": list(daily_latest.get("safety_labels", [])),
     }
@@ -4476,6 +4957,8 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
         "broker_snapshot_path": str(payload.get("broker_state_snapshot_path", "")),
         "broker_snapshot_status": str(snapshot.get("snapshot_status", "")),
         "broker_snapshot_sha256": str(snapshot.get("snapshot_sha256", "")),
+        "broker_snapshot_observation_timestamp": str(snapshot.get("generated_at", "")),
+        "broker_state_trusted": snapshot_observed,
         "broker_read_performed": False,
         "broker_mutation_performed": False,
         "broker_mutation_authorized": False,
@@ -4486,17 +4969,27 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
         "open_order_state_observed": snapshot.get("orders_observed") is True,
         "paper_account_observed": snapshot.get("account_observed") is True,
         "paper_account_currency": str(snapshot.get("currency", "")),
-        "spy_position_present": snapshot.get("spy_position_present") is True,
-        "spy_position_qty": str(snapshot.get("spy_position_qty", "")),
-        "position_count": _int_or_zero(snapshot.get("position_count")),
+        "spy_position_present": snapshot.get("spy_position_present") is True
+        if snapshot_observed
+        else None,
+        "spy_position_qty": str(snapshot.get("spy_position_qty", ""))
+        if snapshot_observed
+        else None,
+        "position_count": _int_or_zero(snapshot.get("position_count"))
+        if snapshot_observed
+        else None,
         "position_symbols": list(snapshot.get("position_symbols", []))
-        if isinstance(snapshot.get("position_symbols"), list)
+        if snapshot_observed and isinstance(snapshot.get("position_symbols"), list)
         else [],
-        "open_order_count": _int_or_zero(snapshot.get("open_order_count")),
+        "open_order_count": _int_or_zero(snapshot.get("open_order_count"))
+        if snapshot_observed
+        else None,
         "open_order_symbols": list(snapshot.get("open_order_symbols", []))
-        if isinstance(snapshot.get("open_order_symbols"), list)
+        if snapshot_observed and isinstance(snapshot.get("open_order_symbols"), list)
         else [],
-        "open_spy_order_count": _int_or_zero(snapshot.get("open_spy_order_count")),
+        "open_spy_order_count": _int_or_zero(snapshot.get("open_spy_order_count"))
+        if snapshot_observed
+        else None,
         "unexpected_non_spy_position_present": (
             _broker_snapshot_unexpected_non_spy_position_present(snapshot)
         ),
@@ -4550,6 +5043,9 @@ def _mission_control_decision_lane(
     if market_data_lane.get("preview_currency_status") == "blocked_missing_data":
         preview_decision = "blocked_missing_data"
         blocker_status = "blocked_missing_data"
+    elif market_signal_preview == "insufficient_history":
+        preview_decision = "insufficient_history"
+        blocker_status = "insufficient_history"
     elif _broker_lane_open_order_present(broker_state_lane):
         preview_decision = "blocked/open_order_present"
         blocker_status = "open_order_present"
@@ -4557,8 +5053,10 @@ def _mission_control_decision_lane(
         preview_decision = "blocked/unexpected_non_spy_position"
         blocker_status = "unexpected_non_spy_position"
     elif _broker_lane_unavailable(broker_state_lane):
-        preview_decision = "blocked/broker_unavailable"
-        blocker_status = "broker_unavailable"
+        blocker_status = str(
+            broker_state_lane.get("broker_state_status", "broker_unavailable")
+        )
+        preview_decision = f"blocked/{blocker_status}"
     elif broker_state_lane.get("broker_state_observed") is not True:
         preview_decision = "blocked/broker_state_not_observed"
         blocker_status = "broker_state_not_observed"
@@ -4576,7 +5074,18 @@ def _mission_control_decision_lane(
             _broker_aware_decision_reason(preview_decision, broker_state_lane)
         ),
         "blocker_status": blocker_status,
-        "next_operator_action": "review_mission_control_no_broker_action",
+        "next_operator_action": _exact_next_operator_action(
+            preview_decision=preview_decision,
+            blocker_status=blocker_status,
+            broker_state_lane=broker_state_lane,
+            market_data_lane=market_data_lane,
+        ),
+        "exact_next_operator_action": _exact_next_operator_action(
+            preview_decision=preview_decision,
+            blocker_status=blocker_status,
+            broker_state_lane=broker_state_lane,
+            market_data_lane=market_data_lane,
+        ),
         "next_gpt_action": "classify_report_and_choose_next_safe_slice",
         "next_agent_action": "use_generated_work_orders_for_offline_improvements",
         "paper_submit_authorized": False,
@@ -4590,6 +5099,8 @@ def _load_broker_state_snapshot(
     *,
     broker_state_mode: str,
     symbol: str,
+    run_date: str,
+    latest_completed_session_date: str | None,
 ) -> dict[str, Any]:
     if path is None or broker_state_mode != "alpaca_paper_read_only":
         return {}
@@ -4597,26 +5108,56 @@ def _load_broker_state_snapshot(
     snapshot_path = Path(path)
     record, status, record_count, digest = _read_single_jsonl_artifact(snapshot_path)
     if record is None:
-        return {
-            "snapshot_status": status,
-            "snapshot_record_count": record_count,
-            "snapshot_sha256": digest or "",
-            "artifact_path": _normalize_path(snapshot_path),
-            "broker_observation_state": "broker_unavailable",
-            "reconciliation_state": "blocked_broker_unavailable",
-            "blockers": ["broker_snapshot_unavailable"],
-        }
+        return _blocked_broker_state_snapshot(
+            snapshot_path=snapshot_path,
+            snapshot_status=status,
+            record_count=record_count,
+            digest=digest,
+            broker_observation_state=(
+                "broker_unavailable" if status in {"missing", "path_not_file"} else "invalid_snapshot"
+            ),
+            blocker=f"broker_snapshot_{status}",
+        )
 
     if str(record.get("command", "")) != (
         "paper-lab-read-only-broker-snapshot-reconciliation"
     ):
-        raise ValidationError(
-            "broker_snapshot_log must contain a read-only paper broker "
-            "snapshot reconciliation record."
+        return _blocked_broker_state_snapshot(
+            snapshot_path=snapshot_path,
+            snapshot_status=status,
+            record_count=record_count,
+            digest=digest,
+            broker_observation_state="invalid_snapshot",
+            blocker="broker_snapshot_wrong_command",
+            record=record,
         )
     if str(record.get("symbol", "")).strip().upper() != symbol.strip().upper():
-        raise ValidationError(
-            "broker_snapshot_log symbol must match the daily lab symbol."
+        return _blocked_broker_state_snapshot(
+            snapshot_path=snapshot_path,
+            snapshot_status=status,
+            record_count=record_count,
+            digest=digest,
+            broker_observation_state="snapshot_context_mismatch",
+            blocker="broker_snapshot_symbol_mismatch",
+            record=record,
+        )
+
+    validation_errors = _broker_snapshot_validation_errors(
+        record,
+        symbol=symbol,
+        run_date=run_date,
+        latest_completed_session_date=latest_completed_session_date,
+    )
+    if validation_errors:
+        return _blocked_broker_state_snapshot(
+            snapshot_path=snapshot_path,
+            snapshot_status=status,
+            record_count=record_count,
+            digest=digest,
+            broker_observation_state=_broker_snapshot_error_state(validation_errors),
+            blocker=validation_errors[0],
+            record=record,
+            validation_errors=validation_errors,
         )
 
     return {
@@ -4625,7 +5166,191 @@ def _load_broker_state_snapshot(
         "snapshot_record_count": record_count,
         "snapshot_sha256": digest or "",
         "artifact_path": _normalize_path(snapshot_path),
+        "snapshot_validation_status": "passed",
+        "snapshot_validation_errors": [],
+        "broker_state_trusted": True,
     }
+
+
+def _blocked_broker_state_snapshot(
+    *,
+    snapshot_path: Path,
+    snapshot_status: str,
+    record_count: int,
+    digest: str | None,
+    broker_observation_state: str,
+    blocker: str,
+    record: Mapping[str, Any] | None = None,
+    validation_errors: list[str] | None = None,
+) -> dict[str, Any]:
+    errors = _dedupe((blocker, *(validation_errors or [])))
+    source = record if isinstance(record, Mapping) else {}
+    return {
+        "snapshot_status": snapshot_status,
+        "snapshot_record_count": record_count,
+        "snapshot_sha256": digest or "",
+        "artifact_path": _normalize_path(snapshot_path),
+        "symbol": str(source.get("symbol", "")),
+        "generated_at": str(source.get("generated_at", "")),
+        "broker_observation_state": broker_observation_state,
+        "reconciliation_state": f"blocked_{blocker}",
+        "blockers": list(errors),
+        "snapshot_validation_status": "failed",
+        "snapshot_validation_errors": list(errors),
+        "broker_state_trusted": False,
+        "account_observed": False,
+        "positions_observed": False,
+        "orders_observed": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_authorized": False,
+        "submitted": False,
+        "mutated": False,
+    }
+
+
+def _broker_snapshot_validation_errors(
+    record: Mapping[str, Any],
+    *,
+    symbol: str,
+    run_date: str,
+    latest_completed_session_date: str | None,
+) -> list[str]:
+    errors: list[str] = []
+    labels = _string_set(record.get("labels"))
+    source_symbol = str(record.get("source_review_symbol", "")).strip().upper()
+    if source_symbol and source_symbol != symbol.strip().upper():
+        errors.append("broker_snapshot_source_symbol_mismatch")
+    if record.get("paper_lab_only") is not True and "paper_lab_only" not in labels:
+        errors.append("broker_snapshot_not_paper_lab_only")
+    if (
+        record.get("read_only_broker_observation") is not True
+        and "read_only_broker_observation" not in labels
+    ):
+        errors.append("broker_snapshot_not_read_only")
+    if record.get("paper_profile_gate_passed") is not True:
+        errors.append("broker_snapshot_paper_profile_not_confirmed")
+    if record.get("live_url_detected") is True or str(
+        record.get("broker_observation_state", "")
+    ) == "live_url_detected":
+        errors.append("broker_snapshot_live_labeled")
+    for field_name in (
+        "paper_execution_authorized",
+        "paper_submit_authorized",
+        "submit_authorized",
+        "broker_mutation_authorized",
+        "broker_mutation_allowed",
+        "submitted",
+        "mutated",
+        "broker_action_performed",
+        "broker_actions_performed",
+        "live_authorized",
+    ):
+        if record.get(field_name) is not False:
+            errors.append(f"broker_snapshot_{field_name}_not_false")
+    broker_action_flags = record.get("broker_action_flags")
+    if isinstance(broker_action_flags, Mapping):
+        for action_name, action_allowed in broker_action_flags.items():
+            if action_allowed is not False:
+                errors.append(f"broker_snapshot_action_{action_name}_not_false")
+    if record.get("broker_observation_state") != "observed":
+        errors.append("broker_snapshot_not_observed")
+    for field_name in ("account_observed", "positions_observed", "orders_observed"):
+        if record.get(field_name) is not True:
+            errors.append(f"broker_snapshot_{field_name}_not_true")
+    if _snapshot_timestamp_status(
+        record.get("generated_at"),
+        run_date=run_date,
+        latest_completed_session_date=latest_completed_session_date,
+    ) != "current":
+        errors.append(
+            _snapshot_timestamp_status(
+                record.get("generated_at"),
+                run_date=run_date,
+                latest_completed_session_date=latest_completed_session_date,
+            )
+        )
+    errors.extend(_broker_snapshot_contradiction_errors(record))
+    return list(_dedupe(tuple(errors)))
+
+
+def _broker_snapshot_error_state(errors: list[str]) -> str:
+    if any("live" in error for error in errors):
+        return "live_url_detected"
+    if any("stale" in error for error in errors):
+        return "stale_snapshot"
+    if any("future" in error for error in errors):
+        return "future_dated_snapshot"
+    if any("mismatch" in error for error in errors):
+        return "snapshot_context_mismatch"
+    if any("contradict" in error for error in errors):
+        return "contradictory_snapshot"
+    if any("not_read_only" in error or "not_paper" in error for error in errors):
+        return "non_paper_or_mutation_capable_snapshot"
+    return "invalid_snapshot"
+
+
+def _snapshot_timestamp_status(
+    value: object,
+    *,
+    run_date: str,
+    latest_completed_session_date: str | None,
+) -> str:
+    observed_at = _parse_iso_datetime(value)
+    if observed_at is None:
+        return "broker_snapshot_generated_at_missing_or_invalid"
+    run_dt = _parse_iso_date(run_date)
+    if run_dt is not None and observed_at.date() > run_dt:
+        return "broker_snapshot_future_dated"
+    latest_completed = _parse_iso_date(latest_completed_session_date)
+    if latest_completed is not None and observed_at.date() < latest_completed:
+        return "broker_snapshot_stale"
+    return "current"
+
+
+def _broker_snapshot_contradiction_errors(record: Mapping[str, Any]) -> list[str]:
+    errors: list[str] = []
+    positions = _mapping_list(record.get("positions"))
+    position_count = _non_negative_int_or_none(record.get("position_count"))
+    if positions is not None and position_count is not None and position_count != len(positions):
+        errors.append("broker_snapshot_position_count_contradiction")
+    spy_qty = _decimal_or_none(record.get("spy_position_qty"))
+    spy_present = record.get("spy_position_present")
+    if spy_qty is not None:
+        if spy_present is True and spy_qty == Decimal("0"):
+            errors.append("broker_snapshot_spy_position_presence_contradiction")
+        if spy_present is False and spy_qty != Decimal("0"):
+            errors.append("broker_snapshot_spy_position_qty_contradiction")
+    open_orders = _mapping_list(record.get("open_orders"))
+    open_order_count = _non_negative_int_or_none(record.get("open_order_count"))
+    open_order_symbols = _string_list(record.get("open_order_symbols"))
+    if open_order_count is None:
+        errors.append("broker_snapshot_open_order_count_missing_or_invalid")
+    elif open_orders is not None and open_order_count != len(open_orders):
+        errors.append("broker_snapshot_open_order_count_contradiction")
+    elif open_order_count == 0 and open_order_symbols:
+        errors.append("broker_snapshot_open_order_symbols_contradiction")
+    open_spy_order_count = _non_negative_int_or_none(record.get("open_spy_order_count"))
+    if (
+        open_spy_order_count is not None
+        and open_order_count is not None
+        and open_spy_order_count > open_order_count
+    ):
+        errors.append("broker_snapshot_open_spy_order_count_contradiction")
+    unexpected_non_spy_positions = _mapping_list(
+        record.get("unexpected_non_spy_positions")
+    )
+    if unexpected_non_spy_positions is not None and positions is not None:
+        expected_unexpected_count = len(
+            [
+                position
+                for position in positions
+                if str(position.get("symbol", "")).strip().upper() not in {"", "SPY"}
+            ]
+        )
+        if expected_unexpected_count != len(unexpected_non_spy_positions):
+            errors.append("broker_snapshot_unexpected_position_contradiction")
+    return errors
 
 
 def _broker_snapshot(payload: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -4649,11 +5374,20 @@ def _broker_snapshot_status(snapshot: Mapping[str, Any]) -> str:
     state = str(snapshot.get("broker_observation_state", "")).strip()
     if state in {
         "broker_unavailable",
+        "contradictory_snapshot",
+        "future_dated_snapshot",
+        "invalid_snapshot",
         "live_url_detected",
+        "non_paper_or_mutation_capable_snapshot",
         "observation_incomplete",
         "profile_gate_failed",
+        "snapshot_context_mismatch",
+        "stale_snapshot",
     }:
         return state
+    blockers = snapshot.get("blockers")
+    if isinstance(blockers, list) and blockers:
+        return str(blockers[0])
     reconciliation_state = str(snapshot.get("reconciliation_state", "")).strip()
     if reconciliation_state.startswith("blocked_"):
         return "broker_unavailable"
@@ -4682,12 +5416,62 @@ def _broker_lane_open_order_present(broker_state_lane: Mapping[str, Any]) -> boo
 def _broker_lane_unavailable(broker_state_lane: Mapping[str, Any]) -> bool:
     if broker_state_lane.get("broker_state_observed") is True:
         return False
-    return str(broker_state_lane.get("broker_state_status", "")) in {
+    status = str(broker_state_lane.get("broker_state_status", ""))
+    return status in {
         "broker_unavailable",
+        "contradictory_snapshot",
+        "future_dated_snapshot",
+        "invalid_snapshot",
         "live_url_detected",
+        "non_paper_or_mutation_capable_snapshot",
         "observation_incomplete",
         "profile_gate_failed",
-    }
+        "snapshot_context_mismatch",
+        "stale_snapshot",
+    } or status.startswith("broker_snapshot_")
+
+
+def _exact_next_operator_action(
+    *,
+    preview_decision: str,
+    blocker_status: str,
+    broker_state_lane: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+) -> str:
+    if blocker_status in {
+        "contradictory_snapshot",
+        "future_dated_snapshot",
+        "invalid_snapshot",
+        "live_url_detected",
+        "non_paper_or_mutation_capable_snapshot",
+        "snapshot_context_mismatch",
+        "stale_snapshot",
+    } or blocker_status.startswith("broker_snapshot_"):
+        return "correct_or_replace_unsafe_local_broker_snapshot_before_next_cycle"
+    data_status = str(market_data_lane.get("preview_currency_status", ""))
+    if data_status in {
+        "blocked_missing_data",
+        "blocked_future_dated_local_data",
+        "accepted_but_stale",
+        "stale_data_preview_only",
+    }:
+        return "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
+    if blocker_status == "insufficient_history":
+        return "provide_at_least_200_usable_daily_bars_before_preview_use"
+    if broker_state_lane.get("broker_state_observed") is not True:
+        return (
+            "produce_fresh_explicitly_authorized_read_only_paper_broker_snapshot_"
+            "for_spy_daily_lab"
+        )
+    if blocker_status == "open_order_present":
+        return "review_open_spy_order_with_read_only_reconciliation_no_mutation"
+    if blocker_status == "unexpected_non_spy_position":
+        return "review_unexpected_non_spy_position_with_read_only_reconciliation_no_mutation"
+    if preview_decision in {"buy_preview", "sell_preview"}:
+        return "paper_submit_not_authorized_record_preview_only_no_submission"
+    if preview_decision == "hold/noop":
+        return "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+    return "review_mission_control_no_broker_action"
 
 
 def _broker_aware_market_decision(
@@ -5125,6 +5909,9 @@ def _mission_control_dispatcher(
         "selected_rule_id": selected_rule_id,
         "selected_route": selected_route,
         "selected_work_order_type": selected_work_order_type,
+        "exact_next_operator_action": decision_lane.get(
+            "exact_next_operator_action"
+        ),
         "broker_read_authorized": False,
         "paper_submit_authorized": False,
         "live_authorized": False,
@@ -5216,7 +6003,12 @@ def _mission_control_executive_summary(
         "latest_preview_decision": decision_lane.get("preview_decision"),
         "market_signal_preview": decision_lane.get("market_signal_preview"),
         "main_blocker": decision_lane.get("blocker_status"),
+        "exact_next_operator_action": decision_lane.get(
+            "exact_next_operator_action"
+        ),
         "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_state_status": broker_state_lane.get("broker_state_status"),
+        "broker_state_observed": broker_state_lane.get("broker_state_observed"),
         "data_source": market_data_lane.get("data_source_reference"),
         "data_as_of": market_data_lane.get("as_of_date"),
         "data_staleness": market_data_lane.get("staleness_in_days"),
@@ -5274,6 +6066,12 @@ def _mission_control_executive_summary(
         ),
         "data_preview_status": market_data_lane.get("preview_currency_status"),
         "source_packet_preview_decision": payload.get("preview_decision"),
+        "forward_signal_evidence_ledger_status": payload.get(
+            "forward_signal_evidence_ledger_status"
+        ),
+        "forward_signal_evidence_ledger_summary": dict(
+            payload.get("forward_signal_evidence_ledger_summary", {})
+        ),
     }
 
 
@@ -5288,6 +6086,7 @@ def _mission_control_agent_command_center(
         "selected_route": dispatcher.get("selected_route"),
         "selected_work_order_type": dispatcher.get("selected_work_order_type"),
         "next_safest_action": dispatcher.get("selected_route"),
+        "exact_next_operator_action": dispatcher.get("exact_next_operator_action"),
         "work_orders": _mission_control_work_order_index(artifact_paths),
         "broker_read_authorized": False,
         "paper_submit_authorized": False,
@@ -5395,6 +6194,9 @@ def _mission_control_artifact_map(
         "operator_review_md": artifact_paths["operator_review"],
         "operating_record_jsonl": artifact_paths["operating_record"],
         "manifest_jsonl": artifact_paths["manifest"],
+        "forward_signal_evidence_ledger_jsonl": artifact_paths[
+            "forward_signal_evidence_ledger"
+        ],
         "work_orders": artifact_paths["work_orders"],
         "codex_next_prompt": artifact_paths["codex_next_prompt"],
         "codex_next_work_order": artifact_paths["codex_next_work_order"],
@@ -5423,6 +6225,9 @@ def _mission_control_work_order_index(
         "data_freshness_plan": artifact_paths["data_freshness_plan"],
         "data_refresh_bridge": artifact_paths["data_refresh_bridge"],
         "data_refresh_dry_run": artifact_paths["data_refresh_dry_run"],
+        "forward_signal_evidence_ledger": artifact_paths[
+            "forward_signal_evidence_ledger"
+        ],
         "data_refresh_operator_checklist": artifact_paths[
             "data_refresh_operator_checklist"
         ],
@@ -5867,9 +6672,14 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             f"- Market signal preview: `{daily_latest['market_signal_preview']}`",
             f"- Main blocker: `{daily_latest['blocker']}`",
             f"- Next safest action: `{executive['next_safest_action']}`",
+            f"- Exact next operator action: `{daily_latest['exact_next_operator_action']}`",
+            f"- Forward signal evidence ledger: `{daily_latest['forward_signal_evidence_ledger_path']}`",
+            f"- Forward signal evidence status: `{daily_latest['forward_signal_evidence_ledger_status']}`",
             "",
             "## System Status",
             f"- Broker-state mode: `{broker['broker_state_mode']}`",
+            f"- Broker-state status: `{broker['broker_state_status']}`",
+            f"- Broker state observed: `{str(broker['broker_state_observed']).lower()}`",
             f"- broker_read_performed={str(broker['broker_read_performed']).lower()}",
             f"- broker_mutation_performed={str(broker['broker_mutation_performed']).lower()}",
             "- paper_submit_authorized=false",
@@ -5974,6 +6784,8 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- Market signal preview: `{executive['market_signal_preview']}`",
         f"- Main blocker: `{executive['main_blocker']}`",
         f"- Broker-state mode: `{executive['broker_state_mode']}`",
+        f"- Broker-state status: `{executive['broker_state_status']}`",
+        f"- Broker state observed: `{str(executive['broker_state_observed']).lower()}`",
         (
             f"- Data source/as-of/staleness: `{executive['data_source']}`; "
             f"as-of `{executive['data_as_of']}`; "
@@ -5981,12 +6793,14 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
             f"`{executive['data_staleness_status']}`"
         ),
         f"- Next safest action: `{executive['next_safest_action']}`",
+        f"- Exact next operator action: `{executive['exact_next_operator_action']}`",
         f"- Data freshness status: `{executive['data_freshness_status']}`",
         f"- Preview-only reason: {executive['preview_only_reason']}",
         f"- Offline refresh action: `{executive['next_offline_data_action']}`",
         f"- Next operator data action: {executive['next_operator_data_action']}",
         f"- Next agent data action: {executive['next_agent_data_action']}",
         f"- Operator review: `{executive['operator_review_path']}`",
+        f"- Forward signal evidence status: `{executive['forward_signal_evidence_ledger_status']}`",
         f"- paper_submit_authorized=false",
         f"- live_authorized=false",
         "",
@@ -6002,7 +6816,10 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- blocker: `{daily_latest['blocker']}`",
         f"- next_action: `{daily_latest['next_action']}`",
         f"- next_safest_action: `{daily_latest['next_safest_action']}`",
+        f"- exact_next_operator_action: `{daily_latest['exact_next_operator_action']}`",
         f"- broker_state_mode: `{daily_latest['broker_state_mode']}`",
+        f"- broker_state_status: `{daily_latest['broker_state_status']}`",
+        f"- broker_state_observed: `{str(daily_latest['broker_state_observed']).lower()}`",
         f"- broker_read_performed: `{str(daily_latest['broker_read_performed']).lower()}`",
         f"- broker_mutation_performed: `{str(daily_latest['broker_mutation_performed']).lower()}`",
         f"- paper_submit_authorized: `{str(daily_latest['paper_submit_authorized']).lower()}`",
@@ -6031,6 +6848,8 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- next_operator_data_action: {daily_latest['next_operator_data_action']}",
         f"- next_agent_data_action: {daily_latest['next_agent_data_action']}",
         f"- operator_review_path: `{daily_latest['operator_review_path']}`",
+        f"- forward_signal_evidence_ledger_path: `{daily_latest['forward_signal_evidence_ledger_path']}`",
+        f"- forward_signal_evidence_ledger_status: `{daily_latest['forward_signal_evidence_ledger_status']}`",
         "",
         "## Mission Control Artifacts",
         f"- `mission_control.json`: `{artifacts['mission_control_json']}`",
@@ -6042,6 +6861,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- `data_refresh_dry_run.json`: `{artifacts['data_refresh_dry_run_json']}`",
         f"- `data_refresh_operator_checklist.md`: `{artifacts['data_refresh_operator_checklist_md']}`",
         f"- `operator_review.md`: `{artifacts['operator_review_md']}`",
+        f"- `forward_signal_evidence_ledger.jsonl`: `{artifacts['forward_signal_evidence_ledger_jsonl']}`",
         f"- `work_orders/`: `{artifacts['work_orders']}`",
         "",
         "## Data Freshness Plan",
@@ -6207,6 +7027,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Data refresh checklist</dt><dd><a href="{_html_escape(str(latest_run["data_refresh_operator_checklist_path"]))}">{_html_escape(str(latest_run["data_refresh_operator_checklist_path"]))}</a></dd>
         <dt>Validation</dt><dd><a href="{_html_escape(str(latest_run["validation_path"]))}">{_html_escape(str(latest_run["validation_path"]))}</a></dd>
         <dt>Next safest action</dt><dd>{_html_escape(str(latest_run["next_safest_action"]))}</dd>
+        <dt>Exact next operator action</dt><dd>{_html_escape(str(latest_run["exact_next_operator_action"]))}</dd>
         <dt>Paper submit authorized</dt><dd>false</dd>
         <dt>Live authorized</dt><dd>false</dd>
         <dt>Broker mutation performed</dt><dd>{str(latest_run["broker_mutation_performed"]).lower()}</dd>
@@ -6222,6 +7043,8 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Market signal preview</dt><dd>{_html_escape(str(executive["market_signal_preview"]))}</dd>
         <dt>Main blocker</dt><dd>{_html_escape(str(executive["main_blocker"]))}</dd>
         <dt>Broker-state mode</dt><dd>{_html_escape(str(executive["broker_state_mode"]))}</dd>
+        <dt>Broker-state status</dt><dd>{_html_escape(str(executive["broker_state_status"]))}</dd>
+        <dt>Broker state observed</dt><dd>{str(executive["broker_state_observed"]).lower()}</dd>
         <dt>Data source</dt><dd>{_html_escape(str(executive["data_source"]))}</dd>
         <dt>Data as-of</dt><dd>{_html_escape(str(executive["data_as_of"]))}</dd>
         <dt>Data staleness</dt><dd>{_html_escape(str(executive["data_staleness"]))} days; {_html_escape(str(executive["data_staleness_status"]))}</dd>
@@ -6236,6 +7059,8 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Operator review</dt><dd><a href="{_html_escape(str(executive["operator_review_path"]))}">{_html_escape(str(executive["operator_review_path"]))}</a></dd>
         <dt>Latest-run summary</dt><dd><a href="{_html_escape(str(artifacts["latest_run_json"]))}">{_html_escape(str(artifacts["latest_run_json"]))}</a></dd>
         <dt>Next safest action</dt><dd>{_html_escape(str(executive["next_safest_action"]))}</dd>
+        <dt>Exact next operator action</dt><dd>{_html_escape(str(executive["exact_next_operator_action"]))}</dd>
+        <dt>Forward signal evidence status</dt><dd>{_html_escape(str(executive["forward_signal_evidence_ledger_status"]))}</dd>
         <dt>paper_submit_authorized</dt><dd>false</dd>
         <dt>live_authorized</dt><dd>false</dd>
         <dt>daily_latest object</dt><dd>mission_control.json &rarr; daily_latest</dd>
@@ -6251,6 +7076,9 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>readiness_score</dt><dd>{_html_escape(str(daily_latest["readiness_score"]))}</dd>
         <dt>preview_decision</dt><dd>{_html_escape(str(daily_latest["preview_decision"]))}</dd>
         <dt>next_action</dt><dd>{_html_escape(str(daily_latest["next_action"]))}</dd>
+        <dt>exact_next_operator_action</dt><dd>{_html_escape(str(daily_latest["exact_next_operator_action"]))}</dd>
+        <dt>broker_state_status</dt><dd>{_html_escape(str(daily_latest["broker_state_status"]))}</dd>
+        <dt>broker_state_observed</dt><dd>{str(daily_latest["broker_state_observed"]).lower()}</dd>
         <dt>broker_read_performed</dt><dd>{str(daily_latest["broker_read_performed"]).lower()}</dd>
         <dt>broker_mutation_performed</dt><dd>{str(daily_latest["broker_mutation_performed"]).lower()}</dd>
         <dt>data_freshness_status</dt><dd>{_html_escape(str(daily_latest["data_freshness_status"]))}</dd>
@@ -6272,6 +7100,8 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>stale_accepted_data_consumed</dt><dd>{str(daily_latest["stale_accepted_data_consumed"]).lower()}</dd>
         <dt>data_refresh_operator_checklist_path</dt><dd>{_html_escape(str(daily_latest["data_refresh_operator_checklist_path"]))}</dd>
         <dt>current_accepted_data_path</dt><dd>{_html_escape(str(daily_latest["current_accepted_data_path"]))}</dd>
+        <dt>forward_signal_evidence_ledger_path</dt><dd>{_html_escape(str(daily_latest["forward_signal_evidence_ledger_path"]))}</dd>
+        <dt>forward_signal_evidence_ledger_status</dt><dd>{_html_escape(str(daily_latest["forward_signal_evidence_ledger_status"]))}</dd>
       </dl>
     </section>
     <section>
@@ -6285,6 +7115,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>data_refresh_dry_run.json</dt><dd><a href="{_html_escape(str(artifacts["data_refresh_dry_run_json"]))}">{_html_escape(str(artifacts["data_refresh_dry_run_json"]))}</a></dd>
         <dt>data_refresh_operator_checklist.md</dt><dd><a href="{_html_escape(str(artifacts["data_refresh_operator_checklist_md"]))}">{_html_escape(str(artifacts["data_refresh_operator_checklist_md"]))}</a></dd>
         <dt>operator_review.md</dt><dd><a href="{_html_escape(str(artifacts["operator_review_md"]))}">{_html_escape(str(artifacts["operator_review_md"]))}</a></dd>
+        <dt>forward_signal_evidence_ledger.jsonl</dt><dd><a href="{_html_escape(str(artifacts["forward_signal_evidence_ledger_jsonl"]))}">{_html_escape(str(artifacts["forward_signal_evidence_ledger_jsonl"]))}</a></dd>
         <dt>index.html</dt><dd>{_html_escape(str(artifacts["index_html"]))}</dd>
         <dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>
       </dl>
@@ -6453,6 +7284,56 @@ def _parse_iso_date(value: object) -> date | None:
         return datetime.fromisoformat(text).date()
     except ValueError:
         return None
+
+
+def _parse_iso_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def _dedupe(values: tuple[str, ...]) -> tuple[str, ...]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value).strip()
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return tuple(result)
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _string_set(value: object) -> set[str]:
+    return set(_string_list(value))
+
+
+def _mapping_list(value: object) -> list[Mapping[str, Any]] | None:
+    if not isinstance(value, list):
+        return None
+    if not all(isinstance(item, Mapping) for item in value):
+        return None
+    return [item for item in value if isinstance(item, Mapping)]
+
+
+def _non_negative_int_or_none(value: object) -> int | None:
+    try:
+        parsed = int(str(value))
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _current_utc_date() -> date:
@@ -9017,6 +9898,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         run_date_source = "utc_runtime_date"
 
     latest_input_bar_date = max(bar.timestamp for bar in bars).strftime("%Y-%m-%d")
+    freshness_preview = _daily_bar_freshness_evaluation(
+        data_available=bool(bars),
+        latest_input_bar_date=latest_input_bar_date,
+        run_date=run_date_str,
+    )
+    latest_completed_session_date = freshness_preview["latest_completed_session_date"]
     signal = evaluate_etf_sma_signal(
         bars,
         EtfSmaSignalConfig(
@@ -9038,6 +9925,8 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         config.broker_snapshot_log,
         broker_state_mode=broker_state_mode,
         symbol=config.symbol,
+        run_date=run_date_str,
+        latest_completed_session_date=latest_completed_session_date,
     )
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
@@ -9176,6 +10065,11 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "system_health": "offline_assistant_packet_ready",
         "artifact_paths": artifact_paths,
         "history_ledger_path": artifact_paths["history_ledger"],
+        "forward_signal_evidence_ledger_path": artifact_paths[
+            "forward_signal_evidence_ledger"
+        ],
+        "forward_signal_evidence_ledger_status": "not_generated",
+        "forward_signal_evidence_ledger_summary": {},
         **quality_gate_defaults,
         **decision_ledger_defaults,
         **research_candidate_queue_defaults,
@@ -9211,6 +10105,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "operating_record": artifact_paths["operating_record"],
             "manifest": artifact_paths["manifest"],
             "history_ledger": artifact_paths["history_ledger"],
+            "forward_signal_evidence_ledger": artifact_paths[
+                "forward_signal_evidence_ledger"
+            ],
             "review_handoff": artifact_paths["review_handoff"],
             "decision_ledger": artifact_paths["decision_ledger"],
             "research_candidate_queue": artifact_paths["research_candidate_queue"],
@@ -9867,6 +10764,9 @@ def _artifact_paths(output_root: Path) -> dict[str, str]:
         "operating_record": _normalize_path(output_root / _RECORD_FILENAME),
         "manifest": _normalize_path(output_root / _MANIFEST_FILENAME),
         "history_ledger": _normalize_path(output_root / _HISTORY_LEDGER_FILENAME),
+        "forward_signal_evidence_ledger": _normalize_path(
+            output_root / _FORWARD_SIGNAL_EVIDENCE_LEDGER_FILENAME
+        ),
         "review_handoff": _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME),
         "decision_ledger": _normalize_path(output_root / _DECISION_LEDGER_FILENAME),
         "research_candidate_queue": _normalize_path(
@@ -27600,6 +28500,13 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
     history_ledger_path = output_root / _HISTORY_LEDGER_FILENAME
     if history_ledger_path.exists():
         indexed_artifacts["history_ledger"] = _artifact_metadata(history_ledger_path)
+    forward_signal_evidence_ledger_path = (
+        output_root / _FORWARD_SIGNAL_EVIDENCE_LEDGER_FILENAME
+    )
+    if forward_signal_evidence_ledger_path.exists():
+        indexed_artifacts["forward_signal_evidence_ledger"] = _artifact_metadata(
+            forward_signal_evidence_ledger_path
+        )
     decision_ledger_path = output_root / _DECISION_LEDGER_FILENAME
     if decision_ledger_path.exists():
         indexed_artifacts["decision_ledger"] = _artifact_metadata(
@@ -27767,6 +28674,15 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "artifact_presence_status": dict(payload["artifact_presence_status"]),
         "artifact_paths": dict(payload["artifact_paths"]),
         "history_ledger_path": payload["history_ledger_path"],
+        "forward_signal_evidence_ledger_path": payload.get(
+            "forward_signal_evidence_ledger_path"
+        ),
+        "forward_signal_evidence_ledger_status": payload.get(
+            "forward_signal_evidence_ledger_status"
+        ),
+        "forward_signal_evidence_ledger_summary": dict(
+            payload.get("forward_signal_evidence_ledger_summary", {})
+        ),
         "history_delta": history_delta,
         "executive_action_queue_version": payload["executive_action_queue_version"],
         "executive_action_queue": list(payload["executive_action_queue"]),

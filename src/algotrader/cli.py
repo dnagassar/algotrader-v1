@@ -5912,6 +5912,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
     from .errors import ValidationError
     from .execution.etf_sma_daily_paper_lab import (
         EtfSmaDailyPaperLabConfig,
+        etf_sma_daily_paper_lab_exit_status,
         run_etf_sma_daily_paper_lab,
     )
 
@@ -5932,7 +5933,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
             print(json.dumps(payload, sort_keys=True, separators=(",", ":")))
         else:
             print(json.dumps(payload, sort_keys=True, indent=2))
-        return 0
+        return etf_sma_daily_paper_lab_exit_status(payload)
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2

@@ -146,6 +146,8 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $DataRefreshDryRunStatusText = "unknown"
     $DataRefreshInputCsvPresentText = "unknown"
     $DataRefreshIngestPerformedText = "false"
+    $ExactNextOperatorActionText = "unknown"
+    $ForwardSignalEvidenceLedgerStatusText = "unknown"
 
     if (Test-Path -LiteralPath $LatestRunPath) {
         try {
@@ -161,6 +163,12 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
             }
             if ($null -ne $LatestRun.data_refresh_ingest_performed) {
                 $DataRefreshIngestPerformedText = ([string]$LatestRun.data_refresh_ingest_performed).ToLowerInvariant()
+            }
+            if ($LatestRun.exact_next_operator_action) {
+                $ExactNextOperatorActionText = [string]$LatestRun.exact_next_operator_action
+            }
+            if ($LatestRun.forward_signal_evidence_ledger_status) {
+                $ForwardSignalEvidenceLedgerStatusText = [string]$LatestRun.forward_signal_evidence_ledger_status
             }
         }
         catch {
@@ -185,6 +193,8 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Broker read performed: false"
     Write-Host "Broker mutation performed: false"
     Write-Host "Broker-state mode: $BrokerStateModeText"
+    Write-Host "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText"
+    Write-Host "Exact next operator action: $ExactNextOperatorActionText"
 }
 
 exit $ExitCode
