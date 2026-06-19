@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -811,6 +812,96 @@ def test_git_mutation_modes_require_full_pytest_before_mutation_outcome(
     assert result["latest"]["no_change_fast_path_allowed"] is False
     assert result["latest"]["commit_occurred"] is False
     assert result["latest"]["push_occurred"] is False
+
+
+def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
+    tmp_path: Path,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    remote = tmp_path / "origin.git"
+    _run_subprocess(["git", "init", "--bare", str(remote)], cwd=tmp_path)
+    _git(repo, "remote", "add", "origin", str(remote))
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={"git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"]},
+    )
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path=allowed_file),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        git_mode="commit_and_push",
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["outcome"] == "accepted"
+    assert result["reason"] == "commit_and_push_success"
+    assert full_marker.exists()
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    ledger = json.loads(
+        (output_root / "development_autopilot_ledger.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()[-1]
+    )
+    verification_results = _read_json(output_root / "verification_results.json")
+
+    for payload in (latest, ledger, verification_results):
+        assert payload["staging_occurred"] is True
+        assert payload["commit_occurred"] is True
+        assert payload["push_occurred"] is True
+        assert payload["staged_files"] == [allowed_file]
+        assert payload["committed_files"] == [allowed_file]
+        assert payload["push_remote_name"] == "origin"
+        assert payload["push_remote_url_sanitized"]
+        assert payload["push_remote_url_kind"] == "local_path"
+        assert payload["push_remote_url_is_network"] is False
+        assert payload["push_remote_url_is_local_path"] is True
+        assert payload["push_remote_url_redacted"] is False
+
+    report = (output_root / "development_autopilot_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert 'staged_files: ["src/allowed.py"]' in report
+    assert 'committed_files: ["src/allowed.py"]' in report
+    assert "push_remote_url_kind: local_path" in report
+    assert "push_remote_url_is_network: False" in report
+    assert "push_remote_url_is_local_path: True" in report
+
+
+def test_credential_bearing_remote_url_is_sanitized_without_raw_secret() -> None:
+    raw_url = "https://user:token@example.com/org/repo.git"
+
+    sanitized_url, redacted = development_autopilot._sanitize_remote_url(raw_url)
+    kind = development_autopilot._remote_url_kind(raw_url)
+    serialized = json.dumps(
+        {
+            "push_remote_url_sanitized": sanitized_url,
+            "push_remote_url_kind": kind,
+            "push_remote_url_is_network": kind == "network",
+            "push_remote_url_is_local_path": kind == "local_path",
+            "push_remote_url_redacted": redacted,
+        },
+        sort_keys=True,
+    )
+
+    assert sanitized_url == "https://<redacted>@example.com/org/repo.git"
+    assert kind == "network"
+    assert redacted is True
+    assert raw_url not in serialized
+    assert "user:token" not in serialized
+    assert "token@example.com" not in serialized
 
 
 @pytest.mark.parametrize("git_mode", ["commit_only", "commit_and_push"])

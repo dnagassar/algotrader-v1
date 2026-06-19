@@ -299,9 +299,7 @@ def run_development_autopilot(
         "verify_offline_status": "not_started",
         "preflight_booleans": _preflight_booleans(process_env),
         "git_mode": resolved_options.git_mode,
-        "staging_occurred": False,
-        "commit_occurred": False,
-        "push_occurred": False,
+        **_empty_git_mutation_record(),
         "final_classification": "blocked",
         "exact_next_action": "",
         "required_labels": sorted(SAFE_REQUIRED_LABELS),
@@ -1632,11 +1630,7 @@ def _perform_git_mutation(
     repo_state: RepoState,
     env: Mapping[str, str],
 ) -> dict[str, object]:
-    record = {
-        "staging_occurred": False,
-        "commit_occurred": False,
-        "push_occurred": False,
-    }
+    record = _empty_git_mutation_record()
     if not changed_files:
         return {"ok": False, "reason": "no_changed_files_to_commit", "record": record}
     if repo_state.staged_files:
@@ -1644,35 +1638,208 @@ def _perform_git_mutation(
     if expected_head and not _baseline_matches(repo_state, expected_head):
         return {"ok": False, "reason": "baseline_mismatch_before_git_mutation", "record": record}
 
-    add_result = _run_command(("git", "add", "--") + changed_files, cwd=repo_root, env=_scrubbed_env(env))
+    git_env = _scrubbed_env(env)
+    add_result = _run_command(("git", "add", "--") + changed_files, cwd=repo_root, env=git_env)
     if add_result.exit_code != 0:
         return {"ok": False, "reason": "git_add_failed", "record": record}
     record["staging_occurred"] = True
+    record["staged_files"] = list(
+        _git_file_list(repo_root, "diff", "--cached", "--name-only", "--", env=git_env)
+    )
 
     commit_result = _run_command(
         ("git", "commit", "-m", work_order.commit_message),
         cwd=repo_root,
-        env=_scrubbed_env(env),
+        env=git_env,
     )
     if commit_result.exit_code != 0:
         return {"ok": False, "reason": "git_commit_failed", "record": record}
     record["commit_occurred"] = True
+    record["committed_files"] = list(
+        _git_file_list(
+            repo_root,
+            "diff-tree",
+            "--no-commit-id",
+            "--name-only",
+            "-r",
+            "HEAD",
+            env=git_env,
+        )
+    )
 
     if git_mode == "commit_and_push":
+        remote_name = "origin"
+        record.update(_push_remote_provenance(repo_root, remote_name, env=git_env))
         origin_main = _git_text(repo_root, "rev-parse", "origin/main")
         if expected_head and origin_main != expected_head:
             return {"ok": False, "reason": "origin_main_changed_before_push", "record": record}
         branch = _git_text(repo_root, "branch", "--show-current")
         push_result = _run_command(
-            ("git", "push", "origin", branch),
+            ("git", "push", remote_name, branch),
             cwd=repo_root,
-            env=_scrubbed_env(env),
+            env=git_env,
         )
         if push_result.exit_code != 0:
             return {"ok": False, "reason": "git_push_failed", "record": record}
         record["push_occurred"] = True
 
     return {"ok": True, "reason": "", "record": record}
+
+
+def _empty_git_mutation_record() -> dict[str, object]:
+    return {
+        "staging_occurred": False,
+        "commit_occurred": False,
+        "push_occurred": False,
+        "staged_files": [],
+        "committed_files": [],
+        "push_remote_name": "",
+        "push_remote_url_sanitized": "",
+        "push_remote_url_kind": "unknown",
+        "push_remote_url_is_network": False,
+        "push_remote_url_is_local_path": False,
+        "push_remote_url_redacted": False,
+    }
+
+
+def _git_file_list(
+    repo_root: Path,
+    *args: str,
+    env: Mapping[str, str],
+) -> tuple[str, ...]:
+    output = _git_text(repo_root, *args, env=env)
+    if not output:
+        return ()
+    return tuple(line for line in output.splitlines() if line)
+
+
+def _push_remote_provenance(
+    repo_root: Path,
+    remote_name: str,
+    *,
+    env: Mapping[str, str],
+) -> dict[str, object]:
+    remote_url = ""
+    result = _run_command(
+        ("git", "config", "--get", f"remote.{remote_name}.url"),
+        cwd=repo_root,
+        env=env,
+    )
+    if result.exit_code == 0:
+        remote_url = result.stdout.strip()
+    sanitized_url, redacted = _sanitize_remote_url(remote_url)
+    kind = _remote_url_kind(remote_url)
+    return {
+        "push_remote_name": remote_name,
+        "push_remote_url_sanitized": sanitized_url,
+        "push_remote_url_kind": kind,
+        "push_remote_url_is_network": kind == "network",
+        "push_remote_url_is_local_path": kind == "local_path",
+        "push_remote_url_redacted": redacted,
+    }
+
+
+def _sanitize_remote_url(remote_url: str) -> tuple[str, bool]:
+    value = remote_url.strip()
+    if not value:
+        return "", False
+
+    if "://" in value:
+        scheme, remainder = value.split("://", 1)
+        netloc, suffix = _split_url_authority(remainder)
+        redacted = False
+        if "@" in netloc:
+            netloc = f"<redacted>@{netloc.rsplit('@', 1)[1]}"
+            redacted = True
+        sanitized_suffix, suffix_redacted = _sanitize_url_suffix(suffix)
+        return f"{scheme}://{netloc}{sanitized_suffix}", redacted or suffix_redacted
+
+    if _looks_like_scp_remote(value):
+        user_host, separator, remote_path = value.partition(":")
+        if "@" in user_host:
+            host = user_host.rsplit("@", 1)[1]
+            return f"<redacted>@{host}{separator}{remote_path}", True
+
+    return value, False
+
+
+def _remote_url_kind(remote_url: str) -> str:
+    value = remote_url.strip()
+    if not value:
+        return "unknown"
+    if _looks_like_local_remote(value):
+        return "local_path"
+    if _looks_like_network_remote(value):
+        return "network"
+    return "unknown"
+
+
+def _looks_like_local_remote(remote_url: str) -> bool:
+    value = remote_url.strip()
+    if value.lower().startswith("file://"):
+        return True
+    if _has_windows_drive_prefix(value):
+        return True
+    return value.startswith(("/", "\\", "./", "../"))
+
+
+def _looks_like_network_remote(remote_url: str) -> bool:
+    value = remote_url.strip()
+    if "://" in value:
+        return _url_scheme(value) in {"git", "http", "https", "ssh", "rsync"}
+    return _looks_like_scp_remote(value)
+
+
+def _looks_like_scp_remote(remote_url: str) -> bool:
+    value = remote_url.strip()
+    if "://" in value or _has_windows_drive_prefix(value):
+        return False
+    before_colon, separator, after_colon = value.partition(":")
+    if not separator or not before_colon or not after_colon:
+        return False
+    return "/" not in before_colon and "\\" not in before_colon
+
+
+def _has_windows_drive_prefix(remote_url: str) -> bool:
+    return (
+        len(remote_url) >= 3
+        and remote_url[0].isalpha()
+        and remote_url[1] == ":"
+        and remote_url[2] in {"/", "\\"}
+    )
+
+
+def _url_scheme(remote_url: str) -> str:
+    return remote_url.split("://", 1)[0].lower()
+
+
+def _split_url_authority(remainder: str) -> tuple[str, str]:
+    suffix_indexes = [
+        index
+        for separator in ("/", "?", "#")
+        if (index := remainder.find(separator)) != -1
+    ]
+    if not suffix_indexes:
+        return remainder, ""
+    split_at = min(suffix_indexes)
+    return remainder[:split_at], remainder[split_at:]
+
+
+def _sanitize_url_suffix(suffix: str) -> tuple[str, bool]:
+    suffix_indexes = [
+        index
+        for separator in ("?", "#")
+        if (index := suffix.find(separator)) != -1
+    ]
+    if not suffix_indexes:
+        return suffix, False
+    path = suffix[: min(suffix_indexes)]
+    sanitized = path
+    if "?" in suffix:
+        sanitized += "?<redacted>"
+    if "#" in suffix:
+        sanitized += "#<redacted>"
+    return sanitized, True
 
 
 def _finish(
@@ -1747,6 +1914,20 @@ def _verification_results_payload(record: Mapping[str, object]) -> dict[str, obj
         "normal_pytest_offline_invariant_preserved": record.get(
             "normal_pytest_offline_invariant_preserved"
         ),
+        "staging_occurred": record.get("staging_occurred", False),
+        "commit_occurred": record.get("commit_occurred", False),
+        "push_occurred": record.get("push_occurred", False),
+        "staged_files": list(record.get("staged_files", [])),
+        "committed_files": list(record.get("committed_files", [])),
+        "push_remote_name": record.get("push_remote_name", ""),
+        "push_remote_url_sanitized": record.get("push_remote_url_sanitized", ""),
+        "push_remote_url_kind": record.get("push_remote_url_kind", "unknown"),
+        "push_remote_url_is_network": record.get("push_remote_url_is_network", False),
+        "push_remote_url_is_local_path": record.get(
+            "push_remote_url_is_local_path",
+            False,
+        ),
+        "push_remote_url_redacted": record.get("push_remote_url_redacted", False),
     }
 
 
@@ -1759,6 +1940,17 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         f"reason: {latest.get('reason', '')}",
         f"next_action: {latest.get('exact_next_action', '')}",
         f"git_mode: {latest.get('git_mode', '')}",
+        f"staging_occurred: {latest.get('staging_occurred', '')}",
+        f"commit_occurred: {latest.get('commit_occurred', '')}",
+        f"push_occurred: {latest.get('push_occurred', '')}",
+        f"staged_files: {json.dumps(latest.get('staged_files', []), sort_keys=True)}",
+        f"committed_files: {json.dumps(latest.get('committed_files', []), sort_keys=True)}",
+        f"push_remote_name: {latest.get('push_remote_name', '')}",
+        f"push_remote_url_sanitized: {latest.get('push_remote_url_sanitized', '')}",
+        f"push_remote_url_kind: {latest.get('push_remote_url_kind', '')}",
+        f"push_remote_url_is_network: {latest.get('push_remote_url_is_network', '')}",
+        f"push_remote_url_is_local_path: {latest.get('push_remote_url_is_local_path', '')}",
+        f"push_remote_url_redacted: {latest.get('push_remote_url_redacted', '')}",
         f"work_order_id: {latest.get('work_order_id', '')}",
         f"route_name: {latest.get('route_name', '')}",
         f"agent_exit_code: {latest.get('agent_exit_code', '')}",
