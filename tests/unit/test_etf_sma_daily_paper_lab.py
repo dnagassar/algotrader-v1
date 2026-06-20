@@ -7744,6 +7744,15 @@ def _write_daily_lab_broker_snapshot(
     return record
 
 
+def _write_daily_lab_broker_snapshot_without_generated_at(path: Path) -> None:
+    record = _write_daily_lab_broker_snapshot(path)
+    record.pop("generated_at")
+    path.write_text(
+        json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
+
+
 def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     tmp_path: Path,
 ) -> None:
@@ -8042,13 +8051,28 @@ def test_etf_sma_daily_paper_lab_missing_snapshot_never_claims_broker_absence(
     ("case_name", "writer", "expected_status", "expected_error"),
     [
         (
-            "stale",
+            "stale_broker_snapshot",
             lambda path: _write_daily_lab_broker_snapshot(
                 path,
                 generated_at="2025-07-18T12:00:00+00:00",
             ),
             "stale_snapshot",
             "broker_snapshot_stale",
+        ),
+        (
+            "missing_broker_snapshot_timestamp",
+            _write_daily_lab_broker_snapshot_without_generated_at,
+            "invalid_snapshot",
+            "broker_snapshot_generated_at_missing_or_invalid",
+        ),
+        (
+            "future_broker_snapshot_timestamp",
+            lambda path: _write_daily_lab_broker_snapshot(
+                path,
+                generated_at="2025-07-21T12:00:00+00:00",
+            ),
+            "future_dated_snapshot",
+            "broker_snapshot_future_dated",
         ),
         (
             "malformed",
@@ -8317,6 +8341,21 @@ def test_etf_sma_daily_paper_lab_cli_stale_snapshot_policy_is_zero_but_untrusted
             ),
             "invalid_snapshot",
             "broker_snapshot_generated_at_missing_or_invalid",
+        ),
+        (
+            "missing_broker_snapshot_timestamp",
+            _write_daily_lab_broker_snapshot_without_generated_at,
+            "invalid_snapshot",
+            "broker_snapshot_generated_at_missing_or_invalid",
+        ),
+        (
+            "future_broker_snapshot_timestamp",
+            lambda path: _write_daily_lab_broker_snapshot(
+                path,
+                generated_at="2025-07-21T12:00:00+00:00",
+            ),
+            "future_dated_snapshot",
+            "broker_snapshot_future_dated",
         ),
         (
             "symbol_mismatch",
