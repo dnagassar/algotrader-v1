@@ -151,6 +151,34 @@ NEXT_ACTIONS = {
     "plan_only_success": "review_git_mutation_plan_before_git_mutation",
     "push_authorization": "review_push_authorization_blocker_before_git_mutation",
 }
+GPT_REVIEW_PACKET_VERSION = "1.0"
+GPT_REVIEW_FIELD_NAMES = (
+    "gpt_review_packet_version",
+    "gpt_review_status",
+    "gpt_review_blocker",
+    "gpt_review_required",
+    "gpt_review_ready",
+    "gpt_review_recommended_classification",
+    "gpt_review_summary",
+    "gpt_review_changed_files",
+    "gpt_review_allowed_files",
+    "gpt_review_unexpected_files",
+    "gpt_review_verification_status",
+    "gpt_review_git_mutation_mode",
+    "gpt_review_git_mutation_plan_status",
+    "gpt_review_git_mutation_plan_blocker",
+    "gpt_review_proposed_stage_files",
+    "gpt_review_proposed_commit_message",
+    "gpt_review_would_push",
+    "gpt_review_push_remote_name",
+    "gpt_review_push_remote_url_sanitized",
+    "gpt_review_push_remote_url_kind",
+    "gpt_review_nonlocal_push_authorized",
+    "gpt_review_push_authorization_status",
+    "gpt_review_hard_gate_required",
+    "gpt_review_hard_gate_reason",
+    "gpt_review_next_operator_action",
+)
 
 
 @dataclass(frozen=True)
@@ -300,14 +328,18 @@ def run_development_autopilot(
         "agent_command_identity": "",
         "agent_exit_code": None,
         "changed_files": [],
+        "allowed_files": [],
+        "forbidden_paths": [],
         "allowed_files_result": "not_checked",
         "forbidden_path_result": "not_checked",
+        "work_order_commit_message": "",
         "verification_commands": [],
         "safety_guard_statuses": {},
         "verify_offline_status": "not_started",
         "preflight_booleans": _preflight_booleans(process_env),
         "git_mode": resolved_options.git_mode,
         **_empty_git_mutation_record(),
+        **_empty_gpt_review_record(),
         "final_classification": "blocked",
         "exact_next_action": "",
         "required_labels": sorted(SAFE_REQUIRED_LABELS),
@@ -454,6 +486,9 @@ def run_development_autopilot(
     record["work_order_command_timeout_seconds"] = work_order.command_timeout_seconds
     record["nonlocal_push_authorized"] = work_order.nonlocal_push_authorized
     record["allow_no_change_fast_path"] = work_order.allow_no_change_fast_path
+    record["allowed_files"] = list(work_order.allowed_files)
+    record["forbidden_paths"] = list(work_order.forbidden_paths)
+    record["work_order_commit_message"] = work_order.commit_message
     record["no_change_fast_path_allowed"] = _no_change_fast_path_allowed(
         resolved_options.full_pytest_policy,
         effective_git_mode,
@@ -1747,15 +1782,33 @@ def _changed_file_policy_reason(
     allowed_files: tuple[str, ...],
     forbidden_paths: tuple[str, ...],
 ) -> str:
+    unexpected = _unexpected_changed_files(
+        changed_files,
+        allowed_files=allowed_files,
+        forbidden_paths=forbidden_paths,
+    )
+    if not unexpected:
+        return ""
+    forbidden = tuple(_normalize_relative_path(path, allow_directory=True) for path in forbidden_paths)
+    if any(_is_forbidden_path(path, forbidden) for path in unexpected):
+        return "changed_file_forbidden_path"
+    return "changed_file_not_allowed"
+
+
+def _unexpected_changed_files(
+    changed_files: tuple[str, ...],
+    *,
+    allowed_files: tuple[str, ...],
+    forbidden_paths: tuple[str, ...],
+) -> tuple[str, ...]:
     allowed = {_normalize_relative_path(path) for path in allowed_files}
     forbidden = tuple(_normalize_relative_path(path, allow_directory=True) for path in forbidden_paths)
+    unexpected: list[str] = []
     for path in changed_files:
         normalized = _normalize_relative_path(path)
-        if _is_forbidden_path(normalized, forbidden):
-            return "changed_file_forbidden_path"
-        if normalized not in allowed:
-            return "changed_file_not_allowed"
-    return ""
+        if _is_forbidden_path(normalized, forbidden) or normalized not in allowed:
+            unexpected.append(normalized)
+    return tuple(sorted(unexpected))
 
 
 def _record_git_mutation_plan_verification_failed(record: dict[str, object]) -> None:
@@ -1977,6 +2030,379 @@ def _empty_git_mutation_record() -> dict[str, object]:
     }
 
 
+def _empty_gpt_review_record() -> dict[str, object]:
+    return {
+        "gpt_review_packet_version": GPT_REVIEW_PACKET_VERSION,
+        "gpt_review_status": "not_applicable",
+        "gpt_review_blocker": None,
+        "gpt_review_required": False,
+        "gpt_review_ready": False,
+        "gpt_review_recommended_classification": None,
+        "gpt_review_summary": "GPT review packet is not applicable.",
+        "gpt_review_changed_files": [],
+        "gpt_review_allowed_files": [],
+        "gpt_review_unexpected_files": [],
+        "gpt_review_verification_status": "not_started",
+        "gpt_review_git_mutation_mode": GIT_MUTATION_MODE_NONE,
+        "gpt_review_git_mutation_plan_status": "not_applicable",
+        "gpt_review_git_mutation_plan_blocker": None,
+        "gpt_review_proposed_stage_files": [],
+        "gpt_review_proposed_commit_message": "",
+        "gpt_review_would_push": False,
+        "gpt_review_push_remote_name": "",
+        "gpt_review_push_remote_url_sanitized": "",
+        "gpt_review_push_remote_url_kind": "unknown",
+        "gpt_review_nonlocal_push_authorized": False,
+        "gpt_review_push_authorization_status": "not_applicable",
+        "gpt_review_hard_gate_required": False,
+        "gpt_review_hard_gate_reason": None,
+        "gpt_review_next_operator_action": (
+            "No GPT review packet action is required."
+        ),
+    }
+
+
+def _gpt_review_fields(record: Mapping[str, object]) -> dict[str, object]:
+    defaults = _empty_gpt_review_record()
+    return {field: record.get(field, defaults[field]) for field in GPT_REVIEW_FIELD_NAMES}
+
+
+def _build_gpt_review_record(
+    record: Mapping[str, object],
+    *,
+    outcome: str,
+    reason: str,
+    next_action: str,
+) -> dict[str, object]:
+    review = _empty_gpt_review_record()
+    git_mutation_mode = str(
+        record.get("git_mutation_mode", GIT_MUTATION_MODE_NONE)
+    )
+    plan_status = str(record.get("git_mutation_plan_status", "not_applicable"))
+    plan_blocker = record.get("git_mutation_plan_blocker")
+    changed_files = _string_list(record.get("changed_files", []))
+    allowed_files = _string_list(record.get("allowed_files", []))
+    forbidden_paths = _string_list(record.get("forbidden_paths", []))
+    unexpected_files = list(
+        _unexpected_changed_files(
+            tuple(changed_files),
+            allowed_files=tuple(allowed_files),
+            forbidden_paths=tuple(forbidden_paths),
+        )
+    )
+    verification_status = _gpt_review_verification_status(record, reason)
+    hard_gate_reason = _gpt_review_hard_gate_reason(record, reason)
+    if git_mutation_mode == GIT_MUTATION_MODE_PLAN_ONLY:
+        remote_name = record.get("git_mutation_plan_remote_name", "")
+        remote_url_sanitized = record.get(
+            "git_mutation_plan_remote_url_sanitized",
+            "",
+        )
+        remote_url_kind = record.get(
+            "git_mutation_plan_remote_url_kind",
+            "unknown",
+        )
+        nonlocal_push_authorized = record.get(
+            "git_mutation_plan_nonlocal_push_authorized",
+            False,
+        )
+        push_authorization_status = record.get(
+            "git_mutation_plan_push_authorization_status",
+            "not_applicable",
+        )
+    else:
+        remote_name = record.get("push_remote_name", "")
+        remote_url_sanitized = record.get("push_remote_url_sanitized", "")
+        remote_url_kind = record.get("push_remote_url_kind", "unknown")
+        nonlocal_push_authorized = record.get("nonlocal_push_authorized", False)
+        push_authorization_status = record.get(
+            "push_authorization_status",
+            "not_applicable",
+        )
+
+    review.update(
+        {
+            "gpt_review_changed_files": changed_files,
+            "gpt_review_allowed_files": allowed_files,
+            "gpt_review_unexpected_files": unexpected_files,
+            "gpt_review_verification_status": verification_status,
+            "gpt_review_git_mutation_mode": git_mutation_mode,
+            "gpt_review_git_mutation_plan_status": plan_status,
+            "gpt_review_git_mutation_plan_blocker": plan_blocker,
+            "gpt_review_push_remote_name": remote_name,
+            "gpt_review_push_remote_url_sanitized": remote_url_sanitized,
+            "gpt_review_push_remote_url_kind": remote_url_kind,
+            "gpt_review_nonlocal_push_authorized": nonlocal_push_authorized,
+            "gpt_review_push_authorization_status": push_authorization_status,
+            "gpt_review_hard_gate_required": hard_gate_reason is not None,
+            "gpt_review_hard_gate_reason": hard_gate_reason,
+        }
+    )
+
+    if git_mutation_mode != GIT_MUTATION_MODE_PLAN_ONLY:
+        review["gpt_review_status"] = "not_applicable"
+        review["gpt_review_summary"] = (
+            "GPT review packet is not applicable for git mutation mode "
+            f"{git_mutation_mode}; outcome={outcome}; reason={reason}."
+        )
+        review["gpt_review_next_operator_action"] = (
+            "No plan-only GPT review packet action is required; review the "
+            f"run outcome and next action {next_action}."
+        )
+        return review
+
+    review["gpt_review_required"] = True
+    status = _gpt_review_status_for_plan(
+        plan_status=plan_status,
+        plan_blocker=plan_blocker,
+        reason=reason,
+        hard_gate_reason=hard_gate_reason,
+    )
+    review["gpt_review_status"] = status
+    blocker = _gpt_review_blocker_for_status(status)
+    review["gpt_review_blocker"] = blocker
+    review["gpt_review_ready"] = status in {"ready_for_gpt_review", "no_changes"}
+    review["gpt_review_recommended_classification"] = (
+        _gpt_review_recommended_classification(status)
+    )
+
+    if status == "ready_for_gpt_review":
+        review["gpt_review_proposed_stage_files"] = _string_list(
+            record.get("git_mutation_plan_would_stage_files", [])
+        )
+        review["gpt_review_proposed_commit_message"] = str(
+            record.get("work_order_commit_message", "")
+        )
+        review["gpt_review_would_push"] = bool(
+            record.get("git_mutation_plan_would_push", False)
+        )
+    else:
+        review["gpt_review_proposed_stage_files"] = []
+        review["gpt_review_proposed_commit_message"] = ""
+        review["gpt_review_would_push"] = False
+
+    if status in {
+        "ready_for_gpt_review",
+        "no_changes",
+        "blocked_verification_failed",
+        "blocked_changed_files_not_allowlisted",
+    }:
+        review["gpt_review_hard_gate_required"] = False
+        review["gpt_review_hard_gate_reason"] = None
+    elif status == "blocked_network_push_not_authorized":
+        review["gpt_review_hard_gate_required"] = True
+        review["gpt_review_hard_gate_reason"] = "network_push_not_authorized"
+    elif status == "blocked_unknown_remote":
+        review["gpt_review_hard_gate_required"] = True
+        review["gpt_review_hard_gate_reason"] = "push_remote_unknown"
+    elif status == "blocked_safety_invariant":
+        review["gpt_review_hard_gate_required"] = True
+        review["gpt_review_hard_gate_reason"] = "safety_invariant_failed"
+
+    review["gpt_review_summary"] = _gpt_review_summary(review)
+    review["gpt_review_next_operator_action"] = _gpt_review_next_operator_action(
+        status
+    )
+    return review
+
+
+def _gpt_review_status_for_plan(
+    *,
+    plan_status: str,
+    plan_blocker: object,
+    reason: str,
+    hard_gate_reason: str | None,
+) -> str:
+    if hard_gate_reason == "safety_invariant_failed":
+        return "blocked_safety_invariant"
+    if plan_status == "planned_no_changes":
+        return "no_changes"
+    if plan_status in {"planned_local_push", "planned_network_push_authorized"}:
+        return "ready_for_gpt_review"
+    if plan_status == "blocked_verification_failed" or reason in {
+        "verification_failed",
+        "verification_command_timeout",
+        "safety_guard_timeout",
+        "verify_offline_timeout",
+        "full_pytest_timeout",
+    }:
+        return "blocked_verification_failed"
+    if (
+        plan_status == "blocked_changed_files_not_allowlisted"
+        or plan_blocker == "changed_files_not_allowlisted"
+        or reason in {"changed_file_not_allowed", "changed_file_forbidden_path"}
+    ):
+        return "blocked_changed_files_not_allowlisted"
+    if plan_status == "blocked_network_push_not_authorized":
+        return "blocked_network_push_not_authorized"
+    if plan_status == "blocked_unknown_remote":
+        return "blocked_unknown_remote"
+    return "blocked_safety_invariant"
+
+
+def _gpt_review_blocker_for_status(status: str) -> str | None:
+    return {
+        "blocked_verification_failed": "verification_failed",
+        "blocked_changed_files_not_allowlisted": "changed_files_not_allowlisted",
+        "blocked_network_push_not_authorized": "network_push_not_authorized",
+        "blocked_unknown_remote": "push_remote_unknown",
+        "blocked_safety_invariant": "safety_invariant_failed",
+    }.get(status)
+
+
+def _gpt_review_recommended_classification(status: str) -> str | None:
+    if status == "ready_for_gpt_review":
+        return "accepted"
+    if status == "no_changes":
+        return "accepted-with-minor-note"
+    if status in {
+        "blocked_verification_failed",
+        "blocked_network_push_not_authorized",
+        "blocked_unknown_remote",
+    }:
+        return "needs-repair"
+    if status in {
+        "blocked_changed_files_not_allowlisted",
+        "blocked_safety_invariant",
+    }:
+        return "rejected"
+    return None
+
+
+def _gpt_review_verification_status(
+    record: Mapping[str, object],
+    reason: str,
+) -> str:
+    if record.get("verification_timeout"):
+        return "timeout"
+    if reason in {
+        "verification_failed",
+        "verification_command_timeout",
+        "safety_guard_timeout",
+        "verify_offline_timeout",
+        "full_pytest_timeout",
+    }:
+        return "failed" if reason == "verification_failed" else "timeout"
+
+    full_pytest_status = str(record.get("full_pytest_status", "not_started"))
+    if full_pytest_status in {
+        "passed",
+        "failed",
+        "timeout",
+        "skipped",
+        "not_configured",
+        "not_started",
+    }:
+        return full_pytest_status
+
+    commands = record.get("verification_commands", [])
+    if isinstance(commands, Sequence) and not isinstance(commands, (str, bytes, bytearray)):
+        if any(isinstance(item, Mapping) and item.get("timed_out") for item in commands):
+            return "timeout"
+        if any(
+            isinstance(item, Mapping)
+            and item.get("exit_code") not in {0, None}
+            for item in commands
+        ):
+            return "failed"
+        if commands:
+            return "passed"
+    return full_pytest_status
+
+
+def _gpt_review_hard_gate_reason(
+    record: Mapping[str, object],
+    reason: str,
+) -> str | None:
+    push_blocker = record.get("push_authorization_blocker")
+    if push_blocker in {"network_push_not_authorized", "push_remote_unknown"}:
+        return str(push_blocker)
+    if reason.startswith("hard_gate:") or reason in {
+        "APP_PROFILE_is_paper",
+        "credential_environment_loaded",
+    }:
+        return "safety_invariant_failed"
+    safety_flags = (
+        "broker_read_attempted",
+        "broker_mutation_attempted",
+        "paper_submit_attempted",
+        "live_trading_attempted",
+        "capital_operation_attempted",
+        "paid_service_attempted",
+        "credential_access_attempted",
+    )
+    if any(record.get(flag) is True for flag in safety_flags):
+        return "safety_invariant_failed"
+    return None
+
+
+def _gpt_review_summary(review: Mapping[str, object]) -> str:
+    status = review.get("gpt_review_status")
+    if status == "ready_for_gpt_review":
+        return (
+            "Plan-only work order is ready for GPT review; "
+            f"verification_status={review.get('gpt_review_verification_status')}; "
+            f"changed_files={len(review.get('gpt_review_changed_files', []))}; "
+            f"proposed_push={review.get('gpt_review_would_push')}; "
+            f"remote_kind={review.get('gpt_review_push_remote_url_kind')}."
+        )
+    if status == "no_changes":
+        return (
+            "Plan-only work order produced no changed files; no commit is "
+            "required unless GPT chooses otherwise."
+        )
+    if status == "blocked_verification_failed":
+        return "Plan-only work order is blocked because verification did not pass."
+    if status == "blocked_changed_files_not_allowlisted":
+        return (
+            "Plan-only work order is blocked because changed files are outside "
+            "the allowlist."
+        )
+    if status == "blocked_network_push_not_authorized":
+        return (
+            "Plan-only work order is blocked because a network push would need "
+            "explicit nonlocal push authorization."
+        )
+    if status == "blocked_unknown_remote":
+        return "Plan-only work order is blocked because push remote provenance is unknown."
+    if status == "blocked_safety_invariant":
+        return "Plan-only work order is blocked by a safety invariant."
+    return "GPT review packet is not applicable."
+
+
+def _gpt_review_next_operator_action(status: str) -> str:
+    if status == "ready_for_gpt_review":
+        return (
+            "Send this packet to GPT for final classification and operator-issued "
+            "stage, commit, and push commands if accepted."
+        )
+    if status == "no_changes":
+        return "No commit is required unless GPT chooses otherwise after review."
+    if status == "blocked_verification_failed":
+        return "Issue a repair prompt for verification before any Git mutation."
+    if status == "blocked_changed_files_not_allowlisted":
+        return (
+            "Review unexpected files and repair the work order or changes before "
+            "any Git mutation."
+        )
+    if status == "blocked_network_push_not_authorized":
+        return (
+            "Stop before Git mutation; add strict nonlocal_push_authorized=true "
+            "only if a network push is intentionally authorized."
+        )
+    if status == "blocked_unknown_remote":
+        return "Stop before Git mutation; configure known push remote provenance."
+    if status == "blocked_safety_invariant":
+        return "Stop for GPT and operator hard-gate review before continuing."
+    return "No GPT review packet action is required."
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
+        return []
+    return [str(item) for item in value]
+
+
 def _push_authorization_record(
     work_order: WorkOrder,
     provenance: Mapping[str, object],
@@ -2166,6 +2592,14 @@ def _finish(
     record["reason"] = reason
     record["exact_next_action"] = next_action
     record["completed_at"] = _utc_now_text()
+    record.update(
+        _build_gpt_review_record(
+            record,
+            outcome=outcome,
+            reason=reason,
+            next_action=next_action,
+        )
+    )
 
     next_action_packet = {
         "schema_version": SCHEMA_VERSION,
@@ -2179,6 +2613,7 @@ def _finish(
         "full_pytest_required": record.get("full_pytest_required"),
         "full_pytest_status": record.get("full_pytest_status"),
         "no_change_fast_path_used": record.get("no_change_fast_path_used"),
+        **_gpt_review_fields(record),
     }
     latest = dict(record)
     latest["next_action_packet"] = next_action_packet
@@ -2199,7 +2634,7 @@ def _finish(
 
 
 def _verification_results_payload(record: Mapping[str, object]) -> dict[str, object]:
-    return {
+    payload = {
         "commands": list(record.get("verification_commands", [])),
         "command_timeout_seconds": record.get("command_timeout_seconds"),
         "agent_timeout": record.get("agent_timeout"),
@@ -2282,6 +2717,8 @@ def _verification_results_payload(record: Mapping[str, object]) -> dict[str, obj
         ),
         "push_authorization_blocker": record.get("push_authorization_blocker"),
     }
+    payload.update(_gpt_review_fields(record))
+    return payload
 
 
 def _write_report(path: Path, latest: Mapping[str, object]) -> None:
@@ -2294,6 +2731,52 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         f"next_action: {latest.get('exact_next_action', '')}",
         f"git_mode: {latest.get('git_mode', '')}",
         f"git_mutation_mode: {latest.get('git_mutation_mode', '')}",
+        "",
+        "GPT Review Packet:",
+        f"gpt_review_packet_version: {latest.get('gpt_review_packet_version', '')}",
+        "gpt_review_recommended_classification: "
+        f"{latest.get('gpt_review_recommended_classification', '')}",
+        f"gpt_review_status: {latest.get('gpt_review_status', '')}",
+        f"gpt_review_blocker: {latest.get('gpt_review_blocker', '')}",
+        f"gpt_review_required: {latest.get('gpt_review_required', '')}",
+        f"gpt_review_ready: {latest.get('gpt_review_ready', '')}",
+        "gpt_review_changed_files: "
+        f"{json.dumps(latest.get('gpt_review_changed_files', []), sort_keys=True)}",
+        "gpt_review_allowed_files: "
+        f"{json.dumps(latest.get('gpt_review_allowed_files', []), sort_keys=True)}",
+        "gpt_review_unexpected_files: "
+        f"{json.dumps(latest.get('gpt_review_unexpected_files', []), sort_keys=True)}",
+        f"gpt_review_verification_status: {latest.get('gpt_review_verification_status', '')}",
+        "gpt_review_git_mutation_mode: "
+        f"{latest.get('gpt_review_git_mutation_mode', '')}",
+        "gpt_review_git_mutation_plan_status: "
+        f"{latest.get('gpt_review_git_mutation_plan_status', '')}",
+        "gpt_review_git_mutation_plan_blocker: "
+        f"{latest.get('gpt_review_git_mutation_plan_blocker', '')}",
+        "gpt_review_proposed_stage_files: "
+        f"{json.dumps(latest.get('gpt_review_proposed_stage_files', []), sort_keys=True)}",
+        "gpt_review_proposed_commit_message: "
+        f"{latest.get('gpt_review_proposed_commit_message', '')}",
+        f"gpt_review_would_push: {latest.get('gpt_review_would_push', '')}",
+        "gpt_review_push_remote_name: "
+        f"{latest.get('gpt_review_push_remote_name', '')}",
+        "gpt_review_push_remote_url_sanitized: "
+        f"{latest.get('gpt_review_push_remote_url_sanitized', '')}",
+        "gpt_review_push_remote_url_kind: "
+        f"{latest.get('gpt_review_push_remote_url_kind', '')}",
+        "gpt_review_nonlocal_push_authorized: "
+        f"{latest.get('gpt_review_nonlocal_push_authorized', '')}",
+        "gpt_review_push_authorization_status: "
+        f"{latest.get('gpt_review_push_authorization_status', '')}",
+        "gpt_review_hard_gate_required: "
+        f"{latest.get('gpt_review_hard_gate_required', '')}",
+        "gpt_review_hard_gate_reason: "
+        f"{latest.get('gpt_review_hard_gate_reason', '')}",
+        "gpt_review_next_operator_action: "
+        f"{latest.get('gpt_review_next_operator_action', '')}",
+        "gpt_review_summary: "
+        f"{latest.get('gpt_review_summary', '')}",
+        "",
         f"git_mutation_plan_status: {latest.get('git_mutation_plan_status', '')}",
         f"git_mutation_plan_blocker: {latest.get('git_mutation_plan_blocker', '')}",
         "git_mutation_plan_would_stage_files: "

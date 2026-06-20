@@ -49,6 +49,8 @@ PLAN_FIELD_NAMES = (
     "git_mutation_plan_nonlocal_push_authorized",
     "git_mutation_plan_push_authorization_status",
 )
+GPT_REVIEW_FIELD_NAMES = development_autopilot.GPT_REVIEW_FIELD_NAMES
+GPT_REVIEW_COMMIT_MESSAGE = "Test development autopilot work order"
 
 
 def test_cli_parser_registers_development_autopilot_command() -> None:
@@ -216,9 +218,25 @@ def test_missing_work_order_blocks_with_exact_next_action(tmp_path: Path) -> Non
 
     assert result["exit_code"] == 2
     assert result["reason"] == "missing_work_order"
-    assert result["next_action_packet"] == {
+    packet = result["next_action_packet"]
+    assert {
+        field: packet[field]
+        for field in (
+            "schema_version",
+            "run_id",
+            "outcome",
+            "reason",
+            "next_action",
+            "work_order_id",
+            "command_timeout_seconds",
+            "full_pytest_policy",
+            "full_pytest_required",
+            "full_pytest_status",
+            "no_change_fast_path_used",
+        )
+    } == {
         "schema_version": "1.0",
-        "run_id": result["next_action_packet"]["run_id"],
+        "run_id": packet["run_id"],
         "outcome": "blocked",
         "reason": "missing_work_order",
         "next_action": NEXT_ACTIONS["work_order"],
@@ -229,6 +247,14 @@ def test_missing_work_order_blocks_with_exact_next_action(tmp_path: Path) -> Non
         "full_pytest_status": "not_started",
         "no_change_fast_path_used": False,
     }
+    _assert_gpt_review_payload(
+        packet,
+        gpt_review_status="not_applicable",
+        gpt_review_required=False,
+        gpt_review_ready=False,
+        gpt_review_proposed_stage_files=[],
+        gpt_review_would_push=False,
+    )
 
 
 def test_invalid_work_order_schema_blocks(tmp_path: Path) -> None:
@@ -492,6 +518,79 @@ def test_failed_verification_command_produces_repair_required(tmp_path: Path) ->
     assert result["next_action_packet"]["next_action"] == NEXT_ACTIONS["verification_failed"]
 
 
+def test_plan_only_verification_failure_records_gpt_review_blocker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    (repo / allowed_file).write_text("planned change\n", encoding="utf-8")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        verification_commands=[[sys.executable, "-c", "import sys; sys.exit(3)"]],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=(),
+    )
+
+    assert result["exit_code"] == 1
+    assert result["outcome"] == "repair_required"
+    assert result["reason"] == "verification_failed"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="blocked_verification_failed",
+        gpt_review_blocker="verification_failed",
+        gpt_review_required=True,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification="needs-repair",
+        gpt_review_changed_files=[allowed_file],
+        gpt_review_allowed_files=[allowed_file],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="failed",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="blocked_verification_failed",
+        gpt_review_git_mutation_plan_blocker="verification_failed",
+        gpt_review_proposed_stage_files=[],
+        gpt_review_proposed_commit_message="",
+        gpt_review_would_push=False,
+        gpt_review_hard_gate_required=False,
+        gpt_review_hard_gate_reason=None,
+    )
+
+
 def test_verification_command_timeout_records_status_and_stops(
     tmp_path: Path,
 ) -> None:
@@ -616,11 +715,12 @@ def test_credential_variables_block_before_agent_invocation(
 
 def test_verify_only_mode_never_stages_commits_or_pushes(tmp_path: Path) -> None:
     repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
     allowed_file = "src/allowed.py"
     work_order = _write_work_order(tmp_path, head, allowed_files=[allowed_file])
     agent = _fake_agent(tmp_path, write_path=allowed_file)
 
-    result = _run(repo, tmp_path / "out", work_order, head, agent, git_mode="verify_only")
+    result = _run(repo, output_root, work_order, head, agent, git_mode="verify_only")
 
     assert result["outcome"] == "accepted"
     assert result["latest"]["staging_occurred"] is False
@@ -635,6 +735,16 @@ def test_verify_only_mode_never_stages_commits_or_pushes(tmp_path: Path) -> None
     assert result["latest"]["push_authorization_blocker"] is None
     assert _git(repo, "rev-parse", "HEAD") == head
     assert _git(repo, "diff", "--cached", "--name-only") == ""
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="not_applicable",
+        gpt_review_required=False,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification=None,
+        gpt_review_git_mutation_mode="none",
+        gpt_review_proposed_stage_files=[],
+        gpt_review_would_push=False,
+    )
 
 
 def test_no_change_fast_path_skips_full_pytest_after_required_checks(
@@ -917,6 +1027,30 @@ def test_plan_only_local_remote_with_allowlisted_change_records_plan_without_mut
     latest = _read_json(output_root / "development_autopilot_latest.json")
     assert latest["changed_files"] == [allowed_file]
     assert latest["push_remote_url_kind"] == "local_path"
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="ready_for_gpt_review",
+        gpt_review_blocker=None,
+        gpt_review_required=True,
+        gpt_review_ready=True,
+        gpt_review_recommended_classification="accepted",
+        gpt_review_changed_files=[allowed_file],
+        gpt_review_allowed_files=[allowed_file],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="passed",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="planned_local_push",
+        gpt_review_git_mutation_plan_blocker=None,
+        gpt_review_proposed_stage_files=[allowed_file],
+        gpt_review_proposed_commit_message=GPT_REVIEW_COMMIT_MESSAGE,
+        gpt_review_would_push=True,
+        gpt_review_push_remote_name="origin",
+        gpt_review_push_remote_url_kind="local_path",
+        gpt_review_nonlocal_push_authorized=False,
+        gpt_review_push_authorization_status="local_remote_allowed",
+        gpt_review_hard_gate_required=False,
+        gpt_review_hard_gate_reason=None,
+    )
 
 
 def test_plan_only_authorized_network_remote_records_sanitized_plan_without_mutation(
@@ -995,6 +1129,33 @@ def test_plan_only_authorized_network_remote_records_sanitized_plan_without_muta
     assert "fixture-user" not in artifacts
     assert "SECRET_SENTINEL_PLAN_OK" not in artifacts
     assert "credential=SECRET_SENTINEL_PLAN_OK" not in artifacts
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="ready_for_gpt_review",
+        gpt_review_blocker=None,
+        gpt_review_required=True,
+        gpt_review_ready=True,
+        gpt_review_recommended_classification="accepted",
+        gpt_review_changed_files=[allowed_file],
+        gpt_review_allowed_files=[allowed_file],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="passed",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="planned_network_push_authorized",
+        gpt_review_git_mutation_plan_blocker=None,
+        gpt_review_proposed_stage_files=[allowed_file],
+        gpt_review_proposed_commit_message=GPT_REVIEW_COMMIT_MESSAGE,
+        gpt_review_would_push=True,
+        gpt_review_push_remote_name="origin",
+        gpt_review_push_remote_url_sanitized=(
+            "https://<redacted>@example.invalid/org/repo.git?<redacted>#<redacted>"
+        ),
+        gpt_review_push_remote_url_kind="network",
+        gpt_review_nonlocal_push_authorized=True,
+        gpt_review_push_authorization_status="network_remote_authorized",
+        gpt_review_hard_gate_required=False,
+        gpt_review_hard_gate_reason=None,
+    )
 
 
 @pytest.mark.parametrize(
@@ -1073,6 +1234,32 @@ def test_plan_only_unauthorized_network_remote_blocks_without_mutation(
             "blocked_network_remote_not_authorized"
         ),
     )
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="blocked_network_push_not_authorized",
+        gpt_review_blocker="network_push_not_authorized",
+        gpt_review_required=True,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification="needs-repair",
+        gpt_review_changed_files=[allowed_file],
+        gpt_review_allowed_files=[allowed_file],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="passed",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="blocked_network_push_not_authorized",
+        gpt_review_git_mutation_plan_blocker="network_push_not_authorized",
+        gpt_review_proposed_stage_files=[],
+        gpt_review_proposed_commit_message="",
+        gpt_review_would_push=False,
+        gpt_review_push_remote_name="origin",
+        gpt_review_push_remote_url_kind="network",
+        gpt_review_nonlocal_push_authorized=False,
+        gpt_review_push_authorization_status=(
+            "blocked_network_remote_not_authorized"
+        ),
+        gpt_review_hard_gate_required=True,
+        gpt_review_hard_gate_reason="network_push_not_authorized",
+    )
 
 
 def test_plan_only_unknown_remote_blocks_even_with_authorization(
@@ -1140,6 +1327,31 @@ def test_plan_only_unknown_remote_blocks_even_with_authorization(
         git_mutation_plan_nonlocal_push_authorized=True,
         git_mutation_plan_push_authorization_status="blocked_unknown_remote",
     )
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="blocked_unknown_remote",
+        gpt_review_blocker="push_remote_unknown",
+        gpt_review_required=True,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification="needs-repair",
+        gpt_review_changed_files=[allowed_file],
+        gpt_review_allowed_files=[allowed_file],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="passed",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="blocked_unknown_remote",
+        gpt_review_git_mutation_plan_blocker="push_remote_unknown",
+        gpt_review_proposed_stage_files=[],
+        gpt_review_proposed_commit_message="",
+        gpt_review_would_push=False,
+        gpt_review_push_remote_name="origin",
+        gpt_review_push_remote_url_sanitized="",
+        gpt_review_push_remote_url_kind="unknown",
+        gpt_review_nonlocal_push_authorized=True,
+        gpt_review_push_authorization_status="blocked_unknown_remote",
+        gpt_review_hard_gate_required=True,
+        gpt_review_hard_gate_reason="push_remote_unknown",
+    )
 
 
 def test_plan_only_changed_files_outside_allowlist_blocks_without_mutation(
@@ -1203,6 +1415,28 @@ def test_plan_only_changed_files_outside_allowlist_blocks_without_mutation(
         git_mutation_plan_would_stage_files=[],
         git_mutation_plan_would_commit_files=[],
         git_mutation_plan_would_push=False,
+    )
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="blocked_changed_files_not_allowlisted",
+        gpt_review_blocker="changed_files_not_allowlisted",
+        gpt_review_required=True,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification="rejected",
+        gpt_review_changed_files=[disallowed_file],
+        gpt_review_allowed_files=["src/allowed.py"],
+        gpt_review_unexpected_files=[disallowed_file],
+        gpt_review_verification_status="not_started",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status=(
+            "blocked_changed_files_not_allowlisted"
+        ),
+        gpt_review_git_mutation_plan_blocker="changed_files_not_allowlisted",
+        gpt_review_proposed_stage_files=[],
+        gpt_review_proposed_commit_message="",
+        gpt_review_would_push=False,
+        gpt_review_hard_gate_required=False,
+        gpt_review_hard_gate_reason=None,
     )
 
 
@@ -1287,6 +1521,27 @@ def test_plan_only_no_change_fast_path_records_planned_no_changes(
         git_mutation_plan_would_commit_files=[],
         git_mutation_plan_would_push=False,
     )
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="no_changes",
+        gpt_review_blocker=None,
+        gpt_review_required=True,
+        gpt_review_ready=True,
+        gpt_review_recommended_classification="accepted-with-minor-note",
+        gpt_review_changed_files=[],
+        gpt_review_allowed_files=["src/allowed.py"],
+        gpt_review_unexpected_files=[],
+        gpt_review_verification_status="skipped",
+        gpt_review_git_mutation_mode="plan_only",
+        gpt_review_git_mutation_plan_status="planned_no_changes",
+        gpt_review_git_mutation_plan_blocker=None,
+        gpt_review_proposed_stage_files=[],
+        gpt_review_proposed_commit_message="",
+        gpt_review_would_push=False,
+        gpt_review_hard_gate_required=False,
+        gpt_review_hard_gate_reason=None,
+    )
+    assert "No commit is required" in latest["gpt_review_next_operator_action"]
 
 
 @pytest.mark.parametrize("authorization_overrides", [None, {"nonlocal_push_authorized": False}])
@@ -1369,6 +1624,22 @@ def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
     assert "push_authorization_required: False" in report
     assert "push_authorization_status: local_remote_allowed" in report
     assert "push_authorization_blocker: None" in report
+    _assert_gpt_review_payloads(
+        output_root,
+        gpt_review_status="not_applicable",
+        gpt_review_required=False,
+        gpt_review_ready=False,
+        gpt_review_recommended_classification=None,
+        gpt_review_git_mutation_mode="commit_and_push",
+        gpt_review_git_mutation_plan_status="not_applicable",
+        gpt_review_git_mutation_plan_blocker=None,
+        gpt_review_proposed_stage_files=[],
+        gpt_review_would_push=False,
+        gpt_review_push_remote_name="origin",
+        gpt_review_push_remote_url_kind="local_path",
+        gpt_review_nonlocal_push_authorized=False,
+        gpt_review_push_authorization_status="local_remote_allowed",
+    )
 
 
 @pytest.mark.parametrize(
@@ -1837,6 +2108,41 @@ def _artifact_payloads(output_root: Path) -> tuple[dict[str, object], ...]:
     return latest, ledger, verification_results
 
 
+def _gpt_review_artifact_payloads(output_root: Path) -> tuple[dict[str, object], ...]:
+    return _artifact_payloads(output_root) + (
+        _read_json(output_root / "next_action_packet.json"),
+    )
+
+
+def _assert_gpt_review_payload(
+    payload: dict[str, object],
+    **expected: object,
+) -> None:
+    for field in GPT_REVIEW_FIELD_NAMES:
+        assert field in payload
+    assert payload["gpt_review_packet_version"] == "1.0"
+    for field, value in expected.items():
+        assert payload[field] == value
+
+
+def _assert_gpt_review_payloads(output_root: Path, **expected: object) -> None:
+    for payload in _gpt_review_artifact_payloads(output_root):
+        _assert_gpt_review_payload(payload, **expected)
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    _assert_gpt_review_payload(latest["next_action_packet"], **expected)
+
+    report = (output_root / "development_autopilot_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "GPT Review Packet:" in report
+    for field in GPT_REVIEW_FIELD_NAMES:
+        assert f"{field}:" in report
+    for field, value in expected.items():
+        rendered = json.dumps(value, sort_keys=True) if isinstance(value, list) else str(value)
+        assert f"{field}: {rendered}" in report
+
+
 def _assert_plan_payloads(output_root: Path, **expected: object) -> None:
     for payload in _artifact_payloads(output_root):
         for field in PLAN_FIELD_NAMES:
@@ -1862,6 +2168,7 @@ def _combined_artifact_text(output_root: Path) -> str:
         "development_autopilot_latest.json",
         "development_autopilot_ledger.jsonl",
         "verification_results.json",
+        "next_action_packet.json",
         "development_autopilot_report.md",
     )
     return "\n".join(
