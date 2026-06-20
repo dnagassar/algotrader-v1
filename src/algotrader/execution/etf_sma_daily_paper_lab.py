@@ -40,6 +40,12 @@ _DEFAULT_REFRESH_INTAKE_MANIFEST = (
     "runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl"
 )
 _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS = 1
+_KNOWN_FULL_DAY_MARKET_CLOSURES = frozenset(
+    {
+        # Juneteenth National Independence Day observed by US equity markets.
+        date(2026, 6, 19),
+    }
+)
 _STRATEGY_NAME = "SPY daily long-only ETF SMA 50/200 trend filter"
 _SCHEMA_VERSION = "1"
 _ASSISTANT_VERSION = "assistant_v1"
@@ -2706,6 +2712,18 @@ def _status_value_is_current_label(value: object) -> bool:
     return _is_current_daily_bar_freshness_status(value)
 
 
+def _latest_completed_regular_session_date(run_date: date | None) -> date | None:
+    if run_date is None:
+        return None
+    candidate = run_date - timedelta(days=1)
+    while (
+        candidate.weekday() >= 5
+        or candidate in _KNOWN_FULL_DAY_MARKET_CLOSURES
+    ):
+        candidate -= timedelta(days=1)
+    return candidate
+
+
 def _calendar_age_allows_current_label(
     mapping: Mapping[str, Any],
     *,
@@ -2718,18 +2736,24 @@ def _calendar_age_allows_current_label(
         return False
     if staleness < 0:
         return False
+
+    run_date = _parse_iso_date(mapping.get("run_date"))
+    data_date = _parse_iso_date(mapping.get(data_date_key))
+    if data_date is None:
+        return False
+    if run_date is not None and data_date > run_date:
+        return False
+
+    latest_completed_session = _parse_iso_date(
+        mapping.get("latest_completed_session_date")
+    ) or _latest_completed_regular_session_date(run_date)
+    if latest_completed_session is not None and data_date >= latest_completed_session:
+        return True
     if staleness == 0:
         return True
     if staleness > _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS:
         return False
-
-    run_date = _parse_iso_date(mapping.get("run_date"))
-    data_date = _parse_iso_date(mapping.get(data_date_key))
-    return bool(
-        run_date is not None
-        and data_date is not None
-        and (run_date - data_date).days == staleness
-    )
+    return bool(run_date is not None and (run_date - data_date).days == staleness)
 
 
 def _current_label_contradicts_daily_bar_policy(
@@ -4193,6 +4217,7 @@ def _mission_control_data_freshness_plan(
     staleness_days = raw_staleness if isinstance(raw_staleness, int) else None
     row_count = _int_or_zero(market_data_lane.get("row_count"))
     data_status = str(market_data_lane.get("preview_currency_status", "unknown"))
+    data_current = _is_current_daily_bar_freshness_status(data_status)
     data_missing = data_status == "blocked_missing_data" or row_count <= 0
     staleness_unknown = staleness_days is None
     future_dated = not data_missing and (
@@ -4201,8 +4226,10 @@ def _mission_control_data_freshness_plan(
     )
     stale = not data_missing and (
         not future_dated
+        and not data_current
         and (
-            staleness_unknown
+            data_status in {"accepted_but_stale", "stale_data_preview_only"}
+            or staleness_unknown
             or _int_or_zero(staleness_days)
             > _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS
         )
@@ -4289,12 +4316,13 @@ def _mission_control_data_freshness_plan(
         ),
         "staleness_policy": {
             "fresh_rule": (
-                "calendar staleness of 0 or 1 day can be current for the "
-                "daily-bar lab when evaluated against an explicit run date"
+                "same-day data or data through the latest completed regular "
+                "session can be current for the daily-bar lab when evaluated "
+                "against an explicit run date"
             ),
             "stale_rule": (
-                "calendar staleness greater than 1 day is preview-only and "
-                "cannot be labeled current"
+                "data older than the latest completed regular session is "
+                "preview-only and cannot be labeled current"
             ),
             "future_rule": (
                 "negative calendar staleness is future-dated and blocked from "
@@ -4305,8 +4333,9 @@ def _mission_control_data_freshness_plan(
             "current_status": "current_for_daily_bar_lab",
             "current_max_calendar_age_days": _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS,
             "calendar_semantics": (
-                "narrow calendar-day grace only; no exchange-holiday calendar "
-                "is resolved by this offline command"
+                "deterministic offline latest-completed-session check skips "
+                "weekends and known full-day market closures without broker, "
+                "network, or credential access"
             ),
         },
         "accepted_data_path": market_data_lane.get("data_source_reference"),
@@ -7362,8 +7391,11 @@ def _daily_bar_freshness_evaluation(
 ) -> dict[str, Any]:
     run_dt = _parse_iso_date(run_date)
     latest_date = _parse_iso_date(latest_input_bar_date)
+    latest_completed_session = _latest_completed_regular_session_date(run_dt)
     latest_completed_session_date = (
-        (run_dt - timedelta(days=1)).isoformat() if run_dt is not None else None
+        latest_completed_session.isoformat()
+        if latest_completed_session is not None
+        else None
     )
 
     if not data_available:
@@ -7383,6 +7415,8 @@ def _daily_bar_freshness_evaluation(
     staleness_days = (run_dt - latest_date).days
     if staleness_days < 0:
         status = "blocked_future_dated_local_data"
+    elif latest_completed_session is not None and latest_date >= latest_completed_session:
+        status = "current_for_daily_bar_lab"
     elif staleness_days <= _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS:
         status = "current_for_daily_bar_lab"
     else:
@@ -9904,6 +9938,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         run_date=run_date_str,
     )
     latest_completed_session_date = freshness_preview["latest_completed_session_date"]
+    run_dt = _parse_iso_date(run_date_str)
+    broker_snapshot_latest_completed_session_date = (
+        (run_dt - timedelta(days=1)).isoformat()
+        if run_dt is not None
+        else latest_completed_session_date
+    )
     signal = evaluate_etf_sma_signal(
         bars,
         EtfSmaSignalConfig(
@@ -9926,7 +9966,7 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         broker_state_mode=broker_state_mode,
         symbol=config.symbol,
         run_date=run_date_str,
-        latest_completed_session_date=latest_completed_session_date,
+        latest_completed_session_date=broker_snapshot_latest_completed_session_date,
     )
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)

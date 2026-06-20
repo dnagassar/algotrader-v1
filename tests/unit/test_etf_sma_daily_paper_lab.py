@@ -6642,6 +6642,134 @@ def test_daily_bar_freshness_policy_treats_latest_completed_session_as_current(
     ] == "passed"
 
 
+def test_accepted_m446_refresh_is_current_on_juneteenth_weekend(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    latest_bar_date = "2026-06-18"
+    canonical_csv = (
+        tmp_path
+        / "runs"
+        / "operator_input"
+        / "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    canonical_sha256 = _write_shifted_spy_fixture(
+        canonical_csv,
+        latest_bar_date=latest_bar_date,
+    )
+    _write_accepted_refresh_manifest(
+        tmp_path,
+        canonical_sha256=canonical_sha256,
+        latest_bar_date=latest_bar_date,
+    )
+
+    output_root = tmp_path / "paper_lab_m446_juneteenth_weekend_out"
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=canonical_csv,
+            as_of_date=latest_bar_date,
+            symbol="SPY",
+            run_date="2026-06-20",
+        )
+    )
+
+    mission = payload["mission_control"]
+    latest_run = _read_json_artifact(output_root / "latest_run.json")
+    data_plan = _read_json_artifact(output_root / "data_freshness_plan.json")
+    bridge = _read_json_artifact(output_root / "data_refresh_bridge.json")
+    dry_run = _read_json_artifact(output_root / "data_refresh_dry_run.json")
+    dispatcher = mission["rule_based_dispatcher_v0"]
+
+    assert data_plan["data_freshness_status"] == "current_for_daily_bar_lab"
+    assert data_plan["data_as_of"] == latest_bar_date
+    assert data_plan["run_date"] == "2026-06-20"
+    assert data_plan["latest_completed_session_date"] == latest_bar_date
+    assert data_plan["staleness_days"] == 2
+    assert data_plan["freshness_blocker"] == "none"
+    assert data_plan["offline_refresh_needed"] is False
+
+    assert bridge["current_data_freshness_status"] == "current_for_daily_bar_lab"
+    assert bridge["current_data_as_of"] == latest_bar_date
+    assert bridge["current_staleness_days"] == 2
+    assert bridge["accepted_refresh_consumed"] is True
+    assert bridge["accepted_refresh_manifest_status"] == "accepted_refresh_consumed"
+    assert bridge["accepted_refresh_expected_latest_bar_date"] == latest_bar_date
+    assert bridge["accepted_refresh_latest_bar_date"] == latest_bar_date
+    assert bridge["accepted_data_as_of"] == latest_bar_date
+    assert bridge["accepted_canonical_csv_sha256"] == canonical_sha256
+    assert bridge["local_operator_csv_required"] is False
+
+    assert dry_run["current_data_freshness_status"] == "current_for_daily_bar_lab"
+    assert dry_run["current_staleness_days"] == 2
+    assert dry_run["accepted_refresh_consumed"] is True
+    assert dry_run["dry_run_status"] == "accepted_refresh_consumed_preview_only"
+    assert dry_run["dry_run_status"] != "accepted_refresh_consumed_stale_preview_only"
+    assert dry_run["stale_accepted_data_consumed"] is False
+    assert dry_run["accepted_data_staleness_state"] == (
+        "accepted_refresh_consumed_not_stale"
+    )
+    assert dry_run["blocker_status"] == "offline_preview_only_broker_state_not_observed"
+    assert dry_run["paper_submit_authorized"] is False
+    assert dry_run["live_authorized"] is False
+    assert dry_run["broker_read_performed"] is False
+    assert dry_run["broker_mutation_performed"] is False
+
+    forbidden_refresh_action = (
+        "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
+    )
+    expected_broker_action = (
+        "produce_fresh_explicitly_authorized_read_only_paper_broker_snapshot_"
+        "for_spy_daily_lab"
+    )
+    for summary in (latest_run, mission["daily_latest"]):
+        assert summary["accepted_refresh_consumed"] is True
+        assert summary["accepted_data_as_of"] == latest_bar_date
+        assert summary["data_freshness_status"] == "current_for_daily_bar_lab"
+        assert summary["data_refresh_dry_run_status"] == (
+            "accepted_refresh_consumed_preview_only"
+        )
+        assert summary["data_refresh_dry_run_status"] != (
+            "accepted_refresh_consumed_stale_preview_only"
+        )
+        assert summary["stale_accepted_data_consumed"] is False
+        assert summary["accepted_data_staleness_state"] == (
+            "accepted_refresh_consumed_not_stale"
+        )
+        assert summary["market_signal_preview"] == "buy_preview"
+        assert summary["preview_decision"] == "blocked/broker_state_not_observed"
+        assert summary["broker_state_mode"] == "broker_state_not_observed"
+        assert summary["paper_submit_authorized"] is False
+        assert summary["live_authorized"] is False
+        assert summary["broker_read_performed"] is False
+        assert summary["broker_mutation_performed"] is False
+        assert summary["exact_next_operator_action"] == expected_broker_action
+        assert summary["exact_next_operator_action"] != forbidden_refresh_action
+
+    assert dispatcher["selected_rule_id"] == (
+        "broker_state_not_observed_and_read_not_authorized"
+    )
+    assert dispatcher["selected_route"] == "offline_dashboard_data_decision_improvement"
+    assert dispatcher["selected_route"] not in {
+        "offline_accepted_data_staleness_resolution",
+        "offline_data_refresh_dry_run_operator_input_needed",
+        "offline_accepted_data_refresh_dry_run_checklist_improvement",
+    }
+    assert dispatcher["paper_submit_authorized"] is False
+    assert dispatcher["live_authorized"] is False
+    assert dispatcher["broker_read_authorized"] is False
+    _assert_no_forbidden_routes(dispatcher)
+
+    operator_review = (output_root / "operator_review.md").read_text(encoding="utf-8")
+    assert "Dry-run status: `accepted_refresh_consumed_preview_only`" in operator_review
+    assert "accepted_refresh_consumed_stale_preview_only" not in operator_review
+    assert forbidden_refresh_action not in operator_review
+    assert validate_mission_control_contract(output_root, write_artifact=False)[
+        "validation_status"
+    ] == "passed"
+
+
 def test_daily_bar_freshness_policy_keeps_same_day_data_current(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
