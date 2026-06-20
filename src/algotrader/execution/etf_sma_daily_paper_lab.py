@@ -3458,6 +3458,11 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
         "broker_state_status"
     ]
     payload["exact_next_operator_action"] = decision_lane["exact_next_operator_action"]
+    _sync_consumed_broker_snapshot_artifact_fields(
+        payload=payload,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+    )
     dashboard = payload.get("executive_dashboard")
     if isinstance(dashboard, dict):
         dashboard["broker_aware_preview_decision"] = payload[
@@ -3469,6 +3474,35 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
         dashboard["exact_next_operator_action"] = payload[
             "exact_next_operator_action"
         ]
+
+
+def _sync_consumed_broker_snapshot_artifact_fields(
+    *,
+    payload: dict[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+) -> None:
+    if broker_state_lane.get("broker_snapshot_consumed") is not True:
+        return
+
+    blocker_status = str(decision_lane["blocker_status"])
+    safety_labels = list(decision_lane["safety_labels"])
+    payload["preview_decision"] = decision_lane["preview_decision"]
+    payload["market_signal_preview"] = decision_lane["market_signal_preview"]
+    payload["blocker_status"] = blocker_status
+    payload["blockers"] = [] if blocker_status == "none" else [blocker_status]
+    payload["next_operator_action"] = decision_lane["exact_next_operator_action"]
+    payload["broker_state_status"] = broker_state_lane["broker_state_status"]
+    payload["broker_state_observed"] = broker_state_lane["broker_state_observed"]
+    payload["broker_read_performed"] = False
+    payload["broker_mutation_performed"] = False
+    payload["broker_mutation_authorized"] = False
+    payload["paper_submit_authorized"] = False
+    payload["live_authorized"] = False
+    payload["paper_submit_authorization_status"] = "not_authorized"
+    payload["safety_labels"] = safety_labels
+    payload["labels"] = safety_labels
+    payload["broker_state_claim"] = str(broker_state_lane.get("warning", "")).strip()
 
 
 def _apply_forward_signal_evidence_ledger(
@@ -28708,7 +28742,7 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "data_refresh_dry_run": dict(payload.get("data_refresh_dry_run", {})),
         "operator_review_path": payload.get("operator_review_path"),
         "next_operator_action": payload["next_operator_action"],
-        "safety_labels": list(_REQUIRED_LABELS),
+        "safety_labels": list(payload["safety_labels"]),
         "validation_status": payload["validation_status"],
         "missing_required_fields": list(payload["missing_required_fields"]),
         "artifact_presence_status": dict(payload["artifact_presence_status"]),

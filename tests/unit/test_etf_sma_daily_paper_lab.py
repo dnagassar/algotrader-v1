@@ -7803,6 +7803,48 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert latest["broker_read_performed"] is False
     assert latest["paper_submit_authorized"] is False
 
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    manifest = json.loads((output_root / "manifest.jsonl").read_text(encoding="utf-8"))
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+
+    assert payload["preview_decision"] == "hold/noop"
+    assert payload["blocker_status"] == "none"
+    assert payload["blockers"] == []
+    assert payload["broker_state_status"] == "observed"
+    assert payload["broker_state_observed"] is True
+    assert payload["broker_read_performed"] is False
+    assert payload["broker_mutation_performed"] is False
+    assert payload["paper_submit_authorized"] is False
+    assert payload["live_authorized"] is False
+    assert "read_only_broker_observation" in payload["safety_labels"]
+    assert "broker_state_observed" in payload["safety_labels"]
+    assert "broker_state_not_observed" not in payload["safety_labels"]
+    assert "linked read-only snapshot artifact" in payload["broker_state_claim"]
+
+    for artifact_record in (record, manifest):
+        assert artifact_record["preview_decision"] == "hold/noop"
+        assert artifact_record["blocker_status"] == "none"
+        assert artifact_record["next_operator_action"] == (
+            "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+        )
+        assert "read_only_broker_observation" in artifact_record["safety_labels"]
+        assert "broker_state_observed" in artifact_record["safety_labels"]
+        assert "broker_state_not_observed" not in artifact_record["safety_labels"]
+
+    assert record["blockers"] == []
+    assert record["broker_state_status"] == "observed"
+    assert record["broker_state_observed"] is True
+    assert record["broker_read_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert record["paper_submit_authorized"] is False
+    assert record["live_authorized"] is False
+    assert "* **Preview decision**: hold/noop" in brief
+    assert "* **Blocker status**: none" in brief
+    assert "Preview decision: `hold/noop`" in brief
+    assert "* **Risks / blockers**: none." in brief
+
     validation = json.loads(
         (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
     )
