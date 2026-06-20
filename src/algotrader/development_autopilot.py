@@ -30,6 +30,10 @@ DEFAULT_COMMAND_TIMEOUT_SECONDS = 1800
 MIN_COMMAND_TIMEOUT_SECONDS = 1
 MAX_COMMAND_TIMEOUT_SECONDS = 7200
 GIT_MODES = ("verify_only", "commit_only", "commit_and_push")
+GIT_MUTATION_MODES = ("none", "plan_only", "commit_and_push")
+GIT_MUTATION_MODE_NONE = "none"
+GIT_MUTATION_MODE_PLAN_ONLY = "plan_only"
+GIT_MUTATION_MODE_COMMIT_AND_PUSH = "commit_and_push"
 FULL_PYTEST_POLICIES = ("always", "changed_files_only")
 FULL_PYTEST_POLICY_ALWAYS = "always"
 FULL_PYTEST_POLICY_CHANGED_FILES_ONLY = "changed_files_only"
@@ -144,6 +148,7 @@ NEXT_ACTIONS = {
     "verify_only_success": "send_report_to_gpt_for_classification_and_commit_commands",
     "commit_only_success": "review_local_commit_and_push_if_appropriate",
     "commit_and_push_success": "select_next_safe_milestone",
+    "plan_only_success": "review_git_mutation_plan_before_git_mutation",
     "push_authorization": "review_push_authorization_blocker_before_git_mutation",
 }
 
@@ -248,6 +253,7 @@ class WorkOrder:
     allow_no_change_fast_path: bool
     command_timeout_seconds: int | None
     nonlocal_push_authorized: bool
+    git_mutation_mode: str | None
 
 
 @dataclass(frozen=True)
@@ -385,16 +391,6 @@ def run_development_autopilot(
         )
 
     repo_block_reason = _pre_dispatch_repo_block_reason(repo_before)
-    if repo_block_reason:
-        return _finish(
-            artifacts,
-            record,
-            outcome="blocked",
-            reason=repo_block_reason,
-            next_action=NEXT_ACTIONS["repository_state"],
-            exit_code=2,
-            repo_root=root,
-        )
 
     work_order_path = _select_work_order_path(root, resolved_options.work_order_path)
     if work_order_path is None:
@@ -441,6 +437,11 @@ def run_development_autopilot(
         )
 
     work_order = work_order_result
+    effective_git_mode = _effective_git_mode(resolved_options.git_mode, work_order)
+    record["git_mode"] = effective_git_mode
+    record["git_mutation_mode"] = _git_mutation_mode_for_effective_git_mode(
+        effective_git_mode
+    )
     record["phase"] = work_order.phase
     record["work_order_id"] = work_order.work_order_id
     record["expected_head"] = resolved_options.expected_head or work_order.expected_head
@@ -455,7 +456,7 @@ def run_development_autopilot(
     record["allow_no_change_fast_path"] = work_order.allow_no_change_fast_path
     record["no_change_fast_path_allowed"] = _no_change_fast_path_allowed(
         resolved_options.full_pytest_policy,
-        resolved_options.git_mode,
+        effective_git_mode,
         work_order,
     )
     _write_json_file(artifacts["work_order_packet"], _sanitized_work_order_packet(work_order))
@@ -472,25 +473,33 @@ def run_development_autopilot(
             repo_root=root,
         )
 
-    if resolved_options.git_mode != "verify_only" and resolved_options.git_mode not in work_order.git_mode_allowed:
-        return _finish(
-            artifacts,
-            record,
-            outcome="rejected",
-            reason="git_mode_not_allowed_by_work_order",
-            next_action=NEXT_ACTIONS["work_order"],
-            exit_code=2,
-            repo_root=root,
+    if repo_block_reason:
+        plan_repo_block_reason = (
+            _plan_only_pre_dispatch_repo_block_reason(repo_before)
+            if effective_git_mode == "plan_only"
+            else repo_block_reason
         )
-    if (
-        resolved_options.git_mode == "commit_and_push"
-        and "commit_only" not in work_order.git_mode_allowed
-    ):
+        if plan_repo_block_reason:
+            return _finish(
+                artifacts,
+                record,
+                outcome="blocked",
+                reason=plan_repo_block_reason,
+                next_action=NEXT_ACTIONS["repository_state"],
+                exit_code=2,
+                repo_root=root,
+            )
+
+    git_mode_permission_error = _git_mode_permission_error(
+        effective_git_mode,
+        work_order,
+    )
+    if git_mode_permission_error:
         return _finish(
             artifacts,
             record,
             outcome="rejected",
-            reason="commit_and_push_requires_commit_only_permission",
+            reason=git_mode_permission_error,
             next_action=NEXT_ACTIONS["work_order"],
             exit_code=2,
             repo_root=root,
@@ -508,89 +517,96 @@ def run_development_autopilot(
             repo_root=root,
         )
 
-    route_command = _resolve_agent_command(
-        resolved_options.agent_route or work_order.agent_route,
-        resolved_options.agent_command,
-    )
-    if route_command is None:
-        return _finish(
-            artifacts,
-            record,
-            outcome="blocked",
-            reason="blocked/local_builder_route_unavailable",
-            next_action=NEXT_ACTIONS["route_unavailable"],
-            exit_code=2,
-            repo_root=root,
+    if effective_git_mode == "plan_only":
+        agent_result = CommandResult(command=(), exit_code=0)
+        repo_after_agent = repo_before
+        changed_after_agent = repo_after_agent.relevant_changed_files
+        record["changed_files"] = list(changed_after_agent)
+        record["dirty_state_after_agent"] = repo_after_agent.as_summary()
+    else:
+        route_command = _resolve_agent_command(
+            resolved_options.agent_route or work_order.agent_route,
+            resolved_options.agent_command,
         )
+        if route_command is None:
+            return _finish(
+                artifacts,
+                record,
+                outcome="blocked",
+                reason="blocked/local_builder_route_unavailable",
+                next_action=NEXT_ACTIONS["route_unavailable"],
+                exit_code=2,
+                repo_root=root,
+            )
 
-    record["route_available"] = True
-    record["agent_command_hash"] = _command_hash(route_command)
-    record["agent_command_identity"] = _sanitized_command_identity(route_command)
+        record["route_available"] = True
+        record["agent_command_hash"] = _command_hash(route_command)
+        record["agent_command_identity"] = _sanitized_command_identity(route_command)
 
-    agent_result = _invoke_agent(
-        root,
-        route_command,
-        work_order.prompt,
-        artifacts["agent_stdout"],
-        artifacts["agent_stderr"],
-        process_env,
-        timeout_seconds=command_timeout_seconds,
-    )
-    record["agent_exit_code"] = agent_result.exit_code
-    record["agent_started_at"] = agent_result.started_at
-    record["agent_ended_at"] = agent_result.ended_at
-    record["agent_elapsed_seconds"] = agent_result.elapsed_seconds
-    record["agent_stdout_path"] = agent_result.stdout_path
-    record["agent_stderr_path"] = agent_result.stderr_path
-    record["agent_timeout"] = agent_result.timed_out
-
-    repo_after_agent = _inspect_repo(root)
-    changed_after_agent = repo_after_agent.relevant_changed_files
-    record["changed_files"] = list(changed_after_agent)
-    record["dirty_state_after_agent"] = repo_after_agent.as_summary()
-
-    if agent_result.timed_out:
-        return _finish(
-            artifacts,
-            record,
-            outcome="failed",
-            reason="agent_command_timeout",
-            next_action=NEXT_ACTIONS["agent_timeout"],
-            exit_code=1,
-            repo_root=root,
+        agent_result = _invoke_agent(
+            root,
+            route_command,
+            work_order.prompt,
+            artifacts["agent_stdout"],
+            artifacts["agent_stderr"],
+            process_env,
+            timeout_seconds=command_timeout_seconds,
         )
+        record["agent_exit_code"] = agent_result.exit_code
+        record["agent_started_at"] = agent_result.started_at
+        record["agent_ended_at"] = agent_result.ended_at
+        record["agent_elapsed_seconds"] = agent_result.elapsed_seconds
+        record["agent_stdout_path"] = agent_result.stdout_path
+        record["agent_stderr_path"] = agent_result.stderr_path
+        record["agent_timeout"] = agent_result.timed_out
 
-    if agent_result.exit_code != 0:
-        return _finish(
-            artifacts,
-            record,
-            outcome="failed",
-            reason="agent_execution_failed",
-            next_action=NEXT_ACTIONS["agent_failed"],
-            exit_code=1,
-            repo_root=root,
+        repo_after_agent = _inspect_repo(root)
+        changed_after_agent = repo_after_agent.relevant_changed_files
+        record["changed_files"] = list(changed_after_agent)
+        record["dirty_state_after_agent"] = repo_after_agent.as_summary()
+
+        if agent_result.timed_out:
+            return _finish(
+                artifacts,
+                record,
+                outcome="failed",
+                reason="agent_command_timeout",
+                next_action=NEXT_ACTIONS["agent_timeout"],
+                exit_code=1,
+                repo_root=root,
+            )
+
+        if agent_result.exit_code != 0:
+            return _finish(
+                artifacts,
+                record,
+                outcome="failed",
+                reason="agent_execution_failed",
+                next_action=NEXT_ACTIONS["agent_failed"],
+                exit_code=1,
+                repo_root=root,
+            )
+
+        file_policy_reason = _changed_file_policy_reason(
+            changed_after_agent,
+            allowed_files=work_order.allowed_files,
+            forbidden_paths=work_order.forbidden_paths,
         )
+        if file_policy_reason:
+            record["allowed_files_result"] = "failed"
+            record["forbidden_path_result"] = "failed"
+            return _finish(
+                artifacts,
+                record,
+                outcome="rejected",
+                reason=file_policy_reason,
+                next_action=NEXT_ACTIONS["unexpected_changes"],
+                exit_code=2,
+                repo_root=root,
+            )
 
-    file_policy_reason = _changed_file_policy_reason(
-        changed_after_agent,
-        allowed_files=work_order.allowed_files,
-        forbidden_paths=work_order.forbidden_paths,
-    )
-    if file_policy_reason:
-        record["allowed_files_result"] = "failed"
-        record["forbidden_path_result"] = "failed"
-        return _finish(
-            artifacts,
-            record,
-            outcome="rejected",
-            reason=file_policy_reason,
-            next_action=NEXT_ACTIONS["unexpected_changes"],
-            exit_code=2,
-            repo_root=root,
-        )
-
-    record["allowed_files_result"] = "passed"
-    record["forbidden_path_result"] = "passed"
+        record["allowed_files_result"] = "passed"
+        record["forbidden_path_result"] = "passed"
 
     preflight_reason = _blocking_preflight_reason(process_env)
     if preflight_reason:
@@ -620,6 +636,8 @@ def run_development_autopilot(
     timed_out_verification = _first_timed_out(targeted_results)
     if timed_out_verification is not None:
         _record_verification_timeout(record, "verification_command_timeout")
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -632,6 +650,8 @@ def run_development_autopilot(
 
     failed_verification = _first_failed(targeted_results)
     if failed_verification is not None:
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -661,6 +681,8 @@ def run_development_autopilot(
     timed_out_verification = _first_timed_out(safety_guard_results)
     if timed_out_verification is not None:
         _record_verification_timeout(record, "safety_guard_timeout")
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -673,6 +695,8 @@ def run_development_autopilot(
 
     failed_verification = _first_failed(safety_guard_results)
     if failed_verification is not None:
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -702,6 +726,8 @@ def run_development_autopilot(
     if timed_out_verification is not None:
         _record_verification_timeout(record, "verify_offline_timeout")
         record["verify_offline_status"] = "timeout"
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -715,6 +741,8 @@ def run_development_autopilot(
     failed_verification = _first_failed(verify_offline_results)
     if failed_verification is not None:
         record["verify_offline_status"] = "failed"
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_verification_failed(record)
         return _finish(
             artifacts,
             record,
@@ -740,6 +768,8 @@ def run_development_autopilot(
     if file_policy_reason:
         record["allowed_files_result"] = "failed"
         record["forbidden_path_result"] = "failed"
+        if effective_git_mode == "plan_only":
+            _record_git_mutation_plan_changed_files_not_allowlisted(record)
         return _finish(
             artifacts,
             record,
@@ -749,10 +779,12 @@ def run_development_autopilot(
             exit_code=2,
             repo_root=root,
         )
+    record["allowed_files_result"] = "passed"
+    record["forbidden_path_result"] = "passed"
 
     if _should_use_no_change_fast_path(
         full_pytest_policy=resolved_options.full_pytest_policy,
-        git_mode=resolved_options.git_mode,
+        git_mode=effective_git_mode,
         work_order=work_order,
         agent_result=agent_result,
         targeted_results=targeted_results,
@@ -794,6 +826,8 @@ def run_development_autopilot(
         if full_pytest_result.timed_out:
             record["full_pytest_status"] = "timeout"
             _record_verification_timeout(record, "full_pytest_timeout")
+            if effective_git_mode == "plan_only":
+                _record_git_mutation_plan_verification_failed(record)
             return _finish(
                 artifacts,
                 record,
@@ -806,6 +840,8 @@ def run_development_autopilot(
 
         if full_pytest_result.exit_code != 0:
             record["full_pytest_status"] = "failed"
+            if effective_git_mode == "plan_only":
+                _record_git_mutation_plan_verification_failed(record)
             return _finish(
                 artifacts,
                 record,
@@ -829,6 +865,8 @@ def run_development_autopilot(
         if file_policy_reason:
             record["allowed_files_result"] = "failed"
             record["forbidden_path_result"] = "failed"
+            if effective_git_mode == "plan_only":
+                _record_git_mutation_plan_changed_files_not_allowlisted(record)
             return _finish(
                 artifacts,
                 record,
@@ -838,8 +876,10 @@ def run_development_autopilot(
                 exit_code=2,
                 repo_root=root,
             )
+        record["allowed_files_result"] = "passed"
+        record["forbidden_path_result"] = "passed"
 
-    if resolved_options.git_mode == "verify_only":
+    if effective_git_mode == "verify_only":
         return _finish(
             artifacts,
             record,
@@ -850,10 +890,39 @@ def run_development_autopilot(
             repo_root=root,
         )
 
+    if effective_git_mode == "plan_only":
+        plan_result = _plan_git_mutation(
+            root,
+            work_order,
+            changed_after_verification,
+            repo_after_verification,
+            process_env,
+        )
+        record.update(plan_result["record"])
+        if not plan_result["ok"]:
+            return _finish(
+                artifacts,
+                record,
+                outcome="blocked",
+                reason=str(plan_result["reason"]),
+                next_action=NEXT_ACTIONS["push_authorization"],
+                exit_code=2,
+                repo_root=root,
+            )
+        return _finish(
+            artifacts,
+            record,
+            outcome="accepted",
+            reason="git_mutation_plan_ready",
+            next_action=NEXT_ACTIONS["plan_only_success"],
+            exit_code=0,
+            repo_root=root,
+        )
+
     mutation_result = _perform_git_mutation(
         root,
         work_order,
-        resolved_options.git_mode,
+        effective_git_mode,
         changed_after_verification,
         expected_head,
         repo_after_verification,
@@ -878,7 +947,7 @@ def run_development_autopilot(
 
     success_key = (
         "commit_only_success"
-        if resolved_options.git_mode == "commit_only"
+        if effective_git_mode == "commit_only"
         else "commit_and_push_success"
     )
     return _finish(
@@ -1028,6 +1097,51 @@ def _pre_dispatch_repo_block_reason(repo_state: RepoState) -> str:
     return ""
 
 
+def _plan_only_pre_dispatch_repo_block_reason(repo_state: RepoState) -> str:
+    if repo_state.branch != "main":
+        return "unexpected_branch"
+    if repo_state.staged_files:
+        return "staged_files_before_dispatch"
+    return ""
+
+
+def _effective_git_mode(cli_git_mode: str, work_order: WorkOrder) -> str:
+    if work_order.git_mutation_mode is None:
+        return cli_git_mode
+    if work_order.git_mutation_mode == GIT_MUTATION_MODE_NONE:
+        return "verify_only"
+    if work_order.git_mutation_mode == GIT_MUTATION_MODE_PLAN_ONLY:
+        return "plan_only"
+    if work_order.git_mutation_mode == GIT_MUTATION_MODE_COMMIT_AND_PUSH:
+        return "commit_and_push"
+    raise ValueError(f"unsupported git_mutation_mode: {work_order.git_mutation_mode}")
+
+
+def _git_mutation_mode_for_effective_git_mode(git_mode: str) -> str:
+    if git_mode == "verify_only":
+        return GIT_MUTATION_MODE_NONE
+    if git_mode == "plan_only":
+        return GIT_MUTATION_MODE_PLAN_ONLY
+    if git_mode == "commit_and_push":
+        return GIT_MUTATION_MODE_COMMIT_AND_PUSH
+    return git_mode
+
+
+def _git_mode_permission_error(git_mode: str, work_order: WorkOrder) -> str:
+    allowed = set(work_order.git_mode_allowed)
+    if git_mode == "verify_only":
+        return ""
+    if git_mode == "plan_only":
+        if {"commit_only", "commit_and_push"}.issubset(allowed):
+            return ""
+        return "git_mode_not_allowed_by_work_order"
+    if git_mode not in allowed:
+        return "git_mode_not_allowed_by_work_order"
+    if git_mode == "commit_and_push" and "commit_only" not in allowed:
+        return "commit_and_push_requires_commit_only_permission"
+    return ""
+
+
 def _is_expected_docs_reviews_residue(entry: RepoStatusEntry) -> bool:
     return entry.code == "??" and (
         entry.path == "docs/reviews/" or entry.path.startswith("docs/reviews/")
@@ -1095,6 +1209,11 @@ def _load_work_order(path: Path) -> WorkOrder | str:
             else None
         ),
         nonlocal_push_authorized=raw.get("nonlocal_push_authorized") is True,
+        git_mutation_mode=(
+            str(raw["git_mutation_mode"])
+            if "git_mutation_mode" in raw
+            else None
+        ),
     )
 
 
@@ -1137,6 +1256,9 @@ def _validate_work_order_raw(raw: dict[str, object]) -> str:
         return "invalid_work_order_schema:git_mode_allowed"
     if "verify_only" not in {str(mode) for mode in git_modes}:
         return "invalid_work_order_schema:verify_only_git_mode_required"
+    git_mutation_mode = raw.get("git_mutation_mode")
+    if "git_mutation_mode" in raw and git_mutation_mode not in GIT_MUTATION_MODES:
+        return "invalid_work_order_schema:git_mutation_mode"
     if "allow_no_change_fast_path" in raw and not isinstance(
         raw["allow_no_change_fast_path"],
         bool,
@@ -1573,7 +1695,7 @@ def _no_change_fast_path_allowed(
 ) -> bool:
     return (
         full_pytest_policy == FULL_PYTEST_POLICY_CHANGED_FILES_ONLY
-        and git_mode == "verify_only"
+        and git_mode in {"verify_only", "plan_only"}
         and work_order.allow_no_change_fast_path
     )
 
@@ -1636,6 +1758,114 @@ def _changed_file_policy_reason(
     return ""
 
 
+def _record_git_mutation_plan_verification_failed(record: dict[str, object]) -> None:
+    record["git_mutation_mode"] = GIT_MUTATION_MODE_PLAN_ONLY
+    record["git_mutation_plan_status"] = "blocked_verification_failed"
+    record["git_mutation_plan_blocker"] = "verification_failed"
+    record["git_mutation_plan_would_stage_files"] = []
+    record["git_mutation_plan_would_commit_files"] = []
+    record["git_mutation_plan_would_push"] = False
+
+
+def _record_git_mutation_plan_changed_files_not_allowlisted(
+    record: dict[str, object],
+) -> None:
+    record["git_mutation_mode"] = GIT_MUTATION_MODE_PLAN_ONLY
+    record["git_mutation_plan_status"] = "blocked_changed_files_not_allowlisted"
+    record["git_mutation_plan_blocker"] = "changed_files_not_allowlisted"
+    record["git_mutation_plan_would_stage_files"] = []
+    record["git_mutation_plan_would_commit_files"] = []
+    record["git_mutation_plan_would_push"] = False
+
+
+def _plan_git_mutation(
+    repo_root: Path,
+    work_order: WorkOrder,
+    changed_files: tuple[str, ...],
+    repo_state: RepoState,
+    env: Mapping[str, str],
+) -> dict[str, object]:
+    record = _empty_git_mutation_record()
+    record["git_mutation_mode"] = GIT_MUTATION_MODE_PLAN_ONLY
+    git_env = _scrubbed_env(env)
+    authorization_record = _push_authorization_record(
+        work_order,
+        _push_remote_provenance(repo_root, "origin", env=git_env),
+    )
+    record.update(authorization_record)
+    _copy_push_authorization_to_plan_record(record)
+
+    if not changed_files:
+        record["git_mutation_plan_status"] = "planned_no_changes"
+        record["git_mutation_plan_blocker"] = None
+        record["git_mutation_plan_would_stage_files"] = []
+        record["git_mutation_plan_would_commit_files"] = []
+        record["git_mutation_plan_would_push"] = False
+        return {"ok": True, "reason": "", "record": record}
+
+    if repo_state.staged_files:
+        record["git_mutation_plan_status"] = "blocked_changed_files_not_allowlisted"
+        record["git_mutation_plan_blocker"] = "changed_files_not_allowlisted"
+        record["git_mutation_plan_would_stage_files"] = []
+        record["git_mutation_plan_would_commit_files"] = []
+        record["git_mutation_plan_would_push"] = False
+        return {
+            "ok": False,
+            "reason": "changed_files_not_allowlisted",
+            "record": record,
+        }
+
+    blocker = record.get("push_authorization_blocker")
+    if blocker == "network_push_not_authorized":
+        record["git_mutation_plan_status"] = "blocked_network_push_not_authorized"
+        record["git_mutation_plan_blocker"] = "network_push_not_authorized"
+        record["git_mutation_plan_would_stage_files"] = []
+        record["git_mutation_plan_would_commit_files"] = []
+        record["git_mutation_plan_would_push"] = False
+        return {
+            "ok": False,
+            "reason": "network_push_not_authorized",
+            "record": record,
+        }
+    if blocker == "push_remote_unknown":
+        record["git_mutation_plan_status"] = "blocked_unknown_remote"
+        record["git_mutation_plan_blocker"] = "push_remote_unknown"
+        record["git_mutation_plan_would_stage_files"] = []
+        record["git_mutation_plan_would_commit_files"] = []
+        record["git_mutation_plan_would_push"] = False
+        return {"ok": False, "reason": "push_remote_unknown", "record": record}
+
+    record["git_mutation_plan_blocker"] = None
+    record["git_mutation_plan_would_stage_files"] = list(changed_files)
+    record["git_mutation_plan_would_commit_files"] = list(changed_files)
+    record["git_mutation_plan_would_push"] = True
+    if record["push_remote_url_kind"] == "local_path":
+        record["git_mutation_plan_status"] = "planned_local_push"
+    else:
+        record["git_mutation_plan_status"] = "planned_network_push_authorized"
+    return {"ok": True, "reason": "", "record": record}
+
+
+def _copy_push_authorization_to_plan_record(record: dict[str, object]) -> None:
+    record["git_mutation_plan_remote_name"] = record.get("push_remote_name", "")
+    record["git_mutation_plan_remote_url_sanitized"] = record.get(
+        "push_remote_url_sanitized",
+        "",
+    )
+    record["git_mutation_plan_remote_url_kind"] = record.get(
+        "push_remote_url_kind",
+        "unknown",
+    )
+    record["git_mutation_plan_nonlocal_push_authorized"] = record.get(
+        "nonlocal_push_authorized",
+        False,
+    )
+    record["git_mutation_plan_push_authorization_status"] = record.get(
+        "push_authorization_status",
+        "not_applicable",
+    )
+
+
 def _perform_git_mutation(
     repo_root: Path,
     work_order: WorkOrder,
@@ -1646,6 +1876,7 @@ def _perform_git_mutation(
     env: Mapping[str, str],
 ) -> dict[str, object]:
     record = _empty_git_mutation_record()
+    record["git_mutation_mode"] = _git_mutation_mode_for_effective_git_mode(git_mode)
     if not changed_files:
         return {"ok": False, "reason": "no_changed_files_to_commit", "record": record}
     if repo_state.staged_files:
@@ -1717,6 +1948,7 @@ def _perform_git_mutation(
 
 def _empty_git_mutation_record() -> dict[str, object]:
     return {
+        "git_mutation_mode": GIT_MUTATION_MODE_NONE,
         "staging_occurred": False,
         "commit_occurred": False,
         "push_occurred": False,
@@ -1732,6 +1964,16 @@ def _empty_git_mutation_record() -> dict[str, object]:
         "push_authorization_required": False,
         "push_authorization_status": "not_applicable",
         "push_authorization_blocker": None,
+        "git_mutation_plan_status": "not_applicable",
+        "git_mutation_plan_blocker": None,
+        "git_mutation_plan_would_stage_files": [],
+        "git_mutation_plan_would_commit_files": [],
+        "git_mutation_plan_would_push": False,
+        "git_mutation_plan_remote_name": "",
+        "git_mutation_plan_remote_url_sanitized": "",
+        "git_mutation_plan_remote_url_kind": "unknown",
+        "git_mutation_plan_nonlocal_push_authorized": False,
+        "git_mutation_plan_push_authorization_status": "not_applicable",
     }
 
 
@@ -1976,6 +2218,45 @@ def _verification_results_payload(record: Mapping[str, object]) -> dict[str, obj
         "normal_pytest_offline_invariant_preserved": record.get(
             "normal_pytest_offline_invariant_preserved"
         ),
+        "git_mutation_mode": record.get(
+            "git_mutation_mode",
+            GIT_MUTATION_MODE_NONE,
+        ),
+        "git_mutation_plan_status": record.get(
+            "git_mutation_plan_status",
+            "not_applicable",
+        ),
+        "git_mutation_plan_blocker": record.get("git_mutation_plan_blocker"),
+        "git_mutation_plan_would_stage_files": list(
+            record.get("git_mutation_plan_would_stage_files", [])
+        ),
+        "git_mutation_plan_would_commit_files": list(
+            record.get("git_mutation_plan_would_commit_files", [])
+        ),
+        "git_mutation_plan_would_push": record.get(
+            "git_mutation_plan_would_push",
+            False,
+        ),
+        "git_mutation_plan_remote_name": record.get(
+            "git_mutation_plan_remote_name",
+            "",
+        ),
+        "git_mutation_plan_remote_url_sanitized": record.get(
+            "git_mutation_plan_remote_url_sanitized",
+            "",
+        ),
+        "git_mutation_plan_remote_url_kind": record.get(
+            "git_mutation_plan_remote_url_kind",
+            "unknown",
+        ),
+        "git_mutation_plan_nonlocal_push_authorized": record.get(
+            "git_mutation_plan_nonlocal_push_authorized",
+            False,
+        ),
+        "git_mutation_plan_push_authorization_status": record.get(
+            "git_mutation_plan_push_authorization_status",
+            "not_applicable",
+        ),
         "staging_occurred": record.get("staging_occurred", False),
         "commit_occurred": record.get("commit_occurred", False),
         "push_occurred": record.get("push_occurred", False),
@@ -2012,6 +2293,23 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         f"reason: {latest.get('reason', '')}",
         f"next_action: {latest.get('exact_next_action', '')}",
         f"git_mode: {latest.get('git_mode', '')}",
+        f"git_mutation_mode: {latest.get('git_mutation_mode', '')}",
+        f"git_mutation_plan_status: {latest.get('git_mutation_plan_status', '')}",
+        f"git_mutation_plan_blocker: {latest.get('git_mutation_plan_blocker', '')}",
+        "git_mutation_plan_would_stage_files: "
+        f"{json.dumps(latest.get('git_mutation_plan_would_stage_files', []), sort_keys=True)}",
+        "git_mutation_plan_would_commit_files: "
+        f"{json.dumps(latest.get('git_mutation_plan_would_commit_files', []), sort_keys=True)}",
+        f"git_mutation_plan_would_push: {latest.get('git_mutation_plan_would_push', '')}",
+        f"git_mutation_plan_remote_name: {latest.get('git_mutation_plan_remote_name', '')}",
+        "git_mutation_plan_remote_url_sanitized: "
+        f"{latest.get('git_mutation_plan_remote_url_sanitized', '')}",
+        "git_mutation_plan_remote_url_kind: "
+        f"{latest.get('git_mutation_plan_remote_url_kind', '')}",
+        "git_mutation_plan_nonlocal_push_authorized: "
+        f"{latest.get('git_mutation_plan_nonlocal_push_authorized', '')}",
+        "git_mutation_plan_push_authorization_status: "
+        f"{latest.get('git_mutation_plan_push_authorization_status', '')}",
         f"staging_occurred: {latest.get('staging_occurred', '')}",
         f"commit_occurred: {latest.get('commit_occurred', '')}",
         f"push_occurred: {latest.get('push_occurred', '')}",

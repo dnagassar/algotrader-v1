@@ -36,6 +36,19 @@ HARD_GATE_FIELDS = (
     "credential_access_authorized",
     "network_access_authorized",
 )
+PLAN_FIELD_NAMES = (
+    "git_mutation_mode",
+    "git_mutation_plan_status",
+    "git_mutation_plan_blocker",
+    "git_mutation_plan_would_stage_files",
+    "git_mutation_plan_would_commit_files",
+    "git_mutation_plan_would_push",
+    "git_mutation_plan_remote_name",
+    "git_mutation_plan_remote_url_sanitized",
+    "git_mutation_plan_remote_url_kind",
+    "git_mutation_plan_nonlocal_push_authorized",
+    "git_mutation_plan_push_authorization_status",
+)
 
 
 def test_cli_parser_registers_development_autopilot_command() -> None:
@@ -613,6 +626,10 @@ def test_verify_only_mode_never_stages_commits_or_pushes(tmp_path: Path) -> None
     assert result["latest"]["staging_occurred"] is False
     assert result["latest"]["commit_occurred"] is False
     assert result["latest"]["push_occurred"] is False
+    assert result["latest"]["git_mutation_mode"] == "none"
+    assert result["latest"]["git_mutation_plan_status"] == "not_applicable"
+    assert result["latest"]["git_mutation_plan_blocker"] is None
+    assert result["latest"]["git_mutation_plan_would_push"] is False
     assert result["latest"]["push_authorization_required"] is False
     assert result["latest"]["push_authorization_status"] == "not_applicable"
     assert result["latest"]["push_authorization_blocker"] is None
@@ -667,6 +684,10 @@ def test_no_change_fast_path_skips_full_pytest_after_required_checks(
     assert latest["staging_occurred"] is False
     assert latest["commit_occurred"] is False
     assert latest["push_occurred"] is False
+    assert latest["git_mutation_mode"] == "none"
+    assert latest["git_mutation_plan_status"] == "not_applicable"
+    assert latest["git_mutation_plan_blocker"] is None
+    assert latest["git_mutation_plan_would_push"] is False
     assert latest["push_authorization_required"] is False
     assert latest["push_authorization_status"] == "not_applicable"
     assert latest["push_authorization_blocker"] is None
@@ -821,6 +842,453 @@ def test_git_mutation_modes_require_full_pytest_before_mutation_outcome(
     assert result["latest"]["push_occurred"] is False
 
 
+def test_plan_only_local_remote_with_allowlisted_change_records_plan_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    remote = tmp_path / "origin.git"
+    _run_subprocess(["git", "init", "--bare", str(remote)], cwd=tmp_path)
+    _git(repo, "remote", "add", "origin", str(remote))
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    (repo / allowed_file).write_text("planned change\n", encoding="utf-8")
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path="src/agent-should-not-run.py"),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=_repo_verification_commands(
+            tmp_path,
+            full_marker=full_marker,
+        ),
+    )
+
+    assert result["exit_code"] == 0
+    assert result["outcome"] == "accepted"
+    assert result["reason"] == "git_mutation_plan_ready"
+    assert full_marker.exists()
+    assert not (repo / "src" / "agent-should-not-run.py").exists()
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="planned_local_push",
+        git_mutation_plan_blocker=None,
+        git_mutation_plan_would_stage_files=[allowed_file],
+        git_mutation_plan_would_commit_files=[allowed_file],
+        git_mutation_plan_would_push=True,
+        git_mutation_plan_remote_name="origin",
+        git_mutation_plan_remote_url_kind="local_path",
+        git_mutation_plan_nonlocal_push_authorized=False,
+        git_mutation_plan_push_authorization_status="local_remote_allowed",
+    )
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    assert latest["changed_files"] == [allowed_file]
+    assert latest["push_remote_url_kind"] == "local_path"
+
+
+def test_plan_only_authorized_network_remote_records_sanitized_plan_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    raw_url = (
+        "https://fixture-user:SECRET_SENTINEL_PLAN_OK@example.invalid/org/repo.git"
+        "?credential=SECRET_SENTINEL_PLAN_OK#SECRET_SENTINEL_PLAN_OK"
+    )
+    _git(repo, "remote", "add", "origin", raw_url)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    (repo / allowed_file).write_text("planned change\n", encoding="utf-8")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+            "nonlocal_push_authorized": True,
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["outcome"] == "accepted"
+    assert result["reason"] == "git_mutation_plan_ready"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="planned_network_push_authorized",
+        git_mutation_plan_blocker=None,
+        git_mutation_plan_would_stage_files=[allowed_file],
+        git_mutation_plan_would_commit_files=[allowed_file],
+        git_mutation_plan_would_push=True,
+        git_mutation_plan_remote_name="origin",
+        git_mutation_plan_remote_url_sanitized=(
+            "https://<redacted>@example.invalid/org/repo.git?<redacted>#<redacted>"
+        ),
+        git_mutation_plan_remote_url_kind="network",
+        git_mutation_plan_nonlocal_push_authorized=True,
+        git_mutation_plan_push_authorization_status="network_remote_authorized",
+    )
+    artifacts = _combined_artifact_text(output_root)
+    assert raw_url not in artifacts
+    assert "fixture-user" not in artifacts
+    assert "SECRET_SENTINEL_PLAN_OK" not in artifacts
+    assert "credential=SECRET_SENTINEL_PLAN_OK" not in artifacts
+
+
+@pytest.mark.parametrize(
+    "authorization_overrides",
+    [None, {"nonlocal_push_authorized": False}, {"nonlocal_push_authorized": None}],
+)
+def test_plan_only_unauthorized_network_remote_blocks_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    authorization_overrides: dict[str, object] | None,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    raw_url = (
+        "https://fixture-user:SECRET_SENTINEL_PLAN_BLOCK@example.invalid/org/repo.git"
+        "?credential=SECRET_SENTINEL_PLAN_BLOCK#SECRET_SENTINEL_PLAN_BLOCK"
+    )
+    _git(repo, "remote", "add", "origin", raw_url)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    (repo / allowed_file).write_text("planned change\n", encoding="utf-8")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+            **(authorization_overrides or {}),
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "network_push_not_authorized"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="blocked_network_push_not_authorized",
+        git_mutation_plan_blocker="network_push_not_authorized",
+        git_mutation_plan_would_stage_files=[],
+        git_mutation_plan_would_commit_files=[],
+        git_mutation_plan_would_push=False,
+        git_mutation_plan_remote_name="origin",
+        git_mutation_plan_remote_url_kind="network",
+        git_mutation_plan_nonlocal_push_authorized=False,
+        git_mutation_plan_push_authorization_status=(
+            "blocked_network_remote_not_authorized"
+        ),
+    )
+
+
+def test_plan_only_unknown_remote_blocks_even_with_authorization(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    allowed_file = "src/allowed.py"
+    (repo / allowed_file).write_text("planned change\n", encoding="utf-8")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=[allowed_file],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+            "nonlocal_push_authorized": True,
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "blocked"
+    assert result["reason"] == "push_remote_unknown"
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="blocked_unknown_remote",
+        git_mutation_plan_blocker="push_remote_unknown",
+        git_mutation_plan_would_stage_files=[],
+        git_mutation_plan_would_commit_files=[],
+        git_mutation_plan_would_push=False,
+        git_mutation_plan_remote_name="origin",
+        git_mutation_plan_remote_url_sanitized="",
+        git_mutation_plan_remote_url_kind="unknown",
+        git_mutation_plan_nonlocal_push_authorized=True,
+        git_mutation_plan_push_authorization_status="blocked_unknown_remote",
+    )
+
+
+def test_plan_only_changed_files_outside_allowlist_blocks_without_mutation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    disallowed_file = "src/disallowed.py"
+    targeted_marker = tmp_path / "markers" / "targeted.txt"
+    (repo / disallowed_file).write_text("planned change\n", encoding="utf-8")
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        allowed_files=["src/allowed.py"],
+        verification_commands=[_marker_command(targeted_marker)],
+        overrides={
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        repository_verification_commands=_repo_verification_commands(tmp_path),
+    )
+
+    assert result["exit_code"] == 2
+    assert result["outcome"] == "rejected"
+    assert result["reason"] == "changed_file_not_allowed"
+    assert targeted_marker.exists()
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="blocked_changed_files_not_allowlisted",
+        git_mutation_plan_blocker="changed_files_not_allowlisted",
+        git_mutation_plan_would_stage_files=[],
+        git_mutation_plan_would_commit_files=[],
+        git_mutation_plan_would_push=False,
+    )
+
+
+def test_plan_only_no_change_fast_path_records_planned_no_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo, head = _make_repo(tmp_path)
+    output_root = tmp_path / "out"
+    targeted_marker = tmp_path / "markers" / "targeted.txt"
+    safety_marker = tmp_path / "markers" / "safety.txt"
+    verify_marker = tmp_path / "markers" / "verify-offline.txt"
+    full_marker = tmp_path / "markers" / "full-pytest.txt"
+    work_order = _write_work_order(
+        tmp_path,
+        head,
+        verification_commands=[_marker_command(targeted_marker)],
+        overrides={
+            "allow_no_change_fast_path": True,
+            "git_mode_allowed": ["verify_only", "commit_only", "commit_and_push"],
+            "git_mutation_mode": "plan_only",
+        },
+    )
+    commands: list[tuple[str, ...]] = []
+    original_run_command = development_autopilot._run_command
+
+    def recording_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: dict[str, str],
+    ) -> development_autopilot.CommandResult:
+        commands.append(command)
+        return original_run_command(command, cwd=cwd, env=env)
+
+    monkeypatch.setattr(development_autopilot, "_run_command", recording_run_command)
+
+    result = _run(
+        repo,
+        output_root,
+        work_order,
+        head,
+        _fake_agent(tmp_path, write_path="src/agent-should-not-run.py"),
+        env=_safe_env(PATH=os.environ.get("PATH", "")),
+        full_pytest_policy="changed_files_only",
+        repository_verification_commands=(
+            _marker_command(safety_marker),
+            _marker_command(verify_marker),
+            _marker_command(full_marker),
+        ),
+    )
+
+    assert result["exit_code"] == 0
+    assert result["outcome"] == "accepted"
+    assert result["reason"] == "git_mutation_plan_ready"
+    assert targeted_marker.exists()
+    assert safety_marker.exists()
+    assert verify_marker.exists()
+    assert not full_marker.exists()
+    assert not (repo / "src" / "agent-should-not-run.py").exists()
+    assert _git(repo, "rev-parse", "HEAD") == head
+    assert _git(repo, "diff", "--cached", "--name-only") == ""
+    assert not _command_was_called(commands, ("git", "add"))
+    assert not _command_was_called(commands, ("git", "commit"))
+    assert not _command_was_called(commands, ("git", "push"))
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    verification_results = _read_json(output_root / "verification_results.json")
+    assert latest["changed_files"] == []
+    assert latest["full_pytest_status"] == "skipped"
+    assert latest["full_pytest_required"] is False
+    assert latest["no_change_fast_path_used"] is True
+    assert verification_results["full_pytest_status"] == "skipped"
+    assert verification_results["full_pytest_required"] is False
+
+    _assert_plan_payloads(
+        output_root,
+        git_mutation_mode="plan_only",
+        git_mutation_plan_status="planned_no_changes",
+        git_mutation_plan_blocker=None,
+        git_mutation_plan_would_stage_files=[],
+        git_mutation_plan_would_commit_files=[],
+        git_mutation_plan_would_push=False,
+    )
+
+
 @pytest.mark.parametrize("authorization_overrides", [None, {"nonlocal_push_authorized": False}])
 def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
     tmp_path: Path,
@@ -870,6 +1338,9 @@ def test_commit_and_push_records_staged_committed_and_local_remote_provenance(
     verification_results = _read_json(output_root / "verification_results.json")
 
     for payload in (latest, ledger, verification_results):
+        assert payload["git_mutation_mode"] == "commit_and_push"
+        assert payload["git_mutation_plan_status"] == "not_applicable"
+        assert payload["git_mutation_plan_blocker"] is None
         assert payload["staging_occurred"] is True
         assert payload["commit_occurred"] is True
         assert payload["push_occurred"] is True
@@ -969,6 +1440,9 @@ def test_unauthorized_network_remote_blocks_before_git_mutation(
     )
     verification_results = _read_json(output_root / "verification_results.json")
     for payload in (latest, ledger, verification_results):
+        assert payload["git_mutation_mode"] == "commit_and_push"
+        assert payload["git_mutation_plan_status"] == "not_applicable"
+        assert payload["git_mutation_plan_blocker"] is None
         assert payload["staging_occurred"] is False
         assert payload["commit_occurred"] is False
         assert payload["push_occurred"] is False
@@ -1079,6 +1553,9 @@ def test_authorized_network_remote_reaches_intercepted_push_path(
     )
     verification_results = _read_json(output_root / "verification_results.json")
     for payload in (latest, ledger, verification_results):
+        assert payload["git_mutation_mode"] == "commit_and_push"
+        assert payload["git_mutation_plan_status"] == "not_applicable"
+        assert payload["git_mutation_plan_blocker"] is None
         assert payload["staging_occurred"] is True
         assert payload["commit_occurred"] is True
         assert payload["push_occurred"] is True
@@ -1153,6 +1630,9 @@ def test_unknown_remote_blocks_even_when_nonlocal_push_is_authorized(
     latest = _read_json(output_root / "development_autopilot_latest.json")
     verification_results = _read_json(output_root / "verification_results.json")
     for payload in (latest, verification_results):
+        assert payload["git_mutation_mode"] == "commit_and_push"
+        assert payload["git_mutation_plan_status"] == "not_applicable"
+        assert payload["git_mutation_plan_blocker"] is None
         assert payload["staging_occurred"] is False
         assert payload["commit_occurred"] is False
         assert payload["push_occurred"] is False
@@ -1344,6 +1824,37 @@ def _first_command_index(
         if command[: len(prefix)] == prefix:
             return index
     raise AssertionError(f"command prefix not called: {prefix!r}")
+
+
+def _artifact_payloads(output_root: Path) -> tuple[dict[str, object], ...]:
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    ledger = json.loads(
+        (output_root / "development_autopilot_ledger.jsonl").read_text(
+            encoding="utf-8"
+        ).splitlines()[-1]
+    )
+    verification_results = _read_json(output_root / "verification_results.json")
+    return latest, ledger, verification_results
+
+
+def _assert_plan_payloads(output_root: Path, **expected: object) -> None:
+    for payload in _artifact_payloads(output_root):
+        for field in PLAN_FIELD_NAMES:
+            assert field in payload
+        for field, value in expected.items():
+            assert payload[field] == value
+
+    report = (output_root / "development_autopilot_report.md").read_text(
+        encoding="utf-8"
+    )
+    for field in PLAN_FIELD_NAMES:
+        assert f"{field}:" in report
+    for field, value in expected.items():
+        if isinstance(value, list):
+            rendered = json.dumps(value, sort_keys=True)
+        else:
+            rendered = str(value)
+        assert f"{field}: {rendered}" in report
 
 
 def _combined_artifact_text(output_root: Path) -> str:
