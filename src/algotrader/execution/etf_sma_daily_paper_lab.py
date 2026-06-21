@@ -3519,13 +3519,21 @@ def _validate_data_refresh_dry_run_safety(
         "operator_csv_tracked_by_git",
         "generated_runs_tracked_by_git",
     )
+    broker_state_observed = dry_run.get("broker_state_observed") is True
     for field in expected_false_fields:
+        if field == "broker_state_observed" and broker_state_observed:
+            continue
         _require_false(dry_run, field, f"{prefix}.{field}", safety_errors)
     if dry_run.get("dry_run_only") is not True:
         safety_errors.append(f"{prefix}.dry_run_only")
     if dry_run.get("broker_state_mode") not in _BROKER_STATE_MODES:
         safety_errors.append(f"{prefix}.broker_state_mode")
-    if dry_run.get("broker_state_not_observed") is not True:
+    if broker_state_observed:
+        if dry_run.get("broker_state_mode") != "alpaca_paper_read_only":
+            safety_errors.append(f"{prefix}.broker_state_observed.mode")
+        if dry_run.get("broker_state_not_observed") is not False:
+            safety_errors.append(f"{prefix}.broker_state_not_observed")
+    elif dry_run.get("broker_state_not_observed") is not True:
         safety_errors.append(f"{prefix}.broker_state_not_observed")
     if _contains_forbidden_broker_absence_claim(dry_run):
         safety_errors.append(f"{prefix}.broker_state_not_observed.absence_claim_text")
@@ -4138,6 +4146,56 @@ def _sync_consumed_broker_snapshot_artifact_fields(
     payload["safety_labels"] = safety_labels
     payload["labels"] = safety_labels
     payload["broker_state_claim"] = str(broker_state_lane.get("warning", "")).strip()
+    payload["current_recommendation"] = _broker_aware_legacy_recommendation(
+        decision_lane
+    )
+    executive_summary = payload.get("executive_summary")
+    if isinstance(executive_summary, dict):
+        executive_summary["current_blocker"] = blocker_status
+        executive_summary["current_recommendation"] = payload[
+            "current_recommendation"
+        ]
+        executive_summary["daniel_action_required"] = (
+            _broker_aware_legacy_daniel_action(decision_lane)
+        )
+
+
+def _broker_aware_legacy_recommendation(
+    decision_lane: Mapping[str, Any],
+) -> str:
+    blocker_status = str(decision_lane.get("blocker_status", "unknown"))
+    preview_decision = str(decision_lane.get("preview_decision", "unknown"))
+    if blocker_status != "none":
+        return (
+            f"Treat this as a blocked broker-aware preview with blocker "
+            f"{blocker_status}. Do not submit paper or live orders from this "
+            "packet."
+        )
+    if preview_decision == "hold/noop":
+        return (
+            "No immediate trading action is required; run the next "
+            "completed-session daily cycle."
+        )
+    return (
+        "Record the broker-aware preview only. Paper submit remains "
+        "unauthorized and no order should be submitted from this packet."
+    )
+
+
+def _broker_aware_legacy_daniel_action(
+    decision_lane: Mapping[str, Any],
+) -> str:
+    if str(decision_lane.get("blocker_status", "unknown")) != "none":
+        return "No: resolve the active blocker before any broker action."
+    if str(decision_lane.get("preview_decision", "unknown")) == "hold/noop":
+        return (
+            "No: no immediate trading action is required; run the next "
+            "completed-session daily cycle."
+        )
+    return (
+        "No broker mutation is authorized. Daniel may separately review any "
+        "future paper-submit approval outside this packet."
+    )
 
 
 def _apply_forward_signal_evidence_ledger(
@@ -5501,6 +5559,17 @@ def _mission_control_data_refresh_dry_run(
     accepted_data_future_dated = (
         data_freshness_status == "blocked_future_dated_local_data"
     )
+    broker_state_observed = broker_state_lane.get("broker_state_observed") is True
+    broker_state_not_observed = not broker_state_observed
+    broker_state_dry_run_note = (
+        "Broker state was consumed from a linked read-only snapshot artifact; "
+        "this data-refresh dry run did not call the broker."
+        if broker_state_observed
+        else (
+            "Broker state was not observed, and order submission remains "
+            "unauthorized."
+        )
+    )
     if accepted_refresh_consumed:
         dry_run_status = (
             "accepted_refresh_consumed_stale_preview_only"
@@ -5521,18 +5590,22 @@ def _mission_control_data_refresh_dry_run(
                 "Mission Control consumed the refreshed accepted canonical "
                 "dataset, but the accepted data is not current for this run. "
                 "Do not rerun intake for the same file; provide a corrected "
-                "or newer offline adjusted-data CSV when available. Broker state was "
-                "not observed, and order submission remains unauthorized."
+                "or newer offline adjusted-data CSV when available. "
+                f"{broker_state_dry_run_note}"
             )
             next_agent_action = (
                 "Route this as accepted data requiring offline freshness "
-                "resolution after completed offline intake consumption. Keep "
-                "broker state unobserved, preserve offline-only blockers, and "
-                "do not route to order submission."
+                "resolution after completed offline intake consumption. "
+                "Preserve offline-only blockers and do not route to order "
+                "submission."
             )
             blocker_status = (
-                "stale_accepted_data_consumed_offline_preview_only_"
-                "broker_state_not_observed"
+                "stale_accepted_data_consumed_offline_preview_only"
+                if broker_state_observed
+                else (
+                    "stale_accepted_data_consumed_offline_preview_only_"
+                    "broker_state_not_observed"
+                )
             )
         else:
             safe_success_state = "accepted_refresh_consumed"
@@ -5546,7 +5619,11 @@ def _mission_control_data_refresh_dry_run(
                 "route beyond the completed offline intake while preserving "
                 "existing offline-only safety fields."
             )
-            blocker_status = "offline_preview_only_broker_state_not_observed"
+            blocker_status = (
+                str(decision_lane.get("blocker_status", "none"))
+                if broker_state_observed
+                else "offline_preview_only_broker_state_not_observed"
+            )
     elif not data_refresh_required:
         dry_run_status = "offline_intake_not_required_current_data"
         safe_success_state = "current_data_no_offline_intake_required"
@@ -5556,9 +5633,13 @@ def _mission_control_data_refresh_dry_run(
         )
         next_agent_action = (
             "Do not route to stale-data refresh work; continue offline review "
-            "with broker state unobserved."
+            "with the active daily broker-state lane."
         )
-        blocker_status = "offline_preview_only_broker_state_not_observed"
+        blocker_status = (
+            str(decision_lane.get("blocker_status", "none"))
+            if broker_state_observed
+            else "offline_preview_only_broker_state_not_observed"
+        )
     elif input_csv_present:
         dry_run_status = "ready_for_offline_intake_validation"
         safe_success_state = "ready_for_offline_intake_validation"
@@ -5571,7 +5652,11 @@ def _mission_control_data_refresh_dry_run(
             "Surface the detected local CSV and keep the next route limited to "
             "offline intake validation readiness."
         )
-        blocker_status = "offline_preview_only_broker_state_not_observed"
+        blocker_status = (
+            "offline_preview_only"
+            if broker_state_observed
+            else "offline_preview_only_broker_state_not_observed"
+        )
     else:
         dry_run_status = "awaiting_operator_csv"
         safe_success_state = "input_csv_missing"
@@ -5599,15 +5684,23 @@ def _mission_control_data_refresh_dry_run(
         "run_date": data_freshness_plan.get("run_date"),
         "labels": list(decision_lane.get("safety_labels", [])),
         "broker_state_mode": broker_state_lane.get("broker_state_mode"),
-        "broker_state_observed": False,
-        "broker_state_not_observed": True,
+        "broker_state_observed": broker_state_observed,
+        "broker_state_not_observed": broker_state_not_observed,
         "broker_state_not_observed_reason": (
             "Broker positions and open orders were not observed under this "
             "offline dry run."
+            if broker_state_not_observed
+            else "not_applicable_linked_read_only_broker_snapshot_observed"
         ),
         "offline_preview_only_reason": (
             "Daily paper-lab preview remains offline-only because broker state "
             "is unobserved and any stale-data condition remains preview-only."
+            if broker_state_not_observed
+            else (
+                "Data-refresh intake remains dry-run-only; broker state came "
+                "from a linked read-only snapshot and no broker call or "
+                "submission was performed."
+            )
         ),
         "paper_submit_authorized": False,
         "live_authorized": False,
@@ -8725,9 +8818,7 @@ def _build_baseline_evidence_metrics(
             artifact_paths["paper_observation_readiness"]
         ),
         "paper_observation_readiness": dict(readiness),
-        "broker_state_mode": str(
-            payload.get("broker_state_mode", "broker_state_not_observed")
-        ),
+        "broker_state_mode": "broker_state_not_observed",
         "paper_submit_readiness_status": "not_ready_for_paper_submit",
         "profit_claim": "none",
         "required_next_artifacts": next_artifacts,
@@ -9303,9 +9394,7 @@ def _build_baseline_health_evaluation(
         "preview_decision": str(
             payload.get("preview_decision", "preview_decision_missing")
         ),
-        "broker_state_mode": str(
-            payload.get("broker_state_mode", "broker_state_not_observed")
-        ),
+        "broker_state_mode": "broker_state_not_observed",
         "blocker_status": str(
             payload.get("blocker_status", "broker_state_not_observed")
         ),
@@ -10516,7 +10605,7 @@ def _apply_quality_gate(
 
 def _apply_executive_action_queue(payload: dict[str, Any]) -> None:
     action_queue = _build_executive_action_queue(payload)
-    action_summary = _build_executive_action_summary(action_queue)
+    action_summary = _build_executive_action_summary(action_queue, payload=payload)
     payload["executive_action_queue_version"] = _ASSISTANT_ACTION_QUEUE_VERSION
     payload["executive_action_queue"] = action_queue
     payload["executive_action_summary"] = action_summary
@@ -10807,6 +10896,8 @@ def _action_queue_item(
 
 def _build_executive_action_summary(
     action_queue: list[Mapping[str, Any]],
+    *,
+    payload: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     highest_priority = action_queue[0]["priority"] if action_queue else "P3"
     daniel_required = any(bool(item["requires_daniel"]) for item in action_queue)
@@ -10814,6 +10905,15 @@ def _build_executive_action_summary(
         daniel_action_status = (
             "Yes: review the P0/P1 executive action queue item before relying "
             "on this packet."
+        )
+    elif (
+        payload is not None
+        and payload.get("broker_state_observed") is True
+        and str(payload.get("blocker_status", "unknown")) == "none"
+    ):
+        daniel_action_status = (
+            "No: no immediate trading action is required; run the next "
+            "completed-session daily cycle."
         )
     else:
         daniel_action_status = (
@@ -11056,9 +11156,13 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "Broker positions and open orders were not read; this packet makes no "
             "position or order-state claim."
         ),
+        "broker_read_performed": False,
+        "broker_mutation_performed": False,
+        "broker_mutation_authorized": False,
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
         "paper_submit_authorization_reason": "operator_has_not_authorized_submit",
+        "live_authorized": False,
         "next_operator_action": next_operator_action,
         "labels": list(_REQUIRED_LABELS),
         "safety_labels": list(_REQUIRED_LABELS),
@@ -21108,8 +21212,9 @@ def _build_quality_gate(
         ),
         _quality_check(
             "broker_state_mode_explicit",
-            packet_for_checks.get("broker_state_mode")
-            in {"broker_state_not_observed", "offline_preview_only"},
+            _broker_state_packet_contract(packet_for_checks)[
+                "broker_state_mode_valid"
+            ],
             f"broker_state_mode={packet_for_checks.get('broker_state_mode')}",
         ),
         _quality_check(
@@ -22725,12 +22830,10 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         missing.append("assistant_packet_version")
     if not _paper_submit_not_authorized(packet):
         missing.append("paper_submit_authorized_false_or_not_authorized")
-    if packet.get("broker_state_observed") is not False:
+    broker_state_contract = _broker_state_packet_contract(packet)
+    if not broker_state_contract["observed_state_valid"]:
         missing.append("broker_state_observed_false")
-    if packet.get("broker_state_mode") not in {
-        "broker_state_not_observed",
-        "offline_preview_only",
-    }:
+    if not broker_state_contract["broker_state_mode_valid"]:
         missing.append("broker_state_mode_offline_or_not_observed")
 
     labels = packet.get("safety_labels")
@@ -22738,7 +22841,7 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
         if "safety_labels" not in missing:
             missing.append("safety_labels")
     else:
-        for label in _REQUIRED_LABELS:
+        for label in _required_safety_labels_for_packet(packet):
             if label not in labels:
                 missing.append(f"safety_labels.{label}")
     missing.extend(
@@ -22788,6 +22891,36 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
     missing.extend(_missing_next_action_selector_fields("", packet))
     missing.extend(_missing_work_order_export_fields("", packet))
     return missing
+
+
+def _broker_state_packet_contract(packet: Mapping[str, Any]) -> dict[str, bool]:
+    broker_state_mode = str(packet.get("broker_state_mode", "")).strip()
+    broker_state_observed = packet.get("broker_state_observed") is True
+    broker_snapshot = _broker_snapshot(packet)
+    linked_snapshot_observed = (
+        broker_state_mode == "alpaca_paper_read_only"
+        and broker_state_observed
+        and _broker_snapshot_observed(broker_snapshot)
+    )
+    not_observed_mode = broker_state_mode in {
+        "broker_state_not_observed",
+        "offline_preview_only",
+    }
+    return {
+        "linked_snapshot_observed": linked_snapshot_observed,
+        "observed_state_valid": (
+            linked_snapshot_observed or packet.get("broker_state_observed") is False
+        ),
+        "broker_state_mode_valid": linked_snapshot_observed or not_observed_mode,
+    }
+
+
+def _required_safety_labels_for_packet(packet: Mapping[str, Any]) -> tuple[str, ...]:
+    if _broker_state_packet_contract(packet)["linked_snapshot_observed"]:
+        return tuple(
+            label for label in _REQUIRED_LABELS if label != "broker_state_not_observed"
+        )
+    return tuple(_REQUIRED_LABELS)
 
 
 def _missing_manifest_fields(
@@ -27156,7 +27289,7 @@ def _missing_brief_references(
         and "not_authorized" not in brief_text
     ):
         missing.append("operating_brief.paper_submit_authorized_false_or_not_authorized")
-    for label in _REQUIRED_LABELS:
+    for label in _required_safety_labels_for_packet(packet):
         if label not in brief_text:
             missing.append(f"operating_brief.safety_labels.{label}")
     if "## Executive Action Queue" not in brief_text:

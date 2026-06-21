@@ -5291,6 +5291,13 @@ def test_etf_sma_daily_paper_lab_broker_not_observed_makes_no_position_claim(
 
     assert payload["broker_state_mode"] == "broker_state_not_observed"
     assert payload["broker_state_observed"] is False
+    assert payload["blocker_status"] == "broker_state_not_observed"
+    assert payload["executive_summary"]["current_blocker"] == (
+        "broker_state_not_observed"
+    )
+    assert payload["paper_submit_authorized"] is False
+    assert payload["live_authorized"] is False
+    assert payload["broker_mutation_performed"] is False
     broker_claim = payload["broker_state_claim"].lower()
     assert "not read" in broker_claim
     assert "makes no position or order-state claim" in broker_claim
@@ -5306,6 +5313,37 @@ def test_etf_sma_daily_paper_lab_broker_not_observed_makes_no_position_claim(
     ).lower()
     assert "no positions" not in packet_text
     assert "no open orders" not in packet_text
+    mission = json.loads(
+        (output_root / "mission_control.json").read_text(encoding="utf-8")
+    )
+    broker = mission["broker_state_lane"]
+    latest = mission["latest_run"]
+    daily_summary = mission["daily_decision_summary"]
+    data_refresh_dry_run = mission["data_refresh_dry_run"]
+    assert broker["broker_state_mode"] == "broker_state_not_observed"
+    assert broker["broker_state_status"] == "broker_state_not_observed"
+    assert broker["broker_state_observed"] is False
+    assert broker["broker_read_performed"] is False
+    assert broker["broker_mutation_performed"] is False
+    assert broker["paper_submit_authorized"] is False
+    assert broker["live_authorized"] is False
+    assert daily_summary["broker_state_mode"] == "broker_state_not_observed"
+    assert daily_summary["broker_state_status"] == "broker_state_not_observed"
+    assert daily_summary["spy_position_observed"] is False
+    assert daily_summary["spy_position_present"] is None
+    assert daily_summary["spy_position_qty"] is None
+    assert daily_summary["open_spy_order_count"] is None
+    assert daily_summary["main_blocker"] == "broker_state_not_observed"
+    assert latest["main_blocker"] == "broker_state_not_observed"
+    assert latest["broker_state_observed"] is False
+    assert latest["observed_spy_position_qty"] is None
+    assert latest["observed_spy_open_order_count"] is None
+    assert data_refresh_dry_run["broker_state_observed"] is False
+    assert data_refresh_dry_run["broker_state_not_observed"] is True
+    assert mission["daily_approval_gate"]["submit_allowed"] is False
+    assert mission["daily_approval_gate"]["paper_submit_authorized"] is False
+    assert mission["daily_approval_gate"]["live_authorized"] is False
+    assert mission["daily_approval_gate"]["broker_mutation_performed"] is False
     assert payload["quality_gate_status"] == "pass"
     assert "broker_not_observed_has_no_position_order_claim" not in payload[
         "quality_gate_failed_checks"
@@ -8308,7 +8346,10 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
     broker = mission["broker_state_lane"]
     decision = mission["decision_lane"]
+    executive = mission["executive_summary"]
+    daily_latest = mission["daily_latest"]
     daily_decision_summary = mission["daily_decision_summary"]
+    data_refresh_dry_run = mission["data_refresh_dry_run"]
 
     assert payload["broker_state_observed"] is True
     assert broker["broker_state_mode"] == "alpaca_paper_read_only"
@@ -8329,6 +8370,24 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "read_only_broker_observation" in decision["safety_labels"]
     assert "broker_state_observed" in decision["safety_labels"]
     assert "broker_state_not_observed" not in decision["safety_labels"]
+    assert executive["validation_status"] == "passed"
+    assert executive["main_blocker"] == "none"
+    assert executive["broker_state_mode"] == "alpaca_paper_read_only"
+    assert executive["broker_state_status"] == "observed"
+    assert executive["broker_state_observed"] is True
+    assert daily_latest["validation_status"] == "passed"
+    assert daily_latest["blocker"] == "none"
+    assert daily_latest["broker_state_mode"] == "alpaca_paper_read_only"
+    assert daily_latest["broker_state_status"] == "observed"
+    assert daily_latest["broker_state_observed"] is True
+    assert data_refresh_dry_run["broker_state_mode"] == "alpaca_paper_read_only"
+    assert data_refresh_dry_run["broker_state_observed"] is True
+    assert data_refresh_dry_run["broker_state_not_observed"] is False
+    assert data_refresh_dry_run["blocker_status"] != "broker_state_not_observed"
+    assert data_refresh_dry_run["paper_submit_authorized"] is False
+    assert data_refresh_dry_run["live_authorized"] is False
+    assert data_refresh_dry_run["broker_read_performed"] is False
+    assert data_refresh_dry_run["broker_mutation_performed"] is False
     _assert_execution_plan_surfaces(
         mission,
         expected_status="no_action_required",
@@ -8368,6 +8427,7 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     )
     assert latest["broker_read_performed"] is False
     assert latest["paper_submit_authorized"] is False
+    assert latest["validation_status"] == "passed"
 
     record = json.loads(
         (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
@@ -8388,10 +8448,27 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "broker_state_observed" in payload["safety_labels"]
     assert "broker_state_not_observed" not in payload["safety_labels"]
     assert "linked read-only snapshot artifact" in payload["broker_state_claim"]
+    assert payload["validation_status"] == "pass"
+    assert payload["missing_required_fields"] == []
+    assert payload["history_delta"]["current_validation_status"] == "pass"
+    assert payload["history_delta"]["current_validation_status"] != "fail"
+    assert payload["history_ledger_entry"]["validation_status"] == "pass"
+    assert payload["history_ledger_entry"]["blocker_status"] == "none"
+    assert payload["history_ledger_entry"]["broker_state_mode"] == (
+        "alpaca_paper_read_only"
+    )
+    assert payload["history_ledger_entry"]["broker_state_observed"] is True
+    assert payload["executive_summary"]["current_blocker"] == "none"
+    assert "broker_state_not_observed" not in json.dumps(
+        payload["executive_summary"],
+        sort_keys=True,
+    )
 
     for artifact_record in (record, manifest):
         assert artifact_record["preview_decision"] == "hold/noop"
         assert artifact_record["blocker_status"] == "none"
+        assert artifact_record["validation_status"] == "pass"
+        assert artifact_record["missing_required_fields"] == []
         assert artifact_record["next_operator_action"] == (
             "no_immediate_trading_action_run_next_completed_session_daily_cycle"
         )
@@ -8477,6 +8554,31 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
     )
     assert validation["validation_status"] == "passed"
+    assert mission["mission_control_validation_summary"]["validation_status"] == (
+        "passed"
+    )
+    active_validation_statuses = [
+        payload["validation_status"],
+        record["validation_status"],
+        manifest["validation_status"],
+        executive["validation_status"],
+        latest["validation_status"],
+        daily_latest["validation_status"],
+        validation["validation_status"],
+    ]
+    assert "fail" not in active_validation_statuses
+    assert "failed" not in active_validation_statuses
+    active_blocker_surfaces = {
+        "legacy_executive_summary": payload["executive_summary"],
+        "executive_summary": executive,
+        "latest_run": latest,
+        "daily_latest": daily_latest,
+        "daily_decision_summary": daily_decision_summary,
+        "history_delta": payload["history_delta"],
+        "history_ledger_entry": payload["history_ledger_entry"],
+    }
+    active_surface_text = json.dumps(active_blocker_surfaces, sort_keys=True)
+    assert "broker_state_not_observed" not in active_surface_text
 
 
 @pytest.mark.parametrize(
