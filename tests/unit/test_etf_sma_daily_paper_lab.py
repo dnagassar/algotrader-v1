@@ -4,6 +4,7 @@ import json
 import os
 import shutil
 import hashlib
+from dataclasses import FrozenInstanceError
 from datetime import date, timedelta
 from pathlib import Path
 import pytest
@@ -71,6 +72,24 @@ _FORBIDDEN_ROUTE_FRAGMENTS = {
     "autonomous_ingest",
     "strategy_promotion",
     "safety_weakening",
+}
+_EXECUTION_PLAN_COMPACT_FIELDS = {
+    "execution_plan_version",
+    "execution_plan_id",
+    "execution_plan_status",
+    "execution_plan_action",
+    "execution_plan_symbol",
+    "execution_plan_reason",
+    "execution_plan_blocker",
+    "execution_plan_source_preview_decision",
+    "execution_plan_requires_approval",
+    "execution_plan_broker_order_required",
+    "execution_plan_submit_allowed",
+    "execution_plan_paper_submit_authorized",
+    "execution_plan_live_authorized",
+    "execution_plan_broker_mutation_performed",
+    "execution_plan_created_order_payload",
+    "execution_plan_labels",
 }
 
 
@@ -5612,6 +5631,98 @@ def _assert_false_safety_flags(
         assert container[field] is False
 
 
+def _assert_execution_plan_safety(plan: dict[str, object]) -> None:
+    assert _EXECUTION_PLAN_COMPACT_FIELDS <= set(plan)
+    assert str(plan["execution_plan_version"]) == (
+        "assistant_v1.64_pre_broker_execution_plan"
+    )
+    assert str(plan["execution_plan_id"]).startswith("daily_execution_plan_")
+    assert plan["execution_plan_symbol"] == "SPY"
+    assert plan["execution_plan_broker_order_required"] is False
+    assert plan["execution_plan_submit_allowed"] is False
+    assert plan["execution_plan_paper_submit_authorized"] is False
+    assert plan["execution_plan_live_authorized"] is False
+    assert plan["execution_plan_broker_mutation_performed"] is False
+    assert plan["execution_plan_created_order_payload"] is False
+    assert {"paper_lab_only", "not_live_authorized", "profit_claim=none"} <= set(
+        plan["execution_plan_labels"]
+    )
+    serialized = json.dumps(plan, sort_keys=True).lower()
+    assert "client_order_id" not in serialized
+    assert "broker_order_payload" not in serialized
+    assert "order_payload" not in serialized.replace(
+        "execution_plan_created_order_payload",
+        "",
+    )
+
+
+def _assert_execution_plan_surfaces(
+    mission: dict[str, object],
+    *,
+    expected_status: str,
+    expected_action: str,
+    expected_source_preview_decision: str,
+    expected_blocker: str,
+    expected_requires_approval: bool,
+    expected_reason: str | None = None,
+) -> dict[str, object]:
+    plan = mission["execution_plan"]
+    assert isinstance(plan, dict)
+    _assert_execution_plan_safety(plan)
+    assert plan["execution_plan_status"] == expected_status
+    assert plan["execution_plan_action"] == expected_action
+    assert (
+        plan["execution_plan_source_preview_decision"]
+        == expected_source_preview_decision
+    )
+    assert plan["execution_plan_blocker"] == expected_blocker
+    assert plan["execution_plan_requires_approval"] is expected_requires_approval
+    if expected_reason is not None:
+        assert plan["execution_plan_reason"] == expected_reason
+
+    for section_name in ("latest_run", "daily_latest", "daily_decision_summary"):
+        section = mission[section_name]
+        assert isinstance(section, dict)
+        assert _EXECUTION_PLAN_COMPACT_FIELDS <= set(section)
+        for field in _EXECUTION_PLAN_COMPACT_FIELDS:
+            assert section[field] == plan[field]
+        _assert_execution_plan_safety(section)
+
+    latest_plan = mission["latest_run"]["execution_plan"]
+    daily_latest_plan = mission["daily_latest"]["execution_plan"]
+    assert latest_plan == plan
+    assert daily_latest_plan == plan
+    return plan
+
+
+def test_etf_sma_daily_execution_plan_type_is_immutable() -> None:
+    plan = paper_lab_module.EtfSmaDailyExecutionPlan(
+        execution_plan_version="assistant_v1.64_pre_broker_execution_plan",
+        execution_plan_id="daily_execution_plan_unit",
+        execution_plan_status="no_action_required",
+        execution_plan_action="hold/noop",
+        execution_plan_symbol="SPY",
+        execution_plan_reason="existing_spy_position_satisfies_risk_on_preview",
+        execution_plan_blocker="none",
+        execution_plan_source_preview_decision="hold/noop",
+        execution_plan_requires_approval=False,
+        execution_plan_broker_order_required=False,
+        execution_plan_submit_allowed=False,
+        execution_plan_paper_submit_authorized=False,
+        execution_plan_live_authorized=False,
+        execution_plan_broker_mutation_performed=False,
+        execution_plan_created_order_payload=False,
+        execution_plan_labels=(
+            "paper_lab_only",
+            "not_live_authorized",
+            "profit_claim=none",
+        ),
+    )
+
+    with pytest.raises(FrozenInstanceError):
+        plan.execution_plan_status = "mutated"  # type: ignore[misc]
+
+
 def _assert_expected_artifacts_exist(output_root: Path) -> dict[str, Path]:
     paths = {
         key: output_root / relative_path
@@ -5847,6 +5958,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "broker_read_performed",
         "broker_mutation_performed",
         "safety_labels",
+        "execution_plan",
+        *_EXECUTION_PLAN_COMPACT_FIELDS,
     } <= set(latest_run)
     assert latest_run["open_first"] == "index.html"
     assert latest_run["open_first_path"].endswith("index.html")
@@ -5967,6 +6080,7 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "broker_mutation_performed",
         "exact_next_operator_action",
         "what_changed",
+        *_EXECUTION_PLAN_COMPACT_FIELDS,
     } <= set(daily_decision_summary)
     assert daily_decision_summary["as_of_date"] == "2025-07-20"
     assert daily_decision_summary["latest_bar_date"] == "2025-07-19"
@@ -6004,6 +6118,15 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
     )
     assert "No prior packet was found" in daily_decision_summary["what_changed"]
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="blocked/broker_state_not_observed",
+        expected_blocker="broker_state_not_observed",
+        expected_requires_approval=False,
+        expected_reason="broker_state_not_observed",
+    )
     assert {
         "run_id",
         "generated_at",
@@ -6056,6 +6179,8 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "offline_validation_commands",
         "operator_review_path",
         "safety_labels",
+        "execution_plan",
+        *_EXECUTION_PLAN_COMPACT_FIELDS,
     } <= set(daily_latest)
     assert daily_latest["validation_status"] == "passed"
     assert daily_latest["open_first"] == "index.html"
@@ -6441,6 +6566,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "## Executive Summary"
     )
     assert "Broker-aware preview decision: `blocked/broker_state_not_observed`" in report
+    assert "ExecutionPlan status: `blocked`" in report
+    assert "ExecutionPlan action: `none`" in report
+    assert "ExecutionPlan submit allowed: `false`" in report
+    assert "ExecutionPlan created order payload: `false`" in report
     assert "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`" in report
     assert "System status: `offline_mission_control_ready`" in report
     assert "## Open First" in report
@@ -6470,6 +6599,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "<h2>Open First</h2>"
     )
     assert "Broker-aware preview decision" in index_html
+    assert "ExecutionPlan status" in index_html
+    assert "ExecutionPlan submit allowed" in index_html
+    assert "ExecutionPlan created order payload" in index_html
     assert "blocked/broker_state_not_observed" in index_html
     assert (
         "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
@@ -6503,6 +6635,10 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "Broker-aware preview decision: `blocked/broker_state_not_observed`"
         in operator_review
     )
+    assert "ExecutionPlan status: `blocked`" in operator_review
+    assert "ExecutionPlan action: `none`" in operator_review
+    assert "ExecutionPlan submit allowed: `false`" in operator_review
+    assert "ExecutionPlan created order payload: `false`" in operator_review
     assert (
         "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`"
         in operator_review
@@ -7897,6 +8033,15 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "read_only_broker_observation" in decision["safety_labels"]
     assert "broker_state_observed" in decision["safety_labels"]
     assert "broker_state_not_observed" not in decision["safety_labels"]
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="no_action_required",
+        expected_action="hold/noop",
+        expected_source_preview_decision="hold/noop",
+        expected_blocker="none",
+        expected_requires_approval=False,
+        expected_reason="existing_spy_position_satisfies_risk_on_preview",
+    )
     assert latest["daily_decision_summary"] == daily_decision_summary
     assert daily_decision_summary["broker_state_mode"] == "alpaca_paper_read_only"
     assert daily_decision_summary["broker_snapshot_freshness_status"] == "fresh"
@@ -7965,6 +8110,7 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert record["broker_mutation_performed"] is False
     assert record["paper_submit_authorized"] is False
     assert record["live_authorized"] is False
+    assert record["execution_plan"] == mission["execution_plan"]
     assert "* **Preview decision**: hold/noop" in brief
     assert "* **Blocker status**: none" in brief
     assert "Preview decision: `hold/noop`" in brief
@@ -7978,6 +8124,9 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         "<h2>Open First</h2>"
     )
     assert "Broker-aware preview decision</dt><dd>hold/noop" in index_html
+    assert "ExecutionPlan status</dt><dd>no_action_required" in index_html
+    assert "ExecutionPlan action</dt><dd>hold/noop" in index_html
+    assert "ExecutionPlan submit allowed</dt><dd>false" in index_html
     assert (
         "no_immediate_trading_action_run_next_completed_session_daily_cycle"
         in index_html
@@ -7986,6 +8135,9 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         "## Open First"
     )
     assert "Broker-aware preview decision: `hold/noop`" in operator_review
+    assert "ExecutionPlan status: `no_action_required`" in operator_review
+    assert "ExecutionPlan action: `hold/noop`" in operator_review
+    assert "ExecutionPlan submit allowed: `false`" in operator_review
     assert (
         "Exact next operator action: `no_immediate_trading_action_run_next_completed_session_daily_cycle`"
         in operator_review
@@ -7998,31 +8150,62 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
 
 
 @pytest.mark.parametrize(
-    ("bars_fixture", "spy_position_qty", "expected_decision", "expected_action"),
+    (
+        "bars_fixture",
+        "spy_position_qty",
+        "expected_decision",
+        "expected_action",
+        "expected_plan_status",
+        "expected_plan_action",
+        "expected_requires_approval",
+        "expected_plan_reason",
+    ),
     [
         (
             "spy_daily_bars_200_bullish.csv",
             "0",
             "buy_preview",
             "paper_submit_not_authorized_record_preview_only_no_submission",
+            "preview_only",
+            "buy_preview",
+            True,
+            (
+                "risk_on_without_spy_position_preview_requires_explicit_"
+                "paper_submit_authorization"
+            ),
         ),
         (
             "spy_daily_bars_200_bullish.csv",
             "0.033695775",
             "hold/noop",
             "no_immediate_trading_action_run_next_completed_session_daily_cycle",
+            "no_action_required",
+            "hold/noop",
+            False,
+            "existing_spy_position_satisfies_risk_on_preview",
         ),
         (
             "spy_daily_bars_200_bearish.csv",
             "0.033695775",
             "sell_preview",
             "paper_submit_not_authorized_record_preview_only_no_submission",
+            "preview_only",
+            "sell_preview",
+            True,
+            (
+                "risk_off_with_spy_position_preview_requires_explicit_"
+                "paper_submit_authorization"
+            ),
         ),
         (
             "spy_daily_bars_200_bearish.csv",
             "0",
             "hold/noop",
             "no_immediate_trading_action_run_next_completed_session_daily_cycle",
+            "no_action_required",
+            "hold/noop",
+            False,
+            "risk_off_flat_no_action_required",
         ),
     ],
 )
@@ -8032,6 +8215,10 @@ def test_etf_sma_daily_paper_lab_broker_aware_decision_matrix(
     spy_position_qty: str,
     expected_decision: str,
     expected_action: str,
+    expected_plan_status: str,
+    expected_plan_action: str,
+    expected_requires_approval: bool,
+    expected_plan_reason: str,
 ) -> None:
     output_root = tmp_path / "paper_lab_decision_matrix"
     broker_snapshot_log = tmp_path / "m403_snapshot.jsonl"
@@ -8060,6 +8247,15 @@ def test_etf_sma_daily_paper_lab_broker_aware_decision_matrix(
     assert latest["exact_next_operator_action"] == expected_action
     assert latest["paper_submit_authorized"] is False
     assert latest["live_authorized"] is False
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status=expected_plan_status,
+        expected_action=expected_plan_action,
+        expected_source_preview_decision=expected_decision,
+        expected_blocker="none",
+        expected_requires_approval=expected_requires_approval,
+        expected_reason=expected_plan_reason,
+    )
 
 
 def test_etf_sma_daily_paper_lab_insufficient_history_wins_before_broker_state(
@@ -8084,6 +8280,15 @@ def test_etf_sma_daily_paper_lab_insufficient_history_wins_before_broker_state(
     mission = _read_mission_control(output_root)
     assert mission["decision_lane"]["preview_decision"] == "insufficient_history"
     assert mission["decision_lane"]["blocker_status"] == "insufficient_history"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="insufficient_history",
+        expected_blocker="insufficient_history",
+        expected_requires_approval=False,
+        expected_reason="insufficient_history",
+    )
     assert mission["latest_run"]["exact_next_operator_action"] == (
         "provide_at_least_200_usable_daily_bars_before_preview_use"
     )
@@ -8115,6 +8320,15 @@ def test_etf_sma_daily_paper_lab_open_spy_order_blocks_preview(
     mission = _read_mission_control(output_root)
     assert mission["decision_lane"]["preview_decision"] == "blocked/open_order_present"
     assert mission["decision_lane"]["blocker_status"] == "open_order_present"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="blocked/open_order_present",
+        expected_blocker="open_order_present",
+        expected_requires_approval=False,
+        expected_reason="open_order_present",
+    )
     assert mission["latest_run"]["exact_next_operator_action"] == (
         "review_open_spy_order_with_read_only_reconciliation_no_mutation"
     )
@@ -8148,6 +8362,15 @@ def test_etf_sma_daily_paper_lab_unexpected_non_spy_position_blocks_preview(
         "blocked/unexpected_non_spy_position"
     )
     assert mission["decision_lane"]["blocker_status"] == "unexpected_non_spy_position"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="blocked/unexpected_non_spy_position",
+        expected_blocker="unexpected_non_spy_position",
+        expected_requires_approval=False,
+        expected_reason="unexpected_non_spy_position",
+    )
     assert mission["latest_run"]["exact_next_operator_action"] == (
         "review_unexpected_non_spy_position_with_read_only_reconciliation_no_mutation"
     )
@@ -8178,6 +8401,15 @@ def test_etf_sma_daily_paper_lab_missing_snapshot_never_claims_broker_absence(
     assert latest["observed_spy_position_qty"] is None
     assert latest["observed_spy_open_order_count"] is None
     assert latest["preview_decision"] == "blocked/broker_state_not_observed"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="blocked/broker_state_not_observed",
+        expected_blocker="broker_state_not_observed",
+        expected_requires_approval=False,
+        expected_reason="broker_state_not_observed",
+    )
     assert latest["exact_next_operator_action"] == (
         "produce_fresh_explicitly_authorized_read_only_paper_broker_snapshot_"
         "for_spy_daily_lab"
@@ -8273,6 +8505,15 @@ def test_etf_sma_daily_paper_lab_unsafe_snapshots_fail_closed(
     assert broker["broker_state_status"] == expected_status
     assert broker["broker_state_observed"] is False
     assert latest["preview_decision"] == f"blocked/{expected_status}"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision=f"blocked/{expected_status}",
+        expected_blocker=expected_status,
+        expected_requires_approval=False,
+        expected_reason=expected_status,
+    )
     assert latest["paper_submit_authorized"] is False
     assert latest["live_authorized"] is False
     assert latest["exact_next_operator_action"] == (

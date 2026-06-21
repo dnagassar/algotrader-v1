@@ -26,6 +26,7 @@ from algotrader.signals.etf_sma_evaluator import (
 
 __all__ = [
     "EtfSmaDailyPaperLabConfig",
+    "EtfSmaDailyExecutionPlan",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
     "etf_sma_daily_paper_lab_exit_status",
@@ -201,6 +202,7 @@ _DATA_REFRESH_OPERATOR_CHECKLIST_VERSION = (
     "assistant_v1.38_data_refresh_operator_checklist"
 )
 _DATA_REFRESH_DRY_RUN_VERSION = "assistant_v1.40_data_refresh_dry_run"
+_DAILY_EXECUTION_PLAN_VERSION = "assistant_v1.64_pre_broker_execution_plan"
 _PHASE_NAME = (
     "Assistant v1.40 - Offline Data Refresh Intake Dry-Run UX"
 )
@@ -410,6 +412,7 @@ _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS = {
 }
 _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "executive_summary",
+    "execution_plan",
     "latest_run",
     "daily_latest",
     "daily_decision_summary",
@@ -421,6 +424,24 @@ _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "decision_lane",
     "agent_command_center",
     "readiness_score",
+)
+_EXECUTION_PLAN_COMPACT_FIELDS = (
+    "execution_plan_version",
+    "execution_plan_id",
+    "execution_plan_status",
+    "execution_plan_action",
+    "execution_plan_symbol",
+    "execution_plan_reason",
+    "execution_plan_blocker",
+    "execution_plan_source_preview_decision",
+    "execution_plan_requires_approval",
+    "execution_plan_broker_order_required",
+    "execution_plan_submit_allowed",
+    "execution_plan_paper_submit_authorized",
+    "execution_plan_live_authorized",
+    "execution_plan_broker_mutation_performed",
+    "execution_plan_created_order_payload",
+    "execution_plan_labels",
 )
 _REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS = (
     "run_id",
@@ -451,6 +472,7 @@ _REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS = (
     "broker_mutation_performed",
     "exact_next_operator_action",
     "what_changed",
+    *_EXECUTION_PLAN_COMPACT_FIELDS,
 )
 _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "run_id",
@@ -497,6 +519,8 @@ _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "offline_validation_commands",
     "operator_review_path",
     "safety_labels",
+    "execution_plan",
+    *_EXECUTION_PLAN_COMPACT_FIELDS,
 )
 _REQUIRED_LATEST_RUN_FIELDS = (
     "run_id",
@@ -540,6 +564,8 @@ _REQUIRED_LATEST_RUN_FIELDS = (
     "broker_read_performed",
     "broker_mutation_performed",
     "safety_labels",
+    "execution_plan",
+    *_EXECUTION_PLAN_COMPACT_FIELDS,
 )
 _REQUIRED_DATA_FRESHNESS_PLAN_FIELDS = (
     "data_freshness_plan_version",
@@ -2000,6 +2026,67 @@ _FORBIDDEN_BROKER_NOT_OBSERVED_CLAIMS = (
 
 
 @dataclass(frozen=True, slots=True)
+class EtfSmaDailyExecutionPlan:
+    """Immutable pre-broker daily-lab projection of the preview decision."""
+
+    execution_plan_version: str
+    execution_plan_id: str
+    execution_plan_status: str
+    execution_plan_action: str
+    execution_plan_symbol: str
+    execution_plan_reason: str
+    execution_plan_blocker: str
+    execution_plan_source_preview_decision: str
+    execution_plan_requires_approval: bool
+    execution_plan_broker_order_required: bool
+    execution_plan_submit_allowed: bool
+    execution_plan_paper_submit_authorized: bool
+    execution_plan_live_authorized: bool
+    execution_plan_broker_mutation_performed: bool
+    execution_plan_created_order_payload: bool
+    execution_plan_labels: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "execution_plan_labels",
+            tuple(str(label) for label in self.execution_plan_labels),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "execution_plan_version": self.execution_plan_version,
+            "execution_plan_id": self.execution_plan_id,
+            "execution_plan_status": self.execution_plan_status,
+            "execution_plan_action": self.execution_plan_action,
+            "execution_plan_symbol": self.execution_plan_symbol,
+            "execution_plan_reason": self.execution_plan_reason,
+            "execution_plan_blocker": self.execution_plan_blocker,
+            "execution_plan_source_preview_decision": (
+                self.execution_plan_source_preview_decision
+            ),
+            "execution_plan_requires_approval": (
+                self.execution_plan_requires_approval
+            ),
+            "execution_plan_broker_order_required": (
+                self.execution_plan_broker_order_required
+            ),
+            "execution_plan_submit_allowed": self.execution_plan_submit_allowed,
+            "execution_plan_paper_submit_authorized": (
+                self.execution_plan_paper_submit_authorized
+            ),
+            "execution_plan_live_authorized": self.execution_plan_live_authorized,
+            "execution_plan_broker_mutation_performed": (
+                self.execution_plan_broker_mutation_performed
+            ),
+            "execution_plan_created_order_payload": (
+                self.execution_plan_created_order_payload
+            ),
+            "execution_plan_labels": list(self.execution_plan_labels),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EtfSmaDailyPaperLabConfig:
     """Configuration for the Assistant v1 daily paper-lab loop."""
 
@@ -2152,6 +2239,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
     if _section_has_unsafe_exit_authorization(packet):
         return True
     for section_name in (
+        "execution_plan",
         "latest_run",
         "daily_latest",
         "mission_control",
@@ -2169,6 +2257,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
             "decision_lane",
             "daily_decision_summary",
             "daily_latest",
+            "execution_plan",
             "executive_summary",
             "latest_run",
         ):
@@ -2203,6 +2292,11 @@ def _section_has_unsafe_exit_authorization(section: Mapping[str, Any]) -> bool:
         "live_authorized",
         "broker_read_performed",
         "broker_mutation_performed",
+        "execution_plan_submit_allowed",
+        "execution_plan_paper_submit_authorized",
+        "execution_plan_live_authorized",
+        "execution_plan_broker_mutation_performed",
+        "execution_plan_created_order_payload",
     ):
         if section.get(field_name) is True:
             return True
@@ -2487,6 +2581,14 @@ def _validate_mission_control_schema(
     else:
         schema_errors.append("mission_control.work_orders.missing_or_not_object")
 
+    execution_plan = mission_control.get("execution_plan")
+    if isinstance(execution_plan, Mapping):
+        for field in _EXECUTION_PLAN_COMPACT_FIELDS:
+            if field not in execution_plan:
+                schema_errors.append(f"mission_control.execution_plan.{field}.missing")
+    else:
+        schema_errors.append("mission_control.execution_plan.missing_or_not_object")
+
 
 def _validate_mission_control_safety(
     mission_control: Mapping[str, Any],
@@ -2498,6 +2600,7 @@ def _validate_mission_control_safety(
     data_refresh_dry_run = _mapping_section(mission_control, "data_refresh_dry_run")
     broker = _mapping_section(mission_control, "broker_state_lane")
     decision = _mapping_section(mission_control, "decision_lane")
+    execution_plan = _mapping_section(mission_control, "execution_plan")
     executive = _mapping_section(mission_control, "executive_summary")
     latest_run = _mapping_section(mission_control, "latest_run")
     daily_latest = _mapping_section(mission_control, "daily_latest")
@@ -2621,6 +2724,26 @@ def _validate_mission_control_safety(
         "mission_control.daily_decision_summary.live_authorized",
         safety_errors,
     )
+    _validate_execution_plan_safety(
+        execution_plan,
+        "mission_control.execution_plan",
+        safety_errors,
+    )
+    _validate_execution_plan_safety(
+        latest_run,
+        "mission_control.latest_run",
+        safety_errors,
+    )
+    _validate_execution_plan_safety(
+        daily_latest,
+        "mission_control.daily_latest",
+        safety_errors,
+    )
+    _validate_execution_plan_safety(
+        daily_decision_summary,
+        "mission_control.daily_decision_summary",
+        safety_errors,
+    )
 
     if broker_mode == "broker_state_not_observed":
         if broker.get("broker_state_not_observed") is not True:
@@ -2727,6 +2850,35 @@ def _validate_mission_control_safety(
             safety_errors.append(
                 "mission_control.decision_lane.safety_labels.offline_only.missing"
             )
+
+
+def _validate_execution_plan_safety(
+    section: Mapping[str, Any],
+    path: str,
+    safety_errors: list[str],
+) -> None:
+    for field in (
+        "execution_plan_broker_order_required",
+        "execution_plan_submit_allowed",
+        "execution_plan_paper_submit_authorized",
+        "execution_plan_live_authorized",
+        "execution_plan_broker_mutation_performed",
+        "execution_plan_created_order_payload",
+    ):
+        _require_false(section, field, f"{path}.{field}", safety_errors)
+
+    labels = {
+        str(label)
+        for label in section.get("execution_plan_labels", [])
+        if _has_required_value(label)
+    }
+    for required_label in (
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+    ):
+        if required_label not in labels:
+            safety_errors.append(f"{path}.execution_plan_labels.{required_label}.missing")
 
 
 def _validate_readiness_safety_override(
@@ -3505,6 +3657,176 @@ def _write_packet_artifacts(
     manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
 
 
+def _apply_execution_plan_to_payload(
+    *,
+    payload: dict[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    execution_plan = _project_daily_execution_plan(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+    ).to_dict()
+    payload["execution_plan"] = dict(execution_plan)
+    payload.update(_execution_plan_compact_fields(execution_plan))
+    return execution_plan
+
+
+def _project_daily_execution_plan(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+) -> EtfSmaDailyExecutionPlan:
+    source_preview_decision = str(decision_lane.get("preview_decision", "unknown"))
+    blocker = str(decision_lane.get("blocker_status", "none") or "none")
+    symbol = str(
+        market_data_lane.get("symbol")
+        or payload.get("symbol")
+        or _DEFAULT_SYMBOL
+    ).strip().upper()
+
+    if blocker != "none":
+        status = "blocked"
+        action = "none"
+        requires_approval = False
+    elif source_preview_decision in {"buy_preview", "sell_preview"}:
+        status = "preview_only"
+        action = source_preview_decision
+        requires_approval = True
+    else:
+        status = "no_action_required"
+        action = "hold/noop"
+        requires_approval = False
+
+    reason = _execution_plan_reason(
+        action=action,
+        blocker=blocker,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+    )
+    labels = _execution_plan_labels(decision_lane)
+    plan_id = _execution_plan_id(
+        {
+            "version": _DAILY_EXECUTION_PLAN_VERSION,
+            "run_id": payload.get("run_id"),
+            "as_of_date": market_data_lane.get("as_of_date"),
+            "latest_bar_date": market_data_lane.get("latest_input_bar_date"),
+            "symbol": symbol,
+            "status": status,
+            "action": action,
+            "reason": reason,
+            "blocker": blocker,
+            "source_preview_decision": source_preview_decision,
+            "market_signal_preview": decision_lane.get("market_signal_preview"),
+            "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+            "broker_state_status": broker_state_lane.get("broker_state_status"),
+            "broker_snapshot_sha256": broker_state_lane.get(
+                "broker_snapshot_sha256"
+            ),
+        }
+    )
+    return EtfSmaDailyExecutionPlan(
+        execution_plan_version=_DAILY_EXECUTION_PLAN_VERSION,
+        execution_plan_id=plan_id,
+        execution_plan_status=status,
+        execution_plan_action=action,
+        execution_plan_symbol=symbol,
+        execution_plan_reason=reason,
+        execution_plan_blocker=blocker,
+        execution_plan_source_preview_decision=source_preview_decision,
+        execution_plan_requires_approval=requires_approval,
+        execution_plan_broker_order_required=False,
+        execution_plan_submit_allowed=False,
+        execution_plan_paper_submit_authorized=False,
+        execution_plan_live_authorized=False,
+        execution_plan_broker_mutation_performed=False,
+        execution_plan_created_order_payload=False,
+        execution_plan_labels=labels,
+    )
+
+
+def _execution_plan_reason(
+    *,
+    action: str,
+    blocker: str,
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+) -> str:
+    if blocker != "none":
+        return blocker
+
+    market_signal_preview = str(market_data_lane.get("posture", "unknown"))
+    source_market_preview = _market_signal_preview(market_signal_preview)
+    spy_position_present = broker_state_lane.get("spy_position_present") is True
+    spy_position_qty = _decimal_or_none(broker_state_lane.get("spy_position_qty"))
+    spy_position_nonzero = spy_position_present and (
+        spy_position_qty is None or spy_position_qty != Decimal("0")
+    )
+    if action == "hold/noop" and source_market_preview == "buy_preview":
+        if spy_position_nonzero:
+            return "existing_spy_position_satisfies_risk_on_preview"
+        return "risk_on_no_action_required"
+    if action == "hold/noop" and source_market_preview == "sell_preview":
+        return "risk_off_flat_no_action_required"
+    if action == "buy_preview":
+        return (
+            "risk_on_without_spy_position_preview_requires_explicit_"
+            "paper_submit_authorization"
+        )
+    if action == "sell_preview":
+        return (
+            "risk_off_with_spy_position_preview_requires_explicit_"
+            "paper_submit_authorization"
+        )
+    return "no_action_required"
+
+
+def _execution_plan_labels(decision_lane: Mapping[str, Any]) -> tuple[str, ...]:
+    raw_labels = decision_lane.get("safety_labels", [])
+    decision_labels = (
+        tuple(str(label) for label in raw_labels)
+        if isinstance(raw_labels, list)
+        else ()
+    )
+    return _dedupe(
+        (
+            "paper_lab_only",
+            "pre_broker_execution_plan",
+            "paper_submit_not_authorized",
+            "not_live_authorized",
+            "profit_claim=none",
+            "broker_order_not_created",
+            *decision_labels,
+        )
+    )
+
+
+def _execution_plan_id(source: Mapping[str, Any]) -> str:
+    encoded = json.dumps(_json_safe(source), sort_keys=True, separators=(",", ":"))
+    return "daily_execution_plan_" + hashlib.sha256(
+        encoded.encode("utf-8")
+    ).hexdigest()[:16]
+
+
+def _execution_plan_compact_fields(
+    execution_plan: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: (
+            list(execution_plan[field])
+            if field == "execution_plan_labels"
+            else execution_plan[field]
+        )
+        for field in _EXECUTION_PLAN_COMPACT_FIELDS
+        if field in execution_plan
+    }
+
+
 def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
     market_data_lane = _mission_control_market_data_lane(payload)
     broker_state_lane = _mission_control_broker_state_lane(payload)
@@ -3512,6 +3834,12 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
         payload=payload,
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
+    )
+    execution_plan = _apply_execution_plan_to_payload(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
     )
     payload["broker_aware_preview_decision"] = decision_lane["preview_decision"]
     payload["daily_loop_preview_decision"] = decision_lane["preview_decision"]
@@ -3539,6 +3867,8 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
         dashboard["exact_next_operator_action"] = payload[
             "exact_next_operator_action"
         ]
+        dashboard["execution_plan"] = dict(execution_plan)
+        dashboard.update(_execution_plan_compact_fields(execution_plan))
 
 
 def _sync_consumed_broker_snapshot_artifact_fields(
@@ -3913,6 +4243,12 @@ def _build_mission_control(
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
     )
+    execution_plan = _project_daily_execution_plan(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+    ).to_dict()
     artifacts = _mission_control_artifact_map(output_root, artifact_paths)
     data_freshness_plan = _mission_control_data_freshness_plan(
         payload=payload,
@@ -3990,6 +4326,7 @@ def _build_mission_control(
         data_refresh_bridge=data_refresh_bridge,
         data_refresh_dry_run=data_refresh_dry_run,
         dispatcher=dispatcher,
+        execution_plan=execution_plan,
     )
     daily_decision_summary = _mission_control_daily_decision_summary(
         payload=payload,
@@ -3998,6 +4335,7 @@ def _build_mission_control(
         decision_lane=decision_lane,
         data_freshness_plan=data_freshness_plan,
         data_refresh_dry_run=data_refresh_dry_run,
+        execution_plan=execution_plan,
     )
     daily_latest["daily_decision_summary"] = dict(daily_decision_summary)
     agent_command_center = _mission_control_agent_command_center(
@@ -4020,6 +4358,7 @@ def _build_mission_control(
         "generated_at": "offline_command_runtime",
         "output_root": _normalize_path(output_root),
         "artifacts": artifacts,
+        "execution_plan": execution_plan,
         "executive_summary": executive_summary,
         "latest_run": latest_run,
         "daily_latest": daily_latest,
@@ -4068,6 +4407,7 @@ def _mission_control_daily_decision_summary(
     decision_lane: Mapping[str, Any],
     data_freshness_plan: Mapping[str, Any],
     data_refresh_dry_run: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
 ) -> dict[str, Any]:
     broker_state_observed = broker_state_lane.get("broker_state_observed") is True
     history_delta = payload.get("history_delta")
@@ -4076,7 +4416,7 @@ def _mission_control_daily_decision_summary(
         if isinstance(history_delta, Mapping)
         else "History delta has not been evaluated yet."
     )
-    return {
+    summary = {
         "run_id": payload.get("run_id"),
         "generated_at": "offline_command_runtime",
         "as_of_date": market_data_lane.get("as_of_date"),
@@ -4133,6 +4473,8 @@ def _mission_control_daily_decision_summary(
         ),
         "what_changed": what_changed,
     }
+    summary.update(_execution_plan_compact_fields(execution_plan))
+    return summary
 
 
 def _mission_control_daily_latest(
@@ -4149,8 +4491,9 @@ def _mission_control_daily_latest(
     data_refresh_bridge: Mapping[str, Any],
     data_refresh_dry_run: Mapping[str, Any],
     dispatcher: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
 ) -> dict[str, Any]:
-    return {
+    daily_latest = {
         "run_id": payload.get("run_id"),
         "generated_at": "offline_command_runtime",
         "output_root": _normalize_path(output_root),
@@ -4274,6 +4617,9 @@ def _mission_control_daily_latest(
         ),
         "safety_labels": list(decision_lane.get("safety_labels", [])),
     }
+    daily_latest["execution_plan"] = dict(execution_plan)
+    daily_latest.update(_execution_plan_compact_fields(execution_plan))
+    return daily_latest
 
 
 def _mission_control_latest_run_entry(
@@ -4282,7 +4628,7 @@ def _mission_control_latest_run_entry(
     daily_decision_summary: Mapping[str, Any],
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
-    return {
+    latest_run = {
         "latest_run_version": _LATEST_RUN_VERSION,
         "run_id": daily_latest.get("run_id"),
         "generated_at": daily_latest.get("generated_at"),
@@ -4390,6 +4736,11 @@ def _mission_control_latest_run_entry(
         ),
         "safety_labels": list(daily_latest.get("safety_labels", [])),
     }
+    execution_plan = daily_latest.get("execution_plan")
+    if isinstance(execution_plan, Mapping):
+        latest_run["execution_plan"] = dict(execution_plan)
+        latest_run.update(_execution_plan_compact_fields(execution_plan))
+    return latest_run
 
 
 def _mission_control_data_freshness_plan(
@@ -6899,6 +7250,22 @@ def _daily_decision_summary_markdown_lines(
             "- Broker-aware preview decision: "
             f"`{summary['broker_aware_preview_decision']}`"
         ),
+        f"- ExecutionPlan status: `{summary['execution_plan_status']}`",
+        f"- ExecutionPlan action: `{summary['execution_plan_action']}`",
+        f"- ExecutionPlan reason: `{summary['execution_plan_reason']}`",
+        f"- ExecutionPlan blocker: `{summary['execution_plan_blocker']}`",
+        (
+            "- ExecutionPlan requires approval: "
+            f"`{str(summary['execution_plan_requires_approval']).lower()}`"
+        ),
+        (
+            "- ExecutionPlan submit allowed: "
+            f"`{str(summary['execution_plan_submit_allowed']).lower()}`"
+        ),
+        (
+            "- ExecutionPlan created order payload: "
+            f"`{str(summary['execution_plan_created_order_payload']).lower()}`"
+        ),
         f"- Main blocker: `{summary['main_blocker']}`",
         (
             "- Paper submit authorized: "
@@ -6943,6 +7310,13 @@ def _render_daily_decision_summary_html_section(
         <dt>Open SPY order count</dt><dd>{_html_escape(str(summary["open_spy_order_count"]))}</dd>
         <dt>Unexpected non-SPY position count</dt><dd>{_html_escape(str(summary["unexpected_non_spy_position_count"]))}</dd>
         <dt>Broker-aware preview decision</dt><dd>{_html_escape(str(summary["broker_aware_preview_decision"]))}</dd>
+        <dt>ExecutionPlan status</dt><dd>{_html_escape(str(summary["execution_plan_status"]))}</dd>
+        <dt>ExecutionPlan action</dt><dd>{_html_escape(str(summary["execution_plan_action"]))}</dd>
+        <dt>ExecutionPlan reason</dt><dd>{_html_escape(str(summary["execution_plan_reason"]))}</dd>
+        <dt>ExecutionPlan blocker</dt><dd>{_html_escape(str(summary["execution_plan_blocker"]))}</dd>
+        <dt>ExecutionPlan requires approval</dt><dd>{str(summary["execution_plan_requires_approval"]).lower()}</dd>
+        <dt>ExecutionPlan submit allowed</dt><dd>{str(summary["execution_plan_submit_allowed"]).lower()}</dd>
+        <dt>ExecutionPlan created order payload</dt><dd>{str(summary["execution_plan_created_order_payload"]).lower()}</dd>
         <dt>Main blocker</dt><dd>{_html_escape(str(summary["main_blocker"]))}</dd>
         <dt>Paper submit authorized</dt><dd>{str(summary["paper_submit_authorized"]).lower()}</dd>
         <dt>Live authorized</dt><dd>{str(summary["live_authorized"]).lower()}</dd>
