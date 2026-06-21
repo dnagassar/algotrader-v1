@@ -27,6 +27,7 @@ from algotrader.signals.etf_sma_evaluator import (
 __all__ = [
     "EtfSmaDailyPaperLabConfig",
     "EtfSmaDailyExecutionPlan",
+    "EtfSmaDailyApprovalGate",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
     "etf_sma_daily_paper_lab_exit_status",
@@ -413,6 +414,7 @@ _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS = {
 _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "executive_summary",
     "execution_plan",
+    "daily_approval_gate",
     "latest_run",
     "daily_latest",
     "daily_decision_summary",
@@ -443,6 +445,20 @@ _EXECUTION_PLAN_COMPACT_FIELDS = (
     "execution_plan_created_order_payload",
     "execution_plan_labels",
 )
+_DAILY_APPROVAL_GATE_FIELDS = (
+    "execution_plan_id",
+    "approval_required",
+    "approval_state",
+    "submit_allowed",
+    "paper_submit_authorized",
+    "live_authorized",
+    "broker_mutation_performed",
+    "reason",
+    "blocker",
+)
+_DAILY_APPROVAL_GATE_COMPACT_FIELDS = tuple(
+    f"daily_approval_gate_{field}" for field in _DAILY_APPROVAL_GATE_FIELDS
+)
 _REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS = (
     "run_id",
     "generated_at",
@@ -472,7 +488,9 @@ _REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS = (
     "broker_mutation_performed",
     "exact_next_operator_action",
     "what_changed",
+    "daily_approval_gate",
     *_EXECUTION_PLAN_COMPACT_FIELDS,
+    *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
 )
 _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "run_id",
@@ -520,7 +538,9 @@ _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "operator_review_path",
     "safety_labels",
     "execution_plan",
+    "daily_approval_gate",
     *_EXECUTION_PLAN_COMPACT_FIELDS,
+    *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
 )
 _REQUIRED_LATEST_RUN_FIELDS = (
     "run_id",
@@ -565,7 +585,9 @@ _REQUIRED_LATEST_RUN_FIELDS = (
     "broker_mutation_performed",
     "safety_labels",
     "execution_plan",
+    "daily_approval_gate",
     *_EXECUTION_PLAN_COMPACT_FIELDS,
+    *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
 )
 _REQUIRED_DATA_FRESHNESS_PLAN_FIELDS = (
     "data_freshness_plan_version",
@@ -2087,6 +2109,34 @@ class EtfSmaDailyExecutionPlan:
 
 
 @dataclass(frozen=True, slots=True)
+class EtfSmaDailyApprovalGate:
+    """Immutable daily-lab approval state derived from an ExecutionPlan."""
+
+    execution_plan_id: str
+    approval_required: bool
+    approval_state: str
+    submit_allowed: bool
+    paper_submit_authorized: bool
+    live_authorized: bool
+    broker_mutation_performed: bool
+    reason: str
+    blocker: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "execution_plan_id": self.execution_plan_id,
+            "approval_required": self.approval_required,
+            "approval_state": self.approval_state,
+            "submit_allowed": self.submit_allowed,
+            "paper_submit_authorized": self.paper_submit_authorized,
+            "live_authorized": self.live_authorized,
+            "broker_mutation_performed": self.broker_mutation_performed,
+            "reason": self.reason,
+            "blocker": self.blocker,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class EtfSmaDailyPaperLabConfig:
     """Configuration for the Assistant v1 daily paper-lab loop."""
 
@@ -2240,6 +2290,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
         return True
     for section_name in (
         "execution_plan",
+        "daily_approval_gate",
         "latest_run",
         "daily_latest",
         "mission_control",
@@ -2257,6 +2308,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
             "decision_lane",
             "daily_decision_summary",
             "daily_latest",
+            "daily_approval_gate",
             "execution_plan",
             "executive_summary",
             "latest_run",
@@ -2297,6 +2349,11 @@ def _section_has_unsafe_exit_authorization(section: Mapping[str, Any]) -> bool:
         "execution_plan_live_authorized",
         "execution_plan_broker_mutation_performed",
         "execution_plan_created_order_payload",
+        "daily_approval_gate_submit_allowed",
+        "daily_approval_gate_paper_submit_authorized",
+        "daily_approval_gate_live_authorized",
+        "daily_approval_gate_broker_mutation_performed",
+        "submit_allowed",
     ):
         if section.get(field_name) is True:
             return True
@@ -2589,6 +2646,18 @@ def _validate_mission_control_schema(
     else:
         schema_errors.append("mission_control.execution_plan.missing_or_not_object")
 
+    daily_approval_gate = mission_control.get("daily_approval_gate")
+    if isinstance(daily_approval_gate, Mapping):
+        for field in _DAILY_APPROVAL_GATE_FIELDS:
+            if field not in daily_approval_gate:
+                schema_errors.append(
+                    f"mission_control.daily_approval_gate.{field}.missing"
+                )
+    else:
+        schema_errors.append(
+            "mission_control.daily_approval_gate.missing_or_not_object"
+        )
+
 
 def _validate_mission_control_safety(
     mission_control: Mapping[str, Any],
@@ -2601,6 +2670,7 @@ def _validate_mission_control_safety(
     broker = _mapping_section(mission_control, "broker_state_lane")
     decision = _mapping_section(mission_control, "decision_lane")
     execution_plan = _mapping_section(mission_control, "execution_plan")
+    daily_approval_gate = _mapping_section(mission_control, "daily_approval_gate")
     executive = _mapping_section(mission_control, "executive_summary")
     latest_run = _mapping_section(mission_control, "latest_run")
     daily_latest = _mapping_section(mission_control, "daily_latest")
@@ -2744,6 +2814,26 @@ def _validate_mission_control_safety(
         "mission_control.daily_decision_summary",
         safety_errors,
     )
+    _validate_daily_approval_gate_safety(
+        daily_approval_gate,
+        "mission_control.daily_approval_gate",
+        safety_errors,
+    )
+    for section_name, section in (
+        ("latest_run", latest_run),
+        ("daily_latest", daily_latest),
+        ("daily_decision_summary", daily_decision_summary),
+    ):
+        _validate_daily_approval_gate_safety(
+            _mapping_section(section, "daily_approval_gate"),
+            f"mission_control.{section_name}.daily_approval_gate",
+            safety_errors,
+        )
+        _validate_daily_approval_gate_compact_safety(
+            section,
+            f"mission_control.{section_name}",
+            safety_errors,
+        )
 
     if broker_mode == "broker_state_not_observed":
         if broker.get("broker_state_not_observed") is not True:
@@ -2879,6 +2969,34 @@ def _validate_execution_plan_safety(
     ):
         if required_label not in labels:
             safety_errors.append(f"{path}.execution_plan_labels.{required_label}.missing")
+
+
+def _validate_daily_approval_gate_safety(
+    section: Mapping[str, Any],
+    path: str,
+    safety_errors: list[str],
+) -> None:
+    for field in (
+        "submit_allowed",
+        "paper_submit_authorized",
+        "live_authorized",
+        "broker_mutation_performed",
+    ):
+        _require_false(section, field, f"{path}.{field}", safety_errors)
+
+
+def _validate_daily_approval_gate_compact_safety(
+    section: Mapping[str, Any],
+    path: str,
+    safety_errors: list[str],
+) -> None:
+    for field in (
+        "daily_approval_gate_submit_allowed",
+        "daily_approval_gate_paper_submit_authorized",
+        "daily_approval_gate_live_authorized",
+        "daily_approval_gate_broker_mutation_performed",
+    ):
+        _require_false(section, field, f"{path}.{field}", safety_errors)
 
 
 def _validate_readiness_safety_override(
@@ -3664,14 +3782,20 @@ def _apply_execution_plan_to_payload(
     broker_state_lane: Mapping[str, Any],
     decision_lane: Mapping[str, Any],
 ) -> dict[str, Any]:
-    execution_plan = _project_daily_execution_plan(
+    execution_plan_projection = _project_daily_execution_plan(
         payload=payload,
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
         decision_lane=decision_lane,
+    )
+    execution_plan = execution_plan_projection.to_dict()
+    daily_approval_gate = _project_daily_approval_gate(
+        execution_plan_projection
     ).to_dict()
     payload["execution_plan"] = dict(execution_plan)
+    payload["daily_approval_gate"] = dict(daily_approval_gate)
     payload.update(_execution_plan_compact_fields(execution_plan))
+    payload.update(_daily_approval_gate_compact_fields(daily_approval_gate))
     return execution_plan
 
 
@@ -3827,6 +3951,118 @@ def _execution_plan_compact_fields(
     }
 
 
+def _project_daily_approval_gate(
+    execution_plan: EtfSmaDailyExecutionPlan,
+) -> EtfSmaDailyApprovalGate:
+    status = str(execution_plan.execution_plan_status)
+    action = str(execution_plan.execution_plan_action)
+    blocker = _normal_approval_blocker(execution_plan.execution_plan_blocker)
+
+    if _execution_plan_has_unsafe_submit_or_mutation_flag(execution_plan):
+        return _daily_approval_gate_closed(
+            execution_plan_id=execution_plan.execution_plan_id,
+            reason="execution_plan_blocked",
+            blocker=(
+                blocker
+                if blocker != "none"
+                else "execution_plan_safety_flags_not_false"
+            ),
+        )
+    if blocker != "none" or status == "blocked" or action == "none":
+        return _daily_approval_gate_closed(
+            execution_plan_id=execution_plan.execution_plan_id,
+            reason="execution_plan_blocked",
+            blocker=blocker if blocker != "none" else "execution_plan_blocked",
+        )
+    if (
+        status == "no_action_required"
+        and action == "hold/noop"
+        and execution_plan.execution_plan_requires_approval is False
+    ):
+        return EtfSmaDailyApprovalGate(
+            execution_plan_id=execution_plan.execution_plan_id,
+            approval_required=False,
+            approval_state="not_required_noop",
+            submit_allowed=False,
+            paper_submit_authorized=False,
+            live_authorized=False,
+            broker_mutation_performed=False,
+            reason="execution_plan_requires_no_action",
+            blocker="none",
+        )
+    if (
+        status == "preview_only"
+        and action in {"buy_preview", "sell_preview"}
+        and execution_plan.execution_plan_requires_approval is True
+    ):
+        return EtfSmaDailyApprovalGate(
+            execution_plan_id=execution_plan.execution_plan_id,
+            approval_required=True,
+            approval_state="awaiting_explicit_paper_submit_authorization",
+            submit_allowed=False,
+            paper_submit_authorized=False,
+            live_authorized=False,
+            broker_mutation_performed=False,
+            reason="explicit_paper_submit_authorization_required",
+            blocker="none",
+        )
+    return _daily_approval_gate_closed(
+        execution_plan_id=execution_plan.execution_plan_id,
+        reason="execution_plan_blocked",
+        blocker="unsupported_execution_plan_state",
+    )
+
+
+def _daily_approval_gate_closed(
+    *,
+    execution_plan_id: str,
+    reason: str,
+    blocker: str,
+) -> EtfSmaDailyApprovalGate:
+    return EtfSmaDailyApprovalGate(
+        execution_plan_id=execution_plan_id,
+        approval_required=False,
+        approval_state="blocked",
+        submit_allowed=False,
+        paper_submit_authorized=False,
+        live_authorized=False,
+        broker_mutation_performed=False,
+        reason=reason,
+        blocker=_normal_approval_blocker(blocker),
+    )
+
+
+def _normal_approval_blocker(value: object) -> str:
+    blocker = str(value or "none").strip()
+    return blocker if blocker else "none"
+
+
+def _execution_plan_has_unsafe_submit_or_mutation_flag(
+    execution_plan: EtfSmaDailyExecutionPlan,
+) -> bool:
+    return any(
+        flag is not False
+        for flag in (
+            execution_plan.execution_plan_broker_order_required,
+            execution_plan.execution_plan_submit_allowed,
+            execution_plan.execution_plan_paper_submit_authorized,
+            execution_plan.execution_plan_live_authorized,
+            execution_plan.execution_plan_broker_mutation_performed,
+            execution_plan.execution_plan_created_order_payload,
+        )
+    )
+
+
+def _daily_approval_gate_compact_fields(
+    daily_approval_gate: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        f"daily_approval_gate_{field}": daily_approval_gate[field]
+        for field in _DAILY_APPROVAL_GATE_FIELDS
+        if field in daily_approval_gate
+    }
+
+
 def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
     market_data_lane = _mission_control_market_data_lane(payload)
     broker_state_lane = _mission_control_broker_state_lane(payload)
@@ -3868,7 +4104,11 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
             "exact_next_operator_action"
         ]
         dashboard["execution_plan"] = dict(execution_plan)
+        dashboard["daily_approval_gate"] = dict(payload["daily_approval_gate"])
         dashboard.update(_execution_plan_compact_fields(execution_plan))
+        dashboard.update(
+            _daily_approval_gate_compact_fields(payload["daily_approval_gate"])
+        )
 
 
 def _sync_consumed_broker_snapshot_artifact_fields(
@@ -4243,11 +4483,15 @@ def _build_mission_control(
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
     )
-    execution_plan = _project_daily_execution_plan(
+    execution_plan_projection = _project_daily_execution_plan(
         payload=payload,
         market_data_lane=market_data_lane,
         broker_state_lane=broker_state_lane,
         decision_lane=decision_lane,
+    )
+    execution_plan = execution_plan_projection.to_dict()
+    daily_approval_gate = _project_daily_approval_gate(
+        execution_plan_projection
     ).to_dict()
     artifacts = _mission_control_artifact_map(output_root, artifact_paths)
     data_freshness_plan = _mission_control_data_freshness_plan(
@@ -4327,6 +4571,7 @@ def _build_mission_control(
         data_refresh_dry_run=data_refresh_dry_run,
         dispatcher=dispatcher,
         execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
     )
     daily_decision_summary = _mission_control_daily_decision_summary(
         payload=payload,
@@ -4336,6 +4581,7 @@ def _build_mission_control(
         data_freshness_plan=data_freshness_plan,
         data_refresh_dry_run=data_refresh_dry_run,
         execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
     )
     daily_latest["daily_decision_summary"] = dict(daily_decision_summary)
     agent_command_center = _mission_control_agent_command_center(
@@ -4359,6 +4605,7 @@ def _build_mission_control(
         "output_root": _normalize_path(output_root),
         "artifacts": artifacts,
         "execution_plan": execution_plan,
+        "daily_approval_gate": daily_approval_gate,
         "executive_summary": executive_summary,
         "latest_run": latest_run,
         "daily_latest": daily_latest,
@@ -4408,6 +4655,7 @@ def _mission_control_daily_decision_summary(
     data_freshness_plan: Mapping[str, Any],
     data_refresh_dry_run: Mapping[str, Any],
     execution_plan: Mapping[str, Any],
+    daily_approval_gate: Mapping[str, Any],
 ) -> dict[str, Any]:
     broker_state_observed = broker_state_lane.get("broker_state_observed") is True
     history_delta = payload.get("history_delta")
@@ -4473,7 +4721,9 @@ def _mission_control_daily_decision_summary(
         ),
         "what_changed": what_changed,
     }
+    summary["daily_approval_gate"] = dict(daily_approval_gate)
     summary.update(_execution_plan_compact_fields(execution_plan))
+    summary.update(_daily_approval_gate_compact_fields(daily_approval_gate))
     return summary
 
 
@@ -4492,6 +4742,7 @@ def _mission_control_daily_latest(
     data_refresh_dry_run: Mapping[str, Any],
     dispatcher: Mapping[str, Any],
     execution_plan: Mapping[str, Any],
+    daily_approval_gate: Mapping[str, Any],
 ) -> dict[str, Any]:
     daily_latest = {
         "run_id": payload.get("run_id"),
@@ -4618,7 +4869,9 @@ def _mission_control_daily_latest(
         "safety_labels": list(decision_lane.get("safety_labels", [])),
     }
     daily_latest["execution_plan"] = dict(execution_plan)
+    daily_latest["daily_approval_gate"] = dict(daily_approval_gate)
     daily_latest.update(_execution_plan_compact_fields(execution_plan))
+    daily_latest.update(_daily_approval_gate_compact_fields(daily_approval_gate))
     return daily_latest
 
 
@@ -4740,6 +4993,10 @@ def _mission_control_latest_run_entry(
     if isinstance(execution_plan, Mapping):
         latest_run["execution_plan"] = dict(execution_plan)
         latest_run.update(_execution_plan_compact_fields(execution_plan))
+    daily_approval_gate = daily_latest.get("daily_approval_gate")
+    if isinstance(daily_approval_gate, Mapping):
+        latest_run["daily_approval_gate"] = dict(daily_approval_gate)
+        latest_run.update(_daily_approval_gate_compact_fields(daily_approval_gate))
     return latest_run
 
 
@@ -7266,6 +7523,38 @@ def _daily_decision_summary_markdown_lines(
             "- ExecutionPlan created order payload: "
             f"`{str(summary['execution_plan_created_order_payload']).lower()}`"
         ),
+        (
+            "- DailyApprovalGate approval required: "
+            f"`{str(summary['daily_approval_gate_approval_required']).lower()}`"
+        ),
+        (
+            "- DailyApprovalGate approval state: "
+            f"`{summary['daily_approval_gate_approval_state']}`"
+        ),
+        (
+            "- DailyApprovalGate submit allowed: "
+            f"`{str(summary['daily_approval_gate_submit_allowed']).lower()}`"
+        ),
+        (
+            "- DailyApprovalGate paper submit authorized: "
+            f"`{str(summary['daily_approval_gate_paper_submit_authorized']).lower()}`"
+        ),
+        (
+            "- DailyApprovalGate live authorized: "
+            f"`{str(summary['daily_approval_gate_live_authorized']).lower()}`"
+        ),
+        (
+            "- DailyApprovalGate broker mutation performed: "
+            f"`{str(summary['daily_approval_gate_broker_mutation_performed']).lower()}`"
+        ),
+        (
+            "- DailyApprovalGate reason: "
+            f"`{summary['daily_approval_gate_reason']}`"
+        ),
+        (
+            "- DailyApprovalGate blocker: "
+            f"`{summary['daily_approval_gate_blocker']}`"
+        ),
         f"- Main blocker: `{summary['main_blocker']}`",
         (
             "- Paper submit authorized: "
@@ -7317,6 +7606,14 @@ def _render_daily_decision_summary_html_section(
         <dt>ExecutionPlan requires approval</dt><dd>{str(summary["execution_plan_requires_approval"]).lower()}</dd>
         <dt>ExecutionPlan submit allowed</dt><dd>{str(summary["execution_plan_submit_allowed"]).lower()}</dd>
         <dt>ExecutionPlan created order payload</dt><dd>{str(summary["execution_plan_created_order_payload"]).lower()}</dd>
+        <dt>DailyApprovalGate approval required</dt><dd>{str(summary["daily_approval_gate_approval_required"]).lower()}</dd>
+        <dt>DailyApprovalGate approval state</dt><dd>{_html_escape(str(summary["daily_approval_gate_approval_state"]))}</dd>
+        <dt>DailyApprovalGate submit allowed</dt><dd>{str(summary["daily_approval_gate_submit_allowed"]).lower()}</dd>
+        <dt>DailyApprovalGate paper submit authorized</dt><dd>{str(summary["daily_approval_gate_paper_submit_authorized"]).lower()}</dd>
+        <dt>DailyApprovalGate live authorized</dt><dd>{str(summary["daily_approval_gate_live_authorized"]).lower()}</dd>
+        <dt>DailyApprovalGate broker mutation performed</dt><dd>{str(summary["daily_approval_gate_broker_mutation_performed"]).lower()}</dd>
+        <dt>DailyApprovalGate reason</dt><dd>{_html_escape(str(summary["daily_approval_gate_reason"]))}</dd>
+        <dt>DailyApprovalGate blocker</dt><dd>{_html_escape(str(summary["daily_approval_gate_blocker"]))}</dd>
         <dt>Main blocker</dt><dd>{_html_escape(str(summary["main_blocker"]))}</dd>
         <dt>Paper submit authorized</dt><dd>{str(summary["paper_submit_authorized"]).lower()}</dd>
         <dt>Live authorized</dt><dd>{str(summary["live_authorized"]).lower()}</dd>

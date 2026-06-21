@@ -91,6 +91,20 @@ _EXECUTION_PLAN_COMPACT_FIELDS = {
     "execution_plan_created_order_payload",
     "execution_plan_labels",
 }
+_DAILY_APPROVAL_GATE_FIELDS = {
+    "execution_plan_id",
+    "approval_required",
+    "approval_state",
+    "submit_allowed",
+    "paper_submit_authorized",
+    "live_authorized",
+    "broker_mutation_performed",
+    "reason",
+    "blocker",
+}
+_DAILY_APPROVAL_GATE_COMPACT_FIELDS = {
+    f"daily_approval_gate_{field}" for field in _DAILY_APPROVAL_GATE_FIELDS
+}
 
 
 @pytest.fixture(autouse=True)
@@ -5656,6 +5670,83 @@ def _assert_execution_plan_safety(plan: dict[str, object]) -> None:
     )
 
 
+def _assert_daily_approval_gate_safety(gate: dict[str, object]) -> None:
+    assert _DAILY_APPROVAL_GATE_FIELDS <= set(gate)
+    assert str(gate["execution_plan_id"]).startswith("daily_execution_plan_")
+    assert gate["submit_allowed"] is False
+    assert gate["paper_submit_authorized"] is False
+    assert gate["live_authorized"] is False
+    assert gate["broker_mutation_performed"] is False
+    serialized = json.dumps(gate, sort_keys=True).lower()
+    assert "client_order_id" not in serialized
+    assert "broker_request" not in serialized
+    assert "submit_request" not in serialized
+    assert "order_payload" not in serialized
+
+
+def _expected_daily_approval_gate(
+    *,
+    plan: dict[str, object],
+    expected_status: str,
+    expected_action: str,
+    expected_blocker: str,
+) -> dict[str, object]:
+    if expected_blocker != "none" or expected_status == "blocked" or (
+        expected_action == "none"
+    ):
+        return {
+            "execution_plan_id": plan["execution_plan_id"],
+            "approval_required": False,
+            "approval_state": "blocked",
+            "submit_allowed": False,
+            "paper_submit_authorized": False,
+            "live_authorized": False,
+            "broker_mutation_performed": False,
+            "reason": "execution_plan_blocked",
+            "blocker": (
+                expected_blocker if expected_blocker != "none" else "execution_plan_blocked"
+            ),
+        }
+    if expected_status == "no_action_required" and expected_action == "hold/noop":
+        return {
+            "execution_plan_id": plan["execution_plan_id"],
+            "approval_required": False,
+            "approval_state": "not_required_noop",
+            "submit_allowed": False,
+            "paper_submit_authorized": False,
+            "live_authorized": False,
+            "broker_mutation_performed": False,
+            "reason": "execution_plan_requires_no_action",
+            "blocker": "none",
+        }
+    if expected_status == "preview_only" and expected_action in {
+        "buy_preview",
+        "sell_preview",
+    }:
+        return {
+            "execution_plan_id": plan["execution_plan_id"],
+            "approval_required": True,
+            "approval_state": "awaiting_explicit_paper_submit_authorization",
+            "submit_allowed": False,
+            "paper_submit_authorized": False,
+            "live_authorized": False,
+            "broker_mutation_performed": False,
+            "reason": "explicit_paper_submit_authorization_required",
+            "blocker": "none",
+        }
+    return {
+        "execution_plan_id": plan["execution_plan_id"],
+        "approval_required": False,
+        "approval_state": "blocked",
+        "submit_allowed": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_performed": False,
+        "reason": "execution_plan_blocked",
+        "blocker": "unsupported_execution_plan_state",
+    }
+
+
 def _assert_execution_plan_surfaces(
     mission: dict[str, object],
     *,
@@ -5692,7 +5783,56 @@ def _assert_execution_plan_surfaces(
     daily_latest_plan = mission["daily_latest"]["execution_plan"]
     assert latest_plan == plan
     assert daily_latest_plan == plan
+
+    expected_gate = _expected_daily_approval_gate(
+        plan=plan,
+        expected_status=expected_status,
+        expected_action=expected_action,
+        expected_blocker=expected_blocker,
+    )
+    gate = mission["daily_approval_gate"]
+    assert isinstance(gate, dict)
+    assert gate == expected_gate
+    _assert_daily_approval_gate_safety(gate)
+    for section_name in ("latest_run", "daily_latest", "daily_decision_summary"):
+        section = mission[section_name]
+        assert isinstance(section, dict)
+        assert section["daily_approval_gate"] == gate
+        assert _DAILY_APPROVAL_GATE_COMPACT_FIELDS <= set(section)
+        for field in _DAILY_APPROVAL_GATE_FIELDS:
+            assert section[f"daily_approval_gate_{field}"] == gate[field]
+        _assert_daily_approval_gate_safety(section["daily_approval_gate"])
+
     return plan
+
+
+def _daily_execution_plan_for_gate(
+    **overrides: object,
+) -> paper_lab_module.EtfSmaDailyExecutionPlan:
+    values: dict[str, object] = {
+        "execution_plan_version": "assistant_v1.64_pre_broker_execution_plan",
+        "execution_plan_id": "daily_execution_plan_unit",
+        "execution_plan_status": "no_action_required",
+        "execution_plan_action": "hold/noop",
+        "execution_plan_symbol": "SPY",
+        "execution_plan_reason": "existing_spy_position_satisfies_risk_on_preview",
+        "execution_plan_blocker": "none",
+        "execution_plan_source_preview_decision": "hold/noop",
+        "execution_plan_requires_approval": False,
+        "execution_plan_broker_order_required": False,
+        "execution_plan_submit_allowed": False,
+        "execution_plan_paper_submit_authorized": False,
+        "execution_plan_live_authorized": False,
+        "execution_plan_broker_mutation_performed": False,
+        "execution_plan_created_order_payload": False,
+        "execution_plan_labels": (
+            "paper_lab_only",
+            "not_live_authorized",
+            "profit_claim=none",
+        ),
+    }
+    values.update(overrides)
+    return paper_lab_module.EtfSmaDailyExecutionPlan(**values)
 
 
 def test_etf_sma_daily_execution_plan_type_is_immutable() -> None:
@@ -5721,6 +5861,137 @@ def test_etf_sma_daily_execution_plan_type_is_immutable() -> None:
 
     with pytest.raises(FrozenInstanceError):
         plan.execution_plan_status = "mutated"  # type: ignore[misc]
+
+
+def test_etf_sma_daily_approval_gate_noop_is_immutable_and_deterministic() -> None:
+    plan = _daily_execution_plan_for_gate()
+    before = plan.to_dict()
+
+    gate = paper_lab_module._project_daily_approval_gate(plan)
+    repeated_gate = paper_lab_module._project_daily_approval_gate(plan)
+
+    assert gate.to_dict() == {
+        "execution_plan_id": "daily_execution_plan_unit",
+        "approval_required": False,
+        "approval_state": "not_required_noop",
+        "submit_allowed": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_performed": False,
+        "reason": "execution_plan_requires_no_action",
+        "blocker": "none",
+    }
+    assert repeated_gate.to_dict() == gate.to_dict()
+    assert plan.to_dict() == before
+    _assert_daily_approval_gate_safety(gate.to_dict())
+    with pytest.raises(FrozenInstanceError):
+        gate.approval_state = "mutated"  # type: ignore[misc]
+
+
+@pytest.mark.parametrize("action", ["buy_preview", "sell_preview"])
+def test_etf_sma_daily_approval_gate_actionable_preview_requires_approval(
+    action: str,
+) -> None:
+    plan = _daily_execution_plan_for_gate(
+        execution_plan_status="preview_only",
+        execution_plan_action=action,
+        execution_plan_reason=f"{action}_requires_explicit_authorization",
+        execution_plan_source_preview_decision=action,
+        execution_plan_requires_approval=True,
+    )
+
+    gate = paper_lab_module._project_daily_approval_gate(plan).to_dict()
+
+    assert gate["execution_plan_id"] == plan.execution_plan_id
+    assert gate["approval_required"] is True
+    assert gate["approval_state"] == "awaiting_explicit_paper_submit_authorization"
+    assert gate["submit_allowed"] is False
+    assert gate["paper_submit_authorized"] is False
+    assert gate["live_authorized"] is False
+    assert gate["broker_mutation_performed"] is False
+    assert gate["reason"] == "explicit_paper_submit_authorization_required"
+    assert gate["blocker"] == "none"
+    _assert_daily_approval_gate_safety(gate)
+
+
+@pytest.mark.parametrize(
+    "blocker",
+    [
+        "open_order_present",
+        "unexpected_non_spy_position",
+        "stale_snapshot",
+        "broker_state_not_observed",
+        "insufficient_history",
+    ],
+)
+def test_etf_sma_daily_approval_gate_blocked_plan_fails_closed(
+    blocker: str,
+) -> None:
+    plan = _daily_execution_plan_for_gate(
+        execution_plan_status="blocked",
+        execution_plan_action="none",
+        execution_plan_reason=blocker,
+        execution_plan_blocker=blocker,
+        execution_plan_source_preview_decision=f"blocked/{blocker}",
+    )
+
+    gate = paper_lab_module._project_daily_approval_gate(plan).to_dict()
+
+    assert gate["approval_required"] is False
+    assert gate["approval_state"] == "blocked"
+    assert gate["submit_allowed"] is False
+    assert gate["reason"] == "execution_plan_blocked"
+    assert gate["blocker"] == blocker
+    _assert_daily_approval_gate_safety(gate)
+
+
+def test_etf_sma_daily_approval_gate_unknown_plan_state_fails_closed() -> None:
+    plan = _daily_execution_plan_for_gate(
+        execution_plan_status="unsupported",
+        execution_plan_action="rebalance_preview",
+        execution_plan_source_preview_decision="rebalance_preview",
+        execution_plan_requires_approval=True,
+    )
+
+    gate = paper_lab_module._project_daily_approval_gate(plan).to_dict()
+
+    assert gate["approval_required"] is False
+    assert gate["approval_state"] == "blocked"
+    assert gate["submit_allowed"] is False
+    assert gate["paper_submit_authorized"] is False
+    assert gate["live_authorized"] is False
+    assert gate["broker_mutation_performed"] is False
+    assert gate["reason"] == "execution_plan_blocked"
+    assert gate["blocker"] == "unsupported_execution_plan_state"
+    _assert_daily_approval_gate_safety(gate)
+
+
+@pytest.mark.parametrize(
+    "unsafe_field",
+    [
+        "execution_plan_broker_order_required",
+        "execution_plan_submit_allowed",
+        "execution_plan_paper_submit_authorized",
+        "execution_plan_live_authorized",
+        "execution_plan_broker_mutation_performed",
+        "execution_plan_created_order_payload",
+    ],
+)
+def test_etf_sma_daily_approval_gate_unsafe_plan_flags_fail_closed(
+    unsafe_field: str,
+) -> None:
+    plan = _daily_execution_plan_for_gate(**{unsafe_field: True})
+
+    gate = paper_lab_module._project_daily_approval_gate(plan).to_dict()
+
+    assert gate["approval_required"] is False
+    assert gate["approval_state"] == "blocked"
+    assert gate["submit_allowed"] is False
+    assert gate["paper_submit_authorized"] is False
+    assert gate["live_authorized"] is False
+    assert gate["broker_mutation_performed"] is False
+    assert gate["reason"] == "execution_plan_blocked"
+    assert gate["blocker"] == "execution_plan_safety_flags_not_false"
 
 
 def _assert_expected_artifacts_exist(output_root: Path) -> dict[str, Path]:
@@ -5959,7 +6230,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "broker_mutation_performed",
         "safety_labels",
         "execution_plan",
+        "daily_approval_gate",
         *_EXECUTION_PLAN_COMPACT_FIELDS,
+        *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
     } <= set(latest_run)
     assert latest_run["open_first"] == "index.html"
     assert latest_run["open_first_path"].endswith("index.html")
@@ -6080,7 +6353,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "broker_mutation_performed",
         "exact_next_operator_action",
         "what_changed",
+        "daily_approval_gate",
         *_EXECUTION_PLAN_COMPACT_FIELDS,
+        *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
     } <= set(daily_decision_summary)
     assert daily_decision_summary["as_of_date"] == "2025-07-20"
     assert daily_decision_summary["latest_bar_date"] == "2025-07-19"
@@ -6180,7 +6455,9 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "operator_review_path",
         "safety_labels",
         "execution_plan",
+        "daily_approval_gate",
         *_EXECUTION_PLAN_COMPACT_FIELDS,
+        *_DAILY_APPROVAL_GATE_COMPACT_FIELDS,
     } <= set(daily_latest)
     assert daily_latest["validation_status"] == "passed"
     assert daily_latest["open_first"] == "index.html"
@@ -6570,6 +6847,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "ExecutionPlan action: `none`" in report
     assert "ExecutionPlan submit allowed: `false`" in report
     assert "ExecutionPlan created order payload: `false`" in report
+    assert "DailyApprovalGate approval required: `false`" in report
+    assert "DailyApprovalGate approval state: `blocked`" in report
+    assert "DailyApprovalGate submit allowed: `false`" in report
+    assert "DailyApprovalGate paper submit authorized: `false`" in report
+    assert "DailyApprovalGate live authorized: `false`" in report
+    assert "DailyApprovalGate reason: `execution_plan_blocked`" in report
+    assert "DailyApprovalGate blocker: `broker_state_not_observed`" in report
     assert "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`" in report
     assert "System status: `offline_mission_control_ready`" in report
     assert "## Open First" in report
@@ -6602,6 +6886,11 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "ExecutionPlan status" in index_html
     assert "ExecutionPlan submit allowed" in index_html
     assert "ExecutionPlan created order payload" in index_html
+    assert "DailyApprovalGate approval required" in index_html
+    assert "DailyApprovalGate approval state</dt><dd>blocked" in index_html
+    assert "DailyApprovalGate submit allowed</dt><dd>false" in index_html
+    assert "DailyApprovalGate paper submit authorized</dt><dd>false" in index_html
+    assert "DailyApprovalGate live authorized</dt><dd>false" in index_html
     assert "blocked/broker_state_not_observed" in index_html
     assert (
         "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
@@ -6639,6 +6928,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "ExecutionPlan action: `none`" in operator_review
     assert "ExecutionPlan submit allowed: `false`" in operator_review
     assert "ExecutionPlan created order payload: `false`" in operator_review
+    assert "DailyApprovalGate approval required: `false`" in operator_review
+    assert "DailyApprovalGate approval state: `blocked`" in operator_review
+    assert "DailyApprovalGate submit allowed: `false`" in operator_review
+    assert "DailyApprovalGate paper submit authorized: `false`" in operator_review
+    assert "DailyApprovalGate live authorized: `false`" in operator_review
+    assert "DailyApprovalGate reason: `execution_plan_blocked`" in operator_review
+    assert "DailyApprovalGate blocker: `broker_state_not_observed`" in operator_review
     assert (
         "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`"
         in operator_review
@@ -8111,6 +8407,25 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert record["paper_submit_authorized"] is False
     assert record["live_authorized"] is False
     assert record["execution_plan"] == mission["execution_plan"]
+    assert record["daily_approval_gate"] == mission["daily_approval_gate"]
+    assert payload["daily_approval_gate"] == mission["daily_approval_gate"]
+    assert mission["daily_approval_gate"]["approval_required"] is False
+    assert mission["daily_approval_gate"]["approval_state"] == "not_required_noop"
+    assert mission["daily_approval_gate"]["submit_allowed"] is False
+    assert (
+        mission["daily_approval_gate"]["paper_submit_authorized"]
+        is False
+    )
+    assert mission["daily_approval_gate"]["live_authorized"] is False
+    assert (
+        mission["daily_approval_gate"]["broker_mutation_performed"]
+        is False
+    )
+    assert (
+        mission["daily_approval_gate"]["reason"]
+        == "execution_plan_requires_no_action"
+    )
+    assert mission["daily_approval_gate"]["blocker"] == "none"
     assert "* **Preview decision**: hold/noop" in brief
     assert "* **Blocker status**: none" in brief
     assert "Preview decision: `hold/noop`" in brief
@@ -8127,6 +8442,11 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "ExecutionPlan status</dt><dd>no_action_required" in index_html
     assert "ExecutionPlan action</dt><dd>hold/noop" in index_html
     assert "ExecutionPlan submit allowed</dt><dd>false" in index_html
+    assert "DailyApprovalGate approval required</dt><dd>false" in index_html
+    assert "DailyApprovalGate approval state</dt><dd>not_required_noop" in index_html
+    assert "DailyApprovalGate submit allowed</dt><dd>false" in index_html
+    assert "DailyApprovalGate paper submit authorized</dt><dd>false" in index_html
+    assert "DailyApprovalGate live authorized</dt><dd>false" in index_html
     assert (
         "no_immediate_trading_action_run_next_completed_session_daily_cycle"
         in index_html
@@ -8138,6 +8458,16 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "ExecutionPlan status: `no_action_required`" in operator_review
     assert "ExecutionPlan action: `hold/noop`" in operator_review
     assert "ExecutionPlan submit allowed: `false`" in operator_review
+    assert "DailyApprovalGate approval required: `false`" in operator_review
+    assert "DailyApprovalGate approval state: `not_required_noop`" in operator_review
+    assert "DailyApprovalGate submit allowed: `false`" in operator_review
+    assert "DailyApprovalGate paper submit authorized: `false`" in operator_review
+    assert "DailyApprovalGate live authorized: `false`" in operator_review
+    assert (
+        "DailyApprovalGate reason: `execution_plan_requires_no_action`"
+        in operator_review
+    )
+    assert "DailyApprovalGate blocker: `none`" in operator_review
     assert (
         "Exact next operator action: `no_immediate_trading_action_run_next_completed_session_daily_cycle`"
         in operator_review
