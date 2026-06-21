@@ -412,6 +412,7 @@ _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "executive_summary",
     "latest_run",
     "daily_latest",
+    "daily_decision_summary",
     "data_freshness_plan",
     "data_refresh_bridge",
     "data_refresh_dry_run",
@@ -420,6 +421,36 @@ _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "decision_lane",
     "agent_command_center",
     "readiness_score",
+)
+_REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS = (
+    "run_id",
+    "generated_at",
+    "as_of_date",
+    "latest_bar_date",
+    "data_freshness_status",
+    "data_refresh_status",
+    "input_data_path",
+    "sma50",
+    "sma200",
+    "sma_posture",
+    "risk_posture",
+    "market_signal_preview",
+    "broker_state_mode",
+    "broker_snapshot_freshness_status",
+    "snapshot_validation_status",
+    "broker_state_status",
+    "spy_position_observed",
+    "spy_position_present",
+    "spy_position_qty",
+    "open_spy_order_count",
+    "unexpected_non_spy_position_count",
+    "broker_aware_preview_decision",
+    "main_blocker",
+    "paper_submit_authorized",
+    "live_authorized",
+    "broker_mutation_performed",
+    "exact_next_operator_action",
+    "what_changed",
 )
 _REQUIRED_MISSION_CONTROL_DAILY_LATEST_FIELDS = (
     "run_id",
@@ -477,6 +508,7 @@ _REQUIRED_LATEST_RUN_FIELDS = (
     "assistant_report_path",
     "operator_review_path",
     "daily_latest_path",
+    "daily_decision_summary",
     "mission_control_json_path",
     "data_freshness_plan_path",
     "data_refresh_bridge_path",
@@ -2135,6 +2167,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
         for section_name in (
             "broker_state_lane",
             "decision_lane",
+            "daily_decision_summary",
             "daily_latest",
             "executive_summary",
             "latest_run",
@@ -2379,6 +2412,16 @@ def _validate_mission_control_schema(
     else:
         schema_errors.append("mission_control.daily_latest.missing")
 
+    daily_decision_summary = mission_control.get("daily_decision_summary")
+    if isinstance(daily_decision_summary, Mapping):
+        for field in _REQUIRED_MISSION_CONTROL_DAILY_DECISION_SUMMARY_FIELDS:
+            if field not in daily_decision_summary:
+                schema_errors.append(
+                    f"mission_control.daily_decision_summary.{field}.missing"
+                )
+    else:
+        schema_errors.append("mission_control.daily_decision_summary.missing")
+
     latest_run = mission_control.get("latest_run")
     if isinstance(latest_run, Mapping):
         for field in _REQUIRED_LATEST_RUN_FIELDS:
@@ -2458,6 +2501,10 @@ def _validate_mission_control_safety(
     executive = _mapping_section(mission_control, "executive_summary")
     latest_run = _mapping_section(mission_control, "latest_run")
     daily_latest = _mapping_section(mission_control, "daily_latest")
+    daily_decision_summary = _mapping_section(
+        mission_control,
+        "daily_decision_summary",
+    )
     readiness = _mapping_section(mission_control, "readiness_score")
     dispatcher = _mapping_section(mission_control, "rule_based_dispatcher_v0")
 
@@ -2554,6 +2601,24 @@ def _validate_mission_control_safety(
         latest_run,
         "live_authorized",
         "mission_control.latest_run.live_authorized",
+        safety_errors,
+    )
+    _require_false(
+        daily_decision_summary,
+        "broker_mutation_performed",
+        "mission_control.daily_decision_summary.broker_mutation_performed",
+        safety_errors,
+    )
+    _require_false(
+        daily_decision_summary,
+        "paper_submit_authorized",
+        "mission_control.daily_decision_summary.paper_submit_authorized",
+        safety_errors,
+    )
+    _require_false(
+        daily_decision_summary,
+        "live_authorized",
+        "mission_control.daily_decision_summary.live_authorized",
         safety_errors,
     )
 
@@ -3926,12 +3991,22 @@ def _build_mission_control(
         data_refresh_dry_run=data_refresh_dry_run,
         dispatcher=dispatcher,
     )
+    daily_decision_summary = _mission_control_daily_decision_summary(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+        data_freshness_plan=data_freshness_plan,
+        data_refresh_dry_run=data_refresh_dry_run,
+    )
+    daily_latest["daily_decision_summary"] = dict(daily_decision_summary)
     agent_command_center = _mission_control_agent_command_center(
         dispatcher=dispatcher,
         artifact_paths=artifact_paths,
     )
     latest_run = _mission_control_latest_run_entry(
         daily_latest=daily_latest,
+        daily_decision_summary=daily_decision_summary,
         artifact_paths=artifact_paths,
     )
     return {
@@ -3948,6 +4023,7 @@ def _build_mission_control(
         "executive_summary": executive_summary,
         "latest_run": latest_run,
         "daily_latest": daily_latest,
+        "daily_decision_summary": daily_decision_summary,
         "data_freshness_plan": data_freshness_plan,
         "data_refresh_bridge": data_refresh_bridge,
         "data_refresh_dry_run": data_refresh_dry_run,
@@ -3981,6 +4057,81 @@ def _mission_control_validation_summary(payload: Mapping[str, Any]) -> dict[str,
         "missing_artifacts": list(validation.get("missing_artifacts", [])),
         "schema_errors": list(validation.get("schema_errors", [])),
         "safety_errors": list(validation.get("safety_errors", [])),
+    }
+
+
+def _mission_control_daily_decision_summary(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    data_freshness_plan: Mapping[str, Any],
+    data_refresh_dry_run: Mapping[str, Any],
+) -> dict[str, Any]:
+    broker_state_observed = broker_state_lane.get("broker_state_observed") is True
+    history_delta = payload.get("history_delta")
+    what_changed = (
+        str(history_delta.get("delta_summary_text"))
+        if isinstance(history_delta, Mapping)
+        else "History delta has not been evaluated yet."
+    )
+    return {
+        "run_id": payload.get("run_id"),
+        "generated_at": "offline_command_runtime",
+        "as_of_date": market_data_lane.get("as_of_date"),
+        "latest_bar_date": market_data_lane.get("latest_input_bar_date"),
+        "data_freshness_status": data_freshness_plan.get(
+            "data_freshness_status"
+        ),
+        "data_refresh_status": data_refresh_dry_run.get("dry_run_status"),
+        "input_data_path": market_data_lane.get("input_data_path"),
+        "sma50": market_data_lane.get("sma50"),
+        "sma200": market_data_lane.get("sma200"),
+        "sma_posture": market_data_lane.get("repo_posture"),
+        "risk_posture": market_data_lane.get("posture"),
+        "market_signal_preview": decision_lane.get("market_signal_preview"),
+        "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_snapshot_freshness_status": broker_state_lane.get(
+            "broker_snapshot_freshness_status"
+        ),
+        "snapshot_validation_status": broker_state_lane.get(
+            "snapshot_validation_status"
+        ),
+        "broker_state_status": broker_state_lane.get("broker_state_status"),
+        "spy_position_observed": broker_state_observed
+        and broker_state_lane.get("position_state_observed") is True,
+        "spy_position_present": (
+            broker_state_lane.get("spy_position_present")
+            if broker_state_observed
+            else None
+        ),
+        "spy_position_qty": (
+            broker_state_lane.get("spy_position_qty")
+            if broker_state_observed
+            else None
+        ),
+        "open_spy_order_count": (
+            broker_state_lane.get("open_spy_order_count")
+            if broker_state_observed
+            else None
+        ),
+        "unexpected_non_spy_position_count": (
+            broker_state_lane.get("unexpected_non_spy_position_count")
+            if broker_state_observed
+            else None
+        ),
+        "broker_aware_preview_decision": decision_lane.get("preview_decision"),
+        "main_blocker": decision_lane.get("blocker_status"),
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_performed": broker_state_lane.get(
+            "broker_mutation_performed"
+        ),
+        "exact_next_operator_action": decision_lane.get(
+            "exact_next_operator_action"
+        ),
+        "what_changed": what_changed,
     }
 
 
@@ -4128,6 +4279,7 @@ def _mission_control_daily_latest(
 def _mission_control_latest_run_entry(
     *,
     daily_latest: Mapping[str, Any],
+    daily_decision_summary: Mapping[str, Any],
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
     return {
@@ -4141,6 +4293,7 @@ def _mission_control_latest_run_entry(
         "assistant_report_path": artifact_paths["assistant_report"],
         "operator_review_path": artifact_paths["operator_review"],
         "daily_latest_path": f"{artifact_paths['mission_control']}#daily_latest",
+        "daily_decision_summary": dict(daily_decision_summary),
         "mission_control_json_path": artifact_paths["mission_control"],
         "data_freshness_plan_path": artifact_paths["data_freshness_plan"],
         "data_refresh_bridge_path": daily_latest.get(
@@ -5021,6 +5174,17 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
         "broker_snapshot_status": str(snapshot.get("snapshot_status", "")),
         "broker_snapshot_sha256": str(snapshot.get("snapshot_sha256", "")),
         "broker_snapshot_observation_timestamp": str(snapshot.get("generated_at", "")),
+        "snapshot_validation_status": str(
+            snapshot.get(
+                "snapshot_validation_status",
+                "unknown" if snapshot_consumed else "not_observed",
+            )
+        ),
+        "broker_snapshot_freshness_status": (
+            "fresh"
+            if snapshot.get("snapshot_validation_status") == "passed"
+            else (broker_state_status if snapshot_consumed else "not_observed")
+        ),
         "broker_state_trusted": snapshot_observed,
         "broker_read_performed": False,
         "broker_mutation_performed": False,
@@ -6697,10 +6861,102 @@ def _render_data_refresh_operator_checklist(
     )
 
 
+def _daily_decision_summary_markdown_lines(
+    summary: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "## Daily Decision Summary",
+        f"- What changed: {summary['what_changed']}",
+        f"- Run ID: `{summary['run_id']}`",
+        f"- Generated at: `{summary['generated_at']}`",
+        f"- As-of date: `{summary['as_of_date']}`",
+        f"- Latest bar date: `{summary['latest_bar_date']}`",
+        f"- Data freshness status: `{summary['data_freshness_status']}`",
+        f"- Data refresh status: `{summary['data_refresh_status']}`",
+        f"- Input data path: `{summary['input_data_path']}`",
+        f"- SMA50 / SMA200: `{summary['sma50']}` / `{summary['sma200']}`",
+        (
+            f"- SMA posture / risk posture: `{summary['sma_posture']}` / "
+            f"`{summary['risk_posture']}`"
+        ),
+        f"- Market signal preview: `{summary['market_signal_preview']}`",
+        f"- Broker-state mode: `{summary['broker_state_mode']}`",
+        (
+            "- Broker snapshot validation/freshness: "
+            f"`{summary['snapshot_validation_status']}` / "
+            f"`{summary['broker_snapshot_freshness_status']}`"
+        ),
+        f"- Broker-state status: `{summary['broker_state_status']}`",
+        f"- SPY position observed: `{str(summary['spy_position_observed']).lower()}`",
+        f"- SPY position present: `{str(summary['spy_position_present']).lower()}`",
+        f"- SPY position qty: `{summary['spy_position_qty']}`",
+        f"- Open SPY order count: `{summary['open_spy_order_count']}`",
+        (
+            "- Unexpected non-SPY position count: "
+            f"`{summary['unexpected_non_spy_position_count']}`"
+        ),
+        (
+            "- Broker-aware preview decision: "
+            f"`{summary['broker_aware_preview_decision']}`"
+        ),
+        f"- Main blocker: `{summary['main_blocker']}`",
+        (
+            "- Paper submit authorized: "
+            f"`{str(summary['paper_submit_authorized']).lower()}`"
+        ),
+        f"- Live authorized: `{str(summary['live_authorized']).lower()}`",
+        (
+            "- Broker mutation performed: "
+            f"`{str(summary['broker_mutation_performed']).lower()}`"
+        ),
+        (
+            "- Exact next operator action: "
+            f"`{summary['exact_next_operator_action']}`"
+        ),
+        "",
+    ]
+
+
+def _render_daily_decision_summary_html_section(
+    summary: Mapping[str, Any],
+) -> str:
+    return f"""    <section class="summary">
+      <h2>Daily Decision Summary</h2>
+      <dl>
+        <dt>What changed</dt><dd>{_html_escape(str(summary["what_changed"]))}</dd>
+        <dt>Run ID</dt><dd>{_html_escape(str(summary["run_id"]))}</dd>
+        <dt>Generated at</dt><dd>{_html_escape(str(summary["generated_at"]))}</dd>
+        <dt>As-of date</dt><dd>{_html_escape(str(summary["as_of_date"]))}</dd>
+        <dt>Latest bar date</dt><dd>{_html_escape(str(summary["latest_bar_date"]))}</dd>
+        <dt>Data freshness status</dt><dd>{_html_escape(str(summary["data_freshness_status"]))}</dd>
+        <dt>Data refresh status</dt><dd>{_html_escape(str(summary["data_refresh_status"]))}</dd>
+        <dt>Input data path</dt><dd>{_html_escape(str(summary["input_data_path"]))}</dd>
+        <dt>SMA50 / SMA200</dt><dd>{_html_escape(str(summary["sma50"]))} / {_html_escape(str(summary["sma200"]))}</dd>
+        <dt>SMA posture / risk posture</dt><dd>{_html_escape(str(summary["sma_posture"]))} / {_html_escape(str(summary["risk_posture"]))}</dd>
+        <dt>Market signal preview</dt><dd>{_html_escape(str(summary["market_signal_preview"]))}</dd>
+        <dt>Broker-state mode</dt><dd>{_html_escape(str(summary["broker_state_mode"]))}</dd>
+        <dt>Broker snapshot validation/freshness</dt><dd>{_html_escape(str(summary["snapshot_validation_status"]))} / {_html_escape(str(summary["broker_snapshot_freshness_status"]))}</dd>
+        <dt>Broker-state status</dt><dd>{_html_escape(str(summary["broker_state_status"]))}</dd>
+        <dt>SPY position observed</dt><dd>{str(summary["spy_position_observed"]).lower()}</dd>
+        <dt>SPY position present</dt><dd>{str(summary["spy_position_present"]).lower()}</dd>
+        <dt>SPY position qty</dt><dd>{_html_escape(str(summary["spy_position_qty"]))}</dd>
+        <dt>Open SPY order count</dt><dd>{_html_escape(str(summary["open_spy_order_count"]))}</dd>
+        <dt>Unexpected non-SPY position count</dt><dd>{_html_escape(str(summary["unexpected_non_spy_position_count"]))}</dd>
+        <dt>Broker-aware preview decision</dt><dd>{_html_escape(str(summary["broker_aware_preview_decision"]))}</dd>
+        <dt>Main blocker</dt><dd>{_html_escape(str(summary["main_blocker"]))}</dd>
+        <dt>Paper submit authorized</dt><dd>{str(summary["paper_submit_authorized"]).lower()}</dd>
+        <dt>Live authorized</dt><dd>{str(summary["live_authorized"]).lower()}</dd>
+        <dt>Broker mutation performed</dt><dd>{str(summary["broker_mutation_performed"]).lower()}</dd>
+        <dt>Exact next operator action</dt><dd>{_html_escape(str(summary["exact_next_operator_action"]))}</dd>
+      </dl>
+    </section>"""
+
+
 def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    daily_decision_summary = mission_control["daily_decision_summary"]
     market = mission_control["market_data_lane"]
     broker = mission_control["broker_state_lane"]
     decision = mission_control["decision_lane"]
@@ -6716,6 +6972,7 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             "",
             f"Operator review version: `{_OPERATOR_REVIEW_VERSION}`",
             "",
+            *_daily_decision_summary_markdown_lines(daily_decision_summary),
             "## Open First",
             f"- Open first: `{latest_run['open_first_path']}`",
             f"- Latest-run summary: `{mission_control['artifacts']['latest_run_json']}`",
@@ -6814,6 +7071,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    daily_decision_summary = mission_control["daily_decision_summary"]
     freshness = mission_control["data_freshness_plan"]
     bridge = mission_control["data_refresh_bridge"]
     dry_run = mission_control["data_refresh_dry_run"]
@@ -6839,6 +7097,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- Live authorized: `{str(latest_run['live_authorized']).lower()}`",
         f"- Broker mutation performed: `{str(latest_run['broker_mutation_performed']).lower()}`",
         "",
+        *_daily_decision_summary_markdown_lines(daily_decision_summary),
         "## Executive Summary",
         f"- System status: `{executive['current_system_state']}`",
         f"- Readiness score: `{executive['readiness_score']}`",
@@ -7039,6 +7298,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    daily_decision_summary = mission_control["daily_decision_summary"]
     freshness = mission_control["data_freshness_plan"]
     bridge = mission_control["data_refresh_bridge"]
     dry_run = mission_control["data_refresh_dry_run"]
@@ -7051,6 +7311,9 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     labels = " ".join(
         f"<span>{_html_escape(str(label))}</span>"
         for label in decision["safety_labels"]
+    )
+    daily_decision_html = _render_daily_decision_summary_html_section(
+        daily_decision_summary
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -7078,6 +7341,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     <div>{_html_escape(str(mission_control["phase_name"]))}</div>
   </header>
   <main>
+{daily_decision_html}
     <section class="summary">
       <h2>Open First</h2>
       <dl>

@@ -5935,6 +5935,75 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "paper_lab_only" in latest_run["safety_labels"]
 
     daily_latest = mission["daily_latest"]
+    daily_decision_summary = mission["daily_decision_summary"]
+    assert latest_run["daily_decision_summary"] == daily_decision_summary
+    assert daily_latest["daily_decision_summary"] == daily_decision_summary
+    assert {
+        "run_id",
+        "generated_at",
+        "as_of_date",
+        "latest_bar_date",
+        "data_freshness_status",
+        "data_refresh_status",
+        "input_data_path",
+        "sma50",
+        "sma200",
+        "sma_posture",
+        "risk_posture",
+        "market_signal_preview",
+        "broker_state_mode",
+        "broker_snapshot_freshness_status",
+        "snapshot_validation_status",
+        "broker_state_status",
+        "spy_position_observed",
+        "spy_position_present",
+        "spy_position_qty",
+        "open_spy_order_count",
+        "unexpected_non_spy_position_count",
+        "broker_aware_preview_decision",
+        "main_blocker",
+        "paper_submit_authorized",
+        "live_authorized",
+        "broker_mutation_performed",
+        "exact_next_operator_action",
+        "what_changed",
+    } <= set(daily_decision_summary)
+    assert daily_decision_summary["as_of_date"] == "2025-07-20"
+    assert daily_decision_summary["latest_bar_date"] == "2025-07-19"
+    assert daily_decision_summary["data_freshness_status"] == (
+        "stale_data_preview_only"
+    )
+    assert daily_decision_summary["data_refresh_status"] == "awaiting_operator_csv"
+    assert daily_decision_summary["input_data_path"].endswith(
+        "spy_daily_bars_200_bullish.csv"
+    )
+    assert daily_decision_summary["sma_posture"] == "bullish_risk_on"
+    assert daily_decision_summary["risk_posture"] == "risk_on"
+    assert daily_decision_summary["market_signal_preview"] == "buy_preview"
+    assert daily_decision_summary["broker_state_mode"] == "broker_state_not_observed"
+    assert daily_decision_summary["broker_snapshot_freshness_status"] == (
+        "not_observed"
+    )
+    assert daily_decision_summary["snapshot_validation_status"] == "not_observed"
+    assert daily_decision_summary["broker_state_status"] == (
+        "broker_state_not_observed"
+    )
+    assert daily_decision_summary["spy_position_observed"] is False
+    assert daily_decision_summary["spy_position_present"] is None
+    assert daily_decision_summary["spy_position_qty"] is None
+    assert daily_decision_summary["open_spy_order_count"] is None
+    assert daily_decision_summary["unexpected_non_spy_position_count"] is None
+    assert daily_decision_summary["broker_aware_preview_decision"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert daily_decision_summary["main_blocker"] == "broker_state_not_observed"
+    assert daily_decision_summary["paper_submit_authorized"] is False
+    assert daily_decision_summary["live_authorized"] is False
+    assert daily_decision_summary["broker_mutation_performed"] is False
+    assert daily_decision_summary["exact_next_operator_action"] == (
+        "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
+    )
+    assert "No prior packet was found" in daily_decision_summary["what_changed"]
     assert {
         "run_id",
         "generated_at",
@@ -6367,6 +6436,12 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "no open orders" not in serialized_broker
 
     report = report_path.read_text(encoding="utf-8")
+    assert "## Daily Decision Summary" in report
+    assert report.index("## Daily Decision Summary") < report.index(
+        "## Executive Summary"
+    )
+    assert "Broker-aware preview decision: `blocked/broker_state_not_observed`" in report
+    assert "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`" in report
     assert "System status: `offline_mission_control_ready`" in report
     assert "## Open First" in report
     assert "latest_run.json" in report
@@ -6390,6 +6465,16 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "operator_review.md" in report
 
     index_html = index_path.read_text(encoding="utf-8")
+    assert "<h2>Daily Decision Summary</h2>" in index_html
+    assert index_html.index("<h2>Daily Decision Summary</h2>") < index_html.index(
+        "<h2>Open First</h2>"
+    )
+    assert "Broker-aware preview decision" in index_html
+    assert "blocked/broker_state_not_observed" in index_html
+    assert (
+        "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
+        in index_html
+    )
     assert "mission_control.json" in index_html
     assert "assistant_report.md" in index_html
     assert "latest_run.json" in index_html
@@ -6410,6 +6495,18 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
     assert "broker_read_required" in index_html
 
     operator_review = operator_review_path.read_text(encoding="utf-8")
+    assert "## Daily Decision Summary" in operator_review
+    assert operator_review.index("## Daily Decision Summary") < operator_review.index(
+        "## Open First"
+    )
+    assert (
+        "Broker-aware preview decision: `blocked/broker_state_not_observed`"
+        in operator_review
+    )
+    assert (
+        "Exact next operator action: `run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle`"
+        in operator_review
+    )
     assert "## Executive Summary" in operator_review
     assert "## Open First" in operator_review
     assert "Latest-run summary:" in operator_review
@@ -7779,6 +7876,7 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
     broker = mission["broker_state_lane"]
     decision = mission["decision_lane"]
+    daily_decision_summary = mission["daily_decision_summary"]
 
     assert payload["broker_state_observed"] is True
     assert broker["broker_state_mode"] == "alpaca_paper_read_only"
@@ -7799,6 +7897,24 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "read_only_broker_observation" in decision["safety_labels"]
     assert "broker_state_observed" in decision["safety_labels"]
     assert "broker_state_not_observed" not in decision["safety_labels"]
+    assert latest["daily_decision_summary"] == daily_decision_summary
+    assert daily_decision_summary["broker_state_mode"] == "alpaca_paper_read_only"
+    assert daily_decision_summary["broker_snapshot_freshness_status"] == "fresh"
+    assert daily_decision_summary["snapshot_validation_status"] == "passed"
+    assert daily_decision_summary["broker_state_status"] == "observed"
+    assert daily_decision_summary["spy_position_observed"] is True
+    assert daily_decision_summary["spy_position_present"] is True
+    assert daily_decision_summary["spy_position_qty"] == "0.5"
+    assert daily_decision_summary["open_spy_order_count"] == 0
+    assert daily_decision_summary["unexpected_non_spy_position_count"] == 0
+    assert daily_decision_summary["broker_aware_preview_decision"] == "hold/noop"
+    assert daily_decision_summary["main_blocker"] == "none"
+    assert daily_decision_summary["paper_submit_authorized"] is False
+    assert daily_decision_summary["live_authorized"] is False
+    assert daily_decision_summary["broker_mutation_performed"] is False
+    assert daily_decision_summary["exact_next_operator_action"] == (
+        "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+    )
     assert latest["preview_decision"] == "hold/noop"
     assert latest["main_blocker"] == "none"
     assert latest["broker_state_mode"] == "alpaca_paper_read_only"
@@ -7853,6 +7969,27 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "* **Blocker status**: none" in brief
     assert "Preview decision: `hold/noop`" in brief
     assert "* **Risks / blockers**: none." in brief
+
+    index_html = (output_root / "index.html").read_text(encoding="utf-8")
+    operator_review = (output_root / "operator_review.md").read_text(
+        encoding="utf-8"
+    )
+    assert index_html.index("<h2>Daily Decision Summary</h2>") < index_html.index(
+        "<h2>Open First</h2>"
+    )
+    assert "Broker-aware preview decision</dt><dd>hold/noop" in index_html
+    assert (
+        "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+        in index_html
+    )
+    assert operator_review.index("## Daily Decision Summary") < operator_review.index(
+        "## Open First"
+    )
+    assert "Broker-aware preview decision: `hold/noop`" in operator_review
+    assert (
+        "Exact next operator action: `no_immediate_trading_action_run_next_completed_session_daily_cycle`"
+        in operator_review
+    )
 
     validation = json.loads(
         (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
