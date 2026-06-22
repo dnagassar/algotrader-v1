@@ -2488,6 +2488,20 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "active_state_status",
         "selected_next_safe_action",
         "selected_agent",
+        "daily_autopilot_controller",
+        "autopilot_control_status",
+        "can_continue_without_daniel",
+        "next_safe_action",
+        "hard_gate_type",
+        "capital_authority_required",
+        "broker_read_required",
+        "paper_submit_required",
+        "broker_mutation_required",
+        "live_trading_required",
+        "credentials_required",
+        "paid_service_required",
+        "safety_stop_required",
+        "operator_message",
         "hard_gate_reason",
         "operator_action",
         "primary_current_work_order",
@@ -5992,6 +6006,47 @@ def _active_brief_for_unit(
     )
 
 
+def _assert_autopilot_controller_flags(
+    controller: dict[str, object],
+    *,
+    autopilot_control_status: str,
+    can_continue_without_daniel: bool,
+    next_safe_action: str,
+    selected_agent: str,
+    hard_gate_required: bool,
+    hard_gate_type: str,
+    broker_read_required: bool = False,
+    paper_submit_required: bool = False,
+    broker_mutation_required: bool = False,
+    live_trading_required: bool = False,
+    capital_authority_required: bool = False,
+    credentials_required: bool = False,
+    paid_service_required: bool = False,
+    safety_stop_required: bool = False,
+) -> None:
+    assert controller["autopilot_controller_version"] == (
+        "assistant_v1.70_noncapital_autopilot_controller"
+    )
+    assert controller["autopilot_control_status"] == autopilot_control_status
+    assert (
+        controller["can_continue_without_daniel"]
+        is can_continue_without_daniel
+    )
+    assert controller["next_safe_action"] == next_safe_action
+    assert controller["selected_agent"] == selected_agent
+    assert controller["hard_gate_required"] is hard_gate_required
+    assert controller["hard_gate_type"] == hard_gate_type
+    assert controller["broker_read_required"] is broker_read_required
+    assert controller["paper_submit_required"] is paper_submit_required
+    assert controller["broker_mutation_required"] is broker_mutation_required
+    assert controller["live_trading_required"] is live_trading_required
+    assert controller["capital_authority_required"] is capital_authority_required
+    assert controller["credentials_required"] is credentials_required
+    assert controller["paid_service_required"] is paid_service_required
+    assert controller["safety_stop_required"] is safety_stop_required
+    assert controller["submit_allowed"] is False
+
+
 def test_active_mission_control_brief_safety_invariant_failure_wins() -> None:
     active = _active_brief_for_unit(
         safety_gates={"broker_mutation_path_appears": {"passed": False}},
@@ -6005,6 +6060,20 @@ def test_active_mission_control_brief_safety_invariant_failure_wins() -> None:
     assert active["paper_submit_authorized"] is False
     assert active["live_authorized"] is False
     assert active["broker_mutation_performed"] is False
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="safety_stop",
+        can_continue_without_daniel=False,
+        next_safe_action="safety_repair",
+        selected_agent="Codex",
+        hard_gate_required=False,
+        hard_gate_type="safety_invariant_failure",
+        safety_stop_required=True,
+    )
+    assert active["safety_stop_required"] is True
+    assert active["broker_read_required"] is False
+    assert active["paper_submit_required"] is False
+    assert active["capital_authority_required"] is False
 
 
 def test_active_mission_control_brief_hold_noop_selects_no_agent() -> None:
@@ -6023,6 +6092,24 @@ def test_active_mission_control_brief_hold_noop_selects_no_agent() -> None:
     assert active["live_authorized"] is False
     assert active["broker_mutation_performed"] is False
     assert active["primary_current_work_order"] == (
+        "no_agent_required_until_next_completed_session"
+    )
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="waiting_for_next_completed_session",
+        can_continue_without_daniel=True,
+        next_safe_action="run_next_completed_session_daily_cycle",
+        selected_agent="none",
+        hard_gate_required=False,
+        hard_gate_type="none",
+    )
+    assert active["hard_gate_type"] == "none"
+    assert active["broker_read_required"] is False
+    assert active["paper_submit_required"] is False
+    assert active["broker_mutation_required"] is False
+    assert active["live_trading_required"] is False
+    assert active["capital_authority_required"] is False
+    assert active["operator_message"] == (
         "no_agent_required_until_next_completed_session"
     )
 
@@ -6049,6 +6136,18 @@ def test_active_mission_control_brief_preview_requires_paper_submit_scope(
     assert active["hard_gate_reason"] == "paper_submit_requires_explicit_scope"
     assert active["submit_allowed"] is False
     assert active["paper_submit_authorized"] is False
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="hard_gate_required",
+        can_continue_without_daniel=False,
+        next_safe_action="request_scoped_paper_submit_authorization",
+        selected_agent="Daniel",
+        hard_gate_required=True,
+        hard_gate_type="paper_submit",
+        paper_submit_required=True,
+    )
+    assert active["paper_submit_required"] is True
+    assert active["submit_allowed"] is False
 
 
 def test_active_mission_control_brief_missing_required_broker_snapshot_hard_gates() -> None:
@@ -6070,6 +6169,18 @@ def test_active_mission_control_brief_missing_required_broker_snapshot_hard_gate
     assert active["hard_gate_required"] is True
     assert active["hard_gate_reason"] == "broker_read_requires_explicit_scope"
     assert active["broker_read_performed"] is False
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="hard_gate_required",
+        can_continue_without_daniel=False,
+        next_safe_action="request_scoped_read_only_broker_observation",
+        selected_agent="Daniel",
+        hard_gate_required=True,
+        hard_gate_type="broker_read",
+        broker_read_required=True,
+    )
+    assert active["broker_read_required"] is True
+    assert active["paper_submit_required"] is False
 
 
 def test_active_mission_control_brief_stale_data_wins_before_broker_action() -> None:
@@ -6090,6 +6201,16 @@ def test_active_mission_control_brief_stale_data_wins_before_broker_action() -> 
     assert active["hard_gate_required"] is False
     assert active["hard_gate_reason"] == "none"
     assert "broker" not in str(active["selected_next_safe_action"])
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="data_refresh_required",
+        can_continue_without_daniel=True,
+        next_safe_action="refresh_or_intake_adjusted_spy_data",
+        selected_agent="operator",
+        hard_gate_required=False,
+        hard_gate_type="none",
+    )
+    assert active["broker_read_required"] is False
 
 
 def test_active_mission_control_brief_current_blocker_not_overridden_by_research() -> None:
@@ -6108,6 +6229,80 @@ def test_active_mission_control_brief_current_blocker_not_overridden_by_research
     assert active["selected_next_safe_action"] == "repair_current_blocker"
     assert active["candidate_research_backlog_status"] == (
         "secondary_appendix_not_active_blocker"
+    )
+    assert active["daily_autopilot_controller"]["autopilot_control_status"] == (
+        "repair_required"
+    )
+
+
+def test_active_mission_control_brief_offline_blocker_routes_to_codex_repair() -> None:
+    active = _active_brief_for_unit(
+        execution_plan_status="blocked",
+        execution_plan_action="none",
+        broker_aware_preview_decision="blocked/local_artifact_missing",
+        blocker_status="local_artifact_missing",
+        exact_next_operator_action="repair_local_artifact_missing",
+    )
+
+    assert active["selected_next_safe_action"] == "repair_current_blocker"
+    assert active["selected_agent"] == "Codex"
+    assert active["hard_gate_required"] is False
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="repair_required",
+        can_continue_without_daniel=True,
+        next_safe_action="repair_current_blocker",
+        selected_agent="Codex",
+        hard_gate_required=False,
+        hard_gate_type="none",
+    )
+
+
+def test_active_mission_control_brief_broker_blocker_routes_to_daniel_gate() -> None:
+    active = _active_brief_for_unit(
+        execution_plan_status="blocked",
+        execution_plan_action="none",
+        broker_aware_preview_decision="blocked/broker_unavailable",
+        blocker_status="broker_unavailable",
+        exact_next_operator_action="request_scoped_read_only_broker_observation",
+    )
+
+    assert active["selected_next_safe_action"] == "repair_current_blocker"
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="hard_gate_required",
+        can_continue_without_daniel=False,
+        next_safe_action="repair_current_blocker",
+        selected_agent="Daniel",
+        hard_gate_required=True,
+        hard_gate_type="broker_read",
+        broker_read_required=True,
+    )
+
+
+def test_active_mission_control_brief_capital_blocker_routes_to_daniel_gate() -> None:
+    active = _active_brief_for_unit(
+        execution_plan_status="blocked",
+        execution_plan_action="none",
+        broker_aware_preview_decision="blocked/capital_authority_required",
+        blocker_status="capital_authority_required",
+        exact_next_operator_action="request_daniel_capital_authority_review",
+    )
+
+    assert active["selected_next_safe_action"] == "repair_current_blocker"
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="hard_gate_required",
+        can_continue_without_daniel=False,
+        next_safe_action="repair_current_blocker",
+        selected_agent="Daniel",
+        hard_gate_required=True,
+        hard_gate_type="capital_authority",
+        capital_authority_required=True,
     )
 
 
@@ -8791,6 +8986,18 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert active["primary_current_work_order"] == (
         "no_agent_required_until_next_completed_session"
     )
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="waiting_for_next_completed_session",
+        can_continue_without_daniel=True,
+        next_safe_action="run_next_completed_session_daily_cycle",
+        selected_agent="none",
+        hard_gate_required=False,
+        hard_gate_type="none",
+    )
+    assert active["operator_message"] == (
+        "no_agent_required_until_next_completed_session"
+    )
     for active_surface in (
         latest,
         daily_latest,
@@ -8798,13 +9005,30 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         payload["next_action_selector"],
         payload["work_order_exports"],
     ):
+        assert active_surface["daily_autopilot_controller"] == active[
+            "daily_autopilot_controller"
+        ]
+        assert active_surface["autopilot_control_status"] == (
+            "waiting_for_next_completed_session"
+        )
+        assert active_surface["can_continue_without_daniel"] is True
+        assert active_surface["next_safe_action"] == (
+            "run_next_completed_session_daily_cycle"
+        )
         assert active_surface["active_state_status"] == "ready_no_action"
         assert active_surface["selected_next_safe_action"] == (
             "run_next_completed_session_daily_cycle"
         )
         assert active_surface["selected_agent"] == "none"
         assert active_surface["hard_gate_required"] is False
+        assert active_surface["hard_gate_type"] == "none"
         assert active_surface["hard_gate_reason"] == "none"
+        assert active_surface["broker_read_required"] is False
+        assert active_surface["paper_submit_required"] is False
+        assert active_surface["broker_mutation_required"] is False
+        assert active_surface["live_trading_required"] is False
+        assert active_surface["capital_authority_required"] is False
+        assert active_surface["safety_stop_required"] is False
         assert active_surface["primary_current_work_order"] == (
             "no_agent_required_until_next_completed_session"
         )
@@ -8820,6 +9044,9 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     operator_review = (output_root / "operator_review.md").read_text(
         encoding="utf-8"
     )
+    assistant_report = (output_root / "assistant_report.md").read_text(
+        encoding="utf-8"
+    )
     assert index_html.index("<h2>Daily Decision Summary</h2>") < index_html.index(
         "<h2>Open First</h2>"
     )
@@ -8833,6 +9060,16 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     assert "Primary current work order</dt><dd>no_agent_required_until_next_completed_session" in (
         index_html
     )
+    assert "Autopilot control status</dt><dd>waiting_for_next_completed_session" in (
+        index_html
+    )
+    assert "Can continue without Daniel</dt><dd>true" in index_html
+    assert "Autopilot selected agent</dt><dd>none" in index_html
+    assert "Hard gate required: false." in index_html
+    assert "No broker read required." in index_html
+    assert "No paper submit required." in index_html
+    assert "No capital authority required." in index_html
+    assert "No agent required until the next completed session." in index_html
     assert "Broker-aware preview decision</dt><dd>hold/noop" in index_html
     assert "ExecutionPlan status</dt><dd>no_action_required" in index_html
     assert "ExecutionPlan action</dt><dd>hold/noop" in index_html
@@ -8857,6 +9094,17 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         in operator_review
     )
     assert "Selected agent: `none`" in operator_review
+    assert "## Daily Autopilot Controller" in operator_review
+    assert (
+        "Autopilot control status: `waiting_for_next_completed_session`"
+        in operator_review
+    )
+    assert "Can continue without Daniel: `true`" in operator_review
+    assert "Hard gate required: false." in operator_review
+    assert "No broker read required." in operator_review
+    assert "No paper submit required." in operator_review
+    assert "No capital authority required." in operator_review
+    assert "No agent required until the next completed session." in operator_review
     assert (
         "Primary current work order: `no_agent_required_until_next_completed_session`"
         in operator_review
@@ -8882,6 +9130,17 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         "Exact next operator action: `no_immediate_trading_action_run_next_completed_session_daily_cycle`"
         in operator_review
     )
+    assert "## Daily Autopilot Controller" in assistant_report
+    assert (
+        "Autopilot control status: `waiting_for_next_completed_session`"
+        in assistant_report
+    )
+    assert "Can continue without Daniel: `true`" in assistant_report
+    assert "Hard gate required: false." in assistant_report
+    assert "No broker read required." in assistant_report
+    assert "No paper submit required." in assistant_report
+    assert "No capital authority required." in assistant_report
+    assert "No agent required until the next completed session." in assistant_report
 
     validation = json.loads(
         (output_root / "mission_control_validation.json").read_text(encoding="utf-8")

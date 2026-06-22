@@ -28,6 +28,7 @@ __all__ = [
     "EtfSmaDailyPaperLabConfig",
     "EtfSmaDailyExecutionPlan",
     "EtfSmaDailyApprovalGate",
+    "EtfSmaDailyAutopilotController",
     "run_etf_sma_daily_paper_lab",
     "build_etf_sma_daily_paper_lab",
     "etf_sma_daily_paper_lab_exit_status",
@@ -200,6 +201,9 @@ _OPERATOR_REVIEW_VERSION = "assistant_v1.36_operator_review"
 _LATEST_RUN_VERSION = "assistant_v1.37_latest_run"
 _ACTIVE_MISSION_CONTROL_BRIEF_VERSION = (
     "assistant_v1.69_active_mission_control_brief"
+)
+_DAILY_AUTOPILOT_CONTROLLER_VERSION = (
+    "assistant_v1.70_noncapital_autopilot_controller"
 )
 _DATA_REFRESH_BRIDGE_VERSION = "assistant_v1.38_data_refresh_bridge"
 _DATA_REFRESH_OPERATOR_CHECKLIST_VERSION = (
@@ -2136,6 +2140,54 @@ class EtfSmaDailyApprovalGate:
             "broker_mutation_performed": self.broker_mutation_performed,
             "reason": self.reason,
             "blocker": self.blocker,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class EtfSmaDailyAutopilotController:
+    """Immutable non-capital controller projection for the daily lab."""
+
+    autopilot_controller_version: str
+    autopilot_control_status: str
+    can_continue_without_daniel: bool
+    next_safe_action: str
+    selected_agent: str
+    hard_gate_required: bool
+    hard_gate_type: str
+    hard_gate_reason: str
+    capital_authority_required: bool
+    broker_read_required: bool
+    paper_submit_required: bool
+    broker_mutation_required: bool
+    live_trading_required: bool
+    credentials_required: bool
+    paid_service_required: bool
+    safety_stop_required: bool
+    operator_message: str
+    submit_allowed: bool
+    primary_current_work_order: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "autopilot_controller_version": self.autopilot_controller_version,
+            "autopilot_control_status": self.autopilot_control_status,
+            "can_continue_without_daniel": self.can_continue_without_daniel,
+            "next_safe_action": self.next_safe_action,
+            "selected_agent": self.selected_agent,
+            "hard_gate_required": self.hard_gate_required,
+            "hard_gate_type": self.hard_gate_type,
+            "hard_gate_reason": self.hard_gate_reason,
+            "capital_authority_required": self.capital_authority_required,
+            "broker_read_required": self.broker_read_required,
+            "paper_submit_required": self.paper_submit_required,
+            "broker_mutation_required": self.broker_mutation_required,
+            "live_trading_required": self.live_trading_required,
+            "credentials_required": self.credentials_required,
+            "paid_service_required": self.paid_service_required,
+            "safety_stop_required": self.safety_stop_required,
+            "operator_message": self.operator_message,
+            "submit_allowed": self.submit_allowed,
+            "primary_current_work_order": self.primary_current_work_order,
         }
 
 
@@ -4158,7 +4210,7 @@ def _active_mission_control_brief(
             decision.get("operator_action", "review_mission_control_no_broker_action"),
         )
     )
-    return {
+    active_brief = {
         "active_mission_control_brief_version": (
             _ACTIVE_MISSION_CONTROL_BRIEF_VERSION
         ),
@@ -4205,6 +4257,15 @@ def _active_mission_control_brief(
         "secondary_work_orders_status": "secondary_review_artifacts_only",
         "candidate_research_backlog_status": "secondary_appendix_not_active_blocker",
     }
+    controller = _daily_autopilot_controller(
+        active_brief=active_brief,
+        decision_lane=decision_lane,
+        execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
+    ).to_dict()
+    active_brief["daily_autopilot_controller"] = controller
+    active_brief.update(_daily_autopilot_controller_compact_fields(controller))
+    return active_brief
 
 
 def _active_next_action_decision(
@@ -4350,6 +4411,186 @@ def _active_next_action_result(
     }
 
 
+def _daily_autopilot_controller(
+    *,
+    active_brief: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
+    daily_approval_gate: Mapping[str, Any],
+) -> EtfSmaDailyAutopilotController:
+    active_state_status = str(active_brief.get("active_state_status", ""))
+    selected_agent = str(active_brief.get("selected_agent", "GPT"))
+    next_safe_action = str(
+        active_brief.get("selected_next_safe_action", "gpt_review_required")
+    )
+    hard_gate_reason = str(active_brief.get("hard_gate_reason", "none") or "none")
+    blocker = _active_current_blocker(decision_lane, execution_plan)
+    hard_gate_type = _autopilot_hard_gate_type(
+        active_state_status=active_state_status,
+        hard_gate_reason=hard_gate_reason,
+        blocker=blocker,
+    )
+
+    if active_state_status == "safety_repair_required":
+        autopilot_control_status = "safety_stop"
+    elif active_state_status == "data_refresh_required":
+        autopilot_control_status = "data_refresh_required"
+    elif active_state_status == "ready_no_action":
+        autopilot_control_status = "waiting_for_next_completed_session"
+    elif hard_gate_type != "none" and hard_gate_type != "safety_invariant_failure":
+        autopilot_control_status = "hard_gate_required"
+    elif active_state_status == "blocked":
+        autopilot_control_status = "repair_required"
+    elif active_state_status == "gpt_review_required":
+        autopilot_control_status = "gpt_review_required"
+    else:
+        autopilot_control_status = "gpt_review_required"
+
+    safety_stop_required = autopilot_control_status == "safety_stop"
+    hard_gate_required = autopilot_control_status == "hard_gate_required"
+    can_continue_without_daniel = (
+        not safety_stop_required
+        and not hard_gate_required
+        and selected_agent != "Daniel"
+    )
+    if autopilot_control_status == "waiting_for_next_completed_session":
+        can_continue_without_daniel = True
+    if autopilot_control_status == "gpt_review_required":
+        can_continue_without_daniel = True
+
+    return EtfSmaDailyAutopilotController(
+        autopilot_controller_version=_DAILY_AUTOPILOT_CONTROLLER_VERSION,
+        autopilot_control_status=autopilot_control_status,
+        can_continue_without_daniel=can_continue_without_daniel,
+        next_safe_action=next_safe_action,
+        selected_agent=selected_agent,
+        hard_gate_required=hard_gate_required,
+        hard_gate_type=hard_gate_type,
+        hard_gate_reason=(
+            hard_gate_reason
+            if hard_gate_reason != "none" or safety_stop_required
+            else "none"
+        ),
+        capital_authority_required=hard_gate_type == "capital_authority",
+        broker_read_required=hard_gate_type == "broker_read",
+        paper_submit_required=hard_gate_type == "paper_submit",
+        broker_mutation_required=hard_gate_type == "broker_mutation",
+        live_trading_required=hard_gate_type == "live_trading",
+        credentials_required=hard_gate_type == "credentials",
+        paid_service_required=hard_gate_type == "paid_service",
+        safety_stop_required=safety_stop_required,
+        operator_message=_autopilot_operator_message(
+            autopilot_control_status=autopilot_control_status,
+            hard_gate_type=hard_gate_type,
+        ),
+        submit_allowed=bool(daily_approval_gate.get("submit_allowed") is True),
+        primary_current_work_order=str(
+            active_brief.get("primary_current_work_order", next_safe_action)
+        ),
+    )
+
+
+def _autopilot_hard_gate_type(
+    *,
+    active_state_status: str,
+    hard_gate_reason: str,
+    blocker: str,
+) -> str:
+    if active_state_status == "safety_repair_required":
+        return "safety_invariant_failure"
+    if active_state_status == "data_refresh_required":
+        return "none"
+    token = _classification_token(f"{hard_gate_reason} {blocker}")
+    token_key = token.replace("-", "_")
+    if "paper_submit" in token_key or "submit_authorization" in token_key:
+        return "paper_submit"
+    if "broker_mutation" in token_key or "mutation" in token_key:
+        return "broker_mutation"
+    if any(
+        term in token_key
+        for term in (
+            "broker_read",
+            "broker_state_not_observed",
+            "broker_unavailable",
+            "stale_snapshot",
+            "snapshot_context_mismatch",
+            "broker_snapshot",
+        )
+    ):
+        return "broker_read"
+    if "credential" in token_key or "secret" in token_key:
+        return "credentials"
+    if "live" in token_key:
+        return "live_trading"
+    if "paid" in token_key:
+        return "paid_service"
+    if "capital" in token_key:
+        return "capital_authority"
+    return "none"
+
+
+def _autopilot_operator_message(
+    *,
+    autopilot_control_status: str,
+    hard_gate_type: str,
+) -> str:
+    if autopilot_control_status == "waiting_for_next_completed_session":
+        return "no_agent_required_until_next_completed_session"
+    if autopilot_control_status == "data_refresh_required":
+        return "offline_data_refresh_or_intake_can_continue"
+    if autopilot_control_status == "safety_stop":
+        return "safety_repair_required_before_autopilot_continues"
+    if autopilot_control_status == "repair_required":
+        return "offline_repair_current_blocker"
+    if hard_gate_type == "broker_read":
+        return "broker_read_requires_daniel_scope"
+    if hard_gate_type == "paper_submit":
+        return "paper_submit_requires_daniel_scope"
+    if hard_gate_type == "capital_authority":
+        return "capital_authority_requires_daniel_scope"
+    if hard_gate_type == "broker_mutation":
+        return "broker_mutation_requires_daniel_scope"
+    if hard_gate_type == "live_trading":
+        return "live_trading_requires_daniel_scope"
+    if hard_gate_type == "credentials":
+        return "credentials_require_daniel_scope"
+    if hard_gate_type == "paid_service":
+        return "paid_service_requires_daniel_scope"
+    return "gpt_review_required"
+
+
+_DAILY_AUTOPILOT_CONTROLLER_COMPACT_FIELDS = (
+    "autopilot_control_status",
+    "can_continue_without_daniel",
+    "next_safe_action",
+    "selected_agent",
+    "hard_gate_required",
+    "hard_gate_type",
+    "hard_gate_reason",
+    "capital_authority_required",
+    "broker_read_required",
+    "paper_submit_required",
+    "broker_mutation_required",
+    "live_trading_required",
+    "credentials_required",
+    "paid_service_required",
+    "safety_stop_required",
+    "operator_message",
+    "submit_allowed",
+    "primary_current_work_order",
+)
+
+
+def _daily_autopilot_controller_compact_fields(
+    controller: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: controller[field]
+        for field in _DAILY_AUTOPILOT_CONTROLLER_COMPACT_FIELDS
+        if field in controller
+    }
+
+
 def _active_safety_invariant_failed(
     *,
     payload: Mapping[str, Any],
@@ -4419,11 +4660,13 @@ def _active_current_blocker(
 
 def _active_blocker_hard_gate_reason(blocker: str) -> str:
     token = _classification_token(blocker)
-    if "paper_submit" in token or "submit_authorization" in token:
+    token_key = token.replace("-", "_")
+    if "paper_submit" in token_key or "submit_authorization" in token_key:
         return "paper_submit_requires_explicit_scope"
     if any(
-        term in token
+        term in token_key
         for term in (
+            "broker_read",
             "broker_state_not_observed",
             "broker_unavailable",
             "stale_snapshot",
@@ -4432,13 +4675,13 @@ def _active_blocker_hard_gate_reason(blocker: str) -> str:
         )
     ):
         return "broker_read_requires_explicit_scope"
-    if "credential" in token or "secret" in token:
+    if "credential" in token_key or "secret" in token_key:
         return "credentials_require_explicit_scope"
-    if "live" in token:
+    if "live" in token_key:
         return "live_trading_requires_explicit_scope"
-    if "paid" in token:
+    if "paid" in token_key:
         return "paid_tool_requires_explicit_scope"
-    if "capital" in token:
+    if "capital" in token_key:
         return "capital_authority_requires_explicit_scope"
     return "none"
 
@@ -4472,6 +4715,8 @@ _ACTIVE_BRIEF_COMPACT_FIELDS = (
     "secondary_work_orders_status",
     "candidate_research_backlog_status",
     "submit_allowed",
+    "daily_autopilot_controller",
+    *_DAILY_AUTOPILOT_CONTROLLER_COMPACT_FIELDS,
 )
 
 
@@ -8128,6 +8373,61 @@ def _daily_decision_summary_markdown_lines(
     ]
 
 
+def _requirement_sentence(label: str, required: object) -> str:
+    prefix = "" if required is True else "No "
+    return f"{prefix}{label} required."
+
+
+def _controller_operator_sentence(controller: Mapping[str, Any]) -> str:
+    if (
+        controller.get("operator_message")
+        == "no_agent_required_until_next_completed_session"
+    ):
+        return "No agent required until the next completed session."
+    return str(controller.get("operator_message", "gpt_review_required"))
+
+
+def _daily_autopilot_controller_markdown_lines(
+    active: Mapping[str, Any],
+) -> list[str]:
+    controller = active.get("daily_autopilot_controller")
+    if not isinstance(controller, Mapping):
+        return []
+    return [
+        "## Daily Autopilot Controller",
+        f"- Autopilot control status: `{controller['autopilot_control_status']}`",
+        (
+            "- Can continue without Daniel: "
+            f"`{str(controller['can_continue_without_daniel']).lower()}`"
+        ),
+        f"- Next safe action: `{controller['next_safe_action']}`",
+        f"- Selected agent: `{controller['selected_agent']}`",
+        f"- Hard gate required: {str(controller['hard_gate_required']).lower()}.",
+        f"- Hard gate type: `{controller['hard_gate_type']}`",
+        f"- Hard gate reason: `{controller['hard_gate_reason']}`",
+        f"- {_requirement_sentence('capital authority', controller['capital_authority_required'])}",
+        f"- {_requirement_sentence('broker read', controller['broker_read_required'])}",
+        f"- {_requirement_sentence('paper submit', controller['paper_submit_required'])}",
+        (
+            "- "
+            f"{_requirement_sentence('broker mutation', controller['broker_mutation_required'])}"
+        ),
+        f"- {_requirement_sentence('live trading', controller['live_trading_required'])}",
+        f"- {_requirement_sentence('credentials', controller['credentials_required'])}",
+        f"- {_requirement_sentence('paid service', controller['paid_service_required'])}",
+        (
+            "- Safety stop required: "
+            f"`{str(controller['safety_stop_required']).lower()}`"
+        ),
+        f"- Operator message: {_controller_operator_sentence(controller)}",
+        (
+            "- Primary current work order: "
+            f"`{controller['primary_current_work_order']}`"
+        ),
+        "",
+    ]
+
+
 def _render_daily_decision_summary_html_section(
     summary: Mapping[str, Any],
 ) -> str:
@@ -8184,6 +8484,7 @@ def _active_operating_brief_markdown_lines(
     return [
         "## Active Operating Brief",
         f"- Active state status: `{active['active_state_status']}`",
+        *_daily_autopilot_controller_markdown_lines(active),
         f"- As-of date: `{active['as_of_date']}`",
         f"- Latest bar date: `{active['latest_bar_date']}`",
         f"- Data freshness status: `{active['data_freshness_status']}`",
@@ -8242,10 +8543,36 @@ def _active_operating_brief_markdown_lines(
 def _render_active_operating_brief_html_section(
     active: Mapping[str, Any],
 ) -> str:
+    controller = active.get("daily_autopilot_controller")
+    controller_rows = ""
+    if isinstance(controller, Mapping):
+        controller_rows = f"""
+        <dt>Autopilot control status</dt><dd>{_html_escape(str(controller["autopilot_control_status"]))}</dd>
+        <dt>Can continue without Daniel</dt><dd>{str(controller["can_continue_without_daniel"]).lower()}</dd>
+        <dt>Autopilot next safe action</dt><dd>{_html_escape(str(controller["next_safe_action"]))}</dd>
+        <dt>Autopilot selected agent</dt><dd>{_html_escape(str(controller["selected_agent"]))}</dd>
+        <dt>Autopilot hard gate required</dt><dd>{str(controller["hard_gate_required"]).lower()}</dd>
+        <dt>Autopilot gate summary</dt><dd>Hard gate required: {str(controller["hard_gate_required"]).lower()}.</dd>
+        <dt>Autopilot hard gate type</dt><dd>{_html_escape(str(controller["hard_gate_type"]))}</dd>
+        <dt>Autopilot hard gate reason</dt><dd>{_html_escape(str(controller["hard_gate_reason"]))}</dd>
+        <dt>Capital authority requirement</dt><dd>{_html_escape(_requirement_sentence("capital authority", controller["capital_authority_required"]))}</dd>
+        <dt>Broker read requirement</dt><dd>{_html_escape(_requirement_sentence("broker read", controller["broker_read_required"]))}</dd>
+        <dt>Paper submit requirement</dt><dd>{_html_escape(_requirement_sentence("paper submit", controller["paper_submit_required"]))}</dd>
+        <dt>Capital authority required</dt><dd>{str(controller["capital_authority_required"]).lower()}</dd>
+        <dt>Broker read required</dt><dd>{str(controller["broker_read_required"]).lower()}</dd>
+        <dt>Paper submit required</dt><dd>{str(controller["paper_submit_required"]).lower()}</dd>
+        <dt>Broker mutation required</dt><dd>{str(controller["broker_mutation_required"]).lower()}</dd>
+        <dt>Live trading required</dt><dd>{str(controller["live_trading_required"]).lower()}</dd>
+        <dt>Credentials required</dt><dd>{str(controller["credentials_required"]).lower()}</dd>
+        <dt>Paid service required</dt><dd>{str(controller["paid_service_required"]).lower()}</dd>
+        <dt>Safety stop required</dt><dd>{str(controller["safety_stop_required"]).lower()}</dd>
+        <dt>Autopilot operator message</dt><dd>{_html_escape(_controller_operator_sentence(controller))}</dd>
+        <dt>Autopilot primary work order</dt><dd>{_html_escape(str(controller["primary_current_work_order"]))}</dd>"""
     return f"""    <section class="summary">
       <h2>Active Operating Brief</h2>
       <dl>
         <dt>Active state status</dt><dd>{_html_escape(str(active["active_state_status"]))}</dd>
+{controller_rows}
         <dt>As-of date</dt><dd>{_html_escape(str(active["as_of_date"]))}</dd>
         <dt>Latest bar date</dt><dd>{_html_escape(str(active["latest_bar_date"]))}</dd>
         <dt>Data freshness status</dt><dd>{_html_escape(str(active["data_freshness_status"]))}</dd>
