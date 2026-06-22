@@ -8,7 +8,7 @@ assistant packet for the controlled SPY SMA 50/200 paper-lab strategy.
 from __future__ import annotations
 
 import csv
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -198,6 +198,9 @@ _MISSION_CONTROL_VALIDATION_VERSION = (
 _DATA_FRESHNESS_PLAN_VERSION = "assistant_v1.36_data_freshness_plan"
 _OPERATOR_REVIEW_VERSION = "assistant_v1.36_operator_review"
 _LATEST_RUN_VERSION = "assistant_v1.37_latest_run"
+_ACTIVE_MISSION_CONTROL_BRIEF_VERSION = (
+    "assistant_v1.69_active_mission_control_brief"
+)
 _DATA_REFRESH_BRIDGE_VERSION = "assistant_v1.38_data_refresh_bridge"
 _DATA_REFRESH_OPERATOR_CHECKLIST_VERSION = (
     "assistant_v1.38_data_refresh_operator_checklist"
@@ -4119,6 +4122,404 @@ def _apply_daily_loop_decision(payload: dict[str, Any]) -> None:
         )
 
 
+def _active_mission_control_brief(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
+    daily_approval_gate: Mapping[str, Any],
+    data_freshness_plan: Mapping[str, Any] | None = None,
+    data_refresh_dry_run: Mapping[str, Any] | None = None,
+    safety_gates: Mapping[str, Any] | None = None,
+    validation_summary: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    decision = _active_next_action_decision(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+        execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
+        data_freshness_plan=data_freshness_plan,
+        data_refresh_dry_run=data_refresh_dry_run,
+        safety_gates=safety_gates,
+        validation_summary=validation_summary,
+    )
+    data_freshness_status = _active_data_freshness_status(
+        market_data_lane,
+        data_freshness_plan=data_freshness_plan,
+    )
+    submit_allowed = bool(daily_approval_gate.get("submit_allowed") is True)
+    exact_next_operator_action = str(
+        decision_lane.get(
+            "exact_next_operator_action",
+            decision.get("operator_action", "review_mission_control_no_broker_action"),
+        )
+    )
+    return {
+        "active_mission_control_brief_version": (
+            _ACTIVE_MISSION_CONTROL_BRIEF_VERSION
+        ),
+        "active_state_status": decision["active_state_status"],
+        "as_of_date": market_data_lane.get("as_of_date"),
+        "latest_bar_date": market_data_lane.get("latest_input_bar_date"),
+        "data_freshness_status": data_freshness_status,
+        "sma_posture": market_data_lane.get("repo_posture"),
+        "market_signal_preview": decision_lane.get("market_signal_preview"),
+        "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_state_observed": broker_state_lane.get("broker_state_observed"),
+        "broker_state_status": broker_state_lane.get("broker_state_status"),
+        "broker_snapshot_freshness_status": broker_state_lane.get(
+            "broker_snapshot_freshness_status"
+        ),
+        "broker_aware_preview_decision": decision_lane.get("preview_decision"),
+        "execution_plan_status": execution_plan.get("execution_plan_status"),
+        "execution_plan_action": execution_plan.get("execution_plan_action"),
+        "execution_plan_reason": execution_plan.get("execution_plan_reason"),
+        "execution_plan_blocker": execution_plan.get("execution_plan_blocker"),
+        "daily_approval_gate": dict(daily_approval_gate),
+        "daily_approval_gate_approval_state": daily_approval_gate.get(
+            "approval_state"
+        ),
+        "daily_approval_gate_submit_allowed": submit_allowed,
+        "approval_state": daily_approval_gate.get("approval_state"),
+        "submit_allowed": submit_allowed,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_read_performed": broker_state_lane.get("broker_read_performed"),
+        "broker_mutation_performed": broker_state_lane.get(
+            "broker_mutation_performed"
+        ),
+        "selected_next_safe_action": decision["selected_next_safe_action"],
+        "selected_agent": decision["selected_agent"],
+        "hard_gate_required": decision["hard_gate_required"],
+        "hard_gate_reason": decision["hard_gate_reason"],
+        "operator_action": exact_next_operator_action,
+        "exact_next_operator_action": exact_next_operator_action,
+        "primary_current_work_order": decision["primary_current_work_order"],
+        "primary_current_work_order_agent": decision[
+            "primary_current_work_order_agent"
+        ],
+        "secondary_work_orders_status": "secondary_review_artifacts_only",
+        "candidate_research_backlog_status": "secondary_appendix_not_active_blocker",
+    }
+
+
+def _active_next_action_decision(
+    *,
+    payload: Mapping[str, Any],
+    market_data_lane: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+    decision_lane: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
+    daily_approval_gate: Mapping[str, Any],
+    data_freshness_plan: Mapping[str, Any] | None = None,
+    data_refresh_dry_run: Mapping[str, Any] | None = None,
+    safety_gates: Mapping[str, Any] | None = None,
+    validation_summary: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    if _active_safety_invariant_failed(
+        payload=payload,
+        safety_gates=safety_gates,
+        validation_summary=validation_summary,
+    ):
+        return _active_next_action_result(
+            active_state_status="safety_repair_required",
+            selected_next_safe_action="safety_repair",
+            selected_agent="Codex",
+            hard_gate_required=False,
+            hard_gate_reason="none",
+        )
+
+    data_freshness_status = _active_data_freshness_status(
+        market_data_lane,
+        data_freshness_plan=data_freshness_plan,
+    )
+    if data_freshness_status != "current_for_daily_bar_lab":
+        selected_agent = (
+            "Codex"
+            if isinstance(data_refresh_dry_run, Mapping)
+            and data_refresh_dry_run.get("input_csv_present") is True
+            else "operator"
+        )
+        return _active_next_action_result(
+            active_state_status="data_refresh_required",
+            selected_next_safe_action="refresh_or_intake_adjusted_spy_data",
+            selected_agent=selected_agent,
+            hard_gate_required=False,
+            hard_gate_reason="none",
+        )
+
+    broker_state_mode = str(broker_state_lane.get("broker_state_mode", ""))
+    broker_state_observed = broker_state_lane.get("broker_state_observed") is True
+    if broker_state_mode == "alpaca_paper_read_only" and not broker_state_observed:
+        return _active_next_action_result(
+            active_state_status="broker_observation_required",
+            selected_next_safe_action=(
+                "request_scoped_read_only_broker_observation"
+            ),
+            selected_agent="Daniel",
+            hard_gate_required=True,
+            hard_gate_reason="broker_read_requires_explicit_scope",
+        )
+
+    execution_plan_status = str(execution_plan.get("execution_plan_status", ""))
+    execution_plan_action = str(execution_plan.get("execution_plan_action", ""))
+    approval_state = str(daily_approval_gate.get("approval_state", ""))
+    if (
+        execution_plan_status == "no_action_required"
+        and execution_plan_action == "hold/noop"
+        and approval_state == "not_required_noop"
+    ):
+        return _active_next_action_result(
+            active_state_status="ready_no_action",
+            selected_next_safe_action="run_next_completed_session_daily_cycle",
+            selected_agent="none",
+            hard_gate_required=False,
+            hard_gate_reason="none",
+        )
+
+    if (
+        execution_plan_action in {"buy_preview", "sell_preview"}
+        or approval_state == "awaiting_explicit_paper_submit_authorization"
+    ):
+        return _active_next_action_result(
+            active_state_status="paper_submit_authorization_required",
+            selected_next_safe_action="request_scoped_paper_submit_authorization",
+            selected_agent="Daniel",
+            hard_gate_required=True,
+            hard_gate_reason="paper_submit_requires_explicit_scope",
+        )
+
+    blocker = _active_current_blocker(decision_lane, execution_plan)
+    if blocker != "none":
+        hard_gate_reason = _active_blocker_hard_gate_reason(blocker)
+        hard_gate_required = hard_gate_reason != "none"
+        return _active_next_action_result(
+            active_state_status="blocked",
+            selected_next_safe_action="repair_current_blocker",
+            selected_agent=(
+                "Daniel"
+                if hard_gate_required or _active_blocker_requires_daniel(blocker)
+                else "Codex"
+            ),
+            hard_gate_required=hard_gate_required,
+            hard_gate_reason=hard_gate_reason,
+        )
+
+    return _active_next_action_result(
+        active_state_status="gpt_review_required",
+        selected_next_safe_action="gpt_review_required",
+        selected_agent="GPT",
+        hard_gate_required=False,
+        hard_gate_reason="none",
+    )
+
+
+def _active_next_action_result(
+    *,
+    active_state_status: str,
+    selected_next_safe_action: str,
+    selected_agent: str,
+    hard_gate_required: bool,
+    hard_gate_reason: str,
+) -> dict[str, Any]:
+    if selected_agent == "none":
+        primary_current_work_order = (
+            "no_agent_required_until_next_completed_session"
+        )
+        primary_current_work_order_agent = "none"
+    elif hard_gate_required:
+        primary_current_work_order = (
+            f"hard_gate_required_{selected_next_safe_action}"
+        )
+        primary_current_work_order_agent = selected_agent
+    else:
+        primary_current_work_order = selected_next_safe_action
+        primary_current_work_order_agent = selected_agent
+    return {
+        "active_state_status": active_state_status,
+        "selected_next_safe_action": selected_next_safe_action,
+        "selected_agent": selected_agent,
+        "hard_gate_required": hard_gate_required,
+        "hard_gate_reason": hard_gate_reason,
+        "primary_current_work_order": primary_current_work_order,
+        "primary_current_work_order_agent": primary_current_work_order_agent,
+    }
+
+
+def _active_safety_invariant_failed(
+    *,
+    payload: Mapping[str, Any],
+    safety_gates: Mapping[str, Any] | None,
+    validation_summary: Mapping[str, Any] | None,
+) -> bool:
+    validation_status = str(
+        validation_summary.get("validation_status", "")
+        if isinstance(validation_summary, Mapping)
+        else payload.get("validation_status", "")
+    ).lower()
+    if validation_status in {"fail", "failed"}:
+        return True
+    validation_passed = False
+    if isinstance(validation_summary, Mapping):
+        safety_errors = validation_summary.get("safety_errors")
+        if isinstance(safety_errors, Sequence) and not isinstance(
+            safety_errors, (str, bytes)
+        ):
+            if safety_errors:
+                return True
+        validation_passed = validation_status in {"pass", "passed"}
+    if isinstance(safety_gates, Mapping):
+        for gate in safety_gates.values():
+            if isinstance(gate, Mapping) and gate.get("passed") is False:
+                return True
+    if validation_passed:
+        return False
+    if str(payload.get("quality_gate_status", "")).lower() == "fail":
+        return True
+    return False
+
+
+def _active_data_freshness_status(
+    market_data_lane: Mapping[str, Any],
+    *,
+    data_freshness_plan: Mapping[str, Any] | None = None,
+) -> str:
+    if isinstance(data_freshness_plan, Mapping):
+        status = str(data_freshness_plan.get("data_freshness_status", ""))
+        if status:
+            return status
+    data_status = str(market_data_lane.get("preview_currency_status", "unknown"))
+    row_count = _int_or_zero(market_data_lane.get("row_count"))
+    raw_staleness = market_data_lane.get("staleness_in_days")
+    staleness_days = raw_staleness if isinstance(raw_staleness, int) else None
+    if data_status == "blocked_missing_data" or row_count <= 0:
+        return "blocked_missing_local_data"
+    if data_status == "blocked_future_dated_local_data" or (
+        isinstance(staleness_days, int) and staleness_days < 0
+    ):
+        return "blocked_future_dated_local_data"
+    if not _is_current_daily_bar_freshness_status(data_status):
+        return "stale_data_preview_only"
+    return "current_for_daily_bar_lab"
+
+
+def _active_current_blocker(
+    decision_lane: Mapping[str, Any],
+    execution_plan: Mapping[str, Any],
+) -> str:
+    blocker = str(decision_lane.get("blocker_status", "none") or "none")
+    if blocker != "none":
+        return blocker
+    return str(execution_plan.get("execution_plan_blocker", "none") or "none")
+
+
+def _active_blocker_hard_gate_reason(blocker: str) -> str:
+    token = _classification_token(blocker)
+    if "paper_submit" in token or "submit_authorization" in token:
+        return "paper_submit_requires_explicit_scope"
+    if any(
+        term in token
+        for term in (
+            "broker_state_not_observed",
+            "broker_unavailable",
+            "stale_snapshot",
+            "snapshot_context_mismatch",
+            "broker_snapshot",
+        )
+    ):
+        return "broker_read_requires_explicit_scope"
+    if "credential" in token or "secret" in token:
+        return "credentials_require_explicit_scope"
+    if "live" in token:
+        return "live_trading_requires_explicit_scope"
+    if "paid" in token:
+        return "paid_tool_requires_explicit_scope"
+    if "capital" in token:
+        return "capital_authority_requires_explicit_scope"
+    return "none"
+
+
+def _active_blocker_requires_daniel(blocker: str) -> bool:
+    token = _classification_token(blocker)
+    return any(
+        term in token
+        for term in (
+            "open_order",
+            "unexpected_non_spy_position",
+            "broker",
+            "credential",
+            "secret",
+            "live",
+            "paid",
+            "capital",
+        )
+    )
+
+
+_ACTIVE_BRIEF_COMPACT_FIELDS = (
+    "active_state_status",
+    "selected_next_safe_action",
+    "selected_agent",
+    "hard_gate_required",
+    "hard_gate_reason",
+    "operator_action",
+    "primary_current_work_order",
+    "primary_current_work_order_agent",
+    "secondary_work_orders_status",
+    "candidate_research_backlog_status",
+    "submit_allowed",
+)
+
+
+def _active_brief_compact_fields(
+    active_brief: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        field: active_brief[field]
+        for field in _ACTIVE_BRIEF_COMPACT_FIELDS
+        if field in active_brief
+    }
+
+
+def _sync_active_operating_brief_payload_surfaces(
+    payload: dict[str, Any],
+    active_brief: Mapping[str, Any],
+) -> None:
+    active_brief_dict = dict(active_brief)
+    compact_fields = _active_brief_compact_fields(active_brief)
+    payload["active_operating_brief"] = active_brief_dict
+    payload.update(compact_fields)
+
+    for surface_name in ("next_action_selector", "work_order_exports"):
+        surface = payload.get(surface_name)
+        if not isinstance(surface, dict):
+            continue
+        surface["active_operating_brief"] = dict(active_brief_dict)
+        surface.update(compact_fields)
+        source_state = surface.get("source_state")
+        if isinstance(source_state, dict):
+            source_state["active_operating_brief"] = dict(active_brief_dict)
+
+    dashboard = payload.get("executive_dashboard")
+    if not isinstance(dashboard, dict):
+        return
+    dashboard["active_operating_brief"] = dict(active_brief_dict)
+    dashboard.update(compact_fields)
+    for surface_name in ("next_action_selector", "work_order_exports"):
+        surface = dashboard.get(surface_name)
+        if not isinstance(surface, dict):
+            continue
+        surface["active_operating_brief"] = dict(active_brief_dict)
+        surface.update(compact_fields)
+        source_state = surface.get("source_state")
+        if isinstance(source_state, dict):
+            source_state["active_operating_brief"] = dict(active_brief_dict)
+
+
 def _sync_consumed_broker_snapshot_artifact_fields(
     *,
     payload: dict[str, Any],
@@ -4481,6 +4882,10 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
     payload["data_freshness_plan"] = dict(mission_control["data_freshness_plan"])
     payload["data_refresh_bridge"] = dict(mission_control["data_refresh_bridge"])
     payload["data_refresh_dry_run"] = dict(mission_control["data_refresh_dry_run"])
+    _sync_active_operating_brief_payload_surfaces(
+        payload,
+        mission_control["active_operating_brief"],
+    )
     dashboard = payload.get("executive_dashboard")
     if isinstance(dashboard, dict):
         dashboard["mission_control_path"] = payload["mission_control_path"]
@@ -4603,6 +5008,18 @@ def _build_mission_control(
         data_refresh_dry_run=data_refresh_dry_run,
         validation_summary=validation_summary,
     )
+    active_operating_brief = _active_mission_control_brief(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+        execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
+        data_freshness_plan=data_freshness_plan,
+        data_refresh_dry_run=data_refresh_dry_run,
+        safety_gates=safety_gates,
+        validation_summary=validation_summary,
+    )
     executive_summary = _mission_control_executive_summary(
         payload=payload,
         market_data_lane=market_data_lane,
@@ -4614,6 +5031,7 @@ def _build_mission_control(
         readiness_score=readiness_score,
         dispatcher=dispatcher,
         validation_summary=validation_summary,
+        active_operating_brief=active_operating_brief,
     )
     daily_latest = _mission_control_daily_latest(
         payload=payload,
@@ -4630,6 +5048,7 @@ def _build_mission_control(
         dispatcher=dispatcher,
         execution_plan=execution_plan,
         daily_approval_gate=daily_approval_gate,
+        active_operating_brief=active_operating_brief,
     )
     daily_decision_summary = _mission_control_daily_decision_summary(
         payload=payload,
@@ -4640,6 +5059,7 @@ def _build_mission_control(
         data_refresh_dry_run=data_refresh_dry_run,
         execution_plan=execution_plan,
         daily_approval_gate=daily_approval_gate,
+        active_operating_brief=active_operating_brief,
     )
     daily_latest["daily_decision_summary"] = dict(daily_decision_summary)
     agent_command_center = _mission_control_agent_command_center(
@@ -4662,6 +5082,7 @@ def _build_mission_control(
         "generated_at": "offline_command_runtime",
         "output_root": _normalize_path(output_root),
         "artifacts": artifacts,
+        "active_operating_brief": active_operating_brief,
         "execution_plan": execution_plan,
         "daily_approval_gate": daily_approval_gate,
         "executive_summary": executive_summary,
@@ -4714,6 +5135,7 @@ def _mission_control_daily_decision_summary(
     data_refresh_dry_run: Mapping[str, Any],
     execution_plan: Mapping[str, Any],
     daily_approval_gate: Mapping[str, Any],
+    active_operating_brief: Mapping[str, Any],
 ) -> dict[str, Any]:
     broker_state_observed = broker_state_lane.get("broker_state_observed") is True
     history_delta = payload.get("history_delta")
@@ -4779,6 +5201,8 @@ def _mission_control_daily_decision_summary(
         ),
         "what_changed": what_changed,
     }
+    summary["active_operating_brief"] = dict(active_operating_brief)
+    summary.update(_active_brief_compact_fields(active_operating_brief))
     summary["daily_approval_gate"] = dict(daily_approval_gate)
     summary.update(_execution_plan_compact_fields(execution_plan))
     summary.update(_daily_approval_gate_compact_fields(daily_approval_gate))
@@ -4801,6 +5225,7 @@ def _mission_control_daily_latest(
     dispatcher: Mapping[str, Any],
     execution_plan: Mapping[str, Any],
     daily_approval_gate: Mapping[str, Any],
+    active_operating_brief: Mapping[str, Any],
 ) -> dict[str, Any]:
     daily_latest = {
         "run_id": payload.get("run_id"),
@@ -4819,8 +5244,10 @@ def _mission_control_daily_latest(
         "preview_decision": decision_lane.get("preview_decision"),
         "market_signal_preview": decision_lane.get("market_signal_preview"),
         "blocker": decision_lane.get("blocker_status"),
-        "next_action": dispatcher.get("selected_route"),
-        "next_safest_action": dispatcher.get("selected_route"),
+        "next_action": active_operating_brief.get("selected_next_safe_action"),
+        "next_safest_action": active_operating_brief.get(
+            "selected_next_safe_action"
+        ),
         "exact_next_operator_action": decision_lane.get(
             "exact_next_operator_action"
         ),
@@ -4926,6 +5353,8 @@ def _mission_control_daily_latest(
         ),
         "safety_labels": list(decision_lane.get("safety_labels", [])),
     }
+    daily_latest["active_operating_brief"] = dict(active_operating_brief)
+    daily_latest.update(_active_brief_compact_fields(active_operating_brief))
     daily_latest["execution_plan"] = dict(execution_plan)
     daily_latest["daily_approval_gate"] = dict(daily_approval_gate)
     daily_latest.update(_execution_plan_compact_fields(execution_plan))
@@ -5047,6 +5476,10 @@ def _mission_control_latest_run_entry(
         ),
         "safety_labels": list(daily_latest.get("safety_labels", [])),
     }
+    active_operating_brief = daily_latest.get("active_operating_brief")
+    if isinstance(active_operating_brief, Mapping):
+        latest_run["active_operating_brief"] = dict(active_operating_brief)
+        latest_run.update(_active_brief_compact_fields(active_operating_brief))
     execution_plan = daily_latest.get("execution_plan")
     if isinstance(execution_plan, Mapping):
         latest_run["execution_plan"] = dict(execution_plan)
@@ -6918,6 +7351,7 @@ def _mission_control_executive_summary(
     readiness_score: Mapping[str, Any],
     dispatcher: Mapping[str, Any],
     validation_summary: Mapping[str, Any],
+    active_operating_brief: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "current_system_state": (
@@ -6984,7 +7418,16 @@ def _mission_control_executive_summary(
             "next_agent_data_action"
         ),
         "operator_review_path": data_freshness_plan.get("operator_review_path"),
-        "next_safest_action": dispatcher.get("selected_route"),
+        "next_safest_action": active_operating_brief.get(
+            "selected_next_safe_action"
+        ),
+        "selected_agent": active_operating_brief.get("selected_agent"),
+        "hard_gate_required": active_operating_brief.get("hard_gate_required"),
+        "hard_gate_reason": active_operating_brief.get("hard_gate_reason"),
+        "primary_current_work_order": active_operating_brief.get(
+            "primary_current_work_order"
+        ),
+        "secondary_dispatcher_route": dispatcher.get("selected_route"),
         "paper_submit_authorized": False,
         "live_authorized": False,
         "live_trading_authorized": False,
@@ -7207,6 +7650,7 @@ def _mission_control_work_orders(
     mission_control: Mapping[str, Any],
 ) -> dict[str, Any]:
     dispatcher = mission_control["rule_based_dispatcher_v0"]
+    active_operating_brief = mission_control["active_operating_brief"]
     selected_route = dispatcher["selected_route"]
     safety_constraints = [
         "offline_only",
@@ -7231,6 +7675,17 @@ def _mission_control_work_orders(
         "phase": _PHASE_NAME,
         "goal": _PHASE_GOAL,
         "mission_control_version": mission_control["mission_control_version"],
+        "active_state_status": active_operating_brief["active_state_status"],
+        "selected_next_safe_action": active_operating_brief[
+            "selected_next_safe_action"
+        ],
+        "selected_agent": active_operating_brief["selected_agent"],
+        "primary_current_work_order": active_operating_brief[
+            "primary_current_work_order"
+        ],
+        "secondary_work_orders_status": active_operating_brief[
+            "secondary_work_orders_status"
+        ],
         "selected_route": selected_route,
         "selected_rule_id": dispatcher["selected_rule_id"],
         "input_artifacts": mission_control["artifacts"],
@@ -7299,8 +7754,9 @@ def _mission_control_work_orders(
         "allowed_files": allowed_files,
         "review_scope": "Implement only the selected offline Mission Control slice.",
         "objective": (
-            "Continue the next offline Mission Control slice selected by the "
-            "deterministic dispatcher."
+            "Use the active Mission Control brief as primary. If the selected "
+            "agent is none, no implementation work is required until the next "
+            "completed-session daily cycle."
         ),
         "expected_outputs": [
             "updated local deterministic tests",
@@ -7396,6 +7852,12 @@ def _render_agent_prompt(audience: str, order: Mapping[str, Any]) -> str:
             f"Project path: `{order['project_path']}`",
             f"Phase: `{order['phase']}`",
             f"Goal: {order['goal']}",
+            "",
+            f"Active state status: `{order['active_state_status']}`",
+            f"Selected next safe action: `{order['selected_next_safe_action']}`",
+            f"Selected agent: `{order['selected_agent']}`",
+            f"Primary current work order: `{order['primary_current_work_order']}`",
+            f"Secondary work orders: `{order['secondary_work_orders_status']}`",
             "",
             f"Selected route: `{order['selected_route']}`",
             f"Selected rule: `{order['selected_rule_id']}`",
@@ -7716,10 +8178,107 @@ def _render_daily_decision_summary_html_section(
     </section>"""
 
 
+def _active_operating_brief_markdown_lines(
+    active: Mapping[str, Any],
+) -> list[str]:
+    return [
+        "## Active Operating Brief",
+        f"- Active state status: `{active['active_state_status']}`",
+        f"- As-of date: `{active['as_of_date']}`",
+        f"- Latest bar date: `{active['latest_bar_date']}`",
+        f"- Data freshness status: `{active['data_freshness_status']}`",
+        f"- SMA posture: `{active['sma_posture']}`",
+        f"- Market signal preview: `{active['market_signal_preview']}`",
+        f"- Broker-state mode: `{active['broker_state_mode']}`",
+        f"- Broker state observed: `{str(active['broker_state_observed']).lower()}`",
+        (
+            "- Broker snapshot freshness status: "
+            f"`{active['broker_snapshot_freshness_status']}`"
+        ),
+        (
+            "- Broker-aware preview decision: "
+            f"`{active['broker_aware_preview_decision']}`"
+        ),
+        f"- ExecutionPlan status: `{active['execution_plan_status']}`",
+        f"- ExecutionPlan action: `{active['execution_plan_action']}`",
+        f"- ExecutionPlan reason: `{active['execution_plan_reason']}`",
+        (
+            "- DailyApprovalGate approval state: "
+            f"`{active['daily_approval_gate_approval_state']}`"
+        ),
+        (
+            "- DailyApprovalGate submit allowed: "
+            f"`{str(active['daily_approval_gate_submit_allowed']).lower()}`"
+        ),
+        (
+            "- Paper submit authorized: "
+            f"`{str(active['paper_submit_authorized']).lower()}`"
+        ),
+        f"- Live authorized: `{str(active['live_authorized']).lower()}`",
+        (
+            "- Broker mutation performed: "
+            f"`{str(active['broker_mutation_performed']).lower()}`"
+        ),
+        (
+            "- Selected next safe action: "
+            f"`{active['selected_next_safe_action']}`"
+        ),
+        f"- Selected agent: `{active['selected_agent']}`",
+        f"- Hard gate required: `{str(active['hard_gate_required']).lower()}`",
+        f"- Hard gate reason: `{active['hard_gate_reason']}`",
+        f"- Operator action: `{active['operator_action']}`",
+        (
+            "- Primary current work order: "
+            f"`{active['primary_current_work_order']}`"
+        ),
+        (
+            "- Candidate research backlog: "
+            f"`{active['candidate_research_backlog_status']}`"
+        ),
+        "",
+    ]
+
+
+def _render_active_operating_brief_html_section(
+    active: Mapping[str, Any],
+) -> str:
+    return f"""    <section class="summary">
+      <h2>Active Operating Brief</h2>
+      <dl>
+        <dt>Active state status</dt><dd>{_html_escape(str(active["active_state_status"]))}</dd>
+        <dt>As-of date</dt><dd>{_html_escape(str(active["as_of_date"]))}</dd>
+        <dt>Latest bar date</dt><dd>{_html_escape(str(active["latest_bar_date"]))}</dd>
+        <dt>Data freshness status</dt><dd>{_html_escape(str(active["data_freshness_status"]))}</dd>
+        <dt>SMA posture</dt><dd>{_html_escape(str(active["sma_posture"]))}</dd>
+        <dt>Market signal preview</dt><dd>{_html_escape(str(active["market_signal_preview"]))}</dd>
+        <dt>Broker-state mode</dt><dd>{_html_escape(str(active["broker_state_mode"]))}</dd>
+        <dt>Broker state observed</dt><dd>{str(active["broker_state_observed"]).lower()}</dd>
+        <dt>Broker snapshot freshness status</dt><dd>{_html_escape(str(active["broker_snapshot_freshness_status"]))}</dd>
+        <dt>Broker-aware preview decision</dt><dd>{_html_escape(str(active["broker_aware_preview_decision"]))}</dd>
+        <dt>ExecutionPlan status</dt><dd>{_html_escape(str(active["execution_plan_status"]))}</dd>
+        <dt>ExecutionPlan action</dt><dd>{_html_escape(str(active["execution_plan_action"]))}</dd>
+        <dt>ExecutionPlan reason</dt><dd>{_html_escape(str(active["execution_plan_reason"]))}</dd>
+        <dt>DailyApprovalGate approval state</dt><dd>{_html_escape(str(active["daily_approval_gate_approval_state"]))}</dd>
+        <dt>DailyApprovalGate submit allowed</dt><dd>{str(active["daily_approval_gate_submit_allowed"]).lower()}</dd>
+        <dt>Paper submit authorized</dt><dd>{str(active["paper_submit_authorized"]).lower()}</dd>
+        <dt>Live authorized</dt><dd>{str(active["live_authorized"]).lower()}</dd>
+        <dt>Broker mutation performed</dt><dd>{str(active["broker_mutation_performed"]).lower()}</dd>
+        <dt>Selected next safe action</dt><dd>{_html_escape(str(active["selected_next_safe_action"]))}</dd>
+        <dt>Selected agent</dt><dd>{_html_escape(str(active["selected_agent"]))}</dd>
+        <dt>Hard gate required</dt><dd>{str(active["hard_gate_required"]).lower()}</dd>
+        <dt>Hard gate reason</dt><dd>{_html_escape(str(active["hard_gate_reason"]))}</dd>
+        <dt>Operator action</dt><dd>{_html_escape(str(active["operator_action"]))}</dd>
+        <dt>Primary current work order</dt><dd>{_html_escape(str(active["primary_current_work_order"]))}</dd>
+        <dt>Candidate research backlog</dt><dd>{_html_escape(str(active["candidate_research_backlog_status"]))}</dd>
+      </dl>
+    </section>"""
+
+
 def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    active_operating_brief = mission_control["active_operating_brief"]
     daily_decision_summary = mission_control["daily_decision_summary"]
     market = mission_control["market_data_lane"]
     broker = mission_control["broker_state_lane"]
@@ -7736,6 +8295,7 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             "",
             f"Operator review version: `{_OPERATOR_REVIEW_VERSION}`",
             "",
+            *_active_operating_brief_markdown_lines(active_operating_brief),
             *_daily_decision_summary_markdown_lines(daily_decision_summary),
             "## Open First",
             f"- Open first: `{latest_run['open_first_path']}`",
@@ -7827,6 +8387,16 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             "## Safety Labels",
             f"- {labels}",
             "",
+            "## Research Backlog Appendix",
+            (
+                "- Candidate research backlog is secondary and is not the active "
+                f"trading blocker while main_blocker=`{daily_latest['blocker']}`."
+            ),
+            (
+                "- Active selected next safe action: "
+                f"`{active_operating_brief['selected_next_safe_action']}`."
+            ),
+            "",
         ]
     )
 
@@ -7835,6 +8405,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    active_operating_brief = mission_control["active_operating_brief"]
     daily_decision_summary = mission_control["daily_decision_summary"]
     freshness = mission_control["data_freshness_plan"]
     bridge = mission_control["data_refresh_bridge"]
@@ -7848,6 +8419,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     lines = [
         "# Mission Control",
         "",
+        *_active_operating_brief_markdown_lines(active_operating_brief),
         "## Open First",
         f"- Open first: `{latest_run['open_first_path']}`",
         f"- Latest-run summary: `{artifacts['latest_run_json']}`",
@@ -8054,6 +8626,17 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- Selected route: `{dispatcher['selected_route']}`",
         f"- Selected work order type: `{dispatcher['selected_work_order_type']}`",
         "",
+        "## Research Backlog Appendix",
+        (
+            "- Candidate research backlog is secondary and does not override "
+            f"the active selected next safe action "
+            f"`{active_operating_brief['selected_next_safe_action']}`."
+        ),
+        (
+            "- Primary current work order: "
+            f"`{active_operating_brief['primary_current_work_order']}`."
+        ),
+        "",
     ]
     return "\n".join(lines)
 
@@ -8062,6 +8645,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
     daily_latest = mission_control["daily_latest"]
+    active_operating_brief = mission_control["active_operating_brief"]
     daily_decision_summary = mission_control["daily_decision_summary"]
     freshness = mission_control["data_freshness_plan"]
     bridge = mission_control["data_refresh_bridge"]
@@ -8078,6 +8662,9 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     )
     daily_decision_html = _render_daily_decision_summary_html_section(
         daily_decision_summary
+    )
+    active_operating_brief_html = _render_active_operating_brief_html_section(
+        active_operating_brief
     )
     return f"""<!doctype html>
 <html lang="en">
@@ -8105,6 +8692,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     <div>{_html_escape(str(mission_control["phase_name"]))}</div>
   </header>
   <main>
+{active_operating_brief_html}
 {daily_decision_html}
     <section class="summary">
       <h2>Open First</h2>
@@ -8330,6 +8918,14 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>Selected rule</dt><dd>{_html_escape(str(dispatcher["selected_rule_id"]))}</dd>
         <dt>Selected route</dt><dd>{_html_escape(str(dispatcher["selected_route"]))}</dd>
         <dt>Selected work order</dt><dd>{_html_escape(str(dispatcher["selected_work_order_type"]))}</dd>
+      </dl>
+    </section>
+    <section>
+      <h2>Research Backlog Appendix</h2>
+      <dl>
+        <dt>Status</dt><dd>secondary_appendix_not_active_blocker</dd>
+        <dt>Active selected next safe action</dt><dd>{_html_escape(str(active_operating_brief["selected_next_safe_action"]))}</dd>
+        <dt>Primary current work order</dt><dd>{_html_escape(str(active_operating_brief["primary_current_work_order"]))}</dd>
       </dl>
     </section>
   </main>
@@ -19355,7 +19951,52 @@ def _selector_source_state(payload: Mapping[str, Any]) -> dict[str, Any]:
         first = action_queue[0]
         if isinstance(first, Mapping):
             highest_priority = str(first.get("priority", highest_priority))
+    market_data_lane = _mission_control_market_data_lane(payload)
+    broker_state_lane = _mission_control_broker_state_lane(payload)
+    decision_lane = _mission_control_decision_lane(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+    )
+    raw_execution_plan = payload.get("execution_plan")
+    execution_plan = (
+        dict(raw_execution_plan)
+        if isinstance(raw_execution_plan, Mapping)
+        else _project_daily_execution_plan(
+            payload=payload,
+            market_data_lane=market_data_lane,
+            broker_state_lane=broker_state_lane,
+            decision_lane=decision_lane,
+        ).to_dict()
+    )
+    raw_daily_approval_gate = payload.get("daily_approval_gate")
+    daily_approval_gate = (
+        dict(raw_daily_approval_gate)
+        if isinstance(raw_daily_approval_gate, Mapping)
+        else _project_daily_approval_gate(
+            EtfSmaDailyExecutionPlan(**execution_plan)
+        ).to_dict()
+    )
+    active_operating_brief = _active_mission_control_brief(
+        payload=payload,
+        market_data_lane=market_data_lane,
+        broker_state_lane=broker_state_lane,
+        decision_lane=decision_lane,
+        execution_plan=execution_plan,
+        daily_approval_gate=daily_approval_gate,
+        data_freshness_plan=(
+            payload.get("data_freshness_plan")
+            if isinstance(payload.get("data_freshness_plan"), Mapping)
+            else None
+        ),
+        data_refresh_dry_run=(
+            payload.get("data_refresh_dry_run")
+            if isinstance(payload.get("data_refresh_dry_run"), Mapping)
+            else None
+        ),
+    )
     return {
+        "active_operating_brief": active_operating_brief,
         "quality_gate_status": str(payload.get("quality_gate_status", "not_evaluated")),
         "quality_gate_failed_checks": [
             str(item) for item in payload.get("quality_gate_failed_checks", [])
@@ -19606,6 +20247,11 @@ def _selector_result(
     selected_research_candidate: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     selected_work_order_path = str(artifact_paths[selected_work_order])
+    active_operating_brief = (
+        dict(source_state.get("active_operating_brief", {}))
+        if isinstance(source_state.get("active_operating_brief"), Mapping)
+        else {}
+    )
     candidate_id = (
         str(selected_research_candidate["candidate_id"])
         if selected_research_candidate is not None
@@ -19633,6 +20279,8 @@ def _selector_result(
         "selected_research_candidate_id": candidate_id,
         "selected_research_candidate_priority": candidate_priority,
         "selected_research_candidate_title": candidate_title,
+        "active_operating_brief": dict(active_operating_brief),
+        **_active_brief_compact_fields(active_operating_brief),
         "research_candidate_queue_path": str(
             artifact_paths["research_candidate_queue"]
         ),
@@ -19869,8 +20517,12 @@ def _apply_work_order_exports(
         top_candidate_id = queue.get("top_candidate_id")
     selector = payload.get("next_action_selector")
     selected_candidate_id = None
+    active_operating_brief: Mapping[str, Any] = {}
     if isinstance(selector, Mapping):
         selected_candidate_id = selector.get("selected_research_candidate_id")
+        raw_active_operating_brief = selector.get("active_operating_brief")
+        if isinstance(raw_active_operating_brief, Mapping):
+            active_operating_brief = raw_active_operating_brief
     metrics = payload.get("baseline_evidence_metrics")
     metrics_record = metrics if isinstance(metrics, Mapping) else {}
     readiness = _paper_observation_readiness_record(payload, artifact_paths)
@@ -19925,6 +20577,8 @@ def _apply_work_order_exports(
         "artifact_count": len(_WORK_ORDER_ARTIFACTS),
         "generation_mode": "deterministic_offline_markdown_only",
         "runtime_callouts_performed": False,
+        "active_operating_brief": dict(active_operating_brief),
+        **_active_brief_compact_fields(active_operating_brief),
         "research_candidate_queue_path": str(artifact_paths["research_candidate_queue"]),
         "baseline_evidence_metrics_path": str(
             artifact_paths["baseline_evidence_metrics"]

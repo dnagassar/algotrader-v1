@@ -2484,6 +2484,17 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
         "selected_research_candidate_id",
         "selected_research_candidate_priority",
         "selected_research_candidate_title",
+        "active_operating_brief",
+        "active_state_status",
+        "selected_next_safe_action",
+        "selected_agent",
+        "hard_gate_reason",
+        "operator_action",
+        "primary_current_work_order",
+        "primary_current_work_order_agent",
+        "secondary_work_orders_status",
+        "candidate_research_backlog_status",
+        "submit_allowed",
         "research_candidate_queue_path",
         "rationale",
         "reason_codes",
@@ -2641,6 +2652,14 @@ def _assert_next_action_selector_shape(selector: dict[str, object]) -> None:
     assert isinstance(selector["reason_codes"], list)
     assert isinstance(selector["forbidden_actions"], list)
     assert isinstance(selector["source_state"], dict)
+    assert isinstance(selector["active_operating_brief"], dict)
+    assert selector["selected_next_safe_action"] == selector[
+        "active_operating_brief"
+    ]["selected_next_safe_action"]
+    assert selector["selected_agent"] == selector["active_operating_brief"][
+        "selected_agent"
+    ]
+    assert selector["submit_allowed"] is False
     assert selector["broker_action_allowed"] is False
     assert selector["capital_action_allowed"] is False
     assert selector["llm_runtime_calls_allowed"] is False
@@ -2653,6 +2672,14 @@ def _assert_work_order_exports_shape(exports: dict[str, object]) -> None:
     assert exports["artifact_count"] == 4
     assert exports["generation_mode"] == "deterministic_offline_markdown_only"
     assert exports["runtime_callouts_performed"] is False
+    assert isinstance(exports["active_operating_brief"], dict)
+    assert exports["selected_next_safe_action"] == exports[
+        "active_operating_brief"
+    ]["selected_next_safe_action"]
+    assert exports["submit_allowed"] is False
+    assert exports["secondary_work_orders_status"] == (
+        "secondary_review_artifacts_only"
+    )
     assert str(exports["research_candidate_queue_path"]).endswith(
         "research_candidate_queue.jsonl"
     )
@@ -5873,6 +5900,217 @@ def _daily_execution_plan_for_gate(
     return paper_lab_module.EtfSmaDailyExecutionPlan(**values)
 
 
+def _active_brief_for_unit(
+    *,
+    data_freshness_status: str = "current_for_daily_bar_lab",
+    broker_state_mode: str = "alpaca_paper_read_only",
+    broker_state_observed: bool = True,
+    execution_plan_status: str = "no_action_required",
+    execution_plan_action: str = "hold/noop",
+    approval_state: str = "not_required_noop",
+    blocker_status: str = "none",
+    market_signal_preview: str = "buy_preview",
+    broker_aware_preview_decision: str = "hold/noop",
+    exact_next_operator_action: str = (
+        "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+    ),
+    safety_gates: dict[str, object] | None = None,
+    validation_summary: dict[str, object] | None = None,
+) -> dict[str, object]:
+    plan = _daily_execution_plan_for_gate(
+        execution_plan_status=execution_plan_status,
+        execution_plan_action=execution_plan_action,
+        execution_plan_reason=(
+            "preview_requires_explicit_authorization"
+            if execution_plan_action in {"buy_preview", "sell_preview"}
+            else blocker_status
+            if blocker_status != "none"
+            else "existing_spy_position_satisfies_risk_on_preview"
+        ),
+        execution_plan_blocker=blocker_status,
+        execution_plan_source_preview_decision=broker_aware_preview_decision,
+        execution_plan_requires_approval=execution_plan_action
+        in {"buy_preview", "sell_preview"},
+    ).to_dict()
+    gate = {
+        "execution_plan_id": plan["execution_plan_id"],
+        "approval_required": approval_state
+        == "awaiting_explicit_paper_submit_authorization",
+        "approval_state": approval_state,
+        "submit_allowed": False,
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_performed": False,
+        "reason": (
+            "explicit_paper_submit_authorization_required"
+            if approval_state == "awaiting_explicit_paper_submit_authorization"
+            else "execution_plan_requires_no_action"
+        ),
+        "blocker": blocker_status,
+    }
+    return paper_lab_module._active_mission_control_brief(
+        payload={"quality_gate_status": "pass", "validation_status": "pass"},
+        market_data_lane={
+            "as_of_date": "2025-07-20",
+            "latest_input_bar_date": "2025-07-19",
+            "preview_currency_status": "current",
+            "row_count": 200,
+            "repo_posture": "bullish_risk_on",
+        },
+        broker_state_lane={
+            "broker_state_mode": broker_state_mode,
+            "broker_state_status": (
+                "observed" if broker_state_observed else "broker_read_scaffold_only"
+            ),
+            "broker_state_observed": broker_state_observed,
+            "broker_snapshot_freshness_status": (
+                "fresh" if broker_state_observed else "broker_read_scaffold_only"
+            ),
+            "broker_read_performed": False,
+            "broker_mutation_performed": False,
+        },
+        decision_lane={
+            "market_signal_preview": market_signal_preview,
+            "preview_decision": broker_aware_preview_decision,
+            "blocker_status": blocker_status,
+            "exact_next_operator_action": exact_next_operator_action,
+        },
+        execution_plan=plan,
+        daily_approval_gate=gate,
+        data_freshness_plan={"data_freshness_status": data_freshness_status},
+        data_refresh_dry_run={"input_csv_present": False},
+        safety_gates=(
+            safety_gates
+            if safety_gates is not None
+            else {"all_clear": {"passed": True}}
+        ),
+        validation_summary=(
+            validation_summary
+            if validation_summary is not None
+            else {"validation_status": "passed"}
+        ),
+    )
+
+
+def test_active_mission_control_brief_safety_invariant_failure_wins() -> None:
+    active = _active_brief_for_unit(
+        safety_gates={"broker_mutation_path_appears": {"passed": False}},
+        validation_summary={"validation_status": "passed"},
+    )
+
+    assert active["active_state_status"] == "safety_repair_required"
+    assert active["selected_next_safe_action"] == "safety_repair"
+    assert active["selected_agent"] == "Codex"
+    assert active["hard_gate_required"] is False
+    assert active["paper_submit_authorized"] is False
+    assert active["live_authorized"] is False
+    assert active["broker_mutation_performed"] is False
+
+
+def test_active_mission_control_brief_hold_noop_selects_no_agent() -> None:
+    active = _active_brief_for_unit()
+
+    assert active["active_state_status"] == "ready_no_action"
+    assert (
+        active["selected_next_safe_action"]
+        == "run_next_completed_session_daily_cycle"
+    )
+    assert active["selected_agent"] == "none"
+    assert active["hard_gate_required"] is False
+    assert active["hard_gate_reason"] == "none"
+    assert active["submit_allowed"] is False
+    assert active["paper_submit_authorized"] is False
+    assert active["live_authorized"] is False
+    assert active["broker_mutation_performed"] is False
+    assert active["primary_current_work_order"] == (
+        "no_agent_required_until_next_completed_session"
+    )
+
+
+@pytest.mark.parametrize("action", ["buy_preview", "sell_preview"])
+def test_active_mission_control_brief_preview_requires_paper_submit_scope(
+    action: str,
+) -> None:
+    active = _active_brief_for_unit(
+        execution_plan_status="preview_only",
+        execution_plan_action=action,
+        approval_state="awaiting_explicit_paper_submit_authorization",
+        broker_aware_preview_decision=action,
+        exact_next_operator_action=(
+            "paper_submit_not_authorized_record_preview_only_no_submission"
+        ),
+    )
+
+    assert active["selected_next_safe_action"] == (
+        "request_scoped_paper_submit_authorization"
+    )
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    assert active["hard_gate_reason"] == "paper_submit_requires_explicit_scope"
+    assert active["submit_allowed"] is False
+    assert active["paper_submit_authorized"] is False
+
+
+def test_active_mission_control_brief_missing_required_broker_snapshot_hard_gates() -> None:
+    active = _active_brief_for_unit(
+        broker_state_mode="alpaca_paper_read_only",
+        broker_state_observed=False,
+        broker_aware_preview_decision="blocked/broker_read_scaffold_only",
+        blocker_status="broker_read_scaffold_only",
+        exact_next_operator_action=(
+            "produce_fresh_explicitly_authorized_read_only_paper_broker_snapshot_"
+            "for_spy_daily_lab"
+        ),
+    )
+
+    assert active["selected_next_safe_action"] == (
+        "request_scoped_read_only_broker_observation"
+    )
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    assert active["hard_gate_reason"] == "broker_read_requires_explicit_scope"
+    assert active["broker_read_performed"] is False
+
+
+def test_active_mission_control_brief_stale_data_wins_before_broker_action() -> None:
+    active = _active_brief_for_unit(
+        data_freshness_status="stale_data_preview_only",
+        broker_state_mode="alpaca_paper_read_only",
+        broker_state_observed=False,
+        broker_aware_preview_decision="blocked/broker_read_scaffold_only",
+        blocker_status="broker_read_scaffold_only",
+        exact_next_operator_action=(
+            "run_existing_local_adjusted_data_validation_or_refresh_before_next_cycle"
+        ),
+    )
+
+    assert active["selected_next_safe_action"] == (
+        "refresh_or_intake_adjusted_spy_data"
+    )
+    assert active["hard_gate_required"] is False
+    assert active["hard_gate_reason"] == "none"
+    assert "broker" not in str(active["selected_next_safe_action"])
+
+
+def test_active_mission_control_brief_current_blocker_not_overridden_by_research() -> None:
+    active = _active_brief_for_unit(
+        broker_state_mode="alpaca_paper_read_only",
+        broker_state_observed=True,
+        execution_plan_status="blocked",
+        execution_plan_action="none",
+        broker_aware_preview_decision="blocked/open_order_present",
+        blocker_status="open_order_present",
+        exact_next_operator_action=(
+            "review_open_spy_order_with_read_only_reconciliation_no_mutation"
+        ),
+    )
+
+    assert active["selected_next_safe_action"] == "repair_current_blocker"
+    assert active["candidate_research_backlog_status"] == (
+        "secondary_appendix_not_active_blocker"
+    )
+
+
 def test_etf_sma_daily_execution_plan_type_is_immutable() -> None:
     plan = paper_lab_module.EtfSmaDailyExecutionPlan(
         execution_plan_version="assistant_v1.64_pre_broker_execution_plan",
@@ -6344,9 +6582,13 @@ def test_etf_sma_daily_paper_lab_mission_control_outputs(
         "etf-sma-adjusted-spy-bars-refresh-intake" in command
         for command in latest_run["offline_validation_commands"]
     )
-    assert latest_run["next_safest_action"] == (
-        "offline_data_refresh_dry_run_operator_input_needed"
+    assert latest_run["next_safest_action"] == "refresh_or_intake_adjusted_spy_data"
+    assert latest_run["selected_next_safe_action"] == (
+        "refresh_or_intake_adjusted_spy_data"
     )
+    assert latest_run["selected_agent"] == "operator"
+    assert latest_run["hard_gate_required"] is False
+    assert latest_run["hard_gate_reason"] == "none"
     _assert_false_safety_flags(
         latest_run,
         (
@@ -8130,15 +8372,33 @@ def test_mission_control_readiness_score_blocks_on_safety_gate_failure() -> None
 
 def test_etf_sma_daily_paper_lab_alpaca_read_only_mode_is_scaffold_only(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.chdir(tmp_path)
     output_root = tmp_path / "paper_lab_alpaca_read_only_scaffold_out"
-    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+    latest_bar_date = "2026-06-17"
+    bars_csv = (
+        tmp_path
+        / "runs"
+        / "operator_input"
+        / "m446_spy_daily_tiingo_adjusted_canonical.csv"
+    )
+    canonical_sha256 = _write_shifted_spy_fixture(
+        bars_csv,
+        latest_bar_date=latest_bar_date,
+    )
+    _write_accepted_refresh_manifest(
+        tmp_path,
+        canonical_sha256=canonical_sha256,
+        latest_bar_date=latest_bar_date,
+    )
 
     payload = run_etf_sma_daily_paper_lab(
         EtfSmaDailyPaperLabConfig(
             output_root=output_root,
             bars_csv=bars_csv,
-            as_of_date="2025-07-20",
+            as_of_date=latest_bar_date,
+            run_date="2026-06-18",
             symbol="SPY",
             broker_state_mode="alpaca_paper_read_only",
         )
@@ -8162,6 +8422,16 @@ def test_etf_sma_daily_paper_lab_alpaca_read_only_mode_is_scaffold_only(
     assert scaffold["broker_read_performed"] is False
     assert scaffold["network_call_performed"] is False
     assert scaffold["sdk_client_imported"] is False
+    active = mission["active_operating_brief"]
+    assert active["selected_next_safe_action"] == (
+        "request_scoped_read_only_broker_observation"
+    )
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    assert active["hard_gate_reason"] == "broker_read_requires_explicit_scope"
+    assert active["broker_read_performed"] is False
+    assert active["broker_mutation_performed"] is False
+    assert active["paper_submit_authorized"] is False
 
     validation = json.loads(
         (output_root / "mission_control_validation.json").read_text(encoding="utf-8")
@@ -8503,6 +8773,44 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
         == "execution_plan_requires_no_action"
     )
     assert mission["daily_approval_gate"]["blocker"] == "none"
+    active = mission["active_operating_brief"]
+    assert active["active_state_status"] == "ready_no_action"
+    assert active["selected_next_safe_action"] == (
+        "run_next_completed_session_daily_cycle"
+    )
+    assert active["selected_agent"] == "none"
+    assert active["hard_gate_required"] is False
+    assert active["hard_gate_reason"] == "none"
+    assert active["operator_action"] == (
+        "no_immediate_trading_action_run_next_completed_session_daily_cycle"
+    )
+    assert active["submit_allowed"] is False
+    assert active["paper_submit_authorized"] is False
+    assert active["live_authorized"] is False
+    assert active["broker_mutation_performed"] is False
+    assert active["primary_current_work_order"] == (
+        "no_agent_required_until_next_completed_session"
+    )
+    for active_surface in (
+        latest,
+        daily_latest,
+        daily_decision_summary,
+        payload["next_action_selector"],
+        payload["work_order_exports"],
+    ):
+        assert active_surface["active_state_status"] == "ready_no_action"
+        assert active_surface["selected_next_safe_action"] == (
+            "run_next_completed_session_daily_cycle"
+        )
+        assert active_surface["selected_agent"] == "none"
+        assert active_surface["hard_gate_required"] is False
+        assert active_surface["hard_gate_reason"] == "none"
+        assert active_surface["primary_current_work_order"] == (
+            "no_agent_required_until_next_completed_session"
+        )
+    assert "candidate_gap_closure_queue_item_" not in active[
+        "selected_next_safe_action"
+    ]
     assert "* **Preview decision**: hold/noop" in brief
     assert "* **Blocker status**: none" in brief
     assert "Preview decision: `hold/noop`" in brief
@@ -8514,6 +8822,16 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     )
     assert index_html.index("<h2>Daily Decision Summary</h2>") < index_html.index(
         "<h2>Open First</h2>"
+    )
+    assert index_html.index("<h2>Active Operating Brief</h2>") < index_html.index(
+        "<h2>Research Backlog Appendix</h2>"
+    )
+    assert "Selected next safe action</dt><dd>run_next_completed_session_daily_cycle" in (
+        index_html
+    )
+    assert "Selected agent</dt><dd>none" in index_html
+    assert "Primary current work order</dt><dd>no_agent_required_until_next_completed_session" in (
+        index_html
     )
     assert "Broker-aware preview decision</dt><dd>hold/noop" in index_html
     assert "ExecutionPlan status</dt><dd>no_action_required" in index_html
@@ -8530,6 +8848,21 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     )
     assert operator_review.index("## Daily Decision Summary") < operator_review.index(
         "## Open First"
+    )
+    assert operator_review.index("## Active Operating Brief") < operator_review.index(
+        "## Research Backlog Appendix"
+    )
+    assert (
+        "Selected next safe action: `run_next_completed_session_daily_cycle`"
+        in operator_review
+    )
+    assert "Selected agent: `none`" in operator_review
+    assert (
+        "Primary current work order: `no_agent_required_until_next_completed_session`"
+        in operator_review
+    )
+    assert "Candidate research backlog: `secondary_appendix_not_active_blocker`" in (
+        operator_review
     )
     assert "Broker-aware preview decision: `hold/noop`" in operator_review
     assert "ExecutionPlan status: `no_action_required`" in operator_review
@@ -8688,6 +9021,23 @@ def test_etf_sma_daily_paper_lab_broker_aware_decision_matrix(
         expected_requires_approval=expected_requires_approval,
         expected_reason=expected_plan_reason,
     )
+    active = mission["active_operating_brief"]
+    if expected_plan_action in {"buy_preview", "sell_preview"}:
+        assert active["selected_next_safe_action"] == (
+            "request_scoped_paper_submit_authorization"
+        )
+        assert active["selected_agent"] == "Daniel"
+        assert active["hard_gate_required"] is True
+        assert active["hard_gate_reason"] == "paper_submit_requires_explicit_scope"
+        assert active["submit_allowed"] is False
+        assert active["paper_submit_authorized"] is False
+    else:
+        assert active["selected_next_safe_action"] == (
+            "run_next_completed_session_daily_cycle"
+        )
+        assert active["selected_agent"] == "none"
+        assert active["hard_gate_required"] is False
+        assert active["hard_gate_reason"] == "none"
 
 
 def test_etf_sma_daily_paper_lab_insufficient_history_wins_before_broker_state(
