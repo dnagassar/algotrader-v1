@@ -13,7 +13,11 @@ Root directory under which the daily paper-lab operating packet is written. Requ
 Path to the canonical daily bars CSV file. Defaults to runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv.
 
 .PARAMETER AsOfDate
-Explicit as-of date (YYYY-MM-DD). If omitted, derived from input bars.
+Explicit market-data/signal as-of date (YYYY-MM-DD). If omitted, derived from input bars.
+
+.PARAMETER RunDate
+Optional deterministic operating run date (YYYY-MM-DD) used for freshness and
+controller routing. Distinct from AsOfDate.
 
 .PARAMETER Symbol
 Symbol to evaluate. Defaults to SPY.
@@ -43,6 +47,7 @@ param(
     [string]$OutputRoot,
     [string]$BarsCsv = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
     [string]$AsOfDate,
+    [string]$RunDate,
     [string]$Symbol = "SPY",
     [int]$SmaFastWindow = 50,
     [int]$SmaSlowWindow = 200,
@@ -115,6 +120,10 @@ $CliArgs = @(
 
 if (-not [string]::IsNullOrEmpty($AsOfDate)) {
     $CliArgs += @("--as-of-date", $AsOfDate)
+}
+
+if (-not [string]::IsNullOrEmpty($RunDate)) {
+    $CliArgs += @("--run-date", $RunDate)
 }
 
 if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {

@@ -9576,6 +9576,7 @@ def _run_daily_paper_lab_cli(
     output_root: Path,
     bars_csv: Path,
     broker_snapshot_log: Path | None = None,
+    run_date: str | None = None,
 ) -> int:
     argv = [
         "etf-sma-daily-paper-lab",
@@ -9590,6 +9591,8 @@ def _run_daily_paper_lab_cli(
         "--format",
         "json",
     ]
+    if run_date is not None:
+        argv.extend(["--run-date", run_date])
     if broker_snapshot_log is not None:
         argv.extend(
             [
@@ -9600,6 +9603,171 @@ def _run_daily_paper_lab_cli(
             ]
         )
     return cli_module.main(argv)
+
+
+def test_etf_sma_daily_paper_lab_cli_parser_accepts_explicit_run_date() -> None:
+    args = cli_module.build_parser().parse_args(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            "runs/daily_lab/parser_smoke",
+            "--run-date",
+            "2026-06-20",
+        ]
+    )
+
+    assert args.run_date == "2026-06-20"
+    assert args.as_of_date is None
+
+
+def test_etf_sma_daily_paper_lab_cli_forwards_explicit_run_date_to_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured_configs: list[EtfSmaDailyPaperLabConfig] = []
+
+    def fake_run(config: EtfSmaDailyPaperLabConfig) -> dict[str, object]:
+        captured_configs.append(config)
+        return {"ok": True}
+
+    monkeypatch.setattr(paper_lab_module, "run_etf_sma_daily_paper_lab", fake_run)
+    monkeypatch.setattr(
+        paper_lab_module,
+        "etf_sma_daily_paper_lab_exit_status",
+        lambda payload: 0,
+    )
+
+    exit_code = cli_module.main(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            str(tmp_path / "paper_lab_cli_forward_run_date"),
+            "--bars-csv",
+            str(FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"),
+            "--as-of-date",
+            "2025-07-19",
+            "--run-date",
+            "2025-07-20",
+            "--format",
+            "json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert len(captured_configs) == 1
+    config = captured_configs[0]
+    assert config.as_of_date == "2025-07-19"
+    assert config.run_date == "2025-07-20"
+    assert config.as_of_date != config.run_date
+    assert config.broker_state_mode == "broker_state_not_observed"
+    assert config.broker_snapshot_log is None
+
+
+def test_etf_sma_daily_paper_lab_cli_preserves_omitted_run_date_behavior(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured_configs: list[EtfSmaDailyPaperLabConfig] = []
+
+    def fake_run(config: EtfSmaDailyPaperLabConfig) -> dict[str, object]:
+        captured_configs.append(config)
+        return {"ok": True}
+
+    monkeypatch.setattr(paper_lab_module, "run_etf_sma_daily_paper_lab", fake_run)
+    monkeypatch.setattr(
+        paper_lab_module,
+        "etf_sma_daily_paper_lab_exit_status",
+        lambda payload: 0,
+    )
+
+    exit_code = cli_module.main(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            str(tmp_path / "paper_lab_cli_omitted_run_date"),
+            "--bars-csv",
+            str(FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"),
+            "--as-of-date",
+            "2025-07-19",
+            "--format",
+            "json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert len(captured_configs) == 1
+    assert captured_configs[0].as_of_date == "2025-07-19"
+    assert captured_configs[0].run_date is None
+
+
+def test_etf_sma_daily_paper_lab_cli_invalid_run_date_fails_clearly(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = cli_module.main(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            str(tmp_path / "paper_lab_cli_invalid_run_date"),
+            "--bars-csv",
+            str(FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"),
+            "--as-of-date",
+            "2025-07-19",
+            "--run-date",
+            "2026-02-30",
+            "--format",
+            "json",
+        ]
+    )
+    captured = capsys.readouterr()
+    combined_output = captured.out + captured.err
+
+    assert exit_code == 2
+    assert "run_date must be in YYYY-MM-DD format." in captured.err
+    assert "Traceback" not in combined_output
+    assert "ALPACA" not in combined_output
+    assert "APCA" not in combined_output
+
+
+def test_etf_sma_daily_paper_lab_cli_explicit_run_date_reaches_runtime(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_cli_explicit_run_date_runtime"
+    broker_snapshot_log = tmp_path / "valid_snapshot.jsonl"
+    _write_daily_lab_broker_snapshot(
+        broker_snapshot_log,
+        generated_at="2025-07-20T12:00:00+00:00",
+        spy_position_qty="0.5",
+    )
+
+    exit_code = _run_daily_paper_lab_cli(
+        output_root=output_root,
+        bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+        broker_snapshot_log=broker_snapshot_log,
+        run_date="2025-07-20",
+    )
+
+    mission = _read_mission_control(output_root)
+    data_plan = mission["data_freshness_plan"]
+    broker = mission["broker_state_lane"]
+    latest = mission["latest_run"]
+    brief = mission["active_operating_brief"]
+    assert exit_code == 0
+    assert data_plan["run_date"] == "2025-07-20"
+    assert data_plan["data_as_of"] == "2025-07-19"
+    assert latest["run_date"] == "2025-07-20"
+    assert brief["as_of_date"] == "2025-07-19"
+    assert broker["broker_state_status"] == "observed"
+    assert broker["broker_state_observed"] is True
+    assert latest["preview_decision"] == "hold/noop"
+    assert latest["paper_submit_authorized"] is False
+    assert latest["live_authorized"] is False
 
 
 def test_etf_sma_daily_paper_lab_cli_no_snapshot_exit_zero_and_no_false_broker_claims(

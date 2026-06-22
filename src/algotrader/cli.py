@@ -2468,7 +2468,18 @@ def build_parser() -> argparse.ArgumentParser:
     etf_sma_daily_paper_lab_parser.add_argument(
         "--as-of-date",
         default=None,
-        help="Explicit as-of date (YYYY-MM-DD). If omitted, derived from input bars.",
+        help=(
+            "Explicit market-data/signal as-of date (YYYY-MM-DD). "
+            "If omitted, derived from input bars."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
+        "--run-date",
+        default=None,
+        help=(
+            "Optional deterministic operating run date (YYYY-MM-DD) used for "
+            "freshness and controller routing; distinct from --as-of-date."
+        ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
         "--symbol",
@@ -5976,6 +5987,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 sma_slow_window=args.sma_slow_window,
                 broker_state_mode=args.broker_state_mode,
                 broker_snapshot_log=args.broker_snapshot_log,
+                run_date=args.run_date,
             )
         )
         if args.output_format == "json":
