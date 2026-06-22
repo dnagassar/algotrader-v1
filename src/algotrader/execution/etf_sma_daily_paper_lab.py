@@ -38,6 +38,15 @@ __all__ = [
 ]
 
 _DEFAULT_SYMBOL = "SPY"
+_READ_ONLY_BROKER_SNAPSHOT_RECONCILIATION_RECORD_TYPE = (
+    "read_only_paper_broker_snapshot_reconciliation"
+)
+_SOURCE_REVIEW_NOT_READY_BLOCKER = (
+    "source_review_state_not_ready_for_operator_review"
+)
+_SOURCE_REVIEW_COMPATIBLE_OBSERVATION_STATUS = (
+    "accepted_source_review_state_not_ready_for_operator_review"
+)
 _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv"
 _DEFAULT_REFRESH_INTAKE_MANIFEST = (
     "runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl"
@@ -6559,6 +6568,9 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
                 "unknown" if snapshot_consumed else "not_observed",
             )
         ),
+        "snapshot_observation_compatibility_status": str(
+            snapshot.get("snapshot_observation_compatibility_status", "")
+        ),
         "broker_snapshot_freshness_status": (
             "fresh"
             if snapshot.get("snapshot_validation_status") == "passed"
@@ -6774,6 +6786,9 @@ def _load_broker_state_snapshot(
         "artifact_path": _normalize_path(snapshot_path),
         "snapshot_validation_status": "passed",
         "snapshot_validation_errors": [],
+        "snapshot_observation_compatibility_status": (
+            _broker_snapshot_observation_compatibility_status(record)
+        ),
         "broker_state_trusted": True,
     }
 
@@ -6830,6 +6845,11 @@ def _broker_snapshot_validation_errors(
     if record.get("paper_lab_only") is not True and "paper_lab_only" not in labels:
         errors.append("broker_snapshot_not_paper_lab_only")
     if (
+        record.get("not_live_authorized") is not True
+        and "not_live_authorized" not in labels
+    ):
+        errors.append("broker_snapshot_not_live_authorized")
+    if (
         record.get("read_only_broker_observation") is not True
         and "read_only_broker_observation" not in labels
     ):
@@ -6859,9 +6879,14 @@ def _broker_snapshot_validation_errors(
         for action_name, action_allowed in broker_action_flags.items():
             if action_allowed is not False:
                 errors.append(f"broker_snapshot_action_{action_name}_not_false")
-    if record.get("broker_observation_state") != "observed":
-        errors.append("broker_snapshot_not_observed")
-    for field_name in ("account_observed", "positions_observed", "orders_observed"):
+    if str(record.get("broker_observation_state", "")).strip() != "observed":
+        errors.extend(_broker_snapshot_source_review_compatibility_errors(record))
+    for field_name in (
+        "account_observed",
+        "positions_observed",
+        "orders_observed",
+        "open_orders_observed",
+    ):
         if record.get(field_name) is not True:
             errors.append(f"broker_snapshot_{field_name}_not_true")
     if _snapshot_timestamp_status(
@@ -6878,6 +6903,54 @@ def _broker_snapshot_validation_errors(
         )
     errors.extend(_broker_snapshot_contradiction_errors(record))
     return list(_dedupe(tuple(errors)))
+
+
+def _broker_snapshot_observation_compatibility_status(
+    record: Mapping[str, Any],
+) -> str:
+    if str(record.get("broker_observation_state", "")).strip() == "observed":
+        return "native_observed"
+    if not _broker_snapshot_source_review_compatibility_errors(record):
+        return _SOURCE_REVIEW_COMPATIBLE_OBSERVATION_STATUS
+    return "not_compatible"
+
+
+def _broker_snapshot_source_review_compatibility_errors(
+    record: Mapping[str, Any],
+) -> list[str]:
+    errors: list[str] = []
+    if str(record.get("record_type", "")).strip() != (
+        _READ_ONLY_BROKER_SNAPSHOT_RECONCILIATION_RECORD_TYPE
+    ):
+        errors.append("broker_snapshot_wrong_record_type")
+    if str(record.get("broker_observation_state", "")).strip() != (
+        "observation_incomplete"
+    ):
+        errors.append("broker_snapshot_not_observed")
+    if str(record.get("reconciliation_state", "")).strip() != (
+        "blocked_observation_incomplete"
+    ):
+        errors.append("broker_snapshot_reconciliation_state_not_compatible")
+
+    blockers = _string_list(record.get("blockers"))
+    if blockers != [_SOURCE_REVIEW_NOT_READY_BLOCKER]:
+        errors.append("broker_snapshot_source_review_blocker_not_exclusive")
+
+    for field_name in ("unavailable_observations", "unavailable_reasons"):
+        if field_name not in record:
+            errors.append(f"broker_snapshot_{field_name}_missing")
+        elif not _empty_snapshot_collection(record.get(field_name)):
+            errors.append(f"broker_snapshot_{field_name}_not_empty")
+
+    return errors
+
+
+def _empty_snapshot_collection(value: object) -> bool:
+    if isinstance(value, Mapping):
+        return not value
+    if isinstance(value, list):
+        return not value
+    return False
 
 
 def _broker_snapshot_error_state(errors: list[str]) -> str:
@@ -6965,12 +7038,19 @@ def _broker_snapshot(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def _broker_snapshot_observed(snapshot: Mapping[str, Any]) -> bool:
-    return (
+    if not (
         bool(snapshot)
-        and snapshot.get("broker_observation_state") == "observed"
         and snapshot.get("account_observed") is True
         and snapshot.get("positions_observed") is True
         and snapshot.get("orders_observed") is True
+        and snapshot.get("open_orders_observed") is True
+    ):
+        return False
+    if snapshot.get("broker_observation_state") == "observed":
+        return True
+    return (
+        snapshot.get("snapshot_observation_compatibility_status")
+        == _SOURCE_REVIEW_COMPATIBLE_OBSERVATION_STATUS
     )
 
 

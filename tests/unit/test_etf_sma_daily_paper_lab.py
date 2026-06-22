@@ -8785,6 +8785,34 @@ def _write_daily_lab_broker_snapshot_without_generated_at(path: Path) -> None:
     )
 
 
+def _write_v172_source_review_not_ready_broker_snapshot(
+    path: Path,
+    *,
+    spy_position_qty: str = "0.033695775",
+    open_spy_order_count: int = 0,
+    unexpected_non_spy_position: bool = False,
+    overrides: dict[str, object] | None = None,
+) -> dict[str, object]:
+    compatibility_overrides: dict[str, object] = {
+        "run_id": "v172_read_only_spy_paper_broker_snapshot",
+        "source_review_state": "",
+        "broker_observation_state": "observation_incomplete",
+        "reconciliation_state": "blocked_observation_incomplete",
+        "blockers": ["source_review_state_not_ready_for_operator_review"],
+        "unavailable_observations": [],
+        "unavailable_reasons": {},
+    }
+    if overrides:
+        compatibility_overrides.update(overrides)
+    return _write_daily_lab_broker_snapshot(
+        path,
+        spy_position_qty=spy_position_qty,
+        open_spy_order_count=open_spy_order_count,
+        unexpected_non_spy_position=unexpected_non_spy_position,
+        overrides=compatibility_overrides,
+    )
+
+
 def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     tmp_path: Path,
 ) -> None:
@@ -9171,6 +9199,284 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     }
     active_surface_text = json.dumps(active_blocker_surfaces, sort_keys=True)
     assert "broker_state_not_observed" not in active_surface_text
+
+
+def test_etf_sma_daily_paper_lab_accepts_v172_source_review_not_ready_snapshot(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_v172_compatible_snapshot_out"
+    broker_snapshot_log = tmp_path / "v172_compatible_snapshot.jsonl"
+    _write_v172_source_review_not_ready_broker_snapshot(broker_snapshot_log)
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    mission = _read_mission_control(output_root)
+    broker = mission["broker_state_lane"]
+    decision = mission["decision_lane"]
+    latest = mission["latest_run"]
+    daily_decision_summary = mission["daily_decision_summary"]
+    snapshot = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )["broker_state_snapshot"]
+
+    assert payload["broker_state_observed"] is True
+    assert broker["broker_state_status"] == "observed"
+    assert broker["broker_state_observed"] is True
+    assert broker["broker_state_trusted"] is True
+    assert broker["broker_snapshot_freshness_status"] == "fresh"
+    assert broker["snapshot_validation_status"] == "passed"
+    assert broker["snapshot_observation_compatibility_status"] == (
+        "accepted_source_review_state_not_ready_for_operator_review"
+    )
+    assert snapshot["snapshot_validation_status"] == "passed"
+    assert snapshot["broker_state_trusted"] is True
+    assert snapshot["broker_observation_state"] == "observation_incomplete"
+    assert snapshot["snapshot_observation_compatibility_status"] == (
+        "accepted_source_review_state_not_ready_for_operator_review"
+    )
+    assert snapshot["snapshot_validation_errors"] == []
+    assert broker["spy_position_present"] is True
+    assert broker["spy_position_qty"] == "0.033695775"
+    assert broker["open_order_count"] == 0
+    assert broker["open_spy_order_count"] == 0
+    assert broker["unexpected_non_spy_position_present"] is False
+
+    assert decision["market_signal_preview"] == "buy_preview"
+    assert decision["preview_decision"] == "hold/noop"
+    assert decision["blocker_status"] == "none"
+    assert latest["preview_decision"] == "hold/noop"
+    assert latest["main_blocker"] == "none"
+    assert daily_decision_summary["broker_snapshot_freshness_status"] == "fresh"
+    assert daily_decision_summary["broker_aware_preview_decision"] == "hold/noop"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="no_action_required",
+        expected_action="hold/noop",
+        expected_source_preview_decision="hold/noop",
+        expected_blocker="none",
+        expected_requires_approval=False,
+        expected_reason="existing_spy_position_satisfies_risk_on_preview",
+    )
+
+    gate = mission["daily_approval_gate"]
+    assert gate["approval_required"] is False
+    assert gate["approval_state"] == "not_required_noop"
+    assert gate["submit_allowed"] is False
+    assert gate["paper_submit_authorized"] is False
+    assert gate["live_authorized"] is False
+    assert gate["broker_mutation_performed"] is False
+
+    active = mission["active_operating_brief"]
+    assert active["active_state_status"] == "ready_no_action"
+    assert active["selected_next_safe_action"] == (
+        "run_next_completed_session_daily_cycle"
+    )
+    assert active["selected_agent"] == "none"
+    assert active["hard_gate_required"] is False
+    assert active["hard_gate_reason"] == "none"
+    _assert_autopilot_controller_flags(
+        active["daily_autopilot_controller"],
+        autopilot_control_status="waiting_for_next_completed_session",
+        can_continue_without_daniel=True,
+        next_safe_action="run_next_completed_session_daily_cycle",
+        selected_agent="none",
+        hard_gate_required=False,
+        hard_gate_type="none",
+    )
+
+
+@pytest.mark.parametrize(
+    ("case_name", "overrides", "expected_status", "expected_error"),
+    [
+        (
+            "missing_positions_observed",
+            {"positions_observed": False},
+            "invalid_snapshot",
+            "broker_snapshot_positions_observed_not_true",
+        ),
+        (
+            "missing_orders_observed",
+            {"orders_observed": False},
+            "invalid_snapshot",
+            "broker_snapshot_orders_observed_not_true",
+        ),
+        (
+            "missing_open_orders_observed",
+            {"open_orders_observed": False},
+            "invalid_snapshot",
+            "broker_snapshot_open_orders_observed_not_true",
+        ),
+        (
+            "mutated",
+            {"mutated": True},
+            "invalid_snapshot",
+            "broker_snapshot_mutated_not_false",
+        ),
+        (
+            "submitted",
+            {"submitted": True},
+            "invalid_snapshot",
+            "broker_snapshot_submitted_not_false",
+        ),
+        (
+            "live_url_detected",
+            {"live_url_detected": True},
+            "live_url_detected",
+            "broker_snapshot_live_labeled",
+        ),
+        (
+            "additional_blocker",
+            {
+                "blockers": [
+                    "source_review_state_not_ready_for_operator_review",
+                    "source_cycle_decision_not_buy_preview",
+                ]
+            },
+            "invalid_snapshot",
+            "broker_snapshot_source_review_blocker_not_exclusive",
+        ),
+    ],
+)
+def test_etf_sma_daily_paper_lab_rejects_unsafe_v172_compatible_snapshots(
+    tmp_path: Path,
+    case_name: str,
+    overrides: dict[str, object],
+    expected_status: str,
+    expected_error: str,
+) -> None:
+    output_root = tmp_path / f"paper_lab_v172_rejected_{case_name}"
+    broker_snapshot_log = tmp_path / f"v172_rejected_{case_name}.jsonl"
+    _write_v172_source_review_not_ready_broker_snapshot(
+        broker_snapshot_log,
+        overrides=overrides,
+    )
+
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    mission = _read_mission_control(output_root)
+    broker = mission["broker_state_lane"]
+    latest = mission["latest_run"]
+    snapshot = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )["broker_state_snapshot"]
+    assert broker["broker_state_status"] == expected_status
+    assert broker["broker_state_observed"] is False
+    assert broker["broker_state_trusted"] is False
+    assert latest["preview_decision"] == f"blocked/{expected_status}"
+    assert snapshot["broker_state_trusted"] is False
+    assert expected_error in snapshot["snapshot_validation_errors"]
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision=f"blocked/{expected_status}",
+        expected_blocker=expected_status,
+        expected_requires_approval=False,
+        expected_reason=expected_status,
+    )
+
+
+def test_etf_sma_daily_paper_lab_v172_open_spy_order_still_blocks_preview(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_v172_open_order"
+    broker_snapshot_log = tmp_path / "v172_open_order.jsonl"
+    _write_v172_source_review_not_ready_broker_snapshot(
+        broker_snapshot_log,
+        spy_position_qty="0",
+        open_spy_order_count=1,
+    )
+
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    mission = _read_mission_control(output_root)
+    broker = mission["broker_state_lane"]
+    assert broker["broker_state_observed"] is True
+    assert broker["broker_state_trusted"] is True
+    assert broker["open_order_count"] == 1
+    assert mission["decision_lane"]["preview_decision"] == "blocked/open_order_present"
+    assert mission["decision_lane"]["blocker_status"] == "open_order_present"
+    _assert_execution_plan_surfaces(
+        mission,
+        expected_status="blocked",
+        expected_action="none",
+        expected_source_preview_decision="blocked/open_order_present",
+        expected_blocker="open_order_present",
+        expected_requires_approval=False,
+        expected_reason="open_order_present",
+    )
+
+
+def test_etf_sma_daily_paper_lab_v172_unexpected_non_spy_position_blocks_preview(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_v172_unexpected_position"
+    broker_snapshot_log = tmp_path / "v172_unexpected_position.jsonl"
+    _write_v172_source_review_not_ready_broker_snapshot(
+        broker_snapshot_log,
+        unexpected_non_spy_position=True,
+        overrides={
+            "blockers": [
+                "source_review_state_not_ready_for_operator_review",
+                "unexpected_non_spy_position",
+            ]
+        },
+    )
+
+    run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    mission = _read_mission_control(output_root)
+    broker = mission["broker_state_lane"]
+    snapshot = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )["broker_state_snapshot"]
+    assert broker["broker_state_observed"] is False
+    assert broker["broker_state_trusted"] is False
+    assert broker["broker_state_status"] == "invalid_snapshot"
+    assert mission["decision_lane"]["preview_decision"] == "blocked/invalid_snapshot"
+    assert "broker_snapshot_source_review_blocker_not_exclusive" in snapshot[
+        "snapshot_validation_errors"
+    ]
 
 
 @pytest.mark.parametrize(
