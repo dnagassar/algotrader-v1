@@ -4,27 +4,24 @@ Runs the canonical daily paper-lab operating cycle and prints the compact receip
 
 .DESCRIPTION
 Runs the existing SPY SMA daily paper-lab implementation in operational-only
-mode against a supplied local read-only broker snapshot log, then prints the
-compact daily status receipt from latest_run.json when an artifact is available.
-The default command does not read a broker, mutate broker state, submit paper
-orders, load credentials, refresh data, or contact the network.  The optional
-AutoRefreshAdjustedData switch only runs a local dry-run refresh plan when the
-daily cycle has already reported stale data.
+mode and then prints the compact daily status receipt from latest_run.json when
+an artifact is available.  The default command does not read a broker, mutate
+broker state, submit paper orders, load credentials, refresh data, or contact the network.  The optional AutoRefreshAdjustedData switch defaults to a local
+dry-run refresh plan; live market-data refresh requires both the live mode and
+the explicit LiveMarketDataFetchAuthorized switch.
 
 .PARAMETER OutputRoot
 Root directory under which the daily paper-lab operating artifacts are written.
 
 .PARAMETER BrokerSnapshotLog
 Local read-only paper broker snapshot reconciliation JSONL to consume. The
-wrapper sets BrokerStateMode to alpaca_paper_read_only and does not make a
-broker call.
+wrapper does not make a broker call.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
-    [Parameter(Mandatory = $true)]
     [string]$BrokerSnapshotLog,
     [string]$BarsCsv = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
     [string]$AsOfDate,
@@ -32,10 +29,18 @@ param(
     [string]$Symbol = "SPY",
     [int]$SmaFastWindow = 50,
     [int]$SmaSlowWindow = 200,
+    [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
+    [string]$BrokerStateMode = "broker_state_not_observed",
     [switch]$AutoRefreshAdjustedData,
+    [ValidateSet("dry_run", "live_market_data_fetch")]
+    [string]$DataRefreshMode = "dry_run",
+    [switch]$LiveMarketDataFetchAuthorized,
     [string]$DataRefreshExpectedLatestBarDate,
     [string]$DataRefreshOutputCsv = ".data\operator_inputs\spy_tiingo_adjusted_refresh_latest.csv",
-    [string]$DataRefreshRunLog = "runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl"
+    [string]$DataRefreshRunLog = "runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl",
+    [string]$DataRefreshRawResponsePath = "runs\paper_lab\tiingo_spy_adjusted_raw_latest.json",
+    [string]$DataRefreshStartDate = "auto",
+    [string]$DataRefreshDotenvPath = ".env"
 )
 
 Set-StrictMode -Version Latest
@@ -144,11 +149,14 @@ $DailyArgs = @(
     "-Symbol", $Symbol,
     "-SmaFastWindow", $SmaFastWindow,
     "-SmaSlowWindow", $SmaSlowWindow,
-    "-BrokerStateMode", "alpaca_paper_read_only",
-    "-BrokerSnapshotLog", $BrokerSnapshotLog,
+    "-BrokerStateMode", $BrokerStateMode,
     "-OperationalOnly",
     "-Format", "json"
 )
+
+if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {
+    $DailyArgs += @("-BrokerSnapshotLog", $BrokerSnapshotLog)
+}
 
 if (-not [string]::IsNullOrEmpty($AsOfDate)) {
     $DailyArgs += @("-AsOfDate", $AsOfDate)
@@ -183,8 +191,13 @@ if ($AutoRefreshAdjustedData) {
             $LatestRunForRefresh = Get-Content -LiteralPath $LatestRunPath -Raw | ConvertFrom-Json
             if (Test-AdjustedDataRefreshRequired -LatestRun $LatestRunForRefresh) {
                 $RefreshExpectedLatestBarDate = Get-RefreshExpectedLatestBarDate -LatestRun $LatestRunForRefresh
-                if ([string]::IsNullOrEmpty($RefreshExpectedLatestBarDate)) {
+                if ([string]::IsNullOrEmpty($RefreshExpectedLatestBarDate) -and $DataRefreshMode -eq "dry_run") {
                     Write-Host "auto_refresh_adjusted_data_status=expected_latest_bar_date_required"
+                    $AutoRefreshExitCode = 2
+                }
+                elseif ($DataRefreshMode -eq "live_market_data_fetch" -and -not $LiveMarketDataFetchAuthorized) {
+                    Write-Host "auto_refresh_adjusted_data_status=live_market_data_fetch_not_authorized"
+                    Write-Host "auto_refresh_adjusted_data_next_safe_action=request_explicit_live_market_data_fetch_authorization"
                     $AutoRefreshExitCode = 2
                 }
                 else {
@@ -193,28 +206,62 @@ if ($AutoRefreshAdjustedData) {
                         "-ExecutionPolicy", "Bypass",
                         "-File", $RefreshScript,
                         "-Provider", "tiingo",
-                        "-ExpectedLatestBarDate", $RefreshExpectedLatestBarDate,
                         "-OutputCsv", $DataRefreshOutputCsv,
                         "-CanonicalCsv", $BarsCsv,
                         "-RunLog", $DataRefreshRunLog,
-                        "-Mode", "dry_run"
+                        "-Mode", $DataRefreshMode,
+                        "-StartDate", $DataRefreshStartDate,
+                        "-DotenvPath", $DataRefreshDotenvPath
                     )
+                    if (-not [string]::IsNullOrEmpty($RefreshExpectedLatestBarDate)) {
+                        $RefreshArgs += @("-ExpectedLatestBarDate", $RefreshExpectedLatestBarDate)
+                    }
+                    if ($DataRefreshMode -eq "live_market_data_fetch") {
+                        $RefreshArgs += @(
+                            "-RawResponsePath", $DataRefreshRawResponsePath,
+                            "-Format", "json"
+                        )
+                    }
+                    if ($LiveMarketDataFetchAuthorized) {
+                        $RefreshArgs += @("-LiveMarketDataFetchAuthorized")
+                    }
                     Push-Location -LiteralPath $RepoRoot
                     try {
                         & $PowerShellExe @RefreshArgs
-                        $RefreshDryRunExitCode = $LASTEXITCODE
+                        $RefreshExitCode = $LASTEXITCODE
                     }
                     finally {
                         Pop-Location
                     }
-                    if ($null -eq $RefreshDryRunExitCode) {
-                        $RefreshDryRunExitCode = 0
+                    if ($null -eq $RefreshExitCode) {
+                        $RefreshExitCode = 0
                     }
-                    Write-Host "auto_refresh_adjusted_data_status=live_market_data_fetch_not_authorized"
-                    Write-Host "auto_refresh_adjusted_data_next_safe_action=request_explicit_live_market_data_fetch_authorization"
-                    $AutoRefreshExitCode = 2
-                    if ($RefreshDryRunExitCode -ne 0) {
-                        $AutoRefreshExitCode = $RefreshDryRunExitCode
+                    if ($DataRefreshMode -eq "dry_run") {
+                        Write-Host "auto_refresh_adjusted_data_status=live_market_data_fetch_not_authorized"
+                        Write-Host "auto_refresh_adjusted_data_next_safe_action=request_explicit_live_market_data_fetch_authorization"
+                        $AutoRefreshExitCode = 2
+                        if ($RefreshExitCode -ne 0) {
+                            $AutoRefreshExitCode = $RefreshExitCode
+                        }
+                    }
+                    elseif ($RefreshExitCode -ne 0) {
+                        Write-Host "auto_refresh_adjusted_data_status=live_market_data_fetch_failed"
+                        $AutoRefreshExitCode = $RefreshExitCode
+                    }
+                    else {
+                        Write-Host "auto_refresh_adjusted_data_status=accepted_and_daily_cycle_rerun"
+                        Push-Location -LiteralPath $RepoRoot
+                        try {
+                            $DailyOutput = & $PowerShellExe @DailyArgs 2>&1
+                            $DailyExitCode = $LASTEXITCODE
+                        }
+                        finally {
+                            Pop-Location
+                        }
+                        if ($null -eq $DailyExitCode) {
+                            $DailyExitCode = 0
+                        }
+                        $AutoRefreshExitCode = $DailyExitCode
                     }
                 }
             }

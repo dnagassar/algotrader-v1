@@ -20,16 +20,20 @@ def test_run_daily_paper_lab_cycle_script_contract() -> None:
     expected_fragments = (
         "Runs the canonical daily paper-lab operating cycle",
         "[string]$BrokerSnapshotLog",
-        "BrokerStateMode\", \"alpaca_paper_read_only\"",
+        "[string]$BrokerStateMode = \"broker_state_not_observed\"",
+        "\"-BrokerStateMode\", $BrokerStateMode",
         "\"-OperationalOnly\"",
         "\"-Format\", \"json\"",
         "show_daily_paper_lab_status.ps1",
         "latest_run.json",
         "exit $DailyExitCode",
         "[switch]$AutoRefreshAdjustedData",
+        "[string]$DataRefreshMode = \"dry_run\"",
+        "[switch]$LiveMarketDataFetchAuthorized",
         "refresh_spy_adjusted_data.ps1",
-        "\"-Mode\", \"dry_run\"",
+        "\"-Mode\", $DataRefreshMode",
         "live_market_data_fetch_not_authorized",
+        "accepted_and_daily_cycle_rerun",
         "does not read a broker",
         "load credentials",
         "contact the network",
@@ -66,6 +70,8 @@ def test_run_daily_paper_lab_cycle_prints_receipt_and_handles_paths_with_spaces(
             str(output_root),
             "-BrokerSnapshotLog",
             str(broker_snapshot),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
         ],
         cwd=PROJECT_ROOT,
         env=env,
@@ -117,6 +123,8 @@ def test_run_daily_paper_lab_cycle_propagates_daily_exit_after_receipt(
             str(output_root),
             "-BrokerSnapshotLog",
             str(broker_snapshot),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
         ],
         cwd=PROJECT_ROOT,
         env=env,
@@ -166,6 +174,8 @@ def test_run_daily_paper_lab_cycle_auto_refresh_stale_data_dry_run_gate(
             str(output_root),
             "-BrokerSnapshotLog",
             str(broker_snapshot),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
             "-AutoRefreshAdjustedData",
         ],
         cwd=PROJECT_ROOT,
@@ -188,6 +198,67 @@ def test_run_daily_paper_lab_cycle_auto_refresh_stale_data_dry_run_gate(
     assert "--mode dry_run" in args
     assert "live_market_data_fetch" not in args
     assert "--live-market-data-fetch-authorized" not in args
+
+
+def test_run_daily_paper_lab_cycle_live_refresh_success_reruns_daily_cycle(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_latest"
+    broker_snapshot = tmp_path / "reconciliation.jsonl"
+    broker_snapshot.write_text("{}", encoding="utf-8")
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(
+        tmp_path,
+        capture_path,
+        output_root=output_root,
+        daily_exit_code=0,
+        receipt_exit_code=0,
+        latest_run_json=(
+            '{"latest_run_version":"test",'
+            '"data_freshness_status":"stale_data_preview_only",'
+            '"next_safe_action":"refresh_or_intake_adjusted_spy_data",'
+            '"expected_latest_bar_date":"2026-06-22"}'
+        ),
+    )
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(RUN_DAILY_PAPER_LAB_CYCLE_SCRIPT),
+            "-OutputRoot",
+            str(output_root),
+            "-BrokerSnapshotLog",
+            str(broker_snapshot),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
+            "-AutoRefreshAdjustedData",
+            "-DataRefreshMode",
+            "live_market_data_fetch",
+            "-LiveMarketDataFetchAuthorized",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "auto_refresh_adjusted_data_status=accepted_and_daily_cycle_rerun" in result.stdout
+    args_lines = capture_path.read_text(encoding="utf-8").splitlines()
+    assert sum("etf-sma-daily-paper-lab" in line for line in args_lines) == 2
+    refresh_lines = [
+        line for line in args_lines if "etf_sma_adjusted_spy_data_refresh" in line
+    ]
+    assert len(refresh_lines) == 1
+    assert "--mode live_market_data_fetch" in refresh_lines[0]
+    assert "--live-market-data-fetch-authorized" in refresh_lines[0]
+    assert "--raw-response-path" in refresh_lines[0]
 
 
 def _fake_python_env(
@@ -254,6 +325,7 @@ def _scrubbed_env() -> dict[str, str]:
         "ALPACA_SECRET_KEY",
         "APCA_API_KEY_ID",
         "APCA_API_SECRET_KEY",
+        "TIINGO_API_KEY",
     ):
         env.pop(name, None)
     return env

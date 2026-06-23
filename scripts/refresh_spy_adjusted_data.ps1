@@ -14,7 +14,6 @@ paper orders, authorize live trading, or print/write token values.
 param(
     [ValidateSet("tiingo")]
     [string]$Provider = "tiingo",
-    [Parameter(Mandatory = $true)]
     [string]$ExpectedLatestBarDate,
     [Parameter(Mandatory = $true)]
     [string]$OutputCsv,
@@ -26,6 +25,8 @@ param(
     [string]$Mode = "dry_run",
     [string]$FixtureInputPath,
     [string]$RawResponsePath,
+    [string]$StartDate = "auto",
+    [string]$DotenvPath = ".env",
     [switch]$LiveMarketDataFetchAuthorized,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -71,13 +72,18 @@ if ($LoadedCredentialVariables.Count -gt 0) {
 $CliArgs = @(
     "-m", "algotrader.execution.etf_sma_adjusted_spy_data_refresh",
     "--provider", $Provider,
-    "--expected-latest-bar-date", $ExpectedLatestBarDate,
     "--output-csv", $OutputCsv,
     "--canonical-csv", $CanonicalCsv,
     "--run-log", $RunLog,
     "--mode", $Mode,
+    "--start-date", $StartDate,
+    "--dotenv-path", $DotenvPath,
     "--format", $Format
 )
+
+if (-not [string]::IsNullOrEmpty($ExpectedLatestBarDate)) {
+    $CliArgs += @("--expected-latest-bar-date", $ExpectedLatestBarDate)
+}
 
 if (-not [string]::IsNullOrEmpty($FixtureInputPath)) {
     $CliArgs += @("--fixture-input-path", $FixtureInputPath)
