@@ -2520,6 +2520,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
+        "--operational-only",
+        action="store_true",
+        help=(
+            "Produce only active daily operating artifacts and suppress secondary "
+            "candidate research and agent work-order materialization."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -5988,6 +5996,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 broker_state_mode=args.broker_state_mode,
                 broker_snapshot_log=args.broker_snapshot_log,
                 run_date=args.run_date,
+                operational_only=args.operational_only,
             )
         )
         if args.output_format == "json":

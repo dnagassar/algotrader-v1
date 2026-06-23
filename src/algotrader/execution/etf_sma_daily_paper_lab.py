@@ -15,6 +15,7 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import shutil
 from typing import Any
 
 from algotrader.core.types import Bar
@@ -399,6 +400,12 @@ _BROKER_STATE_MODES = (
     "offline_fixture",
     "alpaca_paper_read_only",
 )
+_OUTPUT_MODE_FULL_RESEARCH = "full_research"
+_OUTPUT_MODE_OPERATIONAL_ONLY = "operational_only"
+_CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS = (
+    "secondary_not_materialized_in_operational_mode"
+)
+_WORK_ORDERS_OPERATIONAL_STATUS = "secondary_not_materialized_in_operational_mode"
 _NONZERO_EXIT_BROKER_STATE_STATUSES = frozenset(
     {
         "contradictory_snapshot",
@@ -816,6 +823,98 @@ _EXPECTED_ARTIFACTS = (
         f"{_WORK_ORDERS_DIRNAME}/{_ANTIGRAVITY_WORK_ORDER_FILENAME}",
     ),
     ("claude_critique_order", f"{_WORK_ORDERS_DIRNAME}/{_CLAUDE_WORK_ORDER_FILENAME}"),
+)
+_OPERATIONAL_EXPECTED_ARTIFACTS = (
+    ("operating_brief", _BRIEF_FILENAME),
+    ("operating_record", _RECORD_FILENAME),
+    ("manifest", _MANIFEST_FILENAME),
+    ("data_refresh_dry_run", _DATA_REFRESH_DRY_RUN_FILENAME),
+)
+_SUPPRESSED_OPERATIONAL_ARTIFACT_IDS = frozenset(
+    {
+        "research_candidate_queue",
+        "research_board_prioritization",
+        "strategy_comparison_scaffold",
+        "candidate_strategy_evidence_template",
+        "candidate_evidence_requirements",
+        "candidate_evidence_collection_plan",
+        "candidate_evidence_collection_status",
+        "candidate_evidence_gap_summary",
+        "candidate_gap_closure_queue",
+        "candidate_risk_rule_status",
+        "candidate_signal_rule_status",
+        "shared_risk_rule_status",
+        "shared_signal_rule_status",
+        "shared_benchmark_comparison_status",
+        "candidate_backtest_result_packet",
+        "baseline_health_evaluation",
+        "baseline_evidence_metrics",
+        "paper_observation_readiness",
+        "review_handoff",
+        "gpt_next_action_handoff",
+        "codex_work_order",
+        "antigravity_review_order",
+        "claude_critique_order",
+        "codex_next_prompt",
+        "codex_next_work_order",
+        "antigravity_review_prompt",
+        "antigravity_review_work_order",
+        "claude_critique_prompt",
+        "claude_critique_work_order",
+        "gpt_report_classification_prompt",
+        "gpt_next_decision_context",
+        "work_orders",
+    }
+)
+_SUPPRESSED_OPERATIONAL_PAYLOAD_KEYS = frozenset(
+    {
+        "research_candidate_queue_version",
+        "research_candidate_queue_path",
+        "research_candidate_queue",
+        "research_board_prioritization_version",
+        "research_board_prioritization_path",
+        "research_board_prioritization",
+        "strategy_comparison_scaffold_path",
+        "strategy_comparison_scaffold",
+        "candidate_strategy_evidence_template_path",
+        "candidate_strategy_evidence_template",
+        "candidate_evidence_requirements_path",
+        "candidate_evidence_requirements",
+        "candidate_evidence_collection_plan_path",
+        "candidate_evidence_collection_plan",
+        "candidate_evidence_collection_status_path",
+        "candidate_evidence_collection_status",
+        "candidate_evidence_gap_summary_path",
+        "candidate_evidence_gap_summary",
+        "candidate_gap_closure_queue_path",
+        "candidate_gap_closure_queue",
+        "candidate_risk_rule_status_path",
+        "candidate_risk_rule_status",
+        "candidate_signal_rule_status_path",
+        "candidate_signal_rule_status",
+        "shared_risk_rule_status_path",
+        "shared_risk_rule_status",
+        "shared_signal_rule_status_path",
+        "shared_signal_rule_status",
+        "shared_benchmark_comparison_status_path",
+        "shared_benchmark_comparison_status",
+        "candidate_backtest_result_packet_path",
+        "candidate_backtest_result_packet",
+        "baseline_health_evaluation_version",
+        "baseline_health_evaluation_path",
+        "baseline_health_evaluation",
+        "baseline_evidence_metrics_version",
+        "baseline_evidence_metrics_path",
+        "baseline_evidence_metrics",
+        "paper_observation_readiness_version",
+        "paper_observation_readiness_path",
+        "paper_observation_readiness",
+        "review_handoff_path",
+        "review_handoff_status",
+        "review_handoff_version",
+        "next_action_selector",
+        "work_order_exports",
+    }
 )
 _REQUIRED_PACKET_FIELDS = (
     "input_data_path",
@@ -2213,6 +2312,7 @@ class EtfSmaDailyPaperLabConfig:
     broker_state_mode: str = "broker_state_not_observed"
     broker_snapshot_log: Path | str | None = None
     run_date: str | None = None
+    operational_only: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _required_path(self.output_root, "output_root"))
@@ -2247,6 +2347,29 @@ class EtfSmaDailyPaperLabConfig:
             if _parse_iso_date(run_date) is None:
                 raise ValidationError("run_date must be in YYYY-MM-DD format.")
             object.__setattr__(self, "run_date", run_date)
+        object.__setattr__(self, "operational_only", bool(self.operational_only))
+
+
+def _output_mode_from_config(config: EtfSmaDailyPaperLabConfig) -> str:
+    return (
+        _OUTPUT_MODE_OPERATIONAL_ONLY
+        if config.operational_only
+        else _OUTPUT_MODE_FULL_RESEARCH
+    )
+
+
+def _is_operational_only_payload(packet: Mapping[str, Any]) -> bool:
+    return (
+        packet.get("operational_only") is True
+        or packet.get("output_mode") == _OUTPUT_MODE_OPERATIONAL_ONLY
+    )
+
+
+def _expected_artifacts_for_mode(
+    *,
+    operational_only: bool,
+) -> tuple[tuple[str, str], ...]:
+    return _OPERATIONAL_EXPECTED_ARTIFACTS if operational_only else _EXPECTED_ARTIFACTS
 
 
 def run_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str, Any]:
@@ -2304,21 +2427,46 @@ def validate_etf_sma_daily_paper_lab_packet(
 ) -> dict[str, Any]:
     """Validate a generated Assistant v1.1 daily paper-lab packet."""
     root = Path(output_root)
-    artifact_presence_status = _artifact_presence_status(root)
     packet_payload = packet
     read_failures: list[str] = []
 
     if packet_payload is None:
         packet_payload, read_failures = _read_packet_record(root / _RECORD_FILENAME)
+    operational_only = (
+        _is_operational_only_payload(packet_payload)
+        if isinstance(packet_payload, Mapping)
+        else False
+    )
+    artifact_presence_status = _artifact_presence_status(
+        root,
+        operational_only=operational_only,
+    )
 
     missing_required_fields: list[str] = []
     missing_required_fields.extend(read_failures)
     if packet_payload is None:
         missing_required_fields.append("operating_record.packet")
     else:
-        missing_required_fields.extend(_missing_packet_fields(packet_payload))
-        missing_required_fields.extend(_missing_manifest_fields(root, packet_payload))
-        missing_required_fields.extend(_missing_brief_references(root, packet_payload))
+        missing_required_fields.extend(
+            _missing_packet_fields(
+                packet_payload,
+                operational_only=operational_only,
+            )
+        )
+        missing_required_fields.extend(
+            _missing_manifest_fields(
+                root,
+                packet_payload,
+                operational_only=operational_only,
+            )
+        )
+        missing_required_fields.extend(
+            _missing_brief_references(
+                root,
+                packet_payload,
+                operational_only=operational_only,
+            )
+        )
 
     validation_status = (
         "pass"
@@ -2328,7 +2476,11 @@ def validate_etf_sma_daily_paper_lab_packet(
         )
         else "fail"
     )
-    quality_gate = _build_quality_gate(root, packet_payload)
+    quality_gate = _build_quality_gate(
+        root,
+        packet_payload,
+        operational_only=operational_only,
+    )
     return {
         "assistant_packet_version": _ASSISTANT_PACKET_VERSION,
         "validation_status": validation_status,
@@ -2458,16 +2610,21 @@ def _broker_state_exit_status_values(packet: Mapping[str, Any]) -> tuple[str, ..
 def validate_mission_control_contract(
     output_root: Path | str,
     *,
+    operational_only: bool | None = None,
     write_artifact: bool = True,
 ) -> dict[str, Any]:
     """Validate the offline v1.33 Mission Control output contract."""
     root = Path(output_root)
+    if operational_only is None:
+        operational_only = _mission_control_artifact_is_operational_only(root)
     checked_artifacts: list[dict[str, Any]] = []
     missing_artifacts: list[str] = []
     schema_errors: list[str] = []
     safety_errors: list[str] = []
 
-    for relative_path in _REQUIRED_MISSION_CONTROL_FILES:
+    for relative_path in _required_mission_control_files(
+        operational_only=operational_only
+    ):
         artifact_path = root / relative_path
         exists = artifact_path.is_file()
         non_empty = exists and artifact_path.stat().st_size > 0
@@ -2510,7 +2667,11 @@ def validate_mission_control_contract(
     )
 
     if isinstance(mission_control, Mapping):
-        _validate_mission_control_schema(mission_control, schema_errors)
+        _validate_mission_control_schema(
+            mission_control,
+            schema_errors,
+            operational_only=operational_only,
+        )
         _validate_mission_control_safety(mission_control, safety_errors)
     elif _MISSION_CONTROL_FILENAME not in missing_artifacts:
         schema_errors.append("mission_control_json.not_an_object")
@@ -2551,11 +2712,19 @@ def validate_mission_control_contract(
         schema_errors.append("data_refresh_dry_run_json.not_an_object")
 
     if isinstance(manifest, Mapping):
-        _validate_mission_control_manifest_references(manifest, schema_errors)
+        _validate_mission_control_manifest_references(
+            manifest,
+            schema_errors,
+            operational_only=operational_only,
+        )
     elif _MANIFEST_FILENAME not in missing_artifacts:
         schema_errors.append("manifest_jsonl.not_an_object")
 
-    _validate_mission_control_index_references(root, schema_errors)
+    _validate_mission_control_index_references(
+        root,
+        schema_errors,
+        operational_only=operational_only,
+    )
 
     validation_status = (
         "passed"
@@ -2576,10 +2745,38 @@ def validate_mission_control_contract(
         ),
         "paper_submit_authorized": False,
         "live_authorized": False,
+        "operational_only": operational_only,
     }
     if write_artifact:
         _write_json(root / _MISSION_CONTROL_VALIDATION_FILENAME, result)
     return result
+
+
+def _mission_control_artifact_is_operational_only(root: Path) -> bool:
+    path = root / _MISSION_CONTROL_FILENAME
+    if not path.is_file():
+        return False
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        isinstance(payload, Mapping)
+        and payload.get("output_mode") == _OUTPUT_MODE_OPERATIONAL_ONLY
+    )
+
+
+def _required_mission_control_files(
+    *,
+    operational_only: bool,
+) -> tuple[str, ...]:
+    if not operational_only:
+        return _REQUIRED_MISSION_CONTROL_FILES
+    return tuple(
+        path
+        for path in _REQUIRED_MISSION_CONTROL_FILES
+        if path not in _REQUIRED_MISSION_CONTROL_WORK_ORDER_FILES
+    )
 
 
 def _read_contract_json(
@@ -2614,6 +2811,8 @@ def _read_contract_json(
 def _validate_mission_control_schema(
     mission_control: Mapping[str, Any],
     schema_errors: list[str],
+    *,
+    operational_only: bool,
 ) -> None:
     for section in _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS:
         if not isinstance(mission_control.get(section), Mapping):
@@ -2684,23 +2883,24 @@ def _validate_mission_control_schema(
     else:
         schema_errors.append("mission_control.readiness_score.missing")
 
-    work_orders = mission_control.get("work_orders")
-    if isinstance(work_orders, Mapping):
-        required_keys = {
-            "codex_next_prompt",
-            "codex_next_work_order",
-            "antigravity_review_prompt",
-            "antigravity_review_work_order",
-            "claude_critique_prompt",
-            "claude_critique_work_order",
-            "gpt_report_classification_prompt",
-            "gpt_next_decision_context",
-        }
-        missing_keys = sorted(required_keys.difference(work_orders))
-        for key in missing_keys:
-            schema_errors.append(f"mission_control.work_orders.{key}.missing")
-    else:
-        schema_errors.append("mission_control.work_orders.missing_or_not_object")
+    if not operational_only:
+        work_orders = mission_control.get("work_orders")
+        if isinstance(work_orders, Mapping):
+            required_keys = {
+                "codex_next_prompt",
+                "codex_next_work_order",
+                "antigravity_review_prompt",
+                "antigravity_review_work_order",
+                "claude_critique_prompt",
+                "claude_critique_work_order",
+                "gpt_report_classification_prompt",
+                "gpt_next_decision_context",
+            }
+            missing_keys = sorted(required_keys.difference(work_orders))
+            for key in missing_keys:
+                schema_errors.append(f"mission_control.work_orders.{key}.missing")
+        else:
+            schema_errors.append("mission_control.work_orders.missing_or_not_object")
 
     execution_plan = mission_control.get("execution_plan")
     if isinstance(execution_plan, Mapping):
@@ -3679,6 +3879,8 @@ def _contains_forbidden_broker_absence_claim(value: Any) -> bool:
 def _validate_mission_control_manifest_references(
     manifest: Mapping[str, Any],
     schema_errors: list[str],
+    *,
+    operational_only: bool,
 ) -> None:
     indexed = manifest.get("indexed_artifacts")
     if not isinstance(indexed, Mapping):
@@ -3703,6 +3905,12 @@ def _validate_mission_control_manifest_references(
         "gpt_report_classification_prompt",
         "gpt_next_decision_context",
     )
+    if operational_only:
+        required_manifest_keys = tuple(
+            key
+            for key in required_manifest_keys
+            if key not in _SUPPRESSED_OPERATIONAL_ARTIFACT_IDS
+        )
     for key in required_manifest_keys:
         if key not in indexed:
             schema_errors.append(f"manifest.indexed_artifacts.{key}.missing")
@@ -3711,12 +3919,14 @@ def _validate_mission_control_manifest_references(
 def _validate_mission_control_index_references(
     output_root: Path,
     schema_errors: list[str],
+    *,
+    operational_only: bool,
 ) -> None:
     index_path = output_root / _MISSION_CONTROL_INDEX_FILENAME
     if not index_path.is_file():
         return
     text = index_path.read_text(encoding="utf-8").lower()
-    for token in (
+    required_tokens = (
         _MISSION_CONTROL_FILENAME,
         _MISSION_CONTROL_REPORT_FILENAME,
         _LATEST_RUN_FILENAME,
@@ -3726,7 +3936,12 @@ def _validate_mission_control_index_references(
         _DATA_REFRESH_OPERATOR_CHECKLIST_FILENAME,
         _OPERATOR_REVIEW_FILENAME,
         _WORK_ORDERS_DIRNAME,
-    ):
+    )
+    if operational_only:
+        required_tokens = tuple(
+            token for token in required_tokens if token != _WORK_ORDERS_DIRNAME
+        )
+    for token in required_tokens:
         if token.lower() not in text:
             schema_errors.append(f"index_html.reference.{token}.missing")
 
@@ -3773,11 +3988,112 @@ def _mission_control_next_repair_action(
     return "none_contract_valid"
 
 
+def _apply_operational_only_suppression(payload: dict[str, Any]) -> None:
+    payload["output_mode"] = _OUTPUT_MODE_OPERATIONAL_ONLY
+    payload["operational_only"] = True
+    payload["candidate_research_backlog_status"] = (
+        _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+    )
+    payload["secondary_work_orders_status"] = _WORK_ORDERS_OPERATIONAL_STATUS
+    payload["suppressed_secondary_artifacts"] = sorted(
+        _SUPPRESSED_OPERATIONAL_ARTIFACT_IDS
+    )
+    for key in _SUPPRESSED_OPERATIONAL_PAYLOAD_KEYS:
+        payload.pop(key, None)
+
+    for mapping_key in ("artifact_paths", "artifacts"):
+        value = payload.get(mapping_key)
+        if isinstance(value, dict):
+            for artifact_id in _SUPPRESSED_OPERATIONAL_ARTIFACT_IDS:
+                value.pop(artifact_id, None)
+
+    dashboard = payload.get("executive_dashboard")
+    if isinstance(dashboard, dict):
+        for key in _SUPPRESSED_OPERATIONAL_PAYLOAD_KEYS:
+            dashboard.pop(key, None)
+        dashboard["candidate_research_backlog_status"] = (
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+        )
+        dashboard["secondary_work_orders_status"] = _WORK_ORDERS_OPERATIONAL_STATUS
+
+    payload["research_lab"] = {
+        "status": _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+        "active_strategy": _STRATEGY_NAME,
+        "candidate_research_backlog_status": (
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+        ),
+        "paper_submit_authorized": False,
+        "live_authorized": False,
+        "broker_mutation_performed": False,
+    }
+    payload["research_board"] = []
+
+
+def _remove_operational_only_secondary_artifacts(output_root: Path) -> None:
+    root = output_root.resolve()
+    artifact_paths = _artifact_paths(output_root)
+    for artifact_id in _SUPPRESSED_OPERATIONAL_ARTIFACT_IDS:
+        path_text = artifact_paths.get(artifact_id)
+        if not path_text:
+            continue
+        candidate = Path(path_text)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        candidate = candidate.resolve()
+        if candidate != root and root not in candidate.parents:
+            raise ValidationError(
+                "Refusing to remove operationally suppressed artifact outside "
+                f"output_root: {candidate}"
+            )
+        if candidate.is_dir():
+            shutil.rmtree(candidate)
+        elif candidate.exists():
+            candidate.unlink()
+
+
+def _write_operational_packet_artifacts(
+    *,
+    output_root: Path,
+    payload: dict[str, Any],
+) -> None:
+    _remove_operational_only_secondary_artifacts(output_root)
+    _apply_operational_only_suppression(payload)
+    _apply_mission_control(payload, output_root)
+
+    record_file = output_root / _RECORD_FILENAME
+    brief_file = output_root / _BRIEF_FILENAME
+    manifest_file = output_root / _MANIFEST_FILENAME
+
+    record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
+    record_file.write_text(record_line, encoding="utf-8", newline="\n")
+    brief_file.write_text(_render_brief_markdown(payload), encoding="utf-8", newline="\n")
+    manifest_data = _build_manifest(output_root, payload)
+    manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
+    manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
+    _apply_mission_control_contract_validation(payload, output_root)
+    _apply_mission_control(payload, output_root)
+    _apply_operational_only_suppression(payload)
+
+    record_line = json.dumps(_json_safe(payload), sort_keys=True, separators=(",", ":")) + "\n"
+    record_file.write_text(record_line, encoding="utf-8", newline="\n")
+    manifest_data = _build_manifest(output_root, payload)
+    manifest_line = json.dumps(manifest_data, sort_keys=True, separators=(",", ":")) + "\n"
+    manifest_file.write_text(manifest_line, encoding="utf-8", newline="\n")
+
+
 def _write_packet_artifacts(
     *,
     output_root: Path,
     payload: dict[str, Any],
 ) -> None:
+    if _is_operational_only_payload(payload):
+        _write_operational_packet_artifacts(
+            output_root=output_root,
+            payload=payload,
+        )
+        return
+
     _apply_paper_observation_readiness(payload, output_root)
     _apply_research_board_prioritization(payload, output_root)
     _apply_strategy_comparison_scaffold(payload, output_root)
@@ -4219,6 +4535,19 @@ def _active_mission_control_brief(
             decision.get("operator_action", "review_mission_control_no_broker_action"),
         )
     )
+    if _is_operational_only_payload(payload):
+        secondary_work_orders_status = str(
+            payload.get("secondary_work_orders_status", _WORK_ORDERS_OPERATIONAL_STATUS)
+        )
+        candidate_research_backlog_status = str(
+            payload.get(
+                "candidate_research_backlog_status",
+                _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+            )
+        )
+    else:
+        secondary_work_orders_status = "secondary_review_artifacts_only"
+        candidate_research_backlog_status = "secondary_appendix_not_active_blocker"
     active_brief = {
         "active_mission_control_brief_version": (
             _ACTIVE_MISSION_CONTROL_BRIEF_VERSION
@@ -4263,8 +4592,8 @@ def _active_mission_control_brief(
         "primary_current_work_order_agent": decision[
             "primary_current_work_order_agent"
         ],
-        "secondary_work_orders_status": "secondary_review_artifacts_only",
-        "candidate_research_backlog_status": "secondary_appendix_not_active_blocker",
+        "secondary_work_orders_status": secondary_work_orders_status,
+        "candidate_research_backlog_status": candidate_research_backlog_status,
     }
     controller = _daily_autopilot_controller(
         active_brief=active_brief,
@@ -5174,7 +5503,10 @@ def _apply_mission_control_contract_validation(
     output_root: Path,
 ) -> None:
     artifact_paths = _artifact_paths(output_root)
-    validation = validate_mission_control_contract(output_root)
+    validation = validate_mission_control_contract(
+        output_root,
+        operational_only=_is_operational_only_payload(payload),
+    )
     payload["mission_control_validation_version"] = _MISSION_CONTROL_VALIDATION_VERSION
     payload["mission_control_validation_path"] = artifact_paths[
         "mission_control_validation"
@@ -5193,6 +5525,7 @@ def _build_mission_control(
     output_root: Path,
     artifact_paths: Mapping[str, str],
 ) -> dict[str, Any]:
+    operational_only = _is_operational_only_payload(payload)
     market_data_lane = _mission_control_market_data_lane(payload)
     broker_state_lane = _mission_control_broker_state_lane(payload)
     decision_lane = _mission_control_decision_lane(
@@ -5210,7 +5543,11 @@ def _build_mission_control(
     daily_approval_gate = _project_daily_approval_gate(
         execution_plan_projection
     ).to_dict()
-    artifacts = _mission_control_artifact_map(output_root, artifact_paths)
+    artifacts = _mission_control_artifact_map(
+        output_root,
+        artifact_paths,
+        operational_only=operational_only,
+    )
     data_freshness_plan = _mission_control_data_freshness_plan(
         payload=payload,
         artifact_paths=artifact_paths,
@@ -5247,6 +5584,7 @@ def _build_mission_control(
             broker_state_lane=broker_state_lane,
             decision_lane=decision_lane,
             artifacts=artifacts,
+            operational_only=operational_only,
         ),
         safety_gates,
     )
@@ -5261,6 +5599,7 @@ def _build_mission_control(
         data_refresh_bridge=data_refresh_bridge,
         data_refresh_dry_run=data_refresh_dry_run,
         validation_summary=validation_summary,
+        operational_only=operational_only,
     )
     active_operating_brief = _active_mission_control_brief(
         payload=payload,
@@ -5319,6 +5658,7 @@ def _build_mission_control(
     agent_command_center = _mission_control_agent_command_center(
         dispatcher=dispatcher,
         artifact_paths=artifact_paths,
+        operational_only=operational_only,
     )
     latest_run = _mission_control_latest_run_entry(
         daily_latest=daily_latest,
@@ -5328,6 +5668,16 @@ def _build_mission_control(
     return {
         "schema_version": _SCHEMA_VERSION,
         "mission_control_version": _MISSION_CONTROL_VERSION,
+        "output_mode": (
+            _OUTPUT_MODE_OPERATIONAL_ONLY
+            if operational_only
+            else _OUTPUT_MODE_FULL_RESEARCH
+        ),
+        "operational_only": operational_only,
+        "candidate_research_backlog_status": payload.get(
+            "candidate_research_backlog_status"
+        ),
+        "secondary_work_orders_status": payload.get("secondary_work_orders_status"),
         "command": _COMMAND,
         "script": _SCRIPT,
         "run_id": payload.get("run_id"),
@@ -5353,8 +5703,17 @@ def _build_mission_control(
         "readiness_score": readiness_score,
         "agent_command_center": agent_command_center,
         "rule_based_dispatcher_v0": dispatcher,
-        "work_orders": _mission_control_work_order_index(artifact_paths),
-        "agent_inbox": _mission_control_agent_inbox_index(),
+        **(
+            {
+                "work_orders_status": _WORK_ORDERS_OPERATIONAL_STATUS,
+                "agent_inbox_status": _WORK_ORDERS_OPERATIONAL_STATUS,
+            }
+            if operational_only
+            else {
+                "work_orders": _mission_control_work_order_index(artifact_paths),
+                "agent_inbox": _mission_control_agent_inbox_index(),
+            }
+        ),
     }
 
 
@@ -5484,6 +5843,12 @@ def _mission_control_daily_latest(
     daily_latest = {
         "run_id": payload.get("run_id"),
         "generated_at": "offline_command_runtime",
+        "output_mode": payload.get("output_mode"),
+        "operational_only": payload.get("operational_only") is True,
+        "candidate_research_backlog_status": payload.get(
+            "candidate_research_backlog_status"
+        ),
+        "secondary_work_orders_status": payload.get("secondary_work_orders_status"),
         "output_root": _normalize_path(output_root),
         "open_first": _MISSION_CONTROL_INDEX_FILENAME,
         "open_first_path": artifact_paths["mission_control_index"],
@@ -5626,6 +5991,14 @@ def _mission_control_latest_run_entry(
         "latest_run_version": _LATEST_RUN_VERSION,
         "run_id": daily_latest.get("run_id"),
         "generated_at": daily_latest.get("generated_at"),
+        "output_mode": daily_latest.get("output_mode"),
+        "operational_only": daily_latest.get("operational_only") is True,
+        "candidate_research_backlog_status": daily_latest.get(
+            "candidate_research_backlog_status"
+        ),
+        "secondary_work_orders_status": daily_latest.get(
+            "secondary_work_orders_status"
+        ),
         "output_root": daily_latest.get("output_root"),
         "open_first": _MISSION_CONTROL_INDEX_FILENAME,
         "open_first_path": artifact_paths["mission_control_index"],
@@ -5634,6 +6007,22 @@ def _mission_control_latest_run_entry(
         "operator_review_path": artifact_paths["operator_review"],
         "daily_latest_path": f"{artifact_paths['mission_control']}#daily_latest",
         "daily_decision_summary": dict(daily_decision_summary),
+        "as_of_date": daily_decision_summary.get("as_of_date"),
+        "latest_bar_date": daily_decision_summary.get("latest_bar_date"),
+        "input_data_path": daily_decision_summary.get("input_data_path"),
+        "sma50": daily_decision_summary.get("sma50"),
+        "sma200": daily_decision_summary.get("sma200"),
+        "sma_posture": daily_decision_summary.get("sma_posture"),
+        "risk_posture": daily_decision_summary.get("risk_posture"),
+        "broker_snapshot_freshness_status": daily_decision_summary.get(
+            "broker_snapshot_freshness_status"
+        ),
+        "snapshot_validation_status": daily_decision_summary.get(
+            "snapshot_validation_status"
+        ),
+        "broker_aware_preview_decision": daily_decision_summary.get(
+            "broker_aware_preview_decision"
+        ),
         "mission_control_json_path": artifact_paths["mission_control"],
         "data_freshness_plan_path": artifact_paths["data_freshness_plan"],
         "data_refresh_bridge_path": daily_latest.get(
@@ -5741,6 +6130,8 @@ def _mission_control_latest_run_entry(
     daily_approval_gate = daily_latest.get("daily_approval_gate")
     if isinstance(daily_approval_gate, Mapping):
         latest_run["daily_approval_gate"] = dict(daily_approval_gate)
+        latest_run["approval_state"] = daily_approval_gate.get("approval_state")
+        latest_run["submit_allowed"] = daily_approval_gate.get("submit_allowed")
         latest_run.update(_daily_approval_gate_compact_fields(daily_approval_gate))
     return latest_run
 
@@ -7282,6 +7673,7 @@ def _mission_control_component_scores(
     broker_state_lane: Mapping[str, Any],
     decision_lane: Mapping[str, Any],
     artifacts: Mapping[str, Any],
+    operational_only: bool = False,
 ) -> dict[str, Any]:
     source_mode = str(market_data_lane.get("source_mode", "unknown"))
     if source_mode == "accepted_local_file":
@@ -7310,8 +7702,9 @@ def _mission_control_component_scores(
         "data_refresh_dry_run_json",
         "data_refresh_operator_checklist_md",
         "operator_review_md",
-        "work_orders",
     )
+    if not operational_only:
+        product_outputs = (*product_outputs, "work_orders")
     product_score = 0.85 if all(key in artifacts for key in product_outputs) else 0.45
     autonomy_score = 0.75 if decision_lane.get("next_agent_action") else 0.40
     strategy_score = (
@@ -7327,8 +7720,13 @@ def _mission_control_component_scores(
         "product_readiness": {
             "score": product_score,
             "explanation": (
-                "Dashboard, assistant report, structured JSON, and handoff "
-                "work-order paths are planned and generated."
+                "Dashboard, assistant report, and structured operating JSON "
+                "are planned and generated."
+                if operational_only
+                else (
+                    "Dashboard, assistant report, structured JSON, and handoff "
+                    "work-order paths are planned and generated."
+                )
             ),
         },
         "autonomy_middleman_reduction": {
@@ -7415,6 +7813,7 @@ def _mission_control_dispatcher(
     data_refresh_bridge: Mapping[str, Any],
     data_refresh_dry_run: Mapping[str, Any],
     validation_summary: Mapping[str, Any],
+    operational_only: bool = False,
 ) -> dict[str, Any]:
     rules = [
         {
@@ -7481,6 +7880,8 @@ def _mission_control_dispatcher(
             "route": "verification_review",
         },
     ]
+    if operational_only:
+        rules = [rule for rule in rules if rule["rule_id"] != "work_orders_missing"]
     failed_gates = [
         gate_id
         for gate_id, gate in safety_gates.items()
@@ -7488,7 +7889,11 @@ def _mission_control_dispatcher(
     ]
     validation_failed = validation_summary.get("validation_status") == "failed"
     dashboard_or_report_weak = _mission_control_dashboard_or_report_weak(artifacts)
-    work_orders_missing = _mission_control_work_orders_missing(artifacts)
+    work_orders_missing = (
+        False
+        if operational_only
+        else _mission_control_work_orders_missing(artifacts)
+    )
     offline_validation_command_missing = (
         _data_refresh_bridge_offline_validation_command_missing(
             data_refresh_bridge,
@@ -7775,28 +8180,34 @@ def _mission_control_agent_command_center(
     *,
     dispatcher: Mapping[str, Any],
     artifact_paths: Mapping[str, str],
+    operational_only: bool = False,
 ) -> dict[str, Any]:
-    return {
+    command_center = {
         "status": "deterministic_offline_dispatch_ready",
         "generation_mode": "rule_based_no_llm_no_broker",
         "selected_route": dispatcher.get("selected_route"),
         "selected_work_order_type": dispatcher.get("selected_work_order_type"),
         "next_safest_action": dispatcher.get("selected_route"),
         "exact_next_operator_action": dispatcher.get("exact_next_operator_action"),
-        "work_orders": _mission_control_work_order_index(artifact_paths),
         "broker_read_authorized": False,
         "paper_submit_authorized": False,
         "live_authorized": False,
         "forbidden_routes": list(dispatcher.get("forbidden_routes", [])),
     }
+    if operational_only:
+        command_center["work_orders_status"] = _WORK_ORDERS_OPERATIONAL_STATUS
+    else:
+        command_center["work_orders"] = _mission_control_work_order_index(
+            artifact_paths
+        )
+    return command_center
 
 
 def _write_mission_control_artifacts(
     output_root: Path,
     mission_control: Mapping[str, Any],
 ) -> None:
-    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
-    work_orders_dir.mkdir(parents=True, exist_ok=True)
+    operational_only = mission_control.get("operational_only") is True
     (output_root / _MISSION_CONTROL_FILENAME).write_text(
         json.dumps(_json_safe(mission_control), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
@@ -7836,6 +8247,10 @@ def _write_mission_control_artifacts(
         output_root / _OPERATOR_REVIEW_FILENAME,
         _render_operator_review(mission_control),
     )
+    if operational_only:
+        return
+    work_orders_dir = output_root / _WORK_ORDERS_DIRNAME
+    work_orders_dir.mkdir(parents=True, exist_ok=True)
     work_orders = _mission_control_work_orders(mission_control)
     _write_text(work_orders_dir / _CODEX_NEXT_PROMPT_FILENAME, work_orders["codex_prompt"])
     _write_json(
@@ -7872,8 +8287,10 @@ def _write_mission_control_artifacts(
 def _mission_control_artifact_map(
     output_root: Path,
     artifact_paths: Mapping[str, str],
+    *,
+    operational_only: bool = False,
 ) -> dict[str, Any]:
-    return {
+    artifacts = {
         "index_html": artifact_paths["mission_control_index"],
         "assistant_report_md": artifact_paths["assistant_report"],
         "mission_control_json": artifact_paths["mission_control"],
@@ -7893,6 +8310,21 @@ def _mission_control_artifact_map(
         "forward_signal_evidence_ledger_jsonl": artifact_paths[
             "forward_signal_evidence_ledger"
         ],
+        "output_root": _normalize_path(output_root),
+    }
+    if operational_only:
+        artifacts.update(
+            {
+                "candidate_research_backlog_status": (
+                    _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+                ),
+                "work_orders_status": _WORK_ORDERS_OPERATIONAL_STATUS,
+            }
+        )
+        return artifacts
+
+    artifacts.update(
+        {
         "work_orders": artifact_paths["work_orders"],
         "codex_next_prompt": artifact_paths["codex_next_prompt"],
         "codex_next_work_order": artifact_paths["codex_next_work_order"],
@@ -7907,8 +8339,9 @@ def _mission_control_artifact_map(
         ],
         "gpt_next_decision_context": artifact_paths["gpt_next_decision_context"],
         "agent_inbox_root": _normalize_path(Path.cwd() / _AGENT_INBOX_DIRNAME),
-        "output_root": _normalize_path(output_root),
-    }
+        }
+    )
+    return artifacts
 
 
 def _mission_control_work_order_index(
@@ -8823,6 +9256,14 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     readiness = mission_control["readiness_score"]
     dispatcher = mission_control["rule_based_dispatcher_v0"]
     artifacts = mission_control["artifacts"]
+    work_orders_artifact_line = (
+        f"- `work_orders/`: `{artifacts['work_orders']}`"
+        if "work_orders" in artifacts
+        else (
+            "- `work_orders/`: "
+            f"`{mission_control.get('secondary_work_orders_status', _WORK_ORDERS_OPERATIONAL_STATUS)}`"
+        )
+    )
     lines = [
         "# Mission Control",
         "",
@@ -8927,7 +9368,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
         f"- `data_refresh_operator_checklist.md`: `{artifacts['data_refresh_operator_checklist_md']}`",
         f"- `operator_review.md`: `{artifacts['operator_review_md']}`",
         f"- `forward_signal_evidence_ledger.jsonl`: `{artifacts['forward_signal_evidence_ledger_jsonl']}`",
-        f"- `work_orders/`: `{artifacts['work_orders']}`",
+        work_orders_artifact_line,
         "",
         "## Data Freshness Plan",
         f"- Status: `{freshness['data_freshness_status']}`",
@@ -9073,6 +9514,22 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     active_operating_brief_html = _render_active_operating_brief_html_section(
         active_operating_brief
     )
+    work_orders_artifact_row = (
+        f'<dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>'
+        if "work_orders" in artifacts
+        else (
+            "<dt>work_orders/</dt><dd>"
+            f"{_html_escape(str(mission_control.get('secondary_work_orders_status', _WORK_ORDERS_OPERATIONAL_STATUS)))}"
+            "</dd>"
+        )
+    )
+    research_backlog_status = active_operating_brief.get(
+        "candidate_research_backlog_status",
+        mission_control.get(
+            "candidate_research_backlog_status",
+            "secondary_appendix_not_active_blocker",
+        ),
+    )
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -9203,7 +9660,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         <dt>operator_review.md</dt><dd><a href="{_html_escape(str(artifacts["operator_review_md"]))}">{_html_escape(str(artifacts["operator_review_md"]))}</a></dd>
         <dt>forward_signal_evidence_ledger.jsonl</dt><dd><a href="{_html_escape(str(artifacts["forward_signal_evidence_ledger_jsonl"]))}">{_html_escape(str(artifacts["forward_signal_evidence_ledger_jsonl"]))}</a></dd>
         <dt>index.html</dt><dd>{_html_escape(str(artifacts["index_html"]))}</dd>
-        <dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>
+        {work_orders_artifact_row}
       </dl>
     </section>
     <section>
@@ -9330,7 +9787,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     <section>
       <h2>Research Backlog Appendix</h2>
       <dl>
-        <dt>Status</dt><dd>secondary_appendix_not_active_blocker</dd>
+        <dt>Status</dt><dd>{_html_escape(str(research_backlog_status))}</dd>
         <dt>Active selected next safe action</dt><dd>{_html_escape(str(active_operating_brief["selected_next_safe_action"]))}</dd>
         <dt>Primary current work order</dt><dd>{_html_escape(str(active_operating_brief["primary_current_work_order"]))}</dd>
       </dl>
@@ -12125,6 +12582,18 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "packet_type": _PACKET_TYPE,
         "command": _COMMAND,
         "script": _SCRIPT,
+        "output_mode": _output_mode_from_config(config),
+        "operational_only": config.operational_only,
+        "candidate_research_backlog_status": (
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+            if config.operational_only
+            else "materialized_full_research_mode"
+        ),
+        "secondary_work_orders_status": (
+            _WORK_ORDERS_OPERATIONAL_STATUS
+            if config.operational_only
+            else "materialized_full_research_mode"
+        ),
         "run_id": f"daily_paper_lab_{as_of_str}",
         "input_data_path": _normalize_path(bars_path),
         "input_data_sha256": _sha256_file(bars_path),
@@ -22002,12 +22471,18 @@ def _research_board_fingerprint(payload: Mapping[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def _artifact_presence_status(output_root: Path) -> dict[str, Any]:
+def _artifact_presence_status(
+    output_root: Path,
+    *,
+    operational_only: bool = False,
+) -> dict[str, Any]:
     artifacts: dict[str, dict[str, Any]] = {}
     missing_artifacts: list[str] = []
     empty_artifacts: list[str] = []
 
-    for kind, filename in _EXPECTED_ARTIFACTS:
+    for kind, filename in _expected_artifacts_for_mode(
+        operational_only=operational_only
+    ):
         path = output_root / filename
         exists = path.exists() and path.is_file()
         non_empty = exists and path.stat().st_size > 0
@@ -22065,6 +22540,8 @@ def _read_jsonl_mapping(
 def _build_quality_gate(
     output_root: Path | str,
     packet: Mapping[str, Any] | None = None,
+    *,
+    operational_only: bool | None = None,
 ) -> dict[str, Any]:
     root = Path(output_root)
     record, record_failures = _read_packet_record(root / _RECORD_FILENAME)
@@ -22076,25 +22553,44 @@ def _build_quality_gate(
         packet_for_checks = packet
     else:
         packet_for_checks = {}
+    if operational_only is None:
+        operational_only = _is_operational_only_payload(packet_for_checks)
 
     brief_text = _read_text_or_empty(root / _BRIEF_FILENAME)
     review_handoff_path = root / _REVIEW_HANDOFF_FILENAME
     review_handoff_text = _read_text_or_empty(review_handoff_path)
-    artifact_presence_status = _artifact_presence_status(root)
+    artifact_presence_status = _artifact_presence_status(
+        root,
+        operational_only=operational_only,
+    )
 
     record_missing = list(record_failures)
     if record is None:
         record_missing.append("operating_record.packet")
     else:
-        record_missing.extend(_missing_packet_fields(record))
+        record_missing.extend(
+            _missing_packet_fields(
+                record,
+                operational_only=operational_only,
+            )
+        )
 
     manifest_missing = list(manifest_failures)
     if manifest is None:
         manifest_missing.append("manifest.record")
     else:
-        manifest_missing.extend(_missing_manifest_fields(root, packet_for_checks))
+        manifest_missing.extend(
+            _missing_manifest_fields(
+                root,
+                packet_for_checks,
+                operational_only=operational_only,
+            )
+        )
 
-    brief_missing = _missing_key_brief_sections(brief_text)
+    brief_missing = _missing_key_brief_sections(
+        brief_text,
+        operational_only=operational_only,
+    )
     broker_claim_forbidden = _forbidden_broker_state_claims(
         packet_for_checks,
         brief_text,
@@ -22449,6 +22945,98 @@ def _build_quality_gate(
             work_orders_summary,
         ),
     ]
+    if operational_only:
+        required_checks = [
+            _quality_check(
+                "required_operational_artifacts_exist",
+                artifact_presence_status["status"] == "pass",
+                _quality_artifact_summary(artifact_presence_status),
+            ),
+            _quality_check(
+                "required_operating_record_fields_exist",
+                not record_missing,
+                _quality_missing_summary(record_missing),
+            ),
+            _quality_check(
+                "required_manifest_fields_exist",
+                not manifest_missing,
+                _quality_missing_summary(manifest_missing),
+            ),
+            _quality_check(
+                "markdown_brief_references_active_daily_sections",
+                not brief_missing,
+                _quality_missing_summary(brief_missing),
+            ),
+            _quality_check(
+                "broker_state_mode_explicit",
+                _broker_state_packet_contract(packet_for_checks)[
+                    "broker_state_mode_valid"
+                ],
+                f"broker_state_mode={packet_for_checks.get('broker_state_mode')}",
+            ),
+            _quality_check(
+                "broker_not_observed_has_no_position_order_claim",
+                not broker_claim_forbidden,
+                _quality_missing_summary(broker_claim_forbidden),
+            ),
+            _quality_check(
+                "paper_submit_not_authorized",
+                _paper_submit_not_authorized(packet_for_checks),
+                (
+                    "paper_submit_authorized="
+                    f"{packet_for_checks.get('paper_submit_authorized')}; "
+                    "paper_submit_authorization_status="
+                    f"{packet_for_checks.get('paper_submit_authorization_status')}"
+                ),
+            ),
+            _quality_check(
+                "executive_action_queue_priorities_deterministic",
+                action_queue_ok,
+                action_queue_summary,
+            ),
+            _quality_check(
+                "history_delta_exists",
+                not history_delta_missing,
+                _quality_missing_summary(history_delta_missing),
+            ),
+            _quality_check(
+                "safety_labels_exist",
+                not safety_label_missing,
+                _quality_missing_summary(safety_label_missing),
+            ),
+            _quality_check(
+                "decision_ledger_status_recorded",
+                decision_ledger_ok,
+                decision_ledger_summary,
+            ),
+            _quality_check(
+                "review_classification_normalized",
+                review_classification_ok,
+                review_classification_summary,
+            ),
+            _quality_check(
+                "review_input_path_hash_recorded_when_present",
+                review_input_hash_ok,
+                review_input_hash_summary,
+            ),
+            _quality_check(
+                "review_selected_next_action_safety_scoped",
+                review_next_action_ok,
+                review_next_action_summary,
+            ),
+            _quality_check(
+                "candidate_research_backlog_not_materialized",
+                packet_for_checks.get("candidate_research_backlog_status")
+                == _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+                str(packet_for_checks.get("candidate_research_backlog_status")),
+            ),
+            _quality_check(
+                "secondary_work_orders_not_materialized",
+                packet_for_checks.get("secondary_work_orders_status")
+                == _WORK_ORDERS_OPERATIONAL_STATUS,
+                str(packet_for_checks.get("secondary_work_orders_status")),
+            ),
+        ]
     optional_checks: list[dict[str, Any]] = []
 
     failed_checks = [
@@ -22538,7 +23126,23 @@ def _quality_missing_summary(missing: list[str]) -> str:
     return "missing_or_failed=" + ",".join(missing)
 
 
-def _missing_key_brief_sections(brief_text: str) -> list[str]:
+def _missing_key_brief_sections(
+    brief_text: str,
+    *,
+    operational_only: bool = False,
+) -> list[str]:
+    if operational_only:
+        required_tokens = [
+            "## Executive summary",
+            "## Daily operating state",
+            "## Safety",
+            "## Active artifacts",
+            "Quality Gate",
+            "Decision Ledger",
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+        ]
+        return [token for token in required_tokens if token not in brief_text]
+
     required_tokens = [
         "## Executive summary",
         "## Executive Action Queue",
@@ -23875,9 +24479,41 @@ def _review_handoff_path(packet: Mapping[str, Any], output_root: Path) -> str:
     return _normalize_path(output_root / _REVIEW_HANDOFF_FILENAME)
 
 
-def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
+def _required_packet_fields_for_mode(
+    *,
+    operational_only: bool,
+) -> tuple[str, ...]:
+    if not operational_only:
+        return _REQUIRED_PACKET_FIELDS
+    return tuple(
+        field
+        for field in _REQUIRED_PACKET_FIELDS
+        if field not in _SUPPRESSED_OPERATIONAL_PAYLOAD_KEYS
+    )
+
+
+def _required_manifest_fields_for_mode(
+    *,
+    operational_only: bool,
+) -> tuple[str, ...]:
+    if not operational_only:
+        return _REQUIRED_MANIFEST_FIELDS
+    return tuple(
+        field
+        for field in _REQUIRED_MANIFEST_FIELDS
+        if field not in _SUPPRESSED_OPERATIONAL_PAYLOAD_KEYS
+    )
+
+
+def _missing_packet_fields(
+    packet: Mapping[str, Any],
+    *,
+    operational_only: bool = False,
+) -> list[str]:
     missing: list[str] = []
-    for field_name in _REQUIRED_PACKET_FIELDS:
+    for field_name in _required_packet_fields_for_mode(
+        operational_only=operational_only
+    ):
         if field_name in _REQUIRED_FIELDS_ALLOW_EMPTY:
             if field_name not in packet or packet.get(field_name) is None:
                 missing.append(field_name)
@@ -23914,43 +24550,47 @@ def _missing_packet_fields(packet: Mapping[str, Any]) -> list[str]:
             packet.get("executive_action_queue"),
         )
     )
-    missing.extend(
-        _missing_research_board_fields(
-            "research_board",
-            packet.get("research_board"),
-        )
-    )
-    missing.extend(_missing_research_candidate_queue_fields("", packet))
-    missing.extend(_missing_paper_observation_readiness_fields("", packet))
-    missing.extend(_missing_research_board_prioritization_fields("", packet))
-    missing.extend(_missing_strategy_comparison_scaffold_fields("", packet))
-    missing.extend(_missing_candidate_strategy_evidence_template_fields("", packet))
-    missing.extend(_missing_candidate_evidence_requirements_fields("", packet))
-    missing.extend(_missing_candidate_evidence_collection_plan_fields("", packet))
-    missing.extend(_missing_candidate_evidence_collection_status_fields("", packet))
-    missing.extend(_missing_candidate_evidence_gap_summary_fields("", packet))
-    missing.extend(_missing_candidate_gap_closure_queue_fields("", packet))
-    missing.extend(_missing_candidate_risk_rule_status_fields("", packet))
-    missing.extend(_missing_candidate_signal_rule_status_fields("", packet))
-    missing.extend(_missing_shared_risk_rule_status_fields("", packet))
-    missing.extend(_missing_shared_signal_rule_status_fields("", packet))
-    missing.extend(_missing_shared_benchmark_comparison_status_fields("", packet))
-    missing.extend(_missing_candidate_backtest_result_packet_fields("", packet))
-    missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
-    missing.extend(_missing_baseline_health_evaluation_fields("", packet))
-    research_lab = packet.get("research_lab")
-    if isinstance(research_lab, Mapping):
+    if not operational_only:
         missing.extend(
             _missing_research_board_fields(
-                "research_lab.research_board",
-                research_lab.get("research_board"),
+                "research_board",
+                packet.get("research_board"),
             )
         )
-    else:
-        missing.append("research_lab")
+    if not operational_only:
+        missing.extend(_missing_research_candidate_queue_fields("", packet))
+        missing.extend(_missing_paper_observation_readiness_fields("", packet))
+        missing.extend(_missing_research_board_prioritization_fields("", packet))
+        missing.extend(_missing_strategy_comparison_scaffold_fields("", packet))
+        missing.extend(_missing_candidate_strategy_evidence_template_fields("", packet))
+        missing.extend(_missing_candidate_evidence_requirements_fields("", packet))
+        missing.extend(_missing_candidate_evidence_collection_plan_fields("", packet))
+        missing.extend(_missing_candidate_evidence_collection_status_fields("", packet))
+        missing.extend(_missing_candidate_evidence_gap_summary_fields("", packet))
+        missing.extend(_missing_candidate_gap_closure_queue_fields("", packet))
+        missing.extend(_missing_candidate_risk_rule_status_fields("", packet))
+        missing.extend(_missing_candidate_signal_rule_status_fields("", packet))
+        missing.extend(_missing_shared_risk_rule_status_fields("", packet))
+        missing.extend(_missing_shared_signal_rule_status_fields("", packet))
+        missing.extend(_missing_shared_benchmark_comparison_status_fields("", packet))
+        missing.extend(_missing_candidate_backtest_result_packet_fields("", packet))
+        missing.extend(_missing_baseline_evidence_metrics_fields("", packet))
+        missing.extend(_missing_baseline_health_evaluation_fields("", packet))
+    if not operational_only:
+        research_lab = packet.get("research_lab")
+        if isinstance(research_lab, Mapping):
+            missing.extend(
+                _missing_research_board_fields(
+                    "research_lab.research_board",
+                    research_lab.get("research_board"),
+                )
+            )
+        else:
+            missing.append("research_lab")
     missing.extend(_missing_review_decision_fields("", packet))
-    missing.extend(_missing_next_action_selector_fields("", packet))
-    missing.extend(_missing_work_order_export_fields("", packet))
+    if not operational_only:
+        missing.extend(_missing_next_action_selector_fields("", packet))
+        missing.extend(_missing_work_order_export_fields("", packet))
     return missing
 
 
@@ -23987,13 +24627,17 @@ def _required_safety_labels_for_packet(packet: Mapping[str, Any]) -> tuple[str, 
 def _missing_manifest_fields(
     output_root: Path,
     packet: Mapping[str, Any],
+    *,
+    operational_only: bool = False,
 ) -> list[str]:
     manifest, failures = _read_manifest_record(output_root / _MANIFEST_FILENAME)
     if manifest is None:
         return failures
 
     missing: list[str] = list(failures)
-    for field_name in _REQUIRED_MANIFEST_FIELDS:
+    for field_name in _required_manifest_fields_for_mode(
+        operational_only=operational_only
+    ):
         if field_name == "missing_required_fields":
             if field_name not in manifest or not isinstance(
                 manifest.get(field_name),
@@ -24019,39 +24663,46 @@ def _missing_manifest_fields(
             manifest.get("executive_action_queue"),
         )
     )
-    missing.extend(
-        _missing_research_board_fields(
-            "manifest.research_board",
-            manifest.get("research_board"),
+    if not operational_only:
+        missing.extend(
+            _missing_research_board_fields(
+                "manifest.research_board",
+                manifest.get("research_board"),
+            )
         )
-    )
-    missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
-    missing.extend(_missing_paper_observation_readiness_fields("manifest", manifest))
-    missing.extend(_missing_research_board_prioritization_fields("manifest", manifest))
-    missing.extend(_missing_strategy_comparison_scaffold_fields("manifest", manifest))
-    missing.extend(
-        _missing_candidate_strategy_evidence_template_fields("manifest", manifest)
-    )
-    missing.extend(_missing_candidate_evidence_requirements_fields("manifest", manifest))
-    missing.extend(
-        _missing_candidate_evidence_collection_plan_fields("manifest", manifest)
-    )
-    missing.extend(
-        _missing_candidate_evidence_collection_status_fields("manifest", manifest)
-    )
-    missing.extend(_missing_candidate_evidence_gap_summary_fields("manifest", manifest))
-    missing.extend(_missing_candidate_gap_closure_queue_fields("manifest", manifest))
-    missing.extend(_missing_candidate_risk_rule_status_fields("manifest", manifest))
-    missing.extend(_missing_candidate_signal_rule_status_fields("manifest", manifest))
-    missing.extend(_missing_shared_risk_rule_status_fields("manifest", manifest))
-    missing.extend(_missing_shared_signal_rule_status_fields("manifest", manifest))
-    missing.extend(_missing_shared_benchmark_comparison_status_fields("manifest", manifest))
-    missing.extend(_missing_candidate_backtest_result_packet_fields("manifest", manifest))
-    missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
-    missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
+    if not operational_only:
+        missing.extend(_missing_research_candidate_queue_fields("manifest", manifest))
+        missing.extend(_missing_paper_observation_readiness_fields("manifest", manifest))
+        missing.extend(_missing_research_board_prioritization_fields("manifest", manifest))
+        missing.extend(_missing_strategy_comparison_scaffold_fields("manifest", manifest))
+        missing.extend(
+            _missing_candidate_strategy_evidence_template_fields("manifest", manifest)
+        )
+        missing.extend(_missing_candidate_evidence_requirements_fields("manifest", manifest))
+        missing.extend(
+            _missing_candidate_evidence_collection_plan_fields("manifest", manifest)
+        )
+        missing.extend(
+            _missing_candidate_evidence_collection_status_fields("manifest", manifest)
+        )
+        missing.extend(_missing_candidate_evidence_gap_summary_fields("manifest", manifest))
+        missing.extend(_missing_candidate_gap_closure_queue_fields("manifest", manifest))
+        missing.extend(_missing_candidate_risk_rule_status_fields("manifest", manifest))
+        missing.extend(_missing_candidate_signal_rule_status_fields("manifest", manifest))
+        missing.extend(_missing_shared_risk_rule_status_fields("manifest", manifest))
+        missing.extend(_missing_shared_signal_rule_status_fields("manifest", manifest))
+        missing.extend(
+            _missing_shared_benchmark_comparison_status_fields("manifest", manifest)
+        )
+        missing.extend(
+            _missing_candidate_backtest_result_packet_fields("manifest", manifest)
+        )
+        missing.extend(_missing_baseline_evidence_metrics_fields("manifest", manifest))
+        missing.extend(_missing_baseline_health_evaluation_fields("manifest", manifest))
     missing.extend(_missing_review_decision_fields("manifest", manifest))
-    missing.extend(_missing_next_action_selector_fields("manifest", manifest))
-    missing.extend(_missing_work_order_export_fields("manifest", manifest))
+    if not operational_only:
+        missing.extend(_missing_next_action_selector_fields("manifest", manifest))
+        missing.extend(_missing_work_order_export_fields("manifest", manifest))
 
     for field_name in (
         "input_data_path",
@@ -28330,6 +28981,8 @@ def _missing_research_board_fields(prefix: str, research_board: Any) -> list[str
 def _missing_brief_references(
     output_root: Path,
     packet: Mapping[str, Any],
+    *,
+    operational_only: bool = False,
 ) -> list[str]:
     brief_path = output_root / _BRIEF_FILENAME
     if not brief_path.exists():
@@ -28340,6 +28993,39 @@ def _missing_brief_references(
         return ["operating_brief.readable"]
 
     missing: list[str] = []
+    if operational_only:
+        for token in (
+            "## Executive summary",
+            "## Daily operating state",
+            "## Safety",
+            "## Active artifacts",
+            "Quality Gate",
+            "Decision Ledger",
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+        ):
+            if token not in brief_text:
+                missing.append(f"operating_brief.{token}")
+        if (
+            "paper_submit_authorized=false" not in brief_text
+            and "not_authorized" not in brief_text
+        ):
+            missing.append(
+                "operating_brief.paper_submit_authorized_false_or_not_authorized"
+            )
+        for label in _required_safety_labels_for_packet(packet):
+            if label not in brief_text:
+                missing.append(f"operating_brief.safety_labels.{label}")
+        action_queue = packet.get("executive_action_queue")
+        if isinstance(action_queue, list):
+            for item in action_queue:
+                if isinstance(item, Mapping):
+                    action_id = str(item.get("action_id", ""))
+                    if action_id and action_id not in brief_text:
+                        missing.append(
+                            f"operating_brief.executive_action_queue.{action_id}"
+                        )
+        return missing
+
     for field_name in _BRIEF_REQUIRED_VALUE_FIELDS:
         value = packet.get(field_name)
         if _has_required_value(value) and str(value) not in brief_text:
@@ -29370,7 +30056,122 @@ def _forbidden_behavior_lines() -> list[str]:
     ]
 
 
+def _render_operational_brief_markdown(payload: Mapping[str, Any]) -> str:
+    active_brief = payload.get("active_operating_brief")
+    if not isinstance(active_brief, Mapping):
+        active_brief = {}
+    execution_plan = payload.get("execution_plan")
+    if not isinstance(execution_plan, Mapping):
+        execution_plan = {}
+    daily_approval_gate = payload.get("daily_approval_gate")
+    if not isinstance(daily_approval_gate, Mapping):
+        daily_approval_gate = {}
+    controller = active_brief.get("daily_autopilot_controller")
+    if not isinstance(controller, Mapping):
+        controller = {}
+    artifact_paths = payload.get("artifact_paths")
+    if not isinstance(artifact_paths, Mapping):
+        artifact_paths = {}
+    active_artifact_ids = (
+        "latest_run",
+        "assistant_brief",
+        "operating_record",
+        "manifest",
+        "mission_control",
+        "mission_control_index",
+        "data_freshness_plan",
+        "data_refresh_bridge",
+        "data_refresh_dry_run",
+        "data_refresh_operator_checklist",
+        "operator_review",
+        "history_ledger",
+        "forward_signal_evidence_ledger",
+        "decision_ledger",
+    )
+    artifact_lines = "\n".join(
+        f"* **{artifact_id}**: `{artifact_paths[artifact_id]}`"
+        for artifact_id in active_artifact_ids
+        if artifact_id in artifact_paths
+    )
+    labels_list = "\n".join(
+        f"* `{label}`" for label in payload.get("safety_labels", [])
+    )
+    failed_checks = payload.get("quality_gate_failed_checks", [])
+    warning_checks = payload.get("quality_gate_warning_checks", [])
+    failed_checks_text = "[]" if not failed_checks else ", ".join(map(str, failed_checks))
+    warning_checks_text = (
+        "[]" if not warning_checks else ", ".join(map(str, warning_checks))
+    )
+    candidate_status = str(
+        payload.get(
+            "candidate_research_backlog_status",
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS,
+        )
+    )
+    work_orders_status = str(
+        payload.get("secondary_work_orders_status", _WORK_ORDERS_OPERATIONAL_STATUS)
+    )
+
+    return f"""# Daily Trading Operations
+
+## Executive summary
+* **Recommendation**: {payload.get("current_recommendation")}
+* **Validation status**: `{payload.get("validation_status")}`
+* **Quality Gate**: `{payload.get("quality_gate_status")}` ({payload.get("quality_gate_score")})
+* **Decision Ledger**: `{payload.get("decision_ledger_status")}`; append status `{payload.get("decision_ledger_append_status")}`
+* **Selected next action**: `{active_brief.get("selected_next_safe_action", payload.get("next_operator_action"))}`
+* **Candidate research backlog**: candidate_research_backlog_status={candidate_status}
+* **Secondary work orders**: secondary_work_orders_status={work_orders_status}
+
+## Daily operating state
+* **Input data path**: `{payload.get("input_data_path")}`
+* **Run date**: `{payload.get("run_date")}`
+* **As-of date**: `{payload.get("as_of_date")}`
+* **Latest bar date**: `{payload.get("latest_input_bar_date")}`
+* **Data freshness status**: `{active_brief.get("data_freshness_status", payload.get("data_freshness", {}))}`
+* **SMA posture**: `{payload.get("posture")}`
+* **Market signal preview**: `{active_brief.get("market_signal_preview", payload.get("preview_decision"))}`
+* **Broker-state mode**: `{payload.get("broker_state_mode")}`
+* **Broker state observed**: `{str(payload.get("broker_state_observed")).lower()}`
+* **Broker-state status**: `{active_brief.get("broker_state_status")}`
+* **Broker snapshot freshness status**: `{active_brief.get("broker_snapshot_freshness_status")}`
+* **Broker-aware preview decision**: `{payload.get("broker_aware_preview_decision", active_brief.get("broker_aware_preview_decision"))}`
+* **Execution plan status**: `{execution_plan.get("execution_plan_status", active_brief.get("execution_plan_status"))}`
+* **Execution plan action**: `{execution_plan.get("execution_plan_action", active_brief.get("execution_plan_action"))}`
+* **Execution plan blocker**: `{execution_plan.get("execution_plan_blocker", active_brief.get("execution_plan_blocker"))}`
+* **Approval state**: `{daily_approval_gate.get("approval_state", active_brief.get("approval_state"))}`
+* **Autopilot control status**: `{controller.get("autopilot_control_status", active_brief.get("autopilot_control_status"))}`
+* **Can continue without Daniel**: `{str(controller.get("can_continue_without_daniel", active_brief.get("can_continue_without_daniel"))).lower()}`
+
+## Safety
+* **Paper submit authorized**: `{str(payload.get("paper_submit_authorized")).lower()}`
+* **Live authorized**: `{str(payload.get("live_authorized")).lower()}`
+* **Broker read performed**: `{str(payload.get("broker_read_performed")).lower()}`
+* **Broker mutation performed**: `{str(payload.get("broker_mutation_performed")).lower()}`
+* **Submit allowed**: `{str(daily_approval_gate.get("submit_allowed", active_brief.get("submit_allowed"))).lower()}`
+* **Hard gate required**: `{str(active_brief.get("hard_gate_required")).lower()}`
+* **Safety labels**:
+{labels_list}
+
+## Active artifacts
+{artifact_lines}
+
+## Quality Gate
+* **Status**: `{payload.get("quality_gate_status")}`
+* **Failed checks**: {failed_checks_text}
+* **Warning checks**: {warning_checks_text}
+
+## Decision Ledger
+* **Status**: `{payload.get("decision_ledger_status")}`
+* **Path**: `{payload.get("decision_ledger_path")}`
+* **Append status**: `{payload.get("decision_ledger_append_status")}`
+"""
+
+
 def _render_brief_markdown(payload: dict[str, Any]) -> str:
+    if _is_operational_only_payload(payload):
+        return _render_operational_brief_markdown(payload)
+
     labels_list = "\n".join(f"* `{label}`" for label in payload["safety_labels"])
     artifact_lines = "\n".join(
         f"* **{name}**: `{path}`"
@@ -30652,7 +31453,119 @@ def _render_candidate_strategy_board(candidate_board: list[Mapping[str, Any]]) -
     return _render_research_board(candidate_board)
 
 
+def _build_operational_manifest(
+    output_root: Path,
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    indexed_artifacts: dict[str, Any] = {}
+    for artifact_id, filename in (
+        ("assistant_brief", _BRIEF_FILENAME),
+        ("operating_record", _RECORD_FILENAME),
+        ("mission_control", _MISSION_CONTROL_FILENAME),
+        ("mission_control_index", _MISSION_CONTROL_INDEX_FILENAME),
+        ("assistant_report", _MISSION_CONTROL_REPORT_FILENAME),
+        ("mission_control_validation", _MISSION_CONTROL_VALIDATION_FILENAME),
+        ("latest_run", _LATEST_RUN_FILENAME),
+        ("data_freshness_plan", _DATA_FRESHNESS_PLAN_FILENAME),
+        ("data_refresh_bridge", _DATA_REFRESH_BRIDGE_FILENAME),
+        ("data_refresh_dry_run", _DATA_REFRESH_DRY_RUN_FILENAME),
+        ("data_refresh_operator_checklist", _DATA_REFRESH_OPERATOR_CHECKLIST_FILENAME),
+        ("operator_review", _OPERATOR_REVIEW_FILENAME),
+        ("history_ledger", _HISTORY_LEDGER_FILENAME),
+        ("forward_signal_evidence_ledger", _FORWARD_SIGNAL_EVIDENCE_LEDGER_FILENAME),
+        ("decision_ledger", _DECISION_LEDGER_FILENAME),
+    ):
+        path = output_root / filename
+        if path.exists():
+            indexed_artifacts[artifact_id] = _artifact_metadata(path)
+
+    return {
+        "schema_version": _SCHEMA_VERSION,
+        "assistant_version": _ASSISTANT_VERSION,
+        "assistant_packet_version": payload["assistant_packet_version"],
+        "manifest_type": "daily_paper_lab_operational_index",
+        "command": _COMMAND,
+        "script": _SCRIPT,
+        "output_mode": _OUTPUT_MODE_OPERATIONAL_ONLY,
+        "operational_only": True,
+        "run_id": payload["run_id"],
+        "as_of_date": payload["as_of_date"],
+        "run_date": payload.get("run_date"),
+        "active_strategy_name": payload["active_strategy_name"],
+        "input_data_path": payload["input_data_path"],
+        "input_data_sha256": payload["input_data_sha256"],
+        "posture": payload["posture"],
+        "sma_posture_status": payload["sma_posture_status"],
+        "preview_decision": payload["preview_decision"],
+        "blocker_status": payload["blocker_status"],
+        "broker_state_mode": payload["broker_state_mode"],
+        "paper_submit_authorized": False,
+        "paper_submit_authorization_status": "not_authorized",
+        "latest_run_path": payload.get("latest_run_path"),
+        "latest_run": dict(payload.get("latest_run", {})),
+        "data_freshness_plan_path": payload.get("data_freshness_plan_path"),
+        "data_freshness_plan": dict(payload.get("data_freshness_plan", {})),
+        "data_refresh_bridge_path": payload.get("data_refresh_bridge_path"),
+        "data_refresh_bridge": dict(payload.get("data_refresh_bridge", {})),
+        "data_refresh_dry_run_path": payload.get("data_refresh_dry_run_path"),
+        "data_refresh_dry_run": dict(payload.get("data_refresh_dry_run", {})),
+        "data_refresh_operator_checklist_path": payload.get(
+            "data_refresh_operator_checklist_path"
+        ),
+        "operator_review_path": payload.get("operator_review_path"),
+        "next_operator_action": payload["next_operator_action"],
+        "safety_labels": list(payload["safety_labels"]),
+        "validation_status": payload["validation_status"],
+        "missing_required_fields": list(payload["missing_required_fields"]),
+        "artifact_presence_status": dict(payload["artifact_presence_status"]),
+        "artifact_paths": dict(payload.get("artifact_paths", {})),
+        "indexed_artifacts": indexed_artifacts,
+        "history_ledger_path": payload["history_ledger_path"],
+        "forward_signal_evidence_ledger_path": payload.get(
+            "forward_signal_evidence_ledger_path"
+        ),
+        "forward_signal_evidence_ledger_status": payload.get(
+            "forward_signal_evidence_ledger_status"
+        ),
+        "forward_signal_evidence_ledger_summary": dict(
+            payload.get("forward_signal_evidence_ledger_summary", {})
+        ),
+        "history_delta": dict(payload["history_delta"]),
+        "executive_action_queue_version": payload["executive_action_queue_version"],
+        "executive_action_queue": list(payload["executive_action_queue"]),
+        "executive_action_summary": dict(payload["executive_action_summary"]),
+        "quality_gate_status": payload["quality_gate_status"],
+        "quality_gate_score": payload["quality_gate_score"],
+        "quality_gate_failed_checks": list(payload["quality_gate_failed_checks"]),
+        "quality_gate_warning_checks": list(payload["quality_gate_warning_checks"]),
+        "quality_gate_required_checks": list(payload["quality_gate_required_checks"]),
+        "quality_gate_optional_checks": list(payload["quality_gate_optional_checks"]),
+        "decision_ledger_version": payload["decision_ledger_version"],
+        "decision_ledger_path": payload["decision_ledger_path"],
+        "decision_ledger_status": payload["decision_ledger_status"],
+        "decision_ledger_append_status": payload["decision_ledger_append_status"],
+        "decision_ledger_entry_count": payload["decision_ledger_entry_count"],
+        "review_input_status": payload["review_input_status"],
+        "review_input_count": payload.get("review_input_count"),
+        "review_input_path": payload.get("review_input_path"),
+        "review_input_sha256": payload.get("review_input_sha256"),
+        "reviewer_source": payload["reviewer_source"],
+        "review_classification": payload["review_classification"],
+        "review_selected_next_action": payload["review_selected_next_action"],
+        "candidate_research_backlog_status": (
+            _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS
+        ),
+        "secondary_work_orders_status": _WORK_ORDERS_OPERATIONAL_STATUS,
+        "suppressed_secondary_artifacts": sorted(
+            _SUPPRESSED_OPERATIONAL_ARTIFACT_IDS
+        ),
+    }
+
+
 def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, Any]:
+    if _is_operational_only_payload(payload):
+        return _build_operational_manifest(output_root, payload)
+
     indexed_artifacts = {
         "assistant_brief": _artifact_metadata(output_root / _BRIEF_FILENAME),
         "operating_record": _artifact_metadata(output_root / _RECORD_FILENAME),

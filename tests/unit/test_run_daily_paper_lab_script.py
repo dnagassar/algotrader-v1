@@ -24,6 +24,12 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "--broker-state-mode\", $BrokerStateMode",
         "BrokerSnapshotLog",
         "--broker-snapshot-log",
+        ".PARAMETER OperationalOnly",
+        "[switch]$OperationalOnly",
+        ".PARAMETER FullResearchPacket",
+        "[switch]$FullResearchPacket",
+        "$UseOperationalOnly = $OperationalOnly -or (-not $FullResearchPacket)",
+        "--operational-only",
         ".PARAMETER RunDate",
         "[string]$RunDate",
         "--run-date",
@@ -111,6 +117,7 @@ def test_run_daily_paper_lab_script_translates_run_date_to_cli_arg(
     assert "-m algotrader.cli etf-sma-daily-paper-lab" in args
     assert "--as-of-date 2026-06-18" in args
     assert "--run-date 2026-06-20" in args
+    assert "--operational-only" in args
 
 
 def test_run_daily_paper_lab_script_omits_run_date_cli_arg_when_absent(
@@ -146,6 +153,43 @@ def test_run_daily_paper_lab_script_omits_run_date_cli_arg_when_absent(
     args = capture_path.read_text(encoding="utf-8")
     assert "--as-of-date 2026-06-18" in args
     assert "--run-date" not in args
+    assert "--operational-only" in args
+
+
+def test_run_daily_paper_lab_script_full_research_packet_omits_operational_flag(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(tmp_path, capture_path)
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(RUN_DAILY_PAPER_LAB_SCRIPT),
+            "-OutputRoot",
+            str(tmp_path / "paper_lab_out"),
+            "-AsOfDate",
+            "2026-06-18",
+            "-Format",
+            "json",
+            "-FullResearchPacket",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = capture_path.read_text(encoding="utf-8")
+    assert "-m algotrader.cli etf-sma-daily-paper-lab" in args
+    assert "--operational-only" not in args
 
 
 def _fake_python_env(tmp_path: Path, capture_path: Path) -> dict[str, str]:

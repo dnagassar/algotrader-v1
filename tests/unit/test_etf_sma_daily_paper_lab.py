@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import json
 import os
 import shutil
@@ -104,6 +105,69 @@ _DAILY_APPROVAL_GATE_FIELDS = {
 }
 _DAILY_APPROVAL_GATE_COMPACT_FIELDS = {
     f"daily_approval_gate_{field}" for field in _DAILY_APPROVAL_GATE_FIELDS
+}
+_OPERATIONAL_SECONDARY_STATUS = "secondary_not_materialized_in_operational_mode"
+_V175_SUPPRESSED_ARTIFACT_FILENAMES = {
+    "research_candidate_queue.jsonl",
+    "baseline_health_evaluation.jsonl",
+    "baseline_evidence_metrics.jsonl",
+    "paper_observation_readiness.jsonl",
+    "research_board_prioritization.jsonl",
+    "strategy_comparison_scaffold.jsonl",
+    "candidate_strategy_evidence_template.jsonl",
+    "candidate_evidence_requirements.jsonl",
+    "candidate_evidence_collection_plan.jsonl",
+    "candidate_evidence_collection_status.jsonl",
+    "candidate_evidence_gap_summary.jsonl",
+    "candidate_gap_closure_queue.jsonl",
+    "candidate_risk_rule_status.jsonl",
+    "candidate_signal_rule_status.jsonl",
+    "shared_risk_rule_status.jsonl",
+    "shared_signal_rule_status.jsonl",
+    "shared_benchmark_comparison_status.jsonl",
+    "candidate_backtest_result_packet.jsonl",
+    "review_handoff.md",
+}
+_V175_SUPPRESSED_PAYLOAD_KEYS = {
+    "research_candidate_queue",
+    "research_candidate_queue_path",
+    "baseline_health_evaluation",
+    "baseline_health_evaluation_path",
+    "baseline_evidence_metrics",
+    "baseline_evidence_metrics_path",
+    "paper_observation_readiness",
+    "paper_observation_readiness_path",
+    "research_board_prioritization",
+    "research_board_prioritization_path",
+    "strategy_comparison_scaffold",
+    "strategy_comparison_scaffold_path",
+    "candidate_strategy_evidence_template",
+    "candidate_strategy_evidence_template_path",
+    "candidate_evidence_requirements",
+    "candidate_evidence_requirements_path",
+    "candidate_evidence_collection_plan",
+    "candidate_evidence_collection_plan_path",
+    "candidate_evidence_collection_status",
+    "candidate_evidence_collection_status_path",
+    "candidate_evidence_gap_summary",
+    "candidate_evidence_gap_summary_path",
+    "candidate_gap_closure_queue",
+    "candidate_gap_closure_queue_path",
+    "candidate_risk_rule_status",
+    "candidate_risk_rule_status_path",
+    "candidate_signal_rule_status",
+    "candidate_signal_rule_status_path",
+    "shared_risk_rule_status",
+    "shared_risk_rule_status_path",
+    "shared_signal_rule_status",
+    "shared_signal_rule_status_path",
+    "shared_benchmark_comparison_status",
+    "shared_benchmark_comparison_status_path",
+    "candidate_backtest_result_packet",
+    "candidate_backtest_result_packet_path",
+    "next_action_selector",
+    "work_order_exports",
+    "work_orders",
 }
 
 
@@ -8813,6 +8877,94 @@ def _write_v172_source_review_not_ready_broker_snapshot(
     )
 
 
+def _assert_v175_operational_artifacts(
+    output_root: Path,
+    payload: dict[str, object],
+) -> None:
+    assert payload["output_mode"] == "operational_only"
+    assert payload["operational_only"] is True
+    assert payload["candidate_research_backlog_status"] == (
+        _OPERATIONAL_SECONDARY_STATUS
+    )
+    assert payload["secondary_work_orders_status"] == _OPERATIONAL_SECONDARY_STATUS
+    assert not (output_root / "work_orders").exists()
+    for filename in _V175_SUPPRESSED_ARTIFACT_FILENAMES:
+        assert not (output_root / filename).exists(), filename
+
+    mission = _read_mission_control(output_root)
+    latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+    manifest = json.loads((output_root / "manifest.jsonl").read_text(encoding="utf-8"))
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+
+    for surface in (payload, latest, record, manifest, mission):
+        assert surface["candidate_research_backlog_status"] == (
+            _OPERATIONAL_SECONDARY_STATUS
+        )
+        assert surface["secondary_work_orders_status"] == (
+            _OPERATIONAL_SECONDARY_STATUS
+        )
+        for key in _V175_SUPPRESSED_PAYLOAD_KEYS:
+            assert key not in surface, key
+
+    for path_map_key in ("artifact_paths", "artifacts"):
+        path_map = payload[path_map_key]
+        assert isinstance(path_map, dict)
+        for key in _V175_SUPPRESSED_PAYLOAD_KEYS:
+            assert key not in path_map
+    assert "work_orders" not in mission["artifacts"]
+    assert "work_orders" not in mission["agent_command_center"]
+    assert mission["work_orders_status"] == _OPERATIONAL_SECONDARY_STATUS
+    assert mission["agent_inbox_status"] == _OPERATIONAL_SECONDARY_STATUS
+    assert "work_orders_missing" not in {
+        rule["rule_id"] for rule in mission["rule_based_dispatcher_v0"]["rules"]
+    }
+
+    indexed = manifest["indexed_artifacts"]
+    for filename in _V175_SUPPRESSED_ARTIFACT_FILENAMES:
+        assert filename not in json.dumps(indexed, sort_keys=True)
+    assert "## Candidate Evidence Requirements" not in brief
+    assert "## Candidate Backtest Result Packet" not in brief
+    assert f"candidate_research_backlog_status={_OPERATIONAL_SECONDARY_STATUS}" in (
+        brief
+    )
+    assert f"secondary_work_orders_status={_OPERATIONAL_SECONDARY_STATUS}" in brief
+    assert "## Daily operating state" in brief
+    assert "## Active artifacts" in brief
+
+
+def _v175_active_decision_contract(mission: dict[str, object]) -> dict[str, object]:
+    market = mission["market_data_lane"]
+    decision = mission["decision_lane"]
+    execution_plan = mission["execution_plan"]
+    approval = mission["daily_approval_gate"]
+    active = mission["active_operating_brief"]
+    controller = active["daily_autopilot_controller"]
+    return {
+        "sma50": market["sma50"],
+        "sma200": market["sma200"],
+        "repo_posture": market["repo_posture"],
+        "market_signal_preview": decision["market_signal_preview"],
+        "broker_aware_preview_decision": decision["preview_decision"],
+        "blocker_status": decision["blocker_status"],
+        "execution_plan_status": execution_plan["execution_plan_status"],
+        "execution_plan_action": execution_plan["execution_plan_action"],
+        "execution_plan_reason": execution_plan["execution_plan_reason"],
+        "execution_plan_blocker": execution_plan["execution_plan_blocker"],
+        "approval_state": approval["approval_state"],
+        "submit_allowed": approval["submit_allowed"],
+        "active_state_status": active["active_state_status"],
+        "selected_next_safe_action": active["selected_next_safe_action"],
+        "selected_agent": active["selected_agent"],
+        "hard_gate_required": active["hard_gate_required"],
+        "autopilot_control_status": controller["autopilot_control_status"],
+        "can_continue_without_daniel": controller["can_continue_without_daniel"],
+        "next_safe_action": controller["next_safe_action"],
+    }
+
+
 def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     tmp_path: Path,
 ) -> None:
@@ -9199,6 +9351,229 @@ def test_etf_sma_daily_paper_lab_consumes_read_only_broker_snapshot(
     }
     active_surface_text = json.dumps(active_blocker_surfaces, sort_keys=True)
     assert "broker_state_not_observed" not in active_surface_text
+
+
+def test_v175_operational_only_risk_on_existing_position_cycle(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_operational_only"
+    broker_snapshot_log = tmp_path / "m403_read_only_snapshot.jsonl"
+    _write_daily_lab_broker_snapshot(broker_snapshot_log, spy_position_qty="0.5")
+    output_root.mkdir(parents=True)
+    (output_root / "candidate_evidence_requirements.jsonl").write_text(
+        "stale full-packet artifact\n",
+        encoding="utf-8",
+    )
+    stale_work_orders = output_root / "work_orders"
+    stale_work_orders.mkdir()
+    (stale_work_orders / "codex_next_prompt.md").write_text(
+        "stale work order\n",
+        encoding="utf-8",
+    )
+    (output_root / "operator_keepalive.txt").write_text(
+        "not a known suppressed artifact\n",
+        encoding="utf-8",
+    )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+            operational_only=True,
+        )
+    )
+
+    _assert_v175_operational_artifacts(output_root, payload)
+    assert (output_root / "operator_keepalive.txt").is_file()
+    mission = _read_mission_control(output_root)
+    latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
+
+    assert latest["validation_status"] == "passed"
+    assert latest["data_freshness_status"] == "current_for_daily_bar_lab"
+    assert latest["sma_posture"] == "bullish_risk_on"
+    assert latest["market_signal_preview"] == "buy_preview"
+    assert latest["broker_state_mode"] == "alpaca_paper_read_only"
+    assert latest["broker_snapshot_freshness_status"] == "fresh"
+    assert latest["broker_state_observed"] is True
+    assert latest["broker_state_status"] == "observed"
+    assert latest["broker_aware_preview_decision"] == "hold/noop"
+    assert latest["execution_plan_status"] == "no_action_required"
+    assert latest["execution_plan_action"] == "hold/noop"
+    assert latest["execution_plan_blocker"] == "none"
+    assert latest["approval_state"] == "not_required_noop"
+    assert latest["submit_allowed"] is False
+    assert latest["autopilot_control_status"] == (
+        "waiting_for_next_completed_session"
+    )
+    assert latest["can_continue_without_daniel"] is True
+    assert latest["next_safe_action"] == "run_next_completed_session_daily_cycle"
+    assert latest["selected_agent"] == "none"
+    assert latest["hard_gate_required"] is False
+    assert latest["paper_submit_authorized"] is False
+    assert latest["live_authorized"] is False
+    assert latest["broker_read_performed"] is False
+    assert latest["broker_mutation_performed"] is False
+    assert mission["broker_state_lane"]["broker_read_performed"] is False
+    assert mission["broker_state_lane"]["broker_mutation_performed"] is False
+
+
+def test_v175_operational_only_preserves_active_decision_vs_full_research(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    broker_snapshot_log = tmp_path / "m403_read_only_snapshot.jsonl"
+    _write_daily_lab_broker_snapshot(broker_snapshot_log, spy_position_qty="0.5")
+    bars_csv = FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"
+
+    operational_payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=tmp_path / "operational",
+            bars_csv=bars_csv,
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+            operational_only=True,
+        )
+    )
+    full_payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=tmp_path / "full_research",
+            bars_csv=bars_csv,
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+        )
+    )
+
+    operational_mission = _read_mission_control(tmp_path / "operational")
+    full_mission = _read_mission_control(tmp_path / "full_research")
+    assert operational_payload["output_mode"] == "operational_only"
+    assert full_payload["output_mode"] == "full_research"
+    assert _v175_active_decision_contract(operational_mission) == (
+        _v175_active_decision_contract(full_mission)
+    )
+    _assert_v175_operational_artifacts(tmp_path / "operational", operational_payload)
+    assert (tmp_path / "full_research" / "work_orders").is_dir()
+    assert (tmp_path / "full_research" / "candidate_backtest_result_packet.jsonl").is_file()
+    assert "candidate_backtest_result_packet" in full_payload
+    assert "work_order_exports" in full_payload
+
+
+@pytest.mark.parametrize(
+    ("case_name", "writer", "expected_status", "expected_preview"),
+    [
+        (
+            "stale",
+            lambda path: _write_daily_lab_broker_snapshot(
+                path,
+                generated_at="2025-07-18T12:00:00+00:00",
+            ),
+            "stale_snapshot",
+            "blocked/stale_snapshot",
+        ),
+        (
+            "missing",
+            None,
+            "broker_unavailable",
+            "blocked/broker_unavailable",
+        ),
+        (
+            "malformed",
+            lambda path: path.write_text("{not-json}\n", encoding="utf-8"),
+            "invalid_snapshot",
+            "blocked/invalid_snapshot",
+        ),
+    ],
+)
+def test_v175_operational_only_broker_snapshot_hard_gates(
+    tmp_path: Path,
+    case_name: str,
+    writer: object,
+    expected_status: str,
+    expected_preview: str,
+) -> None:
+    output_root = tmp_path / f"paper_lab_operational_{case_name}"
+    broker_snapshot_log = tmp_path / f"{case_name}.jsonl"
+    if writer is not None:
+        writer(broker_snapshot_log)  # type: ignore[operator]
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="alpaca_paper_read_only",
+            broker_snapshot_log=broker_snapshot_log,
+            operational_only=True,
+        )
+    )
+
+    _assert_v175_operational_artifacts(output_root, payload)
+    mission = _read_mission_control(output_root)
+    latest = json.loads((output_root / "latest_run.json").read_text(encoding="utf-8"))
+    active = mission["active_operating_brief"]
+    broker = mission["broker_state_lane"]
+
+    assert broker["broker_state_status"] == expected_status
+    assert broker["broker_state_observed"] is False
+    assert broker["broker_read_performed"] is False
+    assert broker["broker_mutation_performed"] is False
+    assert latest["preview_decision"] == expected_preview
+    assert latest["paper_submit_authorized"] is False
+    assert latest["live_authorized"] is False
+    assert latest["broker_mutation_performed"] is False
+    assert active["active_state_status"] in {"broker_observation_required", "blocked"}
+    assert active["selected_agent"] == "Daniel"
+    assert active["hard_gate_required"] is True
+    assert active["selected_next_safe_action"] in {
+        "request_scoped_read_only_broker_observation",
+        "repair_current_blocker",
+    }
+    assert latest["exact_next_operator_action"] in {
+        "correct_or_replace_unsafe_local_broker_snapshot_before_next_cycle",
+        (
+            "produce_fresh_explicitly_authorized_read_only_paper_broker_snapshot_"
+            "for_spy_daily_lab"
+        ),
+    }
+
+
+def test_v175_operational_only_runtime_imports_stay_offline() -> None:
+    source_path = Path(paper_lab_module.__file__)
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    imported_roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported_roots.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imported_roots.add(node.module.split(".")[0])
+
+    assert imported_roots.isdisjoint(
+        {
+            "alpaca",
+            "requests",
+            "httpx",
+            "urllib3",
+            "socket",
+            "openai",
+            "anthropic",
+            "langchain",
+            "llama_index",
+            "notebook",
+        }
+    )
 
 
 def test_etf_sma_daily_paper_lab_accepts_v172_source_review_not_ready_snapshot(
@@ -9924,6 +10299,20 @@ def test_etf_sma_daily_paper_lab_cli_parser_accepts_explicit_run_date() -> None:
 
     assert args.run_date == "2026-06-20"
     assert args.as_of_date is None
+    assert args.operational_only is False
+
+
+def test_etf_sma_daily_paper_lab_cli_parser_accepts_operational_only() -> None:
+    args = cli_module.build_parser().parse_args(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            "runs/daily_lab/parser_smoke",
+            "--operational-only",
+        ]
+    )
+
+    assert args.operational_only is True
 
 
 def test_etf_sma_daily_paper_lab_cli_forwards_explicit_run_date_to_api(
@@ -9967,6 +10356,7 @@ def test_etf_sma_daily_paper_lab_cli_forwards_explicit_run_date_to_api(
     config = captured_configs[0]
     assert config.as_of_date == "2025-07-19"
     assert config.run_date == "2025-07-20"
+    assert config.operational_only is False
     assert config.as_of_date != config.run_date
     assert config.broker_state_mode == "broker_state_not_observed"
     assert config.broker_snapshot_log is None
@@ -10010,6 +10400,47 @@ def test_etf_sma_daily_paper_lab_cli_preserves_omitted_run_date_behavior(
     assert len(captured_configs) == 1
     assert captured_configs[0].as_of_date == "2025-07-19"
     assert captured_configs[0].run_date is None
+    assert captured_configs[0].operational_only is False
+
+
+def test_etf_sma_daily_paper_lab_cli_forwards_operational_only_to_api(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured_configs: list[EtfSmaDailyPaperLabConfig] = []
+
+    def fake_run(config: EtfSmaDailyPaperLabConfig) -> dict[str, object]:
+        captured_configs.append(config)
+        return {"ok": True}
+
+    monkeypatch.setattr(paper_lab_module, "run_etf_sma_daily_paper_lab", fake_run)
+    monkeypatch.setattr(
+        paper_lab_module,
+        "etf_sma_daily_paper_lab_exit_status",
+        lambda payload: 0,
+    )
+
+    exit_code = cli_module.main(
+        [
+            "etf-sma-daily-paper-lab",
+            "--output-root",
+            str(tmp_path / "paper_lab_cli_operational_only"),
+            "--bars-csv",
+            str(FIXTURES_DIR / "spy_daily_bars_200_bullish.csv"),
+            "--as-of-date",
+            "2025-07-19",
+            "--operational-only",
+            "--format",
+            "json",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 0
+    assert captured.err == ""
+    assert len(captured_configs) == 1
+    assert captured_configs[0].operational_only is True
 
 
 def test_etf_sma_daily_paper_lab_cli_invalid_run_date_fails_clearly(

@@ -37,6 +37,15 @@ the daily lab command itself performs no broker read.
 Optional local read-only paper broker snapshot reconciliation JSONL to consume
 when BrokerStateMode is alpaca_paper_read_only.
 
+.PARAMETER OperationalOnly
+Produce only the active daily operating artifacts and suppress secondary
+candidate-research and agent work-order materialization. This is the default
+unless FullResearchPacket is supplied.
+
+.PARAMETER FullResearchPacket
+Explicitly produce the full research packet, including secondary candidate
+research and agent work-order artifacts.
+
 .PARAMETER Format
 Output format (text or json). Defaults to text.
 #>
@@ -54,6 +63,8 @@ param(
     [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
     [string]$BrokerStateMode = "broker_state_not_observed",
     [string]$BrokerSnapshotLog,
+    [switch]$OperationalOnly,
+    [switch]$FullResearchPacket,
     [string]$Format = "text"
 )
 
@@ -95,6 +106,13 @@ if ($LoadedCredentialVariables.Count -gt 0) {
     exit 2
 }
 
+if ($OperationalOnly -and $FullResearchPacket) {
+    [Console]::Error.WriteLine("Error: OperationalOnly and FullResearchPacket are mutually exclusive.")
+    exit 2
+}
+
+$UseOperationalOnly = $OperationalOnly -or (-not $FullResearchPacket)
+
 # Resolve OutputRoot parent
 $AbsoluteOutputRoot = $OutputRoot
 if (-not [System.IO.Path]::IsPathRooted($OutputRoot)) {
@@ -128,6 +146,10 @@ if (-not [string]::IsNullOrEmpty($RunDate)) {
 
 if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {
     $CliArgs += @("--broker-snapshot-log", $BrokerSnapshotLog)
+}
+
+if ($UseOperationalOnly) {
+    $CliArgs += @("--operational-only")
 }
 
 Push-Location -LiteralPath $RepoRoot
