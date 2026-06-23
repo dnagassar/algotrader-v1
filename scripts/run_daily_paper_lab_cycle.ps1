@@ -6,8 +6,10 @@ Runs the canonical daily paper-lab operating cycle and prints the compact receip
 Runs the existing SPY SMA daily paper-lab implementation in operational-only
 mode against a supplied local read-only broker snapshot log, then prints the
 compact daily status receipt from latest_run.json when an artifact is available.
-The command does not read a broker, mutate broker state, submit paper orders,
-load credentials, refresh data, or contact the network.
+The default command does not read a broker, mutate broker state, submit paper
+orders, load credentials, refresh data, or contact the network.  The optional
+AutoRefreshAdjustedData switch only runs a local dry-run refresh plan when the
+daily cycle has already reported stale data.
 
 .PARAMETER OutputRoot
 Root directory under which the daily paper-lab operating artifacts are written.
@@ -29,7 +31,11 @@ param(
     [string]$RunDate,
     [string]$Symbol = "SPY",
     [int]$SmaFastWindow = 50,
-    [int]$SmaSlowWindow = 200
+    [int]$SmaSlowWindow = 200,
+    [switch]$AutoRefreshAdjustedData,
+    [string]$DataRefreshExpectedLatestBarDate,
+    [string]$DataRefreshOutputCsv = ".data\operator_inputs\spy_tiingo_adjusted_refresh_latest.csv",
+    [string]$DataRefreshRunLog = "runs\paper_lab\m446_adjusted_spy_bars_refresh_manifest.jsonl"
 )
 
 Set-StrictMode -Version Latest
@@ -38,6 +44,7 @@ $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $DailyScript = Join-Path $PSScriptRoot "run_daily_paper_lab.ps1"
 $ReceiptScript = Join-Path $PSScriptRoot "show_daily_paper_lab_status.ps1"
+$RefreshScript = Join-Path $PSScriptRoot "refresh_spy_adjusted_data.ps1"
 
 $AbsoluteOutputRoot = $OutputRoot
 if (-not [System.IO.Path]::IsPathRooted($OutputRoot)) {
@@ -58,6 +65,72 @@ function Get-CurrentPowerShellPath {
         return $WindowsPowerShellCommand.Source
     }
     throw "Unable to locate a PowerShell executable for the daily paper-lab cycle."
+}
+
+function Get-PropertyText {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+    if ($null -eq $Object) {
+        return ""
+    }
+    $Property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $Property -or $null -eq $Property.Value) {
+        return ""
+    }
+    return [string]$Property.Value
+}
+
+function Get-NestedPropertyText {
+    param(
+        [object]$Object,
+        [string]$Section,
+        [string]$Name
+    )
+    $Nested = Get-PropertyText -Object $Object -Name $Section
+    if ([string]::IsNullOrEmpty($Nested)) {
+        return ""
+    }
+    return Get-PropertyText -Object $Object.PSObject.Properties[$Section].Value -Name $Name
+}
+
+function Get-RefreshExpectedLatestBarDate {
+    param([object]$LatestRun)
+    if (-not [string]::IsNullOrEmpty($DataRefreshExpectedLatestBarDate)) {
+        return $DataRefreshExpectedLatestBarDate
+    }
+
+    $Candidates = @(
+        (Get-PropertyText -Object $LatestRun -Name "expected_latest_bar_date"),
+        (Get-NestedPropertyText -Object $LatestRun -Section "daily_decision_summary" -Name "expected_latest_bar_date"),
+        (Get-PropertyText -Object $LatestRun -Name "latest_completed_session_date"),
+        (Get-NestedPropertyText -Object $LatestRun -Section "daily_decision_summary" -Name "latest_completed_session_date")
+    )
+    foreach ($Candidate in $Candidates) {
+        if (-not [string]::IsNullOrEmpty($Candidate)) {
+            return $Candidate
+        }
+    }
+    return ""
+}
+
+function Test-AdjustedDataRefreshRequired {
+    param([object]$LatestRun)
+    $Freshness = Get-PropertyText -Object $LatestRun -Name "data_freshness_status"
+    if ([string]::IsNullOrEmpty($Freshness)) {
+        $Freshness = Get-NestedPropertyText -Object $LatestRun -Section "daily_decision_summary" -Name "data_freshness_status"
+    }
+
+    $NextSafeAction = Get-PropertyText -Object $LatestRun -Name "next_safe_action"
+    if ([string]::IsNullOrEmpty($NextSafeAction)) {
+        $NextSafeAction = Get-NestedPropertyText -Object $LatestRun -Section "daily_autopilot_controller" -Name "next_safe_action"
+    }
+
+    return (
+        $Freshness -eq "stale_data_preview_only" -or
+        $NextSafeAction -eq "refresh_or_intake_adjusted_spy_data"
+    )
 }
 
 $PowerShellExe = Get-CurrentPowerShellPath
@@ -99,6 +172,63 @@ if ($null -eq $DailyExitCode) {
 }
 
 $LatestRunPath = Join-Path $AbsoluteOutputRoot "latest_run.json"
+$AutoRefreshExitCode = 0
+if ($AutoRefreshAdjustedData) {
+    if (-not (Test-Path -LiteralPath $LatestRunPath)) {
+        Write-Host "auto_refresh_adjusted_data_status=latest_run_missing"
+        $AutoRefreshExitCode = 2
+    }
+    else {
+        try {
+            $LatestRunForRefresh = Get-Content -LiteralPath $LatestRunPath -Raw | ConvertFrom-Json
+            if (Test-AdjustedDataRefreshRequired -LatestRun $LatestRunForRefresh) {
+                $RefreshExpectedLatestBarDate = Get-RefreshExpectedLatestBarDate -LatestRun $LatestRunForRefresh
+                if ([string]::IsNullOrEmpty($RefreshExpectedLatestBarDate)) {
+                    Write-Host "auto_refresh_adjusted_data_status=expected_latest_bar_date_required"
+                    $AutoRefreshExitCode = 2
+                }
+                else {
+                    $RefreshArgs = @(
+                        "-NoProfile",
+                        "-ExecutionPolicy", "Bypass",
+                        "-File", $RefreshScript,
+                        "-Provider", "tiingo",
+                        "-ExpectedLatestBarDate", $RefreshExpectedLatestBarDate,
+                        "-OutputCsv", $DataRefreshOutputCsv,
+                        "-CanonicalCsv", $BarsCsv,
+                        "-RunLog", $DataRefreshRunLog,
+                        "-Mode", "dry_run"
+                    )
+                    Push-Location -LiteralPath $RepoRoot
+                    try {
+                        & $PowerShellExe @RefreshArgs
+                        $RefreshDryRunExitCode = $LASTEXITCODE
+                    }
+                    finally {
+                        Pop-Location
+                    }
+                    if ($null -eq $RefreshDryRunExitCode) {
+                        $RefreshDryRunExitCode = 0
+                    }
+                    Write-Host "auto_refresh_adjusted_data_status=live_market_data_fetch_not_authorized"
+                    Write-Host "auto_refresh_adjusted_data_next_safe_action=request_explicit_live_market_data_fetch_authorization"
+                    $AutoRefreshExitCode = 2
+                    if ($RefreshDryRunExitCode -ne 0) {
+                        $AutoRefreshExitCode = $RefreshDryRunExitCode
+                    }
+                }
+            }
+            else {
+                Write-Host "auto_refresh_adjusted_data_status=no_refresh_required"
+            }
+        }
+        catch {
+            Write-Host "auto_refresh_adjusted_data_status=latest_run_unreadable"
+            $AutoRefreshExitCode = 2
+        }
+    }
+}
+
 if (Test-Path -LiteralPath $LatestRunPath) {
     $ReceiptArgs = @(
         "-NoProfile",
@@ -120,6 +250,9 @@ if (Test-Path -LiteralPath $LatestRunPath) {
     if ($DailyExitCode -eq 0 -and $ReceiptExitCode -ne 0) {
         exit $ReceiptExitCode
     }
+    if ($DailyExitCode -eq 0 -and $AutoRefreshExitCode -ne 0) {
+        exit $AutoRefreshExitCode
+    }
     exit $DailyExitCode
 }
 
@@ -132,6 +265,10 @@ if ($DailyOutput) {
             Write-Host $Line
         }
     }
+}
+
+if ($DailyExitCode -eq 0 -and $AutoRefreshExitCode -ne 0) {
+    exit $AutoRefreshExitCode
 }
 
 exit $DailyExitCode

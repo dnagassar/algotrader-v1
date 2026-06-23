@@ -26,6 +26,10 @@ def test_run_daily_paper_lab_cycle_script_contract() -> None:
         "show_daily_paper_lab_status.ps1",
         "latest_run.json",
         "exit $DailyExitCode",
+        "[switch]$AutoRefreshAdjustedData",
+        "refresh_spy_adjusted_data.ps1",
+        "\"-Mode\", \"dry_run\"",
+        "live_market_data_fetch_not_authorized",
         "does not read a broker",
         "load credentials",
         "contact the network",
@@ -81,6 +85,7 @@ def test_run_daily_paper_lab_cycle_prints_receipt_and_handles_paths_with_spaces(
     assert str(broker_snapshot) in args
     assert "--operational-only" in args
     assert "-m algotrader.execution.daily_paper_lab_status_receipt" in args
+    assert "-m algotrader.execution.etf_sma_adjusted_spy_data_refresh" not in args
     assert "--output-root" in args
     assert str(output_root) in args
 
@@ -128,6 +133,63 @@ def test_run_daily_paper_lab_cycle_propagates_daily_exit_after_receipt(
     assert "-m algotrader.execution.daily_paper_lab_status_receipt" in args
 
 
+def test_run_daily_paper_lab_cycle_auto_refresh_stale_data_dry_run_gate(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_latest"
+    broker_snapshot = tmp_path / "reconciliation.jsonl"
+    broker_snapshot.write_text("{}", encoding="utf-8")
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(
+        tmp_path,
+        capture_path,
+        output_root=output_root,
+        daily_exit_code=0,
+        receipt_exit_code=0,
+        latest_run_json=(
+            '{"latest_run_version":"test",'
+            '"data_freshness_status":"stale_data_preview_only",'
+            '"next_safe_action":"refresh_or_intake_adjusted_spy_data",'
+            '"expected_latest_bar_date":"2026-06-22"}'
+        ),
+    )
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(RUN_DAILY_PAPER_LAB_CYCLE_SCRIPT),
+            "-OutputRoot",
+            str(output_root),
+            "-BrokerSnapshotLog",
+            str(broker_snapshot),
+            "-AutoRefreshAdjustedData",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "refresh_state: dry_run_refresh_plan_built" in result.stdout
+    assert "network_access_attempted: false" in result.stdout
+    assert (
+        "auto_refresh_adjusted_data_status=live_market_data_fetch_not_authorized"
+        in result.stdout
+    )
+    args = capture_path.read_text(encoding="utf-8")
+    assert "-m algotrader.execution.etf_sma_adjusted_spy_data_refresh" in args
+    assert "--mode dry_run" in args
+    assert "live_market_data_fetch" not in args
+    assert "--live-market-data-fetch-authorized" not in args
+
+
 def _fake_python_env(
     tmp_path: Path,
     capture_path: Path,
@@ -135,6 +197,7 @@ def _fake_python_env(
     output_root: Path,
     daily_exit_code: int,
     receipt_exit_code: int,
+    latest_run_json: str = '{"latest_run_version":"test"}',
 ) -> dict[str, str]:
     fake_python = tmp_path / "python.cmd"
     fake_python.write_text(
@@ -147,10 +210,17 @@ def _fake_python_env(
         "  echo broker_mutation_performed=false\r\n"
         "  exit /B %FAKE_RECEIPT_EXIT_CODE%\r\n"
         ")\r\n"
+        "echo %* | find \"etf_sma_adjusted_spy_data_refresh\" > nul\r\n"
+        "if not errorlevel 1 (\r\n"
+        "  echo Automatic Adjusted SPY Data Refresh\r\n"
+        "  echo refresh_state: dry_run_refresh_plan_built\r\n"
+        "  echo network_access_attempted: false\r\n"
+        "  exit /B 0\r\n"
+        ")\r\n"
         "echo %* | find \"etf-sma-daily-paper-lab\" > nul\r\n"
         "if not errorlevel 1 (\r\n"
         "  if not exist \"%FAKE_OUTPUT_ROOT%\" mkdir \"%FAKE_OUTPUT_ROOT%\"\r\n"
-        "  > \"%FAKE_OUTPUT_ROOT%\\latest_run.json\" echo {\"latest_run_version\":\"test\"}\r\n"
+        "  > \"%FAKE_OUTPUT_ROOT%\\latest_run.json\" echo %FAKE_LATEST_RUN_JSON%\r\n"
         "  exit /B %FAKE_DAILY_EXIT_CODE%\r\n"
         ")\r\n"
         "exit /B 0\r\n",
@@ -164,6 +234,7 @@ def _fake_python_env(
     env["FAKE_OUTPUT_ROOT"] = str(output_root)
     env["FAKE_DAILY_EXIT_CODE"] = str(daily_exit_code)
     env["FAKE_RECEIPT_EXIT_CODE"] = str(receipt_exit_code)
+    env["FAKE_LATEST_RUN_JSON"] = latest_run_json
     return env
 
 
