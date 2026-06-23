@@ -7273,7 +7273,6 @@ def _broker_snapshot_validation_errors(
     if str(record.get("broker_observation_state", "")).strip() != "observed":
         errors.extend(_broker_snapshot_source_review_compatibility_errors(record))
     for field_name in (
-        "account_observed",
         "positions_observed",
         "orders_observed",
         "open_orders_observed",
@@ -7431,7 +7430,6 @@ def _broker_snapshot(payload: Mapping[str, Any]) -> Mapping[str, Any]:
 def _broker_snapshot_observed(snapshot: Mapping[str, Any]) -> bool:
     if not (
         bool(snapshot)
-        and snapshot.get("account_observed") is True
         and snapshot.get("positions_observed") is True
         and snapshot.get("orders_observed") is True
         and snapshot.get("open_orders_observed") is True

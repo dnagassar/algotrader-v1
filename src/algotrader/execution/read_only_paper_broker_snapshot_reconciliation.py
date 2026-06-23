@@ -590,23 +590,14 @@ def _observation_blockers(
         return ("paper_profile_gate_failed",)
 
     unavailable = list(observation.unavailable_observations)
-    if (
-        not observation.account_observed
-        and not observation.positions_observed
-        and not observation.orders_observed
-        and not observation.recent_orders_observed
-    ):
+    if not observation.positions_observed and not observation.orders_observed:
         return _dedupe(("broker_observation_unavailable", *unavailable))
 
     blockers: list[str] = []
-    if not observation.account_observed:
-        blockers.append("account_observation_unavailable")
     if not observation.positions_observed:
         blockers.append("positions_observation_unavailable")
     if not observation.orders_observed:
         blockers.append("open_orders_observation_unavailable")
-    if not observation.recent_orders_observed:
-        blockers.append("recent_orders_observation_unavailable")
     blockers.extend(unavailable)
     return _dedupe(tuple(blockers))
 

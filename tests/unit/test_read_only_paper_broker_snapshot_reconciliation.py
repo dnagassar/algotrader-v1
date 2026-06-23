@@ -83,13 +83,14 @@ def test_ready_snapshot_reconciliation_writes_one_safe_record(tmp_path) -> None:
     assert payload["source_review_state"] == "ready_for_operator_review"
     assert payload["source_cycle_decision"] == "buy_preview"
     assert payload["paper_profile_gate_passed"] is True
-    assert payload["account_observed"] is True
+    assert payload["account_observed"] is False
     assert payload["positions_observed"] is True
     assert payload["orders_observed"] is True
-    assert payload["recent_orders_observed"] is True
-    assert payload["cash"] == "100000"
-    assert payload["buying_power"] == "200000"
-    assert payload["currency"] == "USD"
+    assert payload["recent_orders_observed"] is False
+    assert payload["account"] is None
+    assert payload["cash"] == ""
+    assert payload["buying_power"] == ""
+    assert payload["currency"] == ""
     assert payload["position_count"] == 0
     assert payload["position_symbols"] == []
     assert payload["spy_position_present"] is False
@@ -189,11 +190,9 @@ def test_incomplete_observation_blocks_without_forcing_ready(tmp_path) -> None: 
         _config(_write_source_review_packet(tmp_path), tmp_path / "m403.jsonl"),
         ReadOnlyPaperBrokerSnapshotObservation(
             paper_profile_gate_passed=True,
-            account_observed=True,
             positions_observed=True,
-            account={"cash": "100000", "currency": "USD"},
             positions=(),
-            unavailable_observations=("open_orders", "recent_orders"),
+            unavailable_observations=("open_orders",),
             network_access_attempted=True,
             credential_access_attempted=True,
         ),
@@ -202,7 +201,6 @@ def test_incomplete_observation_blocks_without_forcing_ready(tmp_path) -> None: 
     assert payload["broker_observation_state"] == "observation_incomplete"
     assert payload["reconciliation_state"] == "blocked_observation_incomplete"
     assert "open_orders_observation_unavailable" in payload["blockers"]
-    assert "recent_orders_observation_unavailable" in payload["blockers"]
     _assert_no_broker_authority(payload)
 
 
@@ -250,7 +248,7 @@ def test_live_url_detected_blocks_without_broker_observation(tmp_path) -> None: 
     _assert_no_broker_authority(payload)
 
 
-def test_cli_dispatch_reads_only_account_positions_open_and_recent_orders(
+def test_cli_dispatch_reads_only_positions_and_open_orders(
     monkeypatch,
     capsys,
     tmp_path,
@@ -288,20 +286,26 @@ def test_cli_dispatch_reads_only_account_positions_open_and_recent_orders(
     records = _read_jsonl(run_log)
     assert exit_code == 0
     assert fake_client.calls == [
-        "get_account",
         "get_positions",
-        "get_orders",
         "get_orders",
     ]
     assert fake_client.submitted_requests == []
     assert [query.status_filter for query in fake_client.recent_order_queries] == [
         "open",
-        "all",
+    ]
+    assert [query.symbol_filter for query in fake_client.recent_order_queries] == [
+        "SPY",
     ]
     assert records == [payload]
     assert payload["reconciliation_state"] == "ready_for_operator_review"
     assert payload["network_access_attempted"] is True
     assert payload["credential_access_attempted"] is True
+    assert payload["account_observed"] is False
+    assert payload["account"] is None
+    assert payload["cash"] == ""
+    assert payload["buying_power"] == ""
+    assert payload["recent_orders_observed"] is False
+    assert payload["recent_orders"] == []
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
     _assert_no_broker_authority(payload)
@@ -452,11 +456,8 @@ def _observation(
 ) -> ReadOnlyPaperBrokerSnapshotObservation:
     return ReadOnlyPaperBrokerSnapshotObservation(
         paper_profile_gate_passed=True,
-        account_observed=True,
         positions_observed=True,
         orders_observed=True,
-        recent_orders_observed=True,
-        account={"cash": "100000", "buying_power": "200000", "currency": "USD"},
         positions=positions,
         open_orders=open_orders,
         recent_orders=recent_orders,

@@ -8571,7 +8571,6 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
 ):
     from .execution.alpaca_client import AlpacaRecentOrderQuery
     from .execution.paper_lab_snapshot import (
-        account_observation_payload,
         order_observation_payloads,
         position_observation_payloads,
     )
@@ -8589,10 +8588,8 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             profile_gate_detail=profile_detail,
             live_url_detected=live_url_detected,
             unavailable_observations=(
-                "account",
                 "positions",
                 "open_orders",
-                "recent_orders",
             ),
             unavailable_reasons={
                 "profile_gate": {
@@ -8608,10 +8605,8 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             profile_gate_detail="live Alpaca URL detected for paper snapshot",
             live_url_detected=True,
             unavailable_observations=(
-                "account",
                 "positions",
                 "open_orders",
-                "recent_orders",
             ),
             unavailable_reasons={
                 "profile_gate": {
@@ -8631,10 +8626,8 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             live_url_detected=live_url_detected,
             unavailable_observations=(
                 "broker",
-                "account",
                 "positions",
                 "open_orders",
-                "recent_orders",
             ),
             unavailable_reasons={
                 "broker": _paper_lab_read_only_observation_exception_payload(
@@ -8648,25 +8641,10 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     unavailable: list[str] = []
     reasons: dict[str, object] = {}
     network_access_attempted = False
-    account: dict[str, object] | None = None
     positions: tuple[dict[str, object], ...] = ()
     open_orders: tuple[dict[str, object], ...] = ()
-    recent_orders: tuple[dict[str, object], ...] = ()
-    account_observed = False
     positions_observed = False
     open_orders_observed = False
-    recent_orders_observed = False
-
-    try:
-        network_access_attempted = True
-        account = account_observation_payload(broker.get_account())
-        account_observed = True
-    except Exception as exc:  # pragma: no cover - fake failure safety path
-        unavailable.append("account")
-        reasons["account"] = _paper_lab_read_only_observation_exception_payload(
-            exc,
-            config,
-        )
 
     try:
         network_access_attempted = True
@@ -8681,7 +8659,10 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
 
     try:
         network_access_attempted = True
-        open_query = AlpacaRecentOrderQuery(status_filter="open")
+        open_query = AlpacaRecentOrderQuery(
+            status_filter="open",
+            symbol_filter=symbol,
+        )
         open_orders = tuple(order_observation_payloads(broker.get_recent_orders(open_query)))
         open_orders_observed = True
     except Exception as exc:  # pragma: no cover - fake failure safety path
@@ -8690,31 +8671,14 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             _paper_lab_read_only_observation_exception_payload(exc, config)
         )
 
-    try:
-        network_access_attempted = True
-        recent_query = AlpacaRecentOrderQuery(status_filter="all")
-        recent_orders = tuple(
-            order_observation_payloads(broker.get_recent_orders(recent_query))
-        )
-        recent_orders_observed = True
-    except Exception as exc:  # pragma: no cover - fake failure safety path
-        unavailable.append("recent_orders")
-        reasons["recent_orders"] = (
-            _paper_lab_read_only_observation_exception_payload(exc, config)
-        )
-
     return ReadOnlyPaperBrokerSnapshotObservation(
         paper_profile_gate_passed=True,
         profile_gate_detail="",
         live_url_detected=live_url_detected,
-        account_observed=account_observed,
         positions_observed=positions_observed,
         orders_observed=open_orders_observed,
-        recent_orders_observed=recent_orders_observed,
-        account=account,
         positions=positions,
         open_orders=open_orders,
-        recent_orders=recent_orders,
         unavailable_observations=tuple(unavailable),
         unavailable_reasons=reasons,
         network_access_attempted=network_access_attempted,
