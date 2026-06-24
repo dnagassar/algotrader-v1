@@ -9,18 +9,22 @@ from __future__ import annotations
 import csv
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from algotrader.errors import ValidationError
 
 __all__ = [
     "INTRADAY_PROBE_LABELS",
+    "INTRADAY_SOURCE_CALENDAR_BLOCKED_LABEL",
+    "INTRADAY_SOURCE_CALENDAR_VALIDATED_LABEL",
     "LOCAL_INTRADAY_BARS_CSV_COLUMNS",
     "IntradayBar",
+    "IntradayCalendarValidationResult",
     "IntradayTrendCandidate",
     "IntradayTrendProbeBuild",
     "IntradayTrendProbeConfig",
@@ -29,6 +33,9 @@ __all__ = [
     "evaluate_intraday_trend_candidate",
     "load_local_intraday_bars_csv",
     "render_intraday_probe_summary_markdown",
+    "validate_regular_session_intraday_bars",
+    "write_calendar_validation_report",
+    "write_intraday_bars_csv",
     "write_intraday_probe_artifacts",
     "write_sample_spy_intraday_fixture",
 ]
@@ -51,6 +58,8 @@ INTRADAY_PROBE_LABELS = (
     "no_paper_submit",
     "profit_claim=none",
 )
+INTRADAY_SOURCE_CALENDAR_VALIDATED_LABEL = "source_calendar_validated"
+INTRADAY_SOURCE_CALENDAR_BLOCKED_LABEL = "source_calendar_blocked"
 DEFAULT_INTRADAY_CANDIDATES = (
     ("spy_15m_sma_8_32", 15, 8, 32),
     ("spy_30m_sma_4_16", 30, 4, 16),
@@ -62,6 +71,10 @@ _SYMBOL = "SPY"
 _SOURCE_KIND_LOCAL = "local_intraday_csv"
 _SOURCE_KIND_FIXTURE = "deterministic_fixture"
 _SOURCE_KIND_CHOICES = (_SOURCE_KIND_LOCAL, _SOURCE_KIND_FIXTURE)
+_SOURCE_CALENDAR_LABEL_CHOICES = (
+    INTRADAY_SOURCE_CALENDAR_VALIDATED_LABEL,
+    INTRADAY_SOURCE_CALENDAR_BLOCKED_LABEL,
+)
 _POSTURE_INSUFFICIENT = "insufficient_history"
 _POSTURE_RISK_ON = "risk_on"
 _POSTURE_RISK_OFF = "risk_off"
@@ -74,6 +87,15 @@ _ZERO = Decimal("0")
 _ONE = Decimal("1")
 _BPS_DIVISOR = Decimal("10000")
 _HASH_CHUNK_SIZE = 1024 * 1024
+_REGULAR_SESSION_TIMEZONE = "America/New_York"
+_NEW_YORK = ZoneInfo(_REGULAR_SESSION_TIMEZONE)
+_REGULAR_SESSION_OPEN = time(9, 30)
+_REGULAR_SESSION_CLOSE = time(16, 0)
+_REGULAR_SESSION_MINUTES = 390
+_KNOWN_2026_MARKET_HOLIDAYS = {
+    date(2026, 5, 25): "Memorial Day",
+    date(2026, 6, 19): "Juneteenth National Independence Day",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +199,113 @@ class LocalIntradayBarsCsvResult:
 
 
 @dataclass(frozen=True, slots=True)
+class IntradayCalendarValidationResult:
+    """Regular-session calendar validation output for local intraday bars."""
+
+    source_timeframe_minutes: int
+    input_bar_count: int
+    accepted_bars: tuple[IntradayBar, ...]
+    accepted_sessions: tuple[Mapping[str, object], ...]
+    rejected_sessions: tuple[Mapping[str, object], ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "source_timeframe_minutes",
+            _positive_int(
+                self.source_timeframe_minutes,
+                "source_timeframe_minutes",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "input_bar_count",
+            _non_negative_int(self.input_bar_count, "input_bar_count"),
+        )
+        object.__setattr__(
+            self,
+            "accepted_bars",
+            _bar_tuple(self.accepted_bars, "accepted_bars"),
+        )
+        object.__setattr__(
+            self,
+            "accepted_sessions",
+            _mapping_tuple(self.accepted_sessions, "accepted_sessions"),
+        )
+        object.__setattr__(
+            self,
+            "rejected_sessions",
+            _mapping_tuple(self.rejected_sessions, "rejected_sessions"),
+        )
+        accepted_count = len(self.accepted_bars)
+        rejected_count = sum(
+            _non_negative_int(session.get("bar_count", 0), "rejected bar_count")
+            for session in self.rejected_sessions
+        )
+        if accepted_count + rejected_count != self.input_bar_count:
+            raise ValidationError(
+                "accepted and rejected calendar bar counts must equal input_bar_count."
+            )
+
+    @property
+    def accepted_bar_count(self) -> int:
+        return len(self.accepted_bars)
+
+    @property
+    def rejected_bar_count(self) -> int:
+        return sum(
+            _non_negative_int(session.get("bar_count", 0), "rejected bar_count")
+            for session in self.rejected_sessions
+        )
+
+    def to_report(self) -> dict[str, object]:
+        expected_bar_count = _expected_regular_session_bar_count(
+            self.source_timeframe_minutes
+        )
+        return {
+            "record_type": "spy_intraday_calendar_validation_report",
+            "schema_version": _SCHEMA_VERSION,
+            "symbol": _SYMBOL,
+            "source_calendar_label": (
+                INTRADAY_SOURCE_CALENDAR_VALIDATED_LABEL
+                if self.accepted_bars
+                else INTRADAY_SOURCE_CALENDAR_BLOCKED_LABEL
+            ),
+            "timezone": _REGULAR_SESSION_TIMEZONE,
+            "regular_session": {
+                "open": _REGULAR_SESSION_OPEN.strftime("%H:%M"),
+                "close": _REGULAR_SESSION_CLOSE.strftime("%H:%M"),
+                "timestamp_convention": "bar_start",
+                "source_timeframe_minutes": self.source_timeframe_minutes,
+                "expected_bar_count": expected_bar_count,
+                "expected_bar_start_times": _expected_session_time_texts(
+                    self.source_timeframe_minutes
+                ),
+            },
+            "known_holidays": [
+                {"date": holiday.isoformat(), "name": name}
+                for holiday, name in sorted(_KNOWN_2026_MARKET_HOLIDAYS.items())
+            ],
+            "input_bar_count": self.input_bar_count,
+            "accepted_bar_count": self.accepted_bar_count,
+            "rejected_bar_count": self.rejected_bar_count,
+            "accepted_session_count": len(self.accepted_sessions),
+            "rejected_session_count": len(self.rejected_sessions),
+            "accepted_date_range": _bar_date_range(self.accepted_bars),
+            "accepted_sessions": list(self.accepted_sessions),
+            "rejected_sessions": list(self.rejected_sessions),
+            "data_quality_checks": {
+                "timezone_conversion_explicit": True,
+                "duplicate_timestamps": "rejected",
+                "regular_session_boundaries": "validated",
+                "expected_bar_boundaries": "validated",
+                "missing_timestamps_within_accepted_sessions": "rejected_session",
+                "session_bar_count": "validated",
+            },
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class IntradayTrendCandidate:
     """One long-only intraday SMA trend candidate."""
 
@@ -217,6 +346,8 @@ class IntradayTrendProbeConfig:
     slippage_bps: Decimal | str = Decimal("2")
     data_source_kind: str = _SOURCE_KIND_LOCAL
     candidates: tuple[IntradayTrendCandidate, ...] | None = None
+    source_calendar_label: str | None = None
+    calendar_validation: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
@@ -259,6 +390,24 @@ class IntradayTrendProbeConfig:
                     for candidate in DEFAULT_INTRADAY_CANDIDATES
                 ),
                 "candidates",
+            ),
+        )
+        if self.source_calendar_label is not None:
+            object.__setattr__(
+                self,
+                "source_calendar_label",
+                _choice(
+                    self.source_calendar_label,
+                    "source_calendar_label",
+                    _SOURCE_CALENDAR_LABEL_CHOICES,
+                ),
+            )
+        object.__setattr__(
+            self,
+            "calendar_validation",
+            _optional_mapping(
+                self.calendar_validation,
+                "calendar_validation",
             ),
         )
 
@@ -340,6 +489,85 @@ def load_local_intraday_bars_csv(
         ignored_wrong_symbol_row_count=ignored_wrong_symbol_row_count,
         input_sorted_by_timestamp=input_sorted_by_timestamp,
     )
+
+
+def validate_regular_session_intraday_bars(
+    bars: Iterable[IntradayBar],
+    *,
+    source_timeframe_minutes: int = 15,
+) -> IntradayCalendarValidationResult:
+    """Validate and filter bars against a deterministic NY regular-session calendar."""
+
+    checked_timeframe = _regular_session_timeframe_minutes(
+        source_timeframe_minutes
+    )
+    items = _calendar_bar_items(bars)
+    expected_time_texts = _expected_session_time_texts(checked_timeframe)
+    expected_time_set = set(expected_time_texts)
+    expected_bar_count = len(expected_time_texts)
+
+    grouped: dict[date, list[tuple[IntradayBar, datetime]]] = {}
+    for bar in items:
+        local_timestamp = bar.timestamp.astimezone(_NEW_YORK)
+        grouped.setdefault(local_timestamp.date(), []).append((bar, local_timestamp))
+
+    accepted_bars: list[IntradayBar] = []
+    accepted_sessions: list[Mapping[str, object]] = []
+    rejected_sessions: list[Mapping[str, object]] = []
+    for session_date in sorted(grouped):
+        session_items = sorted(grouped[session_date], key=lambda item: item[0].timestamp)
+        reasons = _regular_session_rejection_reasons(
+            session_date,
+            session_items,
+            expected_time_set=expected_time_set,
+            expected_bar_count=expected_bar_count,
+            source_timeframe_minutes=checked_timeframe,
+        )
+        session_summary = _calendar_session_summary(
+            session_date,
+            session_items,
+            expected_bar_count=expected_bar_count,
+            source_timeframe_minutes=checked_timeframe,
+        )
+        if reasons:
+            rejected_sessions.append({**session_summary, "reasons": reasons})
+            continue
+        accepted_sessions.append(session_summary)
+        accepted_bars.extend(bar for bar, _local_timestamp in session_items)
+
+    return IntradayCalendarValidationResult(
+        source_timeframe_minutes=checked_timeframe,
+        input_bar_count=len(items),
+        accepted_bars=tuple(accepted_bars),
+        accepted_sessions=tuple(accepted_sessions),
+        rejected_sessions=tuple(rejected_sessions),
+    )
+
+
+def write_intraday_bars_csv(bars: Iterable[IntradayBar], path: str | Path) -> Path:
+    """Write normalized SPY intraday bars to the strict local CSV schema."""
+
+    output_path = _path_value(path, "path")
+    sorted_bars = _bar_tuple(
+        sorted(_strict_bar_items(bars, "bars"), key=lambda item: item.timestamp),
+        "bars",
+    )
+    _write_normalized_bars_csv(sorted_bars, output_path)
+    return output_path
+
+
+def write_calendar_validation_report(
+    result: IntradayCalendarValidationResult,
+    path: str | Path,
+) -> Path:
+    """Write a deterministic JSON report for regular-session validation."""
+
+    checked_result = _calendar_validation_result(result)
+    output_path = _path_value(path, "calendar_validation_report")
+    if output_path.parent != Path("."):
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(output_path, checked_result.to_report())
+    return output_path
 
 
 def build_intraday_trend_probe_from_csv(
@@ -424,6 +652,9 @@ def evaluate_intraday_trend_candidate(
 def write_intraday_probe_artifacts(
     build: IntradayTrendProbeBuild,
     output_dir: str | Path,
+    *,
+    normalized_filename: str = "normalized_spy_intraday_15m.csv",
+    extra_artifact_paths: Iterable[Path | str] = (),
 ) -> dict[str, Path]:
     """Write deterministic ignored run artifacts for one intraday probe."""
 
@@ -431,7 +662,11 @@ def write_intraday_probe_artifacts(
     root = _output_dir(output_dir)
     root.mkdir(parents=True, exist_ok=True)
 
-    normalized_path = root / "normalized_spy_intraday_15m.csv"
+    checked_normalized_filename = _artifact_filename(
+        normalized_filename,
+        "normalized_filename",
+    )
+    normalized_path = root / checked_normalized_filename
     _write_normalized_bars_csv(checked_build.normalized_bars, normalized_path)
     normalized_hash = _sha256_file(normalized_path)
 
@@ -456,7 +691,12 @@ def write_intraday_probe_artifacts(
     manifest_path = root / "intraday_probe_manifest.json"
     manifest = _manifest(
         payload,
-        artifact_paths=(normalized_path, results_path, summary_path),
+        artifact_paths=(
+            normalized_path,
+            results_path,
+            summary_path,
+            *_artifact_paths(extra_artifact_paths),
+        ),
     )
     _write_json(manifest_path, manifest)
 
@@ -500,6 +740,27 @@ def render_intraday_probe_summary_markdown(payload: Mapping[str, object]) -> str
         )
 
     source = _mapping(payload.get("source"))
+    calendar = _mapping(payload.get("calendar_validation"))
+    calendar_lines: list[str] = []
+    if calendar:
+        rejected_dates = [
+            str(session.get("date", ""))
+            for session in _mapping_sequence(calendar.get("rejected_sessions"))
+        ]
+        calendar_lines.extend(
+            (
+                "## Calendar Validation",
+                "",
+                f"- Calendar label: {calendar.get('source_calendar_label', '')}",
+                f"- Timezone: {calendar.get('timezone', '')}",
+                f"- Accepted sessions: {calendar.get('accepted_session_count', 0)}",
+                f"- Rejected sessions: {calendar.get('rejected_session_count', 0)}",
+                f"- Accepted bars: {calendar.get('accepted_bar_count', 0)}",
+                f"- Rejected bars: {calendar.get('rejected_bar_count', 0)}",
+                f"- Rejected dates: {', '.join(rejected_dates) if rejected_dates else 'none'}",
+                "",
+            )
+        )
     lines = [
         "# SPY Intraday Trend Probe",
         "",
@@ -519,6 +780,7 @@ def render_intraday_probe_summary_markdown(payload: Mapping[str, object]) -> str
         f"- Broker access: {_bool_text(payload.get('broker_access_performed'))}",
         f"- Broker mutation: {_bool_text(payload.get('broker_mutation_performed'))}",
         "",
+        *calendar_lines,
         "## Candidates",
         "",
         *candidate_lines,
@@ -556,12 +818,15 @@ def _payload(
         candidate_results,
         decision_quality=decision_quality,
     )
-    return {
+    labels = list(INTRADAY_PROBE_LABELS)
+    if config.source_calendar_label is not None:
+        labels.append(config.source_calendar_label)
+    payload: dict[str, object] = {
         "record_type": _RECORD_TYPE,
         "schema_version": _SCHEMA_VERSION,
         "run_id": config.run_id,
         "symbol": config.symbol,
-        "labels": list(INTRADAY_PROBE_LABELS),
+        "labels": labels,
         "profit_claim": "none",
         "research_only": True,
         "signal_evaluation_only": True,
@@ -584,6 +849,9 @@ def _payload(
         "decision_quality": decision_quality,
         "recommendation": recommendation,
     }
+    if config.calendar_validation is not None:
+        payload["calendar_validation"] = config.calendar_validation
+    return payload
 
 
 def _candidate_metrics(
@@ -867,6 +1135,205 @@ def _empty_metrics() -> dict[str, object]:
     }
 
 
+def _regular_session_timeframe_minutes(value: object) -> int:
+    minutes = _positive_int(value, "source_timeframe_minutes")
+    if _REGULAR_SESSION_MINUTES % minutes != 0:
+        raise ValidationError(
+            "source_timeframe_minutes must evenly divide the regular session."
+        )
+    return minutes
+
+
+def _calendar_bar_items(bars: Iterable[IntradayBar]) -> tuple[IntradayBar, ...]:
+    items = _strict_bar_items(bars, "bars")
+    seen_timestamps: set[datetime] = set()
+    for bar in items:
+        if bar.timestamp in seen_timestamps:
+            raise ValidationError(
+                "calendar validation rejects duplicate timestamp "
+                f"{bar.timestamp_text}."
+            )
+        seen_timestamps.add(bar.timestamp)
+    return tuple(sorted(items, key=lambda item: item.timestamp))
+
+
+def _strict_bar_items(
+    bars: Iterable[IntradayBar],
+    field_name: str,
+) -> tuple[IntradayBar, ...]:
+    try:
+        items = tuple(bars)
+    except TypeError as exc:
+        raise ValidationError(f"{field_name} must be iterable.") from exc
+    for index, bar in enumerate(items):
+        if type(bar) is not IntradayBar:
+            raise ValidationError(f"{field_name}[{index}] must be an IntradayBar.")
+    return items
+
+
+def _regular_session_rejection_reasons(
+    session_date: date,
+    session_items: Sequence[tuple[IntradayBar, datetime]],
+    *,
+    expected_time_set: set[str],
+    expected_bar_count: int,
+    source_timeframe_minutes: int,
+) -> list[dict[str, object]]:
+    reasons: list[dict[str, object]] = []
+    holiday_name = _KNOWN_2026_MARKET_HOLIDAYS.get(session_date)
+    if holiday_name is not None:
+        reasons.append(
+            _calendar_rejection_reason(
+                "market_holiday",
+                f"{session_date.isoformat()} is {holiday_name}.",
+                holiday_name=holiday_name,
+            )
+        )
+    if session_date.weekday() >= 5:
+        reasons.append(
+            _calendar_rejection_reason(
+                "weekend",
+                f"{session_date.isoformat()} is not a weekday regular session.",
+            )
+        )
+
+    invalid_timestamps = [
+        _local_timestamp_text(local_timestamp)
+        for _bar, local_timestamp in session_items
+        if not _is_expected_regular_session_boundary(
+            local_timestamp,
+            source_timeframe_minutes=source_timeframe_minutes,
+        )
+    ]
+    if invalid_timestamps:
+        reasons.append(
+            _calendar_rejection_reason(
+                "invalid_bar_boundary",
+                "one or more bars are outside 09:30-16:00 ET or off the expected boundary.",
+                timestamps=invalid_timestamps,
+            )
+        )
+
+    is_calendar_closed = holiday_name is not None or session_date.weekday() >= 5
+    if not is_calendar_closed:
+        observed_time_set = {
+            _local_time_text(local_timestamp)
+            for _bar, local_timestamp in session_items
+            if _is_expected_regular_session_boundary(
+                local_timestamp,
+                source_timeframe_minutes=source_timeframe_minutes,
+            )
+        }
+        missing_times = sorted(expected_time_set - observed_time_set)
+        if missing_times:
+            reasons.append(
+                _calendar_rejection_reason(
+                    "missing_timestamps",
+                    "regular session is missing expected bar start times.",
+                    missing_timestamps=missing_times,
+                )
+            )
+        if len(session_items) != expected_bar_count:
+            reasons.append(
+                _calendar_rejection_reason(
+                    "unexpected_bar_count",
+                    "regular session bar count does not match the expected count.",
+                    expected_bar_count=expected_bar_count,
+                    observed_bar_count=len(session_items),
+                )
+            )
+    return reasons
+
+
+def _calendar_session_summary(
+    session_date: date,
+    session_items: Sequence[tuple[IntradayBar, datetime]],
+    *,
+    expected_bar_count: int,
+    source_timeframe_minutes: int,
+) -> Mapping[str, object]:
+    first_bar, first_local = session_items[0]
+    last_bar, last_local = session_items[-1]
+    return {
+        "date": session_date.isoformat(),
+        "bar_count": len(session_items),
+        "expected_bar_count": expected_bar_count,
+        "source_timeframe_minutes": source_timeframe_minutes,
+        "start_timestamp": first_bar.timestamp_text,
+        "end_timestamp": last_bar.timestamp_text,
+        "start_local": _local_timestamp_text(first_local),
+        "end_local": _local_timestamp_text(last_local),
+        "observed_start_time": _local_time_text(first_local),
+        "observed_end_time": _local_time_text(last_local),
+    }
+
+
+def _calendar_rejection_reason(
+    code: str,
+    message: str,
+    **extra: object,
+) -> dict[str, object]:
+    return {"code": code, "message": message, **extra}
+
+
+def _expected_regular_session_bar_count(source_timeframe_minutes: int) -> int:
+    return len(_expected_session_time_texts(source_timeframe_minutes))
+
+
+def _expected_session_time_texts(source_timeframe_minutes: int) -> list[str]:
+    minutes = _regular_session_timeframe_minutes(source_timeframe_minutes)
+    session_date = date(2000, 1, 3)
+    current = datetime.combine(session_date, _REGULAR_SESSION_OPEN)
+    close = datetime.combine(session_date, _REGULAR_SESSION_CLOSE)
+    expected: list[str] = []
+    while current < close:
+        expected.append(current.strftime("%H:%M"))
+        current += timedelta(minutes=minutes)
+    return expected
+
+
+def _is_expected_regular_session_boundary(
+    local_timestamp: datetime,
+    *,
+    source_timeframe_minutes: int,
+) -> bool:
+    if local_timestamp.tzinfo is None or local_timestamp.utcoffset() is None:
+        return False
+    if local_timestamp.second != 0 or local_timestamp.microsecond != 0:
+        return False
+    session_open = datetime.combine(
+        local_timestamp.date(),
+        _REGULAR_SESSION_OPEN,
+        tzinfo=_NEW_YORK,
+    )
+    session_close = datetime.combine(
+        local_timestamp.date(),
+        _REGULAR_SESSION_CLOSE,
+        tzinfo=_NEW_YORK,
+    )
+    if local_timestamp < session_open or local_timestamp >= session_close:
+        return False
+    offset_seconds = int((local_timestamp - session_open).total_seconds())
+    return offset_seconds % (source_timeframe_minutes * 60) == 0
+
+
+def _local_timestamp_text(value: datetime) -> str:
+    return value.isoformat()
+
+
+def _local_time_text(value: datetime) -> str:
+    return value.strftime("%H:%M")
+
+
+def _bar_date_range(bars: tuple[IntradayBar, ...]) -> dict[str, object]:
+    if not bars:
+        return {"start_timestamp": None, "end_timestamp": None}
+    return {
+        "start_timestamp": bars[0].timestamp_text,
+        "end_timestamp": bars[-1].timestamp_text,
+    }
+
+
 def _bar_from_row(
     row: dict[str, str],
     *,
@@ -986,7 +1453,7 @@ def _manifest(
         "schema_version": _SCHEMA_VERSION,
         "run_id": payload.get("run_id", ""),
         "symbol": payload.get("symbol", ""),
-        "labels": list(INTRADAY_PROBE_LABELS),
+        "labels": _label_list(payload.get("labels")),
         "data_source_kind": source.get("data_source_kind", ""),
         "source_path": source.get("path", ""),
         "source_timeframe": source.get("source_timeframe", ""),
@@ -1270,10 +1737,29 @@ def _config(value: object) -> IntradayTrendProbeConfig:
     return value
 
 
+def _calendar_validation_result(value: object) -> IntradayCalendarValidationResult:
+    if type(value) is not IntradayCalendarValidationResult:
+        raise ValidationError(
+            "calendar_validation_result must be an IntradayCalendarValidationResult."
+        )
+    return value
+
+
 def _build(value: object) -> IntradayTrendProbeBuild:
     if type(value) is not IntradayTrendProbeBuild:
         raise ValidationError("build must be an IntradayTrendProbeBuild.")
     return value
+
+
+def _optional_mapping(
+    value: object,
+    field_name: str,
+) -> Mapping[str, object] | None:
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise ValidationError(f"{field_name} must be a mapping.")
+    return {str(key): item for key, item in value.items()}
 
 
 def _mapping(value: object) -> Mapping[str, object]:
@@ -1282,10 +1768,50 @@ def _mapping(value: object) -> Mapping[str, object]:
     return {}
 
 
+def _mapping_tuple(
+    value: object,
+    field_name: str,
+) -> tuple[Mapping[str, object], ...]:
+    if not isinstance(value, tuple):
+        raise ValidationError(f"{field_name} must be a tuple.")
+    items: list[Mapping[str, object]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, Mapping):
+            raise ValidationError(f"{field_name}[{index}] must be a mapping.")
+        items.append(item)
+    return tuple(items)
+
+
 def _mapping_sequence(value: object) -> tuple[Mapping[str, object], ...]:
     if isinstance(value, list | tuple):
         return tuple(_mapping(item) for item in value)
     return ()
+
+
+def _label_list(value: object) -> list[str]:
+    if not isinstance(value, list | tuple):
+        return list(INTRADAY_PROBE_LABELS)
+    labels: list[str] = []
+    for item in value:
+        if type(item) is str:
+            labels.append(item)
+    return labels
+
+
+def _artifact_filename(value: object, field_name: str) -> str:
+    filename = _required_string(value, field_name)
+    path = Path(filename)
+    if path.name != filename:
+        raise ValidationError(f"{field_name} must be a file name.")
+    return filename
+
+
+def _artifact_paths(values: Iterable[Path | str]) -> tuple[Path, ...]:
+    try:
+        items = tuple(values)
+    except TypeError as exc:
+        raise ValidationError("extra_artifact_paths must be iterable.") from exc
+    return tuple(_path_value(item, "extra_artifact_path") for item in items)
 
 
 def _json_safe(value: object) -> object:
