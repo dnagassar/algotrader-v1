@@ -117,12 +117,33 @@ class FakePaperClient:
             next_order = self.lookup_sequence.pop(0)
             if next_order is not None:
                 self.current_order = dict(next_order)
+                self.all_orders = [self.current_order]
+                self.open_orders = (
+                    [self.current_order]
+                    if str(self.current_order.get("status", "")).lower()
+                    not in {"canceled", "cancelled", "rejected", "filled", "expired"}
+                    else []
+                )
             return next_order
-        return None if self.current_order is None else dict(self.current_order)
+        if (
+            self.current_order is not None
+            and self.current_order.get("client_order_id") == client_order_id
+        ):
+            return dict(self.current_order)
+        for order in self.all_orders:
+            if order.get("client_order_id") == client_order_id:
+                self.current_order = dict(order)
+                return dict(order)
+        return None
 
     def cancel_order_by_id(self, order_id: str) -> dict[str, object]:
         self.calls.append(f"cancel_order_by_id:{order_id}")
         self.cancelled_order_ids.append(order_id)
+        if self.current_order is None:
+            for order in self.all_orders:
+                if str(order.get("id", "")) == order_id:
+                    self.current_order = dict(order)
+                    break
         if self.cancel_exception_message:
             if self.cancel_status_on_exception and self.current_order is not None:
                 self.current_order = {
@@ -130,6 +151,13 @@ class FakePaperClient:
                     "status": self.cancel_status_on_exception,
                     "filled_qty": self.cancel_filled_qty,
                 }
+                self.all_orders = [self.current_order]
+                self.open_orders = (
+                    []
+                    if self.cancel_status_on_exception
+                    in {"canceled", "cancelled", "rejected", "filled", "expired"}
+                    else [self.current_order]
+                )
             raise RuntimeError(self.cancel_exception_message)
         if self.current_order is not None:
             self.current_order = {
@@ -137,6 +165,7 @@ class FakePaperClient:
                 "status": self.cancel_status,
                 "filled_qty": self.cancel_filled_qty,
             }
+            self.all_orders = [self.current_order]
             self.open_orders = []
         return {"id": order_id, "status": "accepted"}
 
@@ -255,6 +284,7 @@ def test_duplicate_client_order_id_reconciles_by_lookup_and_does_not_resubmit(
     assert latest["outcome_classification"] == "blocked_duplicate_client_order_id"
     assert latest["preflight"]["duplicate_client_order_id_present"] is True
     assert "get_orders:all" in client.calls
+    assert any(call.startswith("get_order_by_client_id:") for call in client.calls)
     assert client.submitted_requests == []
 
 
@@ -274,6 +304,28 @@ def test_ambiguous_submit_queries_client_order_id_and_does_not_retry(
     assert client.cancelled_order_ids == ["paper-order-1"]
 
 
+def test_ambiguous_submit_without_broker_order_blocks_next_mutation(
+    tmp_path: Path,
+) -> None:
+    client = FakePaperClient(submit_exception_message="connection timed out")
+
+    latest, root, client = _run_drill(tmp_path, client=client)
+
+    assert latest["outcome_classification"] == "unresolved_order_outcome"
+    assert client.calls.count("submit_order") == 1
+    assert any(call.startswith("get_order_by_client_id:") for call in client.calls)
+
+    second_client = FakePaperClient()
+    second_latest, _root, second_client = _run_drill(
+        tmp_path,
+        root=root,
+        client=second_client,
+    )
+
+    assert second_latest["outcome_classification"] == "blocked_unresolved_prior_mutation"
+    assert second_client.calls == []
+
+
 def test_rejected_order_classification(tmp_path: Path) -> None:
     latest, _root, client = _run_drill(
         tmp_path,
@@ -282,10 +334,11 @@ def test_rejected_order_classification(tmp_path: Path) -> None:
 
     assert latest["outcome_classification"] == "submitted_then_rejected"
     assert client.cancelled_order_ids == []
+    assert len(client.submitted_requests) == 1
 
 
 def test_partial_fill_then_cancelled_reconciliation(tmp_path: Path) -> None:
-    latest, _root, _client = _run_drill(
+    latest, _root, client = _run_drill(
         tmp_path,
         client=FakePaperClient(cancel_filled_qty="0.00005"),
     )
@@ -293,6 +346,8 @@ def test_partial_fill_then_cancelled_reconciliation(tmp_path: Path) -> None:
     assert latest["outcome_classification"] == "submitted_partial_fill_then_cancelled"
     final_order = latest["reconciliation"]["final_order"]
     assert final_order["filled_quantity"] == "0.00005"
+    assert len(client.submitted_requests) == 1
+    assert client.submitted_requests[0].side == "sell"
 
 
 def test_filled_before_cancel_reconciliation(tmp_path: Path) -> None:
@@ -304,6 +359,8 @@ def test_filled_before_cancel_reconciliation(tmp_path: Path) -> None:
 
     assert latest["outcome_classification"] == "submitted_filled_before_cancel"
     assert client.cancelled_order_ids == []
+    assert len(client.submitted_requests) == 1
+    assert client.submitted_requests[0].side == "sell"
 
 
 def test_confirmed_cancellation_reconciliation(tmp_path: Path) -> None:
@@ -323,8 +380,10 @@ def test_cancel_ambiguity_resolves_by_lookup_when_terminal(tmp_path: Path) -> No
         ),
     )
 
-    assert latest["outcome_classification"] == "submitted_cancel_confirmed"
+    assert latest["outcome_classification"] == "cancel_ambiguous_reconciled"
+    assert latest["reconciliation"]["cancel_ambiguous"] is True
     assert client.cancelled_order_ids == ["paper-order-1"]
+    assert client.calls.count("cancel_order_by_id:paper-order-1") == 1
 
 
 def test_cancel_ambiguity_without_terminal_lookup_is_unresolved(tmp_path: Path) -> None:
@@ -334,6 +393,66 @@ def test_cancel_ambiguity_without_terminal_lookup_is_unresolved(tmp_path: Path) 
     )
 
     assert latest["outcome_classification"] == "unresolved_order_outcome"
+    assert client.cancelled_order_ids == ["paper-order-1"]
+    assert client.calls.count("cancel_order_by_id:paper-order-1") == 1
+
+
+def test_cancel_ambiguity_open_order_blocks_next_mutation(tmp_path: Path) -> None:
+    client = FakePaperClient(cancel_exception_message="cancel response lost")
+
+    latest, root, client = _run_drill(tmp_path, client=client)
+
+    assert latest["outcome_classification"] == "unresolved_order_outcome"
+    assert client.cancelled_order_ids == ["paper-order-1"]
+
+    second_client = FakePaperClient()
+    second_latest, _root, second_client = _run_drill(
+        tmp_path,
+        root=root,
+        client=second_client,
+    )
+
+    assert second_latest["outcome_classification"] == "blocked_unresolved_prior_mutation"
+    assert second_client.calls == []
+
+
+def test_broker_local_state_divergence_blocks_mutation(tmp_path: Path) -> None:
+    root = tmp_path / "certification"
+    root.mkdir()
+    _write_latest_run(
+        root,
+        outcome="submitted_cancel_confirmed",
+        final_status="canceled",
+    )
+    broker_order = _order(status="accepted")
+    client = FakePaperClient(open_orders=[], all_orders=[broker_order])
+
+    latest, _root, client = _run_drill(tmp_path, root=root, client=client)
+
+    assert latest["outcome_classification"] == "blocked_broker_local_divergence"
+    assert latest["preflight"]["broker_local_divergence_present"] is True
+    assert latest["preflight"]["local_final_order_status"] == "canceled"
+    assert latest["preflight"]["broker_order_statuses"] == ["accepted"]
+    assert client.submitted_requests == []
+
+
+def test_restart_after_submit_recovers_by_lookup_before_new_submit(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "certification"
+    root.mkdir()
+    _write_crash_lifecycle(root)
+    broker_order = _order(status="accepted")
+    client = FakePaperClient(open_orders=[broker_order], all_orders=[broker_order])
+
+    latest, _root, client = _run_drill(tmp_path, root=root, client=client)
+
+    assert latest["outcome_classification"] == "submitted_cancel_confirmed"
+    assert latest["restart_recovery_performed"] is True
+    assert latest["paper_submit_performed"] is False
+    assert latest["broker_mutation_performed"] is True
+    assert client.calls.count("submit_order") == 0
+    assert any(call.startswith("get_order_by_client_id:") for call in client.calls)
     assert client.cancelled_order_ids == ["paper-order-1"]
 
 
@@ -345,7 +464,8 @@ def test_process_lock_contention_blocks_second_runner(tmp_path: Path) -> None:
 
     latest, _root, client = _run_drill(tmp_path, root=root, client=client)
 
-    assert latest["outcome_classification"] == "blocked_process_lock"
+    assert latest["outcome_classification"] == "blocked_lock_contention"
+    assert latest["classification_aliases"] == ["blocked_process_lock"]
     assert latest["preflight"]["mutation_process_lock_acquired"] is False
     assert client.calls == []
     assert (root / ".mutation.lock").is_file()
@@ -508,6 +628,41 @@ def _active_spy_asset() -> dict[str, object]:
         "tradable": True,
         "fractionable": True,
     }
+
+
+def _write_latest_run(
+    root: Path,
+    *,
+    outcome: str,
+    final_status: str,
+) -> None:
+    final_order = _order(status=final_status)
+    payload = {
+        "outcome_classification": outcome,
+        "client_order_id": V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+        "reconciliation": {
+            "final_order_status": final_status,
+            "final_order": final_order,
+        },
+    }
+    (root / "latest_run.json").write_text(
+        json.dumps(payload, default=str),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def _write_crash_lifecycle(root: Path) -> None:
+    event = {
+        "event_type": "submit_attempt",
+        "client_order_id": V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+        "observed_at": NOW.isoformat(),
+    }
+    (root / "order_lifecycle.jsonl").write_text(
+        json.dumps(event, default=str) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _artifact_text(root: Path) -> str:

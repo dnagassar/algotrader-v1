@@ -64,6 +64,15 @@ TERMINAL_ORDER_STATUSES = frozenset(
         "done_for_day",
     }
 )
+TERMINAL_SUCCESS_OUTCOMES = frozenset(
+    {
+        "submitted_cancel_confirmed",
+        "submitted_then_rejected",
+        "submitted_partial_fill_then_cancelled",
+        "submitted_filled_before_cancel",
+        "cancel_ambiguous_reconciled",
+    }
+)
 UNRESOLVED_OUTCOMES = frozenset(
     {
         "unresolved_order_outcome",
@@ -71,6 +80,9 @@ UNRESOLVED_OUTCOMES = frozenset(
         "cancel_ambiguous_unresolved",
     }
 )
+CLASSIFICATION_ALIASES = {
+    "blocked_lock_contention": ("blocked_process_lock",),
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -259,7 +271,11 @@ def run_paper_certification_drill(
     output_root = Path(runtime.output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     lifecycle_path = output_root / "order_lifecycle.jsonl"
-    lifecycle_path.write_text("", encoding="utf-8", newline="\n")
+    restart_recovery_candidate = _has_local_submit_without_final_artifact(output_root)
+    if restart_recovery_candidate:
+        lifecycle_path.touch()
+    else:
+        lifecycle_path.write_text("", encoding="utf-8", newline="\n")
 
     source_env = dict(os.environ if env is None else env)
     secret_values = _credential_values(source_env, paper_config)
@@ -273,6 +289,8 @@ def run_paper_certification_drill(
     broker_mutation_performed = False
     final_order: dict[str, Any] = {}
     submit_ambiguous = False
+    cancel_ambiguous = False
+    restart_recovery_performed = False
 
     preflight = _initial_preflight(
         paper_config=paper_config,
@@ -280,6 +298,7 @@ def run_paper_certification_drill(
         expected_paper_account_id=runtime.expected_paper_account_id,
         lock_acquired=lock_acquired,
     )
+    preflight["restart_recovery_candidate"] = restart_recovery_candidate
     _append_lifecycle(
         lifecycle_path,
         "preflight_started",
@@ -299,6 +318,7 @@ def run_paper_certification_drill(
             try:
                 observed = _observe_pre_mutation_state(gateway)
                 preflight.update(_observed_preflight_fields(observed, runtime))
+                preflight.update(_broker_local_divergence_fields(output_root, observed))
                 if preflight["broker_state_observed"]:
                     _append_lifecycle(
                         lifecycle_path,
@@ -312,19 +332,72 @@ def run_paper_certification_drill(
                     str(exc),
                     secret_values,
                 )
+                preflight.update(
+                    {
+                        "broker_local_divergence_present": False,
+                        "broker_local_divergence_reason": "",
+                    }
+                )
                 _append_lifecycle(
                     lifecycle_path,
                     "broker_state_observation_failed",
                     {"message": preflight["broker_observation_error"]},
                 )
             blocker = _observed_preflight_blocker(preflight)
-            if blocker:
+            restart_recovery_allowed = restart_recovery_candidate and blocker in {
+                "",
+                "blocked_open_order_present",
+                "blocked_duplicate_client_order_id",
+            }
+            if blocker and not restart_recovery_allowed:
                 outcome = blocker
                 _append_lifecycle(
                     lifecycle_path,
                     "blocked_after_observation",
                     {"blocker": blocker},
                 )
+                if blocker == "blocked_duplicate_client_order_id":
+                    _lookup_by_client_order_id_safely(
+                        gateway,
+                        lifecycle_path,
+                        secret_values,
+                    )
+            elif restart_recovery_allowed:
+                restart_recovery_performed = True
+                _append_lifecycle(
+                    lifecycle_path,
+                    "restart_recovery_started",
+                    {"preflight_blocker": blocker},
+                )
+                lookup = _lookup_by_client_order_id_safely(
+                    gateway,
+                    lifecycle_path,
+                    secret_values,
+                )
+                if lookup is None:
+                    outcome = "unresolved_order_outcome"
+                    _append_lifecycle(
+                        lifecycle_path,
+                        "restart_recovery_unresolved",
+                        {"reason": "client_order_id_not_found"},
+                    )
+                else:
+                    recovered_order = _order_payload(lookup)
+                    final_order, cancel_ambiguous, cancel_requested = (
+                        _cancel_and_reconcile(
+                            gateway=gateway,
+                            lifecycle_path=lifecycle_path,
+                            initial_order=recovered_order,
+                            timeout_seconds=runtime.timeout_seconds,
+                            poll_interval_seconds=runtime.poll_interval_seconds,
+                            secret_values=secret_values,
+                        )
+                    )
+                    broker_mutation_performed = cancel_requested
+                    outcome = _classify_final_order(
+                        final_order,
+                        cancel_ambiguous=cancel_ambiguous,
+                    )
             else:
                 certification_plan = _build_certification_plan(observed)
                 _write_json(output_root / "certification_plan.json", certification_plan)
@@ -373,14 +446,27 @@ def run_paper_certification_drill(
                         outcome = "unresolved_order_outcome"
                     else:
                         submitted_order = _order_payload(lookup)
-                        outcome = "ambiguous_submit_reconciled"
-                        final_order = _cancel_and_reconcile(
-                            gateway=gateway,
-                            lifecycle_path=lifecycle_path,
-                            initial_order=submitted_order,
-                            timeout_seconds=runtime.timeout_seconds,
-                            poll_interval_seconds=runtime.poll_interval_seconds,
-                            secret_values=secret_values,
+                        final_order, cancel_ambiguous, cancel_requested = (
+                            _cancel_and_reconcile(
+                                gateway=gateway,
+                                lifecycle_path=lifecycle_path,
+                                initial_order=submitted_order,
+                                timeout_seconds=runtime.timeout_seconds,
+                                poll_interval_seconds=runtime.poll_interval_seconds,
+                                secret_values=secret_values,
+                            )
+                        )
+                        broker_mutation_performed = (
+                            broker_mutation_performed or cancel_requested
+                        )
+                        reconciled_outcome = _classify_final_order(
+                            final_order,
+                            cancel_ambiguous=cancel_ambiguous,
+                        )
+                        outcome = (
+                            "ambiguous_submit_reconciled"
+                            if reconciled_outcome in TERMINAL_SUCCESS_OUTCOMES
+                            else "unresolved_order_outcome"
                         )
                 else:
                     retrieved_order = _lookup_by_client_order_id_safely(
@@ -397,15 +483,23 @@ def run_paper_certification_drill(
                         "post_submit_order_retrieved",
                         retrieved_payload,
                     )
-                    final_order = _cancel_and_reconcile(
-                        gateway=gateway,
-                        lifecycle_path=lifecycle_path,
-                        initial_order=retrieved_payload,
-                        timeout_seconds=runtime.timeout_seconds,
-                        poll_interval_seconds=runtime.poll_interval_seconds,
-                        secret_values=secret_values,
+                    final_order, cancel_ambiguous, cancel_requested = (
+                        _cancel_and_reconcile(
+                            gateway=gateway,
+                            lifecycle_path=lifecycle_path,
+                            initial_order=retrieved_payload,
+                            timeout_seconds=runtime.timeout_seconds,
+                            poll_interval_seconds=runtime.poll_interval_seconds,
+                            secret_values=secret_values,
+                        )
                     )
-                    outcome = _classify_final_order(final_order)
+                    broker_mutation_performed = (
+                        broker_mutation_performed or cancel_requested
+                    )
+                    outcome = _classify_final_order(
+                        final_order,
+                        cancel_ambiguous=cancel_ambiguous,
+                    )
     except _CertificationBlocked:
         pass
     finally:
@@ -419,7 +513,7 @@ def run_paper_certification_drill(
         gateway,
         lifecycle_path,
         secret_values,
-        attempted=paper_submit_performed,
+        attempted=paper_submit_performed or broker_mutation_performed,
     )
     reconciliation = _build_reconciliation(
         outcome=outcome,
@@ -429,6 +523,8 @@ def run_paper_certification_drill(
         final_order=final_order,
         post_observation=post_observation,
         submit_ambiguous=submit_ambiguous,
+        cancel_ambiguous=cancel_ambiguous,
+        restart_recovery_performed=restart_recovery_performed,
         paper_submit_performed=paper_submit_performed,
         broker_mutation_performed=broker_mutation_performed,
     )
@@ -439,6 +535,7 @@ def run_paper_certification_drill(
         preflight=preflight,
         certification_plan=certification_plan,
         reconciliation=reconciliation,
+        restart_recovery_performed=restart_recovery_performed,
         paper_submit_performed=paper_submit_performed,
         broker_mutation_performed=broker_mutation_performed,
     )
@@ -484,6 +581,8 @@ def _initial_preflight(
         "paper_mutation_policy_authorized": True,
         "mutation_process_lock_acquired": lock_acquired,
         "broker_state_observed": False,
+        "broker_local_divergence_present": False,
+        "broker_local_divergence_reason": "",
         "open_spy_order_present": False,
         "unexpected_non_spy_position_present": False,
         "duplicate_client_order_id_present": False,
@@ -507,7 +606,7 @@ def _static_preflight_blocker(preflight: Mapping[str, Any]) -> str:
     if preflight.get("paper_mutation_policy_authorized") is not True:
         return "blocked_paper_mutation_policy"
     if preflight.get("mutation_process_lock_acquired") is not True:
-        return "blocked_process_lock"
+        return "blocked_lock_contention"
     if preflight.get("unresolved_prior_mutation_present") is True:
         return "blocked_unresolved_prior_mutation"
     return ""
@@ -518,6 +617,8 @@ def _observed_preflight_blocker(preflight: Mapping[str, Any]) -> str:
         return "blocked_broker_state_unobserved"
     if preflight.get("expected_paper_account_match") is not True:
         return "blocked_expected_account_mismatch"
+    if preflight.get("broker_local_divergence_present") is True:
+        return "blocked_broker_local_divergence"
     if preflight.get("unexpected_non_spy_position_present") is True:
         return "blocked_unexpected_position"
     if preflight.get("open_spy_order_present") is True:
@@ -620,6 +721,84 @@ def _observed_preflight_fields(
     }
 
 
+def _broker_local_divergence_fields(
+    output_root: Path,
+    observed: Mapping[str, Any],
+) -> dict[str, Any]:
+    latest = _read_json_mapping(output_root / "latest_run.json")
+    if not latest:
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    local_outcome = str(latest.get("outcome_classification", ""))
+    if local_outcome in UNRESOLVED_OUTCOMES:
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    reconciliation = _mapping(latest.get("reconciliation"))
+    final_order = _mapping(reconciliation.get("final_order"))
+    local_client_order_id = str(
+        final_order.get("client_order_id") or latest.get("client_order_id") or ""
+    )
+    if local_client_order_id != certification_client_order_id():
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    local_status = _normalize_status(
+        final_order.get("normalized_status")
+        or final_order.get("status")
+        or reconciliation.get("final_order_status")
+    )
+    if local_outcome not in TERMINAL_SUCCESS_OUTCOMES and local_status not in TERMINAL_ORDER_STATUSES:
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    broker_orders = [
+        order
+        for order in _mapping_sequence(observed.get("all_orders"))
+        if order.get("client_order_id") == certification_client_order_id()
+    ]
+    if not broker_orders:
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    broker_statuses = sorted(
+        {
+            _normalize_status(order.get("normalized_status") or order.get("status"))
+            for order in broker_orders
+        }
+    )
+    broker_statuses = [status for status in broker_statuses if status]
+    if not broker_statuses:
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    if local_status and all(status == local_status for status in broker_statuses):
+        return {
+            "broker_local_divergence_present": False,
+            "broker_local_divergence_reason": "",
+        }
+
+    return {
+        "broker_local_divergence_present": True,
+        "broker_local_divergence_reason": "local_final_order_status_mismatch",
+        "local_final_order_status": local_status,
+        "broker_order_statuses": broker_statuses,
+    }
+
+
 def _build_certification_plan(observed: Mapping[str, Any]) -> dict[str, Any]:
     positions = _mapping_sequence(observed.get("positions"))
     spy_position = _spy_position(positions)
@@ -704,10 +883,10 @@ def _cancel_and_reconcile(
     timeout_seconds: float,
     poll_interval_seconds: float,
     secret_values: Sequence[str],
-) -> dict[str, Any]:
+) -> tuple[dict[str, Any], bool, bool]:
     status = _normalize_status(initial_order.get("normalized_status") or initial_order.get("status"))
     if status in {"rejected", "filled"}:
-        return dict(initial_order)
+        return dict(initial_order), False, False
 
     order_id = str(initial_order.get("order_id", "")).strip()
     if not order_id:
@@ -716,8 +895,10 @@ def _cancel_and_reconcile(
             "cancellation_blocked",
             {"reason": "missing_order_id"},
         )
-        return dict(initial_order)
+        return dict(initial_order), False, False
 
+    cancel_requested = True
+    cancel_ambiguous = False
     try:
         response = gateway.request_order_cancellation(order_id)
         _append_lifecycle(
@@ -731,6 +912,7 @@ def _cancel_and_reconcile(
             "cancellation_ambiguous_lookup_started",
             {"message": _sanitize_text(str(exc), secret_values), "order_id": order_id},
         )
+        cancel_ambiguous = True
 
     deadline = time.monotonic() + max(0.0, timeout_seconds)
     latest = dict(initial_order)
@@ -747,10 +929,10 @@ def _cancel_and_reconcile(
                 latest.get("normalized_status") or latest.get("status")
             )
             if status in TERMINAL_ORDER_STATUSES:
-                return latest
+                return latest, cancel_ambiguous, cancel_requested
 
         if time.monotonic() >= deadline:
-            return latest
+            return latest, cancel_ambiguous, cancel_requested
         if poll_interval_seconds > 0:
             time.sleep(poll_interval_seconds)
 
@@ -786,7 +968,11 @@ def _lookup_by_client_order_id_safely(
     return lookup
 
 
-def _classify_final_order(order: Mapping[str, Any]) -> str:
+def _classify_final_order(
+    order: Mapping[str, Any],
+    *,
+    cancel_ambiguous: bool = False,
+) -> str:
     if not order:
         return "unresolved_order_outcome"
     status = _normalize_status(order.get("normalized_status") or order.get("status"))
@@ -797,6 +983,8 @@ def _classify_final_order(order: Mapping[str, Any]) -> str:
         return "submitted_filled_before_cancel"
     if status in {"canceled", "cancelled"} and filled_qty > Decimal("0"):
         return "submitted_partial_fill_then_cancelled"
+    if status in {"canceled", "cancelled"} and cancel_ambiguous:
+        return "cancel_ambiguous_reconciled"
     if status in {"canceled", "cancelled"}:
         return "submitted_cancel_confirmed"
     return "unresolved_order_outcome"
@@ -850,15 +1038,20 @@ def _build_reconciliation(
     final_order: Mapping[str, Any],
     post_observation: Mapping[str, Any],
     submit_ambiguous: bool,
+    cancel_ambiguous: bool,
+    restart_recovery_performed: bool,
     paper_submit_performed: bool,
     broker_mutation_performed: bool,
 ) -> dict[str, Any]:
     return {
         "reconciliation_version": "v189_paper_certification_reconciliation_v1",
         "outcome_classification": outcome,
+        "classification_aliases": _classification_aliases(outcome),
         "blocker": blocker,
         "client_order_id": certification_client_order_id(),
         "submit_ambiguous": submit_ambiguous,
+        "cancel_ambiguous": cancel_ambiguous,
+        "restart_recovery_performed": restart_recovery_performed,
         "paper_submit_performed": paper_submit_performed,
         "broker_mutation_performed": broker_mutation_performed,
         "final_order": dict(final_order),
@@ -899,6 +1092,8 @@ def _mutation_policy_payload() -> dict[str, Any]:
         "automatic_submit_retry_allowed": False,
         "duplicate_recovery": "lookup_by_deterministic_client_order_id",
         "ambiguous_submit_recovery": "lookup_by_deterministic_client_order_id",
+        "restart_recovery": "reconcile_by_deterministic_client_order_id_before_submit",
+        "unresolved_prior_mutation_blocks_submit": True,
         "allowed_mutation": "one_non_marketable_fractional_spy_sell_limit_then_cancel",
         "labels": list(ALLOWED_LABELS),
     }
@@ -911,6 +1106,7 @@ def _latest_run_payload(
     preflight: Mapping[str, Any],
     certification_plan: Mapping[str, Any],
     reconciliation: Mapping[str, Any],
+    restart_recovery_performed: bool,
     paper_submit_performed: bool,
     broker_mutation_performed: bool,
 ) -> dict[str, Any]:
@@ -918,8 +1114,10 @@ def _latest_run_payload(
         "run_id": V189_RUN_ID,
         "generated_at": _utc_now().isoformat(),
         "outcome_classification": outcome,
+        "classification_aliases": _classification_aliases(outcome),
         "blocker": blocker,
         "client_order_id": certification_client_order_id(),
+        "restart_recovery_performed": restart_recovery_performed,
         "paper_submit_performed": paper_submit_performed,
         "broker_mutation_performed": broker_mutation_performed,
         "strategy_order": V189_STRATEGY_ORDER,
@@ -1072,6 +1270,48 @@ def _has_unresolved_prior_mutation(output_root: Path) -> bool:
         return True
     outcome = str(latest.get("outcome_classification", ""))
     return outcome in UNRESOLVED_OUTCOMES
+
+
+def _has_local_submit_without_final_artifact(output_root: Path) -> bool:
+    if (output_root / "latest_run.json").is_file():
+        return False
+
+    lifecycle_path = output_root / "order_lifecycle.jsonl"
+    if not lifecycle_path.is_file():
+        return False
+
+    submit_events = {
+        "submit_attempt",
+        "submit_response_observed",
+        "submit_ambiguous_lookup_started",
+    }
+    try:
+        lines = lifecycle_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return False
+
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if str(event.get("event_type", "")) in submit_events:
+            return True
+    return False
+
+
+def _read_json_mapping(path: Path) -> Mapping[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, Mapping) else {}
+
+
+def _classification_aliases(outcome: str) -> list[str]:
+    return list(CLASSIFICATION_ALIASES.get(outcome, ()))
 
 
 def _account_payload(account: Any) -> dict[str, Any]:
