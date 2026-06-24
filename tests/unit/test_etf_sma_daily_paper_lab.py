@@ -8849,6 +8849,67 @@ def _write_daily_lab_broker_snapshot_without_generated_at(path: Path) -> None:
     )
 
 
+def _rewrite_daily_lab_packet_artifacts(output_root: Path, mutator) -> None:
+    for filename in ("operating_record.jsonl", "manifest.jsonl"):
+        path = output_root / filename
+        record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+        mutator(record)
+        path.write_text(
+            json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+
+
+def _quality_required_check(
+    validation: dict[str, object],
+    check_id: str,
+) -> dict[str, object]:
+    checks = validation["quality_gate_required_checks"]
+    assert isinstance(checks, list)
+    for check in checks:
+        assert isinstance(check, dict)
+        if check.get("check_id") == check_id:
+            return check
+    raise AssertionError(f"missing quality check {check_id}")
+
+
+def _run_v187_quality_gate_packet(
+    tmp_path: Path,
+    case_name: str,
+    *,
+    broker_state_mode: str = "alpaca_paper_read_only",
+    spy_position_qty: str = "0.5",
+    open_spy_order_count: int = 0,
+    unexpected_non_spy_position: bool = False,
+) -> tuple[Path, dict[str, object]]:
+    output_root = tmp_path / case_name
+    snapshot_log = tmp_path / f"{case_name}_snapshot.jsonl"
+    broker_snapshot_log: Path | None = None
+    if broker_state_mode == "alpaca_paper_read_only":
+        broker_snapshot_log = snapshot_log
+        _write_daily_lab_broker_snapshot(
+            snapshot_log,
+            spy_position_qty=spy_position_qty,
+            open_spy_order_count=open_spy_order_count,
+            unexpected_non_spy_position=unexpected_non_spy_position,
+        )
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode=broker_state_mode,
+            broker_snapshot_log=broker_snapshot_log,
+            operational_only=True,
+        )
+    )
+    return output_root, payload
+
+
 def _write_v172_source_review_not_ready_broker_snapshot(
     path: Path,
     *,
@@ -9477,6 +9538,254 @@ def test_v185_operational_only_broker_state_not_observed_validates(
     assert manifest["quality_gate_status"] == "pass"
     assert record["validation_status"] == "pass"
     assert record["quality_gate_status"] == "pass"
+
+
+def test_v187_quality_gate_accepts_unobserved_only_when_blocked(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_unobserved_blocked",
+        broker_state_mode="broker_state_not_observed",
+    )
+
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["broker_state_mode"] == "broker_state_not_observed"
+    assert payload["broker_state_observed"] is False
+    assert payload["preview_decision"] == "offline_preview_bullish_risk_on"
+    assert payload["blocker_status"] == "broker_state_not_observed"
+    assert "broker_state_not_observed" in payload["safety_labels"]
+
+    def clear_unobserved_blocker(record: dict[str, object]) -> None:
+        record["preview_decision"] = "buy_preview"
+        record["blocker_status"] = "none"
+
+    _rewrite_daily_lab_packet_artifacts(output_root, clear_unobserved_blocker)
+    dishonest_validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+    assert dishonest_validation["quality_gate_status"] == "fail"
+    assert "broker_state_mode_explicit" in dishonest_validation[
+        "quality_gate_failed_checks"
+    ]
+    check = _quality_required_check(
+        dishonest_validation,
+        "broker_state_mode_explicit",
+    )
+    assert "unobserved_broker_state_without_blocker" in check["summary"]
+
+
+def test_v187_quality_gate_accepts_observed_hold_noop(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_observed_hold_noop",
+        spy_position_qty="0.5",
+    )
+
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["broker_state_mode"] == "alpaca_paper_read_only"
+    assert payload["broker_state_observed"] is True
+    assert payload["preview_decision"] == "hold/noop"
+    assert payload["blocker_status"] == "none"
+    assert "read_only_broker_observation" in payload["safety_labels"]
+    assert "broker_state_observed" in payload["safety_labels"]
+    assert "broker_state_not_observed" not in payload["safety_labels"]
+    assert _quality_required_check(
+        validation,
+        "safety_labels_exist",
+    )["status"] == "pass"
+
+
+def test_v187_quality_gate_accepts_observed_buy_preview(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_observed_buy_preview",
+        spy_position_qty="0",
+    )
+
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["broker_state_observed"] is True
+    assert payload["preview_decision"] == "buy_preview"
+    assert payload["blocker_status"] == "none"
+    assert payload["paper_submit_authorized"] is False
+    assert payload["broker_mutation_performed"] is False
+    assert payload["live_authorized"] is False
+
+
+def test_v187_quality_gate_accepts_open_spy_order_blocker(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_open_spy_order",
+        spy_position_qty="0",
+        open_spy_order_count=1,
+    )
+
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["broker_state_observed"] is True
+    assert payload["preview_decision"] == "blocked/open_order_present"
+    assert payload["blocker_status"] == "open_order_present"
+
+
+def test_v187_quality_gate_rejects_unblocked_unexpected_non_spy_exposure(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_unexpected_non_spy_position",
+        unexpected_non_spy_position=True,
+    )
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root, packet=payload)
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["preview_decision"] == "blocked/unexpected_non_spy_position"
+    assert payload["blocker_status"] == "unexpected_non_spy_position"
+
+    def clear_unexpected_exposure_blocker(record: dict[str, object]) -> None:
+        record["preview_decision"] = "hold/noop"
+        record["blocker_status"] = "none"
+        record["blockers"] = []
+
+    _rewrite_daily_lab_packet_artifacts(output_root, clear_unexpected_exposure_blocker)
+    dishonest_validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+    assert dishonest_validation["quality_gate_status"] == "fail"
+    assert "broker_state_mode_explicit" in dishonest_validation[
+        "quality_gate_failed_checks"
+    ]
+    check = _quality_required_check(
+        dishonest_validation,
+        "broker_state_mode_explicit",
+    )
+    assert "unexpected_non_spy_position_without_unexpected_exposure_blocker" in (
+        check["summary"]
+    )
+
+
+@pytest.mark.parametrize(
+    ("case_name", "mutator"),
+    [
+        (
+            "paper_submit_authorized",
+            lambda record: record.update(
+                {
+                    "paper_submit_authorized": True,
+                    "paper_submit_authorization_status": "authorized",
+                }
+            ),
+        ),
+        (
+            "broker_mutation",
+            lambda record: record.update({"broker_mutation_performed": True}),
+        ),
+        (
+            "live_authorized",
+            lambda record: record.update({"live_authorized": True}),
+        ),
+        (
+            "live_endpoint_profile",
+            lambda record: record.update(
+                {
+                    "broker_observation_state": "live_url_detected",
+                    "live_url_detected": True,
+                }
+            ),
+        ),
+    ],
+)
+def test_v187_quality_gate_rejects_submit_mutation_and_live_flags(
+    tmp_path: Path,
+    case_name: str,
+    mutator,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        f"v187_reject_{case_name}",
+    )
+    assert payload["quality_gate_status"] == "pass"
+
+    _rewrite_daily_lab_packet_artifacts(output_root, mutator)
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+
+    assert validation["quality_gate_status"] == "fail"
+    assert "paper_submit_not_authorized" in validation["quality_gate_failed_checks"]
+
+
+def test_v187_quality_gate_rejects_broker_facts_without_valid_snapshot_mode(
+    tmp_path: Path,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        "v187_facts_without_valid_mode",
+    )
+    assert payload["quality_gate_status"] == "pass"
+
+    def remove_read_only_mode(record: dict[str, object]) -> None:
+        record["broker_state_mode"] = "broker_state_not_observed"
+        record["broker_state_observed"] = False
+        labels = [
+            label
+            for label in record["safety_labels"]
+            if label not in {"read_only_broker_observation", "broker_state_observed"}
+        ]
+        if "broker_state_not_observed" not in labels:
+            labels.append("broker_state_not_observed")
+        record["safety_labels"] = labels
+
+    _rewrite_daily_lab_packet_artifacts(output_root, remove_read_only_mode)
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+
+    assert validation["quality_gate_status"] == "fail"
+    assert "broker_state_mode_explicit" in validation["quality_gate_failed_checks"]
+    check = _quality_required_check(validation, "broker_state_mode_explicit")
+    assert "observed_broker_snapshot_without_read_only_mode" in check["summary"]
+
+
+@pytest.mark.parametrize(
+    ("case_name", "broker_state_mode", "label_to_remove"),
+    [
+        (
+            "unobserved_missing_label",
+            "broker_state_not_observed",
+            "broker_state_not_observed",
+        ),
+        (
+            "observed_missing_read_only_label",
+            "alpaca_paper_read_only",
+            "read_only_broker_observation",
+        ),
+    ],
+)
+def test_v187_quality_gate_enforces_mode_specific_safety_labels(
+    tmp_path: Path,
+    case_name: str,
+    broker_state_mode: str,
+    label_to_remove: str,
+) -> None:
+    output_root, payload = _run_v187_quality_gate_packet(
+        tmp_path,
+        f"v187_{case_name}",
+        broker_state_mode=broker_state_mode,
+    )
+    assert payload["quality_gate_status"] == "pass"
+
+    def remove_required_label(record: dict[str, object]) -> None:
+        record["safety_labels"] = [
+            label for label in record["safety_labels"] if label != label_to_remove
+        ]
+
+    _rewrite_daily_lab_packet_artifacts(output_root, remove_required_label)
+    validation = validate_etf_sma_daily_paper_lab_packet(output_root)
+
+    assert validation["quality_gate_status"] == "fail"
+    assert "safety_labels_exist" in validation["quality_gate_failed_checks"]
+    check = _quality_required_check(validation, "safety_labels_exist")
+    assert label_to_remove in check["summary"]
 
 
 def test_v175_operational_only_preserves_active_decision_vs_full_research(

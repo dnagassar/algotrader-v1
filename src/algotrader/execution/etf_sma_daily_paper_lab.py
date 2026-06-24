@@ -428,6 +428,109 @@ _REQUIRED_LABELS = [
     "broker_state_not_observed",
     "paper_submit_not_authorized",
 ]
+_BROKER_OBSERVED_REQUIRED_LABELS = (
+    "read_only_broker_observation",
+    "broker_state_observed",
+)
+_UNSAFE_TRUE_PACKET_FIELDS = frozenset(
+    {
+        "paper_submit_authorized",
+        "paper_execution_authorized",
+        "submit_authorized",
+        "submitted",
+        "submit_allowed",
+        "broker_read_performed",
+        "broker_mutation",
+        "broker_mutation_allowed",
+        "broker_mutation_authorized",
+        "broker_mutation_performed",
+        "broker_action_performed",
+        "broker_actions_performed",
+        "mutated",
+        "live_authorized",
+        "live_trading",
+        "live_trading_authorized",
+        "live_url_detected",
+        "execution_plan_submit_allowed",
+        "execution_plan_paper_submit_authorized",
+        "execution_plan_live_authorized",
+        "execution_plan_broker_mutation_performed",
+        "execution_plan_created_order_payload",
+        "daily_approval_gate_submit_allowed",
+        "daily_approval_gate_paper_submit_authorized",
+        "daily_approval_gate_live_authorized",
+        "daily_approval_gate_broker_mutation_performed",
+    }
+)
+_SENSITIVE_CREDENTIAL_FIELD_NAMES = frozenset(
+    {
+        "alpaca_api_key",
+        "alpaca_api_secret_key",
+        "alpaca_secret_key",
+        "apca_api_key_id",
+        "apca_api_secret_key",
+        "api_key",
+        "secret_key",
+        "secret",
+    }
+)
+_LIVE_ENDPOINT_FRAGMENTS = (
+    "https://api.alpaca.markets",
+    "http://api.alpaca.markets",
+)
+_UNSAFE_SNAPSHOT_ERROR_FRAGMENTS = (
+    "live_labeled",
+    "live_url",
+    "mutated_not_false",
+    "submitted_not_false",
+    "submit_authorized_not_false",
+    "paper_submit_authorized_not_false",
+    "broker_mutation_authorized_not_false",
+    "broker_mutation_allowed_not_false",
+    "broker_action_performed_not_false",
+    "broker_actions_performed_not_false",
+    "live_authorized_not_false",
+    "action_submit_not_false",
+    "action_cancel_not_false",
+    "action_replace_not_false",
+    "action_close_not_false",
+    "action_liquidate_not_false",
+    "not_read_only",
+    "not_paper_lab_only",
+    "not_live_authorized",
+    "paper_profile_not_confirmed",
+)
+_QUALITY_SAFETY_SECTION_FIELDS = frozenset(
+    {
+        "broker_state_snapshot",
+        "execution_plan",
+        "daily_approval_gate",
+        "latest_run",
+        "daily_latest",
+        "daily_decision_summary",
+        "mission_control",
+        "broker_state_lane",
+        "decision_lane",
+        "executive_summary",
+        "active_operating_brief",
+        "data_refresh_dry_run",
+        "profile_gate",
+        "broker_action_flags",
+    }
+)
+_QUALITY_SAFETY_SCALAR_FIELDS = (
+    _UNSAFE_TRUE_PACKET_FIELDS
+    | _SENSITIVE_CREDENTIAL_FIELD_NAMES
+    | frozenset(
+        {
+            "broker_observation_state",
+            "broker_state_status",
+            "blocker_status",
+            "main_blocker",
+            "snapshot_validation_errors",
+        }
+    )
+)
 _EXPECTED_MISSION_CONTROL_READINESS_WEIGHTS = {
     "real_world_attachment": 40,
     "product_readiness": 30,
@@ -22594,6 +22697,13 @@ def _build_quality_gate(
         brief_text,
         review_handoff_text,
     )
+    broker_state_contract = _broker_state_packet_contract(packet_for_checks)
+    broker_state_quality_violations = _broker_state_quality_violations(
+        packet_for_checks
+    )
+    execution_safety_ok, execution_safety_summary = (
+        _quality_execution_safety_summary(packet_for_checks)
+    )
     action_queue_ok, action_queue_summary = _quality_action_queue_summary(
         packet_for_checks.get("executive_action_queue")
     )
@@ -22767,10 +22877,12 @@ def _build_quality_gate(
         ),
         _quality_check(
             "broker_state_mode_explicit",
-            _broker_state_packet_contract(packet_for_checks)[
-                "broker_state_mode_valid"
-            ],
-            f"broker_state_mode={packet_for_checks.get('broker_state_mode')}",
+            broker_state_contract["broker_state_mode_valid"]
+            and not broker_state_quality_violations,
+            _broker_state_quality_summary(
+                packet_for_checks,
+                broker_state_quality_violations,
+            ),
         ),
         _quality_check(
             "broker_not_observed_has_no_position_order_claim",
@@ -22779,13 +22891,9 @@ def _build_quality_gate(
         ),
         _quality_check(
             "paper_submit_not_authorized",
-            _paper_submit_not_authorized(packet_for_checks),
-            (
-                "paper_submit_authorized="
-                f"{packet_for_checks.get('paper_submit_authorized')}; "
-                "paper_submit_authorization_status="
-                f"{packet_for_checks.get('paper_submit_authorization_status')}"
-            ),
+            _paper_submit_not_authorized(packet_for_checks)
+            and execution_safety_ok,
+            execution_safety_summary,
         ),
         _quality_check(
             "executive_action_queue_priorities_deterministic",
@@ -22967,10 +23075,12 @@ def _build_quality_gate(
             ),
             _quality_check(
                 "broker_state_mode_explicit",
-                _broker_state_packet_contract(packet_for_checks)[
-                    "broker_state_mode_valid"
-                ],
-                f"broker_state_mode={packet_for_checks.get('broker_state_mode')}",
+                broker_state_contract["broker_state_mode_valid"]
+                and not broker_state_quality_violations,
+                _broker_state_quality_summary(
+                    packet_for_checks,
+                    broker_state_quality_violations,
+                ),
             ),
             _quality_check(
                 "broker_not_observed_has_no_position_order_claim",
@@ -22979,13 +23089,9 @@ def _build_quality_gate(
             ),
             _quality_check(
                 "paper_submit_not_authorized",
-                _paper_submit_not_authorized(packet_for_checks),
-                (
-                    "paper_submit_authorized="
-                    f"{packet_for_checks.get('paper_submit_authorized')}; "
-                    "paper_submit_authorization_status="
-                    f"{packet_for_checks.get('paper_submit_authorization_status')}"
-                ),
+                _paper_submit_not_authorized(packet_for_checks)
+                and execution_safety_ok,
+                execution_safety_summary,
             ),
             _quality_check(
                 "executive_action_queue_priorities_deterministic",
@@ -24267,7 +24373,92 @@ def _missing_safety_labels(packet: Mapping[str, Any]) -> list[str]:
     labels = packet.get("safety_labels")
     if not isinstance(labels, list):
         return ["safety_labels"]
-    return [label for label in _REQUIRED_LABELS if label not in labels]
+    return [
+        label
+        for label in _required_safety_labels_for_packet(packet)
+        if label not in labels
+    ]
+
+
+def _quality_execution_safety_summary(packet: Mapping[str, Any]) -> tuple[bool, str]:
+    violations = _quality_execution_safety_violations(packet)
+    if violations:
+        return False, _quality_missing_summary(violations)
+    return True, (
+        "paper_submit_authorized=false; broker_read_performed=false; "
+        "broker_mutation=false; live_authorized=false"
+    )
+
+
+def _quality_execution_safety_violations(
+    value: Any,
+    path: str = "packet",
+) -> list[str]:
+    violations: list[str] = []
+    if isinstance(value, Mapping):
+        for raw_key, child in value.items():
+            key = str(raw_key)
+            key_lower = key.lower()
+            if path == "packet" and (
+                key_lower not in _QUALITY_SAFETY_SECTION_FIELDS
+                and key_lower not in _QUALITY_SAFETY_SCALAR_FIELDS
+            ):
+                continue
+            child_path = f"{path}.{key}"
+            if key_lower in _UNSAFE_TRUE_PACKET_FIELDS and child is True:
+                violations.append(child_path)
+            if key_lower == "broker_action_flags" and isinstance(child, Mapping):
+                for action_name, action_enabled in child.items():
+                    if action_enabled is True:
+                        violations.append(
+                            f"{child_path}.{str(action_name)}"
+                        )
+            if (
+                key_lower in _SENSITIVE_CREDENTIAL_FIELD_NAMES
+                and _credential_value_present(child)
+            ):
+                violations.append(child_path)
+            if (
+                key_lower
+                in {
+                    "broker_observation_state",
+                    "broker_state_status",
+                    "blocker_status",
+                    "main_blocker",
+                }
+                and str(child).strip().lower() == "live_url_detected"
+            ):
+                violations.append(child_path)
+            if key_lower == "snapshot_validation_errors" and isinstance(child, list):
+                for item in child:
+                    item_text = str(item).strip().lower()
+                    if any(
+                        fragment in item_text
+                        for fragment in _UNSAFE_SNAPSHOT_ERROR_FRAGMENTS
+                    ):
+                        violations.append(f"{child_path}.{item_text}")
+            if isinstance(child, (Mapping, list)):
+                violations.extend(
+                    _quality_execution_safety_violations(child, child_path)
+                )
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            violations.extend(
+                _quality_execution_safety_violations(child, f"{path}[{index}]")
+            )
+    elif isinstance(value, str):
+        lowered = value.lower()
+        if any(fragment in lowered for fragment in _LIVE_ENDPOINT_FRAGMENTS):
+            violations.append(f"{path}.live_endpoint")
+    return list(_dedupe(tuple(violations)))
+
+
+def _credential_value_present(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value is True
+    if isinstance(value, str):
+        return bool(value.strip())
+    return value is not None
 
 
 def _missing_review_handoff_references(review_handoff_text: str) -> list[str]:
@@ -24596,30 +24787,159 @@ def _broker_state_packet_contract(packet: Mapping[str, Any]) -> dict[str, bool]:
     broker_state_mode = str(packet.get("broker_state_mode", "")).strip()
     broker_state_observed = packet.get("broker_state_observed") is True
     broker_snapshot = _broker_snapshot(packet)
+    linked_snapshot_consumed = (
+        broker_state_mode == "alpaca_paper_read_only" and bool(broker_snapshot)
+    )
     linked_snapshot_observed = (
         broker_state_mode == "alpaca_paper_read_only"
         and broker_state_observed
         and _broker_snapshot_observed(broker_snapshot)
+    )
+    blocked_read_only_snapshot = (
+        linked_snapshot_consumed
+        and packet.get("broker_state_observed") is False
+        and _read_only_snapshot_blocked_safely(packet, broker_snapshot)
     )
     not_observed_mode = broker_state_mode in {
         "broker_state_not_observed",
         "offline_preview_only",
     }
     return {
+        "linked_snapshot_consumed": linked_snapshot_consumed,
         "linked_snapshot_observed": linked_snapshot_observed,
+        "blocked_read_only_snapshot": blocked_read_only_snapshot,
         "observed_state_valid": (
             linked_snapshot_observed or packet.get("broker_state_observed") is False
         ),
-        "broker_state_mode_valid": linked_snapshot_observed or not_observed_mode,
+        "broker_state_mode_valid": (
+            linked_snapshot_observed or blocked_read_only_snapshot or not_observed_mode
+        ),
     }
 
 
 def _required_safety_labels_for_packet(packet: Mapping[str, Any]) -> tuple[str, ...]:
     if _broker_state_packet_contract(packet)["linked_snapshot_observed"]:
-        return tuple(
-            label for label in _REQUIRED_LABELS if label != "broker_state_not_observed"
+        labels = tuple(
+            label
+            for label in _REQUIRED_LABELS
+            if label != "broker_state_not_observed"
         )
+        return labels + _BROKER_OBSERVED_REQUIRED_LABELS
     return tuple(_REQUIRED_LABELS)
+
+
+def _read_only_snapshot_blocked_safely(
+    packet: Mapping[str, Any],
+    broker_snapshot: Mapping[str, Any],
+) -> bool:
+    if str(broker_snapshot.get("snapshot_validation_status", "")) != "failed":
+        return False
+    blocker_status = str(packet.get("blocker_status", "")).strip()
+    preview_decision = str(packet.get("preview_decision", "")).strip()
+    return blocker_status not in {"", "none"} and preview_decision.startswith(
+        "blocked/"
+    )
+
+
+def _broker_state_quality_summary(
+    packet: Mapping[str, Any],
+    violations: list[str],
+) -> str:
+    if violations:
+        return _quality_missing_summary(violations)
+    snapshot = _broker_snapshot(packet)
+    snapshot_status = str(snapshot.get("snapshot_validation_status", "not_observed"))
+    return (
+        f"broker_state_mode={packet.get('broker_state_mode')}; "
+        f"broker_state_observed={packet.get('broker_state_observed')}; "
+        f"snapshot_validation_status={snapshot_status}"
+    )
+
+
+def _broker_state_quality_violations(packet: Mapping[str, Any]) -> list[str]:
+    violations: list[str] = []
+    contract = _broker_state_packet_contract(packet)
+    broker_state_mode = str(packet.get("broker_state_mode", "")).strip()
+    broker_snapshot = _broker_snapshot(packet)
+    snapshot_consumed = bool(broker_snapshot)
+
+    if broker_state_mode == "alpaca_paper_read_only":
+        if not snapshot_consumed:
+            violations.append("broker_snapshot_reference_missing")
+        elif (
+            packet.get("broker_state_observed") is True
+            and not contract["linked_snapshot_observed"]
+        ):
+            violations.append("broker_state_observed_without_valid_snapshot")
+    elif packet.get("broker_state_observed") is True:
+        violations.append("broker_state_observed_without_read_only_mode")
+
+    if broker_state_mode in {"broker_state_not_observed", "offline_preview_only"}:
+        violations.extend(_unobserved_mode_broker_fact_claims(packet))
+        if (
+            packet.get("broker_state_observed") is False
+            and str(packet.get("blocker_status", "")).strip() == "none"
+        ):
+            violations.append("unobserved_broker_state_without_blocker")
+
+    if contract["linked_snapshot_observed"]:
+        blocker_status = str(packet.get("blocker_status", "")).strip()
+        preview_decision = str(packet.get("preview_decision", "")).strip()
+        open_spy_order_count = _non_negative_int_or_none(
+            broker_snapshot.get("open_spy_order_count")
+        )
+        if open_spy_order_count is None:
+            open_spy_order_count = _non_negative_int_or_none(
+                broker_snapshot.get("open_order_count")
+            )
+        if (open_spy_order_count or 0) > 0 and blocker_status != "open_order_present":
+            violations.append("open_spy_order_without_open_order_present_blocker")
+        if (
+            _broker_snapshot_unexpected_non_spy_position_present(broker_snapshot)
+            and blocker_status != "unexpected_non_spy_position"
+        ):
+            violations.append(
+                "unexpected_non_spy_position_without_unexpected_exposure_blocker"
+            )
+        if blocker_status != "none" and not preview_decision.startswith("blocked/"):
+            violations.append("blocker_without_blocked_preview_decision")
+
+    return list(_dedupe(tuple(violations)))
+
+
+def _unobserved_mode_broker_fact_claims(packet: Mapping[str, Any]) -> list[str]:
+    violations: list[str] = []
+    broker_snapshot = _broker_snapshot(packet)
+    if _broker_snapshot_observed(broker_snapshot):
+        violations.append("observed_broker_snapshot_without_read_only_mode")
+
+    for field_name in (
+        "spy_position_present",
+        "position_state_observed",
+        "open_order_state_observed",
+        "paper_account_observed",
+        "unexpected_non_spy_position_present",
+    ):
+        if packet.get(field_name) is True:
+            violations.append(f"broker_fact_claim.{field_name}")
+
+    for field_name in (
+        "spy_position_qty",
+        "position_count",
+        "position_symbols",
+        "open_order_count",
+        "open_order_symbols",
+        "open_spy_order_count",
+        "unexpected_non_spy_position_count",
+        "observed_spy_position_qty",
+        "observed_spy_open_order_count",
+        "observed_unexpected_non_spy_position_count",
+    ):
+        value = packet.get(field_name)
+        if value not in (None, "", [], {}):
+            violations.append(f"broker_fact_claim.{field_name}")
+
+    return violations
 
 
 def _missing_manifest_fields(
