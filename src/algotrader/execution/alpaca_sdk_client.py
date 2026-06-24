@@ -79,6 +79,12 @@ class AlpacaSdkClient(AlpacaClient):
         factory = sdk_client_factory or _create_trading_client
         self._sdk_client = factory(config)
 
+    @property
+    def raw_trading_client(self) -> Any:
+        """Return the injected SDK trading client for a scoped OMS boundary."""
+
+        return self._sdk_client
+
     def get_account(self) -> AlpacaAccountResponse:
         return cast(AlpacaAccountResponse, self._sdk_client.get_account())
 
@@ -147,7 +153,7 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
 
 def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
     from alpaca.trading.enums import OrderSide, OrderType, TimeInForce
-    from alpaca.trading.requests import MarketOrderRequest
+    from alpaca.trading.requests import LimitOrderRequest, MarketOrderRequest
 
     time_in_force_by_value = {
         "day": TimeInForce.DAY,
@@ -159,12 +165,16 @@ def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
         "side": OrderSide(request.side),
         "symbol": request.symbol,
         "time_in_force": time_in_force_by_value[request.time_in_force],
-        "type": OrderType.MARKET,
+        "type": OrderType(request.order_type),
     }
     if request.notional is not None:
         kwargs["notional"] = request.notional
     else:
         kwargs["qty"] = request.qty
+
+    if request.order_type == "limit":
+        kwargs["limit_price"] = request.limit_price
+        return LimitOrderRequest(**kwargs)
 
     return MarketOrderRequest(**kwargs)
 

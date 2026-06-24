@@ -19,6 +19,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaOrderSubmissionResponse,
     AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
+    V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
 )
 import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
 from algotrader.execution.alpaca_sdk_client import (
@@ -195,6 +196,7 @@ def test_alpaca_sdk_client_constructs_with_valid_paper_config_factory() -> None:
 
     assert isinstance(client, AlpacaSdkClient)
     assert factory_calls == [config]
+    assert client.raw_trading_client.__class__.__name__ == "FakeSdkTradingClient"
 
 
 def test_alpaca_sdk_client_delegates_protocol_methods_to_sdk_client() -> None:
@@ -288,6 +290,31 @@ def test_crypto_notional_request_uses_sdk_market_shape_without_qty() -> None:
     assert sdk_request.side.value == "buy"
     assert sdk_request.type.value == "market"
     assert sdk_request.time_in_force.value == "gtc"
+
+
+def test_v189_certification_request_uses_sdk_limit_shape() -> None:
+    request = AlpacaOrderRequest(
+        client_order_id=V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+        symbol="SPY",
+        side="sell",
+        asset_class="equity",
+        qty=Decimal("0.0001"),
+        order_type="limit",
+        time_in_force="day",
+        limit_price=Decimal("650.01"),
+    )
+
+    sdk_request = _to_sdk_order_request(request)
+
+    assert sdk_request.__class__.__name__ == "LimitOrderRequest"
+    assert sdk_request.symbol == "SPY"
+    assert sdk_request.client_order_id == V189_SPY_CERTIFICATION_CLIENT_ORDER_ID
+    assert Decimal(str(sdk_request.qty)) == Decimal("0.0001")
+    assert sdk_request.notional is None
+    assert Decimal(str(sdk_request.limit_price)) == Decimal("650.01")
+    assert sdk_request.side.value == "sell"
+    assert sdk_request.type.value == "limit"
+    assert sdk_request.time_in_force.value == "day"
 
 
 def test_alpaca_sdk_client_reports_sanitized_submit_stage() -> None:

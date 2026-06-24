@@ -21,6 +21,7 @@ _TIME_IN_FORCE_BY_ASSET_CLASS = {
 }
 RECENT_ORDER_QUERY_CONTRACT_VERSION = "paper_recent_order_query_v1"
 _M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit"
+V189_SPY_CERTIFICATION_CLIENT_ORDER_ID = "paper-certification-v189-spy-sell-limit"
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
 _RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
@@ -132,6 +133,17 @@ class AlpacaOrderRequest:
         normalized_symbol = self.symbol.strip().upper()
         has_qty = self.qty is not None
         has_notional = self.notional is not None
+        v189_spy_certification = (
+            asset_class == "equity"
+            and normalized_symbol == "SPY"
+            and self.client_order_id == V189_SPY_CERTIFICATION_CLIENT_ORDER_ID
+            and side == "sell"
+            and order_type == "limit"
+            and time_in_force == "day"
+            and has_qty
+            and not has_notional
+            and self.limit_price is not None
+        )
         m355_spy_close = (
             asset_class == "equity"
             and normalized_symbol == "SPY"
@@ -144,19 +156,28 @@ class AlpacaOrderRequest:
         if side == "sell" and not (
             asset_class == "crypto" and normalized_symbol == "BTCUSD"
             or m355_spy_close
+            or v189_spy_certification
         ):
             raise ValueError(
                 "Alpaca paper sell requests are restricted to BTCUSD crypto "
-                "close probes or the explicit M355 SPY paper close."
+                "close probes, the explicit M355 SPY paper close, or the "
+                "v1.89 SPY paper certification sell-limit drill."
             )
-        if order_type != "market":
-            raise ValueError("Alpaca paper order requests are market-only.")
+        if order_type not in {"market", "limit"}:
+            raise ValueError("Alpaca paper order requests require market or limit type.")
+        if order_type == "limit" and not v189_spy_certification:
+            raise ValueError(
+                "Alpaca paper limit requests are restricted to the v1.89 SPY "
+                "paper certification drill."
+            )
         if time_in_force not in _TIME_IN_FORCE_BY_ASSET_CLASS[asset_class]:
             raise ValueError(
                 "Alpaca paper order requests use asset-class-specific time_in_force."
             )
-        if self.limit_price is not None:
+        if order_type == "market" and self.limit_price is not None:
             raise ValueError("Alpaca paper market order requests must not use limit_price.")
+        if order_type == "limit" and self.limit_price is None:
+            raise ValueError("Alpaca paper limit order requests require limit_price.")
 
         if has_qty == has_notional:
             raise ValueError(
@@ -175,6 +196,9 @@ class AlpacaOrderRequest:
         if self.notional is not None:
             notional = _positive_decimal(self.notional, "notional")
             object.__setattr__(self, "notional", notional)
+        if self.limit_price is not None:
+            limit_price = _positive_decimal(self.limit_price, "limit_price")
+            object.__setattr__(self, "limit_price", limit_price)
 
 
 @dataclass(frozen=True)
@@ -233,4 +257,5 @@ __all__ = [
     "AlpacaRecentOrderQuery",
     "AlpacaPositionResponse",
     "RECENT_ORDER_QUERY_CONTRACT_VERSION",
+    "V189_SPY_CERTIFICATION_CLIENT_ORDER_ID",
 ]

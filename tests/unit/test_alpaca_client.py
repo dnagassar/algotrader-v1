@@ -13,6 +13,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
     RECENT_ORDER_QUERY_CONTRACT_VERSION,
+    V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
 )
 
 
@@ -108,7 +109,7 @@ def test_fake_alpaca_client_can_return_order_submission_like_data():
     assert client.submitted_orders == [request]
 
 
-def test_m355_spy_close_request_is_the_only_allowed_equity_sell_shape():
+def test_m355_spy_close_request_remains_allowed_equity_market_sell_shape():
     request = AlpacaOrderRequest(
         client_order_id="paper-order-close-m355_spy_paper_close_submit",
         symbol="SPY",
@@ -146,6 +147,40 @@ def test_m355_spy_close_request_is_the_only_allowed_equity_sell_shape():
             notional=Decimal("25.00"),
             order_type="market",
             time_in_force="day",
+        )
+
+
+def test_v189_spy_certification_request_is_only_allowed_equity_limit_sell_shape():
+    request = AlpacaOrderRequest(
+        client_order_id=V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+        symbol="spy",
+        side="sell",
+        asset_class="equity",
+        qty=Decimal("0.0001"),
+        order_type="limit",
+        time_in_force="day",
+        limit_price=Decimal("650.01"),
+    )
+
+    assert request.symbol == "SPY"
+    assert request.side == "sell"
+    assert request.asset_class == "equity"
+    assert request.qty == Decimal("0.0001")
+    assert request.notional is None
+    assert request.order_type == "limit"
+    assert request.time_in_force == "day"
+    assert request.limit_price == Decimal("650.01")
+
+    with pytest.raises(ValueError, match="v1.89 SPY paper certification"):
+        AlpacaOrderRequest(
+            client_order_id="paper-certification-other",
+            symbol="SPY",
+            side="sell",
+            asset_class="equity",
+            qty=Decimal("0.0001"),
+            order_type="limit",
+            time_in_force="day",
+            limit_price=Decimal("650.01"),
         )
 
 
