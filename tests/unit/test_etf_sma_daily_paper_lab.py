@@ -8898,6 +8898,21 @@ def _assert_v175_operational_artifacts(
     )
     manifest = json.loads((output_root / "manifest.jsonl").read_text(encoding="utf-8"))
     brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    validation = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+
+    for field_name in (
+        "quality_gate_passed_required_count",
+        "quality_gate_failed_required_count",
+        "quality_gate_warning_count",
+        "quality_gate_required_fields_present",
+    ):
+        assert manifest[field_name] == payload[field_name]
+    assert "required_manifest_fields_exist" not in validation[
+        "quality_gate_failed_checks"
+    ]
 
     for surface in (payload, latest, record, manifest, mission):
         assert surface["candidate_research_backlog_status"] == (
@@ -9420,6 +9435,48 @@ def test_v175_operational_only_risk_on_existing_position_cycle(
     assert latest["broker_mutation_performed"] is False
     assert mission["broker_state_lane"]["broker_read_performed"] is False
     assert mission["broker_state_lane"]["broker_mutation_performed"] is False
+
+
+def test_v185_operational_only_broker_state_not_observed_validates(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "paper_lab_operational_not_observed"
+
+    payload = run_etf_sma_daily_paper_lab(
+        EtfSmaDailyPaperLabConfig(
+            output_root=output_root,
+            bars_csv=FIXTURES_DIR / "spy_daily_bars_200_bullish.csv",
+            as_of_date="2025-07-19",
+            run_date="2025-07-20",
+            symbol="SPY",
+            broker_state_mode="broker_state_not_observed",
+            operational_only=True,
+        )
+    )
+
+    _assert_v175_operational_artifacts(output_root, payload)
+    validation = validate_etf_sma_daily_paper_lab_packet(
+        output_root,
+        packet=payload,
+    )
+    manifest = json.loads((output_root / "manifest.jsonl").read_text(encoding="utf-8"))
+    record = json.loads(
+        (output_root / "operating_record.jsonl").read_text(encoding="utf-8")
+    )
+
+    assert validation["validation_status"] == "pass"
+    assert validation["missing_required_fields"] == []
+    assert validation["quality_gate_status"] == "pass"
+    assert payload["validation_status"] == "pass"
+    assert payload["broker_state_mode"] == "broker_state_not_observed"
+    assert payload["broker_state_observed"] is False
+    assert payload["broker_read_performed"] is False
+    assert payload["broker_mutation_performed"] is False
+    assert payload["paper_submit_authorized"] is False
+    assert manifest["validation_status"] == "pass"
+    assert manifest["quality_gate_status"] == "pass"
+    assert record["validation_status"] == "pass"
+    assert record["quality_gate_status"] == "pass"
 
 
 def test_v175_operational_only_preserves_active_decision_vs_full_research(

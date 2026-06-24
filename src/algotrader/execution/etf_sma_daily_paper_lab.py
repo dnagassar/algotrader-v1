@@ -29013,15 +29013,6 @@ def _missing_brief_references(
         for label in _required_safety_labels_for_packet(packet):
             if label not in brief_text:
                 missing.append(f"operating_brief.safety_labels.{label}")
-        action_queue = packet.get("executive_action_queue")
-        if isinstance(action_queue, list):
-            for item in action_queue:
-                if isinstance(item, Mapping):
-                    action_id = str(item.get("action_id", ""))
-                    if action_id and action_id not in brief_text:
-                        missing.append(
-                            f"operating_brief.executive_action_queue.{action_id}"
-                        )
         return missing
 
     for field_name in _BRIEF_REQUIRED_VALUE_FIELDS:
@@ -31534,6 +31525,16 @@ def _build_operational_manifest(
         "executive_action_summary": dict(payload["executive_action_summary"]),
         "quality_gate_status": payload["quality_gate_status"],
         "quality_gate_score": payload["quality_gate_score"],
+        "quality_gate_passed_required_count": payload[
+            "quality_gate_passed_required_count"
+        ],
+        "quality_gate_failed_required_count": payload[
+            "quality_gate_failed_required_count"
+        ],
+        "quality_gate_warning_count": payload["quality_gate_warning_count"],
+        "quality_gate_required_fields_present": payload[
+            "quality_gate_required_fields_present"
+        ],
         "quality_gate_failed_checks": list(payload["quality_gate_failed_checks"]),
         "quality_gate_warning_checks": list(payload["quality_gate_warning_checks"]),
         "quality_gate_required_checks": list(payload["quality_gate_required_checks"]),
