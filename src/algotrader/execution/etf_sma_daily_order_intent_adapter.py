@@ -180,6 +180,7 @@ def run_v192_order_intent_adapter(
             input_path=input_path,
             fixture=fixture,
             run_id=f"{run_id}_fake_oms",
+            client_order_id_override=client_order_id,
         )
         classification = str(oms_packet.get("oms_classification", ""))
         blocker = str(oms_packet.get("blocker") or "")
@@ -659,10 +660,33 @@ def _next_operator_action(
 def _oms_rehearsal_summary(oms_packet: Mapping[str, Any]) -> dict[str, Any]:
     if not oms_packet:
         return {}
+    oms_latest = oms_packet.get("oms_latest", {})
+    if not isinstance(oms_latest, Mapping):
+        oms_latest = {}
+    certification_plan = oms_latest.get("certification_plan", {})
+    if not isinstance(certification_plan, Mapping):
+        certification_plan = {}
+    reconciliation = oms_latest.get("reconciliation", {})
+    if not isinstance(reconciliation, Mapping):
+        reconciliation = {}
+    final_order = reconciliation.get("final_order", {})
+    if not isinstance(final_order, Mapping):
+        final_order = {}
     return {
         "packet_version": str(oms_packet.get("packet_version", "")),
         "run_id": str(oms_packet.get("run_id", "")),
         "oms_classification": str(oms_packet.get("oms_classification", "")),
+        "symbol": str(oms_packet.get("symbol", "")),
+        "side": str(certification_plan.get("side", "")),
+        "order_type": str(certification_plan.get("order_type", "")),
+        "time_in_force": str(certification_plan.get("time_in_force", "")),
+        "quantity": str(certification_plan.get("quantity", "")),
+        "notional": str(certification_plan.get("notional", "")),
+        "limit_price": str(certification_plan.get("limit_price", "")),
+        "final_order": dict(final_order),
+        "deterministic_client_order_id": str(
+            oms_packet.get("deterministic_client_order_id", "")
+        ),
         "client_order_id": str(oms_packet.get("client_order_id", "")),
         "execution_mode": str(oms_packet.get("execution_mode", "")),
         "broker_state_mode": str(oms_packet.get("broker_state_mode", "")),

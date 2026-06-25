@@ -327,6 +327,7 @@ def run_v191_offline_oms_rehearsal(
     input_path: Path | str | None = None,
     fixture: OfflineOmsFixture | None = None,
     run_id: str = V191_RUN_ID,
+    client_order_id_override: str | None = None,
 ) -> dict[str, Any]:
     """Run a fixture-only daily ExecutionPlan to Paper OMS rehearsal."""
 
@@ -337,7 +338,7 @@ def run_v191_offline_oms_rehearsal(
     _validate_execution_plan(plan)
     packet_source = _packet_source(daily_packet_or_execution_plan)
     plan_digest = deterministic_execution_plan_digest(plan)
-    client_order_id = deterministic_client_order_id(plan)
+    client_order_id = str(client_order_id_override or deterministic_client_order_id(plan))
     previous_lifecycle = _read_json_mapping(oms_root / "latest_run.json")
     action = str(plan.get("execution_plan_action", "")).strip().lower()
 
@@ -425,6 +426,7 @@ def run_v191_offline_oms_rehearsal_from_path(
     output_root: Path | str = V191_DEFAULT_OUTPUT_ROOT,
     fixture: OfflineOmsFixture | None = None,
     run_id: str = V191_RUN_ID,
+    client_order_id_override: str | None = None,
 ) -> dict[str, Any]:
     packet = load_daily_execution_plan_packet(input_path)
     return run_v191_offline_oms_rehearsal(
@@ -433,6 +435,7 @@ def run_v191_offline_oms_rehearsal_from_path(
         input_path=input_path,
         fixture=fixture,
         run_id=run_id,
+        client_order_id_override=client_order_id_override,
     )
 
 
