@@ -181,6 +181,7 @@ def run_v192_order_intent_adapter(
             fixture=fixture,
             run_id=f"{run_id}_fake_oms",
             client_order_id_override=client_order_id,
+            order_intent_override=order_intent,
         )
         classification = str(oms_packet.get("oms_classification", ""))
         blocker = str(oms_packet.get("blocker") or "")
@@ -672,18 +673,56 @@ def _oms_rehearsal_summary(oms_packet: Mapping[str, Any]) -> dict[str, Any]:
     final_order = reconciliation.get("final_order", {})
     if not isinstance(final_order, Mapping):
         final_order = {}
+    rehearsal_request = oms_packet.get("rehearsal_order_request", {})
+    if not isinstance(rehearsal_request, Mapping):
+        rehearsal_request = {}
+    submitted_request = oms_packet.get("fake_submitted_request_fields", {})
+    if not isinstance(submitted_request, Mapping):
+        submitted_request = {}
     return {
         "packet_version": str(oms_packet.get("packet_version", "")),
         "run_id": str(oms_packet.get("run_id", "")),
         "oms_classification": str(oms_packet.get("oms_classification", "")),
         "symbol": str(oms_packet.get("symbol", "")),
-        "side": str(certification_plan.get("side", "")),
-        "order_type": str(certification_plan.get("order_type", "")),
-        "time_in_force": str(certification_plan.get("time_in_force", "")),
-        "quantity": str(certification_plan.get("quantity", "")),
-        "notional": str(certification_plan.get("notional", "")),
-        "limit_price": str(certification_plan.get("limit_price", "")),
+        "side": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="side",
+        ),
+        "order_type": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="order_type",
+        ),
+        "time_in_force": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="time_in_force",
+        ),
+        "quantity": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="quantity",
+        ),
+        "notional": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="notional",
+        ),
+        "limit_price": _first_present_value(
+            submitted_request,
+            rehearsal_request,
+            certification_plan,
+            field="limit_price",
+        ),
         "final_order": dict(final_order),
+        "rehearsal_order_request": dict(rehearsal_request),
+        "fake_submitted_request_fields": dict(submitted_request),
         "deterministic_client_order_id": str(
             oms_packet.get("deterministic_client_order_id", "")
         ),
@@ -698,6 +737,16 @@ def _oms_rehearsal_summary(oms_packet: Mapping[str, Any]) -> dict[str, Any]:
         "real_broker_mutation_performed": False,
         "artifact_paths": dict(oms_packet.get("artifact_paths", {})),
     }
+
+
+def _first_present_value(
+    *containers: Mapping[str, Any],
+    field: str,
+) -> str:
+    for container in containers:
+        if field in container and container[field] is not None:
+            return str(container[field])
+    return ""
 
 
 def _write_artifacts(root: Path, packet: Mapping[str, Any]) -> None:

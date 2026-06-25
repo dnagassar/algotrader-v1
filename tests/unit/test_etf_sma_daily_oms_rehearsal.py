@@ -219,6 +219,7 @@ def test_packet_fields_agree_with_execution_plan_and_oms_result(tmp_path: Path) 
     assert result["execution_plan_id"] == packet["execution_plan"]["execution_plan_id"]
     assert result["execution_plan_digest"] == deterministic_execution_plan_digest(packet)
     assert result["client_order_id"] == deterministic_client_order_id(packet)
+    assert result["side"] == "buy"
     assert result["execution_mode"] == OFFLINE_OMS_REHEARSAL_MODE
     assert result["broker_state_mode"] == OFFLINE_FIXTURE_BROKER_STATE_MODE
     assert result["oms_classification"] == "submitted_cancel_confirmed"
@@ -229,6 +230,51 @@ def test_packet_fields_agree_with_execution_plan_and_oms_result(tmp_path: Path) 
     assert "paper_submit_authorized=false" in result["safety_labels"]
     for artifact_path in result["artifact_paths"].values():
         assert Path(artifact_path).exists()
+    _assert_real_and_authorization_flags_false(result)
+
+
+def test_buy_order_intent_override_rehearses_buy_fake_request(
+    tmp_path: Path,
+) -> None:
+    packet = _packet(action="buy_preview")
+    client_order_id = "v192-spy-unit-buy-override"
+    order_intent = {
+        "client_order_id": client_order_id,
+        "deterministic_client_order_id": client_order_id,
+        "symbol": "SPY",
+        "asset_class": "equity",
+        "side": "buy",
+        "quantity": "",
+        "notional": "25.00",
+        "order_type": "market",
+        "time_in_force": "day",
+        "limit_price": "",
+    }
+
+    result = run_v191_offline_oms_rehearsal(
+        packet,
+        output_root=tmp_path / "run",
+        client_order_id_override=client_order_id,
+        order_intent_override=order_intent,
+    )
+
+    assert result["oms_classification"] == "submitted_cancel_confirmed"
+    assert result["side"] == "buy"
+    assert result["rehearsal_order_request"]["side"] == "buy"
+    assert result["rehearsal_order_request"]["notional"] == "25.00"
+    assert result["fake_submitted_request_fields"] == {
+        "asset_class": "equity",
+        "client_order_id": client_order_id,
+        "limit_price": "",
+        "notional": "25.00",
+        "order_type": "market",
+        "quantity": "",
+        "side": "buy",
+        "symbol": "SPY",
+        "time_in_force": "day",
+    }
+    assert result["fake_submit_call_count"] == 1
+    assert result["fake_cancel_call_count"] == 1
     _assert_real_and_authorization_flags_false(result)
 
 

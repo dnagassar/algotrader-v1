@@ -61,6 +61,56 @@ def test_review_packet_ready_when_offline_approved_intent_and_rehearsal_match(
     _assert_real_submit_and_live_flags_false(result)
 
 
+def test_buy_preview_with_offline_approval_produces_review_ready_fake_only(
+    tmp_path: Path,
+) -> None:
+    packet = _packet("buy_preview")
+
+    result = run_v193_order_intent_review_packet(
+        packet,
+        approval_fixture=_offline_approval(),
+        output_root=tmp_path / "run",
+    )
+
+    assert result["final_review_classification"] == REVIEW_READY_FAKE_ONLY
+    assert result["symbol"] == "SPY"
+    assert result["preview_decision"] == "buy_preview"
+    assert result["order_side"] == "buy"
+    assert result["notional"] == "25.00"
+    assert result["quantity"] == ""
+    assert result["quantity_or_notional_source"] == (
+        "paper_order_policy.equity.max_notional_cap"
+    )
+    assert result["order_type"] == "market"
+    assert result["time_in_force"] == "day"
+    assert result["client_order_id"] == result["deterministic_client_order_id"]
+    assert result["fake_oms_classification"] == "submitted_cancel_confirmed"
+    assert result["fake_submit_call_count"] == 1
+    assert result["fake_cancel_call_count"] == 1
+    assert result["fake_submit_call_count_label"] == "simulated_fake_oms_only"
+    assert result["fake_cancel_call_count_label"] == "simulated_fake_oms_only"
+    checks = result["intent_rehearsal_consistency_checks"]
+    assert checks["side_matches"] == {
+        "passed": True,
+        "intent_value": "buy",
+        "rehearsal_value": "buy",
+    }
+    assert checks["symbol_matches"]["passed"] is True
+    assert checks["deterministic_client_order_id_matches"]["passed"] is True
+    assert result["intent_rehearsal_consistency_passed"] is True
+    assert result["projected_broker_request_fields"] == {
+        "asset_class": "equity",
+        "client_order_id": result["client_order_id"],
+        "notional": "25.00",
+        "order_type": "market",
+        "side": "buy",
+        "symbol": "SPY",
+        "time_in_force": "day",
+    }
+    _assert_projected_request_is_unsent(result)
+    _assert_real_submit_and_live_flags_false(result)
+
+
 def test_approval_missing_blocks_review(tmp_path: Path) -> None:
     result = run_v193_order_intent_review_packet(
         _packet("sell_preview"),
@@ -71,6 +121,20 @@ def test_approval_missing_blocks_review(tmp_path: Path) -> None:
     assert result["approval_granted"] is False
     assert result["real_operator_authorization"] is False
     assert result["fake_submit_call_count"] == 0
+    _assert_real_submit_and_live_flags_false(result)
+
+
+def test_buy_preview_without_approval_blocks_review(tmp_path: Path) -> None:
+    result = run_v193_order_intent_review_packet(
+        _packet("buy_preview"),
+        output_root=tmp_path / "run",
+    )
+
+    assert result["final_review_classification"] == REVIEW_BLOCKED_APPROVAL_REQUIRED
+    assert result["approval_granted"] is False
+    assert result["order_intent_created"] is False
+    assert result["fake_submit_call_count"] == 0
+    assert result["fake_cancel_call_count"] == 0
     _assert_real_submit_and_live_flags_false(result)
 
 
@@ -155,16 +219,19 @@ def test_intent_rehearsal_symbol_mismatch_blocks_review(tmp_path: Path) -> None:
 
 
 def test_intent_rehearsal_side_mismatch_blocks_review(tmp_path: Path) -> None:
-    result = run_v193_order_intent_review_packet(
-        _packet("buy_preview"),
-        approval_fixture=_offline_approval(),
-        output_root=tmp_path / "run",
+    v192_packet = _v192_sell_packet(tmp_path)
+    v192_packet["oms_rehearsal"]["side"] = "buy"
+
+    result = build_v193_order_intent_review_packet(
+        v192_packet,
+        daily_packet_or_execution_plan=_packet("sell_preview"),
+        output_root=tmp_path / "review",
     )
 
     assert result["final_review_classification"] == (
         REVIEW_BLOCKED_INTENT_REHEARSAL_MISMATCH
     )
-    assert result["order_side"] == "buy"
+    assert result["order_side"] == "sell"
     assert result["intent_rehearsal_consistency_checks"]["side_matches"][
         "passed"
     ] is False

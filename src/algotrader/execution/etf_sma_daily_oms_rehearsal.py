@@ -180,23 +180,32 @@ class OfflinePaperOmsFakeClient:
     def submit_order(self, request: Any) -> dict[str, Any]:
         self.calls.append("submit_order")
         self.submitted_requests.append(request)
+        request_payload = _request_payload_from_object(request)
         if self.submit_exception_message:
             if self.ambiguous_creates_order:
                 self.current_order = _order(
-                    client_order_id=str(request.client_order_id),
+                    client_order_id=request_payload["client_order_id"],
                     status="accepted",
-                    qty=str(request.qty),
-                    limit_price=str(request.limit_price),
+                    side=request_payload["side"],
+                    qty=request_payload["quantity"],
+                    notional=request_payload["notional"],
+                    order_type=request_payload["order_type"],
+                    time_in_force=request_payload["time_in_force"],
+                    limit_price=request_payload["limit_price"],
                 )
                 self.all_orders = [dict(self.current_order)]
                 self.open_orders = [dict(self.current_order)]
             raise RuntimeError(self.submit_exception_message)
 
         self.current_order = _order(
-            client_order_id=str(request.client_order_id),
+            client_order_id=request_payload["client_order_id"],
             status=self.submit_status,
-            qty=str(request.qty),
-            limit_price=str(request.limit_price),
+            side=request_payload["side"],
+            qty=request_payload["quantity"],
+            notional=request_payload["notional"],
+            order_type=request_payload["order_type"],
+            time_in_force=request_payload["time_in_force"],
+            limit_price=request_payload["limit_price"],
         )
         self.all_orders = [dict(self.current_order)]
         self.open_orders = (
@@ -265,6 +274,42 @@ class OfflinePaperOmsFakeClient:
         return {"id": order_id, "status": "accepted"}
 
 
+@dataclass(frozen=True, slots=True)
+class _OfflineRehearsalOrderRequest:
+    """Request-shaped object used only by the fake offline rehearsal gateway."""
+
+    client_order_id: str
+    symbol: str
+    side: str
+    asset_class: str
+    qty: Decimal | None = None
+    notional: Decimal | None = None
+    order_type: str = "limit"
+    time_in_force: str = "day"
+    limit_price: Decimal | None = None
+
+
+class _OfflineRehearsalGateway(PaperMutationGateway):
+    """Translate v1.92 intent fields before the existing fake OMS submit step."""
+
+    def __init__(
+        self,
+        client: OfflinePaperOmsFakeClient,
+        *,
+        rehearsal_order_request: Mapping[str, Any],
+    ) -> None:
+        super().__init__(client)
+        self._rehearsal_order_request = dict(rehearsal_order_request)
+
+    def submit_order(self, request: Any) -> Any:
+        return super().submit_order(
+            _coerce_rehearsal_order_request(
+                request,
+                self._rehearsal_order_request,
+            )
+        )
+
+
 def sample_daily_execution_plan_packet() -> dict[str, Any]:
     """Build a deterministic serialized daily-lab ExecutionPlan sample."""
 
@@ -328,6 +373,7 @@ def run_v191_offline_oms_rehearsal(
     fixture: OfflineOmsFixture | None = None,
     run_id: str = V191_RUN_ID,
     client_order_id_override: str | None = None,
+    order_intent_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Run a fixture-only daily ExecutionPlan to Paper OMS rehearsal."""
 
@@ -339,6 +385,11 @@ def run_v191_offline_oms_rehearsal(
     packet_source = _packet_source(daily_packet_or_execution_plan)
     plan_digest = deterministic_execution_plan_digest(plan)
     client_order_id = str(client_order_id_override or deterministic_client_order_id(plan))
+    rehearsal_order_request = _rehearsal_order_request_shape(
+        plan,
+        client_order_id=client_order_id,
+        order_intent_override=order_intent_override,
+    )
     previous_lifecycle = _read_json_mapping(oms_root / "latest_run.json")
     action = str(plan.get("execution_plan_action", "")).strip().lower()
 
@@ -368,7 +419,10 @@ def run_v191_offline_oms_rehearsal(
         fake_client = OfflinePaperOmsFakeClient(fixture_used)
         oms_latest = run_paper_certification_drill(
             paper_config=_offline_paper_config(),
-            gateway=PaperMutationGateway(fake_client),
+            gateway=_OfflineRehearsalGateway(
+                fake_client,
+                rehearsal_order_request=rehearsal_order_request,
+            ),
             runtime=PaperCertificationRuntime(
                 output_root=oms_root,
                 expected_paper_account_id=fixture_used.account_id,
@@ -415,6 +469,7 @@ def run_v191_offline_oms_rehearsal(
         oms_latest=oms_latest,
         fixture=fixture_used,
         fake_client=fake_client,
+        rehearsal_order_request=rehearsal_order_request,
     )
     _write_artifacts(root, packet)
     return packet
@@ -427,6 +482,7 @@ def run_v191_offline_oms_rehearsal_from_path(
     fixture: OfflineOmsFixture | None = None,
     run_id: str = V191_RUN_ID,
     client_order_id_override: str | None = None,
+    order_intent_override: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     packet = load_daily_execution_plan_packet(input_path)
     return run_v191_offline_oms_rehearsal(
@@ -436,6 +492,7 @@ def run_v191_offline_oms_rehearsal_from_path(
         fixture=fixture,
         run_id=run_id,
         client_order_id_override=client_order_id_override,
+        order_intent_override=order_intent_override,
     )
 
 
@@ -453,6 +510,7 @@ def _build_packet(
     oms_latest: Mapping[str, Any],
     fixture: OfflineOmsFixture,
     fake_client: OfflinePaperOmsFakeClient | None,
+    rehearsal_order_request: Mapping[str, Any],
 ) -> dict[str, Any]:
     classification = str(oms_latest.get("outcome_classification", ""))
     blocker = str(oms_latest.get("blocker") or "")
@@ -481,6 +539,9 @@ def _build_packet(
         "execution_plan_digest": plan_digest,
         "deterministic_client_order_id": client_order_id,
         "client_order_id": client_order_id,
+        "side": str(rehearsal_order_request.get("side", "")),
+        "rehearsal_order_request": dict(rehearsal_order_request),
+        "fake_submitted_request_fields": _submitted_request_fields(fake_client),
         "execution_mode": OFFLINE_OMS_REHEARSAL_MODE,
         "broker_state_mode": OFFLINE_FIXTURE_BROKER_STATE_MODE,
         "broker_state_fixture": fixture.to_dict(),
@@ -634,6 +695,135 @@ def _execution_plan_blocker(plan: Mapping[str, Any]) -> str:
     return "blocked_unaccepted_execution_plan"
 
 
+def _rehearsal_order_request_shape(
+    plan: Mapping[str, Any],
+    *,
+    client_order_id: str,
+    order_intent_override: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    side = _side_from_action(str(plan.get("execution_plan_action", "")))
+    shape: dict[str, Any] = {
+        "client_order_id": client_order_id,
+        "symbol": str(plan.get("execution_plan_symbol", "")).upper(),
+        "side": side,
+        "asset_class": "equity",
+        "quantity": "",
+        "notional": "",
+        "order_type": "",
+        "time_in_force": "",
+        "limit_price": "",
+    }
+    if order_intent_override is None:
+        return shape
+
+    shape.update(
+        {
+            "client_order_id": str(
+                order_intent_override.get("client_order_id")
+                or order_intent_override.get("deterministic_client_order_id")
+                or client_order_id
+            ),
+            "symbol": str(order_intent_override.get("symbol") or shape["symbol"]).upper(),
+            "side": str(order_intent_override.get("side") or side).strip().lower(),
+            "asset_class": str(
+                order_intent_override.get("asset_class") or shape["asset_class"]
+            ),
+            "quantity": str(
+                order_intent_override.get("quantity")
+                or order_intent_override.get("qty")
+                or ""
+            ),
+            "notional": str(order_intent_override.get("notional") or ""),
+            "order_type": str(order_intent_override.get("order_type") or ""),
+            "time_in_force": str(order_intent_override.get("time_in_force") or ""),
+            "limit_price": str(order_intent_override.get("limit_price") or ""),
+        }
+    )
+    return shape
+
+
+def _coerce_rehearsal_order_request(
+    request: Any,
+    rehearsal_order_request: Mapping[str, Any],
+) -> _OfflineRehearsalOrderRequest:
+    side = str(rehearsal_order_request.get("side") or _field_text(request, "side"))
+    symbol = str(rehearsal_order_request.get("symbol") or _field_text(request, "symbol"))
+    quantity = str(
+        rehearsal_order_request.get("quantity")
+        or rehearsal_order_request.get("qty")
+        or ""
+    )
+    notional = str(rehearsal_order_request.get("notional") or "")
+    order_type = str(
+        rehearsal_order_request.get("order_type")
+        or _field_text(request, "order_type")
+        or "limit"
+    )
+    time_in_force = str(
+        rehearsal_order_request.get("time_in_force")
+        or _field_text(request, "time_in_force")
+        or "day"
+    )
+    limit_price = str(
+        rehearsal_order_request.get("limit_price") or ""
+    )
+    fallback_quantity = "" if notional else _field_text(request, "qty")
+    fallback_limit_price = (
+        ""
+        if order_type.strip().lower() == "market"
+        else _field_text(request, "limit_price")
+    )
+    return _OfflineRehearsalOrderRequest(
+        client_order_id=str(
+            rehearsal_order_request.get("client_order_id")
+            or _field_text(request, "client_order_id")
+        ),
+        symbol=symbol,
+        side=side,
+        asset_class=str(
+            rehearsal_order_request.get("asset_class")
+            or _field_text(request, "asset_class")
+            or "equity"
+        ),
+        qty=_optional_decimal(quantity or fallback_quantity),
+        notional=_optional_decimal(notional or _field_text(request, "notional")),
+        order_type=order_type,
+        time_in_force=time_in_force,
+        limit_price=_optional_decimal(limit_price or fallback_limit_price),
+    )
+
+
+def _submitted_request_fields(
+    fake_client: OfflinePaperOmsFakeClient | None,
+) -> dict[str, Any]:
+    if fake_client is None or not fake_client.submitted_requests:
+        return {}
+    return _request_payload_from_object(fake_client.submitted_requests[-1])
+
+
+def _request_payload_from_object(request: Any) -> dict[str, str]:
+    return {
+        "client_order_id": _field_text(request, "client_order_id"),
+        "symbol": _field_text(request, "symbol"),
+        "side": _field_text(request, "side").lower(),
+        "asset_class": _field_text(request, "asset_class") or "equity",
+        "quantity": _optional_decimal_text(_field_value(request, "qty")),
+        "notional": _optional_decimal_text(_field_value(request, "notional")),
+        "order_type": _field_text(request, "order_type"),
+        "time_in_force": _field_text(request, "time_in_force"),
+        "limit_price": _optional_decimal_text(_field_value(request, "limit_price")),
+    }
+
+
+def _side_from_action(action: str) -> str:
+    normalized = action.strip().lower()
+    if normalized == "buy_preview":
+        return "buy"
+    if normalized == "sell_preview":
+        return "sell"
+    return ""
+
+
 def _fixture_with_prior_terminal_order(
     oms_root: Path,
     *,
@@ -784,26 +974,35 @@ def _order(
     client_order_id: str,
     status: str,
     qty: str = "0.0001",
+    notional: str = "",
     filled_qty: str = "0",
+    side: str = "sell",
+    order_type: str = "limit",
+    time_in_force: str = "day",
     limit_price: str = "630.00",
 ) -> dict[str, Any]:
     now = datetime(2026, 6, 24, 15, 30, tzinfo=UTC)
-    return {
+    order = {
         "id": "offline-fixture-order-1",
         "client_order_id": client_order_id,
         "symbol": "SPY",
         "asset_class": "equity",
-        "side": "sell",
-        "type": "limit",
-        "time_in_force": "day",
-        "qty": Decimal(str(qty)),
-        "limit_price": Decimal(str(limit_price)),
+        "side": side,
+        "type": order_type,
+        "time_in_force": time_in_force,
         "status": status,
         "filled_qty": Decimal(str(filled_qty)),
         "filled_avg_price": Decimal("0") if filled_qty == "0" else Decimal("620.00"),
         "created_at": now.isoformat(),
         "submitted_at": now.isoformat(),
     }
+    if str(qty).strip():
+        order["qty"] = Decimal(str(qty))
+    if str(notional).strip():
+        order["notional"] = Decimal(str(notional))
+    if str(limit_price).strip():
+        order["limit_price"] = Decimal(str(limit_price))
+    return order
 
 
 def _normalized_status(value: Any) -> str:
@@ -812,6 +1011,32 @@ def _normalized_status(value: Any) -> str:
 
 def _utc_now_text() -> str:
     return datetime.now(tz=UTC).isoformat()
+
+
+def _field_value(value: Any, name: str) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(name)
+    return getattr(value, name, None)
+
+
+def _field_text(value: Any, name: str) -> str:
+    raw = _field_value(value, name)
+    if raw is None:
+        return ""
+    enum_value = getattr(raw, "value", None)
+    return str(enum_value if enum_value is not None else raw).strip()
+
+
+def _optional_decimal(value: Any) -> Decimal | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    return Decimal(text)
+
+
+def _optional_decimal_text(value: Any) -> str:
+    decimal_value = _optional_decimal(value)
+    return "" if decimal_value is None else str(decimal_value)
 
 
 def _json_safe(value: Any) -> Any:

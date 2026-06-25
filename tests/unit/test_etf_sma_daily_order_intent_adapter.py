@@ -59,6 +59,17 @@ def test_buy_preview_with_offline_approval_creates_intent_and_fake_rehearsal(
     assert intent["order_type"] == "market"
     assert intent["time_in_force"] == "day"
     assert intent["client_order_id"] == deterministic_v192_client_order_id(packet)
+    rehearsal = result["oms_rehearsal"]
+    assert rehearsal["side"] == "buy"
+    assert rehearsal["order_type"] == "market"
+    assert rehearsal["time_in_force"] == "day"
+    assert rehearsal["quantity"] == ""
+    assert rehearsal["notional"] == "25.00"
+    assert rehearsal["limit_price"] == ""
+    assert rehearsal["fake_submitted_request_fields"]["side"] == "buy"
+    assert rehearsal["fake_submitted_request_fields"]["client_order_id"] == (
+        deterministic_v192_client_order_id(packet)
+    )
     _assert_intent_safety_fields(intent)
     _assert_real_and_submit_flags_false(result)
 
@@ -98,6 +109,7 @@ def test_sell_preview_with_offline_approval_creates_intent_and_fake_rehearsal(
     assert intent["order_type"] == "limit"
     assert intent["time_in_force"] == "day"
     assert intent["limit_price"] == "630.00"
+    assert result["oms_rehearsal"]["side"] == "sell"
     _assert_intent_safety_fields(intent)
     _assert_real_and_submit_flags_false(result)
 
