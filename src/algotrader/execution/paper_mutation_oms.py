@@ -34,6 +34,10 @@ V189_DEFAULT_OUTPUT_ROOT = (
     "runs/paper_lab/v189_paper_mutation_certification"
 )
 V189_SYMBOL = "SPY"
+NETWORKED_PAPER_CERTIFICATION_MODE = "networked_paper_certification"
+OFFLINE_OMS_REHEARSAL_MODE = "offline_oms_rehearsal"
+PAPER_BROKER_STATE_MODE = "paper_broker_observed"
+OFFLINE_FIXTURE_BROKER_STATE_MODE = "offline_fixture"
 V189_STRATEGY_ORDER = False
 V189_TOTAL_SPY_EXPOSURE_CAP = Decimal("25")
 V189_CERTIFICATION_MAX_MARKET_VALUE = Decimal("1")
@@ -93,6 +97,12 @@ class PaperCertificationRuntime:
     expected_paper_account_id: str = ""
     timeout_seconds: float = 45.0
     poll_interval_seconds: float = 2.0
+    client_order_id: str = ""
+    run_id: str = V189_RUN_ID
+    execution_mode: str = NETWORKED_PAPER_CERTIFICATION_MODE
+    broker_state_mode: str = PAPER_BROKER_STATE_MODE
+    paper_submit_authorized: bool = True
+    labels: tuple[str, ...] = ALLOWED_LABELS
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", Path(self.output_root))
@@ -106,6 +116,31 @@ class PaperCertificationRuntime:
             self,
             "poll_interval_seconds",
             float(self.poll_interval_seconds),
+        )
+        client_order_id = str(self.client_order_id).strip()
+        if not client_order_id:
+            client_order_id = certification_client_order_id()
+        object.__setattr__(self, "client_order_id", client_order_id)
+        object.__setattr__(self, "run_id", str(self.run_id).strip() or V189_RUN_ID)
+        object.__setattr__(
+            self,
+            "execution_mode",
+            str(self.execution_mode).strip() or NETWORKED_PAPER_CERTIFICATION_MODE,
+        )
+        object.__setattr__(
+            self,
+            "broker_state_mode",
+            str(self.broker_state_mode).strip() or PAPER_BROKER_STATE_MODE,
+        )
+        object.__setattr__(
+            self,
+            "paper_submit_authorized",
+            bool(self.paper_submit_authorized),
+        )
+        object.__setattr__(
+            self,
+            "labels",
+            tuple(str(label) for label in self.labels),
         )
 
 
@@ -171,6 +206,21 @@ class PaperMutationGateway:
 
 class _CertificationBlocked(Exception):
     """Internal control flow for a safely blocked certification plan."""
+
+
+@dataclass(frozen=True, slots=True)
+class _OfflineOmsOrderRequest:
+    """Request-shaped object for fixture-only offline OMS rehearsals."""
+
+    client_order_id: str
+    symbol: str
+    side: str
+    asset_class: str
+    qty: Decimal | None = None
+    notional: Decimal | None = None
+    order_type: str = "limit"
+    time_in_force: str = "day"
+    limit_price: Decimal | None = None
 
 
 class MutationProcessLock:
@@ -282,7 +332,7 @@ def run_paper_certification_drill(
     lock = MutationProcessLock(output_root / ".mutation.lock")
     lock_acquired = lock.acquire()
     observed: dict[str, Any] = {}
-    certification_plan: dict[str, Any] = _empty_certification_plan()
+    certification_plan: dict[str, Any] = _empty_certification_plan(runtime)
     outcome = "unresolved_order_outcome"
     blocker = ""
     paper_submit_performed = False
@@ -295,14 +345,14 @@ def run_paper_certification_drill(
     preflight = _initial_preflight(
         paper_config=paper_config,
         env=source_env,
-        expected_paper_account_id=runtime.expected_paper_account_id,
+        runtime=runtime,
         lock_acquired=lock_acquired,
     )
     preflight["restart_recovery_candidate"] = restart_recovery_candidate
     _append_lifecycle(
         lifecycle_path,
         "preflight_started",
-        {"client_order_id": certification_client_order_id()},
+        {"client_order_id": runtime.client_order_id},
     )
 
     try:
@@ -318,7 +368,13 @@ def run_paper_certification_drill(
             try:
                 observed = _observe_pre_mutation_state(gateway)
                 preflight.update(_observed_preflight_fields(observed, runtime))
-                preflight.update(_broker_local_divergence_fields(output_root, observed))
+                preflight.update(
+                    _broker_local_divergence_fields(
+                        output_root,
+                        observed,
+                        client_order_id=runtime.client_order_id,
+                    )
+                )
                 if preflight["broker_state_observed"]:
                     _append_lifecycle(
                         lifecycle_path,
@@ -361,6 +417,7 @@ def run_paper_certification_drill(
                         gateway,
                         lifecycle_path,
                         secret_values,
+                        client_order_id=runtime.client_order_id,
                     )
             elif restart_recovery_allowed:
                 restart_recovery_performed = True
@@ -373,6 +430,7 @@ def run_paper_certification_drill(
                     gateway,
                     lifecycle_path,
                     secret_values,
+                    client_order_id=runtime.client_order_id,
                 )
                 if lookup is None:
                     outcome = "unresolved_order_outcome"
@@ -391,6 +449,7 @@ def run_paper_certification_drill(
                             timeout_seconds=runtime.timeout_seconds,
                             poll_interval_seconds=runtime.poll_interval_seconds,
                             secret_values=secret_values,
+                            client_order_id=runtime.client_order_id,
                         )
                     )
                     broker_mutation_performed = cancel_requested
@@ -399,7 +458,7 @@ def run_paper_certification_drill(
                         cancel_ambiguous=cancel_ambiguous,
                     )
             else:
-                certification_plan = _build_certification_plan(observed)
+                certification_plan = _build_certification_plan(observed, runtime)
                 _write_json(output_root / "certification_plan.json", certification_plan)
                 if not certification_plan.get("certification_plan_id"):
                     blocker = "blocked_risk_cap"
@@ -441,6 +500,7 @@ def run_paper_certification_drill(
                         gateway,
                         lifecycle_path,
                         secret_values,
+                        client_order_id=runtime.client_order_id,
                     )
                     if lookup is None:
                         outcome = "unresolved_order_outcome"
@@ -454,6 +514,7 @@ def run_paper_certification_drill(
                                 timeout_seconds=runtime.timeout_seconds,
                                 poll_interval_seconds=runtime.poll_interval_seconds,
                                 secret_values=secret_values,
+                                client_order_id=runtime.client_order_id,
                             )
                         )
                         broker_mutation_performed = (
@@ -473,6 +534,7 @@ def run_paper_certification_drill(
                         gateway,
                         lifecycle_path,
                         secret_values,
+                        client_order_id=runtime.client_order_id,
                     )
                     if retrieved_order is None:
                         retrieved_payload = submitted_order
@@ -491,6 +553,7 @@ def run_paper_certification_drill(
                             timeout_seconds=runtime.timeout_seconds,
                             poll_interval_seconds=runtime.poll_interval_seconds,
                             secret_values=secret_values,
+                            client_order_id=runtime.client_order_id,
                         )
                     )
                     broker_mutation_performed = (
@@ -515,7 +578,16 @@ def run_paper_certification_drill(
         secret_values,
         attempted=paper_submit_performed or broker_mutation_performed,
     )
+    reported_paper_submit_performed = _reported_broker_activity(
+        runtime,
+        paper_submit_performed,
+    )
+    reported_broker_mutation_performed = _reported_broker_activity(
+        runtime,
+        broker_mutation_performed,
+    )
     reconciliation = _build_reconciliation(
+        runtime=runtime,
         outcome=outcome,
         blocker=blocker,
         preflight=preflight,
@@ -525,19 +597,24 @@ def run_paper_certification_drill(
         submit_ambiguous=submit_ambiguous,
         cancel_ambiguous=cancel_ambiguous,
         restart_recovery_performed=restart_recovery_performed,
-        paper_submit_performed=paper_submit_performed,
-        broker_mutation_performed=broker_mutation_performed,
+        paper_submit_performed=reported_paper_submit_performed,
+        broker_mutation_performed=reported_broker_mutation_performed,
+        simulated_submit_performed=paper_submit_performed,
+        simulated_broker_mutation_performed=broker_mutation_performed,
     )
-    policy = _mutation_policy_payload()
+    policy = _mutation_policy_payload(runtime)
     latest_run = _latest_run_payload(
+        runtime=runtime,
         outcome=outcome,
         blocker=blocker,
         preflight=preflight,
         certification_plan=certification_plan,
         reconciliation=reconciliation,
         restart_recovery_performed=restart_recovery_performed,
-        paper_submit_performed=paper_submit_performed,
-        broker_mutation_performed=broker_mutation_performed,
+        paper_submit_performed=reported_paper_submit_performed,
+        broker_mutation_performed=reported_broker_mutation_performed,
+        simulated_submit_performed=paper_submit_performed,
+        simulated_broker_mutation_performed=broker_mutation_performed,
     )
 
     _write_json(output_root / "preflight.json", preflight)
@@ -549,18 +626,42 @@ def run_paper_certification_drill(
         encoding="utf-8",
         newline="\n",
     )
-    _write_manifest(output_root)
+    _write_manifest(output_root, runtime)
     return latest_run
+
+
+def _reported_broker_activity(
+    runtime: PaperCertificationRuntime,
+    performed: bool,
+) -> bool:
+    if runtime.execution_mode == OFFLINE_OMS_REHEARSAL_MODE:
+        return False
+    return bool(performed)
+
+
+def _runtime_labels(runtime: PaperCertificationRuntime | None) -> list[str]:
+    if runtime is None:
+        return list(ALLOWED_LABELS)
+    labels = [
+        str(label)
+        for label in runtime.labels
+        if not str(label).startswith("paper_submit_authorized=")
+    ]
+    labels.append(
+        f"paper_submit_authorized={str(runtime.paper_submit_authorized).lower()}"
+    )
+    return labels
 
 
 def _initial_preflight(
     *,
     paper_config: AlpacaPaperConfig,
     env: Mapping[str, str],
-    expected_paper_account_id: str,
+    runtime: PaperCertificationRuntime,
     lock_acquired: bool,
 ) -> dict[str, Any]:
     endpoint = paper_config.alpaca_paper_base_url.strip()
+    offline_rehearsal = runtime.execution_mode == OFFLINE_OMS_REHEARSAL_MODE
     secret_loaded = bool(
         _clean_secret(paper_config.alpaca_secret_key)
         or _clean_secret(env.get("ALPACA_API_SECRET_KEY"))
@@ -572,15 +673,25 @@ def _initial_preflight(
     )
     return {
         "APP_PROFILE_is_paper": paper_config.is_paper_profile,
-        "paper_credentials_loaded": api_key_loaded and secret_loaded,
+        "paper_credentials_loaded": False
+        if offline_rehearsal
+        else api_key_loaded and secret_loaded,
+        "offline_fixture_credentials_required": False
+        if offline_rehearsal
+        else None,
         "credential_values_exposed": False,
         "paper_endpoint_exact_match": endpoint == DEFAULT_ALPACA_PAPER_BASE_URL,
         "live_endpoint_detected": live_endpoint_detected,
         "expected_paper_account_match": False,
-        "expected_paper_account_attested": bool(expected_paper_account_id),
+        "expected_paper_account_attested": bool(runtime.expected_paper_account_id),
         "paper_mutation_policy_authorized": True,
         "mutation_process_lock_acquired": lock_acquired,
         "broker_state_observed": False,
+        "execution_mode": runtime.execution_mode,
+        "broker_state_mode": runtime.broker_state_mode,
+        "paper_submit_authorized": runtime.paper_submit_authorized,
+        "real_broker_read_performed": False,
+        "real_broker_mutation_performed": False,
         "broker_local_divergence_present": False,
         "broker_local_divergence_reason": "",
         "open_spy_order_present": False,
@@ -589,8 +700,8 @@ def _initial_preflight(
         "unresolved_prior_mutation_present": False,
         "risk_cap_passed": False,
         "symbol": V189_SYMBOL,
-        "client_order_id": certification_client_order_id(),
-        "labels": list(ALLOWED_LABELS),
+        "client_order_id": runtime.client_order_id,
+        "labels": _runtime_labels(runtime),
     }
 
 
@@ -599,10 +710,12 @@ def _static_preflight_blocker(preflight: Mapping[str, Any]) -> str:
         return "blocked_paper_endpoint_mismatch"
     if preflight.get("paper_endpoint_exact_match") is not True:
         return "blocked_paper_endpoint_mismatch"
-    if preflight.get("APP_PROFILE_is_paper") is not True:
-        return "blocked_credentials_unavailable"
-    if preflight.get("paper_credentials_loaded") is not True:
-        return "blocked_credentials_unavailable"
+    offline_rehearsal = preflight.get("execution_mode") == OFFLINE_OMS_REHEARSAL_MODE
+    if not offline_rehearsal:
+        if preflight.get("APP_PROFILE_is_paper") is not True:
+            return "blocked_credentials_unavailable"
+        if preflight.get("paper_credentials_loaded") is not True:
+            return "blocked_credentials_unavailable"
     if preflight.get("paper_mutation_policy_authorized") is not True:
         return "blocked_paper_mutation_policy"
     if preflight.get("mutation_process_lock_acquired") is not True:
@@ -687,7 +800,7 @@ def _observed_preflight_fields(
     duplicate_orders = [
         order
         for order in all_orders
-        if order.get("client_order_id") == certification_client_order_id()
+        if order.get("client_order_id") == runtime.client_order_id
     ]
     reference_price = _reference_price_from_position(spy_position)
     exposure = _decimal_or_zero(spy_position.get("market_value")) if spy_position else Decimal("0")
@@ -699,6 +812,9 @@ def _observed_preflight_fields(
     )
     return {
         "broker_state_observed": True,
+        "real_broker_read_performed": (
+            runtime.execution_mode != OFFLINE_OMS_REHEARSAL_MODE
+        ),
         "expected_paper_account_match": (
             bool(runtime.expected_paper_account_id)
             and account.get("account_id") == runtime.expected_paper_account_id
@@ -724,6 +840,8 @@ def _observed_preflight_fields(
 def _broker_local_divergence_fields(
     output_root: Path,
     observed: Mapping[str, Any],
+    *,
+    client_order_id: str,
 ) -> dict[str, Any]:
     latest = _read_json_mapping(output_root / "latest_run.json")
     if not latest:
@@ -744,7 +862,7 @@ def _broker_local_divergence_fields(
     local_client_order_id = str(
         final_order.get("client_order_id") or latest.get("client_order_id") or ""
     )
-    if local_client_order_id != certification_client_order_id():
+    if local_client_order_id != client_order_id:
         return {
             "broker_local_divergence_present": False,
             "broker_local_divergence_reason": "",
@@ -764,7 +882,7 @@ def _broker_local_divergence_fields(
     broker_orders = [
         order
         for order in _mapping_sequence(observed.get("all_orders"))
-        if order.get("client_order_id") == certification_client_order_id()
+        if order.get("client_order_id") == client_order_id
     ]
     if not broker_orders:
         return {
@@ -799,25 +917,28 @@ def _broker_local_divergence_fields(
     }
 
 
-def _build_certification_plan(observed: Mapping[str, Any]) -> dict[str, Any]:
+def _build_certification_plan(
+    observed: Mapping[str, Any],
+    runtime: PaperCertificationRuntime,
+) -> dict[str, Any]:
     positions = _mapping_sequence(observed.get("positions"))
     spy_position = _spy_position(positions)
     reference_price = _reference_price_from_position(spy_position)
     if spy_position is None or reference_price is None:
-        return _empty_certification_plan()
+        return _empty_certification_plan(runtime)
 
     existing_qty = _decimal_or_zero(spy_position.get("quantity"))
     quantity = V189_MIN_FRACTIONAL_QTY
     approximate_value = (quantity * reference_price).quantize(Decimal("0.0001"))
     if existing_qty < quantity or approximate_value > V189_CERTIFICATION_MAX_MARKET_VALUE:
-        return _empty_certification_plan()
+        return _empty_certification_plan(runtime)
 
     limit_price = (reference_price * V189_NON_MARKETABLE_LIMIT_MULTIPLIER).quantize(
         Decimal("0.01"),
         rounding=ROUND_UP,
     )
     plan_source = {
-        "client_order_id": certification_client_order_id(),
+        "client_order_id": runtime.client_order_id,
         "symbol": V189_SYMBOL,
         "side": "sell",
         "order_type": "limit",
@@ -834,7 +955,9 @@ def _build_certification_plan(observed: Mapping[str, Any]) -> dict[str, Any]:
                 "utf-8"
             )
         ).hexdigest()[:16],
-        "client_order_id": certification_client_order_id(),
+        "execution_mode": runtime.execution_mode,
+        "broker_state_mode": runtime.broker_state_mode,
+        "client_order_id": runtime.client_order_id,
         "symbol": V189_SYMBOL,
         "asset_class": "equity",
         "side": "sell",
@@ -845,24 +968,43 @@ def _build_certification_plan(observed: Mapping[str, Any]) -> dict[str, Any]:
         "reference_price": _decimal_text(reference_price),
         "approximate_reference_market_value": _decimal_text(approximate_value),
         "strategy_order": V189_STRATEGY_ORDER,
-        "labels": list(ALLOWED_LABELS),
+        "labels": _runtime_labels(runtime),
         "expected_effect": "reduce_spy_exposure_if_filled",
     }
 
 
-def _empty_certification_plan() -> dict[str, Any]:
+def _empty_certification_plan(
+    runtime: PaperCertificationRuntime | None = None,
+) -> dict[str, Any]:
+    client_order_id = (
+        runtime.client_order_id if runtime is not None else certification_client_order_id()
+    )
+    labels = _runtime_labels(runtime) if runtime is not None else list(ALLOWED_LABELS)
     return {
         "certification_plan_version": "v189_paper_certification_plan_v1",
         "certification_plan_id": "",
-        "client_order_id": certification_client_order_id(),
+        "execution_mode": runtime.execution_mode if runtime is not None else "",
+        "broker_state_mode": runtime.broker_state_mode if runtime is not None else "",
+        "client_order_id": client_order_id,
         "symbol": V189_SYMBOL,
         "strategy_order": V189_STRATEGY_ORDER,
-        "labels": list(ALLOWED_LABELS),
+        "labels": labels,
         "status": "not_built",
     }
 
 
 def _certification_order_request(plan: Mapping[str, Any]) -> AlpacaOrderRequest:
+    if plan.get("execution_mode") == OFFLINE_OMS_REHEARSAL_MODE:
+        return _OfflineOmsOrderRequest(
+            client_order_id=str(plan["client_order_id"]),
+            symbol=str(plan["symbol"]),
+            side="sell",
+            asset_class="equity",
+            qty=Decimal(str(plan["quantity"])),
+            order_type="limit",
+            time_in_force="day",
+            limit_price=Decimal(str(plan["limit_price"])),
+        )
     return AlpacaOrderRequest(
         client_order_id=str(plan["client_order_id"]),
         symbol=str(plan["symbol"]),
@@ -883,6 +1025,7 @@ def _cancel_and_reconcile(
     timeout_seconds: float,
     poll_interval_seconds: float,
     secret_values: Sequence[str],
+    client_order_id: str,
 ) -> tuple[dict[str, Any], bool, bool]:
     status = _normalize_status(initial_order.get("normalized_status") or initial_order.get("status"))
     if status in {"rejected", "filled"}:
@@ -921,6 +1064,7 @@ def _cancel_and_reconcile(
             gateway,
             lifecycle_path,
             secret_values,
+            client_order_id=client_order_id,
         )
         if lookup is not None:
             latest = _order_payload(lookup)
@@ -941,9 +1085,11 @@ def _lookup_by_client_order_id_safely(
     gateway: PaperMutationGateway,
     lifecycle_path: Path,
     secret_values: Sequence[str],
+    *,
+    client_order_id: str,
 ) -> Any | None:
     try:
-        lookup = gateway.lookup_order_by_client_order_id(certification_client_order_id())
+        lookup = gateway.lookup_order_by_client_order_id(client_order_id)
     except Exception as exc:
         _append_lifecycle(
             lifecycle_path,
@@ -956,7 +1102,7 @@ def _lookup_by_client_order_id_safely(
         _append_lifecycle(
             lifecycle_path,
             "client_order_id_lookup_empty",
-            {"client_order_id": certification_client_order_id()},
+            {"client_order_id": client_order_id},
         )
         return None
 
@@ -1031,6 +1177,7 @@ def _observe_post_mutation_state_safely(
 
 def _build_reconciliation(
     *,
+    runtime: PaperCertificationRuntime,
     outcome: str,
     blocker: str,
     preflight: Mapping[str, Any],
@@ -1042,18 +1189,28 @@ def _build_reconciliation(
     restart_recovery_performed: bool,
     paper_submit_performed: bool,
     broker_mutation_performed: bool,
+    simulated_submit_performed: bool,
+    simulated_broker_mutation_performed: bool,
 ) -> dict[str, Any]:
     return {
         "reconciliation_version": "v189_paper_certification_reconciliation_v1",
+        "execution_mode": runtime.execution_mode,
+        "broker_state_mode": runtime.broker_state_mode,
         "outcome_classification": outcome,
         "classification_aliases": _classification_aliases(outcome),
         "blocker": blocker,
-        "client_order_id": certification_client_order_id(),
+        "client_order_id": runtime.client_order_id,
         "submit_ambiguous": submit_ambiguous,
         "cancel_ambiguous": cancel_ambiguous,
         "restart_recovery_performed": restart_recovery_performed,
+        "paper_submit_authorized": runtime.paper_submit_authorized,
         "paper_submit_performed": paper_submit_performed,
         "broker_mutation_performed": broker_mutation_performed,
+        "real_broker_read_performed": preflight.get("real_broker_read_performed")
+        is True,
+        "real_broker_mutation_performed": broker_mutation_performed,
+        "simulated_submit_performed": simulated_submit_performed,
+        "simulated_broker_mutation_performed": simulated_broker_mutation_performed,
         "final_order": dict(final_order),
         "final_order_status": _normalize_status(
             final_order.get("normalized_status") or final_order.get("status")
@@ -1064,14 +1221,17 @@ def _build_reconciliation(
         "preflight": dict(preflight),
         "certification_plan": dict(certification_plan),
         "post_observation": dict(post_observation),
-        "labels": list(ALLOWED_LABELS),
+        "labels": _runtime_labels(runtime),
     }
 
 
-def _mutation_policy_payload() -> dict[str, Any]:
+def _mutation_policy_payload(runtime: PaperCertificationRuntime) -> dict[str, Any]:
     return {
         "mutation_policy_version": "v189_bounded_spy_paper_mutation_policy_v1",
         "paper_only": True,
+        "execution_mode": runtime.execution_mode,
+        "broker_state_mode": runtime.broker_state_mode,
+        "paper_submit_authorized": runtime.paper_submit_authorized,
         "expected_endpoint": DEFAULT_ALPACA_PAPER_BASE_URL,
         "symbol_allowlist": [V189_SYMBOL],
         "asset_class_allowlist": ["equity"],
@@ -1095,12 +1255,13 @@ def _mutation_policy_payload() -> dict[str, Any]:
         "restart_recovery": "reconcile_by_deterministic_client_order_id_before_submit",
         "unresolved_prior_mutation_blocks_submit": True,
         "allowed_mutation": "one_non_marketable_fractional_spy_sell_limit_then_cancel",
-        "labels": list(ALLOWED_LABELS),
+        "labels": _runtime_labels(runtime),
     }
 
 
 def _latest_run_payload(
     *,
+    runtime: PaperCertificationRuntime,
     outcome: str,
     blocker: str,
     preflight: Mapping[str, Any],
@@ -1109,24 +1270,37 @@ def _latest_run_payload(
     restart_recovery_performed: bool,
     paper_submit_performed: bool,
     broker_mutation_performed: bool,
+    simulated_submit_performed: bool,
+    simulated_broker_mutation_performed: bool,
 ) -> dict[str, Any]:
     return {
-        "run_id": V189_RUN_ID,
+        "run_id": runtime.run_id,
         "generated_at": _utc_now().isoformat(),
+        "execution_mode": runtime.execution_mode,
+        "broker_state_mode": runtime.broker_state_mode,
         "outcome_classification": outcome,
         "classification_aliases": _classification_aliases(outcome),
         "blocker": blocker,
-        "client_order_id": certification_client_order_id(),
+        "client_order_id": runtime.client_order_id,
         "restart_recovery_performed": restart_recovery_performed,
+        "paper_submit_authorized": runtime.paper_submit_authorized,
         "paper_submit_performed": paper_submit_performed,
         "broker_mutation_performed": broker_mutation_performed,
+        "real_broker_read_performed": preflight.get("real_broker_read_performed")
+        is True,
+        "real_broker_mutation_performed": broker_mutation_performed,
+        "simulated_submit_performed": simulated_submit_performed,
+        "simulated_broker_mutation_performed": simulated_broker_mutation_performed,
         "strategy_order": V189_STRATEGY_ORDER,
         "live_trading": False,
         "profit_claim": "none",
         "labels": [
-            *ALLOWED_LABELS,
+            *_runtime_labels(runtime),
             f"paper_submit_performed={str(paper_submit_performed).lower()}",
             f"broker_mutation_performed={str(broker_mutation_performed).lower()}",
+            f"simulated_submit_performed={str(simulated_submit_performed).lower()}",
+            "real_broker_mutation_performed="
+            f"{str(broker_mutation_performed).lower()}",
         ],
         "preflight": dict(preflight),
         "certification_plan": dict(certification_plan),
@@ -1154,8 +1328,12 @@ def _render_operating_brief(latest_run: Mapping[str, Any]) -> str:
             f"- Outcome: `{latest_run.get('outcome_classification')}`",
             f"- Blocker: `{latest_run.get('blocker') or 'none'}`",
             f"- Client order id: `{latest_run.get('client_order_id')}`",
+            f"- Execution mode: `{latest_run.get('execution_mode')}`",
+            f"- Broker-state mode: `{latest_run.get('broker_state_mode')}`",
+            f"- Paper submit authorized: `{latest_run.get('paper_submit_authorized')}`",
             f"- Paper submit performed: `{latest_run.get('paper_submit_performed')}`",
             f"- Broker mutation performed: `{latest_run.get('broker_mutation_performed')}`",
+            f"- Simulated submit performed: `{latest_run.get('simulated_submit_performed')}`",
             f"- Strategy order: `{latest_run.get('strategy_order')}`",
             f"- Live trading: `{latest_run.get('live_trading')}`",
             f"- Paper endpoint exact match: `{preflight.get('paper_endpoint_exact_match')}`",
@@ -1169,7 +1347,10 @@ def _render_operating_brief(latest_run: Mapping[str, Any]) -> str:
     )
 
 
-def _write_manifest(output_root: Path) -> None:
+def _write_manifest(
+    output_root: Path,
+    runtime: PaperCertificationRuntime | None = None,
+) -> None:
     artifacts = {}
     for filename in (
         "preflight.json",
@@ -1185,7 +1366,12 @@ def _write_manifest(output_root: Path) -> None:
             artifacts[filename] = _artifact_metadata(path)
     manifest = {
         "manifest_version": "v189_paper_certification_manifest_v1",
-        "run_id": V189_RUN_ID,
+        "run_id": runtime.run_id if runtime is not None else V189_RUN_ID,
+        "execution_mode": (
+            runtime.execution_mode
+            if runtime is not None
+            else NETWORKED_PAPER_CERTIFICATION_MODE
+        ),
         "generated_at": _utc_now().isoformat(),
         "artifacts": artifacts,
     }
