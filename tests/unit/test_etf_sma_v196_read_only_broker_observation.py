@@ -29,6 +29,11 @@ GENERATED_AT = "2026-06-25T12:00:00+00:00"
 CLIENT_ORDER_ID = "v195-spy-buy-market-day-20260625"
 EXPECTED_ACCOUNT_ID = "expected-paper-account"
 
+class _AccountStatusActive:
+    def __str__(self) -> str:
+        return "AccountStatus.ACTIVE"
+
+
 
 def test_eligible_observation_writes_required_artifacts(tmp_path: Path) -> None:
     approval_path = _write_approval_packet(tmp_path)
@@ -69,6 +74,9 @@ def test_eligible_observation_writes_required_artifacts(tmp_path: Path) -> None:
         "expected_account_id_exposed": False,
         "observed_account_id_exposed": False,
     }
+    assert packet["expected_account_configured"] is True
+    assert packet["expected_account_matched"] is True
+    assert packet["expected_account_blocker"] == "none"
     assert packet["paper_account_status"] == {
         "observed": True,
         "status": "ACTIVE",
@@ -76,6 +84,11 @@ def test_eligible_observation_writes_required_artifacts(tmp_path: Path) -> None:
         "account_blocked": False,
         "trade_suspended_by_user": False,
     }
+    assert packet["account_status"] == "ACTIVE"
+    assert packet["account_trading_blocked"] is False
+    assert packet["account_blocked"] is False
+    assert packet["account_tradable"] is True
+    assert packet["account_blocker"] == "none"
     assert packet["projected_future_paper_request_fields"] == {
         "symbol": "SPY",
         "side": "buy",
@@ -236,6 +249,7 @@ def test_expected_account_mismatch_blocks_without_exposing_account_id(
     assert packet["eligibility_classification"] == (
         PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH
     )
+    assert packet["blocker"] == "expected_account_mismatch"
     assert packet["expected_account_check"] == {
         "configured": True,
         "observed_account_id_present": True,
@@ -243,14 +257,78 @@ def test_expected_account_mismatch_blocks_without_exposing_account_id(
         "expected_account_id_exposed": False,
         "observed_account_id_exposed": False,
     }
+    assert packet["expected_account_configured"] is True
+    assert packet["expected_account_matched"] is False
+    assert packet["expected_account_blocker"] == "expected_account_mismatch"
     assert EXPECTED_ACCOUNT_ID not in rendered
     assert "different-account" not in rendered
     _assert_no_authority(packet)
 
 
-def test_account_blocked_status_blocks(tmp_path: Path) -> None:
+def test_expected_account_not_configured_fails_closed_before_broker_build(
+    tmp_path: Path,
+) -> None:
     approval_path = _write_approval_packet(tmp_path)
-    fake_client = FakeV196Client(account={"account_id": EXPECTED_ACCOUNT_ID, "status": "INACTIVE"})
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_forbidden_factory,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH
+    )
+    assert packet["blocker"] == "expected_paper_account_id_not_configured"
+    assert packet["broker_read_performed"] is False
+    assert packet["expected_account_check"] == {
+        "configured": False,
+        "observed_account_id_present": False,
+        "matched": None,
+        "expected_account_id_exposed": False,
+        "observed_account_id_exposed": False,
+    }
+    assert packet["expected_account_configured"] is False
+    assert packet["expected_account_matched"] is None
+    assert packet["expected_account_blocker"] == (
+        "expected_paper_account_id_not_configured"
+    )
+    assert packet["account_tradable"] is False
+    assert packet["account_blocker"] == "account_not_observed"
+    _assert_no_authority(packet)
+
+
+def test_account_status_active_enum_with_unblocked_flags_is_tradable(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(account={"status": _AccountStatusActive()})
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == PAPER_OBSERVATION_ELIGIBLE
+    assert packet["account_status"] == "AccountStatus.ACTIVE"
+    assert packet["account_trading_blocked"] is False
+    assert packet["account_blocked"] is False
+    assert packet["account_tradable"] is True
+    assert packet["account_blocker"] == "none"
+    _assert_no_authority(packet)
+
+
+def test_non_active_account_status_blocks(tmp_path: Path) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(
+        account={"account_id": EXPECTED_ACCOUNT_ID, "status": "INACTIVE"}
+    )
 
     packet = run_v196_read_only_broker_observation(
         approval_packet_path=approval_path,
@@ -265,8 +343,174 @@ def test_account_blocked_status_blocks(tmp_path: Path) -> None:
         PAPER_OBSERVATION_BLOCKED_ACCOUNT_NOT_TRADABLE
     )
     assert packet["blocker"] == "account_not_tradable_or_blocked"
+    assert packet["account_tradable"] is False
+    assert packet["account_blocker"] == "account_status_not_active"
     _assert_no_authority(packet)
 
+
+def test_trading_blocked_account_blocks(tmp_path: Path) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(account={"trading_blocked": True})
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_ACCOUNT_NOT_TRADABLE
+    )
+    assert packet["blocker"] == "account_not_tradable_or_blocked"
+    assert packet["account_trading_blocked"] is True
+    assert packet["account_tradable"] is False
+    assert packet["account_blocker"] == "account_trading_blocked"
+    _assert_no_authority(packet)
+
+
+def test_account_blocked_flag_blocks(tmp_path: Path) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(account={"account_blocked": True})
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_ACCOUNT_NOT_TRADABLE
+    )
+    assert packet["blocker"] == "account_not_tradable_or_blocked"
+    assert packet["account_blocked"] is True
+    assert packet["account_tradable"] is False
+    assert packet["account_blocker"] == "account_blocked"
+    _assert_no_authority(packet)
+
+
+def test_classification_priority_checks_expected_account_before_account_and_broker_state(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(
+        account={
+            "account_id": "different-account",
+            "status": "INACTIVE",
+            "trading_blocked": True,
+            "account_blocked": True,
+        },
+        positions=({"symbol": "MSFT", "qty": "1", "market_value": "350"},),
+        open_orders=({"id": "open-order-1", "symbol": "SPY"},),
+        recent_orders=(
+            {"id": "recent-order-1", "client_order_id": CLIENT_ORDER_ID, "symbol": "SPY"},
+        ),
+    )
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH
+    )
+    assert packet["blocker"] == "expected_account_mismatch"
+    _assert_no_authority(packet)
+
+
+def test_classification_priority_checks_account_before_order_position_and_duplicate(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(
+        account={"status": "INACTIVE"},
+        positions=({"symbol": "MSFT", "qty": "1", "market_value": "350"},),
+        open_orders=({"id": "open-order-1", "symbol": "SPY"},),
+        recent_orders=(
+            {"id": "recent-order-1", "client_order_id": CLIENT_ORDER_ID, "symbol": "SPY"},
+        ),
+    )
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_ACCOUNT_NOT_TRADABLE
+    )
+    assert packet["blocker"] == "account_not_tradable_or_blocked"
+    assert packet["account_blocker"] == "account_status_not_active"
+    _assert_no_authority(packet)
+
+
+def test_classification_priority_checks_open_spy_order_before_position_and_duplicate(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(
+        positions=({"symbol": "MSFT", "qty": "1", "market_value": "350"},),
+        open_orders=({"id": "open-order-1", "symbol": "SPY"},),
+        recent_orders=(
+            {"id": "recent-order-1", "client_order_id": CLIENT_ORDER_ID, "symbol": "SPY"},
+        ),
+    )
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_OPEN_SPY_ORDER_PRESENT
+    )
+    assert packet["blocker"] == "open_spy_order_present"
+    _assert_no_authority(packet)
+
+
+def test_classification_priority_checks_unexpected_position_before_duplicate(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client(
+        positions=({"symbol": "MSFT", "qty": "1", "market_value": "350"},),
+        recent_orders=(
+            {"id": "recent-order-1", "client_order_id": CLIENT_ORDER_ID, "symbol": "SPY"},
+        ),
+    )
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+    )
+
+    assert packet["eligibility_classification"] == (
+        PAPER_OBSERVATION_BLOCKED_UNEXPECTED_NON_SPY_POSITION
+    )
+    assert packet["blocker"] == "unexpected_non_spy_position"
+    _assert_no_authority(packet)
 
 def test_live_profile_or_endpoint_blocks_before_broker_build(tmp_path: Path) -> None:
     approval_path = _write_approval_packet(tmp_path)

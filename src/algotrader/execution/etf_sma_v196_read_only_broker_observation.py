@@ -16,7 +16,6 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 from algotrader.config import (
     DEFAULT_ALPACA_PAPER_BASE_URL,
@@ -87,6 +86,7 @@ V196_SAFETY_LABELS = (
 
 _APPROVAL_PACKET_NAMES = ("approval_packet.json", "operating_packet.json")
 _EXPECTED_ACCOUNT_ENV = "ALPACA_EXPECTED_PAPER_ACCOUNT_ID"
+_ACTIVE_ACCOUNT_STATUS_VALUES = {"ACTIVE", "ACCOUNT_STATUS_ACTIVE"}
 _MISSING = object()
 
 
@@ -255,6 +255,26 @@ def run_v196_read_only_broker_observation(
         _write_artifacts(root, packet)
         return packet
 
+    expected_account_blocker = _expected_account_blocker(expected_account_check)
+    if expected_account_blocker == "expected_paper_account_id_not_configured":
+        packet = _build_packet(
+            run_id=run_id,
+            timestamp=generated_at,
+            output_root=root,
+            source_path=source_path,
+            source_approval_packet=source_approval_packet,
+            projected_request_fields=projected_request_fields,
+            observation=_empty_observation(
+                attestation=attestation,
+                expected_account_check=expected_account_check,
+            ),
+            classification=PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH,
+            blocker=expected_account_blocker,
+            next_operator_action="configure_expected_paper_account_id_before_broker_observation",
+        )
+        _write_artifacts(root, packet)
+        return packet
+
     try:
         client = (broker_client_factory or AlpacaSdkClient)(paper_config)
     except Exception as exc:  # pragma: no cover - real SDK construction failure path
@@ -412,8 +432,8 @@ def render_v196_broker_observation_brief(packet: Mapping[str, object]) -> str:
             f"- Broker mutation performed: `{_bool_text(packet.get('broker_mutation_performed'))}`",
             f"- Paper submit performed: `{_bool_text(packet.get('paper_submit_performed'))}`",
             f"- Live read performed: `{_bool_text(packet.get('live_read_performed'))}`",
-            f"- Account status: `{account.get('status', '')}`",
-            f"- Expected account configured / matched: `{_bool_text(expected_account.get('configured'))}` / `{_bool_text(expected_account.get('matched'))}`",
+            f"- Account status / tradable / blocker: `{packet.get('account_status', '')}` / `{_bool_text(packet.get('account_tradable'))}` / `{packet.get('account_blocker', '')}`",
+            f"- Expected account configured / matched / blocker: `{_bool_text(expected_account.get('configured'))}` / `{_bool_text(expected_account.get('matched'))}` / `{packet.get('expected_account_blocker', '')}`",
             f"- SPY position observed: `{_bool_text(packet.get('spy_position_observed'))}`",
             f"- Open SPY order observed: `{_bool_text(packet.get('open_spy_order_observed'))}`",
             f"- Unexpected non-SPY position observed: `{_bool_text(packet.get('unexpected_non_spy_position_observed'))}`",
@@ -580,6 +600,9 @@ def _build_packet(
             account_summary.get("trade_suspended_by_user")
         ),
     }
+    account_blocker = _account_blocker(account_summary)
+    expected_account_check = dict(observation.expected_account_check)
+    expected_account_blocker = _expected_account_blocker(expected_account_check)
     packet = {
         "packet_version": V196_PACKET_VERSION,
         "run_id": run_id,
@@ -600,10 +623,17 @@ def _build_packet(
         "projected_future_paper_request_fields": dict(projected_request_fields),
         "observed_paper_account_attestation": dict(observation.attestation),
         "paper_account_attestation": dict(observation.attestation),
-        "expected_account_check": dict(observation.expected_account_check),
+        "expected_account_check": expected_account_check,
         "account_status": account_status["status"],
         "account_trading_blocked": account_status["trading_blocked"],
         "account_blocked": account_status["account_blocked"],
+        "account_tradable": account_blocker == "none",
+        "account_blocker": account_blocker,
+        "expected_account_configured": (
+            expected_account_check.get("configured") is True
+        ),
+        "expected_account_matched": expected_account_check.get("matched"),
+        "expected_account_blocker": expected_account_blocker,
         "paper_account_status": account_status,
         "account_observed": observation.account_observed,
         "positions_observed": observation.positions_observed,
@@ -672,15 +702,17 @@ def _classify_observation(
         )
 
     expected_check = observation.expected_account_check
-    if expected_check.get("configured") is True and expected_check.get("matched") is not True:
+    expected_account_blocker = _expected_account_blocker(expected_check)
+    if expected_account_blocker != "none":
         return (
             PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH,
-            "expected_account_mismatch",
+            expected_account_blocker,
             "verify_expected_paper_account_without_exposing_account_id",
         )
 
     account = observation.account_summary or {}
-    if _account_not_tradable(account):
+    account_blocker = _account_blocker(account)
+    if account_blocker != "none":
         return (
             PAPER_OBSERVATION_BLOCKED_ACCOUNT_NOT_TRADABLE,
             "account_not_tradable_or_blocked",
@@ -735,18 +767,55 @@ def _classify_observation(
 
 
 def _account_not_tradable(account: Mapping[str, object]) -> bool:
-    status = _text(account.get("status")).upper()
-    if status and status not in {"ACTIVE", "ACCOUNT_STATUS_ACTIVE"}:
-        return True
-    for field_name in (
-        "trading_blocked",
-        "account_blocked",
-        "trade_suspended_by_user",
-    ):
-        value = _optional_bool(account.get(field_name))
-        if value is True:
-            return True
-    return False
+    return _account_blocker(account) != "none"
+
+
+def _account_blocker(account: Mapping[str, object]) -> str:
+    if not account:
+        return "account_not_observed"
+
+    status = _text(account.get("status"))
+    if not _account_status_is_active(status):
+        return "account_status_not_active"
+
+    trading_blocked = _optional_bool(account.get("trading_blocked"))
+    if trading_blocked is True:
+        return "account_trading_blocked"
+    if trading_blocked is not False:
+        return "account_trading_blocked_unknown"
+
+    account_blocked = _optional_bool(account.get("account_blocked"))
+    if account_blocked is True:
+        return "account_blocked"
+    if account_blocked is not False:
+        return "account_blocked_unknown"
+
+    if _optional_bool(account.get("trade_suspended_by_user")) is True:
+        return "account_trade_suspended_by_user"
+
+    return "none"
+
+
+def _account_status_is_active(status: object) -> bool:
+    normalized = _text(status).upper()
+    if not normalized:
+        return False
+    enum_token = normalized.rsplit(".", maxsplit=1)[-1]
+    return (
+        normalized in _ACTIVE_ACCOUNT_STATUS_VALUES
+        or enum_token in _ACTIVE_ACCOUNT_STATUS_VALUES
+    )
+
+
+def _expected_account_blocker(expected_check: Mapping[str, object]) -> str:
+    if expected_check.get("configured") is not True:
+        return "expected_paper_account_id_not_configured"
+    matched = expected_check.get("matched")
+    if matched is True:
+        return "none"
+    if matched is False:
+        return "expected_account_mismatch"
+    return "expected_account_match_not_observed"
 
 
 def _projected_request_scope_blocker(
@@ -924,9 +993,14 @@ def _profile_or_endpoint_blocker(attestation: Mapping[str, object]) -> str:
 
 
 def _endpoint_host(url: str) -> str:
-    parsed = urlparse(url)
-    host = parsed.netloc or parsed.path.split("/", maxsplit=1)[0]
-    return host.lower().strip()
+    endpoint = _text(url).lower()
+    if "://" in endpoint:
+        endpoint = endpoint.split("://", maxsplit=1)[1]
+    for separator in ("/", "?", "#"):
+        endpoint = endpoint.split(separator, maxsplit=1)[0]
+    if "@" in endpoint:
+        endpoint = endpoint.rsplit("@", maxsplit=1)[1]
+    return endpoint.strip()
 
 
 def _live_endpoint_detected(host: str) -> bool:
