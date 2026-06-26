@@ -27,7 +27,25 @@ from algotrader.execution.etf_sma_v196_read_only_broker_observation import (
 
 GENERATED_AT = "2026-06-25T12:00:00+00:00"
 CLIENT_ORDER_ID = "v195-spy-buy-market-day-20260625"
-EXPECTED_ACCOUNT_ID = "expected-paper-account"
+EXPECTED_ACCOUNT_ID = "expected-paper-account-id"
+EXPECTED_ACCOUNT_NUMBER = "paper-account-number"
+
+_REQUIRED_ACCOUNT_AUDIT_FIELDS = (
+    "observed_account_id_present",
+    "observed_account_number_present",
+    "expected_account_configured",
+    "expected_account_id_matched",
+    "expected_account_number_matched",
+    "expected_account_matched",
+    "expected_account_match_mode",
+    "expected_account_blocker",
+)
+_EXPECTED_ACCOUNT_CHECK_FIELDS = tuple(
+    field
+    for field in _REQUIRED_ACCOUNT_AUDIT_FIELDS
+    if field != "expected_account_blocker"
+)
+
 
 class _AccountStatusActive:
     def __str__(self) -> str:
@@ -67,16 +85,20 @@ def test_eligible_observation_writes_required_artifacts(tmp_path: Path) -> None:
         "credentials_available": True,
         "credential_values_exposed": False,
     }
-    assert packet["expected_account_check"] == {
-        "configured": True,
-        "observed_account_id_present": True,
-        "matched": True,
-        "expected_account_id_exposed": False,
-        "observed_account_id_exposed": False,
-    }
-    assert packet["expected_account_configured"] is True
-    assert packet["expected_account_matched"] is True
-    assert packet["expected_account_blocker"] == "none"
+    _assert_expected_account_audit(
+        packet,
+        observed_account_id_present=True,
+        observed_account_number_present=True,
+        expected_account_configured=True,
+        expected_account_id_matched=True,
+        expected_account_number_matched=False,
+        expected_account_matched=True,
+        expected_account_match_mode="account_id",
+        expected_account_blocker="none",
+    )
+    rendered = json.dumps(packet, sort_keys=True)
+    assert EXPECTED_ACCOUNT_ID not in rendered
+    assert EXPECTED_ACCOUNT_NUMBER not in rendered
     assert packet["paper_account_status"] == {
         "observed": True,
         "status": "ACTIVE",
@@ -113,6 +135,45 @@ def test_eligible_observation_writes_required_artifacts(tmp_path: Path) -> None:
         "get_orders:all:SPY",
     ]
     _assert_artifacts(output_root, packet)
+    _assert_no_authority(packet)
+
+
+def test_expected_account_number_match_passes_with_account_number_mode(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV196Client()
+
+    packet = run_v196_read_only_broker_observation(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v196",
+        timestamp=GENERATED_AT,
+        env=_paper_env(),
+        broker_client_factory=_factory(fake_client),
+        expected_paper_account_id=EXPECTED_ACCOUNT_NUMBER,
+    )
+
+    assert packet["eligibility_classification"] == PAPER_OBSERVATION_ELIGIBLE
+    _assert_expected_account_audit(
+        packet,
+        observed_account_id_present=True,
+        observed_account_number_present=True,
+        expected_account_configured=True,
+        expected_account_id_matched=False,
+        expected_account_number_matched=True,
+        expected_account_matched=True,
+        expected_account_match_mode="account_number",
+        expected_account_blocker="none",
+    )
+    assert fake_client.calls == [
+        "get_account",
+        "get_positions",
+        "get_orders:open:SPY",
+        "get_orders:all:SPY",
+    ]
+    rendered = json.dumps(packet, sort_keys=True)
+    assert EXPECTED_ACCOUNT_ID not in rendered
+    assert EXPECTED_ACCOUNT_NUMBER not in rendered
     _assert_no_authority(packet)
 
 
@@ -234,7 +295,12 @@ def test_expected_account_mismatch_blocks_without_exposing_account_id(
     tmp_path: Path,
 ) -> None:
     approval_path = _write_approval_packet(tmp_path)
-    fake_client = FakeV196Client(account={"account_id": "different-account"})
+    fake_client = FakeV196Client(
+        account={
+            "account_id": "different-account",
+            "account_number": "different-number",
+        }
+    )
 
     packet = run_v196_read_only_broker_observation(
         approval_packet_path=approval_path,
@@ -250,18 +316,21 @@ def test_expected_account_mismatch_blocks_without_exposing_account_id(
         PAPER_OBSERVATION_BLOCKED_EXPECTED_ACCOUNT_MISMATCH
     )
     assert packet["blocker"] == "expected_account_mismatch"
-    assert packet["expected_account_check"] == {
-        "configured": True,
-        "observed_account_id_present": True,
-        "matched": False,
-        "expected_account_id_exposed": False,
-        "observed_account_id_exposed": False,
-    }
-    assert packet["expected_account_configured"] is True
-    assert packet["expected_account_matched"] is False
-    assert packet["expected_account_blocker"] == "expected_account_mismatch"
+    _assert_expected_account_audit(
+        packet,
+        observed_account_id_present=True,
+        observed_account_number_present=True,
+        expected_account_configured=True,
+        expected_account_id_matched=False,
+        expected_account_number_matched=False,
+        expected_account_matched=False,
+        expected_account_match_mode="none",
+        expected_account_blocker="expected_account_mismatch",
+    )
     assert EXPECTED_ACCOUNT_ID not in rendered
+    assert EXPECTED_ACCOUNT_NUMBER not in rendered
     assert "different-account" not in rendered
+    assert "different-number" not in rendered
     _assert_no_authority(packet)
 
 
@@ -283,17 +352,16 @@ def test_expected_account_not_configured_fails_closed_before_broker_build(
     )
     assert packet["blocker"] == "expected_paper_account_id_not_configured"
     assert packet["broker_read_performed"] is False
-    assert packet["expected_account_check"] == {
-        "configured": False,
-        "observed_account_id_present": False,
-        "matched": None,
-        "expected_account_id_exposed": False,
-        "observed_account_id_exposed": False,
-    }
-    assert packet["expected_account_configured"] is False
-    assert packet["expected_account_matched"] is None
-    assert packet["expected_account_blocker"] == (
-        "expected_paper_account_id_not_configured"
+    _assert_expected_account_audit(
+        packet,
+        observed_account_id_present=False,
+        observed_account_number_present=False,
+        expected_account_configured=False,
+        expected_account_id_matched=None,
+        expected_account_number_matched=None,
+        expected_account_matched=None,
+        expected_account_match_mode="none",
+        expected_account_blocker="expected_paper_account_id_not_configured",
     )
     assert packet["account_tradable"] is False
     assert packet["account_blocker"] == "account_not_observed"
@@ -670,6 +738,7 @@ class FakeV196Client:
     ) -> None:
         self.account = {
             "account_id": EXPECTED_ACCOUNT_ID,
+            "account_number": EXPECTED_ACCOUNT_NUMBER,
             "status": "ACTIVE",
             "trading_blocked": False,
             "account_blocked": False,
@@ -765,6 +834,39 @@ def _factory(fake_client: FakeV196Client):
 
 def _forbidden_factory(_config):  # noqa: ANN001
     raise AssertionError("broker factory must not be called")
+
+
+def _assert_expected_account_audit(
+    packet: dict[str, object],
+    *,
+    observed_account_id_present: bool,
+    observed_account_number_present: bool,
+    expected_account_configured: bool,
+    expected_account_id_matched: bool | None,
+    expected_account_number_matched: bool | None,
+    expected_account_matched: bool | None,
+    expected_account_match_mode: str,
+    expected_account_blocker: str,
+) -> None:
+    for field_name in _REQUIRED_ACCOUNT_AUDIT_FIELDS:
+        assert field_name in packet
+
+    expected_values = {
+        "observed_account_id_present": observed_account_id_present,
+        "observed_account_number_present": observed_account_number_present,
+        "expected_account_configured": expected_account_configured,
+        "expected_account_id_matched": expected_account_id_matched,
+        "expected_account_number_matched": expected_account_number_matched,
+        "expected_account_matched": expected_account_matched,
+        "expected_account_match_mode": expected_account_match_mode,
+    }
+    for field_name, expected_value in expected_values.items():
+        assert packet[field_name] == expected_value
+    assert packet["expected_account_blocker"] == expected_account_blocker
+    assert packet["expected_account_check"] == {
+        field_name: expected_values[field_name]
+        for field_name in _EXPECTED_ACCOUNT_CHECK_FIELDS
+    }
 
 
 def _assert_artifacts(output_root: Path, packet: dict[str, object]) -> None:

@@ -414,7 +414,6 @@ def render_v196_broker_observation_brief(packet: Mapping[str, object]) -> str:
     """Render a concise operator brief without credential material."""
 
     request = _mapping(packet.get("projected_future_paper_request_fields"))
-    expected_account = _mapping(packet.get("expected_account_check"))
     account = _mapping(packet.get("paper_account_status"))
     return "\n".join(
         (
@@ -433,7 +432,7 @@ def render_v196_broker_observation_brief(packet: Mapping[str, object]) -> str:
             f"- Paper submit performed: `{_bool_text(packet.get('paper_submit_performed'))}`",
             f"- Live read performed: `{_bool_text(packet.get('live_read_performed'))}`",
             f"- Account status / tradable / blocker: `{packet.get('account_status', '')}` / `{_bool_text(packet.get('account_tradable'))}` / `{packet.get('account_blocker', '')}`",
-            f"- Expected account configured / matched / blocker: `{_bool_text(expected_account.get('configured'))}` / `{_bool_text(expected_account.get('matched'))}` / `{packet.get('expected_account_blocker', '')}`",
+            f"- Expected account configured / matched / mode / blocker: `{_bool_text(packet.get('expected_account_configured'))}` / `{_bool_text(packet.get('expected_account_matched'))}` / `{packet.get('expected_account_match_mode', '')}` / `{packet.get('expected_account_blocker', '')}`",
             f"- SPY position observed: `{_bool_text(packet.get('spy_position_observed'))}`",
             f"- Open SPY order observed: `{_bool_text(packet.get('open_spy_order_observed'))}`",
             f"- Unexpected non-SPY position observed: `{_bool_text(packet.get('unexpected_non_spy_position_observed'))}`",
@@ -470,6 +469,7 @@ def _observe_broker(
     expected_account_check = _expected_account_check(
         expected_account_id,
         observed_account_id=_text(account_summary.get("account_id")),
+        observed_account_number=_text(account_summary.get("account_number")),
     )
 
     try:
@@ -629,10 +629,27 @@ def _build_packet(
         "account_blocked": account_status["account_blocked"],
         "account_tradable": account_blocker == "none",
         "account_blocker": account_blocker,
-        "expected_account_configured": (
-            expected_account_check.get("configured") is True
+        "observed_account_id_present": (
+            expected_account_check.get("observed_account_id_present") is True
         ),
-        "expected_account_matched": expected_account_check.get("matched"),
+        "observed_account_number_present": (
+            expected_account_check.get("observed_account_number_present") is True
+        ),
+        "expected_account_configured": (
+            expected_account_check.get("expected_account_configured") is True
+        ),
+        "expected_account_id_matched": expected_account_check.get(
+            "expected_account_id_matched"
+        ),
+        "expected_account_number_matched": expected_account_check.get(
+            "expected_account_number_matched"
+        ),
+        "expected_account_matched": expected_account_check.get(
+            "expected_account_matched"
+        ),
+        "expected_account_match_mode": _text(
+            expected_account_check.get("expected_account_match_mode")
+        ),
         "expected_account_blocker": expected_account_blocker,
         "paper_account_status": account_status,
         "account_observed": observation.account_observed,
@@ -808,9 +825,9 @@ def _account_status_is_active(status: object) -> bool:
 
 
 def _expected_account_blocker(expected_check: Mapping[str, object]) -> str:
-    if expected_check.get("configured") is not True:
+    if expected_check.get("expected_account_configured") is not True:
         return "expected_paper_account_id_not_configured"
-    matched = expected_check.get("matched")
+    matched = expected_check.get("expected_account_matched")
     if matched is True:
         return "none"
     if matched is False:
@@ -1011,16 +1028,38 @@ def _expected_account_check(
     expected_account_id: str | None,
     *,
     observed_account_id: str | None = None,
+    observed_account_number: str | None = None,
 ) -> dict[str, object]:
     expected = _text(expected_account_id)
-    observed = _text(observed_account_id)
+    observed_id = _text(observed_account_id)
+    observed_number = _text(observed_account_number)
     configured = bool(expected)
+    account_id_matched = (
+        (observed_id == expected) if configured and observed_id else None
+    )
+    account_number_matched = (
+        (observed_number == expected) if configured and observed_number else None
+    )
+    if account_id_matched is True:
+        matched = True
+        match_mode = "account_id"
+    elif account_number_matched is True:
+        matched = True
+        match_mode = "account_number"
+    elif account_id_matched is False or account_number_matched is False:
+        matched = False
+        match_mode = "none"
+    else:
+        matched = None
+        match_mode = "none"
     return {
-        "configured": configured,
-        "observed_account_id_present": bool(observed),
-        "matched": (observed == expected) if configured and observed else None,
-        "expected_account_id_exposed": False,
-        "observed_account_id_exposed": False,
+        "observed_account_id_present": bool(observed_id),
+        "observed_account_number_present": bool(observed_number),
+        "expected_account_configured": configured,
+        "expected_account_id_matched": account_id_matched,
+        "expected_account_number_matched": account_number_matched,
+        "expected_account_matched": matched,
+        "expected_account_match_mode": match_mode,
     }
 
 
@@ -1052,6 +1091,7 @@ def _broker_read_scope(*, symbol: str, client_order_id: str) -> dict[str, object
 def _account_summary(account: object) -> dict[str, object]:
     return {
         "account_id": _text(_first_field(account, "account_id", "id")),
+        "account_number": _text(_first_field(account, "account_number")),
         "status": _text(_first_field(account, "status")),
         "trading_blocked": _optional_bool(_first_field(account, "trading_blocked")),
         "account_blocked": _optional_bool(_first_field(account, "account_blocked")),
