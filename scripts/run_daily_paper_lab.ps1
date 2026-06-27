@@ -37,6 +37,10 @@ the daily lab command itself performs no broker read.
 Optional local read-only paper broker snapshot reconciliation JSONL to consume
 when BrokerStateMode is alpaca_paper_read_only.
 
+.PARAMETER PostDrillGuardPacketPath
+Optional local v2.00 post-drill guard packet JSON to display in Mission Control.
+This is read-only and grants no paper submit or cancel authority.
+
 .PARAMETER OperationalOnly
 Produce only the active daily operating artifacts and suppress secondary
 candidate-research and agent work-order materialization. This is the default
@@ -63,6 +67,7 @@ param(
     [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
     [string]$BrokerStateMode = "broker_state_not_observed",
     [string]$BrokerSnapshotLog,
+    [string]$PostDrillGuardPacketPath = "runs/paper_lab/v200_post_drill_operating_guard/post_drill_guard_packet.json",
     [switch]$OperationalOnly,
     [switch]$FullResearchPacket,
     [string]$Format = "text"
@@ -148,6 +153,10 @@ if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {
     $CliArgs += @("--broker-snapshot-log", $BrokerSnapshotLog)
 }
 
+if (-not [string]::IsNullOrEmpty($PostDrillGuardPacketPath)) {
+    $CliArgs += @("--post-drill-guard-packet-path", $PostDrillGuardPacketPath)
+}
+
 if ($UseOperationalOnly) {
     $CliArgs += @("--operational-only")
 }
@@ -179,6 +188,9 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $DataRefreshIngestPerformedText = "false"
     $ExactNextOperatorActionText = "unknown"
     $ForwardSignalEvidenceLedgerStatusText = "unknown"
+    $PostDrillGuardStatusText = "post_drill_guard_not_available"
+    $PostDrillGuardClassificationText = "mission_control_post_drill_guard_missing"
+    $PostDrillGuardAuthorizationConsumedText = "false"
 
     if (Test-Path -LiteralPath $LatestRunPath) {
         try {
@@ -200,6 +212,15 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
             }
             if ($LatestRun.forward_signal_evidence_ledger_status) {
                 $ForwardSignalEvidenceLedgerStatusText = [string]$LatestRun.forward_signal_evidence_ledger_status
+            }
+            if ($LatestRun.post_drill_guard_status) {
+                $PostDrillGuardStatusText = [string]$LatestRun.post_drill_guard_status
+            }
+            if ($LatestRun.post_drill_guard_classification) {
+                $PostDrillGuardClassificationText = [string]$LatestRun.post_drill_guard_classification
+            }
+            if ($null -ne $LatestRun.post_drill_guard_authorization_consumed) {
+                $PostDrillGuardAuthorizationConsumedText = ([string]$LatestRun.post_drill_guard_authorization_consumed).ToLowerInvariant()
             }
         }
         catch {
@@ -225,6 +246,12 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Broker mutation performed: false"
     Write-Host "Broker-state mode: $BrokerStateModeText"
     Write-Host "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText"
+    Write-Host "Post-drill guard status: $PostDrillGuardStatusText"
+    Write-Host "Post-drill guard classification: $PostDrillGuardClassificationText"
+    Write-Host "Post-drill guard authorization consumed: $PostDrillGuardAuthorizationConsumedText"
+    Write-Host "Post-drill guard paper submit authorized: false"
+    Write-Host "Post-drill guard paper cancel authorized: false"
+    Write-Host "Post-drill guard next paper action requires new authorization: true"
     Write-Host "Exact next operator action: $ExactNextOperatorActionText"
 }
 

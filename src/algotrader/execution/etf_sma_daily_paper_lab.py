@@ -52,6 +52,9 @@ _DEFAULT_BARS_CSV = "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonica
 _DEFAULT_REFRESH_INTAKE_MANIFEST = (
     "runs/paper_lab/m446_adjusted_spy_bars_refresh_manifest.jsonl"
 )
+_DEFAULT_POST_DRILL_GUARD_PACKET_PATH = (
+    "runs/paper_lab/v200_post_drill_operating_guard/post_drill_guard_packet.json"
+)
 _DAILY_BAR_CURRENT_MAX_CALENDAR_AGE_DAYS = 1
 _KNOWN_FULL_DAY_MARKET_CLOSURES = frozenset(
     {
@@ -212,6 +215,9 @@ _LATEST_RUN_VERSION = "assistant_v1.37_latest_run"
 _ACTIVE_MISSION_CONTROL_BRIEF_VERSION = (
     "assistant_v1.69_active_mission_control_brief"
 )
+_POST_DRILL_GUARD_DISPLAY_VERSION = (
+    "v201_mission_control_post_drill_guard_display_v1"
+)
 _DAILY_AUTOPILOT_CONTROLLER_VERSION = (
     "assistant_v1.70_noncapital_autopilot_controller"
 )
@@ -298,6 +304,24 @@ _MISSION_CONTROL_FORBIDDEN_BEHAVIOR = (
 _PACKET_TYPE = "daily_trading_research_command_center"
 _COMMAND = "etf-sma-daily-paper-lab"
 _SCRIPT = "scripts/run_daily_paper_lab.ps1"
+_V200_POST_DRILL_GUARD_PACKET_VERSION = "v200_post_drill_operating_guard_packet_v1"
+_V200_POST_DRILL_GUARD_READY = "post_drill_guard_ready"
+_POST_DRILL_GUARD_STATUS_NOT_AVAILABLE = "post_drill_guard_not_available"
+_POST_DRILL_GUARD_STATUS_AUTHORITY_CLOSED = "post_drill_guard_authority_closed"
+_MISSION_CONTROL_POST_DRILL_GUARD_READY = "mission_control_post_drill_guard_ready"
+_MISSION_CONTROL_POST_DRILL_GUARD_MISSING = "mission_control_post_drill_guard_missing"
+_MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED = (
+    "mission_control_post_drill_guard_malformed"
+)
+_MISSION_CONTROL_POST_DRILL_GUARD_BLOCKED_LIVE_ACTIVITY = (
+    "mission_control_post_drill_guard_blocked_live_activity"
+)
+_MISSION_CONTROL_POST_DRILL_GUARD_AUTHORITY_CLOSED = (
+    "mission_control_post_drill_guard_authority_closed"
+)
+_POST_DRILL_GUARD_UNAVAILABLE_NEXT_OPERATOR_ACTION = (
+    "review_or_regenerate_v200_post_drill_guard_before_any_future_paper_action"
+)
 _BASELINE_HEALTH_NEXT_SAFE_TEST = (
     "python -m pytest tests\\unit\\test_etf_sma_daily_paper_lab.py "
     "-k baseline_health_evaluation"
@@ -547,6 +571,7 @@ _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "data_freshness_plan",
     "data_refresh_bridge",
     "data_refresh_dry_run",
+    "post_drill_guard",
     "market_data_lane",
     "broker_state_lane",
     "decision_lane",
@@ -2414,6 +2439,7 @@ class EtfSmaDailyPaperLabConfig:
     sma_slow_window: int = 200
     broker_state_mode: str = "broker_state_not_observed"
     broker_snapshot_log: Path | str | None = None
+    post_drill_guard_packet_path: Path | str | None = None
     run_date: str | None = None
     operational_only: bool = False
 
@@ -2432,6 +2458,14 @@ class EtfSmaDailyPaperLabConfig:
             self,
             "broker_snapshot_log",
             _optional_path(self.broker_snapshot_log, "broker_snapshot_log"),
+        )
+        object.__setattr__(
+            self,
+            "post_drill_guard_packet_path",
+            _optional_path(
+                self.post_drill_guard_packet_path,
+                "post_drill_guard_packet_path",
+            ),
         )
         if self.broker_snapshot_log is not None and broker_state_mode != (
             "alpaca_paper_read_only"
@@ -5789,6 +5823,7 @@ def _build_mission_control(
         "generated_at": "offline_command_runtime",
         "output_root": _normalize_path(output_root),
         "artifacts": artifacts,
+        "post_drill_guard": dict(_post_drill_guard_payload_surface(payload)),
         "active_operating_brief": active_operating_brief,
         "execution_plan": execution_plan,
         "daily_approval_gate": daily_approval_gate,
@@ -5917,6 +5952,9 @@ def _mission_control_daily_decision_summary(
         ),
         "what_changed": what_changed,
     }
+    summary.update(
+        _post_drill_guard_summary_fields(_post_drill_guard_payload_surface(payload))
+    )
     summary["active_operating_brief"] = dict(active_operating_brief)
     summary.update(_active_brief_compact_fields(active_operating_brief))
     summary["daily_approval_gate"] = dict(daily_approval_gate)
@@ -6075,6 +6113,9 @@ def _mission_control_daily_latest(
         ),
         "safety_labels": list(decision_lane.get("safety_labels", [])),
     }
+    daily_latest.update(
+        _post_drill_guard_summary_fields(_post_drill_guard_payload_surface(payload))
+    )
     daily_latest["active_operating_brief"] = dict(active_operating_brief)
     daily_latest.update(_active_brief_compact_fields(active_operating_brief))
     daily_latest["execution_plan"] = dict(execution_plan)
@@ -6222,6 +6263,8 @@ def _mission_control_latest_run_entry(
         ),
         "safety_labels": list(daily_latest.get("safety_labels", [])),
     }
+    for key in _POST_DRILL_GUARD_SUMMARY_FIELD_NAMES:
+        latest_run[key] = daily_latest.get(key)
     active_operating_brief = daily_latest.get("active_operating_brief")
     if isinstance(active_operating_brief, Mapping):
         latest_run["active_operating_brief"] = dict(active_operating_brief)
@@ -8184,6 +8227,7 @@ def _mission_control_executive_summary(
     validation_summary: Mapping[str, Any],
     active_operating_brief: Mapping[str, Any],
 ) -> dict[str, Any]:
+    post_drill_guard = _post_drill_guard_payload_surface(payload)
     return {
         "current_system_state": (
             "offline_mission_control_ready"
@@ -8274,6 +8318,8 @@ def _mission_control_executive_summary(
         "forward_signal_evidence_ledger_summary": dict(
             payload.get("forward_signal_evidence_ledger_summary", {})
         ),
+        "post_drill_guard": dict(post_drill_guard),
+        **_post_drill_guard_compact_fields(post_drill_guard),
     }
 
 
@@ -9094,6 +9140,7 @@ def _render_daily_decision_summary_html_section(
 
 def _active_operating_brief_markdown_lines(
     active: Mapping[str, Any],
+    post_drill_guard: Any | None = None,
 ) -> list[str]:
     return [
         "## Active Operating Brief",
@@ -9151,13 +9198,62 @@ def _active_operating_brief_markdown_lines(
             f"`{active['candidate_research_backlog_status']}`"
         ),
         "",
+        *_post_drill_guard_markdown_lines(post_drill_guard),
+    ]
+
+
+def _post_drill_guard_markdown_lines(guard: Any) -> list[str]:
+    if not isinstance(guard, Mapping):
+        guard = _post_drill_guard_display_status(None)
+    return [
+        "## Post-Drill Guard",
+        f"- Status: `{guard.get('status', '')}`",
+        f"- Classification: `{guard.get('classification', '')}`",
+        f"- Source packet: `{guard.get('source_packet_path', '')}`",
+        f"- Latest drill outcome: `{guard.get('latest_drill_outcome', '')}`",
+        (
+            "- Final broker order status: "
+            f"`{guard.get('final_broker_order_status', '')}`"
+        ),
+        f"- Client order id: `{guard.get('client_order_id', '')}`",
+        (
+            "- Authorization consumed: "
+            f"`{str(guard.get('authorization_consumed')).lower()}`"
+        ),
+        "- paper_submit_authorized=false",
+        "- paper_cancel_authorized=false",
+        "- next_paper_action_requires_new_authorization=true",
+        f"- Next operator action: `{guard.get('next_operator_action', '')}`",
+        (
+            "- Historical source broker read / mutation: "
+            f"`{str(guard.get('source_broker_read_performed')).lower()}` / "
+            f"`{str(guard.get('source_broker_mutation_performed')).lower()}`"
+        ),
+        (
+            "- Historical source paper submit / cancel: "
+            f"`{str(guard.get('source_paper_submit_performed')).lower()}` / "
+            f"`{str(guard.get('source_paper_cancel_performed')).lower()}`"
+        ),
+        (
+            "- Historical source live read / mutation / trading: "
+            f"`{str(guard.get('source_live_read_performed')).lower()}` / "
+            f"`{str(guard.get('source_live_mutation_performed')).lower()}` / "
+            f"`{str(guard.get('source_live_trading_performed')).lower()}`"
+        ),
+        "",
     ]
 
 
 def _render_active_operating_brief_html_section(
     active: Mapping[str, Any],
+    post_drill_guard: Any | None = None,
 ) -> str:
     controller = active.get("daily_autopilot_controller")
+    guard = (
+        post_drill_guard
+        if isinstance(post_drill_guard, Mapping)
+        else _post_drill_guard_display_status(None)
+    )
     controller_rows = ""
     if isinstance(controller, Mapping):
         controller_rows = f"""
@@ -9211,6 +9307,14 @@ def _render_active_operating_brief_html_section(
         <dt>Operator action</dt><dd>{_html_escape(str(active["operator_action"]))}</dd>
         <dt>Primary current work order</dt><dd>{_html_escape(str(active["primary_current_work_order"]))}</dd>
         <dt>Candidate research backlog</dt><dd>{_html_escape(str(active["candidate_research_backlog_status"]))}</dd>
+        <dt>Post-drill guard status</dt><dd>{_html_escape(str(guard.get("status", "")))}</dd>
+        <dt>Latest drill outcome</dt><dd>{_html_escape(str(guard.get("latest_drill_outcome", "")))}</dd>
+        <dt>Final broker order status</dt><dd>{_html_escape(str(guard.get("final_broker_order_status", "")))}</dd>
+        <dt>Post-drill client order id</dt><dd>{_html_escape(str(guard.get("client_order_id", "")))}</dd>
+        <dt>Authorization consumed</dt><dd>{str(guard.get("authorization_consumed")).lower()}</dd>
+        <dt>Paper submit authorized now</dt><dd>false</dd>
+        <dt>Paper cancel authorized now</dt><dd>false</dd>
+        <dt>New paper authorization required</dt><dd>true</dd>
       </dl>
     </section>"""
 
@@ -9229,6 +9333,7 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
     dry_run = mission_control["data_refresh_dry_run"]
     readiness = mission_control["readiness_score"]
     validation = mission_control["mission_control_validation_summary"]
+    post_drill_guard = mission_control.get("post_drill_guard")
     labels = ", ".join(f"`{label}`" for label in decision["safety_labels"])
     return "\n".join(
         [
@@ -9236,7 +9341,10 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
             "",
             f"Operator review version: `{_OPERATOR_REVIEW_VERSION}`",
             "",
-            *_active_operating_brief_markdown_lines(active_operating_brief),
+            *_active_operating_brief_markdown_lines(
+                active_operating_brief,
+                post_drill_guard,
+            ),
             *_daily_decision_summary_markdown_lines(daily_decision_summary),
             "## Open First",
             f"- Open first: `{latest_run['open_first_path']}`",
@@ -9357,6 +9465,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     readiness = mission_control["readiness_score"]
     dispatcher = mission_control["rule_based_dispatcher_v0"]
     artifacts = mission_control["artifacts"]
+    post_drill_guard = mission_control.get("post_drill_guard")
     work_orders_artifact_line = (
         f"- `work_orders/`: `{artifacts['work_orders']}`"
         if "work_orders" in artifacts
@@ -9368,7 +9477,10 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     lines = [
         "# Mission Control",
         "",
-        *_active_operating_brief_markdown_lines(active_operating_brief),
+        *_active_operating_brief_markdown_lines(
+            active_operating_brief,
+            post_drill_guard,
+        ),
         "## Open First",
         f"- Open first: `{latest_run['open_first_path']}`",
         f"- Latest-run summary: `{artifacts['latest_run_json']}`",
@@ -9605,6 +9717,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     readiness = mission_control["readiness_score"]
     dispatcher = mission_control["rule_based_dispatcher_v0"]
     artifacts = mission_control["artifacts"]
+    post_drill_guard = mission_control.get("post_drill_guard")
     labels = " ".join(
         f"<span>{_html_escape(str(label))}</span>"
         for label in decision["safety_labels"]
@@ -9613,7 +9726,8 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
         daily_decision_summary
     )
     active_operating_brief_html = _render_active_operating_brief_html_section(
-        active_operating_brief
+        active_operating_brief,
+        post_drill_guard,
     )
     work_orders_artifact_row = (
         f'<dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>'
@@ -12614,6 +12728,9 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     paper_observation_readiness_defaults = (
         _default_paper_observation_readiness_fields(artifact_paths)
     )
+    post_drill_guard = _post_drill_guard_display_status(
+        config.post_drill_guard_packet_path
+    )
     research_board_prioritization_defaults = (
         _default_research_board_prioritization_fields(artifact_paths)
     )
@@ -12736,6 +12853,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "paper_submit_authorization_status": "not_authorized",
         "paper_submit_authorization_reason": "operator_has_not_authorized_submit",
         "live_authorized": False,
+        "post_drill_guard": post_drill_guard,
+        "post_drill_guard_status": post_drill_guard["status"],
+        "post_drill_guard_classification": post_drill_guard["classification"],
+        "post_drill_guard_authority_closed": (
+            post_drill_guard["status"] == _POST_DRILL_GUARD_STATUS_AUTHORITY_CLOSED
+        ),
+        "post_drill_guard_packet_path": post_drill_guard["source_packet_path"],
+        "post_drill_guard_paper_submit_authorized": False,
+        "post_drill_guard_paper_cancel_authorized": False,
+        "post_drill_guard_next_paper_action_requires_new_authorization": True,
         "next_operator_action": next_operator_action,
         "labels": list(_REQUIRED_LABELS),
         "safety_labels": list(_REQUIRED_LABELS),
@@ -12914,6 +13041,14 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
             "system_health": "offline_assistant_packet_ready",
             "safety_labels": list(_REQUIRED_LABELS),
             "next_operator_action": next_operator_action,
+            "post_drill_guard": dict(post_drill_guard),
+            "post_drill_guard_status": post_drill_guard["status"],
+            "post_drill_guard_classification": post_drill_guard["classification"],
+            "post_drill_guard_authority_closed": (
+                post_drill_guard["status"]
+                == _POST_DRILL_GUARD_STATUS_AUTHORITY_CLOSED
+            ),
+            "post_drill_guard_packet_path": post_drill_guard["source_packet_path"],
             "executive_action_queue": [],
             "executive_action_summary": {},
             "quality_gate_status": quality_gate_defaults["quality_gate_status"],
@@ -13417,6 +13552,330 @@ def _normalize_path(path: Path | str) -> str:
         except ValueError:
             pass
     return str(p.as_posix())
+
+
+def _post_drill_guard_display_status(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return _post_drill_guard_unavailable(
+            path=None,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MISSING,
+            blocker="post_drill_guard_packet_path_not_supplied",
+            source_found=False,
+            source_parsed=False,
+            error="not_supplied",
+        )
+
+    if not path.exists():
+        return _post_drill_guard_unavailable(
+            path=path,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MISSING,
+            blocker="post_drill_guard_packet_missing",
+            source_found=False,
+            source_parsed=False,
+            error="path_not_found",
+        )
+    if not path.is_file():
+        return _post_drill_guard_unavailable(
+            path=path,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED,
+            blocker="post_drill_guard_packet_not_file",
+            source_found=True,
+            source_parsed=False,
+            error="path_not_file",
+        )
+
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return _post_drill_guard_unavailable(
+            path=path,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED,
+            blocker="post_drill_guard_packet_invalid_json",
+            source_found=True,
+            source_parsed=False,
+            error="invalid_json",
+        )
+    except OSError:
+        return _post_drill_guard_unavailable(
+            path=path,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED,
+            blocker="post_drill_guard_packet_unreadable",
+            source_found=True,
+            source_parsed=False,
+            error="unreadable_file",
+        )
+
+    if not isinstance(raw, Mapping):
+        return _post_drill_guard_unavailable(
+            path=path,
+            classification=_MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED,
+            blocker="post_drill_guard_packet_not_object",
+            source_found=True,
+            source_parsed=False,
+            error="json_payload_not_object",
+        )
+
+    packet = dict(raw)
+    common = _post_drill_guard_common_fields(
+        path=path,
+        packet=packet,
+        source_found=True,
+        source_parsed=True,
+        error="",
+    )
+    live_fields = [
+        field_name
+        for field_name in (
+            "live_read_performed",
+            "live_mutation_performed",
+            "live_trading_performed",
+            "source_live_read_performed",
+            "source_live_mutation_performed",
+            "source_live_trading_performed",
+        )
+        if packet.get(field_name) is True
+    ]
+    latest = packet.get("latest_bounded_paper_drill")
+    if isinstance(latest, Mapping):
+        for field_name in (
+            "live_read_performed",
+            "live_mutation_performed",
+            "live_trading_performed",
+        ):
+            if latest.get(field_name) is True:
+                live_fields.append(f"latest_bounded_paper_drill.{field_name}")
+    if live_fields:
+        return {
+            **common,
+            "classification": _MISSION_CONTROL_POST_DRILL_GUARD_BLOCKED_LIVE_ACTIVITY,
+            "status": _POST_DRILL_GUARD_STATUS_NOT_AVAILABLE,
+            "blocker": "post_drill_guard_packet_live_activity",
+            "blockers": list(_dedupe(tuple(live_fields))),
+            "display_available": False,
+            "authorization_consumed": False,
+            "last_authorization_consumed": False,
+        }
+
+    malformed_blocker = _post_drill_guard_malformed_blocker(packet)
+    if malformed_blocker:
+        return {
+            **common,
+            "classification": _MISSION_CONTROL_POST_DRILL_GUARD_MALFORMED,
+            "status": _POST_DRILL_GUARD_STATUS_NOT_AVAILABLE,
+            "blocker": malformed_blocker,
+            "blockers": [malformed_blocker],
+            "display_available": False,
+            "authorization_consumed": False,
+            "last_authorization_consumed": False,
+        }
+
+    return {
+        **common,
+        "classification": _MISSION_CONTROL_POST_DRILL_GUARD_AUTHORITY_CLOSED,
+        "ready_classification": _MISSION_CONTROL_POST_DRILL_GUARD_READY,
+        "status": _POST_DRILL_GUARD_STATUS_AUTHORITY_CLOSED,
+        "blocker": "none",
+        "blockers": [],
+        "display_available": True,
+        "authorization_consumed": True,
+        "last_authorization_consumed": True,
+    }
+
+
+def _post_drill_guard_malformed_blocker(packet: Mapping[str, Any]) -> str:
+    if packet.get("packet_version") != _V200_POST_DRILL_GUARD_PACKET_VERSION:
+        return "post_drill_guard_packet_version_unexpected"
+    if packet.get("source_paper_drill_packet_found") is not True:
+        return "post_drill_guard_source_v199_packet_missing"
+    if packet.get("source_paper_drill_packet_parsed") is not True:
+        return "post_drill_guard_source_v199_packet_malformed"
+    if packet.get("post_drill_guard_classification") != _V200_POST_DRILL_GUARD_READY:
+        return "post_drill_guard_packet_not_ready"
+    if packet.get("last_authorization_consumed") is not True:
+        return "post_drill_guard_authorization_consumed_not_true"
+    if packet.get("paper_submit_authorized") is not False:
+        return "post_drill_guard_paper_submit_authorized_not_false"
+    if packet.get("paper_cancel_authorized") is not False:
+        return "post_drill_guard_paper_cancel_authorized_not_false"
+    if packet.get("next_paper_action_requires_new_authorization") is not True:
+        return "post_drill_guard_new_authorization_required_not_true"
+    return ""
+
+
+def _post_drill_guard_common_fields(
+    *,
+    path: Path | None,
+    packet: Mapping[str, Any],
+    source_found: bool,
+    source_parsed: bool,
+    error: str,
+) -> dict[str, Any]:
+    latest = packet.get("latest_bounded_paper_drill")
+    latest_drill = dict(latest) if isinstance(latest, Mapping) else {}
+    next_operator_action = _first_present_text(
+        packet.get("next_operator_action"),
+        _POST_DRILL_GUARD_UNAVAILABLE_NEXT_OPERATOR_ACTION,
+    )
+    return {
+        "post_drill_guard_display_version": _POST_DRILL_GUARD_DISPLAY_VERSION,
+        "source_packet_path": _normalize_path(path) if path is not None else "",
+        "source_packet_found": source_found,
+        "source_packet_parsed": source_parsed,
+        "source_packet_error": error,
+        "source_packet_version": _text_or_empty(packet.get("packet_version")),
+        "source_v200_post_drill_guard_classification": _text_or_empty(
+            packet.get("post_drill_guard_classification")
+        ),
+        "source_v200_blocker": _text_or_empty(packet.get("blocker")),
+        "latest_drill_outcome": _first_present_text(
+            packet.get("last_paper_drill_outcome"),
+            packet.get("source_paper_drill_outcome"),
+            latest_drill.get("outcome_classification"),
+        ),
+        "final_broker_order_status": _first_present_text(
+            packet.get("final_broker_order_status_from_source_packet"),
+            latest_drill.get("final_broker_order_status"),
+        ),
+        "client_order_id": _first_present_text(
+            packet.get("client_order_id"),
+            latest_drill.get("client_order_id"),
+        ),
+        "source_broker_read_performed": _guard_bool(
+            packet.get("source_broker_read_performed"),
+            latest_drill.get("broker_read_performed"),
+        ),
+        "source_broker_mutation_performed": _guard_bool(
+            packet.get("source_broker_mutation_performed"),
+            latest_drill.get("broker_mutation_performed"),
+        ),
+        "source_paper_submit_performed": _guard_bool(
+            packet.get("source_paper_submit_performed"),
+            latest_drill.get("paper_submit_performed"),
+        ),
+        "source_paper_cancel_performed": _guard_bool(
+            packet.get("source_paper_cancel_performed"),
+            latest_drill.get("paper_cancel_performed"),
+        ),
+        "source_live_read_performed": _guard_bool(
+            packet.get("source_live_read_performed"),
+            latest_drill.get("live_read_performed"),
+        ),
+        "source_live_mutation_performed": _guard_bool(
+            packet.get("source_live_mutation_performed"),
+            latest_drill.get("live_mutation_performed"),
+        ),
+        "source_live_trading_performed": _guard_bool(
+            packet.get("source_live_trading_performed"),
+            latest_drill.get("live_trading_performed"),
+        ),
+        "historical_v199_source_fields_only": True,
+        "paper_submit_authorized": False,
+        "paper_cancel_authorized": False,
+        "next_paper_action_requires_new_authorization": True,
+        "next_operator_action": next_operator_action,
+        "broker_read_performed": False,
+        "broker_mutation_performed": False,
+        "paper_submit_performed": False,
+        "paper_cancel_performed": False,
+        "live_read_performed": False,
+        "live_mutation_performed": False,
+        "live_trading_performed": False,
+    }
+
+
+def _post_drill_guard_unavailable(
+    *,
+    path: Path | None,
+    classification: str,
+    blocker: str,
+    source_found: bool,
+    source_parsed: bool,
+    error: str,
+) -> dict[str, Any]:
+    return {
+        **_post_drill_guard_common_fields(
+            path=path,
+            packet={},
+            source_found=source_found,
+            source_parsed=source_parsed,
+            error=error,
+        ),
+        "classification": classification,
+        "ready_classification": "",
+        "status": _POST_DRILL_GUARD_STATUS_NOT_AVAILABLE,
+        "blocker": blocker,
+        "blockers": [blocker],
+        "display_available": False,
+        "authorization_consumed": False,
+        "last_authorization_consumed": False,
+    }
+
+
+def _post_drill_guard_payload_surface(payload: Mapping[str, Any]) -> dict[str, Any]:
+    guard = payload.get("post_drill_guard")
+    if isinstance(guard, Mapping):
+        return dict(guard)
+    return _post_drill_guard_display_status(None)
+
+
+_POST_DRILL_GUARD_SUMMARY_FIELD_NAMES = (
+    "post_drill_guard_status",
+    "post_drill_guard_classification",
+    "post_drill_guard_latest_drill_outcome",
+    "post_drill_guard_final_broker_order_status",
+    "post_drill_guard_authorization_consumed",
+    "post_drill_guard_paper_submit_authorized",
+    "post_drill_guard_paper_cancel_authorized",
+    "post_drill_guard_next_paper_action_requires_new_authorization",
+    "post_drill_guard_next_operator_action",
+)
+
+
+def _post_drill_guard_summary_fields(
+    guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "post_drill_guard_status": guard.get("status"),
+        "post_drill_guard_classification": guard.get("classification"),
+        "post_drill_guard_latest_drill_outcome": guard.get(
+            "latest_drill_outcome"
+        ),
+        "post_drill_guard_final_broker_order_status": guard.get(
+            "final_broker_order_status"
+        ),
+        "post_drill_guard_authorization_consumed": guard.get(
+            "authorization_consumed"
+        ),
+        "post_drill_guard_paper_submit_authorized": False,
+        "post_drill_guard_paper_cancel_authorized": False,
+        "post_drill_guard_next_paper_action_requires_new_authorization": True,
+        "post_drill_guard_next_operator_action": guard.get("next_operator_action"),
+    }
+
+
+def _post_drill_guard_compact_fields(
+    guard: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        **_post_drill_guard_summary_fields(guard),
+        "post_drill_guard_client_order_id": guard.get("client_order_id"),
+    }
+
+
+def _guard_bool(*values: Any) -> bool:
+    return any(value is True for value in values)
+
+
+def _first_present_text(*values: Any) -> str:
+    for value in values:
+        text = _text_or_empty(value)
+        if text:
+            return text
+    return ""
+
+
+def _text_or_empty(value: Any) -> str:
+    return "" if value is None else str(value)
 
 
 def _artifact_paths(output_root: Path) -> dict[str, str]:
@@ -30411,6 +30870,9 @@ def _render_operational_brief_markdown(payload: Mapping[str, Any]) -> str:
     warning_checks_text = (
         "[]" if not warning_checks else ", ".join(map(str, warning_checks))
     )
+    post_drill_guard_lines = "\n".join(
+        _post_drill_guard_markdown_lines(payload.get("post_drill_guard"))
+    )
     candidate_status = str(
         payload.get(
             "candidate_research_backlog_status",
@@ -30462,6 +30924,7 @@ def _render_operational_brief_markdown(payload: Mapping[str, Any]) -> str:
 * **Safety labels**:
 {labels_list}
 
+{post_drill_guard_lines}
 ## Active artifacts
 {artifact_lines}
 
@@ -30482,6 +30945,9 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
         return _render_operational_brief_markdown(payload)
 
     labels_list = "\n".join(f"* `{label}`" for label in payload["safety_labels"])
+    post_drill_guard_lines = "\n".join(
+        _post_drill_guard_markdown_lines(payload.get("post_drill_guard"))
+    )
     artifact_lines = "\n".join(
         f"* **{name}**: `{path}`"
         for name, path in payload["artifact_paths"].items()
@@ -30588,6 +31054,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **As-of date**: {payload["as_of_date"]}
 * **Input data path**: `{payload["input_data_path"]}`
 
+{post_drill_guard_lines}
 ## Research Board
 * **Active strategy evidence**:
 {evidence_lines}
@@ -31788,6 +32255,7 @@ def _build_operational_manifest(
         if path.exists():
             indexed_artifacts[artifact_id] = _artifact_metadata(path)
 
+    post_drill_guard = _post_drill_guard_payload_surface(payload)
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
@@ -31810,6 +32278,8 @@ def _build_operational_manifest(
         "broker_state_mode": payload["broker_state_mode"],
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
+        "post_drill_guard": dict(post_drill_guard),
+        **_post_drill_guard_compact_fields(post_drill_guard),
         "latest_run_path": payload.get("latest_run_path"),
         "latest_run": dict(payload.get("latest_run", {})),
         "data_freshness_plan_path": payload.get("data_freshness_plan_path"),
@@ -32071,6 +32541,7 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         if work_order_path.exists():
             indexed_artifacts[artifact_id] = _artifact_metadata(work_order_path)
     history_delta = dict(payload["history_delta"])
+    post_drill_guard = _post_drill_guard_payload_surface(payload)
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
@@ -32090,6 +32561,8 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "broker_state_mode": payload["broker_state_mode"],
         "paper_submit_authorized": False,
         "paper_submit_authorization_status": "not_authorized",
+        "post_drill_guard": dict(post_drill_guard),
+        **_post_drill_guard_compact_fields(post_drill_guard),
         "latest_run_path": payload.get("latest_run_path"),
         "latest_run": dict(payload.get("latest_run", {})),
         "data_freshness_plan_path": payload.get("data_freshness_plan_path"),

@@ -2520,6 +2520,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
+        "--post-drill-guard-packet-path",
+        default=None,
+        help=(
+            "Optional local v2.00 post-drill guard packet JSON to display in "
+            "Mission Control. This is read-only and grants no paper authority."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
         "--operational-only",
         action="store_true",
         help=(
@@ -5995,6 +6003,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 sma_slow_window=args.sma_slow_window,
                 broker_state_mode=args.broker_state_mode,
                 broker_snapshot_log=args.broker_snapshot_log,
+                post_drill_guard_packet_path=args.post_drill_guard_packet_path,
                 run_date=args.run_date,
                 operational_only=args.operational_only,
             )

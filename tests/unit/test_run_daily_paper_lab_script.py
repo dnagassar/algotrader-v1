@@ -24,6 +24,10 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "--broker-state-mode\", $BrokerStateMode",
         "BrokerSnapshotLog",
         "--broker-snapshot-log",
+        ".PARAMETER PostDrillGuardPacketPath",
+        "[string]$PostDrillGuardPacketPath",
+        "v200_post_drill_operating_guard/post_drill_guard_packet.json",
+        "--post-drill-guard-packet-path",
         ".PARAMETER OperationalOnly",
         "[switch]$OperationalOnly",
         ".PARAMETER FullResearchPacket",
@@ -60,6 +64,12 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "Broker mutation performed: false",
         "Broker-state mode: $BrokerStateModeText",
         "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText",
+        "Post-drill guard status: $PostDrillGuardStatusText",
+        "Post-drill guard classification: $PostDrillGuardClassificationText",
+        "Post-drill guard authorization consumed: $PostDrillGuardAuthorizationConsumedText",
+        "Post-drill guard paper submit authorized: false",
+        "Post-drill guard paper cancel authorized: false",
+        "Post-drill guard next paper action requires new authorization: true",
         "Exact next operator action: $ExactNextOperatorActionText",
         "latest_run.json",
         "data_refresh_bridge.json",
@@ -117,6 +127,8 @@ def test_run_daily_paper_lab_script_translates_run_date_to_cli_arg(
     assert "-m algotrader.cli etf-sma-daily-paper-lab" in args
     assert "--as-of-date 2026-06-18" in args
     assert "--run-date 2026-06-20" in args
+    assert "--post-drill-guard-packet-path" in args
+    assert "v200_post_drill_operating_guard/post_drill_guard_packet.json" in args
     assert "--operational-only" in args
 
 
