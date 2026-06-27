@@ -221,6 +221,9 @@ _POST_DRILL_GUARD_DISPLAY_VERSION = (
 _BROKER_SNAPSHOT_HANDOFF_VERSION = (
     "v202_mission_control_read_only_broker_snapshot_handoff_v1"
 )
+_BROKER_SNAPSHOT_SELECTION_VERSION = (
+    "v203_mission_control_local_broker_snapshot_selection_v1"
+)
 _DAILY_AUTOPILOT_CONTROLLER_VERSION = (
     "assistant_v1.70_noncapital_autopilot_controller"
 )
@@ -427,6 +430,7 @@ _BROKER_STATE_MODES = (
     "offline_fixture",
     "alpaca_paper_read_only",
 )
+_BROKER_SNAPSHOT_DISCOVERY_SUFFIXES = (".json", ".jsonl")
 _OUTPUT_MODE_FULL_RESEARCH = "full_research"
 _OUTPUT_MODE_OPERATIONAL_ONLY = "operational_only"
 _CANDIDATE_RESEARCH_BACKLOG_OPERATIONAL_STATUS = (
@@ -2447,6 +2451,7 @@ class EtfSmaDailyPaperLabConfig:
     sma_slow_window: int = 200
     broker_state_mode: str = "broker_state_not_observed"
     broker_snapshot_log: Path | str | None = None
+    broker_snapshot_roots: Sequence[Path | str] | Path | str | None = ()
     post_drill_guard_packet_path: Path | str | None = None
     run_date: str | None = None
     operational_only: bool = False
@@ -2469,6 +2474,14 @@ class EtfSmaDailyPaperLabConfig:
         )
         object.__setattr__(
             self,
+            "broker_snapshot_roots",
+            _optional_paths(
+                self.broker_snapshot_roots,
+                "broker_snapshot_roots",
+            ),
+        )
+        object.__setattr__(
+            self,
             "post_drill_guard_packet_path",
             _optional_path(
                 self.post_drill_guard_packet_path,
@@ -2480,6 +2493,12 @@ class EtfSmaDailyPaperLabConfig:
         ):
             raise ValidationError(
                 "broker_snapshot_log requires broker_state_mode=alpaca_paper_read_only."
+            )
+        if self.broker_snapshot_roots and broker_state_mode != (
+            "alpaca_paper_read_only"
+        ):
+            raise ValidationError(
+                "broker_snapshot_roots requires broker_state_mode=alpaca_paper_read_only."
             )
         if self.sma_fast_window <= 0:
             raise ValidationError("sma_fast_window must be positive.")
@@ -5880,6 +5899,7 @@ def _build_mission_control(
         "artifacts": artifacts,
         "post_drill_guard": dict(_post_drill_guard_payload_surface(payload)),
         "broker_snapshot_handoff": broker_snapshot_handoff,
+        "broker_snapshot_selection": _broker_snapshot_selection_public(payload),
         "active_operating_brief": active_operating_brief,
         "execution_plan": execution_plan,
         "daily_approval_gate": daily_approval_gate,
@@ -7136,6 +7156,7 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
         payload.get("broker_state_mode", "broker_state_not_observed")
     )
     snapshot = _broker_snapshot(payload)
+    selection = _broker_snapshot_selection_public(payload)
     snapshot_consumed = bool(snapshot)
     snapshot_observed = _broker_snapshot_observed(snapshot)
     scaffold_only = (
@@ -7177,6 +7198,12 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
             if snapshot.get("snapshot_validation_status") == "passed"
             else (broker_state_status if snapshot_consumed else "not_observed")
         ),
+        "broker_snapshot_selection_status": selection.get("selection_status"),
+        "broker_snapshot_selected_path": selection.get("selected_path"),
+        "broker_snapshot_displayed_candidate_path": selection.get(
+            "displayed_candidate_path"
+        ),
+        "broker_snapshot_candidate_count": selection.get("candidate_count"),
         "broker_state_trusted": snapshot_observed,
         "broker_read_performed": False,
         "broker_mutation_performed": False,
@@ -7255,6 +7282,7 @@ def _mission_control_broker_snapshot_handoff(
     broker_state_lane: Mapping[str, Any],
 ) -> dict[str, Any]:
     snapshot = _broker_snapshot(payload)
+    selection = _broker_snapshot_selection_public(payload)
     snapshot_consumed = broker_state_lane.get("broker_snapshot_consumed") is True
     validation_errors = _string_list(snapshot.get("snapshot_validation_errors"))
     blockers = _string_list(broker_state_lane.get("blockers")) or validation_errors
@@ -7311,6 +7339,7 @@ def _mission_control_broker_snapshot_handoff(
             source_path=source_path,
             credential_tainted=credential_tainted,
         ),
+        "selection_policy": selection,
         "broker_observation_timestamp": str(snapshot.get("generated_at", "")),
         "broker_snapshot_as_of": str(snapshot.get("generated_at", "")),
         "packet_freshness_status": freshness_status,
@@ -7524,6 +7553,9 @@ def _broker_snapshot_unexpected_non_spy_position_summary(
 def _broker_snapshot_handoff_compact_fields(
     handoff: Mapping[str, Any],
 ) -> dict[str, Any]:
+    selection = handoff.get("selection_policy")
+    if not isinstance(selection, Mapping):
+        selection = {}
     return {
         "broker_snapshot_handoff_status": handoff.get("handoff_status"),
         "broker_snapshot_current_broker_truth_claimed": handoff.get(
@@ -7538,6 +7570,31 @@ def _broker_snapshot_handoff_compact_fields(
         ),
         "broker_snapshot_unexpected_non_spy_position_blocker_present": handoff.get(
             "unexpected_non_spy_position_blocker_present"
+        ),
+        "broker_snapshot_selection_status": selection.get("selection_status"),
+        "broker_snapshot_selected_path": selection.get("selected_path"),
+        "broker_snapshot_selected_observed_at": selection.get("selected_observed_at"),
+        "broker_snapshot_selected_freshness_status": selection.get(
+            "selected_freshness_status"
+        ),
+        "broker_snapshot_selected_validation_status": selection.get(
+            "selected_validation_status"
+        ),
+        "broker_snapshot_displayed_candidate_path": selection.get(
+            "displayed_candidate_path"
+        ),
+        "broker_snapshot_displayed_candidate_freshness_status": selection.get(
+            "displayed_candidate_freshness_status"
+        ),
+        "broker_snapshot_displayed_candidate_validation_status": selection.get(
+            "displayed_candidate_validation_status"
+        ),
+        "broker_snapshot_latest_stale_candidate_path": selection.get(
+            "latest_stale_candidate_path"
+        ),
+        "broker_snapshot_candidate_count": selection.get("candidate_count"),
+        "broker_snapshot_rejected_candidate_count": selection.get(
+            "rejected_candidate_count"
         ),
         "broker_snapshot_handoff_paper_submit_authorized": False,
         "broker_snapshot_handoff_paper_cancel_authorized": False,
@@ -7725,6 +7782,517 @@ def _blocked_broker_state_snapshot(
         "submitted": False,
         "mutated": False,
     }
+
+
+def _select_broker_state_snapshot(
+    *,
+    broker_snapshot_log: Path | str | None,
+    broker_snapshot_roots: Sequence[Path | str],
+    broker_state_mode: str,
+    symbol: str,
+    run_date: str,
+    latest_completed_session_date: str | None,
+) -> dict[str, Any]:
+    selection_mode = _broker_snapshot_selection_mode(
+        broker_snapshot_log=broker_snapshot_log,
+        broker_snapshot_roots=broker_snapshot_roots,
+        broker_state_mode=broker_state_mode,
+    )
+    configured_locations = _broker_snapshot_configured_locations(
+        broker_snapshot_log=broker_snapshot_log,
+        broker_snapshot_roots=broker_snapshot_roots,
+    )
+    base_selection: dict[str, Any] = {
+        "selection_policy_version": _BROKER_SNAPSHOT_SELECTION_VERSION,
+        "selection_mode": selection_mode,
+        "broker_state_mode": broker_state_mode,
+        "configured_locations": configured_locations,
+        "candidate_count": 0,
+        "rejected_candidate_count": 0,
+        "stale_candidate_count": 0,
+        "valid_candidate_count": 0,
+        "selection_status": "not_requested",
+        "selected_path": "",
+        "selected_observed_at": "",
+        "selected_freshness_status": "not_observed",
+        "selected_validation_status": "not_observed",
+        "displayed_candidate_path": "",
+        "displayed_candidate_observed_at": "",
+        "displayed_candidate_freshness_status": "not_observed",
+        "displayed_candidate_validation_status": "not_observed",
+        "latest_stale_candidate_path": "",
+        "latest_stale_candidate_observed_at": "",
+        "candidates": [],
+        "paper_submit_authorized": False,
+        "paper_cancel_authorized": False,
+        "live_authorized": False,
+        "broker_read_performed": False,
+        "broker_mutation_performed": False,
+        "_broker_state_snapshot": {},
+    }
+    if broker_state_mode != "alpaca_paper_read_only":
+        return base_selection
+    if not configured_locations:
+        base_selection["selection_status"] = "broker_snapshot_not_available"
+        return base_selection
+
+    candidates = [
+        _broker_snapshot_candidate_from_path(
+            candidate_path=entry["candidate_path"],
+            configured_path=entry["configured_path"],
+            configured_kind=entry["configured_kind"],
+            symbol=symbol,
+            run_date=run_date,
+            latest_completed_session_date=latest_completed_session_date,
+        )
+        for entry in _broker_snapshot_candidate_path_entries(
+            configured_locations,
+        )
+    ]
+    ordered_candidates = sorted(
+        candidates,
+        key=_broker_snapshot_candidate_order_key,
+    )
+    for index, candidate in enumerate(ordered_candidates, start=1):
+        candidate["metadata"]["candidate_order"] = index
+
+    valid_candidates = [
+        candidate
+        for candidate in ordered_candidates
+        if _broker_snapshot_candidate_is_valid_current(candidate)
+    ]
+    stale_candidates = [
+        candidate
+        for candidate in ordered_candidates
+        if candidate["metadata"]["freshness_status"] == "stale_snapshot"
+    ]
+    selected_candidate = valid_candidates[0] if valid_candidates else None
+    displayed_candidate = selected_candidate
+    if displayed_candidate is None and stale_candidates:
+        displayed_candidate = stale_candidates[0]
+    if displayed_candidate is None and ordered_candidates:
+        displayed_candidate = ordered_candidates[0]
+
+    if selected_candidate is not None:
+        selection_status = "selected_latest_valid_snapshot"
+    elif stale_candidates and len(stale_candidates) == len(ordered_candidates):
+        selection_status = "only_stale_candidates"
+    elif ordered_candidates:
+        if all(
+            candidate["metadata"]["candidate_status"] == "not_available"
+            for candidate in ordered_candidates
+        ):
+            selection_status = "broker_snapshot_not_available"
+        else:
+            selection_status = "no_valid_broker_snapshot_candidate"
+    else:
+        selection_status = "broker_snapshot_not_available"
+
+    latest_stale = stale_candidates[0] if stale_candidates else None
+    public_candidates = []
+    for candidate in ordered_candidates:
+        metadata = dict(candidate["metadata"])
+        metadata["selection_decision"] = _broker_snapshot_candidate_decision(
+            candidate=candidate,
+            selected_candidate=selected_candidate,
+            latest_stale_candidate=latest_stale,
+        )
+        public_candidates.append(metadata)
+
+    selected_metadata = (
+        selected_candidate["metadata"] if selected_candidate is not None else {}
+    )
+    displayed_metadata = (
+        displayed_candidate["metadata"] if displayed_candidate is not None else {}
+    )
+    latest_stale_metadata = latest_stale["metadata"] if latest_stale is not None else {}
+
+    base_selection.update(
+        {
+            "candidate_count": len(ordered_candidates),
+            "rejected_candidate_count": len(
+                [
+                    candidate
+                    for candidate in ordered_candidates
+                    if candidate["metadata"]["candidate_status"] == "rejected"
+                ]
+            ),
+            "stale_candidate_count": len(stale_candidates),
+            "valid_candidate_count": len(valid_candidates),
+            "selection_status": selection_status,
+            "selected_path": str(selected_metadata.get("candidate_path", "")),
+            "selected_observed_at": str(selected_metadata.get("observed_at", "")),
+            "selected_freshness_status": str(
+                selected_metadata.get("freshness_status", "not_observed")
+            ),
+            "selected_validation_status": str(
+                selected_metadata.get("validation_status", "not_observed")
+            ),
+            "displayed_candidate_path": str(
+                displayed_metadata.get("candidate_path", "")
+            ),
+            "displayed_candidate_observed_at": str(
+                displayed_metadata.get("observed_at", "")
+            ),
+            "displayed_candidate_freshness_status": str(
+                displayed_metadata.get("freshness_status", "not_observed")
+            ),
+            "displayed_candidate_validation_status": str(
+                displayed_metadata.get("validation_status", "not_observed")
+            ),
+            "latest_stale_candidate_path": str(
+                latest_stale_metadata.get("candidate_path", "")
+            ),
+            "latest_stale_candidate_observed_at": str(
+                latest_stale_metadata.get("observed_at", "")
+            ),
+            "candidates": public_candidates,
+            "_broker_state_snapshot": (
+                dict(displayed_candidate["snapshot"])
+                if displayed_candidate is not None
+                else {}
+            ),
+        }
+    )
+    return base_selection
+
+
+def _broker_snapshot_selection_mode(
+    *,
+    broker_snapshot_log: Path | str | None,
+    broker_snapshot_roots: Sequence[Path | str],
+    broker_state_mode: str,
+) -> str:
+    if broker_state_mode != "alpaca_paper_read_only":
+        return "not_requested"
+    has_log = broker_snapshot_log is not None
+    has_roots = bool(broker_snapshot_roots)
+    if has_log and has_roots:
+        return "explicit_log_and_local_roots"
+    if has_log:
+        return "explicit_log"
+    if has_roots:
+        return "local_roots"
+    return "alpaca_paper_read_only_no_local_paths"
+
+
+def _broker_snapshot_configured_locations(
+    *,
+    broker_snapshot_log: Path | str | None,
+    broker_snapshot_roots: Sequence[Path | str],
+) -> list[dict[str, Any]]:
+    locations: list[dict[str, Any]] = []
+    if broker_snapshot_log is not None:
+        locations.append(
+            _broker_snapshot_configured_location(
+                Path(broker_snapshot_log),
+                configured_kind="explicit_log",
+            )
+        )
+    for root in broker_snapshot_roots:
+        locations.append(
+            _broker_snapshot_configured_location(
+                Path(root),
+                configured_kind="local_root_or_path",
+            )
+        )
+    return locations
+
+
+def _broker_snapshot_configured_location(
+    path: Path,
+    *,
+    configured_kind: str,
+) -> dict[str, Any]:
+    if path.is_file():
+        status = "file"
+    elif path.is_dir():
+        status = "directory"
+    elif path.exists():
+        status = "path_not_file"
+    else:
+        status = "missing"
+    return {
+        "configured_path": _normalize_path(path),
+        "configured_kind": configured_kind,
+        "location_status": status,
+    }
+
+
+def _broker_snapshot_candidate_path_entries(
+    configured_locations: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Path | str]]:
+    entries: list[dict[str, Path | str]] = []
+    seen: set[str] = set()
+    for location in configured_locations:
+        configured_path = Path(str(location.get("configured_path", "")))
+        configured_kind = str(location.get("configured_kind", "local_root_or_path"))
+        location_status = str(location.get("location_status", "missing"))
+        if location_status == "directory":
+            for child in sorted(
+                configured_path.rglob("*"),
+                key=lambda candidate: candidate.as_posix().lower(),
+            ):
+                if not child.is_file():
+                    continue
+                if child.suffix.lower() not in _BROKER_SNAPSHOT_DISCOVERY_SUFFIXES:
+                    continue
+                key = _broker_snapshot_candidate_dedupe_key(child)
+                if key in seen:
+                    continue
+                seen.add(key)
+                entries.append(
+                    {
+                        "candidate_path": child,
+                        "configured_path": str(location.get("configured_path", "")),
+                        "configured_kind": configured_kind,
+                    }
+                )
+            continue
+
+        key = _broker_snapshot_candidate_dedupe_key(configured_path)
+        if key in seen:
+            continue
+        seen.add(key)
+        entries.append(
+            {
+                "candidate_path": configured_path,
+                "configured_path": str(location.get("configured_path", "")),
+                "configured_kind": configured_kind,
+            }
+        )
+    return entries
+
+
+def _broker_snapshot_candidate_dedupe_key(path: Path) -> str:
+    try:
+        return str(path.resolve(strict=False)).lower()
+    except OSError:
+        return path.as_posix().lower()
+
+
+def _broker_snapshot_candidate_from_path(
+    *,
+    candidate_path: Path | str,
+    configured_path: Path | str,
+    configured_kind: str,
+    symbol: str,
+    run_date: str,
+    latest_completed_session_date: str | None,
+) -> dict[str, Any]:
+    path = Path(candidate_path)
+    snapshot = _load_broker_state_snapshot(
+        path,
+        broker_state_mode="alpaca_paper_read_only",
+        symbol=symbol,
+        run_date=run_date,
+        latest_completed_session_date=latest_completed_session_date,
+    )
+    metadata = _broker_snapshot_candidate_metadata(
+        snapshot=snapshot,
+        candidate_path=path,
+        configured_path=configured_path,
+        configured_kind=configured_kind,
+    )
+    return {"snapshot": snapshot, "metadata": metadata}
+
+
+def _broker_snapshot_candidate_metadata(
+    *,
+    snapshot: Mapping[str, Any],
+    candidate_path: Path,
+    configured_path: Path | str,
+    configured_kind: str,
+) -> dict[str, Any]:
+    validation_errors = _string_list(snapshot.get("snapshot_validation_errors"))
+    credential_tainted = any(
+        "credential" in error.lower() or "secret" in error.lower()
+        for error in validation_errors
+    )
+    validation_status = str(snapshot.get("snapshot_validation_status", "failed"))
+    freshness_status = _broker_snapshot_selection_freshness_status(snapshot)
+    candidate_status = _broker_snapshot_candidate_status(
+        snapshot=snapshot,
+        validation_status=validation_status,
+        freshness_status=freshness_status,
+    )
+    return {
+        "candidate_order": 0,
+        "candidate_path": _normalize_path(candidate_path),
+        "configured_path": _normalize_path(configured_path),
+        "configured_kind": configured_kind,
+        "candidate_status": candidate_status,
+        "snapshot_status": str(snapshot.get("snapshot_status", "")),
+        "snapshot_record_count": _int_or_zero(snapshot.get("snapshot_record_count")),
+        "validation_status": validation_status,
+        "freshness_status": freshness_status,
+        "broker_state_status": _broker_snapshot_status(snapshot),
+        "observed_at": str(snapshot.get("generated_at", "")),
+        "record_type": str(snapshot.get("record_type", "")),
+        "command": str(snapshot.get("command", "")),
+        "run_id": str(snapshot.get("run_id", "")),
+        "symbol": str(snapshot.get("symbol", "")),
+        "rejection_reason": _broker_snapshot_candidate_rejection_reason(
+            snapshot=snapshot,
+            candidate_status=candidate_status,
+            validation_errors=validation_errors,
+            freshness_status=freshness_status,
+        ),
+        "credential_tainted": credential_tainted,
+        "source_packet_sha256": (
+            "" if credential_tainted else str(snapshot.get("snapshot_sha256", ""))
+        ),
+        "sha256_omitted_reason": (
+            "credential_tainted_snapshot" if credential_tainted else ""
+        ),
+        "selection_decision": "pending",
+    }
+
+
+def _broker_snapshot_candidate_status(
+    *,
+    snapshot: Mapping[str, Any],
+    validation_status: str,
+    freshness_status: str,
+) -> str:
+    if (
+        validation_status == "passed"
+        and freshness_status == "fresh"
+        and _broker_snapshot_observed(snapshot)
+    ):
+        return "valid_current"
+    if freshness_status == "stale_snapshot":
+        return "stale_informational"
+    if str(snapshot.get("snapshot_status", "")) in {"missing", "path_not_file"}:
+        return "not_available"
+    return "rejected"
+
+
+def _broker_snapshot_selection_freshness_status(
+    snapshot: Mapping[str, Any],
+) -> str:
+    if str(snapshot.get("snapshot_validation_status", "")) == "passed":
+        return "fresh"
+    validation_errors = _string_list(snapshot.get("snapshot_validation_errors"))
+    if "broker_snapshot_stale" in validation_errors:
+        return "stale_snapshot"
+    if "broker_snapshot_future_dated" in validation_errors:
+        return "future_dated_snapshot"
+    state = str(snapshot.get("broker_observation_state", "")).strip()
+    if state:
+        return state
+    return str(snapshot.get("snapshot_status", "not_observed"))
+
+
+def _broker_snapshot_candidate_rejection_reason(
+    *,
+    snapshot: Mapping[str, Any],
+    candidate_status: str,
+    validation_errors: list[str],
+    freshness_status: str,
+) -> str:
+    if candidate_status == "valid_current":
+        return "none"
+    if freshness_status == "stale_snapshot":
+        return "broker_snapshot_stale"
+    if validation_errors:
+        return validation_errors[0]
+    snapshot_status = str(snapshot.get("snapshot_status", ""))
+    if snapshot_status:
+        return f"broker_snapshot_{snapshot_status}"
+    return _broker_snapshot_status(snapshot)
+
+
+def _broker_snapshot_candidate_order_key(
+    candidate: Mapping[str, Any],
+) -> tuple[int, float, str]:
+    metadata = candidate.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return (9, float("inf"), "")
+    status = str(metadata.get("candidate_status", "rejected"))
+    status_rank = {
+        "valid_current": 0,
+        "stale_informational": 1,
+        "rejected": 2,
+        "not_available": 3,
+    }.get(status, 8)
+    observed_at = _parse_iso_datetime(metadata.get("observed_at"))
+    timestamp_rank = (
+        -observed_at.timestamp() if observed_at is not None else float("inf")
+    )
+    return (status_rank, timestamp_rank, str(metadata.get("candidate_path", "")))
+
+
+def _broker_snapshot_candidate_is_valid_current(
+    candidate: Mapping[str, Any],
+) -> bool:
+    metadata = candidate.get("metadata")
+    snapshot = candidate.get("snapshot")
+    return (
+        isinstance(metadata, Mapping)
+        and isinstance(snapshot, Mapping)
+        and metadata.get("candidate_status") == "valid_current"
+        and _broker_snapshot_observed(snapshot)
+    )
+
+
+def _broker_snapshot_candidate_decision(
+    *,
+    candidate: Mapping[str, Any],
+    selected_candidate: Mapping[str, Any] | None,
+    latest_stale_candidate: Mapping[str, Any] | None,
+) -> str:
+    if selected_candidate is not None and candidate is selected_candidate:
+        return "selected_latest_valid_snapshot"
+    metadata = candidate.get("metadata")
+    if not isinstance(metadata, Mapping):
+        return "rejected"
+    if metadata.get("candidate_status") == "valid_current":
+        return "not_selected_older_or_tiebreak"
+    if latest_stale_candidate is not None and candidate is latest_stale_candidate:
+        return "displayed_latest_stale_informational"
+    if metadata.get("candidate_status") == "stale_informational":
+        return "stale_informational_not_selected"
+    if metadata.get("candidate_status") == "not_available":
+        return "not_available"
+    return "rejected"
+
+
+def _broker_snapshot_selection_public(
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    selection = (
+        payload.get("broker_snapshot_selection")
+        if "broker_snapshot_selection" in payload
+        else payload
+    )
+    if not isinstance(selection, Mapping):
+        return {
+            "selection_policy_version": _BROKER_SNAPSHOT_SELECTION_VERSION,
+            "selection_mode": "not_requested",
+            "selection_status": "not_requested",
+            "selected_path": "",
+            "selected_observed_at": "",
+            "selected_freshness_status": "not_observed",
+            "selected_validation_status": "not_observed",
+            "displayed_candidate_path": "",
+            "displayed_candidate_observed_at": "",
+            "displayed_candidate_freshness_status": "not_observed",
+            "displayed_candidate_validation_status": "not_observed",
+            "latest_stale_candidate_path": "",
+            "latest_stale_candidate_observed_at": "",
+            "candidate_count": 0,
+            "rejected_candidate_count": 0,
+            "stale_candidate_count": 0,
+            "valid_candidate_count": 0,
+            "candidates": [],
+            "paper_submit_authorized": False,
+            "paper_cancel_authorized": False,
+            "live_authorized": False,
+            "broker_read_performed": False,
+            "broker_mutation_performed": False,
+        }
+    return {key: value for key, value in selection.items() if key != "_broker_state_snapshot"}
 
 
 def _broker_snapshot_validation_errors(
@@ -9670,6 +10238,9 @@ def _broker_snapshot_handoff_markdown_lines(handoff: Any) -> list[str]:
     metadata = handoff.get("source_packet_metadata")
     if not isinstance(metadata, Mapping):
         metadata = {}
+    selection = handoff.get("selection_policy")
+    if not isinstance(selection, Mapping):
+        selection = {}
     return [
         "## Read-Only Broker Snapshot Handoff",
         f"- Status: `{handoff.get('handoff_status', 'broker_state_not_observed')}`",
@@ -9701,6 +10272,32 @@ def _broker_snapshot_handoff_markdown_lines(handoff: Any) -> list[str]:
         (
             "- Snapshot validation: "
             f"`{handoff.get('snapshot_validation_status', '')}`"
+        ),
+        (
+            "- Snapshot selection status: "
+            f"`{selection.get('selection_status', 'not_requested')}`"
+        ),
+        (
+            "- Selected snapshot path / observed-at: "
+            f"`{selection.get('selected_path', '')}` / "
+            f"`{selection.get('selected_observed_at', '')}`"
+        ),
+        (
+            "- Selected freshness / validation: "
+            f"`{selection.get('selected_freshness_status', 'not_observed')}` / "
+            f"`{selection.get('selected_validation_status', 'not_observed')}`"
+        ),
+        (
+            "- Displayed candidate path / freshness / validation: "
+            f"`{selection.get('displayed_candidate_path', '')}` / "
+            f"`{selection.get('displayed_candidate_freshness_status', 'not_observed')}` / "
+            f"`{selection.get('displayed_candidate_validation_status', 'not_observed')}`"
+        ),
+        (
+            "- Candidate count / rejected / stale: "
+            f"`{selection.get('candidate_count', 0)}` / "
+            f"`{selection.get('rejected_candidate_count', 0)}` / "
+            f"`{selection.get('stale_candidate_count', 0)}`"
         ),
         f"- Blocker: `{handoff.get('blocker', '')}`",
         (
@@ -9820,6 +10417,9 @@ def _render_broker_snapshot_handoff_html_section(handoff: Any) -> str:
     metadata = handoff.get("source_packet_metadata")
     if not isinstance(metadata, Mapping):
         metadata = {}
+    selection = handoff.get("selection_policy")
+    if not isinstance(selection, Mapping):
+        selection = {}
     return f"""    <section class="summary">
       <h2>Read-Only Broker Snapshot Handoff</h2>
       <dl>
@@ -9837,6 +10437,13 @@ def _render_broker_snapshot_handoff_html_section(handoff: Any) -> str:
         <dt>Packet freshness status</dt><dd>{_html_escape(str(handoff.get("packet_freshness_status", "")))}</dd>
         <dt>Packet stale</dt><dd>{str(handoff.get("packet_stale") is True).lower()}</dd>
         <dt>Snapshot validation</dt><dd>{_html_escape(str(handoff.get("snapshot_validation_status", "")))}</dd>
+        <dt>Snapshot selection status</dt><dd>{_html_escape(str(selection.get("selection_status", "not_requested")))}</dd>
+        <dt>Selected snapshot path</dt><dd>{_html_escape(str(selection.get("selected_path", "")))}</dd>
+        <dt>Selected observed-at</dt><dd>{_html_escape(str(selection.get("selected_observed_at", "")))}</dd>
+        <dt>Selected freshness / validation</dt><dd>{_html_escape(str(selection.get("selected_freshness_status", "not_observed")))} / {_html_escape(str(selection.get("selected_validation_status", "not_observed")))}</dd>
+        <dt>Displayed candidate path</dt><dd>{_html_escape(str(selection.get("displayed_candidate_path", "")))}</dd>
+        <dt>Displayed candidate freshness / validation</dt><dd>{_html_escape(str(selection.get("displayed_candidate_freshness_status", "not_observed")))} / {_html_escape(str(selection.get("displayed_candidate_validation_status", "not_observed")))}</dd>
+        <dt>Candidate count / rejected / stale</dt><dd>{_html_escape(str(selection.get("candidate_count", 0)))} / {_html_escape(str(selection.get("rejected_candidate_count", 0)))} / {_html_escape(str(selection.get("stale_candidate_count", 0)))}</dd>
         <dt>Blocker</dt><dd>{_html_escape(str(handoff.get("blocker", "")))}</dd>
         <dt>SPY position current / present / qty</dt><dd>{str(spy_position.get("current_broker_truth_claimed") is True).lower()} / {_html_escape(str(spy_position.get("present")))} / {_html_escape(str(spy_position.get("quantity")))}</dd>
         <dt>SPY open orders current / open SPY / total open</dt><dd>{str(spy_orders.get("current_broker_truth_claimed") is True).lower()} / {_html_escape(str(spy_orders.get("open_spy_order_count")))} / {_html_escape(str(spy_orders.get("open_order_count")))}</dd>
@@ -13292,12 +13899,16 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
     next_operator_action = _next_operator_action(posture, config.sma_slow_window)
     blocker_status = "broker_state_not_observed"
     broker_state_mode = config.broker_state_mode
-    broker_state_snapshot = _load_broker_state_snapshot(
-        config.broker_snapshot_log,
+    broker_snapshot_selection = _select_broker_state_snapshot(
+        broker_snapshot_log=config.broker_snapshot_log,
+        broker_snapshot_roots=config.broker_snapshot_roots,
         broker_state_mode=broker_state_mode,
         symbol=config.symbol,
         run_date=run_date_str,
         latest_completed_session_date=broker_snapshot_latest_completed_session_date,
+    )
+    broker_state_snapshot = dict(
+        broker_snapshot_selection.get("_broker_state_snapshot", {})
     )
     output_root = Path(config.output_root)
     artifact_paths = _artifact_paths(output_root)
@@ -13423,11 +14034,12 @@ def build_etf_sma_daily_paper_lab(config: EtfSmaDailyPaperLabConfig) -> dict[str
         "blockers": [blocker_status],
         "broker_state_mode": broker_state_mode,
         "broker_state_snapshot_path": (
-            _normalize_path(config.broker_snapshot_log)
-            if config.broker_snapshot_log is not None
-            else ""
+            str(broker_snapshot_selection.get("displayed_candidate_path", ""))
         ),
         "broker_state_snapshot": broker_state_snapshot,
+        "broker_snapshot_selection": _broker_snapshot_selection_public(
+            broker_snapshot_selection
+        ),
         "broker_state_observed": _broker_snapshot_observed(broker_state_snapshot),
         "broker_state_claim": (
             "Broker positions and open orders were not read; this packet makes no "
@@ -14129,6 +14741,24 @@ def _optional_path(value: Path | str | None, field_name: str) -> Path | None:
     if not text:
         return None
     return _required_path(text, field_name)
+
+
+def _optional_paths(
+    value: Sequence[Path | str] | Path | str | None,
+    field_name: str,
+) -> tuple[Path, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (str, Path)):
+        values: Sequence[Path | str] = (value,)
+    else:
+        values = value
+    paths: list[Path] = []
+    for item in values:
+        path = _optional_path(item, field_name)
+        if path is not None:
+            paths.append(path)
+    return tuple(paths)
 
 
 def _normalize_path(path: Path | str) -> str:

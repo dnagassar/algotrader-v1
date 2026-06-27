@@ -2520,6 +2520,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     etf_sma_daily_paper_lab_parser.add_argument(
+        "--broker-snapshot-root",
+        dest="broker_snapshot_roots",
+        action="append",
+        default=[],
+        help=(
+            "Repeatable local broker snapshot file or directory to scan when "
+            "--broker-state-mode=alpaca_paper_read_only. The command only reads "
+            "already-local artifacts and performs no broker read."
+        ),
+    )
+    etf_sma_daily_paper_lab_parser.add_argument(
         "--post-drill-guard-packet-path",
         default=None,
         help=(
@@ -6003,6 +6014,7 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
                 sma_slow_window=args.sma_slow_window,
                 broker_state_mode=args.broker_state_mode,
                 broker_snapshot_log=args.broker_snapshot_log,
+                broker_snapshot_roots=args.broker_snapshot_roots,
                 post_drill_guard_packet_path=args.post_drill_guard_packet_path,
                 run_date=args.run_date,
                 operational_only=args.operational_only,

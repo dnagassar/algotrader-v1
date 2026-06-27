@@ -37,6 +37,12 @@ the daily lab command itself performs no broker read.
 Optional local read-only paper broker snapshot reconciliation JSONL to consume
 when BrokerStateMode is alpaca_paper_read_only.
 
+.PARAMETER BrokerSnapshotRoots
+Optional local read-only paper broker snapshot files or directories to scan
+when BrokerStateMode is alpaca_paper_read_only. Accepts normal PowerShell
+arrays or semicolon-separated entries. Discovery is local-only and performs no
+broker read.
+
 .PARAMETER PostDrillGuardPacketPath
 Optional local v2.00 post-drill guard packet JSON to display in Mission Control.
 This is read-only and grants no paper submit or cancel authority.
@@ -67,6 +73,7 @@ param(
     [ValidateSet("broker_state_not_observed", "offline_fixture", "alpaca_paper_read_only")]
     [string]$BrokerStateMode = "broker_state_not_observed",
     [string]$BrokerSnapshotLog,
+    [string[]]$BrokerSnapshotRoots = @(),
     [string]$PostDrillGuardPacketPath = "runs/paper_lab/v200_post_drill_operating_guard/post_drill_guard_packet.json",
     [switch]$OperationalOnly,
     [switch]$FullResearchPacket,
@@ -153,6 +160,14 @@ if (-not [string]::IsNullOrEmpty($BrokerSnapshotLog)) {
     $CliArgs += @("--broker-snapshot-log", $BrokerSnapshotLog)
 }
 
+foreach ($BrokerSnapshotRootValue in $BrokerSnapshotRoots) {
+    foreach ($BrokerSnapshotRoot in ($BrokerSnapshotRootValue -split ";")) {
+        if (-not [string]::IsNullOrWhiteSpace($BrokerSnapshotRoot)) {
+            $CliArgs += @("--broker-snapshot-root", $BrokerSnapshotRoot)
+        }
+    }
+}
+
 if (-not [string]::IsNullOrEmpty($PostDrillGuardPacketPath)) {
     $CliArgs += @("--post-drill-guard-packet-path", $PostDrillGuardPacketPath)
 }
@@ -193,6 +208,10 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $BrokerSnapshotPacketFreshnessStatusText = "not_observed"
     $BrokerSnapshotObservationTimestampText = ""
     $BrokerSnapshotSourcePacketPathText = ""
+    $BrokerSnapshotSelectionStatusText = "not_requested"
+    $BrokerSnapshotSelectedPathText = ""
+    $BrokerSnapshotDisplayedCandidatePathText = ""
+    $BrokerSnapshotCandidateCountText = "0"
     $PostDrillGuardStatusText = "post_drill_guard_not_available"
     $PostDrillGuardClassificationText = "mission_control_post_drill_guard_missing"
     $PostDrillGuardAuthorizationConsumedText = "false"
@@ -233,6 +252,18 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
             if ($LatestRun.broker_snapshot_source_packet_path) {
                 $BrokerSnapshotSourcePacketPathText = [string]$LatestRun.broker_snapshot_source_packet_path
             }
+            if ($LatestRun.broker_snapshot_selection_status) {
+                $BrokerSnapshotSelectionStatusText = [string]$LatestRun.broker_snapshot_selection_status
+            }
+            if ($LatestRun.broker_snapshot_selected_path) {
+                $BrokerSnapshotSelectedPathText = [string]$LatestRun.broker_snapshot_selected_path
+            }
+            if ($LatestRun.broker_snapshot_displayed_candidate_path) {
+                $BrokerSnapshotDisplayedCandidatePathText = [string]$LatestRun.broker_snapshot_displayed_candidate_path
+            }
+            if ($null -ne $LatestRun.broker_snapshot_candidate_count) {
+                $BrokerSnapshotCandidateCountText = [string]$LatestRun.broker_snapshot_candidate_count
+            }
             if ($LatestRun.post_drill_guard_status) {
                 $PostDrillGuardStatusText = [string]$LatestRun.post_drill_guard_status
             }
@@ -270,6 +301,10 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Broker snapshot packet freshness: $BrokerSnapshotPacketFreshnessStatusText"
     Write-Host "Broker snapshot observation timestamp: $BrokerSnapshotObservationTimestampText"
     Write-Host "Broker snapshot source packet: $BrokerSnapshotSourcePacketPathText"
+    Write-Host "Broker snapshot selection status: $BrokerSnapshotSelectionStatusText"
+    Write-Host "Broker snapshot selected path: $BrokerSnapshotSelectedPathText"
+    Write-Host "Broker snapshot displayed candidate path: $BrokerSnapshotDisplayedCandidatePathText"
+    Write-Host "Broker snapshot candidate count: $BrokerSnapshotCandidateCountText"
     Write-Host "Broker snapshot paper submit authorized: false"
     Write-Host "Broker snapshot paper cancel authorized: false"
     Write-Host "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText"

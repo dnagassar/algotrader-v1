@@ -24,6 +24,9 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "--broker-state-mode\", $BrokerStateMode",
         "BrokerSnapshotLog",
         "--broker-snapshot-log",
+        ".PARAMETER BrokerSnapshotRoots",
+        "[string[]]$BrokerSnapshotRoots",
+        "--broker-snapshot-root",
         ".PARAMETER PostDrillGuardPacketPath",
         "[string]$PostDrillGuardPacketPath",
         "v200_post_drill_operating_guard/post_drill_guard_packet.json",
@@ -68,6 +71,10 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "BrokerSnapshotPacketFreshnessStatusText",
         "BrokerSnapshotObservationTimestampText",
         "BrokerSnapshotSourcePacketPathText",
+        "BrokerSnapshotSelectionStatusText",
+        "BrokerSnapshotSelectedPathText",
+        "BrokerSnapshotDisplayedCandidatePathText",
+        "BrokerSnapshotCandidateCountText",
         "Broker snapshot handoff status: $BrokerSnapshotHandoffStatusText",
         (
             "Broker snapshot current broker truth claimed: "
@@ -82,6 +89,13 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
             "$BrokerSnapshotObservationTimestampText"
         ),
         "Broker snapshot source packet: $BrokerSnapshotSourcePacketPathText",
+        "Broker snapshot selection status: $BrokerSnapshotSelectionStatusText",
+        "Broker snapshot selected path: $BrokerSnapshotSelectedPathText",
+        (
+            "Broker snapshot displayed candidate path: "
+            "$BrokerSnapshotDisplayedCandidatePathText"
+        ),
+        "Broker snapshot candidate count: $BrokerSnapshotCandidateCountText",
         "Broker snapshot paper submit authorized: false",
         "Broker snapshot paper cancel authorized: false",
         "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText",
@@ -227,6 +241,50 @@ def test_run_daily_paper_lab_script_translates_broker_snapshot_log_to_cli_arg(
     assert "--broker-state-mode alpaca_paper_read_only" in args
     assert "--broker-snapshot-log" in args
     assert str(broker_snapshot_log) in args
+    assert "--operational-only" in args
+
+
+def test_run_daily_paper_lab_script_translates_broker_snapshot_roots_to_cli_args(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    first_root = tmp_path / "snapshots_a"
+    second_root = tmp_path / "snapshots_b"
+    first_root.mkdir()
+    second_root.mkdir()
+    env = _fake_python_env(tmp_path, capture_path)
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(RUN_DAILY_PAPER_LAB_SCRIPT),
+            "-OutputRoot",
+            str(tmp_path / "paper_lab_out"),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
+            "-BrokerSnapshotRoots",
+            f"{first_root};{second_root}",
+            "-Format",
+            "json",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = capture_path.read_text(encoding="utf-8")
+    assert "--broker-state-mode alpaca_paper_read_only" in args
+    assert args.count("--broker-snapshot-root") == 2
+    assert str(first_root) in args
+    assert str(second_root) in args
     assert "--operational-only" in args
 
 
