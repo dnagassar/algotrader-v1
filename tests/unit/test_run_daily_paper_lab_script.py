@@ -63,6 +63,27 @@ def test_run_daily_paper_lab_script_preserves_offline_launcher_contract() -> Non
         "Broker read performed: false",
         "Broker mutation performed: false",
         "Broker-state mode: $BrokerStateModeText",
+        "BrokerSnapshotHandoffStatusText",
+        "BrokerSnapshotCurrentTruthClaimedText",
+        "BrokerSnapshotPacketFreshnessStatusText",
+        "BrokerSnapshotObservationTimestampText",
+        "BrokerSnapshotSourcePacketPathText",
+        "Broker snapshot handoff status: $BrokerSnapshotHandoffStatusText",
+        (
+            "Broker snapshot current broker truth claimed: "
+            "$BrokerSnapshotCurrentTruthClaimedText"
+        ),
+        (
+            "Broker snapshot packet freshness: "
+            "$BrokerSnapshotPacketFreshnessStatusText"
+        ),
+        (
+            "Broker snapshot observation timestamp: "
+            "$BrokerSnapshotObservationTimestampText"
+        ),
+        "Broker snapshot source packet: $BrokerSnapshotSourcePacketPathText",
+        "Broker snapshot paper submit authorized: false",
+        "Broker snapshot paper cancel authorized: false",
         "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText",
         "Post-drill guard status: $PostDrillGuardStatusText",
         "Post-drill guard classification: $PostDrillGuardClassificationText",
@@ -165,6 +186,47 @@ def test_run_daily_paper_lab_script_omits_run_date_cli_arg_when_absent(
     args = capture_path.read_text(encoding="utf-8")
     assert "--as-of-date 2026-06-18" in args
     assert "--run-date" not in args
+    assert "--operational-only" in args
+
+
+def test_run_daily_paper_lab_script_translates_broker_snapshot_log_to_cli_arg(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    broker_snapshot_log = tmp_path / "read_only_snapshot.jsonl"
+    broker_snapshot_log.write_text("{}\n", encoding="utf-8")
+    env = _fake_python_env(tmp_path, capture_path)
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(RUN_DAILY_PAPER_LAB_SCRIPT),
+            "-OutputRoot",
+            str(tmp_path / "paper_lab_out"),
+            "-BrokerStateMode",
+            "alpaca_paper_read_only",
+            "-BrokerSnapshotLog",
+            str(broker_snapshot_log),
+            "-Format",
+            "json",
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    args = capture_path.read_text(encoding="utf-8")
+    assert "--broker-state-mode alpaca_paper_read_only" in args
+    assert "--broker-snapshot-log" in args
+    assert str(broker_snapshot_log) in args
     assert "--operational-only" in args
 
 

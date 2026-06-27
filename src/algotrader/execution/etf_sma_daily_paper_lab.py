@@ -218,6 +218,9 @@ _ACTIVE_MISSION_CONTROL_BRIEF_VERSION = (
 _POST_DRILL_GUARD_DISPLAY_VERSION = (
     "v201_mission_control_post_drill_guard_display_v1"
 )
+_BROKER_SNAPSHOT_HANDOFF_VERSION = (
+    "v202_mission_control_read_only_broker_snapshot_handoff_v1"
+)
 _DAILY_AUTOPILOT_CONTROLLER_VERSION = (
     "assistant_v1.70_noncapital_autopilot_controller"
 )
@@ -433,6 +436,7 @@ _WORK_ORDERS_OPERATIONAL_STATUS = "secondary_not_materialized_in_operational_mod
 _NONZERO_EXIT_BROKER_STATE_STATUSES = frozenset(
     {
         "contradictory_snapshot",
+        "credential_tainted_snapshot",
         "future_dated_snapshot",
         "invalid_snapshot",
         "live_url_detected",
@@ -459,7 +463,9 @@ _BROKER_OBSERVED_REQUIRED_LABELS = (
 _UNSAFE_TRUE_PACKET_FIELDS = frozenset(
     {
         "paper_submit_authorized",
+        "paper_cancel_authorized",
         "paper_execution_authorized",
+        "cancel_authorized",
         "submit_authorized",
         "submitted",
         "submit_allowed",
@@ -527,6 +533,7 @@ _UNSAFE_SNAPSHOT_ERROR_FRAGMENTS = (
 _QUALITY_SAFETY_SECTION_FIELDS = frozenset(
     {
         "broker_state_snapshot",
+        "broker_snapshot_handoff",
         "execution_plan",
         "daily_approval_gate",
         "latest_run",
@@ -572,6 +579,7 @@ _REQUIRED_MISSION_CONTROL_TOP_LEVEL_SECTIONS = (
     "data_refresh_bridge",
     "data_refresh_dry_run",
     "post_drill_guard",
+    "broker_snapshot_handoff",
     "market_data_lane",
     "broker_state_lane",
     "decision_lane",
@@ -2648,6 +2656,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
         "daily_latest",
         "mission_control",
         "broker_state_snapshot",
+        "broker_snapshot_handoff",
     ):
         section = packet.get(section_name)
         if isinstance(section, Mapping) and _section_has_unsafe_exit_authorization(
@@ -2658,6 +2667,7 @@ def _daily_paper_lab_packet_requires_nonzero_exit(
     if isinstance(mission_control, Mapping):
         for section_name in (
             "broker_state_lane",
+            "broker_snapshot_handoff",
             "decision_lane",
             "daily_decision_summary",
             "daily_latest",
@@ -2694,6 +2704,8 @@ def _status_is_failure(value: object) -> bool:
 def _section_has_unsafe_exit_authorization(section: Mapping[str, Any]) -> bool:
     for field_name in (
         "paper_submit_authorized",
+        "paper_cancel_authorized",
+        "cancel_authorized",
         "live_authorized",
         "broker_read_performed",
         "broker_mutation_performed",
@@ -3069,6 +3081,10 @@ def _validate_mission_control_safety(
     data_refresh_bridge = _mapping_section(mission_control, "data_refresh_bridge")
     data_refresh_dry_run = _mapping_section(mission_control, "data_refresh_dry_run")
     broker = _mapping_section(mission_control, "broker_state_lane")
+    broker_snapshot_handoff = _mapping_section(
+        mission_control,
+        "broker_snapshot_handoff",
+    )
     decision = _mapping_section(mission_control, "decision_lane")
     execution_plan = _mapping_section(mission_control, "execution_plan")
     daily_approval_gate = _mapping_section(mission_control, "daily_approval_gate")
@@ -3105,6 +3121,28 @@ def _validate_mission_control_safety(
         "mission_control.broker_state_lane.live_authorized",
         safety_errors,
     )
+    for field_name in (
+        "paper_submit_authorized",
+        "paper_cancel_authorized",
+        "live_authorized",
+        "broker_read_performed",
+        "broker_mutation_performed",
+    ):
+        _require_false(
+            broker_snapshot_handoff,
+            field_name,
+            f"mission_control.broker_snapshot_handoff.{field_name}",
+            safety_errors,
+        )
+    if broker_snapshot_handoff.get("current_broker_truth_claimed") is True and (
+        broker_snapshot_handoff.get("handoff_status") != "broker_snapshot_observed"
+        or broker_snapshot_handoff.get("snapshot_validation_status") != "passed"
+        or broker_snapshot_handoff.get("packet_freshness_status") != "fresh"
+        or broker_snapshot_handoff.get("broker_state_observed") is not True
+    ):
+        safety_errors.append(
+            "mission_control.broker_snapshot_handoff.current_truth_without_valid_fresh_observation"
+        )
     _require_false(
         decision,
         "paper_submit_authorized",
@@ -5602,6 +5640,14 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
     payload["data_freshness_plan"] = dict(mission_control["data_freshness_plan"])
     payload["data_refresh_bridge"] = dict(mission_control["data_refresh_bridge"])
     payload["data_refresh_dry_run"] = dict(mission_control["data_refresh_dry_run"])
+    payload["broker_snapshot_handoff"] = dict(
+        mission_control["broker_snapshot_handoff"]
+    )
+    payload.update(
+        _broker_snapshot_handoff_compact_fields(
+            mission_control["broker_snapshot_handoff"]
+        )
+    )
     _sync_active_operating_brief_payload_surfaces(
         payload,
         mission_control["active_operating_brief"],
@@ -5631,6 +5677,9 @@ def _apply_mission_control(payload: dict[str, Any], output_root: Path) -> None:
         dashboard["data_freshness_plan"] = dict(payload["data_freshness_plan"])
         dashboard["data_refresh_bridge"] = dict(payload["data_refresh_bridge"])
         dashboard["data_refresh_dry_run"] = dict(payload["data_refresh_dry_run"])
+        dashboard["broker_snapshot_handoff"] = dict(
+            payload["broker_snapshot_handoff"]
+        )
         dashboard["mission_control"] = dict(mission_control)
     _write_mission_control_artifacts(output_root, mission_control)
 
@@ -5665,6 +5714,10 @@ def _build_mission_control(
     operational_only = _is_operational_only_payload(payload)
     market_data_lane = _mission_control_market_data_lane(payload)
     broker_state_lane = _mission_control_broker_state_lane(payload)
+    broker_snapshot_handoff = _mission_control_broker_snapshot_handoff(
+        payload,
+        broker_state_lane,
+    )
     decision_lane = _mission_control_decision_lane(
         payload=payload,
         market_data_lane=market_data_lane,
@@ -5780,6 +5833,8 @@ def _build_mission_control(
         daily_approval_gate=daily_approval_gate,
         active_operating_brief=active_operating_brief,
     )
+    daily_latest["broker_snapshot_handoff"] = dict(broker_snapshot_handoff)
+    daily_latest.update(_broker_snapshot_handoff_compact_fields(broker_snapshot_handoff))
     daily_decision_summary = _mission_control_daily_decision_summary(
         payload=payload,
         market_data_lane=market_data_lane,
@@ -5824,6 +5879,7 @@ def _build_mission_control(
         "output_root": _normalize_path(output_root),
         "artifacts": artifacts,
         "post_drill_guard": dict(_post_drill_guard_payload_surface(payload)),
+        "broker_snapshot_handoff": broker_snapshot_handoff,
         "active_operating_brief": active_operating_brief,
         "execution_plan": execution_plan,
         "daily_approval_gate": daily_approval_gate,
@@ -6232,6 +6288,14 @@ def _mission_control_latest_run_entry(
         "broker_snapshot_path": daily_latest.get("broker_snapshot_path"),
         "broker_snapshot_observation_timestamp": daily_latest.get(
             "broker_snapshot_observation_timestamp"
+        ),
+        "broker_snapshot_handoff": dict(
+            daily_latest.get("broker_snapshot_handoff", {})
+        ),
+        **_broker_snapshot_handoff_compact_fields(
+            daily_latest.get("broker_snapshot_handoff", {})
+            if isinstance(daily_latest.get("broker_snapshot_handoff"), Mapping)
+            else {}
         ),
         "observed_spy_position_qty": daily_latest.get("observed_spy_position_qty"),
         "observed_spy_open_order_count": daily_latest.get(
@@ -7186,6 +7250,300 @@ def _mission_control_broker_state_lane(payload: Mapping[str, Any]) -> dict[str, 
     }
 
 
+def _mission_control_broker_snapshot_handoff(
+    payload: Mapping[str, Any],
+    broker_state_lane: Mapping[str, Any],
+) -> dict[str, Any]:
+    snapshot = _broker_snapshot(payload)
+    snapshot_consumed = broker_state_lane.get("broker_snapshot_consumed") is True
+    validation_errors = _string_list(snapshot.get("snapshot_validation_errors"))
+    blockers = _string_list(broker_state_lane.get("blockers")) or validation_errors
+    source_status = str(snapshot.get("snapshot_status", ""))
+    broker_state_status = str(broker_state_lane.get("broker_state_status", ""))
+    snapshot_validation_status = str(
+        broker_state_lane.get("snapshot_validation_status", "")
+    )
+    freshness_status = str(
+        broker_state_lane.get("broker_snapshot_freshness_status", "")
+    )
+    current_broker_truth_claimed = (
+        snapshot_consumed
+        and broker_state_lane.get("broker_state_observed") is True
+        and snapshot_validation_status == "passed"
+        and freshness_status == "fresh"
+    )
+    credential_tainted = any(
+        "credential" in error.lower() or "secret" in error.lower()
+        for error in validation_errors
+    )
+    source_path = str(
+        broker_state_lane.get("broker_snapshot_path")
+        or payload.get("broker_state_snapshot_path")
+        or ""
+    )
+    return {
+        "broker_snapshot_handoff_version": _BROKER_SNAPSHOT_HANDOFF_VERSION,
+        "section_title": "Read-Only Broker Snapshot Handoff",
+        "handoff_status": _broker_snapshot_handoff_status(
+            broker_state_lane=broker_state_lane,
+            snapshot_consumed=snapshot_consumed,
+        ),
+        "display_only": True,
+        "local_artifact_only": True,
+        "broker_state_mode": broker_state_lane.get("broker_state_mode"),
+        "broker_state_status": broker_state_status,
+        "broker_state_observed": broker_state_lane.get("broker_state_observed")
+        is True,
+        "current_broker_truth_claimed": current_broker_truth_claimed,
+        "source_packet_path": source_path,
+        "source_packet_found": snapshot_consumed
+        and source_status not in {"", "missing", "path_not_file"},
+        "source_packet_parsed": source_status == "parsed",
+        "source_packet_status": source_status if snapshot_consumed else "not_requested",
+        "source_packet_record_count": _int_or_zero(
+            snapshot.get("snapshot_record_count")
+        ),
+        "source_packet_sha256": (
+            "" if credential_tainted else str(snapshot.get("snapshot_sha256", ""))
+        ),
+        "source_packet_metadata": _broker_snapshot_safe_source_metadata(
+            snapshot=snapshot,
+            source_path=source_path,
+            credential_tainted=credential_tainted,
+        ),
+        "broker_observation_timestamp": str(snapshot.get("generated_at", "")),
+        "broker_snapshot_as_of": str(snapshot.get("generated_at", "")),
+        "packet_freshness_status": freshness_status,
+        "packet_stale": broker_state_status == "stale_snapshot"
+        or "broker_snapshot_stale" in validation_errors,
+        "snapshot_validation_status": snapshot_validation_status,
+        "snapshot_validation_errors": validation_errors,
+        "blocker": _broker_snapshot_handoff_blocker(
+            handoff_status=_broker_snapshot_handoff_status(
+                broker_state_lane=broker_state_lane,
+                snapshot_consumed=snapshot_consumed,
+            ),
+            broker_state_status=broker_state_status,
+            blockers=blockers,
+        ),
+        "blockers": blockers,
+        "credential_tainted": credential_tainted,
+        "spy_position_summary": _broker_snapshot_spy_position_summary(
+            broker_state_lane,
+            current_broker_truth_claimed=current_broker_truth_claimed,
+            snapshot_consumed=snapshot_consumed,
+        ),
+        "spy_open_order_summary": _broker_snapshot_spy_open_order_summary(
+            broker_state_lane,
+            current_broker_truth_claimed=current_broker_truth_claimed,
+            snapshot_consumed=snapshot_consumed,
+        ),
+        "unexpected_non_spy_position_blocker_present": (
+            current_broker_truth_claimed
+            and broker_state_lane.get("unexpected_non_spy_position_present") is True
+        ),
+        "unexpected_non_spy_position_summary": (
+            _broker_snapshot_unexpected_non_spy_position_summary(
+                broker_state_lane,
+                current_broker_truth_claimed=current_broker_truth_claimed,
+                snapshot_consumed=snapshot_consumed,
+            )
+        ),
+        "paper_submit_authorized": False,
+        "paper_cancel_authorized": False,
+        "paper_authority_granted": False,
+        "live_authorized": False,
+        "broker_read_performed": False,
+        "broker_mutation_performed": False,
+        "network_access_performed": False,
+        "next_operator_action": _broker_snapshot_handoff_next_operator_action(
+            broker_state_status=broker_state_status,
+            current_broker_truth_claimed=current_broker_truth_claimed,
+        ),
+    }
+
+
+def _broker_snapshot_handoff_status(
+    *,
+    broker_state_lane: Mapping[str, Any],
+    snapshot_consumed: bool,
+) -> str:
+    broker_state_mode = str(broker_state_lane.get("broker_state_mode", ""))
+    broker_state_status = str(broker_state_lane.get("broker_state_status", ""))
+    if not snapshot_consumed:
+        if broker_state_mode == "alpaca_paper_read_only":
+            return "broker_snapshot_not_available"
+        return "broker_state_not_observed"
+    if broker_state_lane.get("broker_state_observed") is True:
+        return "broker_snapshot_observed"
+    if broker_state_status == "stale_snapshot":
+        return "broker_snapshot_stale"
+    if broker_state_status == "broker_unavailable":
+        return "broker_snapshot_not_available"
+    return "broker_snapshot_rejected"
+
+
+def _broker_snapshot_handoff_blocker(
+    *,
+    handoff_status: str,
+    broker_state_status: str,
+    blockers: list[str],
+) -> str:
+    if handoff_status == "broker_snapshot_observed":
+        return "none"
+    if blockers:
+        return blockers[0]
+    return broker_state_status or handoff_status
+
+
+def _broker_snapshot_handoff_next_operator_action(
+    *,
+    broker_state_status: str,
+    current_broker_truth_claimed: bool,
+) -> str:
+    if current_broker_truth_claimed:
+        return "review_display_only_broker_snapshot_handoff_no_paper_authority"
+    if broker_state_status == "stale_snapshot":
+        return "produce_fresh_local_read_only_paper_broker_snapshot_before_claiming_current_broker_truth"
+    if broker_state_status == "broker_state_not_observed":
+        return "broker_state_not_observed_no_position_or_order_truth_claimed"
+    return "correct_or_replace_local_read_only_paper_broker_snapshot_before_claiming_current_broker_truth"
+
+
+def _broker_snapshot_safe_source_metadata(
+    *,
+    snapshot: Mapping[str, Any],
+    source_path: str,
+    credential_tainted: bool,
+) -> dict[str, Any]:
+    return {
+        "artifact_path": source_path,
+        "artifact_status": str(snapshot.get("snapshot_status", "")),
+        "record_count": _int_or_zero(snapshot.get("snapshot_record_count")),
+        "sha256": "" if credential_tainted else str(snapshot.get("snapshot_sha256", "")),
+        "sha256_omitted_reason": (
+            "credential_tainted_snapshot" if credential_tainted else ""
+        ),
+        "record_type": str(snapshot.get("record_type", "")),
+        "command": str(snapshot.get("command", "")),
+        "run_id": str(snapshot.get("run_id", "")),
+        "symbol": str(snapshot.get("symbol", "")),
+        "generated_at": str(snapshot.get("generated_at", "")),
+        "reconciliation_state": str(snapshot.get("reconciliation_state", "")),
+        "snapshot_observation_compatibility_status": str(
+            snapshot.get("snapshot_observation_compatibility_status", "")
+        ),
+    }
+
+
+def _broker_snapshot_spy_position_summary(
+    broker_state_lane: Mapping[str, Any],
+    *,
+    current_broker_truth_claimed: bool,
+    snapshot_consumed: bool,
+) -> dict[str, Any]:
+    return {
+        "packet_available": snapshot_consumed,
+        "current_broker_truth_claimed": current_broker_truth_claimed,
+        "position_state_observed": (
+            current_broker_truth_claimed
+            and broker_state_lane.get("position_state_observed") is True
+        ),
+        "present": (
+            broker_state_lane.get("spy_position_present")
+            if current_broker_truth_claimed
+            else None
+        ),
+        "quantity": (
+            broker_state_lane.get("spy_position_qty")
+            if current_broker_truth_claimed
+            else None
+        ),
+        "not_current_reason": (
+            ""
+            if current_broker_truth_claimed
+            else "broker_snapshot_not_valid_fresh_observed_current_truth"
+        ),
+    }
+
+
+def _broker_snapshot_spy_open_order_summary(
+    broker_state_lane: Mapping[str, Any],
+    *,
+    current_broker_truth_claimed: bool,
+    snapshot_consumed: bool,
+) -> dict[str, Any]:
+    return {
+        "packet_available": snapshot_consumed,
+        "current_broker_truth_claimed": current_broker_truth_claimed,
+        "open_order_state_observed": (
+            current_broker_truth_claimed
+            and broker_state_lane.get("open_order_state_observed") is True
+        ),
+        "open_spy_order_count": (
+            broker_state_lane.get("open_spy_order_count")
+            if current_broker_truth_claimed
+            else None
+        ),
+        "open_order_count": (
+            broker_state_lane.get("open_order_count")
+            if current_broker_truth_claimed
+            else None
+        ),
+        "not_current_reason": (
+            ""
+            if current_broker_truth_claimed
+            else "broker_snapshot_not_valid_fresh_observed_current_truth"
+        ),
+    }
+
+
+def _broker_snapshot_unexpected_non_spy_position_summary(
+    broker_state_lane: Mapping[str, Any],
+    *,
+    current_broker_truth_claimed: bool,
+    snapshot_consumed: bool,
+) -> dict[str, Any]:
+    present = (
+        current_broker_truth_claimed
+        and broker_state_lane.get("unexpected_non_spy_position_present") is True
+    )
+    return {
+        "packet_available": snapshot_consumed,
+        "current_broker_truth_claimed": current_broker_truth_claimed,
+        "present": present,
+        "count": (
+            broker_state_lane.get("unexpected_non_spy_position_count")
+            if current_broker_truth_claimed
+            else None
+        ),
+        "blocker": "unexpected_non_spy_position" if present else "none",
+    }
+
+
+def _broker_snapshot_handoff_compact_fields(
+    handoff: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "broker_snapshot_handoff_status": handoff.get("handoff_status"),
+        "broker_snapshot_current_broker_truth_claimed": handoff.get(
+            "current_broker_truth_claimed"
+        ),
+        "broker_snapshot_packet_freshness_status": handoff.get(
+            "packet_freshness_status"
+        ),
+        "broker_snapshot_source_packet_path": handoff.get("source_packet_path"),
+        "broker_snapshot_observation_timestamp": handoff.get(
+            "broker_observation_timestamp"
+        ),
+        "broker_snapshot_unexpected_non_spy_position_blocker_present": handoff.get(
+            "unexpected_non_spy_position_blocker_present"
+        ),
+        "broker_snapshot_handoff_paper_submit_authorized": False,
+        "broker_snapshot_handoff_paper_cancel_authorized": False,
+    }
+
+
 def _mission_control_decision_lane(
     *,
     payload: Mapping[str, Any],
@@ -7261,7 +7619,9 @@ def _load_broker_state_snapshot(
         return {}
 
     snapshot_path = Path(path)
-    record, status, record_count, digest = _read_single_jsonl_artifact(snapshot_path)
+    record, status, record_count, digest = _read_single_broker_snapshot_artifact(
+        snapshot_path
+    )
     if record is None:
         return _blocked_broker_state_snapshot(
             snapshot_path=snapshot_path,
@@ -7397,6 +7757,8 @@ def _broker_snapshot_validation_errors(
         record.get("broker_observation_state", "")
     ) == "live_url_detected":
         errors.append("broker_snapshot_live_labeled")
+    errors.extend(_broker_snapshot_sensitive_value_errors(record))
+    errors.extend(_broker_snapshot_live_endpoint_errors(record))
     for field_name in (
         "paper_execution_authorized",
         "paper_submit_authorized",
@@ -7410,6 +7772,9 @@ def _broker_snapshot_validation_errors(
         "live_authorized",
     ):
         if record.get(field_name) is not False:
+            errors.append(f"broker_snapshot_{field_name}_not_false")
+    for field_name in ("paper_cancel_authorized", "cancel_authorized"):
+        if field_name in record and record.get(field_name) is not False:
             errors.append(f"broker_snapshot_{field_name}_not_false")
     broker_action_flags = record.get("broker_action_flags")
     if isinstance(broker_action_flags, Mapping):
@@ -7481,6 +7846,43 @@ def _broker_snapshot_source_review_compatibility_errors(
     return errors
 
 
+def _broker_snapshot_sensitive_value_errors(
+    value: Any,
+) -> list[str]:
+    errors: list[str] = []
+    if isinstance(value, Mapping):
+        for raw_key, child in value.items():
+            key_lower = str(raw_key).lower()
+            if (
+                key_lower in _SENSITIVE_CREDENTIAL_FIELD_NAMES
+                and _credential_value_present(child)
+            ):
+                errors.append(f"broker_snapshot_credential_field_{key_lower}_present")
+                continue
+            errors.extend(_broker_snapshot_sensitive_value_errors(child))
+    elif isinstance(value, list):
+        for child in value:
+            errors.extend(_broker_snapshot_sensitive_value_errors(child))
+    return errors
+
+
+def _broker_snapshot_live_endpoint_errors(
+    value: Any,
+) -> list[str]:
+    errors: list[str] = []
+    if isinstance(value, Mapping):
+        for child in value.values():
+            errors.extend(_broker_snapshot_live_endpoint_errors(child))
+    elif isinstance(value, list):
+        for child in value:
+            errors.extend(_broker_snapshot_live_endpoint_errors(child))
+    elif isinstance(value, str):
+        lowered = value.lower()
+        if any(fragment in lowered for fragment in _LIVE_ENDPOINT_FRAGMENTS):
+            errors.append("broker_snapshot_live_endpoint_present")
+    return errors
+
+
 def _empty_snapshot_collection(value: object) -> bool:
     if isinstance(value, Mapping):
         return not value
@@ -7492,6 +7894,8 @@ def _empty_snapshot_collection(value: object) -> bool:
 def _broker_snapshot_error_state(errors: list[str]) -> str:
     if any("live" in error for error in errors):
         return "live_url_detected"
+    if any("credential" in error or "secret" in error for error in errors):
+        return "credential_tainted_snapshot"
     if any("stale" in error for error in errors):
         return "stale_snapshot"
     if any("future" in error for error in errors):
@@ -7500,7 +7904,13 @@ def _broker_snapshot_error_state(errors: list[str]) -> str:
         return "snapshot_context_mismatch"
     if any("contradict" in error for error in errors):
         return "contradictory_snapshot"
-    if any("not_read_only" in error or "not_paper" in error for error in errors):
+    if any(
+        "not_read_only" in error
+        or "not_paper" in error
+        or "mutation" in error
+        or "action_" in error
+        for error in errors
+    ):
         return "non_paper_or_mutation_capable_snapshot"
     return "invalid_snapshot"
 
@@ -7596,6 +8006,7 @@ def _broker_snapshot_status(snapshot: Mapping[str, Any]) -> str:
     if state in {
         "broker_unavailable",
         "contradictory_snapshot",
+        "credential_tainted_snapshot",
         "future_dated_snapshot",
         "invalid_snapshot",
         "live_url_detected",
@@ -9244,6 +9655,81 @@ def _post_drill_guard_markdown_lines(guard: Any) -> list[str]:
     ]
 
 
+def _broker_snapshot_handoff_markdown_lines(handoff: Any) -> list[str]:
+    if not isinstance(handoff, Mapping):
+        handoff = {}
+    spy_position = handoff.get("spy_position_summary")
+    if not isinstance(spy_position, Mapping):
+        spy_position = {}
+    spy_orders = handoff.get("spy_open_order_summary")
+    if not isinstance(spy_orders, Mapping):
+        spy_orders = {}
+    unexpected = handoff.get("unexpected_non_spy_position_summary")
+    if not isinstance(unexpected, Mapping):
+        unexpected = {}
+    metadata = handoff.get("source_packet_metadata")
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    return [
+        "## Read-Only Broker Snapshot Handoff",
+        f"- Status: `{handoff.get('handoff_status', 'broker_state_not_observed')}`",
+        f"- Broker state observed: `{str(handoff.get('broker_state_observed') is True).lower()}`",
+        (
+            "- Current broker truth claimed: "
+            f"`{str(handoff.get('current_broker_truth_claimed') is True).lower()}`"
+        ),
+        f"- Source packet: `{handoff.get('source_packet_path', '')}`",
+        (
+            "- Source packet status / record count: "
+            f"`{handoff.get('source_packet_status', '')}` / "
+            f"`{handoff.get('source_packet_record_count', 0)}`"
+        ),
+        f"- Source packet sha256: `{handoff.get('source_packet_sha256', '')}`",
+        f"- Source command: `{metadata.get('command', '')}`",
+        f"- Source record type: `{metadata.get('record_type', '')}`",
+        f"- Source run id: `{metadata.get('run_id', '')}`",
+        (
+            "- Observation timestamp / as-of: "
+            f"`{handoff.get('broker_observation_timestamp', '')}` / "
+            f"`{handoff.get('broker_snapshot_as_of', '')}`"
+        ),
+        (
+            "- Packet freshness / stale: "
+            f"`{handoff.get('packet_freshness_status', '')}` / "
+            f"`{str(handoff.get('packet_stale') is True).lower()}`"
+        ),
+        (
+            "- Snapshot validation: "
+            f"`{handoff.get('snapshot_validation_status', '')}`"
+        ),
+        f"- Blocker: `{handoff.get('blocker', '')}`",
+        (
+            "- SPY position current / present / qty: "
+            f"`{str(spy_position.get('current_broker_truth_claimed') is True).lower()}` / "
+            f"`{spy_position.get('present')}` / "
+            f"`{spy_position.get('quantity')}`"
+        ),
+        (
+            "- SPY open orders current / open SPY count / total open count: "
+            f"`{str(spy_orders.get('current_broker_truth_claimed') is True).lower()}` / "
+            f"`{spy_orders.get('open_spy_order_count')}` / "
+            f"`{spy_orders.get('open_order_count')}`"
+        ),
+        (
+            "- Unexpected non-SPY position blocker / count: "
+            f"`{str(handoff.get('unexpected_non_spy_position_blocker_present') is True).lower()}` / "
+            f"`{unexpected.get('count')}`"
+        ),
+        "- paper_submit_authorized=false",
+        "- paper_cancel_authorized=false",
+        "- broker_read_performed=false",
+        "- broker_mutation_performed=false",
+        "- live_authorized=false",
+        f"- Next operator action: `{handoff.get('next_operator_action', '')}`",
+        "",
+    ]
+
+
 def _render_active_operating_brief_html_section(
     active: Mapping[str, Any],
     post_drill_guard: Any | None = None,
@@ -9319,6 +9805,52 @@ def _render_active_operating_brief_html_section(
     </section>"""
 
 
+def _render_broker_snapshot_handoff_html_section(handoff: Any) -> str:
+    if not isinstance(handoff, Mapping):
+        handoff = {}
+    spy_position = handoff.get("spy_position_summary")
+    if not isinstance(spy_position, Mapping):
+        spy_position = {}
+    spy_orders = handoff.get("spy_open_order_summary")
+    if not isinstance(spy_orders, Mapping):
+        spy_orders = {}
+    unexpected = handoff.get("unexpected_non_spy_position_summary")
+    if not isinstance(unexpected, Mapping):
+        unexpected = {}
+    metadata = handoff.get("source_packet_metadata")
+    if not isinstance(metadata, Mapping):
+        metadata = {}
+    return f"""    <section class="summary">
+      <h2>Read-Only Broker Snapshot Handoff</h2>
+      <dl>
+        <dt>Status</dt><dd>{_html_escape(str(handoff.get("handoff_status", "broker_state_not_observed")))}</dd>
+        <dt>Broker state observed</dt><dd>{str(handoff.get("broker_state_observed") is True).lower()}</dd>
+        <dt>Current broker truth claimed</dt><dd>{str(handoff.get("current_broker_truth_claimed") is True).lower()}</dd>
+        <dt>Source packet</dt><dd>{_html_escape(str(handoff.get("source_packet_path", "")))}</dd>
+        <dt>Source packet status</dt><dd>{_html_escape(str(handoff.get("source_packet_status", "")))}</dd>
+        <dt>Source packet record count</dt><dd>{_html_escape(str(handoff.get("source_packet_record_count", 0)))}</dd>
+        <dt>Source packet sha256</dt><dd>{_html_escape(str(handoff.get("source_packet_sha256", "")))}</dd>
+        <dt>Source command</dt><dd>{_html_escape(str(metadata.get("command", "")))}</dd>
+        <dt>Source record type</dt><dd>{_html_escape(str(metadata.get("record_type", "")))}</dd>
+        <dt>Source run id</dt><dd>{_html_escape(str(metadata.get("run_id", "")))}</dd>
+        <dt>Observation timestamp</dt><dd>{_html_escape(str(handoff.get("broker_observation_timestamp", "")))}</dd>
+        <dt>Packet freshness status</dt><dd>{_html_escape(str(handoff.get("packet_freshness_status", "")))}</dd>
+        <dt>Packet stale</dt><dd>{str(handoff.get("packet_stale") is True).lower()}</dd>
+        <dt>Snapshot validation</dt><dd>{_html_escape(str(handoff.get("snapshot_validation_status", "")))}</dd>
+        <dt>Blocker</dt><dd>{_html_escape(str(handoff.get("blocker", "")))}</dd>
+        <dt>SPY position current / present / qty</dt><dd>{str(spy_position.get("current_broker_truth_claimed") is True).lower()} / {_html_escape(str(spy_position.get("present")))} / {_html_escape(str(spy_position.get("quantity")))}</dd>
+        <dt>SPY open orders current / open SPY / total open</dt><dd>{str(spy_orders.get("current_broker_truth_claimed") is True).lower()} / {_html_escape(str(spy_orders.get("open_spy_order_count")))} / {_html_escape(str(spy_orders.get("open_order_count")))}</dd>
+        <dt>Unexpected non-SPY position blocker / count</dt><dd>{str(handoff.get("unexpected_non_spy_position_blocker_present") is True).lower()} / {_html_escape(str(unexpected.get("count")))}</dd>
+        <dt>Paper submit authorized</dt><dd>false</dd>
+        <dt>Paper cancel authorized</dt><dd>false</dd>
+        <dt>Broker read performed</dt><dd>false</dd>
+        <dt>Broker mutation performed</dt><dd>false</dd>
+        <dt>Live authorized</dt><dd>false</dd>
+        <dt>Next operator action</dt><dd>{_html_escape(str(handoff.get("next_operator_action", "")))}</dd>
+      </dl>
+    </section>"""
+
+
 def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
     executive = mission_control["executive_summary"]
     latest_run = mission_control["latest_run"]
@@ -9334,6 +9866,7 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
     readiness = mission_control["readiness_score"]
     validation = mission_control["mission_control_validation_summary"]
     post_drill_guard = mission_control.get("post_drill_guard")
+    broker_snapshot_handoff = mission_control.get("broker_snapshot_handoff")
     labels = ", ".join(f"`{label}`" for label in decision["safety_labels"])
     return "\n".join(
         [
@@ -9345,6 +9878,7 @@ def _render_operator_review(mission_control: Mapping[str, Any]) -> str:
                 active_operating_brief,
                 post_drill_guard,
             ),
+            *_broker_snapshot_handoff_markdown_lines(broker_snapshot_handoff),
             *_daily_decision_summary_markdown_lines(daily_decision_summary),
             "## Open First",
             f"- Open first: `{latest_run['open_first_path']}`",
@@ -9466,6 +10000,8 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
     dispatcher = mission_control["rule_based_dispatcher_v0"]
     artifacts = mission_control["artifacts"]
     post_drill_guard = mission_control.get("post_drill_guard")
+    broker_snapshot_handoff = mission_control.get("broker_snapshot_handoff")
+    broker_snapshot_handoff = mission_control.get("broker_snapshot_handoff")
     work_orders_artifact_line = (
         f"- `work_orders/`: `{artifacts['work_orders']}`"
         if "work_orders" in artifacts
@@ -9481,6 +10017,7 @@ def _render_mission_control_report(mission_control: Mapping[str, Any]) -> str:
             active_operating_brief,
             post_drill_guard,
         ),
+        *_broker_snapshot_handoff_markdown_lines(broker_snapshot_handoff),
         "## Open First",
         f"- Open first: `{latest_run['open_first_path']}`",
         f"- Latest-run summary: `{artifacts['latest_run_json']}`",
@@ -9718,6 +10255,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     dispatcher = mission_control["rule_based_dispatcher_v0"]
     artifacts = mission_control["artifacts"]
     post_drill_guard = mission_control.get("post_drill_guard")
+    broker_snapshot_handoff = mission_control.get("broker_snapshot_handoff")
     labels = " ".join(
         f"<span>{_html_escape(str(label))}</span>"
         for label in decision["safety_labels"]
@@ -9728,6 +10266,9 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
     active_operating_brief_html = _render_active_operating_brief_html_section(
         active_operating_brief,
         post_drill_guard,
+    )
+    broker_snapshot_handoff_html = _render_broker_snapshot_handoff_html_section(
+        broker_snapshot_handoff
     )
     work_orders_artifact_row = (
         f'<dt>work_orders/</dt><dd>{_html_escape(str(artifacts["work_orders"]))}</dd>'
@@ -9772,6 +10313,7 @@ def _render_mission_control_html(mission_control: Mapping[str, Any]) -> str:
   </header>
   <main>
 {active_operating_brief_html}
+{broker_snapshot_handoff_html}
 {daily_decision_html}
     <section class="summary">
       <h2>Open First</h2>
@@ -10620,6 +11162,51 @@ def _read_single_jsonl_artifact(
     if len(records) != 1:
         return None, "ambiguous_record_count", len(records), digest
     return records[0], "parsed", 1, digest
+
+
+def _read_single_broker_snapshot_artifact(
+    path: Path,
+) -> tuple[Mapping[str, Any] | None, str, int, str | None]:
+    if not path.exists():
+        return None, "missing", 0, None
+    if not path.is_file():
+        return None, "path_not_file", 0, None
+
+    try:
+        content = path.read_bytes()
+    except OSError:
+        return None, "unreadable", 0, None
+
+    try:
+        lines = content.decode("utf-8").splitlines()
+    except UnicodeDecodeError:
+        return None, "decode_error", 0, None
+
+    records: list[Mapping[str, Any]] = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            decoded = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None, "json_decode_error", len(records), None
+        if not isinstance(decoded, Mapping):
+            return None, "record_not_object", len(records) + 1, None
+        records.append(decoded)
+
+    if not records:
+        return None, "empty", 0, None
+    if len(records) != 1:
+        return None, "ambiguous_record_count", len(records), None
+
+    record = records[0]
+    digest = (
+        None
+        if _broker_snapshot_sensitive_value_errors(record)
+        else hashlib.sha256(content).hexdigest()
+    )
+    return record, "parsed", 1, digest
 
 
 def _baseline_metric_statuses_from_artifacts(
@@ -30873,6 +31460,11 @@ def _render_operational_brief_markdown(payload: Mapping[str, Any]) -> str:
     post_drill_guard_lines = "\n".join(
         _post_drill_guard_markdown_lines(payload.get("post_drill_guard"))
     )
+    broker_snapshot_handoff_lines = "\n".join(
+        _broker_snapshot_handoff_markdown_lines(
+            payload.get("broker_snapshot_handoff")
+        )
+    )
     candidate_status = str(
         payload.get(
             "candidate_research_backlog_status",
@@ -30925,6 +31517,7 @@ def _render_operational_brief_markdown(payload: Mapping[str, Any]) -> str:
 {labels_list}
 
 {post_drill_guard_lines}
+{broker_snapshot_handoff_lines}
 ## Active artifacts
 {artifact_lines}
 
@@ -30947,6 +31540,11 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
     labels_list = "\n".join(f"* `{label}`" for label in payload["safety_labels"])
     post_drill_guard_lines = "\n".join(
         _post_drill_guard_markdown_lines(payload.get("post_drill_guard"))
+    )
+    broker_snapshot_handoff_lines = "\n".join(
+        _broker_snapshot_handoff_markdown_lines(
+            payload.get("broker_snapshot_handoff")
+        )
     )
     artifact_lines = "\n".join(
         f"* **{name}**: `{path}`"
@@ -31055,6 +31653,7 @@ def _render_brief_markdown(payload: dict[str, Any]) -> str:
 * **Input data path**: `{payload["input_data_path"]}`
 
 {post_drill_guard_lines}
+{broker_snapshot_handoff_lines}
 ## Research Board
 * **Active strategy evidence**:
 {evidence_lines}
@@ -32256,6 +32855,12 @@ def _build_operational_manifest(
             indexed_artifacts[artifact_id] = _artifact_metadata(path)
 
     post_drill_guard = _post_drill_guard_payload_surface(payload)
+    broker_snapshot_handoff = payload.get("broker_snapshot_handoff")
+    broker_snapshot_handoff = (
+        dict(broker_snapshot_handoff)
+        if isinstance(broker_snapshot_handoff, Mapping)
+        else {}
+    )
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
@@ -32280,6 +32885,8 @@ def _build_operational_manifest(
         "paper_submit_authorization_status": "not_authorized",
         "post_drill_guard": dict(post_drill_guard),
         **_post_drill_guard_compact_fields(post_drill_guard),
+        "broker_snapshot_handoff": dict(broker_snapshot_handoff),
+        **_broker_snapshot_handoff_compact_fields(broker_snapshot_handoff),
         "latest_run_path": payload.get("latest_run_path"),
         "latest_run": dict(payload.get("latest_run", {})),
         "data_freshness_plan_path": payload.get("data_freshness_plan_path"),
@@ -32542,6 +33149,12 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
             indexed_artifacts[artifact_id] = _artifact_metadata(work_order_path)
     history_delta = dict(payload["history_delta"])
     post_drill_guard = _post_drill_guard_payload_surface(payload)
+    broker_snapshot_handoff = payload.get("broker_snapshot_handoff")
+    broker_snapshot_handoff = (
+        dict(broker_snapshot_handoff)
+        if isinstance(broker_snapshot_handoff, Mapping)
+        else {}
+    )
     return {
         "schema_version": _SCHEMA_VERSION,
         "assistant_version": _ASSISTANT_VERSION,
@@ -32563,6 +33176,8 @@ def _build_manifest(output_root: Path, payload: Mapping[str, Any]) -> dict[str, 
         "paper_submit_authorization_status": "not_authorized",
         "post_drill_guard": dict(post_drill_guard),
         **_post_drill_guard_compact_fields(post_drill_guard),
+        "broker_snapshot_handoff": dict(broker_snapshot_handoff),
+        **_broker_snapshot_handoff_compact_fields(broker_snapshot_handoff),
         "latest_run_path": payload.get("latest_run_path"),
         "latest_run": dict(payload.get("latest_run", {})),
         "data_freshness_plan_path": payload.get("data_freshness_plan_path"),

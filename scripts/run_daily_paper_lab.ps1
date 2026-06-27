@@ -188,6 +188,11 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     $DataRefreshIngestPerformedText = "false"
     $ExactNextOperatorActionText = "unknown"
     $ForwardSignalEvidenceLedgerStatusText = "unknown"
+    $BrokerSnapshotHandoffStatusText = "broker_state_not_observed"
+    $BrokerSnapshotCurrentTruthClaimedText = "false"
+    $BrokerSnapshotPacketFreshnessStatusText = "not_observed"
+    $BrokerSnapshotObservationTimestampText = ""
+    $BrokerSnapshotSourcePacketPathText = ""
     $PostDrillGuardStatusText = "post_drill_guard_not_available"
     $PostDrillGuardClassificationText = "mission_control_post_drill_guard_missing"
     $PostDrillGuardAuthorizationConsumedText = "false"
@@ -212,6 +217,21 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
             }
             if ($LatestRun.forward_signal_evidence_ledger_status) {
                 $ForwardSignalEvidenceLedgerStatusText = [string]$LatestRun.forward_signal_evidence_ledger_status
+            }
+            if ($LatestRun.broker_snapshot_handoff_status) {
+                $BrokerSnapshotHandoffStatusText = [string]$LatestRun.broker_snapshot_handoff_status
+            }
+            if ($null -ne $LatestRun.broker_snapshot_current_broker_truth_claimed) {
+                $BrokerSnapshotCurrentTruthClaimedText = ([string]$LatestRun.broker_snapshot_current_broker_truth_claimed).ToLowerInvariant()
+            }
+            if ($LatestRun.broker_snapshot_packet_freshness_status) {
+                $BrokerSnapshotPacketFreshnessStatusText = [string]$LatestRun.broker_snapshot_packet_freshness_status
+            }
+            if ($LatestRun.broker_snapshot_observation_timestamp) {
+                $BrokerSnapshotObservationTimestampText = [string]$LatestRun.broker_snapshot_observation_timestamp
+            }
+            if ($LatestRun.broker_snapshot_source_packet_path) {
+                $BrokerSnapshotSourcePacketPathText = [string]$LatestRun.broker_snapshot_source_packet_path
             }
             if ($LatestRun.post_drill_guard_status) {
                 $PostDrillGuardStatusText = [string]$LatestRun.post_drill_guard_status
@@ -245,6 +265,13 @@ if ($ExitCode -eq 0 -and $Format -eq "text") {
     Write-Host "Broker read performed: false"
     Write-Host "Broker mutation performed: false"
     Write-Host "Broker-state mode: $BrokerStateModeText"
+    Write-Host "Broker snapshot handoff status: $BrokerSnapshotHandoffStatusText"
+    Write-Host "Broker snapshot current broker truth claimed: $BrokerSnapshotCurrentTruthClaimedText"
+    Write-Host "Broker snapshot packet freshness: $BrokerSnapshotPacketFreshnessStatusText"
+    Write-Host "Broker snapshot observation timestamp: $BrokerSnapshotObservationTimestampText"
+    Write-Host "Broker snapshot source packet: $BrokerSnapshotSourcePacketPathText"
+    Write-Host "Broker snapshot paper submit authorized: false"
+    Write-Host "Broker snapshot paper cancel authorized: false"
     Write-Host "Forward signal evidence ledger status: $ForwardSignalEvidenceLedgerStatusText"
     Write-Host "Post-drill guard status: $PostDrillGuardStatusText"
     Write-Host "Post-drill guard classification: $PostDrillGuardClassificationText"
