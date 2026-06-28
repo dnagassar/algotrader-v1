@@ -21,6 +21,7 @@ _TIME_IN_FORCE_BY_ASSET_CLASS = {
 }
 RECENT_ORDER_QUERY_CONTRACT_VERSION = "paper_recent_order_query_v1"
 _M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit"
+PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-close-"
 V189_SPY_CERTIFICATION_CLIENT_ORDER_ID = "paper-certification-v189-spy-sell-limit"
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
@@ -151,17 +152,28 @@ class AlpacaOrderRequest:
             and has_qty
             and not has_notional
         )
+        paper_autopilot_spy_close = (
+            asset_class == "equity"
+            and normalized_symbol == "SPY"
+            and self.client_order_id.startswith(
+                PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX
+            )
+            and has_qty
+            and not has_notional
+        )
         if side not in {"buy", "sell"}:
             raise ValueError("Alpaca paper order requests require buy or sell side.")
         if side == "sell" and not (
             asset_class == "crypto" and normalized_symbol == "BTCUSD"
             or m355_spy_close
+            or paper_autopilot_spy_close
             or v189_spy_certification
         ):
             raise ValueError(
                 "Alpaca paper sell requests are restricted to BTCUSD crypto "
                 "close probes, the explicit M355 SPY paper close, or the "
-                "v1.89 SPY paper certification sell-limit drill."
+                "paper-autopilot SPY close namespace, or the v1.89 SPY paper "
+                "certification sell-limit drill."
             )
         if order_type not in {"market", "limit"}:
             raise ValueError("Alpaca paper order requests require market or limit type.")
@@ -256,6 +268,7 @@ __all__ = [
     "AlpacaOrderSubmissionResponse",
     "AlpacaRecentOrderQuery",
     "AlpacaPositionResponse",
+    "PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX",
     "RECENT_ORDER_QUERY_CONTRACT_VERSION",
     "V189_SPY_CERTIFICATION_CLIENT_ORDER_ID",
 ]

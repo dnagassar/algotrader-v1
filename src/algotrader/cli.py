@@ -2554,6 +2554,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    paper_autopilot_loop_parser = subparsers.add_parser(
+        "paper-autopilot-loop",
+        help="Run the bounded SPY SMA paper-autopilot operating loop.",
+    )
+    paper_autopilot_loop_parser.add_argument(
+        "--output-root",
+        default="runs/paper_autopilot/latest",
+        help="Root directory for paper-autopilot operating artifacts.",
+    )
+    paper_autopilot_loop_parser.add_argument(
+        "--bars-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Path to the canonical daily bars CSV file.",
+    )
+    paper_autopilot_loop_parser.add_argument("--as-of-date", default=None)
+    paper_autopilot_loop_parser.add_argument("--run-date", default=None)
+    paper_autopilot_loop_parser.add_argument("--symbol", default="SPY")
+    paper_autopilot_loop_parser.add_argument(
+        "--sma-fast-window",
+        type=int,
+        default=50,
+    )
+    paper_autopilot_loop_parser.add_argument(
+        "--sma-slow-window",
+        type=int,
+        default=200,
+    )
+    paper_autopilot_loop_parser.add_argument("--max-notional", default="25.00")
+    paper_autopilot_loop_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
 
     etf_sma_daily_status_parser = subparsers.add_parser(
         "etf-sma-daily-status",
@@ -3777,6 +3813,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily(args)
     if command == "etf-sma-daily-paper-lab":
         return _run_etf_sma_daily_paper_lab(args)
+    if command == "paper-autopilot-loop":
+        return _run_paper_autopilot_loop(args)
 
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
@@ -6025,6 +6063,42 @@ def _run_etf_sma_daily_paper_lab(args: argparse.Namespace) -> int:
         else:
             print(json.dumps(payload, sort_keys=True, indent=2))
         return etf_sma_daily_paper_lab_exit_status(payload)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_paper_autopilot_loop(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.paper_autopilot_loop import (
+        PaperAutopilotLoopConfig,
+        paper_autopilot_loop_exit_status,
+        run_paper_autopilot_loop,
+    )
+
+    try:
+        record = run_paper_autopilot_loop(
+            PaperAutopilotLoopConfig(
+                output_root=args.output_root,
+                bars_csv=args.bars_csv,
+                as_of_date=args.as_of_date,
+                run_date=args.run_date,
+                symbol=args.symbol,
+                sma_fast_window=args.sma_fast_window,
+                sma_slow_window=args.sma_slow_window,
+                max_notional=args.max_notional,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(record, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(record, sort_keys=True, indent=2))
+        return paper_autopilot_loop_exit_status(record)
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2

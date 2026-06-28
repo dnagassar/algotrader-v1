@@ -12,6 +12,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaOrderSubmissionResponse,
     AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
+    PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX,
     RECENT_ORDER_QUERY_CONTRACT_VERSION,
     V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
 )
@@ -145,6 +146,37 @@ def test_m355_spy_close_request_remains_allowed_equity_market_sell_shape():
             side="sell",
             asset_class="equity",
             notional=Decimal("25.00"),
+            order_type="market",
+            time_in_force="day",
+        )
+
+
+def test_paper_autopilot_spy_close_request_uses_dedicated_namespace_only():
+    request = AlpacaOrderRequest(
+        client_order_id=(
+            f"{PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX}"
+            "20260626-abcdef123456"
+        ),
+        symbol="SPY",
+        side="sell",
+        asset_class="equity",
+        qty=Decimal("0.04"),
+        order_type="market",
+        time_in_force="day",
+    )
+
+    assert request.symbol == "SPY"
+    assert request.side == "sell"
+    assert request.qty == Decimal("0.04")
+    assert request.notional is None
+
+    with pytest.raises(ValueError, match="paper-autopilot SPY close namespace"):
+        AlpacaOrderRequest(
+            client_order_id="pa-v207-aapl-close-20260626-abcdef123456",
+            symbol="AAPL",
+            side="sell",
+            asset_class="equity",
+            qty=Decimal("0.04"),
             order_type="market",
             time_in_force="day",
         )
