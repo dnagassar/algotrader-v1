@@ -19,12 +19,14 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "tests/unit/test_dependency_direction.py" in script
     assert "tests/unit/test_broker_mutation_surface_invariant.py" in script
     assert "tests/unit/test_default_pytest_network_guard.py" in script
+    assert "tests/unit/test_strategy_challenger_factory.py" in script
     assert "python\" (@(\"-m\", \"pytest\") + $GuardTestPaths)" in script
     assert "\"python\" @(\"-m\", \"pytest\")" in script
     assert "git\" @(\"diff\", \"--check\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily_soak\")" in script
     assert "git\" @(\"ls-files\", \"runs/paper_autopilot\")" in script
+    assert "git\" @(\"ls-files\", \"runs/strategy_challengers\")" in script
     assert "ALGO_TRADER_ALLOW_NETWORK_TESTS_enabled" in script
     assert "PYTEST_ADDOPTS_allow_network" in script
     assert "RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled" in script

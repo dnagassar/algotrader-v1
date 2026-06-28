@@ -37,7 +37,8 @@ $CredentialVariableNames = @(
 $GuardTestPaths = @(
     "tests/unit/test_dependency_direction.py",
     "tests/unit/test_broker_mutation_surface_invariant.py",
-    "tests/unit/test_default_pytest_network_guard.py"
+    "tests/unit/test_default_pytest_network_guard.py",
+    "tests/unit/test_strategy_challenger_factory.py"
 )
 
 function Write-Section {
@@ -112,6 +113,7 @@ function Invoke-HygienePrecheck {
     Invoke-CheckedCommand "tracked runs/daily" "git" @("ls-files", "runs/daily")
     Invoke-CheckedCommand "tracked runs/daily_soak" "git" @("ls-files", "runs/daily_soak")
     Invoke-CheckedCommand "tracked runs/paper_autopilot" "git" @("ls-files", "runs/paper_autopilot")
+    Invoke-CheckedCommand "tracked runs/strategy_challengers" "git" @("ls-files", "runs/strategy_challengers")
 }
 
 function Invoke-CredentialProfilePrecheck {
@@ -177,6 +179,7 @@ function Invoke-FinalHygieneCheck {
     Invoke-CheckedCommand "tracked runs/daily" "git" @("ls-files", "runs/daily")
     Invoke-CheckedCommand "tracked runs/daily_soak" "git" @("ls-files", "runs/daily_soak")
     Invoke-CheckedCommand "tracked runs/paper_autopilot" "git" @("ls-files", "runs/paper_autopilot")
+    Invoke-CheckedCommand "tracked runs/strategy_challengers" "git" @("ls-files", "runs/strategy_challengers")
 }
 
 try {
