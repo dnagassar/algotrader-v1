@@ -344,10 +344,19 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     assert Path(paths["operating_record"]).is_file()
     assert Path(paths["manifest"]).is_file()
     assert Path(paths["latest_status"]).is_file()
+    assert Path(paths["operating_history"]).is_file()
+    assert Path(paths["latest_rollup"]).is_file()
+    assert Path(paths["operating_summary"]).is_file()
     latest = json.loads(Path(paths["latest_status"]).read_text(encoding="utf-8"))
     assert latest["run_id"] == record["run_id"]
     record_lines = Path(paths["operating_record"]).read_text(encoding="utf-8").splitlines()
     assert json.loads(record_lines[-1])["run_id"] == record["run_id"]
+    history_lines = (
+        Path(paths["operating_history"]).read_text(encoding="utf-8").splitlines()
+    )
+    assert json.loads(history_lines[-1])["run_id"] == record["run_id"]
+    rollup = json.loads(Path(paths["latest_rollup"]).read_text(encoding="utf-8"))
+    assert rollup["classification"] == "healthy_hold_noop"
 
 
 def _assert_no_sensitive_values(record: dict[str, object]) -> None:

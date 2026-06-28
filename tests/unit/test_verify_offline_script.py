@@ -24,6 +24,7 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "git\" @(\"diff\", \"--check\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily_soak\")" in script
+    assert "git\" @(\"ls-files\", \"runs/paper_autopilot\")" in script
     assert "ALGO_TRADER_ALLOW_NETWORK_TESTS_enabled" in script
     assert "PYTEST_ADDOPTS_allow_network" in script
     assert "RUN_ALPACA_PAPER_INTEGRATION_TESTS_enabled" in script
