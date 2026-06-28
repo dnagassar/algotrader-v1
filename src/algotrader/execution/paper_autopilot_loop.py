@@ -205,6 +205,7 @@ def run_paper_autopilot_loop(
     broker_client_factory: BrokerClientFactory | None = None,
     daily_lab_runner: DailyLabRunner | None = None,
     timestamp: str | None = None,
+    update_history: bool = True,
 ) -> dict[str, Any]:
     """Run one bounded paper-autopilot cycle and write operating artifacts."""
 
@@ -294,12 +295,13 @@ def run_paper_autopilot_loop(
         output_root=output_root,
     )
     _write_operating_artifacts(output_root, record)
-    update_paper_autopilot_operating_history(
-        PaperAutopilotHistoryConfig(
-            latest_status_path=output_root / "latest_status.json",
-            history_root=output_root.parent / "history",
+    if update_history:
+        update_paper_autopilot_operating_history(
+            PaperAutopilotHistoryConfig(
+                latest_status_path=output_root / "latest_status.json",
+                history_root=output_root.parent / "history",
+            )
         )
-    )
     return record
 
 

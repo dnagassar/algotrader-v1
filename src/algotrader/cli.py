@@ -2612,6 +2612,47 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    paper_autopilot_operator_parser = subparsers.add_parser(
+        "paper-autopilot-operator",
+        help="Run paper-autopilot loop, history, and operator status classification.",
+    )
+    paper_autopilot_operator_parser.add_argument(
+        "--output-root",
+        default="runs/paper_autopilot/latest",
+        help="Root directory for paper-autopilot operating artifacts.",
+    )
+    paper_autopilot_operator_parser.add_argument(
+        "--history-root",
+        default=None,
+        help="Directory for paper-autopilot history artifacts.",
+    )
+    paper_autopilot_operator_parser.add_argument(
+        "--bars-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+        help="Path to the canonical daily bars CSV file.",
+    )
+    paper_autopilot_operator_parser.add_argument("--as-of-date", default=None)
+    paper_autopilot_operator_parser.add_argument("--run-date", default=None)
+    paper_autopilot_operator_parser.add_argument("--symbol", default="SPY")
+    paper_autopilot_operator_parser.add_argument(
+        "--sma-fast-window",
+        type=int,
+        default=50,
+    )
+    paper_autopilot_operator_parser.add_argument(
+        "--sma-slow-window",
+        type=int,
+        default=200,
+    )
+    paper_autopilot_operator_parser.add_argument("--max-notional", default="25.00")
+    paper_autopilot_operator_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
 
     etf_sma_daily_status_parser = subparsers.add_parser(
         "etf-sma-daily-status",
@@ -3839,6 +3880,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_autopilot_loop(args)
     if command == "paper-autopilot-history":
         return _run_paper_autopilot_history(args)
+    if command == "paper-autopilot-operator":
+        return _run_paper_autopilot_operator(args)
 
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
@@ -6154,6 +6197,47 @@ def _run_paper_autopilot_history(args: argparse.Namespace) -> int:
         else:
             print(render_paper_autopilot_history_status(rollup), end="")
         return paper_autopilot_history_exit_status(rollup)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_paper_autopilot_operator(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.paper_autopilot_operator import (
+        PaperAutopilotOperatorConfig,
+        paper_autopilot_operator_exit_status,
+        render_paper_autopilot_operator_summary,
+        run_paper_autopilot_operator,
+    )
+
+    try:
+        result = run_paper_autopilot_operator(
+            PaperAutopilotOperatorConfig(
+                output_root=args.output_root,
+                bars_csv=args.bars_csv,
+                history_root=args.history_root,
+                as_of_date=args.as_of_date,
+                run_date=args.run_date,
+                symbol=args.symbol,
+                sma_fast_window=args.sma_fast_window,
+                sma_slow_window=args.sma_slow_window,
+                max_notional=args.max_notional,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        else:
+            print(
+                render_paper_autopilot_operator_summary(result["operator_summary"]),
+                end="",
+            )
+        return paper_autopilot_operator_exit_status(result)
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
