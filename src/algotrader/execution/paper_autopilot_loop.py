@@ -28,6 +28,10 @@ from algotrader.execution.etf_sma_daily_paper_lab import (
     EtfSmaDailyPaperLabConfig,
     run_etf_sma_daily_paper_lab,
 )
+from algotrader.execution.paper_autopilot_history import (
+    PaperAutopilotHistoryConfig,
+    update_paper_autopilot_operating_history,
+)
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
     evaluate_etf_sma_signal,
@@ -290,6 +294,12 @@ def run_paper_autopilot_loop(
         output_root=output_root,
     )
     _write_operating_artifacts(output_root, record)
+    update_paper_autopilot_operating_history(
+        PaperAutopilotHistoryConfig(
+            latest_status_path=output_root / "latest_status.json",
+            history_root=output_root.parent / "history",
+        )
+    )
     return record
 
 
@@ -784,6 +794,13 @@ def _build_record(
         "operating_record": str(output_root / "operating_record.jsonl"),
         "manifest": str(output_root / "manifest.json"),
         "latest_status": str(output_root / "latest_status.json"),
+        "operating_history": str(
+            output_root.parent / "history" / "operating_history.jsonl"
+        ),
+        "latest_rollup": str(output_root.parent / "history" / "latest_rollup.json"),
+        "operating_summary": str(
+            output_root.parent / "history" / "operating_summary.md"
+        ),
         "daily_cycle_output_root": str(output_root / "daily_cycle"),
     }
     return {

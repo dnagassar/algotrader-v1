@@ -111,6 +111,7 @@ function Invoke-HygienePrecheck {
     Invoke-CheckedCommand "git origin/main" "git" @("rev-parse", "origin/main")
     Invoke-CheckedCommand "tracked runs/daily" "git" @("ls-files", "runs/daily")
     Invoke-CheckedCommand "tracked runs/daily_soak" "git" @("ls-files", "runs/daily_soak")
+    Invoke-CheckedCommand "tracked runs/paper_autopilot" "git" @("ls-files", "runs/paper_autopilot")
 }
 
 function Invoke-CredentialProfilePrecheck {
@@ -175,6 +176,7 @@ function Invoke-FinalHygieneCheck {
     Invoke-CheckedCommand "untracked src/tests files" "git" @("ls-files", "--others", "--exclude-standard", "src", "tests")
     Invoke-CheckedCommand "tracked runs/daily" "git" @("ls-files", "runs/daily")
     Invoke-CheckedCommand "tracked runs/daily_soak" "git" @("ls-files", "runs/daily_soak")
+    Invoke-CheckedCommand "tracked runs/paper_autopilot" "git" @("ls-files", "runs/paper_autopilot")
 }
 
 try {

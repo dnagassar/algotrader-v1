@@ -2590,6 +2590,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    paper_autopilot_history_parser = subparsers.add_parser(
+        "paper-autopilot-history",
+        help="Append and summarize paper-autopilot operating history.",
+    )
+    paper_autopilot_history_parser.add_argument(
+        "--latest-status-path",
+        default="runs/paper_autopilot/latest/latest_status.json",
+        help="Path to the latest paper-autopilot status JSON artifact.",
+    )
+    paper_autopilot_history_parser.add_argument(
+        "--history-root",
+        default="runs/paper_autopilot/history",
+        help="Directory for paper-autopilot history artifacts.",
+    )
+    paper_autopilot_history_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
+        help="Output format.",
+    )
+
 
     etf_sma_daily_status_parser = subparsers.add_parser(
         "etf-sma-daily-status",
@@ -3815,6 +3837,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_etf_sma_daily_paper_lab(args)
     if command == "paper-autopilot-loop":
         return _run_paper_autopilot_loop(args)
+    if command == "paper-autopilot-history":
+        return _run_paper_autopilot_history(args)
 
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
@@ -6099,6 +6123,37 @@ def _run_paper_autopilot_loop(args: argparse.Namespace) -> int:
         else:
             print(json.dumps(record, sort_keys=True, indent=2))
         return paper_autopilot_loop_exit_status(record)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_paper_autopilot_history(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.paper_autopilot_history import (
+        PaperAutopilotHistoryConfig,
+        paper_autopilot_history_exit_status,
+        render_paper_autopilot_history_status,
+        update_paper_autopilot_operating_history,
+    )
+
+    try:
+        rollup = update_paper_autopilot_operating_history(
+            PaperAutopilotHistoryConfig(
+                latest_status_path=args.latest_status_path,
+                history_root=args.history_root,
+            )
+        )
+        if args.output_format == "json":
+            print(json.dumps(rollup, sort_keys=True, separators=(",", ":")))
+        else:
+            print(render_paper_autopilot_history_status(rollup), end="")
+        return paper_autopilot_history_exit_status(rollup)
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2
