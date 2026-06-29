@@ -1,8 +1,8 @@
-"""Offline adjusted SPY bars refresh intake.
+"""Offline adjusted ETF bars refresh intake.
 
-Consumes a refreshed operator-supplied Tiingo adjusted SPY daily-bars CSV,
+Consumes a refreshed operator-supplied Tiingo adjusted ETF daily-bars CSV,
 validates and canonicalizes it, and emits one M446 JSONL refresh manifest plus
-a refreshed canonical adjusted SPY CSV if valid and current.
+a refreshed canonical adjusted ETF CSV if valid and current.
 
 This module is completely offline, local, deterministic, credential-free,
 network-free, broker-free, and mutation-free.
@@ -23,6 +23,7 @@ from typing import Any
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "APPROVED_ADJUSTED_ETF_SYMBOLS",
     "EtfSmaAdjustedSpyBarsRefreshIntakeConfig",
     "build_etf_sma_adjusted_spy_bars_refresh_intake",
     "render_etf_sma_adjusted_spy_bars_refresh_intake_json",
@@ -34,6 +35,8 @@ __all__ = [
 _MILESTONE = "M446"
 _RECORD_TYPE = "etf_sma_adjusted_spy_bars_refresh_manifest"
 _COMMAND = "etf-sma-adjusted-spy-bars-refresh-intake"
+APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+_DEFAULT_SYMBOL = "SPY"
 
 _REQUIRED_COLUMNS = ("date", "open", "high", "low", "close", "volume")
 _BASIS_COLUMN = "adjusted_close"
@@ -54,12 +57,13 @@ _OUTPUT_FALSE_FIELDS = (
 
 @dataclass(frozen=True, slots=True)
 class EtfSmaAdjustedSpyBarsRefreshIntakeConfig:
-    """Inputs for M446 adjusted SPY bars refresh intake command."""
+    """Inputs for M446 adjusted ETF bars refresh intake command."""
 
     expected_latest_bar_date: date | str
     input_csv: Path | str
     canonical_csv: Path | str
     run_log: Path | str
+    symbol: str = _DEFAULT_SYMBOL
     run_id: str = "m446_adjusted_spy_bars_refresh_intake"
 
     def __post_init__(self) -> None:
@@ -69,6 +73,7 @@ class EtfSmaAdjustedSpyBarsRefreshIntakeConfig:
             _required_date_text(self.expected_latest_bar_date, "expected_latest_bar_date"),
         )
         object.__setattr__(self, "input_csv", _required_path(self.input_csv, "input_csv"))
+        object.__setattr__(self, "symbol", _approved_symbol(self.symbol))
         object.__setattr__(
             self,
             "canonical_csv",
@@ -177,15 +182,17 @@ def build_etf_sma_adjusted_spy_bars_refresh_intake(
                 continue
 
             try:
-                # 8. Require SPY-only daily bars if the source has a symbol column
+                # 8. Require requested approved ETF daily bars if the source has a symbol column
                 if "symbol" in row:
                     sym = str(row["symbol"]).strip()
-                    if sym.upper() != "SPY":
-                        blockers.append("symbol_scope_must_be_spy")
+                    if sym.upper() != checked_config.symbol:
+                        blockers.append(
+                            f"symbol_scope_must_be_{checked_config.symbol.lower()}"
+                        )
                         continue
-                    parsed_symbol = "SPY"
+                    parsed_symbol = checked_config.symbol
                 else:
-                    parsed_symbol = "SPY"
+                    parsed_symbol = checked_config.symbol
 
                 # Parse date
                 date_str = str(row.get("date")).strip()
@@ -346,7 +353,7 @@ def render_etf_sma_adjusted_spy_bars_refresh_intake_text(payload: Mapping[str, o
     warnings = ", ".join(payload.get("refresh_warnings", [])) or "none"
     return "\n".join(
         (
-            f"M446 ETF/SMA SPY Bars Refresh Intake",
+            f"M446 ETF/SMA {payload.get('symbol')} Bars Refresh Intake",
             f"refresh_state: {payload.get('refresh_state')}",
             f"expected_latest_bar_date: {payload.get('expected_latest_bar_date')}",
             f"latest_local_bar_date: {payload.get('latest_local_bar_date') or 'none'}",
@@ -375,6 +382,10 @@ def _build_manifest(
     """Helper to build the 24-field manifest dict."""
     return {
         "milestone": _MILESTONE,
+        "record_type": _RECORD_TYPE,
+        "command": _COMMAND,
+        "run_id": config.run_id,
+        "symbol": config.symbol,
         "refresh_state": refresh_state,
         "expected_latest_bar_date": config.expected_latest_bar_date,
         "latest_local_bar_date": latest_local_bar_date,
@@ -413,6 +424,17 @@ def _required_string(value: object, field_name: str) -> str:
     text = value.strip()
     if not text:
         raise ValidationError(f"{field_name} is required.")
+    return text
+
+
+def _approved_symbol(value: object) -> str:
+    text = _required_string(value, "symbol").upper()
+    if text not in APPROVED_ADJUSTED_ETF_SYMBOLS:
+        raise ValidationError(
+            "symbol must be one of "
+            + ",".join(APPROVED_ADJUSTED_ETF_SYMBOLS)
+            + "."
+        )
     return text
 
 

@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-Plans or runs an explicitly gated adjusted SPY daily-bars refresh.
+Plans or runs an explicitly gated adjusted ETF daily-bars refresh.
 
 .DESCRIPTION
-Builds a deterministic Tiingo adjusted SPY refresh plan, optionally normalizes
+Builds a deterministic Tiingo adjusted ETF refresh plan, optionally normalizes
 an offline fixture, or executes a live market-data fetch only when the live mode
 and explicit authorization switch are both supplied.  The default mode is
 dry_run.  This script does not read broker state, mutate broker state, submit
@@ -21,6 +21,8 @@ param(
     [string]$CanonicalCsv,
     [Parameter(Mandatory = $true)]
     [string]$RunLog,
+    [ValidateSet("SPY", "QQQ", "IWM", "TLT", "GLD")]
+    [string]$Symbol = "SPY",
     [ValidateSet("offline_fixture", "dry_run", "live_market_data_fetch")]
     [string]$Mode = "dry_run",
     [string]$FixtureInputPath,
@@ -75,6 +77,7 @@ $CliArgs = @(
     "--output-csv", $OutputCsv,
     "--canonical-csv", $CanonicalCsv,
     "--run-log", $RunLog,
+    "--symbol", $Symbol,
     "--mode", $Mode,
     "--start-date", $StartDate,
     "--dotenv-path", $DotenvPath,

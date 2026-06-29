@@ -664,6 +664,7 @@ def test_run_strategy_challenger_factory_script_contract_and_invocation(tmp_path
         "contact",
         "Credential values are never printed",
         "SPY,QQQ,IWM,TLT,GLD",
+        "runs\\operator_input\\multi_etf_adjusted_daily_canonical.csv",
         "preflight_APP_PROFILE_is_paper",
         "preflight_credential_variables_loaded",
         "algotrader.research.strategy_challenger_factory",

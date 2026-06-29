@@ -13,14 +13,14 @@ values are never printed.
 Directory under which challenger factory artifacts are written.
 
 .PARAMETER BarsCsv
-Local strict daily-bars CSV to evaluate.
+Local strict multi-ETF daily-bars CSV to evaluate.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
     [string]$OutputRoot,
-    [string]$BarsCsv = "runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv",
+    [string]$BarsCsv = "runs\operator_input\multi_etf_adjusted_daily_canonical.csv",
     [string]$AsOfDate,
     [string]$Symbol = "SPY",
     [string]$Symbols = "SPY,QQQ,IWM,TLT,GLD",

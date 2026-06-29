@@ -1463,7 +1463,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     etf_sma_adjusted_spy_bars_refresh_intake_parser = subparsers.add_parser(
         "etf-sma-adjusted-spy-bars-refresh-intake",
-        help="Validate and canonicalize refreshed operator-supplied SPY adjusted bars.",
+        help="Validate and canonicalize refreshed operator-supplied ETF adjusted bars.",
     )
     etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
         "--expected-latest-bar-date",
@@ -1489,6 +1489,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-id",
         default="m446_adjusted_spy_bars_refresh_intake",
         help="Run/session id to include in the M446 manifest.",
+    )
+    etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
+        "--symbol",
+        choices=("SPY", "QQQ", "IWM", "TLT", "GLD"),
+        default="SPY",
+        help="Approved ETF symbol to validate and canonicalize.",
     )
     etf_sma_adjusted_spy_bars_refresh_intake_parser.add_argument(
         "--format",
@@ -5149,6 +5155,7 @@ def _run_etf_sma_adjusted_spy_bars_refresh_intake(args: argparse.Namespace) -> i
                 input_csv=args.input_csv,
                 canonical_csv=args.canonical_csv,
                 run_log=args.run_log,
+                symbol=args.symbol,
                 run_id=args.run_id,
             )
         )

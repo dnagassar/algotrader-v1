@@ -1,7 +1,7 @@
-"""Explicitly gated adjusted SPY market-data refresh adapter.
+"""Explicitly gated adjusted ETF market-data refresh adapter.
 
 This module plans and, when explicitly authorized, executes a Tiingo adjusted
-SPY daily-bar refresh before handing the normalized CSV to the existing M446
+ETF daily-bar refresh before handing the normalized CSV to the existing M446
 intake/canonicalization path.
 
 Default and test modes are network-free, credential-free, broker-free, and
@@ -28,8 +28,11 @@ from typing import Any
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "APPROVED_ADJUSTED_ETF_SYMBOLS",
+    "ETFAdjustedDataRefreshConfig",
     "MarketDataFetchError",
     "SPYAdjustedDataRefreshConfig",
+    "build_tiingo_adjusted_etf_request",
     "build_tiingo_adjusted_spy_request",
     "load_tiingo_api_key_from_dotenv",
     "render_spy_adjusted_data_refresh_json",
@@ -41,13 +44,14 @@ __all__ = [
 _RECORD_TYPE = "automatic_adjusted_spy_data_refresh"
 _MILESTONE = "v1.78"
 _PROVIDER = "tiingo"
+APPROVED_ADJUSTED_ETF_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 _SYMBOL = "SPY"
 _DRY_RUN = "dry_run"
 _OFFLINE_FIXTURE = "offline_fixture"
 _LIVE_MARKET_DATA_FETCH = "live_market_data_fetch"
 _MODES = (_OFFLINE_FIXTURE, _DRY_RUN, _LIVE_MARKET_DATA_FETCH)
 _TOKEN_ENV_VAR = "TIINGO_API_KEY"
-_TIINGO_URL = "https://api.tiingo.com/tiingo/daily/SPY/prices"
+_TIINGO_URL_PREFIX = "https://api.tiingo.com/tiingo/daily"
 _AUTO_START_DATE = "auto"
 _DEFAULT_START_DATE = "1993-01-29"
 _HTTP_TIMEOUT_SECONDS = 20.0
@@ -109,7 +113,7 @@ _KNOWN_TIINGO_FIELDS = frozenset(
 )
 _VALIDATION_CONTRACT = (
     "known_tiingo_provider_columns_only",
-    "symbol_scope_spy_only",
+    "symbol_scope_approved_etf_only",
     "deterministic_date_parse",
     "ascending_canonical_date_sort",
     "duplicate_dates_rejected",
@@ -136,14 +140,15 @@ _FALSE_SAFETY_FIELDS = (
 
 
 @dataclass(frozen=True, slots=True)
-class SPYAdjustedDataRefreshConfig:
-    """Inputs for the automatic adjusted SPY refresh adapter."""
+class ETFAdjustedDataRefreshConfig:
+    """Inputs for the automatic adjusted ETF refresh adapter."""
 
     provider: str
     expected_latest_bar_date: date | str
     output_csv: Path | str
     canonical_csv: Path | str
     run_log: Path | str
+    symbol: str = _SYMBOL
     mode: str = _DRY_RUN
     fixture_input_path: Path | str | None = None
     live_fetch_authorized: bool = False
@@ -157,6 +162,7 @@ class SPYAdjustedDataRefreshConfig:
         if provider != _PROVIDER:
             raise ValidationError("provider must be tiingo.")
         object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "symbol", _approved_symbol(self.symbol))
 
         mode = _required_string(self.mode, "mode")
         if mode not in _MODES:
@@ -208,6 +214,9 @@ class SPYAdjustedDataRefreshConfig:
         object.__setattr__(self, "run_id", _required_string(self.run_id, "run_id"))
 
 
+SPYAdjustedDataRefreshConfig = ETFAdjustedDataRefreshConfig
+
+
 @dataclass(frozen=True, slots=True)
 class _NormalizedRow:
     symbol: str
@@ -244,7 +253,7 @@ def run_spy_adjusted_data_refresh(
     return payload
 
 
-def build_tiingo_adjusted_spy_request(
+def build_tiingo_adjusted_etf_request(
     config: SPYAdjustedDataRefreshConfig,
     *,
     current_canonical_latest_bar_date: str = "",
@@ -263,16 +272,29 @@ def build_tiingo_adjusted_spy_request(
             "format": "json",
         }
     )
+    symbol = checked_config.symbol
     return {
         "method": "GET",
-        "url": f"{_TIINGO_URL}?{query}",
+        "url": f"{_tiingo_url(symbol)}?{query}",
         "headers": {"Authorization": "Token <redacted>"},
         "token_env_var": checked_config.token_env_var,
-        "symbol": _SYMBOL,
+        "symbol": symbol,
         "provider_adjusted_close_field": "adjClose",
         "request_start_date": request_start_date,
         "request_end_date": request_end_date,
     }
+
+
+def build_tiingo_adjusted_spy_request(
+    config: SPYAdjustedDataRefreshConfig,
+    *,
+    current_canonical_latest_bar_date: str = "",
+) -> dict[str, object]:
+    """Return a sanitized Tiingo daily-prices request plan."""
+    return build_tiingo_adjusted_etf_request(
+        config,
+        current_canonical_latest_bar_date=current_canonical_latest_bar_date,
+    )
 
 
 def write_spy_adjusted_data_refresh_jsonl(
@@ -302,7 +324,7 @@ def render_spy_adjusted_data_refresh_text(payload: Mapping[str, object]) -> str:
     request = _mapping(payload.get("provider_request"))
     return "\n".join(
         (
-            "Automatic Adjusted SPY Data Refresh",
+            f"Automatic Adjusted {payload.get('symbol')} Data Refresh",
             f"refresh_state: {payload.get('refresh_state')}",
             f"mode: {payload.get('mode')}",
             f"provider: {payload.get('provider')}",
@@ -336,7 +358,7 @@ def _build_refresh_payload(
     except ValidationError as exc:
         current_latest = ""
         current_latest_error = str(exc)
-    request = build_tiingo_adjusted_spy_request(
+    request = build_tiingo_adjusted_etf_request(
         config,
         current_canonical_latest_bar_date=current_latest,
     )
@@ -545,7 +567,7 @@ def _run_normalized_refresh(
     refresh_authorized: bool = False,
     http_outcome_category: str = "not_attempted",
 ) -> dict[str, object]:
-    normalized = _normalize_provider_records(records)
+    normalized = _normalize_provider_records(records, symbol=config.symbol)
     if not normalized or isinstance(normalized[0], str):
         return _manifest(
             config,
@@ -620,7 +642,11 @@ def _run_normalized_refresh(
             )
 
     try:
-        rows = _candidate_rows_with_existing_canonical(config.canonical_csv, source_rows)
+        rows = _candidate_rows_with_existing_canonical(
+            config.canonical_csv,
+            source_rows,
+            symbol=config.symbol,
+        )
     except ValidationError as exc:
         return _manifest(
             config,
@@ -661,6 +687,7 @@ def _run_normalized_refresh(
             input_csv=output_path,
             canonical_csv=config.canonical_csv,
             run_log=config.run_log,
+            symbol=config.symbol,
             run_id=f"{config.run_id}_m446_intake",
         )
     )
@@ -762,7 +789,8 @@ def _manifest(
         "record_type": _RECORD_TYPE,
         "run_id": config.run_id,
         "provider": config.provider,
-        "symbol": _SYMBOL,
+        "symbol": config.symbol,
+        "approved_symbols": list(APPROVED_ADJUSTED_ETF_SYMBOLS),
         "mode": config.mode,
         "refresh_mode": config.mode,
         "refresh_authorized": (
@@ -795,7 +823,9 @@ def _manifest(
         "raw_provider_response_path": str(config.raw_response_path),
         "provider_request": dict(provider_request),
         "provider_column_mapping": {
-            "symbol": "constant SPY unless provider symbol/ticker is present",
+            "symbol": (
+                f"constant {config.symbol} unless provider symbol/ticker is present"
+            ),
             "date": "date",
             "open": "open",
             "high": "high",
@@ -843,7 +873,10 @@ def _manifest(
 
 def _normalize_provider_records(
     records: Sequence[Mapping[str, object]],
+    *,
+    symbol: str,
 ) -> list[_NormalizedRow] | list[str]:
+    checked_symbol = _approved_symbol(symbol)
     blockers: list[str] = []
     rows: list[_NormalizedRow] = []
     seen_dates: set[date] = set()
@@ -868,7 +901,7 @@ def _normalize_provider_records(
             blockers.append("missing_required_ohlcv")
             continue
         try:
-            parsed_symbol = _parse_symbol(record)
+            parsed_symbol = _parse_symbol(record, checked_symbol)
             parsed_date = _parse_provider_date(_record_value(record, "date"))
             parsed_open = _parse_positive_decimal(_record_value(record, "open"), "open")
             parsed_high = _parse_positive_decimal(_record_value(record, "high"), "high")
@@ -1043,13 +1076,15 @@ def _request_start_date(
 def _candidate_rows_with_existing_canonical(
     canonical_csv: Path | str,
     source_rows: Sequence[_NormalizedRow],
+    *,
+    symbol: str,
 ) -> list[_NormalizedRow]:
     if not source_rows:
         return []
     canonical_path = Path(canonical_csv)
     if not canonical_path.exists():
         return list(source_rows)
-    current_rows = _read_canonical_rows(canonical_path)
+    current_rows = _read_canonical_rows(canonical_path, symbol=symbol)
     first_source_date = source_rows[0].date
     merged = [row for row in current_rows if row.date < first_source_date]
     merged.extend(source_rows)
@@ -1059,7 +1094,7 @@ def _candidate_rows_with_existing_canonical(
     return sorted(merged, key=lambda row: row.date)
 
 
-def _read_canonical_rows(path: Path | str) -> list[_NormalizedRow]:
+def _read_canonical_rows(path: Path | str, *, symbol: str) -> list[_NormalizedRow]:
     canonical_path = Path(path)
     try:
         data = canonical_path.read_bytes()
@@ -1069,7 +1104,7 @@ def _read_canonical_rows(path: Path | str) -> list[_NormalizedRow]:
     reader = csv.DictReader(text.splitlines())
     if reader.fieldnames is None:
         raise ValidationError("current_canonical_missing_headers")
-    normalized = _normalize_provider_records([dict(row) for row in reader])
+    normalized = _normalize_provider_records([dict(row) for row in reader], symbol=symbol)
     if not normalized or isinstance(normalized[0], str):
         blockers = ",".join(str(item) for item in normalized)
         raise ValidationError(blockers or "current_canonical_invalid")
@@ -1165,17 +1200,18 @@ def _record_value(record: Mapping[str, object], canonical_field: str) -> object:
     return None
 
 
-def _parse_symbol(record: Mapping[str, object]) -> str:
+def _parse_symbol(record: Mapping[str, object], requested_symbol: str) -> str:
+    checked_symbol = _approved_symbol(requested_symbol)
     symbol_value = None
     for alias in _PROVIDER_FIELD_ALIASES["symbol"]:
         if alias in record:
             symbol_value = record[alias]
             break
     if symbol_value in (None, ""):
-        return _SYMBOL
-    if str(symbol_value).strip().upper() != _SYMBOL:
-        raise ValidationError("symbol_scope_must_be_spy")
-    return _SYMBOL
+        return checked_symbol
+    if str(symbol_value).strip().upper() != checked_symbol:
+        raise ValidationError(f"symbol_scope_must_be_{checked_symbol.lower()}")
+    return checked_symbol
 
 
 def _parse_provider_date(value: object) -> date:
@@ -1274,12 +1310,27 @@ def _config(value: object) -> SPYAdjustedDataRefreshConfig:
     return value
 
 
+def _tiingo_url(symbol: str) -> str:
+    return f"{_TIINGO_URL_PREFIX}/{_approved_symbol(symbol)}/prices"
+
+
 def _required_string(value: object, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValidationError(f"{field_name} must be a string.")
     text = value.strip()
     if not text:
         raise ValidationError(f"{field_name} is required.")
+    return text
+
+
+def _approved_symbol(value: object) -> str:
+    text = _required_string(value, "symbol").upper()
+    if text not in APPROVED_ADJUSTED_ETF_SYMBOLS:
+        raise ValidationError(
+            "symbol must be one of "
+            + ",".join(APPROVED_ADJUSTED_ETF_SYMBOLS)
+            + "."
+        )
     return text
 
 
@@ -1370,6 +1421,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-csv", required=True)
     parser.add_argument("--canonical-csv", required=True)
     parser.add_argument("--run-log", required=True)
+    parser.add_argument("--symbol", choices=APPROVED_ADJUSTED_ETF_SYMBOLS, default=_SYMBOL)
     parser.add_argument("--mode", choices=_MODES, default=_DRY_RUN)
     parser.add_argument("--fixture-input-path", default=None)
     parser.add_argument("--raw-response-path", default=None)
@@ -1423,6 +1475,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 output_csv=args.output_csv,
                 canonical_csv=args.canonical_csv,
                 run_log=args.run_log,
+                symbol=args.symbol,
                 mode=args.mode,
                 fixture_input_path=args.fixture_input_path,
                 live_fetch_authorized=args.live_fetch_authorized,
