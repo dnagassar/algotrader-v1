@@ -185,7 +185,7 @@ def test_anti_overfit_flags_detect_severe_return_degradation() -> None:
     assert review["final_review_classification"] == "reject_preview"
 
 
-def test_candidate_cannot_become_paper_candidate_in_v215() -> None:
+def test_candidate_cannot_become_paper_candidate_in_preview_review() -> None:
     with pytest.raises(ValidationError):
         validate_preview_review_classification("paper_candidate")
 

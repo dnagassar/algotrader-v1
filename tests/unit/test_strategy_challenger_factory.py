@@ -156,9 +156,24 @@ def test_default_candidate_set_is_broader_but_controlled() -> None:
         "spy_tsmom_252_long_only",
         "spy_drawdown_20pct_risk_off",
     } <= challenger_ids
+    assert {
+        "relative_momentum_top1_126d_monthly",
+        "relative_momentum_top1_252d_monthly",
+        "dual_momentum_top1_252d_monthly_with_cash_filter",
+        "relative_momentum_equal_weight_top2_126d_monthly",
+    } <= challenger_ids
+    relative_momentum = [
+        candidate
+        for candidate in candidates
+        if candidate.strategy_family == "etf_relative_momentum_basket"
+    ]
+    assert len(relative_momentum) == 4
+    assert all(candidate.basket_symbols == DEFAULT_STRATEGY_CHALLENGER_SYMBOLS for candidate in relative_momentum)
+    assert all(candidate.rebalance_rule == "monthly" for candidate in relative_momentum)
+    assert all(candidate.symbol == "ETF_BASKET" for candidate in relative_momentum)
     assert "spy_buy_and_hold_comparator" in ids
     assert len(challenger_ids) >= 3
-    assert len(candidates) <= 9
+    assert len(candidates) <= 13
 
 
 def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: Path) -> None:
@@ -257,18 +272,133 @@ def test_factory_supports_etf_basket_and_emits_cross_asset_rollup(tmp_path: Path
     assert payload["symbols"] == list(symbols)
     assert payload["symbols_evaluated"] == list(symbols)
     assert payload["symbols_missing_data"] == []
-    assert payload["candidate_count"] == len(symbols) * len(build_default_strategy_challenger_candidates())
+    default_candidates = build_default_strategy_challenger_candidates()
+    symbol_candidate_count = sum(
+        1
+        for candidate in default_candidates
+        if candidate.strategy_family != "etf_relative_momentum_basket"
+    )
+    basket_candidate_count = sum(
+        1
+        for candidate in default_candidates
+        if candidate.strategy_family == "etf_relative_momentum_basket"
+    )
+    assert payload["candidate_count"] == len(symbols) * symbol_candidate_count + basket_candidate_count
     result_pairs = {(result["symbol"], result["candidate_id"]) for result in payload["results"]}
     assert ("SPY", "spy_sma_50_200_baseline") in result_pairs
     assert ("QQQ", "spy_sma_20_100_long_only") in result_pairs
+    assert ("ETF_BASKET", "relative_momentum_top1_126d_monthly") in result_pairs
 
     cross_asset = payload["cross_asset_validation"]
     assert cross_asset["symbols_evaluated"] == list(symbols)
-    assert set(cross_asset["candidates_passing_oos_by_symbol"]) == set(symbols)
+    assert set(symbols) <= set(cross_asset["candidates_passing_oos_by_symbol"])
     assert cross_asset["candidate_aggregate_scores"]
     assert "operating_symbol_data_available" in cross_asset["robustness_flags"]
+    assert "v2_16_no_paper_promotion" in {
+        blocker
+        for rollup in cross_asset["candidate_rollups"]
+        for blocker in rollup["paper_candidate_blockers"]
+    }
     assert (output_root / "cross_asset_validation.json").is_file()
     assert (output_root / "cross_asset_summary.md").is_file()
+
+
+def test_relative_momentum_basket_candidate_metrics_and_rebalance_dates_are_deterministic(
+    tmp_path: Path,
+) -> None:
+    data_path = tmp_path / "etf_basket_fixture.csv"
+    symbols = DEFAULT_STRATEGY_CHALLENGER_SYMBOLS
+    _write_multi_symbol_price_csv(
+        data_path,
+        {
+            "SPY": _trend_then_drawdown_prices(),
+            "QQQ": _scaled_prices(_linear_prices(455, start=Decimal("95"), step=Decimal("0.35")), Decimal("1.10")),
+            "IWM": _scaled_prices(_regime_flip_prices(count=455, regime=91), Decimal("0.85")),
+            "TLT": _scaled_prices(_linear_prices(455, start=Decimal("90"), step=Decimal("0.03")), Decimal("1")),
+            "GLD": _scaled_prices(_linear_prices(455, start=Decimal("160"), step=Decimal("0.02")), Decimal("1")),
+        },
+    )
+
+    first_payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(
+            output_root=tmp_path / "out1",
+            data_path=data_path,
+            symbols=symbols,
+        )
+    )
+    second_payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(
+            output_root=tmp_path / "out2",
+            data_path=data_path,
+            symbols=symbols,
+        )
+    )
+
+    candidate = _result_by_id(first_payload, "relative_momentum_top1_126d_monthly")
+    repeated = _result_by_id(second_payload, "relative_momentum_top1_126d_monthly")
+    assert candidate["strategy_family"] == "etf_relative_momentum_basket"
+    assert candidate["symbol"] == "ETF_BASKET"
+    assert candidate["basket_symbols"] == list(symbols)
+    assert candidate["basket_symbol_count"] == len(symbols)
+    assert candidate["rebalance_rule"] == "monthly"
+    assert candidate["top_n"] == 1
+    assert candidate["scheduled_rebalance_dates"] == repeated["scheduled_rebalance_dates"]
+    assert candidate["rebalance_dates"] == repeated["rebalance_dates"]
+    assert candidate["scheduled_rebalance_dates"]
+    assert all(
+        date_text.endswith("-01") or date_text[8:] <= "07"
+        for date_text in candidate["scheduled_rebalance_dates"]
+    )
+    assert candidate["metrics_status"] == "valid"
+    assert candidate["total_return"] is not None
+    assert candidate["max_drawdown"] is not None
+    assert candidate["sharpe_ratio"] is not None
+    assert candidate["transition_count"] == candidate["rebalance_count"]
+    assert candidate["exposure_percentage"] is not None
+    assert candidate["out_of_sample_validation"]["window_count"] > 0
+    assert candidate["oos_status"] in {"passed", "failed", "mixed"}
+    assert candidate["cost_sensitivity_summary"]["moderate_cost_total_return"] is not None
+    assert candidate["cost_sensitivity_status"] in {"survived", "edge_broken", "highly_sensitive"}
+    assert candidate["promotion_classification"] != "paper_candidate"
+    assert candidate["paper_promotion_allowed"] is False
+    assert "v2_16_no_paper_promotion" in candidate["cross_asset_promotion_gate"]["blockers"]
+
+
+def test_dual_momentum_basket_uses_cash_filter_and_top2_uses_two_symbols(
+    tmp_path: Path,
+) -> None:
+    data_path = tmp_path / "declining_basket_fixture.csv"
+    symbols = DEFAULT_STRATEGY_CHALLENGER_SYMBOLS
+    _write_multi_symbol_price_csv(
+        data_path,
+        {
+            "SPY": _linear_prices(455, start=Decimal("200"), step=Decimal("-0.10")),
+            "QQQ": _linear_prices(455, start=Decimal("180"), step=Decimal("-0.08")),
+            "IWM": _linear_prices(455, start=Decimal("150"), step=Decimal("-0.07")),
+            "TLT": _linear_prices(455, start=Decimal("120"), step=Decimal("-0.02")),
+            "GLD": _linear_prices(455, start=Decimal("170"), step=Decimal("-0.03")),
+        },
+    )
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(
+            output_root=tmp_path / "out",
+            data_path=data_path,
+            symbols=symbols,
+        )
+    )
+
+    dual = _result_by_id(payload, "dual_momentum_top1_252d_monthly_with_cash_filter")
+    top2 = _result_by_id(payload, "relative_momentum_equal_weight_top2_126d_monthly")
+    assert dual["risk_off_state"] == "cash_filter_positive_momentum"
+    assert Decimal(dual["exposure_percentage"]) < Decimal("50")
+    assert dual["promotion_classification"] != "paper_candidate"
+    assert top2["top_n"] == 2
+    assert any(
+        len(allocation["selected_symbols"]) == 2
+        for allocation in top2["rebalance_allocations"]
+    )
+    assert top2["promotion_classification"] != "paper_candidate"
 
 
 def test_missing_non_spy_basket_data_emits_refresh_required_not_crash(
@@ -516,7 +646,9 @@ def test_review_packet_explains_reject_and_keep_researching(tmp_path: Path) -> N
     )
 
 
-def test_controlled_fixture_produces_preview_or_paper_candidate(tmp_path: Path) -> None:
+def test_controlled_fixture_produces_preview_candidate_but_no_paper_candidate(
+    tmp_path: Path,
+) -> None:
     data_path = tmp_path / "preview_candidate_spy.csv"
     _write_trend_then_drawdown_csv(data_path)
 
@@ -530,8 +662,13 @@ def test_controlled_fixture_produces_preview_or_paper_candidate(tmp_path: Path) 
         if result["candidate_id"] not in {"spy_sma_50_200_baseline", "spy_sma_50_200_cash_risk_off_comparator"}
     ]
     assert any(
-        result["promotion_classification"] in {"preview_only", "paper_candidate"}
+        result["promotion_classification"] == "preview_only"
         for result in challenger_results
+    )
+    assert payload["promotion_recommendations"]["paper_candidate_count"] == 0
+    assert all(
+        result["promotion_classification"] != "paper_candidate"
+        for result in payload["results"]
     )
 
 
@@ -586,6 +723,21 @@ def test_candidate_cannot_be_paper_candidate_when_cost_sensitivity_breaks_edge()
 
     assert classification == "keep_researching"
     assert "cost_sensitivity_breaks_edge" in reasons
+
+
+def test_candidate_cannot_be_paper_candidate_in_v216_even_when_gates_pass() -> None:
+    classification, reasons = classify_strategy_challenger_promotion(
+        _classification_candidate_result(
+            total_return="0.20",
+            baseline_total_return_delta="0.08",
+            baseline_max_drawdown_delta="0",
+            baseline_sharpe_ratio_delta="0.25",
+        ),
+        _classification_baseline_result(),
+    )
+
+    assert classification == "preview_only"
+    assert "v2_16_no_paper_promotion" in reasons
 
 
 def test_reject_classification_for_severe_return_degradation_despite_drawdown_improvement() -> None:
