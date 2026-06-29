@@ -12,6 +12,7 @@ import subprocess
 import pytest
 
 from algotrader.research.strategy_challenger_factory import (
+    DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
     STRATEGY_CHALLENGER_FACTORY_LABELS,
     StrategyChallengerFactoryConfig,
     build_default_strategy_challenger_candidates,
@@ -34,6 +35,8 @@ REQUIRED_ARTIFACTS = {
     "strategy_review_packet.md",
     "validation_windows.json",
     "cost_sensitivity.json",
+    "cross_asset_validation.json",
+    "cross_asset_summary.md",
     "manifest.json",
 }
 
@@ -74,12 +77,17 @@ REQUIRED_RESULT_FIELDS = {
     "out_of_sample_validation",
     "cost_adjusted_metrics",
     "cost_sensitivity_summary",
+    "oos_status",
+    "cost_sensitivity_status",
+    "data_availability_status",
+    "data_refresh_status",
     "limitations",
     "promotion_classification",
     "labels",
 }
 
 REQUIRED_REVIEW_CANDIDATE_FIELDS = {
+    "symbol",
     "candidate_id",
     "strategy_hypothesis",
     "metrics_summary",
@@ -91,6 +99,7 @@ REQUIRED_REVIEW_CANDIDATE_FIELDS = {
     "promotion_reasons",
     "promotion_rationale",
     "operator_takeaway",
+    "cross_asset_promotion_gate",
     "limitations",
     "safety_labels",
 }
@@ -183,10 +192,11 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
         assert set(STRATEGY_CHALLENGER_FACTORY_LABELS) <= set(result["labels"])
 
     manifest = json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["artifact_count"] == 8
+    assert manifest["artifact_count"] == len(REQUIRED_ARTIFACTS) - 1
     assert {artifact["name"] for artifact in manifest["artifacts"]} == REQUIRED_ARTIFACTS - {"manifest.json"}
     assert manifest["safety"]["broker_mutation_performed"] is False
     assert manifest["safety"]["live_mutation_performed"] is False
+    assert manifest["symbols"] == ["SPY"]
 
     validation_windows = json.loads(
         (output_root / "validation_windows.json").read_text(encoding="utf-8")
@@ -196,6 +206,7 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
         (output_root / "cost_sensitivity.json").read_text(encoding="utf-8")
     )
     assert cost_sensitivity["cost_assumptions"] == payload["cost_assumptions"]
+    assert "symbol" in cost_sensitivity["results"][0]
     assert [item["cost_id"] for item in payload["cost_assumptions"]] == [
         "zero_cost",
         "low_cost_1bp",
@@ -207,10 +218,120 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
         (output_root / "strategy_review_packet.json").read_text(encoding="utf-8")
     )
     assert review_packet["benchmark_candidate_id"] == "spy_buy_and_hold_comparator"
+    assert review_packet["symbols"] == ["SPY"]
     assert len(review_packet["candidates"]) == len(jsonl_results)
     for candidate in review_packet["candidates"]:
         assert REQUIRED_REVIEW_CANDIDATE_FIELDS <= set(candidate)
         assert set(STRATEGY_CHALLENGER_FACTORY_LABELS) <= set(candidate["safety_labels"])
+
+    cross_asset = json.loads(
+        (output_root / "cross_asset_validation.json").read_text(encoding="utf-8")
+    )
+    assert cross_asset["cross_asset_validation"] == payload["cross_asset_validation"]
+
+
+def test_factory_supports_etf_basket_and_emits_cross_asset_rollup(tmp_path: Path) -> None:
+    data_path = tmp_path / "etf_basket_fixture.csv"
+    symbols = DEFAULT_STRATEGY_CHALLENGER_SYMBOLS
+    _write_multi_symbol_price_csv(
+        data_path,
+        {
+            "SPY": _trend_then_drawdown_prices(),
+            "QQQ": _scaled_prices(_trend_then_drawdown_prices(), Decimal("1.20")),
+            "IWM": _scaled_prices(_regime_flip_prices(count=455, regime=91), Decimal("0.85")),
+            "TLT": _scaled_prices(_linear_prices(455, start=Decimal("90"), step=Decimal("0.03")), Decimal("1")),
+            "GLD": _scaled_prices(_linear_prices(455, start=Decimal("160"), step=Decimal("0.02")), Decimal("1")),
+        },
+    )
+    output_root = tmp_path / "out"
+
+    payload = run_strategy_challenger_factory(
+        StrategyChallengerFactoryConfig(
+            output_root=output_root,
+            data_path=data_path,
+            symbols=symbols,
+        )
+    )
+
+    assert payload["operating_baseline_symbol"] == "SPY"
+    assert payload["symbols"] == list(symbols)
+    assert payload["symbols_evaluated"] == list(symbols)
+    assert payload["symbols_missing_data"] == []
+    assert payload["candidate_count"] == len(symbols) * len(build_default_strategy_challenger_candidates())
+    result_pairs = {(result["symbol"], result["candidate_id"]) for result in payload["results"]}
+    assert ("SPY", "spy_sma_50_200_baseline") in result_pairs
+    assert ("QQQ", "spy_sma_20_100_long_only") in result_pairs
+
+    cross_asset = payload["cross_asset_validation"]
+    assert cross_asset["symbols_evaluated"] == list(symbols)
+    assert set(cross_asset["candidates_passing_oos_by_symbol"]) == set(symbols)
+    assert cross_asset["candidate_aggregate_scores"]
+    assert "operating_symbol_data_available" in cross_asset["robustness_flags"]
+    assert (output_root / "cross_asset_validation.json").is_file()
+    assert (output_root / "cross_asset_summary.md").is_file()
+
+
+def test_missing_non_spy_basket_data_emits_refresh_required_not_crash(
+    tmp_path: Path,
+) -> None:
+    data_path = tmp_path / "spy_only_fixture.csv"
+    _write_trend_then_drawdown_csv(data_path)
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(
+            output_root=tmp_path / "out",
+            data_path=data_path,
+            symbols=DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
+        )
+    )
+
+    assert payload["symbols_evaluated"] == ["SPY"]
+    assert payload["symbols_missing_data"] == ["QQQ", "IWM", "TLT", "GLD"]
+    missing_results = [
+        result for result in payload["results"] if result["symbol"] != "SPY"
+    ]
+    assert missing_results
+    assert {result["data_availability_status"] for result in missing_results} == {
+        "missing_data"
+    }
+    assert {result["data_refresh_status"] for result in missing_results} == {
+        "data_refresh_required"
+    }
+    assert all(result["promotion_classification"] == "reject" for result in missing_results)
+    assert payload["promotion_recommendations"]["paper_candidate_count"] == 0
+    assert "data_refresh_required" in payload["cross_asset_validation"]["robustness_flags"]
+
+
+def test_non_spy_only_evidence_cannot_become_paper_candidate(tmp_path: Path) -> None:
+    data_path = tmp_path / "qqq_only_fixture.csv"
+    _write_multi_symbol_price_csv(data_path, {"QQQ": _trend_then_drawdown_prices()})
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(
+            output_root=tmp_path / "out",
+            data_path=data_path,
+            symbols=("SPY", "QQQ"),
+        )
+    )
+
+    assert payload["symbols_evaluated"] == ["QQQ"]
+    assert payload["symbols_missing_data"] == ["SPY"]
+    assert payload["promotion_recommendations"]["paper_candidate_count"] == 0
+    assert all(
+        result["promotion_classification"] != "paper_candidate"
+        for result in payload["results"]
+    )
+    candidate_rollups = payload["cross_asset_validation"]["candidate_rollups"]
+    challenger_rollups = [
+        rollup
+        for rollup in candidate_rollups
+        if rollup["candidate_id"] == "spy_sma_20_100_long_only"
+    ]
+    assert challenger_rollups
+    assert any(
+        "operating_symbol_data_missing" in rollup["paper_candidate_blockers"]
+        for rollup in challenger_rollups
+    )
 
 
 def test_validation_windows_are_deterministic_and_chronological(tmp_path: Path) -> None:
@@ -542,6 +663,7 @@ def test_run_strategy_challenger_factory_script_contract_and_invocation(tmp_path
         "mutate broker state",
         "contact",
         "Credential values are never printed",
+        "SPY,QQQ,IWM,TLT,GLD",
         "preflight_APP_PROFILE_is_paper",
         "preflight_credential_variables_loaded",
         "algotrader.research.strategy_challenger_factory",
@@ -585,6 +707,7 @@ def test_run_strategy_challenger_factory_script_contract_and_invocation(tmp_path
     assert str(output_root) in args
     assert "--data-path" in args
     assert str(bars_csv) in args
+    assert "--symbols SPY,QQQ,IWM,TLT,GLD" in args
     assert "--as-of-date 2026-01-02" in args
 
 
@@ -692,6 +815,10 @@ def _classification_candidate_result(
 
 
 def _write_trend_then_drawdown_csv(path: Path) -> None:
+    _write_price_csv(path, _trend_then_drawdown_prices())
+
+
+def _trend_then_drawdown_prices() -> tuple[Decimal, ...]:
     prices: list[Decimal] = []
     price = Decimal("100")
     for _ in range(220):
@@ -703,7 +830,7 @@ def _write_trend_then_drawdown_csv(path: Path) -> None:
     for _ in range(180):
         prices.append(price)
         price += Decimal("0.30")
-    _write_price_csv(path, tuple(prices))
+    return tuple(prices)
 
 
 def _linear_prices(count: int, *, start: Decimal, step: Decimal) -> tuple[Decimal, ...]:
@@ -725,6 +852,10 @@ def _regime_flip_prices(count: int, regime: int) -> tuple[Decimal, ...]:
     return tuple(prices)
 
 
+def _scaled_prices(prices: tuple[Decimal, ...], scale: Decimal) -> tuple[Decimal, ...]:
+    return tuple((price * scale).quantize(Decimal("0.0001")) for price in prices)
+
+
 def _write_price_csv(path: Path, prices: tuple[Decimal, ...]) -> None:
     rows = ["symbol,date,open,high,low,close,adjusted_close,volume"]
     start = date(2020, 1, 2)
@@ -736,6 +867,25 @@ def _write_price_csv(path: Path, prices: tuple[Decimal, ...]) -> None:
                 price=price,
             )
         )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
+def _write_multi_symbol_price_csv(
+    path: Path,
+    prices_by_symbol: dict[str, tuple[Decimal, ...]],
+) -> None:
+    rows = ["symbol,date,open,high,low,close,adjusted_close,volume"]
+    start = date(2020, 1, 2)
+    for symbol, prices in prices_by_symbol.items():
+        for index, price in enumerate(prices):
+            on_date = start + timedelta(days=index)
+            rows.append(
+                "{symbol},{date},{price},{price},{price},{price},{price},1000".format(
+                    symbol=symbol,
+                    date=on_date.isoformat(),
+                    price=price,
+                )
+            )
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
 
 

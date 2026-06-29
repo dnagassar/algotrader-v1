@@ -32,6 +32,7 @@ from algotrader.research.price_snapshot import (
 )
 
 __all__ = [
+    "DEFAULT_STRATEGY_CHALLENGER_SYMBOLS",
     "STRATEGY_CHALLENGER_FACTORY_LABELS",
     "STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS",
     "StrategyChallengerCandidate",
@@ -64,9 +65,10 @@ STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS = (
 
 _RECORD_TYPE = "strategy_challenger_factory"
 _SCHEMA_VERSION = "1"
-_FACTORY_ID = "v2.12_strategy_challenger_factory"
-_PREVIOUS_FACTORY_ID = "v2.11_strategy_challenger_factory"
+_FACTORY_ID = "v2.13_strategy_challenger_factory"
+_PREVIOUS_FACTORY_ID = "v2.12_strategy_challenger_factory"
 _DEFAULT_SYMBOL = "SPY"
+DEFAULT_STRATEGY_CHALLENGER_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
 _DEFAULT_TIMEFRAME = "1d"
 _DEFAULT_DATA_PATH = Path("runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv")
 _DEFAULT_OUTPUT_ROOT = Path("runs/strategy_challengers/latest")
@@ -88,6 +90,11 @@ _COMPARATOR_CANDIDATE_IDS = (
 _DATA_QUALITY_VALID = "valid_local_daily_bars"
 _DATA_QUALITY_MALFORMED = "malformed_or_unreadable_local_daily_bars"
 _DATA_QUALITY_MISSING = "missing_local_daily_bars"
+_DATA_QUALITY_MIXED = "mixed_local_daily_bars"
+_DATA_AVAILABILITY_AVAILABLE = "available"
+_DATA_AVAILABILITY_MISSING = "missing_data"
+_DATA_REFRESH_NOT_REQUIRED = "not_required"
+_DATA_REFRESH_REQUIRED = "data_refresh_required"
 _VALIDATION_WINDOW_METHOD = (
     "full_sample_plus_chronological_half_split_plus_three_walk_forward_folds"
 )
@@ -278,6 +285,7 @@ class StrategyChallengerFactoryConfig:
     output_root: Path | str
     data_path: Path | str = _DEFAULT_DATA_PATH
     symbol: str = _DEFAULT_SYMBOL
+    symbols: Iterable[str] | str | None = None
     as_of: date | str | None = None
     initial_equity: Decimal | str = _DEFAULT_INITIAL_EQUITY
     fee_bps: Decimal | str = _DEFAULT_FEE_BPS
@@ -288,6 +296,11 @@ class StrategyChallengerFactoryConfig:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
         object.__setattr__(self, "data_path", _path(self.data_path, "data_path"))
         object.__setattr__(self, "symbol", _symbol(self.symbol))
+        object.__setattr__(
+            self,
+            "symbols",
+            _symbol_tuple(self.symbols, fallback_symbol=self.symbol),
+        )
         object.__setattr__(self, "as_of", _optional_date(self.as_of, "as_of"))
         object.__setattr__(
             self,
@@ -311,6 +324,8 @@ class StrategyChallengerFactoryConfig:
         object.__setattr__(self, "candidates", candidates)
         if not any(candidate.candidate_id == _BASELINE_CANDIDATE_ID for candidate in candidates):
             raise ValidationError("candidates must include the SPY SMA 50/200 baseline.")
+        if self.symbol not in self.symbols:
+            raise ValidationError("symbols must include the operating baseline symbol.")
 
 
 def build_default_strategy_challenger_candidates(
@@ -432,75 +447,82 @@ def run_strategy_challenger_factory(
 def build_strategy_challenger_payload(
     config: StrategyChallengerFactoryConfig,
 ) -> dict[str, object]:
-    """Evaluate challenger candidates against the current SPY SMA 50/200 baseline."""
+    """Evaluate challenger candidates against the operating SPY baseline."""
 
     checked_config = _config(config)
     data_sha256 = _file_sha256_or_none(checked_config.data_path)
-    data_error: str | None = None
-    data_quality_status = _DATA_QUALITY_VALID
-    csv_result: LocalDailyBarsCsvResult | None = None
-    validation_windows: tuple[dict[str, object], ...] = ()
     cost_assumptions = _cost_assumption_records()
+    symbol_records: list[dict[str, object]] = []
+    validation_windows_by_symbol: dict[str, list[dict[str, object]]] = {}
+    all_results: list[dict[str, object]] = []
 
-    try:
-        csv_result = load_local_daily_bars_csv(
-            checked_config.data_path,
-            symbol=checked_config.symbol,
-            as_of=checked_config.as_of,
-        )
-    except ValidationError as exc:
-        data_error = str(exc)
-        data_quality_status = (
-            _DATA_QUALITY_MISSING
-            if not checked_config.data_path.exists()
-            else _DATA_QUALITY_MALFORMED
-        )
-
-    if csv_result is None:
-        results = tuple(
-            _rejected_data_result(
-                candidate,
-                config=checked_config,
-                data_sha256=data_sha256,
-                data_quality_status=data_quality_status,
-                data_error=data_error or data_quality_status,
-            )
-            for candidate in checked_config.candidates
-        )
-    else:
-        validation_windows = build_strategy_challenger_validation_windows(
-            csv_result.usable_bars
-        )
-        results = _evaluate_candidates(
-            csv_result,
-            config=checked_config,
+    for symbol in checked_config.symbols:
+        results, symbol_record = _evaluate_symbol_candidate_set(
+            checked_config,
+            symbol=symbol,
             data_sha256=data_sha256,
-            validation_windows=validation_windows,
+        )
+        all_results.extend(results)
+        symbol_records.append(symbol_record)
+        validation_windows_by_symbol[symbol] = list(
+            symbol_record.get("validation_windows", [])
         )
 
-    recommendations = _build_promotion_recommendations(results)
-    as_of_start, as_of_end = _payload_as_of_range(results)
+    cross_asset_validation = _build_cross_asset_validation(
+        all_results,
+        symbol_records,
+        checked_config,
+    )
+    if len(checked_config.symbols) > 1:
+        all_results = list(
+            _apply_cross_asset_promotion_gates(
+                all_results,
+                checked_config,
+            )
+        )
+        cross_asset_validation = _build_cross_asset_validation(
+            all_results,
+            symbol_records,
+            checked_config,
+        )
+
+    recommendations = _build_promotion_recommendations(
+        all_results,
+        cross_asset_validation=cross_asset_validation,
+    )
+    as_of_start, as_of_end = _payload_as_of_range(all_results)
+    validation_windows = tuple(
+        validation_windows_by_symbol.get(checked_config.symbol, [])
+    )
     return {
         "record_type": _RECORD_TYPE,
         "schema_version": _SCHEMA_VERSION,
         "factory_id": _FACTORY_ID,
         "previous_factory_id": _PREVIOUS_FACTORY_ID,
-        "run_id": _run_id(checked_config.symbol, as_of_end, data_sha256),
+        "run_id": _run_id(checked_config.symbols, as_of_end, data_sha256),
         "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
         "symbol": checked_config.symbol,
+        "operating_baseline_symbol": checked_config.symbol,
+        "symbols": list(checked_config.symbols),
+        "symbol_count": len(checked_config.symbols),
+        "symbols_evaluated": list(cross_asset_validation["symbols_evaluated"]),
+        "symbols_missing_data": list(cross_asset_validation["symbols_missing_data"]),
+        "symbol_data_statuses": list(symbol_records),
         "timeframe": _DEFAULT_TIMEFRAME,
         "data_path": str(checked_config.data_path),
         "data_sha256": data_sha256,
-        "data_quality_status": data_quality_status,
-        "data_error": data_error,
+        "data_quality_status": _aggregate_data_quality_status(symbol_records),
+        "data_error": _aggregate_data_error(symbol_records),
         "as_of_start": as_of_start,
         "as_of_end": as_of_end,
-        "candidate_count": len(results),
+        "candidate_count": len(all_results),
         "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
         "validation_window_method": _VALIDATION_WINDOW_METHOD,
         "validation_windows": list(validation_windows),
+        "validation_windows_by_symbol": validation_windows_by_symbol,
         "cost_assumptions": list(cost_assumptions),
-        "results": [dict(result) for result in results],
+        "results": [dict(result) for result in all_results],
+        "cross_asset_validation": cross_asset_validation,
         "promotion_recommendations": recommendations,
         "safety": _safety_payload(),
     }
@@ -516,6 +538,8 @@ def classify_strategy_challenger_promotion(
     reasons: list[str] = []
 
     if result.get("data_quality_status") != _DATA_QUALITY_VALID:
+        if result.get("data_availability_status") == _DATA_AVAILABILITY_MISSING:
+            return "reject", (_DATA_AVAILABILITY_MISSING, _DATA_REFRESH_REQUIRED)
         return "reject", ("malformed_or_missing_data",)
     if str(result.get("metrics_status", "")) == "rejected_insufficient_history":
         return "reject", ("insufficient_history_for_candidate_slow_window",)
@@ -682,6 +706,20 @@ def write_strategy_challenger_artifacts(
                 _json_dumps(_cost_sensitivity_artifact(payload_dict)) + "\n",
             ),
         ),
+        (
+            "cross_asset_validation.json",
+            lambda path: _write_text(
+                path,
+                _json_dumps(_cross_asset_validation_artifact(payload_dict)) + "\n",
+            ),
+        ),
+        (
+            "cross_asset_summary.md",
+            lambda path: _write_text(
+                path,
+                render_cross_asset_summary_markdown(payload_dict),
+            ),
+        ),
     )
 
     artifact_paths: list[Path] = []
@@ -708,7 +746,9 @@ def render_strategy_challenger_summary_markdown(
         "Labels: " + ", ".join(str(item) for item in payload_dict["labels"]),  # type: ignore[index]
         "",
         "## Data",
-        f"- symbol: {payload_dict.get('symbol')}",
+        f"- operating_baseline_symbol: {payload_dict.get('operating_baseline_symbol')}",
+        "- symbols: "
+        + ", ".join(str(item) for item in payload_dict.get("symbols", [])),
         f"- timeframe: {payload_dict.get('timeframe')}",
         f"- data_path: {payload_dict.get('data_path')}",
         f"- data_sha256: {payload_dict.get('data_sha256')}",
@@ -750,30 +790,38 @@ def render_strategy_challenger_summary_markdown(
     lines.extend(
         [
             "",
+            "## Cross-Asset Validation",
+        ]
+    )
+    cross_asset = _mapping_or_empty(payload_dict.get("cross_asset_validation"))
+    lines.extend(
+        [
+            "- symbols_evaluated: "
+            + ", ".join(str(item) for item in cross_asset.get("symbols_evaluated", [])),
+            "- symbols_missing_data: "
+            + ", ".join(str(item) for item in cross_asset.get("symbols_missing_data", [])),
+            "- robustness_flags: "
+            + ", ".join(str(item) for item in cross_asset.get("robustness_flags", [])),
+            "",
             "## Candidate Results",
-            "| candidate_id | total_return | max_drawdown | sharpe_ratio | transitions | exposure_pct | OOS passed | moderate cost edge broken | classification |",
-            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+            "| symbol | candidate_id | total_return | max_drawdown | sharpe_ratio | transitions | exposure_pct | OOS status | cost status | classification |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | --- | --- | --- |",
         ]
     )
     for result in _result_list(payload_dict):
-        out_of_sample = _mapping_or_empty(result.get("out_of_sample_validation"))
-        cost_summary = _mapping_or_empty(result.get("cost_sensitivity_summary"))
         lines.append(
-            "| {candidate_id} | {total_return} | {max_drawdown} | "
+            "| {symbol} | {candidate_id} | {total_return} | {max_drawdown} | "
             "{sharpe_ratio} | {transition_count} | {exposure_percentage} | "
-            "{out_of_sample_passed} | {edge_broken} | {promotion_classification} |".format(
+            "{oos_status} | {cost_status} | {promotion_classification} |".format(
+                symbol=result.get("symbol"),
                 candidate_id=result.get("candidate_id"),
                 total_return=_markdown_value(result.get("total_return")),
                 max_drawdown=_markdown_value(result.get("max_drawdown")),
                 sharpe_ratio=_markdown_value(result.get("sharpe_ratio")),
                 transition_count=_markdown_value(result.get("transition_count")),
                 exposure_percentage=_markdown_value(result.get("exposure_percentage")),
-                out_of_sample_passed=_markdown_value(
-                    out_of_sample.get("validation_passed")
-                ),
-                edge_broken=_markdown_value(
-                    cost_summary.get("edge_broken_by_moderate_cost")
-                ),
+                oos_status=_markdown_value(result.get("oos_status")),
+                cost_status=_markdown_value(result.get("cost_sensitivity_status")),
                 promotion_classification=result.get("promotion_classification"),
             )
         )
@@ -802,6 +850,101 @@ def render_strategy_challenger_summary_markdown(
     return "\n".join(lines)
 
 
+def render_cross_asset_summary_markdown(
+    payload: Mapping[str, object],
+) -> str:
+    """Render the deterministic ETF basket validation summary."""
+
+    payload_dict = dict(payload)
+    cross_asset = _mapping_or_empty(payload_dict.get("cross_asset_validation"))
+    lines = [
+        "# Cross-Asset Strategy Validation",
+        "",
+        "Labels: " + ", ".join(str(item) for item in payload_dict["labels"]),  # type: ignore[index]
+        "",
+        "## Basket",
+        f"- operating_baseline_symbol: {payload_dict.get('operating_baseline_symbol')}",
+        "- symbols_requested: "
+        + ", ".join(str(item) for item in cross_asset.get("symbols_requested", [])),
+        "- symbols_evaluated: "
+        + ", ".join(str(item) for item in cross_asset.get("symbols_evaluated", [])),
+        "- symbols_missing_data: "
+        + ", ".join(str(item) for item in cross_asset.get("symbols_missing_data", [])),
+        "- robustness_flags: "
+        + ", ".join(str(item) for item in cross_asset.get("robustness_flags", [])),
+        "",
+        "## OOS By Symbol",
+        "| symbol | passing_oos_candidates | failing_oos_candidates |",
+        "| --- | --- | --- |",
+    ]
+    passing = _mapping_or_empty(cross_asset.get("candidates_passing_oos_by_symbol"))
+    failing = _mapping_or_empty(cross_asset.get("candidates_failing_oos_by_symbol"))
+    for symbol in payload_dict.get("symbols", []):
+        lines.append(
+            "| {symbol} | {passing} | {failing} |".format(
+                symbol=symbol,
+                passing=", ".join(str(item) for item in passing.get(str(symbol), [])),
+                failing=", ".join(str(item) for item in failing.get(str(symbol), [])),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Aggregate Candidate Scores",
+            "| candidate_id | symbol_count | average_rank | average_score |",
+            "| --- | ---: | ---: | ---: |",
+        ]
+    )
+    for score in cross_asset.get("candidate_aggregate_scores", []):
+        if not isinstance(score, Mapping):
+            continue
+        lines.append(
+            "| {candidate_id} | {symbol_count} | {average_rank} | {average_score} |".format(
+                candidate_id=score.get("candidate_id"),
+                symbol_count=score.get("symbol_count"),
+                average_rank=score.get("average_rank"),
+                average_score=score.get("average_score"),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Promotion Gate",
+            "| candidate_id | allowed | blockers |",
+            "| --- | ---: | --- |",
+        ]
+    )
+    for rollup in cross_asset.get("candidate_rollups", []):
+        if not isinstance(rollup, Mapping):
+            continue
+        lines.append(
+            "| {candidate_id} | {allowed} | {blockers} |".format(
+                candidate_id=rollup.get("candidate_id"),
+                allowed=rollup.get("paper_candidate_allowed"),
+                blockers=", ".join(
+                    str(item) for item in rollup.get("paper_candidate_blockers", [])
+                ),
+            )
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Safety",
+            "- broker_access_attempted: false",
+            "- broker_mutation_performed: false",
+            "- paper_submit_performed: false",
+            "- live_mutation_performed: false",
+            "- network_access_attempted: false",
+            "- profit_claim: none",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
 def build_strategy_review_packet(payload: Mapping[str, object]) -> dict[str, object]:
     """Build compact operator-facing evidence and rationale for each candidate."""
 
@@ -819,6 +962,8 @@ def build_strategy_review_packet(payload: Mapping[str, object]) -> dict[str, obj
         "run_id": payload_dict.get("run_id"),
         "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
         "symbol": payload_dict.get("symbol"),
+        "operating_baseline_symbol": payload_dict.get("operating_baseline_symbol"),
+        "symbols": list(payload_dict.get("symbols", [])),
         "timeframe": payload_dict.get("timeframe"),
         "data_path": payload_dict.get("data_path"),
         "data_sha256": payload_dict.get("data_sha256"),
@@ -832,6 +977,7 @@ def build_strategy_review_packet(payload: Mapping[str, object]) -> dict[str, obj
             "promotion_recommendations",
             {},
         ),
+        "cross_asset_validation": payload_dict.get("cross_asset_validation", {}),
         "candidates": [
             _strategy_review_candidate(result, benchmark_available=benchmark_available)
             for result in results
@@ -854,6 +1000,8 @@ def render_strategy_review_packet_markdown(packet: Mapping[str, object]) -> str:
         "## Evidence Summary",
         f"- baseline_candidate_id: {packet_dict.get('baseline_candidate_id')}",
         f"- benchmark_candidate_id: {packet_dict.get('benchmark_candidate_id')}",
+        "- symbols: "
+        + ", ".join(str(item) for item in packet_dict.get("symbols", [])),
         f"- classification_recommendation: {recommendations.get('classification_recommendation')}",
         "- broker_access_attempted: false",
         "- broker_mutation_performed: false",
@@ -861,8 +1009,8 @@ def render_strategy_review_packet_markdown(packet: Mapping[str, object]) -> str:
         "- live_mutation_performed: false",
         "",
         "## Candidate Decisions",
-        "| candidate_id | role | total_return | OOS | moderate_cost | classification | rationale |",
-        "| --- | --- | ---: | --- | --- | --- | --- |",
+        "| symbol | candidate_id | role | total_return | OOS | moderate_cost | classification | rationale |",
+        "| --- | --- | --- | ---: | --- | --- | --- | --- |",
     ]
     candidates = packet_dict.get("candidates", [])
     if isinstance(candidates, Iterable) and not isinstance(
@@ -876,10 +1024,11 @@ def render_strategy_review_packet_markdown(packet: Mapping[str, object]) -> str:
             oos = _mapping_or_empty(candidate.get("oos_result"))
             cost = _mapping_or_empty(candidate.get("cost_sensitivity_result"))
             lines.append(
-                "| {candidate_id} | {role} | {total_return} | "
+                "| {symbol} | {candidate_id} | {role} | {total_return} | "
                 "passed={oos_passed}, failed={oos_failed} | "
                 "edge_broken={edge_broken}, sensitive={sensitive} | "
                 "{classification} | {rationale} |".format(
+                    symbol=candidate.get("symbol"),
                     candidate_id=candidate.get("candidate_id"),
                     role=candidate.get("role"),
                     total_return=_markdown_value(metrics.get("total_return")),
@@ -931,6 +1080,7 @@ def _strategy_review_candidate(
         else {}
     )
     return {
+        "symbol": result.get("symbol"),
         "candidate_id": result.get("candidate_id"),
         "role": result.get("role"),
         "strategy_family": result.get("strategy_family"),
@@ -944,6 +1094,7 @@ def _strategy_review_candidate(
         "promotion_reasons": reasons,
         "promotion_rationale": _promotion_rationale(classification, reasons),
         "operator_takeaway": _operator_takeaway(classification, reasons),
+        "cross_asset_promotion_gate": result.get("cross_asset_promotion_gate", {}),
         "limitations": list(result.get("limitations", _DEFAULT_LIMITATIONS)),
         "safety_labels": list(result.get("labels", STRATEGY_CHALLENGER_FACTORY_LABELS)),
     }
@@ -959,6 +1110,10 @@ def _metrics_summary(result: Mapping[str, object]) -> dict[str, object]:
         "transition_count": result.get("transition_count"),
         "exposure_percentage": result.get("exposure_percentage"),
         "evaluated_return_count": result.get("evaluated_return_count"),
+        "data_availability_status": result.get("data_availability_status"),
+        "data_refresh_status": result.get("data_refresh_status"),
+        "oos_status": result.get("oos_status"),
+        "cost_sensitivity_status": result.get("cost_sensitivity_status"),
     }
 
 
@@ -973,6 +1128,7 @@ def _review_out_of_sample_result(result: Mapping[str, object]) -> dict[str, obje
         "primary_window_failed": summary.get("primary_window_failed"),
         "validation_passed": summary.get("validation_passed"),
         "validation_failed": summary.get("validation_failed"),
+        "oos_status": result.get("oos_status"),
         "window_results": summary.get("window_results", []),
     }
 
@@ -998,36 +1154,47 @@ def _review_cost_sensitivity_result(result: Mapping[str, object]) -> dict[str, o
             "edge_broken_by_moderate_cost"
         ),
         "returns_highly_cost_sensitive": summary.get("returns_highly_cost_sensitive"),
+        "cost_sensitivity_status": result.get("cost_sensitivity_status"),
     }
 
 
 def _strategy_hypothesis(result: Mapping[str, object]) -> str:
     candidate_id = str(result.get("candidate_id", ""))
     family = str(result.get("strategy_family", ""))
+    symbol = str(result.get("symbol", _DEFAULT_SYMBOL))
     fast_window = result.get("fast_window")
     slow_window = result.get("slow_window")
     if candidate_id == _BASELINE_CANDIDATE_ID:
-        return "Operating baseline: long SPY when SMA 50 is above SMA 200, otherwise cash."
+        return (
+            f"Operating baseline shape: long {symbol} when SMA 50 is above "
+            "SMA 200, otherwise cash."
+        )
     if candidate_id == _BUY_AND_HOLD_COMPARATOR_ID:
-        return "Benchmark comparator: hold SPY continuously across the evaluated adjusted-close history."
+        return (
+            f"Benchmark comparator: hold {symbol} continuously across the "
+            "evaluated adjusted-close history."
+        )
     if candidate_id == _CASH_RISK_OFF_COMPARATOR_ID:
         return "Comparator: current SMA 50/200 trend rule with explicit zero-return cash risk-off semantics."
     if family == "sma_crossover_long_only":
         return (
-            f"Trend filter: long SPY when SMA {fast_window} is above "
+            f"Trend filter: long {symbol} when SMA {fast_window} is above "
             f"SMA {slow_window}, otherwise cash."
         )
     if family == "time_series_momentum_long_only":
         return (
-            f"Time-series momentum: long SPY when adjusted close is above "
+            f"Time-series momentum: long {symbol} when adjusted close is above "
             f"its {slow_window}-bar lookback price, otherwise cash."
         )
     if family == "drawdown_filter_long_only":
         return (
-            f"Drawdown risk-off filter: long SPY after {slow_window} bars "
+            f"Drawdown risk-off filter: long {symbol} after {slow_window} bars "
             "unless price is at least 20 percent below the rolling high."
         )
-    return "Deterministic SPY strategy candidate evaluated against the operating baseline."
+    return (
+        f"Deterministic {symbol} strategy candidate evaluated against the "
+        "operating baseline shape."
+    )
 
 
 def _promotion_rationale(classification: str, reasons: Sequence[str]) -> str:
@@ -1060,6 +1227,159 @@ def _reason_text(reasons: Sequence[str]) -> str:
     if not reasons:
         return "no explicit reason was emitted"
     return "; ".join(reason.replace("_", " ") for reason in reasons)
+
+
+def _evaluate_symbol_candidate_set(
+    config: StrategyChallengerFactoryConfig,
+    *,
+    symbol: str,
+    data_sha256: str | None,
+) -> tuple[tuple[dict[str, object], ...], dict[str, object]]:
+    checked_symbol = _symbol(symbol)
+    candidates = _candidates_for_symbol(config.candidates, checked_symbol)
+    data_error: str | None = None
+    data_quality_status = _DATA_QUALITY_VALID
+    csv_result: LocalDailyBarsCsvResult | None = None
+    validation_windows: tuple[dict[str, object], ...] = ()
+
+    try:
+        csv_result = load_local_daily_bars_csv(
+            config.data_path,
+            symbol=checked_symbol,
+            as_of=config.as_of,
+        )
+    except ValidationError as exc:
+        data_error = str(exc)
+        data_quality_status = (
+            _DATA_QUALITY_MISSING
+            if not config.data_path.exists()
+            else _DATA_QUALITY_MALFORMED
+        )
+
+    if csv_result is not None and csv_result.matching_symbol_row_count == 0:
+        data_error = (
+            f"missing_data for {checked_symbol}; "
+            f"{_DATA_REFRESH_REQUIRED}"
+        )
+        data_quality_status = _DATA_QUALITY_MISSING
+        csv_result = None
+
+    if csv_result is None:
+        results = tuple(
+            _rejected_data_result(
+                candidate,
+                config=config,
+                data_sha256=data_sha256,
+                data_quality_status=data_quality_status,
+                data_error=data_error or data_quality_status,
+            )
+            for candidate in candidates
+        )
+        symbol_record = _symbol_data_status_record(
+            symbol=checked_symbol,
+            data_quality_status=data_quality_status,
+            data_error=data_error or data_quality_status,
+            csv_result=None,
+            validation_windows=(),
+        )
+        return results, symbol_record
+
+    validation_windows = build_strategy_challenger_validation_windows(
+        csv_result.usable_bars
+    )
+    symbol_config = _config_for_symbol(config, checked_symbol, candidates)
+    results = _evaluate_candidates(
+        csv_result,
+        config=symbol_config,
+        data_sha256=data_sha256,
+        validation_windows=validation_windows,
+    )
+    symbol_record = _symbol_data_status_record(
+        symbol=checked_symbol,
+        data_quality_status=data_quality_status,
+        data_error=None,
+        csv_result=csv_result,
+        validation_windows=validation_windows,
+    )
+    return results, symbol_record
+
+
+def _symbol_data_status_record(
+    *,
+    symbol: str,
+    data_quality_status: str,
+    data_error: str | None,
+    csv_result: LocalDailyBarsCsvResult | None,
+    validation_windows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    missing = data_quality_status == _DATA_QUALITY_MISSING
+    available = data_quality_status == _DATA_QUALITY_VALID
+    return {
+        "symbol": symbol,
+        "data_quality_status": data_quality_status,
+        "data_availability_status": (
+            _DATA_AVAILABILITY_MISSING
+            if missing
+            else _DATA_AVAILABILITY_AVAILABLE
+            if available
+            else "unavailable"
+        ),
+        "data_refresh_status": (
+            _DATA_REFRESH_REQUIRED if missing else _DATA_REFRESH_NOT_REQUIRED
+        ),
+        "data_error": data_error,
+        "matching_symbol_row_count": (
+            0 if csv_result is None else csv_result.matching_symbol_row_count
+        ),
+        "usable_bars": 0 if csv_result is None else len(csv_result.usable_bars),
+        "ignored_wrong_symbol_row_count": (
+            0 if csv_result is None else csv_result.ignored_wrong_symbol_row_count
+        ),
+        "ignored_future_bar_count": (
+            0 if csv_result is None else csv_result.ignored_future_bar_count
+        ),
+        "validation_windows": list(validation_windows),
+    }
+
+
+def _config_for_symbol(
+    config: StrategyChallengerFactoryConfig,
+    symbol: str,
+    candidates: tuple[StrategyChallengerCandidate, ...],
+) -> StrategyChallengerFactoryConfig:
+    return StrategyChallengerFactoryConfig(
+        output_root=config.output_root,
+        data_path=config.data_path,
+        symbol=symbol,
+        symbols=(symbol,),
+        as_of=config.as_of,
+        initial_equity=config.initial_equity,
+        fee_bps=config.fee_bps,
+        slippage_bps=config.slippage_bps,
+        candidates=candidates,
+    )
+
+
+def _candidates_for_symbol(
+    candidates: Iterable[StrategyChallengerCandidate],
+    symbol: str,
+) -> tuple[StrategyChallengerCandidate, ...]:
+    checked_symbol = _symbol(symbol)
+    return tuple(
+        candidate
+        if candidate.symbol == checked_symbol
+        else StrategyChallengerCandidate(
+            candidate_id=candidate.candidate_id,
+            strategy_family=candidate.strategy_family,
+            symbol=checked_symbol,
+            timeframe=candidate.timeframe,
+            fast_window=candidate.fast_window,
+            slow_window=candidate.slow_window,
+            role=candidate.role,
+            risk_off_state=candidate.risk_off_state,
+        )
+        for candidate in candidates
+    )
 
 
 def _evaluate_candidates(
@@ -1152,6 +1472,8 @@ def _evaluate_candidates(
             enriched
         )
         enriched["cost_sensitivity_summary"] = _cost_sensitivity_summary(enriched)
+        enriched["oos_status"] = _oos_status(enriched)
+        enriched["cost_sensitivity_status"] = _cost_sensitivity_status(enriched)
         classification, reasons = classify_strategy_challenger_promotion(
             enriched,
             baseline,
@@ -1252,6 +1574,8 @@ def _candidate_base_result(
         "data_path": str(csv_result.path),
         "data_sha256": data_sha256,
         "data_quality_status": _DATA_QUALITY_VALID,
+        "data_availability_status": _DATA_AVAILABILITY_AVAILABLE,
+        "data_refresh_status": _DATA_REFRESH_NOT_REQUIRED,
         "as_of_start": usable[0].date.isoformat() if usable else None,
         "as_of_end": usable[-1].date.isoformat() if usable else None,
         "total_bars": csv_result.matching_symbol_row_count,
@@ -1309,6 +1633,7 @@ def _rejected_data_result(
     data_quality_status: str,
     data_error: str,
 ) -> dict[str, object]:
+    missing = data_quality_status == _DATA_QUALITY_MISSING
     base = {
         "record_type": "strategy_challenger_result",
         "schema_version": _SCHEMA_VERSION,
@@ -1327,6 +1652,12 @@ def _rejected_data_result(
         "data_path": str(config.data_path),
         "data_sha256": data_sha256,
         "data_quality_status": data_quality_status,
+        "data_availability_status": (
+            _DATA_AVAILABILITY_MISSING if missing else "unavailable"
+        ),
+        "data_refresh_status": (
+            _DATA_REFRESH_REQUIRED if missing else _DATA_REFRESH_NOT_REQUIRED
+        ),
         "data_error": data_error,
         "as_of_start": None,
         "as_of_end": None,
@@ -1336,9 +1667,13 @@ def _rejected_data_result(
         "ignored_wrong_symbol_row_count": 0,
         "ignored_future_bar_count": 0,
         "required_history_bars": candidate.slow_window,
-        "metrics_status": "rejected_data_invalid",
+        "metrics_status": "rejected_missing_data" if missing else "rejected_data_invalid",
         "promotion_classification": "reject",
-        "promotion_reasons": ["malformed_or_missing_data"],
+        "promotion_reasons": (
+            [_DATA_AVAILABILITY_MISSING, _DATA_REFRESH_REQUIRED]
+            if missing
+            else ["malformed_or_missing_data"]
+        ),
         "blockers": [data_quality_status],
         "benchmark_baseline_comparison": _empty_baseline_comparison(),
         "validation_window_method": _VALIDATION_WINDOW_METHOD,
@@ -1386,8 +1721,10 @@ def _with_empty_metrics(base: dict[str, object]) -> dict[str, object]:
             "windows": [],
         },
         "out_of_sample_validation": _empty_out_of_sample_validation_summary(),
+        "oos_status": "not_evaluable",
         "cost_adjusted_metrics": [],
         "cost_sensitivity_summary": _empty_cost_sensitivity_summary(),
+        "cost_sensitivity_status": "not_evaluable",
     }
     result = dict(base)
     result.update(metrics)
@@ -2118,6 +2455,30 @@ def _empty_cost_sensitivity_summary() -> dict[str, object]:
     }
 
 
+def _oos_status(result: Mapping[str, object]) -> str:
+    if result.get("metrics_status") != "valid":
+        return "not_evaluable"
+    summary = _mapping_or_empty(result.get("out_of_sample_validation"))
+    if summary.get("validation_passed") is True:
+        return "passed"
+    if summary.get("validation_failed") is True:
+        return "failed"
+    if summary.get("window_count") == 0:
+        return "not_evaluable"
+    return "mixed"
+
+
+def _cost_sensitivity_status(result: Mapping[str, object]) -> str:
+    if result.get("metrics_status") != "valid":
+        return "not_evaluable"
+    summary = _mapping_or_empty(result.get("cost_sensitivity_summary"))
+    if summary.get("edge_broken_by_moderate_cost") is True:
+        return "edge_broken"
+    if summary.get("returns_highly_cost_sensitive") is True:
+        return "highly_sensitive"
+    return "survived"
+
+
 def _window_metric_map(value: object) -> dict[str, dict[str, object]]:
     if not isinstance(value, Iterable) or isinstance(value, (str, bytes, Mapping)):
         return {}
@@ -2166,8 +2527,375 @@ def _mapping_or_empty(value: object) -> Mapping[str, object]:
     return {}
 
 
+def _build_cross_asset_validation(
+    results: Iterable[Mapping[str, object]],
+    symbol_records: Sequence[Mapping[str, object]],
+    config: StrategyChallengerFactoryConfig,
+) -> dict[str, object]:
+    result_items = tuple(dict(result) for result in results)
+    symbols_evaluated = [
+        str(record["symbol"])
+        for record in symbol_records
+        if record.get("data_quality_status") == _DATA_QUALITY_VALID
+    ]
+    symbols_missing_data = [
+        str(record["symbol"])
+        for record in symbol_records
+        if record.get("data_availability_status") == _DATA_AVAILABILITY_MISSING
+    ]
+    passing_by_symbol: dict[str, list[str]] = {
+        symbol: [] for symbol in config.symbols
+    }
+    failing_by_symbol: dict[str, list[str]] = {
+        symbol: [] for symbol in config.symbols
+    }
+
+    for result in result_items:
+        symbol = str(result.get("symbol"))
+        candidate_id = str(result.get("candidate_id"))
+        if result.get("oos_status") == "passed":
+            passing_by_symbol.setdefault(symbol, []).append(candidate_id)
+        elif result.get("oos_status") == "failed":
+            failing_by_symbol.setdefault(symbol, []).append(candidate_id)
+
+    candidate_rollups = _cross_asset_candidate_rollups(result_items, config)
+    robustness_flags = _cross_asset_robustness_flags(
+        symbols_evaluated=symbols_evaluated,
+        symbols_missing_data=symbols_missing_data,
+        candidate_rollups=candidate_rollups,
+        config=config,
+    )
+    return {
+        "record_type": "strategy_challenger_cross_asset_validation",
+        "schema_version": _SCHEMA_VERSION,
+        "factory_id": _FACTORY_ID,
+        "operating_baseline_symbol": config.symbol,
+        "symbols_requested": list(config.symbols),
+        "symbols_evaluated": symbols_evaluated,
+        "symbols_missing_data": symbols_missing_data,
+        "symbol_data_statuses": [dict(record) for record in symbol_records],
+        "candidates_passing_oos_by_symbol": passing_by_symbol,
+        "candidates_failing_oos_by_symbol": failing_by_symbol,
+        "candidate_aggregate_scores": _candidate_aggregate_scores(result_items),
+        "candidate_rollups": candidate_rollups,
+        "robustness_flags": robustness_flags,
+        "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
+        "safety": _safety_payload(),
+    }
+
+
+def _apply_cross_asset_promotion_gates(
+    results: Iterable[Mapping[str, object]],
+    config: StrategyChallengerFactoryConfig,
+) -> tuple[dict[str, object], ...]:
+    result_items = tuple(dict(result) for result in results)
+    gated: list[dict[str, object]] = []
+    for result in result_items:
+        candidate_id = str(result.get("candidate_id"))
+        blockers = _cross_asset_paper_candidate_blockers(
+            candidate_id,
+            result_items,
+            config,
+        )
+        gate = {
+            "paper_candidate_allowed": not blockers,
+            "blockers": blockers,
+            "operating_baseline_symbol": config.symbol,
+            "symbols_requested": list(config.symbols),
+        }
+        enriched = dict(result)
+        enriched["cross_asset_promotion_gate"] = gate
+        if (
+            enriched.get("promotion_classification") == "paper_candidate"
+            and blockers
+        ):
+            enriched["promotion_classification"] = "preview_only"
+            reasons = [
+                str(reason)
+                for reason in enriched.get("promotion_reasons", [])
+                if isinstance(reason, str)
+            ]
+            enriched["promotion_reasons"] = list(
+                dict.fromkeys(
+                    [
+                        *reasons,
+                        "cross_asset_promotion_gate_blocked",
+                        *blockers,
+                    ]
+                )
+            )
+        gated.append(enriched)
+    return tuple(gated)
+
+
+def _cross_asset_paper_candidate_blockers(
+    candidate_id: str,
+    results: Sequence[Mapping[str, object]],
+    config: StrategyChallengerFactoryConfig,
+) -> list[str]:
+    if candidate_id in {_BASELINE_CANDIDATE_ID, *_COMPARATOR_CANDIDATE_IDS}:
+        return ["not_a_promotable_challenger"]
+
+    result_by_symbol = {
+        str(result.get("symbol")): dict(result)
+        for result in results
+        if result.get("candidate_id") == candidate_id
+    }
+    operating = result_by_symbol.get(config.symbol)
+    blockers: list[str] = []
+    if operating is None:
+        blockers.append("operating_symbol_result_missing")
+    elif operating.get("data_availability_status") == _DATA_AVAILABILITY_MISSING:
+        blockers.extend(["operating_symbol_data_missing", _DATA_REFRESH_REQUIRED])
+    elif operating.get("metrics_status") != "valid":
+        blockers.append("operating_symbol_metrics_not_valid")
+    else:
+        if operating.get("oos_status") != "passed":
+            blockers.append("operating_symbol_oos_not_passed")
+        if operating.get("cost_sensitivity_status") != "survived":
+            blockers.append("operating_symbol_cost_sensitivity_not_survived")
+
+    non_operating_results = [
+        result
+        for symbol, result in result_by_symbol.items()
+        if symbol != config.symbol and result.get("metrics_status") == "valid"
+    ]
+    confirming_non_operating = [
+        result
+        for result in non_operating_results
+        if result.get("oos_status") == "passed"
+        and result.get("cost_sensitivity_status") == "survived"
+    ]
+    if not non_operating_results:
+        blockers.append("cross_asset_data_refresh_required")
+    elif not confirming_non_operating:
+        blockers.append("cross_asset_oos_or_cost_not_confirmed")
+    if (
+        operating is not None
+        and operating.get("oos_status") == "passed"
+        and not confirming_non_operating
+    ):
+        blockers.append("only_operating_symbol_evidence_passed")
+
+    return list(dict.fromkeys(blockers))
+
+
+def _cross_asset_candidate_rollups(
+    results: Sequence[Mapping[str, object]],
+    config: StrategyChallengerFactoryConfig,
+) -> list[dict[str, object]]:
+    candidate_ids = sorted(
+        {
+            str(result.get("candidate_id"))
+            for result in results
+            if result.get("candidate_id") is not None
+        }
+    )
+    rollups: list[dict[str, object]] = []
+    for candidate_id in candidate_ids:
+        candidate_results = [
+            dict(result)
+            for result in results
+            if result.get("candidate_id") == candidate_id
+        ]
+        symbols_with_valid_metrics = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("metrics_status") == "valid"
+        ]
+        symbols_missing_data = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("data_availability_status") == _DATA_AVAILABILITY_MISSING
+        ]
+        oos_passed_symbols = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("oos_status") == "passed"
+        ]
+        oos_failed_symbols = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("oos_status") == "failed"
+        ]
+        cost_survived_symbols = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("cost_sensitivity_status") == "survived"
+        ]
+        cost_broken_symbols = [
+            str(result.get("symbol"))
+            for result in candidate_results
+            if result.get("cost_sensitivity_status")
+            in {"edge_broken", "highly_sensitive"}
+        ]
+        operating = next(
+            (
+                result
+                for result in candidate_results
+                if result.get("symbol") == config.symbol
+            ),
+            None,
+        )
+        blockers = _cross_asset_paper_candidate_blockers(
+            candidate_id,
+            results,
+            config,
+        )
+        rollups.append(
+            {
+                "candidate_id": candidate_id,
+                "symbols_with_valid_metrics": symbols_with_valid_metrics,
+                "symbols_missing_data": symbols_missing_data,
+                "oos_passed_symbols": oos_passed_symbols,
+                "oos_failed_symbols": oos_failed_symbols,
+                "cost_survived_symbols": cost_survived_symbols,
+                "cost_broken_symbols": cost_broken_symbols,
+                "operating_symbol_oos_status": None
+                if operating is None
+                else operating.get("oos_status"),
+                "operating_symbol_cost_sensitivity_status": None
+                if operating is None
+                else operating.get("cost_sensitivity_status"),
+                "paper_candidate_allowed": not blockers,
+                "paper_candidate_blockers": blockers,
+            }
+        )
+    return rollups
+
+
+def _candidate_aggregate_scores(
+    results: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    ranks_by_candidate: dict[str, list[int]] = {}
+    scores_by_candidate: dict[str, list[Decimal]] = {}
+    symbols = sorted(
+        {
+            str(result.get("symbol"))
+            for result in results
+            if result.get("metrics_status") == "valid"
+        }
+    )
+    for symbol in symbols:
+        symbol_results = [
+            dict(result)
+            for result in results
+            if result.get("symbol") == symbol
+            and result.get("metrics_status") == "valid"
+            and result.get("candidate_id") not in {_BASELINE_CANDIDATE_ID}
+        ]
+        ranked = sorted(symbol_results, key=_recommendation_sort_key, reverse=True)
+        for rank, result in enumerate(ranked, start=1):
+            candidate_id = str(result.get("candidate_id"))
+            ranks_by_candidate.setdefault(candidate_id, []).append(rank)
+            scores_by_candidate.setdefault(candidate_id, []).append(
+                _aggregate_score(result)
+            )
+
+    aggregate_records = []
+    for candidate_id, ranks in ranks_by_candidate.items():
+        scores = scores_by_candidate.get(candidate_id, [])
+        average_rank = Decimal(sum(ranks)) / Decimal(len(ranks))
+        average_score = (
+            None
+            if not scores
+            else sum(scores, Decimal("0")) / Decimal(len(scores))
+        )
+        aggregate_records.append(
+            {
+                "candidate_id": candidate_id,
+                "symbol_count": len(ranks),
+                "average_rank": _decimal_text(average_rank),
+                "average_score": _optional_decimal_text(average_score),
+            }
+        )
+    return sorted(
+        aggregate_records,
+        key=lambda item: (
+            Decimal(str(item["average_rank"])),
+            -Decimal(str(item["average_score"] or "0")),
+            str(item["candidate_id"]),
+        ),
+    )
+
+
+def _aggregate_score(result: Mapping[str, object]) -> Decimal:
+    return_delta = _optional_decimal_from_result(
+        result,
+        "baseline_total_return_delta",
+    ) or _ZERO
+    drawdown_delta = _optional_decimal_from_result(
+        result,
+        "baseline_max_drawdown_delta",
+    ) or _ZERO
+    sharpe_delta = _optional_decimal_from_result(
+        result,
+        "baseline_sharpe_ratio_delta",
+    ) or _ZERO
+    drawdown_penalty = drawdown_delta if drawdown_delta > _ZERO else _ZERO
+    return return_delta + sharpe_delta - drawdown_penalty
+
+
+def _cross_asset_robustness_flags(
+    *,
+    symbols_evaluated: Sequence[str],
+    symbols_missing_data: Sequence[str],
+    candidate_rollups: Sequence[Mapping[str, object]],
+    config: StrategyChallengerFactoryConfig,
+) -> list[str]:
+    flags: list[str] = []
+    if config.symbol in symbols_evaluated:
+        flags.append("operating_symbol_data_available")
+    else:
+        flags.append("operating_symbol_data_missing")
+    non_operating_evaluated = [
+        symbol for symbol in symbols_evaluated if symbol != config.symbol
+    ]
+    if non_operating_evaluated:
+        flags.append("non_operating_symbols_evaluated")
+    else:
+        flags.append("non_operating_symbol_data_missing")
+    if symbols_missing_data:
+        flags.append("cross_asset_data_incomplete")
+        flags.append(_DATA_REFRESH_REQUIRED)
+    if not any(
+        rollup.get("paper_candidate_allowed") is True
+        for rollup in candidate_rollups
+    ):
+        flags.append("paper_candidate_blocked_until_cross_asset_confirmation")
+    return list(dict.fromkeys(flags))
+
+
+def _aggregate_data_quality_status(
+    symbol_records: Sequence[Mapping[str, object]],
+) -> str:
+    statuses = {str(record.get("data_quality_status")) for record in symbol_records}
+    if statuses == {_DATA_QUALITY_VALID}:
+        return _DATA_QUALITY_VALID
+    if statuses == {_DATA_QUALITY_MISSING}:
+        return _DATA_QUALITY_MISSING
+    if statuses == {_DATA_QUALITY_MALFORMED}:
+        return _DATA_QUALITY_MALFORMED
+    return _DATA_QUALITY_MIXED
+
+
+def _aggregate_data_error(
+    symbol_records: Sequence[Mapping[str, object]],
+) -> str | None:
+    errors = [
+        f"{record.get('symbol')}: {record.get('data_error')}"
+        for record in symbol_records
+        if record.get("data_error")
+    ]
+    if not errors:
+        return None
+    return "; ".join(str(error) for error in errors)
+
+
 def _build_promotion_recommendations(
     results: Iterable[Mapping[str, object]],
+    *,
+    cross_asset_validation: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     result_items = tuple(dict(result) for result in results)
     counts = {name: 0 for name in STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS}
@@ -2203,7 +2931,9 @@ def _build_promotion_recommendations(
         "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
         "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
         "classification_counts": counts,
+        "cross_asset_validation": dict(cross_asset_validation or {}),
         "best_candidate_id": None if best is None else best.get("candidate_id"),
+        "best_symbol": None if best is None else best.get("symbol"),
         "best_candidate_classification": None
         if best is None
         else best.get("promotion_classification"),
@@ -2215,6 +2945,7 @@ def _build_promotion_recommendations(
         "profit_claim": "none",
         "recommendations": [
             {
+                "symbol": result.get("symbol"),
                 "candidate_id": result.get("candidate_id"),
                 "promotion_classification": result.get("promotion_classification"),
                 "promotion_reasons": result.get("promotion_reasons", []),
@@ -2227,6 +2958,10 @@ def _build_promotion_recommendations(
                 ),
                 "cost_sensitivity_summary": result.get(
                     "cost_sensitivity_summary",
+                    {},
+                ),
+                "cross_asset_promotion_gate": result.get(
+                    "cross_asset_promotion_gate",
                     {},
                 ),
             }
@@ -2272,6 +3007,10 @@ def _manifest_payload(
         "output_root": str(output_root),
         "data_path": payload.get("data_path"),
         "data_sha256": payload.get("data_sha256"),
+        "operating_baseline_symbol": payload.get("operating_baseline_symbol"),
+        "symbols": list(payload.get("symbols", [])),
+        "symbols_evaluated": list(payload.get("symbols_evaluated", [])),
+        "symbols_missing_data": list(payload.get("symbols_missing_data", [])),
         "artifact_count": len(artifacts),
         "artifacts": list(artifacts),
         "safety": _safety_payload(),
@@ -2288,11 +3027,16 @@ def _validation_windows_artifact(payload: Mapping[str, object]) -> dict[str, obj
         "run_id": payload.get("run_id"),
         "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
         "symbol": payload.get("symbol"),
+        "operating_baseline_symbol": payload.get("operating_baseline_symbol"),
+        "symbols": list(payload.get("symbols", [])),
         "timeframe": payload.get("timeframe"),
         "data_path": payload.get("data_path"),
         "data_sha256": payload.get("data_sha256"),
         "validation_window_method": payload.get("validation_window_method"),
         "validation_windows": list(payload.get("validation_windows", [])),
+        "validation_windows_by_symbol": dict(
+            _mapping_or_empty(payload.get("validation_windows_by_symbol"))
+        ),
         "safety": _safety_payload(),
     }
 
@@ -2301,9 +3045,11 @@ def _cost_sensitivity_artifact(payload: Mapping[str, object]) -> dict[str, objec
     results = [
         {
             "candidate_id": result.get("candidate_id"),
+            "symbol": result.get("symbol"),
             "baseline_candidate_id": result.get("baseline_candidate_id"),
             "cost_assumptions_evaluated": result.get("cost_assumptions_evaluated", []),
             "cost_sensitivity_summary": result.get("cost_sensitivity_summary", {}),
+            "cost_sensitivity_status": result.get("cost_sensitivity_status"),
             "cost_adjusted_metrics": result.get("cost_adjusted_metrics", []),
             "promotion_classification": result.get("promotion_classification"),
             "promotion_reasons": result.get("promotion_reasons", []),
@@ -2318,11 +3064,29 @@ def _cost_sensitivity_artifact(payload: Mapping[str, object]) -> dict[str, objec
         "run_id": payload.get("run_id"),
         "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
         "symbol": payload.get("symbol"),
+        "operating_baseline_symbol": payload.get("operating_baseline_symbol"),
+        "symbols": list(payload.get("symbols", [])),
         "timeframe": payload.get("timeframe"),
         "data_path": payload.get("data_path"),
         "data_sha256": payload.get("data_sha256"),
         "cost_assumptions": list(payload.get("cost_assumptions", [])),
         "results": results,
+        "safety": _safety_payload(),
+    }
+
+
+def _cross_asset_validation_artifact(payload: Mapping[str, object]) -> dict[str, object]:
+    cross_asset = dict(_mapping_or_empty(payload.get("cross_asset_validation")))
+    return {
+        "record_type": "strategy_challenger_cross_asset_validation_artifact",
+        "schema_version": _SCHEMA_VERSION,
+        "factory_id": payload.get("factory_id"),
+        "previous_factory_id": payload.get("previous_factory_id"),
+        "run_id": payload.get("run_id"),
+        "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
+        "operating_baseline_symbol": payload.get("operating_baseline_symbol"),
+        "symbols": list(payload.get("symbols", [])),
+        "cross_asset_validation": cross_asset,
         "safety": _safety_payload(),
     }
 
@@ -2484,10 +3248,18 @@ def _payload_as_of_range(
     return (min(starts) if starts else None, max(ends) if ends else None)
 
 
-def _run_id(symbol: str, as_of_end: str | None, data_sha256: str | None) -> str:
+def _run_id(
+    symbols: Sequence[str] | str,
+    as_of_end: str | None,
+    data_sha256: str | None,
+) -> str:
     date_part = "unknown_as_of" if as_of_end is None else as_of_end.replace("-", "")
     hash_part = "missingdata" if data_sha256 is None else data_sha256[:12]
-    return f"strategy_challenger_factory_{symbol.lower()}_{date_part}_{hash_part}"
+    if isinstance(symbols, str):
+        symbol_part = _symbol(symbols).lower()
+    else:
+        symbol_part = "_".join(_symbol(symbol).lower() for symbol in symbols)
+    return f"strategy_challenger_factory_{symbol_part}_{date_part}_{hash_part}"
 
 
 def _limitations_with(*extra: str) -> tuple[str, ...]:
@@ -2608,6 +3380,38 @@ def _symbol(value: str) -> str:
     return normalized
 
 
+def _symbol_tuple(
+    value: Iterable[str] | str | None,
+    *,
+    fallback_symbol: str,
+) -> tuple[str, ...]:
+    fallback = _symbol(fallback_symbol)
+    if value is None:
+        return (fallback,)
+    if isinstance(value, str):
+        raw_items = tuple(item for item in value.split(","))
+    else:
+        try:
+            raw_items = tuple(value)
+        except TypeError as exc:
+            raise ValidationError("symbols must be a comma string or iterable.") from exc
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        checked = _symbol(raw_item)
+        if checked in seen:
+            continue
+        symbols.append(checked)
+        seen.add(checked)
+    if not symbols:
+        raise ValidationError("symbols must contain at least one symbol.")
+    if fallback not in seen:
+        symbols.insert(0, fallback)
+    elif symbols[0] != fallback:
+        symbols = [fallback, *(symbol for symbol in symbols if symbol != fallback)]
+    return tuple(symbols)
+
+
 def _required_string(value: object, field_name: str) -> str:
     if not isinstance(value, str):
         raise ValidationError(f"{field_name} must be a non-empty string.")
@@ -2699,6 +3503,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Local strict daily bars CSV to evaluate.",
     )
     parser.add_argument("--symbol", default=_DEFAULT_SYMBOL)
+    parser.add_argument(
+        "--symbols",
+        default=None,
+        help="Comma-separated symbols to evaluate. Defaults to --symbol only.",
+    )
     parser.add_argument("--as-of-date", default=None)
     parser.add_argument("--initial-equity", default=str(_DEFAULT_INITIAL_EQUITY))
     parser.add_argument("--fee-bps", default=str(_DEFAULT_FEE_BPS))
@@ -2713,6 +3522,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_root=args.output_root,
         data_path=args.data_path,
         symbol=args.symbol,
+        symbols=args.symbols,
         as_of=args.as_of_date,
         initial_equity=args.initial_equity,
         fee_bps=args.fee_bps,
@@ -2731,6 +3541,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "classification_recommendation="
         f"{recommendations.get('classification_recommendation')}"
     )
+    cross_asset = dict(payload.get("cross_asset_validation", {}))
+    print("symbols_evaluated=" + ",".join(str(item) for item in cross_asset.get("symbols_evaluated", [])))
+    print("symbols_missing_data=" + ",".join(str(item) for item in cross_asset.get("symbols_missing_data", [])))
     print("broker_mutation_performed=false")
     print("live_mutation_performed=false")
     return 0

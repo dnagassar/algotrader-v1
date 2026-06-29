@@ -3,10 +3,11 @@
 Runs the deterministic offline strategy challenger factory.
 
 .DESCRIPTION
-Evaluates a small controlled SPY challenger set against the current SPY SMA
-50/200 paper baseline using local adjusted daily bars only. This wrapper does not read
-a broker, mutate broker state, submit paper orders, load credentials, or contact
-the network. Credential values are never printed.
+Evaluates the controlled strategy challenger set across a small ETF basket
+against the current SPY SMA 50/200 operating baseline using local adjusted
+daily bars only. This wrapper does not read a broker, mutate broker state,
+submit paper orders, load credentials, or contact the network. Credential
+values are never printed.
 
 .PARAMETER OutputRoot
 Directory under which challenger factory artifacts are written.
@@ -22,6 +23,7 @@ param(
     [string]$BarsCsv = "runs\operator_input\m446_spy_daily_tiingo_adjusted_canonical.csv",
     [string]$AsOfDate,
     [string]$Symbol = "SPY",
+    [string]$Symbols = "SPY,QQQ,IWM,TLT,GLD",
     [string]$InitialEquity = "10000",
     [string]$FeeBps = "0",
     [string]$SlippageBps = "0"
@@ -79,6 +81,7 @@ $Args = @(
     "--output-root", $OutputRoot,
     "--data-path", $BarsCsv,
     "--symbol", $Symbol,
+    "--symbols", $Symbols,
     "--initial-equity", $InitialEquity,
     "--fee-bps", $FeeBps,
     "--slippage-bps", $SlippageBps
