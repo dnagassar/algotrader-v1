@@ -55,6 +55,7 @@ STRATEGY_CHALLENGER_FACTORY_LABELS = (
     "offline_only",
     "not_live_authorized",
     "profit_claim=none",
+    "no_paper_promotion",
 )
 STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS = (
     "reject",
@@ -65,10 +66,11 @@ STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS = (
 
 _RECORD_TYPE = "strategy_challenger_factory"
 _SCHEMA_VERSION = "1"
-_FACTORY_ID = "v2.13_strategy_challenger_factory"
-_PREVIOUS_FACTORY_ID = "v2.12_strategy_challenger_factory"
+_FACTORY_ID = "v2.16_strategy_challenger_factory"
+_PREVIOUS_FACTORY_ID = "v2.13_strategy_challenger_factory"
 _DEFAULT_SYMBOL = "SPY"
 DEFAULT_STRATEGY_CHALLENGER_SYMBOLS = ("SPY", "QQQ", "IWM", "TLT", "GLD")
+_BASKET_SYMBOL = "ETF_BASKET"
 _DEFAULT_TIMEFRAME = "1d"
 _DEFAULT_DATA_PATH = Path("runs/operator_input/multi_etf_adjusted_daily_canonical.csv")
 _DEFAULT_OUTPUT_ROOT = Path("runs/strategy_challengers/latest")
@@ -87,6 +89,11 @@ _COMPARATOR_CANDIDATE_IDS = (
     _CASH_RISK_OFF_COMPARATOR_ID,
     _BUY_AND_HOLD_COMPARATOR_ID,
 )
+_RELATIVE_MOMENTUM_FAMILY = "etf_relative_momentum_basket"
+_RELATIVE_MOMENTUM_CASH_FILTER_STATE = "cash_filter_positive_momentum"
+_REBALANCE_RULE_MONTHLY = "monthly"
+_REBALANCE_RULE_DAILY = "daily"
+_NO_PAPER_PROMOTION_REASON = "v2_16_no_paper_promotion"
 _DATA_QUALITY_VALID = "valid_local_daily_bars"
 _DATA_QUALITY_MALFORMED = "malformed_or_unreadable_local_daily_bars"
 _DATA_QUALITY_MISSING = "missing_local_daily_bars"
@@ -228,6 +235,9 @@ class StrategyChallengerCandidate:
     slow_window: int
     role: str = "challenger"
     risk_off_state: str = "cash"
+    basket_symbols: tuple[str, ...] = ()
+    top_n: int = 1
+    rebalance_rule: str = _REBALANCE_RULE_DAILY
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -262,8 +272,23 @@ class StrategyChallengerCandidate:
             "risk_off_state",
             _required_string(self.risk_off_state, "risk_off_state"),
         )
+        object.__setattr__(
+            self,
+            "basket_symbols",
+            _basket_symbol_tuple(self.basket_symbols),
+        )
+        object.__setattr__(self, "top_n", _positive_int(self.top_n, "top_n"))
+        object.__setattr__(
+            self,
+            "rebalance_rule",
+            _rebalance_rule(self.rebalance_rule),
+        )
         if self.fast_window >= self.slow_window:
             raise ValidationError("fast_window must be less than slow_window.")
+        if self.basket_symbols and self.top_n > len(self.basket_symbols):
+            raise ValidationError("top_n must not exceed basket_symbols count.")
+        if self.strategy_family == _RELATIVE_MOMENTUM_FAMILY and len(self.basket_symbols) < 2:
+            raise ValidationError("relative momentum candidates require multiple ETF symbols.")
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -275,6 +300,9 @@ class StrategyChallengerCandidate:
             "slow_window": self.slow_window,
             "role": self.role,
             "risk_off_state": self.risk_off_state,
+            "basket_symbols": list(self.basket_symbols),
+            "top_n": self.top_n,
+            "rebalance_rule": self.rebalance_rule,
         }
 
 
@@ -328,11 +356,31 @@ class StrategyChallengerFactoryConfig:
             raise ValidationError("symbols must include the operating baseline symbol.")
 
 
+@dataclass(frozen=True, slots=True)
+class _BasketBacktest:
+    """Synthetic basket equity curve plus allocation metadata."""
+
+    points: tuple[DailyBacktestPoint, ...]
+    exposures: tuple[DailyExposure, ...]
+    allocation_turnovers: tuple[Decimal, ...]
+    scheduled_rebalance_dates: tuple[date, ...]
+    rebalance_dates: tuple[date, ...]
+    rebalance_allocations: tuple[dict[str, object], ...]
+
+    @property
+    def turnover(self) -> Decimal:
+        return sum(self.allocation_turnovers, _ZERO)
+
+    @property
+    def transition_count(self) -> int:
+        return sum(1 for turnover in self.allocation_turnovers if turnover != _ZERO)
+
+
 def build_default_strategy_challenger_candidates(
     *,
     symbol: str = _DEFAULT_SYMBOL,
 ) -> tuple[StrategyChallengerCandidate, ...]:
-    """Return the controlled v2.12 deterministic candidate set."""
+    """Return the controlled v2.16 deterministic candidate set."""
 
     checked_symbol = _symbol(symbol)
     return (
@@ -414,6 +462,54 @@ def build_default_strategy_challenger_candidates(
             role="baseline_comparator",
             risk_off_state="cash_zero_return",
         ),
+        StrategyChallengerCandidate(
+            candidate_id="relative_momentum_top1_126d_monthly",
+            strategy_family=_RELATIVE_MOMENTUM_FAMILY,
+            symbol=_BASKET_SYMBOL,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=1,
+            slow_window=126,
+            basket_symbols=DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
+            top_n=1,
+            rebalance_rule=_REBALANCE_RULE_MONTHLY,
+            risk_off_state="fully_invested_top_ranked_etf",
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="relative_momentum_top1_252d_monthly",
+            strategy_family=_RELATIVE_MOMENTUM_FAMILY,
+            symbol=_BASKET_SYMBOL,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=1,
+            slow_window=252,
+            basket_symbols=DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
+            top_n=1,
+            rebalance_rule=_REBALANCE_RULE_MONTHLY,
+            risk_off_state="fully_invested_top_ranked_etf",
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="dual_momentum_top1_252d_monthly_with_cash_filter",
+            strategy_family=_RELATIVE_MOMENTUM_FAMILY,
+            symbol=_BASKET_SYMBOL,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=1,
+            slow_window=252,
+            basket_symbols=DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
+            top_n=1,
+            rebalance_rule=_REBALANCE_RULE_MONTHLY,
+            risk_off_state=_RELATIVE_MOMENTUM_CASH_FILTER_STATE,
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="relative_momentum_equal_weight_top2_126d_monthly",
+            strategy_family=_RELATIVE_MOMENTUM_FAMILY,
+            symbol=_BASKET_SYMBOL,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=2,
+            slow_window=126,
+            basket_symbols=DEFAULT_STRATEGY_CHALLENGER_SYMBOLS,
+            top_n=2,
+            rebalance_rule=_REBALANCE_RULE_MONTHLY,
+            risk_off_state="fully_invested_top_ranked_etfs",
+        ),
     )
 
 
@@ -467,6 +563,16 @@ def build_strategy_challenger_payload(
         validation_windows_by_symbol[symbol] = list(
             symbol_record.get("validation_windows", [])
         )
+
+    basket_candidates = _basket_candidates(checked_config.candidates)
+    if basket_candidates and len(checked_config.symbols) > 1:
+        basket_results, basket_validation_windows = _evaluate_basket_candidate_set(
+            checked_config,
+            candidates=basket_candidates,
+            data_sha256=data_sha256,
+        )
+        all_results.extend(basket_results)
+        validation_windows_by_symbol[_BASKET_SYMBOL] = list(basket_validation_windows)
 
     cross_asset_validation = _build_cross_asset_validation(
         all_results,
@@ -621,13 +727,14 @@ def classify_strategy_challenger_promotion(
         and not highly_cost_sensitive
         and usable_bars >= 500
     ):
-        return "paper_candidate", (
+        return "preview_only", (
             "clear_return_improvement_without_drawdown_regression",
             "positive_absolute_return",
             "risk_adjusted_score_improved",
             "out_of_sample_validation_passed",
             "cost_sensitivity_survived",
             "sample_history_acceptable",
+            _NO_PAPER_PROMOTION_REASON,
         )
 
     if return_improved and drawdown_delta <= Decimal("0.03") and not out_of_sample_failed:
@@ -1191,6 +1298,22 @@ def _strategy_hypothesis(result: Mapping[str, object]) -> str:
             f"Drawdown risk-off filter: long {symbol} after {slow_window} bars "
             "unless price is at least 20 percent below the rolling high."
         )
+    if family == _RELATIVE_MOMENTUM_FAMILY:
+        basket_symbols = ", ".join(
+            str(item) for item in result.get("basket_symbols", [])
+        )
+        top_n = result.get("top_n", 1)
+        rebalance_rule = result.get("rebalance_rule", _REBALANCE_RULE_MONTHLY)
+        cash_filter = (
+            " with a positive absolute momentum cash filter"
+            if result.get("risk_off_state") == _RELATIVE_MOMENTUM_CASH_FILTER_STATE
+            else ""
+        )
+        return (
+            f"ETF relative momentum basket: hold top {top_n} of "
+            f"{basket_symbols} by {slow_window}-bar adjusted-close momentum, "
+            f"rebalanced {rebalance_rule}{cash_filter}."
+        )
     return (
         f"Deterministic {symbol} strategy candidate evaluated against the "
         "operating baseline shape."
@@ -1377,8 +1500,12 @@ def _candidates_for_symbol(
             slow_window=candidate.slow_window,
             role=candidate.role,
             risk_off_state=candidate.risk_off_state,
+            basket_symbols=candidate.basket_symbols,
+            top_n=candidate.top_n,
+            rebalance_rule=candidate.rebalance_rule,
         )
         for candidate in candidates
+        if not _is_basket_candidate(candidate)
     )
 
 
@@ -1436,6 +1563,19 @@ def _evaluate_candidates(
         ),
         None,
     )
+    return _enrich_candidate_results(
+        raw_results,
+        baseline=baseline,
+        buy_and_hold=buy_and_hold,
+    )
+
+
+def _enrich_candidate_results(
+    raw_results: Iterable[Mapping[str, object]],
+    *,
+    baseline: Mapping[str, object] | None,
+    buy_and_hold: Mapping[str, object] | None,
+) -> tuple[dict[str, object], ...]:
     results: list[dict[str, object]] = []
     for result in raw_results:
         enriched = dict(result)
@@ -1483,6 +1623,178 @@ def _evaluate_candidates(
         results.append(enriched)
 
     return tuple(results)
+
+
+def _evaluate_basket_candidate_set(
+    config: StrategyChallengerFactoryConfig,
+    *,
+    candidates: tuple[StrategyChallengerCandidate, ...],
+    data_sha256: str | None,
+) -> tuple[tuple[dict[str, object], ...], tuple[dict[str, object], ...]]:
+    basket_symbols = _basket_required_symbols(candidates)
+    csv_results, data_quality_status, data_error = _load_basket_csv_results(
+        config,
+        basket_symbols,
+    )
+    if data_quality_status != _DATA_QUALITY_VALID:
+        return (
+            tuple(
+                _rejected_basket_data_result(
+                    candidate,
+                    config=config,
+                    data_sha256=data_sha256,
+                    data_quality_status=data_quality_status,
+                    data_error=data_error or data_quality_status,
+                )
+                for candidate in candidates
+            ),
+            (),
+        )
+
+    bars_by_symbol = _common_calendar_bars(csv_results, basket_symbols)
+    if not bars_by_symbol:
+        return (
+            tuple(
+                _rejected_basket_data_result(
+                    candidate,
+                    config=config,
+                    data_sha256=data_sha256,
+                    data_quality_status=_DATA_QUALITY_MISSING,
+                    data_error="no common ETF basket calendar after as-of filtering",
+                )
+                for candidate in candidates
+            ),
+            (),
+        )
+
+    representative_symbol = (
+        config.symbol if config.symbol in bars_by_symbol else basket_symbols[0]
+    )
+    validation_windows = build_strategy_challenger_validation_windows(
+        bars_by_symbol[representative_symbol]
+    )
+    baseline, buy_and_hold = _aligned_basket_baselines(
+        config,
+        data_sha256=data_sha256,
+        bars_by_symbol=bars_by_symbol,
+        source_results=csv_results,
+        validation_windows=validation_windows,
+    )
+    raw_results = tuple(
+        _evaluate_basket_candidate(
+            candidate,
+            config=config,
+            bars_by_symbol=bars_by_symbol,
+            source_results=csv_results,
+            data_sha256=data_sha256,
+            validation_windows=validation_windows,
+        )
+        for candidate in candidates
+    )
+    return (
+        _enrich_candidate_results(
+            raw_results,
+            baseline=baseline,
+            buy_and_hold=buy_and_hold,
+        ),
+        validation_windows,
+    )
+
+
+def _evaluate_basket_candidate(
+    candidate: StrategyChallengerCandidate,
+    *,
+    config: StrategyChallengerFactoryConfig,
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+    source_results: Mapping[str, LocalDailyBarsCsvResult],
+    data_sha256: str | None,
+    validation_windows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    base = _basket_candidate_base_result(
+        candidate,
+        config=config,
+        bars_by_symbol=bars_by_symbol,
+        source_results=source_results,
+        data_sha256=data_sha256,
+        validation_windows=validation_windows,
+    )
+    common_bar_count = _basket_common_bar_count(bars_by_symbol)
+    if common_bar_count < candidate.slow_window:
+        base.update(
+            {
+                "metrics_status": "rejected_insufficient_history",
+                "promotion_classification": "reject",
+                "promotion_reasons": ["insufficient_history_for_candidate_slow_window"],
+                "blockers": ["insufficient_history"],
+                "scheduled_rebalance_dates": [],
+                "rebalance_dates": [],
+                "rebalance_count": 0,
+                "rebalance_allocations": [],
+                "limitations": list(
+                    _limitations_with(
+                        f"requires at least {candidate.slow_window} common ETF basket bars",
+                    )
+                ),
+            }
+        )
+        return _with_empty_metrics(base)
+
+    assumptions = DailyBacktestAssumptions(
+        initial_equity=config.initial_equity,
+        fee_bps=config.fee_bps,
+        slippage_bps=config.slippage_bps,
+    )
+    backtest = _run_relative_momentum_basket_backtest(
+        candidate,
+        bars_by_symbol=bars_by_symbol,
+        assumptions=assumptions,
+    )
+    metrics = _metrics_from_basket_backtest(backtest, initial_equity=config.initial_equity)
+    window_metrics = _basket_validation_window_metrics(
+        backtest,
+        validation_windows,
+        initial_equity=config.initial_equity,
+    )
+    full_sample_metrics = _window_metrics_by_id(
+        window_metrics,
+        _FULL_SAMPLE_WINDOW_ID,
+    )
+    out_of_sample_metrics = _out_of_sample_metrics(window_metrics)
+    cost_adjusted_metrics = _basket_cost_adjusted_metrics(
+        candidate,
+        bars_by_symbol=bars_by_symbol,
+        validation_windows=validation_windows,
+        initial_equity=config.initial_equity,
+    )
+    base.update(metrics)
+    base.update(
+        {
+            "metrics_status": "valid",
+            "blockers": [],
+            "limitations": list(
+                _limitations_with(
+                    "relative momentum allocates across the approved ETF basket on a common adjusted-close calendar",
+                    "rebalance decisions are deterministic and monthly",
+                    "paper promotion is explicitly forbidden in v2.16",
+                )
+            ),
+            "scheduled_rebalance_dates": [
+                item.isoformat() for item in backtest.scheduled_rebalance_dates
+            ],
+            "rebalance_dates": [item.isoformat() for item in backtest.rebalance_dates],
+            "rebalance_count": len(backtest.rebalance_dates),
+            "rebalance_allocations": list(backtest.rebalance_allocations),
+            "full_sample_metrics": full_sample_metrics,
+            "validation_window_metrics": list(window_metrics),
+            "out_of_sample_metrics": out_of_sample_metrics,
+            "cost_adjusted_metrics": list(cost_adjusted_metrics),
+            "cost_sensitivity_summary": _empty_cost_sensitivity_summary(),
+            "out_of_sample_validation": _empty_out_of_sample_validation_summary(),
+            "promotion_classification": "keep_researching",
+            "promotion_reasons": [],
+        }
+    )
+    return base
 
 
 def _evaluate_candidate(
@@ -1546,6 +1858,420 @@ def _evaluate_candidate(
         }
     )
     return base
+
+
+def _basket_candidate_base_result(
+    candidate: StrategyChallengerCandidate,
+    *,
+    config: StrategyChallengerFactoryConfig,
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+    source_results: Mapping[str, LocalDailyBarsCsvResult],
+    data_sha256: str | None,
+    validation_windows: tuple[dict[str, object], ...],
+) -> dict[str, object]:
+    common_bar_count = _basket_common_bar_count(bars_by_symbol)
+    dates = _basket_common_dates(bars_by_symbol)
+    return {
+        "record_type": "strategy_challenger_result",
+        "schema_version": _SCHEMA_VERSION,
+        "factory_id": _FACTORY_ID,
+        "previous_factory_id": _PREVIOUS_FACTORY_ID,
+        "candidate_id": candidate.candidate_id,
+        "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
+        "strategy_family": candidate.strategy_family,
+        "strategy_hypothesis": _strategy_hypothesis(candidate.to_dict()),
+        "symbol": candidate.symbol,
+        "timeframe": candidate.timeframe,
+        "role": candidate.role,
+        "fast_window": candidate.fast_window,
+        "slow_window": candidate.slow_window,
+        "risk_off_state": candidate.risk_off_state,
+        **_basket_result_metadata(candidate),
+        "data_path": str(config.data_path),
+        "data_sha256": data_sha256,
+        "data_quality_status": _DATA_QUALITY_VALID,
+        "data_availability_status": _DATA_AVAILABILITY_AVAILABLE,
+        "data_refresh_status": _DATA_REFRESH_NOT_REQUIRED,
+        "as_of_start": dates[0].isoformat() if dates else None,
+        "as_of_end": dates[-1].isoformat() if dates else None,
+        "total_bars": common_bar_count,
+        "usable_bars": common_bar_count,
+        "source_total_rows": sum(
+            result.total_row_count for result in source_results.values()
+        ),
+        "ignored_wrong_symbol_row_count": sum(
+            result.ignored_wrong_symbol_row_count for result in source_results.values()
+        ),
+        "ignored_future_bar_count": sum(
+            result.ignored_future_bar_count for result in source_results.values()
+        ),
+        "required_history_bars": candidate.slow_window,
+        "validation_window_method": _VALIDATION_WINDOW_METHOD,
+        "validation_windows_evaluated": [
+            str(window["window_id"]) for window in validation_windows
+        ],
+        "cost_assumptions_evaluated": [
+            str(assumption["cost_id"]) for assumption in _cost_assumption_records()
+        ],
+        "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
+        "safety": _safety_payload(),
+    }
+
+
+def _rejected_basket_data_result(
+    candidate: StrategyChallengerCandidate,
+    *,
+    config: StrategyChallengerFactoryConfig,
+    data_sha256: str | None,
+    data_quality_status: str,
+    data_error: str,
+) -> dict[str, object]:
+    result = _rejected_data_result(
+        candidate,
+        config=config,
+        data_sha256=data_sha256,
+        data_quality_status=data_quality_status,
+        data_error=data_error,
+    )
+    result.update(
+        {
+            **_basket_result_metadata(candidate),
+            "scheduled_rebalance_dates": [],
+            "rebalance_dates": [],
+            "rebalance_count": 0,
+            "rebalance_allocations": [],
+        }
+    )
+    return result
+
+
+def _load_basket_csv_results(
+    config: StrategyChallengerFactoryConfig,
+    basket_symbols: tuple[str, ...],
+) -> tuple[dict[str, LocalDailyBarsCsvResult], str, str | None]:
+    results: dict[str, LocalDailyBarsCsvResult] = {}
+    missing_symbols: list[str] = []
+    for symbol in basket_symbols:
+        try:
+            result = load_local_daily_bars_csv(
+                config.data_path,
+                symbol=symbol,
+                as_of=config.as_of,
+            )
+        except ValidationError as exc:
+            status = (
+                _DATA_QUALITY_MISSING
+                if not config.data_path.exists()
+                else _DATA_QUALITY_MALFORMED
+            )
+            return {}, status, str(exc)
+        if not result.usable_bars:
+            missing_symbols.append(symbol)
+        results[symbol] = result
+
+    if missing_symbols:
+        return (
+            results,
+            _DATA_QUALITY_MISSING,
+            "missing usable local daily bars for ETF basket symbols: "
+            + ", ".join(missing_symbols),
+        )
+    return results, _DATA_QUALITY_VALID, None
+
+
+def _common_calendar_bars(
+    csv_results: Mapping[str, LocalDailyBarsCsvResult],
+    basket_symbols: tuple[str, ...],
+) -> dict[str, tuple[LocalDailyBar, ...]]:
+    if not basket_symbols:
+        return {}
+    date_sets = [
+        {bar.date for bar in csv_results[symbol].usable_bars}
+        for symbol in basket_symbols
+        if symbol in csv_results
+    ]
+    if len(date_sets) != len(basket_symbols):
+        return {}
+    common_dates = sorted(set.intersection(*date_sets))
+    if not common_dates:
+        return {}
+    aligned: dict[str, tuple[LocalDailyBar, ...]] = {}
+    for symbol in basket_symbols:
+        bars_by_date = {bar.date: bar for bar in csv_results[symbol].usable_bars}
+        aligned[symbol] = tuple(bars_by_date[on_date] for on_date in common_dates)
+    return aligned
+
+
+def _aligned_basket_baselines(
+    config: StrategyChallengerFactoryConfig,
+    *,
+    data_sha256: str | None,
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+    source_results: Mapping[str, LocalDailyBarsCsvResult],
+    validation_windows: tuple[dict[str, object], ...],
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    operating_bars = bars_by_symbol.get(config.symbol)
+    source_result = source_results.get(config.symbol)
+    if operating_bars is None or source_result is None:
+        return None, None
+    baseline_candidates = tuple(
+        candidate
+        for candidate in _candidates_for_symbol(config.candidates, config.symbol)
+        if candidate.candidate_id in {_BASELINE_CANDIDATE_ID, _BUY_AND_HOLD_COMPARATOR_ID}
+    )
+    if not baseline_candidates:
+        return None, None
+    aligned_csv_result = _csv_result_with_usable_bars(source_result, operating_bars)
+    baseline_config = _config_for_symbol(config, config.symbol, baseline_candidates)
+    results = _evaluate_candidates(
+        aligned_csv_result,
+        config=baseline_config,
+        data_sha256=data_sha256,
+        validation_windows=validation_windows,
+    )
+    baseline = next(
+        (
+            result
+            for result in results
+            if result.get("candidate_id") == _BASELINE_CANDIDATE_ID
+        ),
+        None,
+    )
+    buy_and_hold = next(
+        (
+            result
+            for result in results
+            if result.get("candidate_id") == _BUY_AND_HOLD_COMPARATOR_ID
+        ),
+        None,
+    )
+    return baseline, buy_and_hold
+
+
+def _csv_result_with_usable_bars(
+    source: LocalDailyBarsCsvResult,
+    bars: tuple[LocalDailyBar, ...],
+) -> LocalDailyBarsCsvResult:
+    return LocalDailyBarsCsvResult(
+        path=source.path,
+        symbol=source.symbol,
+        as_of_date=source.as_of_date,
+        bars=bars,
+        usable_bars=bars,
+        total_row_count=len(bars),
+        matching_symbol_row_count=len(bars),
+        ignored_wrong_symbol_row_count=0,
+        ignored_future_bar_count=0,
+        input_sorted_by_date=True,
+    )
+
+
+def _run_relative_momentum_basket_backtest(
+    candidate: StrategyChallengerCandidate,
+    *,
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+    assumptions: DailyBacktestAssumptions,
+) -> _BasketBacktest:
+    if candidate.strategy_family != _RELATIVE_MOMENTUM_FAMILY:
+        raise ValidationError(f"unsupported basket strategy_family: {candidate.strategy_family}")
+    basket_symbols = candidate.basket_symbols
+    dates = _basket_common_dates(bars_by_symbol)
+    prices_by_symbol = {
+        symbol: tuple(bar.adjusted_close for bar in bars_by_symbol[symbol])
+        for symbol in basket_symbols
+    }
+    cost_rate = (assumptions.fee_bps + assumptions.slippage_bps) / Decimal("10000")
+    current_weights = {symbol: _ZERO for symbol in basket_symbols}
+    equity = assumptions.initial_equity
+    synthetic_price = Decimal("100")
+    points: list[DailyBacktestPoint] = []
+    exposures: list[DailyExposure] = []
+    allocation_turnovers: list[Decimal] = []
+    scheduled_rebalance_dates: list[date] = []
+    rebalance_dates: list[date] = []
+    rebalance_allocations: list[dict[str, object]] = []
+
+    for index, on_date in enumerate(dates):
+        target_weights = current_weights
+        if _is_rebalance_index(dates, index, candidate.rebalance_rule):
+            if index >= candidate.slow_window:
+                scheduled_rebalance_dates.append(on_date)
+            target_weights = _relative_momentum_target_weights(
+                candidate,
+                prices_by_symbol=prices_by_symbol,
+                index=index,
+            )
+
+        asset_return = _ZERO
+        if index > 0:
+            for symbol in basket_symbols:
+                previous_price = prices_by_symbol[symbol][index - 1]
+                current_price = prices_by_symbol[symbol][index]
+                asset_return += current_weights[symbol] * (
+                    (current_price / previous_price) - _ONE
+                )
+
+        turnover = sum(
+            abs(target_weights[symbol] - current_weights[symbol])
+            for symbol in basket_symbols
+        )
+        transaction_cost = turnover * cost_rate
+        strategy_return_after_costs = asset_return - transaction_cost
+        equity = equity * (_ONE + strategy_return_after_costs)
+        synthetic_price = synthetic_price * (_ONE + asset_return)
+        if synthetic_price <= _ZERO or equity <= _ZERO:
+            raise ValidationError("basket backtest equity path became non-positive.")
+
+        exposure = sum(target_weights.values(), _ZERO)
+        points.append(
+            DailyBacktestPoint(
+                date=on_date,
+                adjusted_close=synthetic_price,
+                exposure=exposure,
+                asset_return=asset_return,
+                strategy_return_before_costs=asset_return,
+                transaction_cost=transaction_cost,
+                strategy_return_after_costs=strategy_return_after_costs,
+                equity=equity,
+            )
+        )
+        exposures.append(DailyExposure(date=on_date, exposure=exposure))
+        allocation_turnovers.append(turnover)
+        if turnover != _ZERO:
+            rebalance_dates.append(on_date)
+            rebalance_allocations.append(
+                _rebalance_allocation_record(on_date, target_weights)
+            )
+        current_weights = target_weights
+
+    return _BasketBacktest(
+        points=tuple(points),
+        exposures=tuple(exposures),
+        allocation_turnovers=tuple(allocation_turnovers),
+        scheduled_rebalance_dates=tuple(scheduled_rebalance_dates),
+        rebalance_dates=tuple(rebalance_dates),
+        rebalance_allocations=tuple(rebalance_allocations),
+    )
+
+
+def _relative_momentum_target_weights(
+    candidate: StrategyChallengerCandidate,
+    *,
+    prices_by_symbol: Mapping[str, tuple[Decimal, ...]],
+    index: int,
+) -> dict[str, Decimal]:
+    basket_symbols = candidate.basket_symbols
+    zero_weights = {symbol: _ZERO for symbol in basket_symbols}
+    if index < candidate.slow_window:
+        return zero_weights
+
+    ranked = sorted(
+        (
+            (
+                symbol,
+                (prices_by_symbol[symbol][index] / prices_by_symbol[symbol][index - candidate.slow_window])
+                - _ONE,
+            )
+            for symbol in basket_symbols
+        ),
+        key=lambda item: (-item[1], item[0]),
+    )
+    if (
+        candidate.risk_off_state == _RELATIVE_MOMENTUM_CASH_FILTER_STATE
+        and ranked
+        and ranked[0][1] <= _ZERO
+    ):
+        return zero_weights
+    selected = tuple(symbol for symbol, _momentum in ranked[: candidate.top_n])
+    if not selected:
+        return zero_weights
+    weight = _ONE / Decimal(len(selected))
+    return {
+        symbol: weight if symbol in selected else _ZERO
+        for symbol in basket_symbols
+    }
+
+
+def _metrics_from_basket_backtest(
+    backtest: _BasketBacktest,
+    *,
+    initial_equity: Decimal,
+) -> dict[str, object]:
+    metrics = _metrics_from_backtest_points(
+        backtest.points,
+        backtest.exposures,
+        initial_equity=initial_equity,
+        previous_exposure=_ZERO,
+        include_first_return=False,
+    )
+    _override_basket_turnover_metrics(
+        metrics,
+        backtest.allocation_turnovers,
+    )
+    return metrics
+
+
+def _basket_validation_window_metrics(
+    backtest: _BasketBacktest,
+    validation_windows: tuple[dict[str, object], ...],
+    *,
+    initial_equity: Decimal,
+) -> tuple[dict[str, object], ...]:
+    metrics = [
+        dict(metric)
+        for metric in _validation_window_metrics(
+            backtest.points,
+            backtest.exposures,
+            validation_windows,
+            initial_equity=initial_equity,
+        )
+    ]
+    for metric in metrics:
+        start_index = _int_from_mapping(metric, "start_index")
+        end_index = _int_from_mapping(metric, "end_index_exclusive")
+        _override_basket_turnover_metrics(
+            metric,
+            backtest.allocation_turnovers[start_index:end_index],
+        )
+    return tuple(metrics)
+
+
+def _basket_cost_adjusted_metrics(
+    candidate: StrategyChallengerCandidate,
+    *,
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+    validation_windows: tuple[dict[str, object], ...],
+    initial_equity: Decimal,
+) -> tuple[dict[str, object], ...]:
+    metrics: list[dict[str, object]] = []
+    for assumption in _default_cost_assumptions():
+        backtest = _run_relative_momentum_basket_backtest(
+            candidate,
+            bars_by_symbol=bars_by_symbol,
+            assumptions=DailyBacktestAssumptions(
+                initial_equity=initial_equity,
+                fee_bps=assumption.fee_bps,
+                slippage_bps=assumption.slippage_bps,
+            ),
+        )
+        window_metrics = _basket_validation_window_metrics(
+            backtest,
+            validation_windows,
+            initial_equity=initial_equity,
+        )
+        metrics.append(
+            {
+                **assumption.to_dict(),
+                "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
+                "full_sample_metrics": _window_metrics_by_id(
+                    window_metrics,
+                    _FULL_SAMPLE_WINDOW_ID,
+                ),
+                "out_of_sample_metrics": _out_of_sample_metrics(window_metrics),
+                "window_metrics": list(window_metrics),
+            }
+        )
+    return tuple(metrics)
 
 
 def _candidate_base_result(
@@ -2107,6 +2833,105 @@ def _drawdown_filter_exposures(
     return tuple(exposures)
 
 
+def _basket_candidates(
+    candidates: Iterable[StrategyChallengerCandidate],
+) -> tuple[StrategyChallengerCandidate, ...]:
+    return tuple(candidate for candidate in candidates if _is_basket_candidate(candidate))
+
+
+def _is_basket_candidate(candidate: StrategyChallengerCandidate) -> bool:
+    return candidate.strategy_family == _RELATIVE_MOMENTUM_FAMILY
+
+
+def _basket_required_symbols(
+    candidates: Iterable[StrategyChallengerCandidate],
+) -> tuple[str, ...]:
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        for symbol in candidate.basket_symbols:
+            if symbol in seen:
+                continue
+            symbols.append(symbol)
+            seen.add(symbol)
+    return tuple(symbols)
+
+
+def _basket_common_dates(
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+) -> tuple[date, ...]:
+    if not bars_by_symbol:
+        return ()
+    first_bars = next(iter(bars_by_symbol.values()))
+    return tuple(bar.date for bar in first_bars)
+
+
+def _basket_common_bar_count(
+    bars_by_symbol: Mapping[str, tuple[LocalDailyBar, ...]],
+) -> int:
+    dates = _basket_common_dates(bars_by_symbol)
+    return len(dates)
+
+
+def _is_rebalance_index(
+    dates: tuple[date, ...],
+    index: int,
+    rebalance_rule: str,
+) -> bool:
+    if rebalance_rule == _REBALANCE_RULE_DAILY:
+        return True
+    if rebalance_rule != _REBALANCE_RULE_MONTHLY:
+        raise ValidationError(f"unsupported rebalance_rule: {rebalance_rule}")
+    if index == 0:
+        return True
+    previous = dates[index - 1]
+    current = dates[index]
+    return previous.year != current.year or previous.month != current.month
+
+
+def _rebalance_allocation_record(
+    on_date: date,
+    weights: Mapping[str, Decimal],
+) -> dict[str, object]:
+    selected_symbols = [
+        symbol for symbol, weight in weights.items() if weight > _ZERO
+    ]
+    return {
+        "date": on_date.isoformat(),
+        "selected_symbols": selected_symbols,
+        "weights": {
+            symbol: _decimal_text(weight)
+            for symbol, weight in weights.items()
+            if weight > _ZERO
+        },
+    }
+
+
+def _override_basket_turnover_metrics(
+    metrics: dict[str, object],
+    allocation_turnovers: Sequence[Decimal],
+) -> None:
+    turnover = sum(allocation_turnovers, _ZERO)
+    transition_count = sum(1 for item in allocation_turnovers if item != _ZERO)
+    metrics["trade_count"] = transition_count
+    metrics["transition_count"] = transition_count
+    metrics["turnover"] = _decimal_text(turnover)
+
+
+def _basket_result_metadata(
+    candidate: StrategyChallengerCandidate,
+) -> dict[str, object]:
+    return {
+        "basket_symbols": list(candidate.basket_symbols),
+        "basket_symbol_count": len(candidate.basket_symbols),
+        "allocation_scope": "approved_etf_basket",
+        "top_n": candidate.top_n,
+        "rebalance_rule": candidate.rebalance_rule,
+        "paper_promotion_allowed": False,
+        "paper_promotion_blocker": _NO_PAPER_PROMOTION_REASON,
+    }
+
+
 def _snapshot_from_local_bars(
     symbol: str,
     bars: tuple[LocalDailyBar, ...],
@@ -2636,13 +3461,13 @@ def _cross_asset_paper_candidate_blockers(
     if candidate_id in {_BASELINE_CANDIDATE_ID, *_COMPARATOR_CANDIDATE_IDS}:
         return ["not_a_promotable_challenger"]
 
+    blockers: list[str] = [_NO_PAPER_PROMOTION_REASON]
     result_by_symbol = {
         str(result.get("symbol")): dict(result)
         for result in results
         if result.get("candidate_id") == candidate_id
     }
     operating = result_by_symbol.get(config.symbol)
-    blockers: list[str] = []
     if operating is None:
         blockers.append("operating_symbol_result_missing")
     elif operating.get("data_availability_status") == _DATA_AVAILABILITY_MISSING:
@@ -3106,6 +3931,7 @@ def _safety_payload() -> dict[str, object]:
         "research_only": True,
         "offline_only": True,
         "not_live_authorized": True,
+        "no_paper_promotion": True,
         "profit_claim": "none",
         "network_access_attempted": False,
         "credential_access_attempted": False,
@@ -3410,6 +4236,34 @@ def _symbol_tuple(
     elif symbols[0] != fallback:
         symbols = [fallback, *(symbol for symbol in symbols if symbol != fallback)]
     return tuple(symbols)
+
+
+def _basket_symbol_tuple(value: Iterable[str] | str | None) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str):
+        raw_items = tuple(item for item in value.split(","))
+    else:
+        try:
+            raw_items = tuple(value)
+        except TypeError as exc:
+            raise ValidationError("basket_symbols must be a comma string or iterable.") from exc
+    symbols: list[str] = []
+    seen: set[str] = set()
+    for raw_item in raw_items:
+        checked = _symbol(raw_item)
+        if checked in seen:
+            continue
+        symbols.append(checked)
+        seen.add(checked)
+    return tuple(symbols)
+
+
+def _rebalance_rule(value: str) -> str:
+    checked = _required_string(value, "rebalance_rule").lower()
+    if checked not in {_REBALANCE_RULE_DAILY, _REBALANCE_RULE_MONTHLY}:
+        raise ValidationError("rebalance_rule must be daily or monthly.")
+    return checked
 
 
 def _required_string(value: object, field_name: str) -> str:
