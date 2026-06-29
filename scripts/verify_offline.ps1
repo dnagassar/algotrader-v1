@@ -38,7 +38,8 @@ $GuardTestPaths = @(
     "tests/unit/test_dependency_direction.py",
     "tests/unit/test_broker_mutation_surface_invariant.py",
     "tests/unit/test_default_pytest_network_guard.py",
-    "tests/unit/test_strategy_challenger_factory.py"
+    "tests/unit/test_strategy_challenger_factory.py",
+    "tests/unit/test_preview_candidate_review.py"
 )
 
 function Write-Section {

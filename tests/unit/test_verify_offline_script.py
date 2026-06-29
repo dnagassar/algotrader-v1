@@ -20,6 +20,7 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "tests/unit/test_broker_mutation_surface_invariant.py" in script
     assert "tests/unit/test_default_pytest_network_guard.py" in script
     assert "tests/unit/test_strategy_challenger_factory.py" in script
+    assert "tests/unit/test_preview_candidate_review.py" in script
     assert "python\" (@(\"-m\", \"pytest\") + $GuardTestPaths)" in script
     assert "\"python\" @(\"-m\", \"pytest\")" in script
     assert "git\" @(\"diff\", \"--check\")" in script
