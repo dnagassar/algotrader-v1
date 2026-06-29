@@ -3,8 +3,8 @@
 Runs the deterministic offline strategy challenger factory.
 
 .DESCRIPTION
-Evaluates a small SPY SMA challenger set against the current SPY SMA 50/200
-paper baseline using local adjusted daily bars only. This wrapper does not read
+Evaluates a small controlled SPY challenger set against the current SPY SMA
+50/200 paper baseline using local adjusted daily bars only. This wrapper does not read
 a broker, mutate broker state, submit paper orders, load credentials, or contact
 the network. Credential values are never printed.
 

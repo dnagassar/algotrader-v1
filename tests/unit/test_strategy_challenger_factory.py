@@ -14,6 +14,7 @@ import pytest
 from algotrader.research.strategy_challenger_factory import (
     STRATEGY_CHALLENGER_FACTORY_LABELS,
     StrategyChallengerFactoryConfig,
+    build_default_strategy_challenger_candidates,
     build_strategy_challenger_payload,
     classify_strategy_challenger_promotion,
     run_strategy_challenger_factory,
@@ -29,6 +30,8 @@ REQUIRED_ARTIFACTS = {
     "challenger_results.jsonl",
     "challenger_summary.md",
     "promotion_recommendations.json",
+    "strategy_review_packet.json",
+    "strategy_review_packet.md",
     "validation_windows.json",
     "cost_sensitivity.json",
     "manifest.json",
@@ -38,6 +41,7 @@ REQUIRED_RESULT_FIELDS = {
     "candidate_id",
     "baseline_candidate_id",
     "strategy_family",
+    "strategy_hypothesis",
     "symbol",
     "timeframe",
     "data_path",
@@ -58,6 +62,10 @@ REQUIRED_RESULT_FIELDS = {
     "transition_count",
     "exposure_percentage",
     "benchmark_baseline_comparison",
+    "benchmark_buy_and_hold_comparison",
+    "buy_and_hold_total_return_delta",
+    "buy_and_hold_max_drawdown_delta",
+    "buy_and_hold_sharpe_ratio_delta",
     "validation_windows_evaluated",
     "cost_assumptions_evaluated",
     "full_sample_metrics",
@@ -69,6 +77,22 @@ REQUIRED_RESULT_FIELDS = {
     "limitations",
     "promotion_classification",
     "labels",
+}
+
+REQUIRED_REVIEW_CANDIDATE_FIELDS = {
+    "candidate_id",
+    "strategy_hypothesis",
+    "metrics_summary",
+    "oos_result",
+    "cost_sensitivity_result",
+    "baseline_comparison",
+    "benchmark_comparison",
+    "promotion_classification",
+    "promotion_reasons",
+    "promotion_rationale",
+    "operator_takeaway",
+    "limitations",
+    "safety_labels",
 }
 
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -105,6 +129,29 @@ FORBIDDEN_IMPORT_PREFIXES = (
 )
 
 
+def test_default_candidate_set_is_broader_but_controlled() -> None:
+    candidates = build_default_strategy_challenger_candidates()
+    ids = {candidate.candidate_id for candidate in candidates}
+    challenger_ids = {
+        candidate.candidate_id
+        for candidate in candidates
+        if candidate.role == "challenger"
+    }
+
+    assert "spy_sma_50_200_baseline" in ids
+    assert {
+        "spy_sma_20_100_long_only",
+        "spy_sma_10_50_long_only",
+        "spy_sma_50_150_long_only",
+        "spy_sma_100_200_long_only",
+        "spy_tsmom_252_long_only",
+        "spy_drawdown_20pct_risk_off",
+    } <= challenger_ids
+    assert "spy_buy_and_hold_comparator" in ids
+    assert len(challenger_ids) >= 3
+    assert len(candidates) <= 9
+
+
 def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: Path) -> None:
     data_path = tmp_path / "spy_fixture.csv"
     _write_trend_then_drawdown_csv(data_path)
@@ -125,14 +172,18 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
 
     candidate_ids = {result["candidate_id"] for result in jsonl_results}
     assert "spy_sma_50_200_baseline" in candidate_ids
-    challenger_ids = candidate_ids - {"spy_sma_50_200_baseline"}
-    assert len(challenger_ids) >= 2
+    challenger_ids = {
+        result["candidate_id"]
+        for result in jsonl_results
+        if result["role"] == "challenger"
+    }
+    assert len(challenger_ids) >= 3
     for result in jsonl_results:
         assert REQUIRED_RESULT_FIELDS <= set(result)
         assert set(STRATEGY_CHALLENGER_FACTORY_LABELS) <= set(result["labels"])
 
     manifest = json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["artifact_count"] == 6
+    assert manifest["artifact_count"] == 8
     assert {artifact["name"] for artifact in manifest["artifacts"]} == REQUIRED_ARTIFACTS - {"manifest.json"}
     assert manifest["safety"]["broker_mutation_performed"] is False
     assert manifest["safety"]["live_mutation_performed"] is False
@@ -145,7 +196,21 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
         (output_root / "cost_sensitivity.json").read_text(encoding="utf-8")
     )
     assert cost_sensitivity["cost_assumptions"] == payload["cost_assumptions"]
+    assert [item["cost_id"] for item in payload["cost_assumptions"]] == [
+        "zero_cost",
+        "low_cost_1bp",
+        "moderate_cost_5bps",
+    ]
     assert {item["candidate_id"] for item in cost_sensitivity["results"]} == candidate_ids
+
+    review_packet = json.loads(
+        (output_root / "strategy_review_packet.json").read_text(encoding="utf-8")
+    )
+    assert review_packet["benchmark_candidate_id"] == "spy_buy_and_hold_comparator"
+    assert len(review_packet["candidates"]) == len(jsonl_results)
+    for candidate in review_packet["candidates"]:
+        assert REQUIRED_REVIEW_CANDIDATE_FIELDS <= set(candidate)
+        assert set(STRATEGY_CHALLENGER_FACTORY_LABELS) <= set(candidate["safety_labels"])
 
 
 def test_validation_windows_are_deterministic_and_chronological(tmp_path: Path) -> None:
@@ -272,6 +337,64 @@ def test_promotion_classification_keeps_baseline_researching(tmp_path: Path) -> 
     assert "current_baseline_reference" in baseline["promotion_reasons"]
 
 
+def test_buy_and_hold_comparator_is_not_auto_paper_candidate(tmp_path: Path) -> None:
+    data_path = tmp_path / "valid_spy.csv"
+    _write_trend_then_drawdown_csv(data_path)
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out", data_path=data_path)
+    )
+
+    comparator = _result_by_id(payload, "spy_buy_and_hold_comparator")
+    assert comparator["role"] == "benchmark_comparator"
+    assert comparator["promotion_classification"] == "keep_researching"
+    assert "benchmark_buy_and_hold_comparator" in comparator["promotion_reasons"]
+    assert comparator["benchmark_buy_and_hold_comparison"]["baseline_candidate_id"] == (
+        "spy_buy_and_hold_comparator"
+    )
+    assert comparator["benchmark_buy_and_hold_comparison"]["same_as_baseline"] is True
+    assert payload["promotion_recommendations"]["best_candidate_id"] != (
+        "spy_buy_and_hold_comparator"
+    )
+
+
+def test_review_packet_explains_reject_and_keep_researching(tmp_path: Path) -> None:
+    valid_data_path = tmp_path / "valid_spy.csv"
+    _write_trend_then_drawdown_csv(valid_data_path)
+    valid_output = tmp_path / "valid_out"
+
+    run_strategy_challenger_factory(
+        StrategyChallengerFactoryConfig(output_root=valid_output, data_path=valid_data_path)
+    )
+    valid_packet = json.loads(
+        (valid_output / "strategy_review_packet.json").read_text(encoding="utf-8")
+    )
+    baseline = _review_candidate_by_id(valid_packet, "spy_sma_50_200_baseline")
+    assert baseline["promotion_classification"] == "keep_researching"
+    assert baseline["promotion_rationale"].startswith("Keep researching because")
+    assert "current baseline reference" in baseline["operator_takeaway"]
+
+    short_data_path = tmp_path / "short_spy.csv"
+    _write_price_csv(
+        short_data_path,
+        _linear_prices(40, start=Decimal("100"), step=Decimal("0.1")),
+    )
+    short_output = tmp_path / "short_out"
+
+    run_strategy_challenger_factory(
+        StrategyChallengerFactoryConfig(output_root=short_output, data_path=short_data_path)
+    )
+    short_packet = json.loads(
+        (short_output / "strategy_review_packet.json").read_text(encoding="utf-8")
+    )
+    assert any(
+        candidate["promotion_classification"] == "reject"
+        and candidate["promotion_rationale"].startswith("Rejected because")
+        and "insufficient history" in candidate["operator_takeaway"]
+        for candidate in short_packet["candidates"]
+    )
+
+
 def test_controlled_fixture_produces_preview_or_paper_candidate(tmp_path: Path) -> None:
     data_path = tmp_path / "preview_candidate_spy.csv"
     _write_trend_then_drawdown_csv(data_path)
@@ -305,6 +428,7 @@ def test_promotion_recommendations_exclude_baseline_comparators_from_best_candid
     assert recommendations["best_candidate_id"] not in {
         "spy_sma_50_200_baseline",
         "spy_sma_50_200_cash_risk_off_comparator",
+        "spy_buy_and_hold_comparator",
     }
 
 
@@ -500,6 +624,13 @@ def _result_by_id(payload: dict[str, object], candidate_id: str) -> dict[str, ob
     for result in payload["results"]:
         if result["candidate_id"] == candidate_id:
             return result
+    raise AssertionError(candidate_id)
+
+
+def _review_candidate_by_id(packet: dict[str, object], candidate_id: str) -> dict[str, object]:
+    for candidate in packet["candidates"]:
+        if candidate["candidate_id"] == candidate_id:
+            return candidate
     raise AssertionError(candidate_id)
 
 

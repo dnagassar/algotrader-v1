@@ -1,4 +1,4 @@
-"""Deterministic offline strategy challenger factory for SPY SMA candidates."""
+"""Deterministic offline strategy challenger factory for SPY candidates."""
 
 from __future__ import annotations
 
@@ -37,10 +37,12 @@ __all__ = [
     "StrategyChallengerCandidate",
     "StrategyChallengerFactoryConfig",
     "build_default_strategy_challenger_candidates",
+    "build_strategy_review_packet",
     "build_strategy_challenger_payload",
     "build_strategy_challenger_validation_windows",
     "classify_strategy_challenger_promotion",
     "main",
+    "render_strategy_review_packet_markdown",
     "render_strategy_challenger_summary_markdown",
     "run_strategy_challenger_factory",
     "write_strategy_challenger_artifacts",
@@ -62,8 +64,8 @@ STRATEGY_CHALLENGER_PROMOTION_CLASSIFICATIONS = (
 
 _RECORD_TYPE = "strategy_challenger_factory"
 _SCHEMA_VERSION = "1"
-_FACTORY_ID = "v2.11_strategy_challenger_factory"
-_PREVIOUS_FACTORY_ID = "v2.10_strategy_challenger_factory"
+_FACTORY_ID = "v2.12_strategy_challenger_factory"
+_PREVIOUS_FACTORY_ID = "v2.11_strategy_challenger_factory"
 _DEFAULT_SYMBOL = "SPY"
 _DEFAULT_TIMEFRAME = "1d"
 _DEFAULT_DATA_PATH = Path("runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv")
@@ -78,6 +80,11 @@ _HASH_CHUNK_SIZE = 1024 * 1024
 
 _BASELINE_CANDIDATE_ID = "spy_sma_50_200_baseline"
 _CASH_RISK_OFF_COMPARATOR_ID = "spy_sma_50_200_cash_risk_off_comparator"
+_BUY_AND_HOLD_COMPARATOR_ID = "spy_buy_and_hold_comparator"
+_COMPARATOR_CANDIDATE_IDS = (
+    _CASH_RISK_OFF_COMPARATOR_ID,
+    _BUY_AND_HOLD_COMPARATOR_ID,
+)
 _DATA_QUALITY_VALID = "valid_local_daily_bars"
 _DATA_QUALITY_MALFORMED = "malformed_or_unreadable_local_daily_bars"
 _DATA_QUALITY_MISSING = "missing_local_daily_bars"
@@ -310,7 +317,7 @@ def build_default_strategy_challenger_candidates(
     *,
     symbol: str = _DEFAULT_SYMBOL,
 ) -> tuple[StrategyChallengerCandidate, ...]:
-    """Return the small v2.10 deterministic candidate set."""
+    """Return the controlled v2.12 deterministic candidate set."""
 
     checked_symbol = _symbol(symbol)
     return (
@@ -322,6 +329,16 @@ def build_default_strategy_challenger_candidates(
             fast_window=50,
             slow_window=200,
             role="current_baseline",
+        ),
+        StrategyChallengerCandidate(
+            candidate_id=_BUY_AND_HOLD_COMPARATOR_ID,
+            strategy_family="buy_and_hold_long_only",
+            symbol=checked_symbol,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=1,
+            slow_window=200,
+            role="benchmark_comparator",
+            risk_off_state="none",
         ),
         StrategyChallengerCandidate(
             candidate_id="spy_sma_20_100_long_only",
@@ -338,6 +355,39 @@ def build_default_strategy_challenger_candidates(
             timeframe=_DEFAULT_TIMEFRAME,
             fast_window=10,
             slow_window=50,
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="spy_sma_50_150_long_only",
+            strategy_family="sma_crossover_long_only",
+            symbol=checked_symbol,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=50,
+            slow_window=150,
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="spy_sma_100_200_long_only",
+            strategy_family="sma_crossover_long_only",
+            symbol=checked_symbol,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=100,
+            slow_window=200,
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="spy_tsmom_252_long_only",
+            strategy_family="time_series_momentum_long_only",
+            symbol=checked_symbol,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=1,
+            slow_window=252,
+        ),
+        StrategyChallengerCandidate(
+            candidate_id="spy_drawdown_20pct_risk_off",
+            strategy_family="drawdown_filter_long_only",
+            symbol=checked_symbol,
+            timeframe=_DEFAULT_TIMEFRAME,
+            fast_window=63,
+            slow_window=252,
+            risk_off_state="cash_below_20pct_drawdown",
         ),
         StrategyChallengerCandidate(
             candidate_id=_CASH_RISK_OFF_COMPARATOR_ID,
@@ -467,6 +517,8 @@ def classify_strategy_challenger_promotion(
 
     if result.get("data_quality_status") != _DATA_QUALITY_VALID:
         return "reject", ("malformed_or_missing_data",)
+    if str(result.get("metrics_status", "")) == "rejected_insufficient_history":
+        return "reject", ("insufficient_history_for_candidate_slow_window",)
     if str(result.get("metrics_status", "")) != "valid":
         return "reject", ("invalid_or_impossible_metrics",)
 
@@ -498,6 +550,9 @@ def classify_strategy_challenger_promotion(
 
     if result.get("candidate_id") == _BASELINE_CANDIDATE_ID:
         return "keep_researching", ("current_baseline_reference",)
+
+    if result.get("candidate_id") == _BUY_AND_HOLD_COMPARATOR_ID:
+        return "keep_researching", ("benchmark_buy_and_hold_comparator",)
 
     if result.get("candidate_id") == _CASH_RISK_OFF_COMPARATOR_ID:
         return "keep_researching", ("baseline_cash_risk_off_comparator",)
@@ -574,6 +629,7 @@ def write_strategy_challenger_artifacts(
 
     payload_dict = dict(payload)
     recommendations = dict(payload_dict["promotion_recommendations"])  # type: ignore[index]
+    review_packet = build_strategy_review_packet(payload_dict)
 
     artifact_writers = (
         (
@@ -600,6 +656,17 @@ def write_strategy_challenger_artifacts(
         (
             "promotion_recommendations.json",
             lambda path: _write_text(path, _json_dumps(recommendations) + "\n"),
+        ),
+        (
+            "strategy_review_packet.json",
+            lambda path: _write_text(path, _json_dumps(review_packet) + "\n"),
+        ),
+        (
+            "strategy_review_packet.md",
+            lambda path: _write_text(
+                path,
+                render_strategy_review_packet_markdown(review_packet),
+            ),
         ),
         (
             "validation_windows.json",
@@ -735,6 +802,266 @@ def render_strategy_challenger_summary_markdown(
     return "\n".join(lines)
 
 
+def build_strategy_review_packet(payload: Mapping[str, object]) -> dict[str, object]:
+    """Build compact operator-facing evidence and rationale for each candidate."""
+
+    payload_dict = dict(payload)
+    results = _result_list(payload_dict)
+    benchmark_available = any(
+        result.get("candidate_id") == _BUY_AND_HOLD_COMPARATOR_ID
+        for result in results
+    )
+    return {
+        "record_type": "strategy_challenger_review_packet",
+        "schema_version": _SCHEMA_VERSION,
+        "factory_id": payload_dict.get("factory_id"),
+        "previous_factory_id": payload_dict.get("previous_factory_id"),
+        "run_id": payload_dict.get("run_id"),
+        "labels": list(STRATEGY_CHALLENGER_FACTORY_LABELS),
+        "symbol": payload_dict.get("symbol"),
+        "timeframe": payload_dict.get("timeframe"),
+        "data_path": payload_dict.get("data_path"),
+        "data_sha256": payload_dict.get("data_sha256"),
+        "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
+        "benchmark_candidate_id": (
+            _BUY_AND_HOLD_COMPARATOR_ID if benchmark_available else None
+        ),
+        "validation_window_method": payload_dict.get("validation_window_method"),
+        "cost_assumptions": list(payload_dict.get("cost_assumptions", [])),
+        "promotion_recommendations": payload_dict.get(
+            "promotion_recommendations",
+            {},
+        ),
+        "candidates": [
+            _strategy_review_candidate(result, benchmark_available=benchmark_available)
+            for result in results
+        ],
+        "safety": _safety_payload(),
+        "limitations": list(_DEFAULT_LIMITATIONS),
+    }
+
+
+def render_strategy_review_packet_markdown(packet: Mapping[str, object]) -> str:
+    """Render the strategy review packet as compact markdown."""
+
+    packet_dict = dict(packet)
+    recommendations = _mapping_or_empty(packet_dict.get("promotion_recommendations"))
+    lines = [
+        "# Strategy Review Packet",
+        "",
+        "Labels: " + ", ".join(str(item) for item in packet_dict["labels"]),  # type: ignore[index]
+        "",
+        "## Evidence Summary",
+        f"- baseline_candidate_id: {packet_dict.get('baseline_candidate_id')}",
+        f"- benchmark_candidate_id: {packet_dict.get('benchmark_candidate_id')}",
+        f"- classification_recommendation: {recommendations.get('classification_recommendation')}",
+        "- broker_access_attempted: false",
+        "- broker_mutation_performed: false",
+        "- paper_submit_performed: false",
+        "- live_mutation_performed: false",
+        "",
+        "## Candidate Decisions",
+        "| candidate_id | role | total_return | OOS | moderate_cost | classification | rationale |",
+        "| --- | --- | ---: | --- | --- | --- | --- |",
+    ]
+    candidates = packet_dict.get("candidates", [])
+    if isinstance(candidates, Iterable) and not isinstance(
+        candidates,
+        (str, bytes, Mapping),
+    ):
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            metrics = _mapping_or_empty(candidate.get("metrics_summary"))
+            oos = _mapping_or_empty(candidate.get("oos_result"))
+            cost = _mapping_or_empty(candidate.get("cost_sensitivity_result"))
+            lines.append(
+                "| {candidate_id} | {role} | {total_return} | "
+                "passed={oos_passed}, failed={oos_failed} | "
+                "edge_broken={edge_broken}, sensitive={sensitive} | "
+                "{classification} | {rationale} |".format(
+                    candidate_id=candidate.get("candidate_id"),
+                    role=candidate.get("role"),
+                    total_return=_markdown_value(metrics.get("total_return")),
+                    oos_passed=_markdown_value(oos.get("validation_passed")),
+                    oos_failed=_markdown_value(oos.get("validation_failed")),
+                    edge_broken=_markdown_value(
+                        cost.get("edge_broken_by_moderate_cost")
+                    ),
+                    sensitive=_markdown_value(
+                        cost.get("returns_highly_cost_sensitive")
+                    ),
+                    classification=candidate.get("promotion_classification"),
+                    rationale=candidate.get("promotion_rationale"),
+                )
+            )
+
+    lines.extend(["", "## Operator Takeaways"])
+    if isinstance(candidates, Iterable) and not isinstance(
+        candidates,
+        (str, bytes, Mapping),
+    ):
+        for candidate in candidates:
+            if not isinstance(candidate, Mapping):
+                continue
+            lines.append(
+                "- {candidate_id}: {takeaway}".format(
+                    candidate_id=candidate.get("candidate_id"),
+                    takeaway=candidate.get("operator_takeaway"),
+                )
+            )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def _strategy_review_candidate(
+    result: Mapping[str, object],
+    *,
+    benchmark_available: bool,
+) -> dict[str, object]:
+    classification = str(result.get("promotion_classification", "reject"))
+    reasons = [
+        str(reason)
+        for reason in result.get("promotion_reasons", [])
+        if isinstance(reason, str)
+    ]
+    benchmark_comparison = (
+        result.get("benchmark_buy_and_hold_comparison", {})
+        if benchmark_available
+        else {}
+    )
+    return {
+        "candidate_id": result.get("candidate_id"),
+        "role": result.get("role"),
+        "strategy_family": result.get("strategy_family"),
+        "strategy_hypothesis": _strategy_hypothesis(result),
+        "metrics_summary": _metrics_summary(result),
+        "oos_result": _review_out_of_sample_result(result),
+        "cost_sensitivity_result": _review_cost_sensitivity_result(result),
+        "baseline_comparison": result.get("benchmark_baseline_comparison", {}),
+        "benchmark_comparison": benchmark_comparison,
+        "promotion_classification": classification,
+        "promotion_reasons": reasons,
+        "promotion_rationale": _promotion_rationale(classification, reasons),
+        "operator_takeaway": _operator_takeaway(classification, reasons),
+        "limitations": list(result.get("limitations", _DEFAULT_LIMITATIONS)),
+        "safety_labels": list(result.get("labels", STRATEGY_CHALLENGER_FACTORY_LABELS)),
+    }
+
+
+def _metrics_summary(result: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "metrics_status": result.get("metrics_status"),
+        "total_return": result.get("total_return"),
+        "annualized_return": result.get("annualized_return"),
+        "max_drawdown": result.get("max_drawdown"),
+        "sharpe_ratio": result.get("sharpe_ratio"),
+        "transition_count": result.get("transition_count"),
+        "exposure_percentage": result.get("exposure_percentage"),
+        "evaluated_return_count": result.get("evaluated_return_count"),
+    }
+
+
+def _review_out_of_sample_result(result: Mapping[str, object]) -> dict[str, object]:
+    summary = _mapping_or_empty(result.get("out_of_sample_validation"))
+    return {
+        "primary_window_id": summary.get("primary_window_id"),
+        "window_count": summary.get("window_count"),
+        "passed_window_count": summary.get("passed_window_count"),
+        "failed_window_count": summary.get("failed_window_count"),
+        "primary_window_passed": summary.get("primary_window_passed"),
+        "primary_window_failed": summary.get("primary_window_failed"),
+        "validation_passed": summary.get("validation_passed"),
+        "validation_failed": summary.get("validation_failed"),
+        "window_results": summary.get("window_results", []),
+    }
+
+
+def _review_cost_sensitivity_result(result: Mapping[str, object]) -> dict[str, object]:
+    summary = _mapping_or_empty(result.get("cost_sensitivity_summary"))
+    return {
+        "zero_cost_total_return": summary.get("zero_cost_total_return"),
+        "moderate_cost_total_return": summary.get("moderate_cost_total_return"),
+        "zero_cost_baseline_total_return_delta": summary.get(
+            "zero_cost_baseline_total_return_delta"
+        ),
+        "moderate_cost_baseline_total_return_delta": summary.get(
+            "moderate_cost_baseline_total_return_delta"
+        ),
+        "moderate_cost_return_degradation": summary.get(
+            "moderate_cost_return_degradation"
+        ),
+        "moderate_cost_edge_degradation": summary.get(
+            "moderate_cost_edge_degradation"
+        ),
+        "edge_broken_by_moderate_cost": summary.get(
+            "edge_broken_by_moderate_cost"
+        ),
+        "returns_highly_cost_sensitive": summary.get("returns_highly_cost_sensitive"),
+    }
+
+
+def _strategy_hypothesis(result: Mapping[str, object]) -> str:
+    candidate_id = str(result.get("candidate_id", ""))
+    family = str(result.get("strategy_family", ""))
+    fast_window = result.get("fast_window")
+    slow_window = result.get("slow_window")
+    if candidate_id == _BASELINE_CANDIDATE_ID:
+        return "Operating baseline: long SPY when SMA 50 is above SMA 200, otherwise cash."
+    if candidate_id == _BUY_AND_HOLD_COMPARATOR_ID:
+        return "Benchmark comparator: hold SPY continuously across the evaluated adjusted-close history."
+    if candidate_id == _CASH_RISK_OFF_COMPARATOR_ID:
+        return "Comparator: current SMA 50/200 trend rule with explicit zero-return cash risk-off semantics."
+    if family == "sma_crossover_long_only":
+        return (
+            f"Trend filter: long SPY when SMA {fast_window} is above "
+            f"SMA {slow_window}, otherwise cash."
+        )
+    if family == "time_series_momentum_long_only":
+        return (
+            f"Time-series momentum: long SPY when adjusted close is above "
+            f"its {slow_window}-bar lookback price, otherwise cash."
+        )
+    if family == "drawdown_filter_long_only":
+        return (
+            f"Drawdown risk-off filter: long SPY after {slow_window} bars "
+            "unless price is at least 20 percent below the rolling high."
+        )
+    return "Deterministic SPY strategy candidate evaluated against the operating baseline."
+
+
+def _promotion_rationale(classification: str, reasons: Sequence[str]) -> str:
+    reason_text = _reason_text(reasons)
+    if classification == "reject":
+        return f"Rejected because {reason_text}."
+    if classification == "keep_researching":
+        return f"Keep researching because {reason_text}."
+    if classification == "preview_only":
+        return f"Preview only because {reason_text}."
+    if classification == "paper_candidate":
+        return f"Paper candidate because {reason_text}; operator approval is still required."
+    return f"{classification}: {reason_text}."
+
+
+def _operator_takeaway(classification: str, reasons: Sequence[str]) -> str:
+    reason_text = _reason_text(reasons)
+    if classification == "reject":
+        return f"Do not promote; evidence failed the gate on {reason_text}."
+    if classification == "keep_researching":
+        return f"Research-only follow-up; current evidence is limited by {reason_text}."
+    if classification == "preview_only":
+        return f"Preview only; review manually before any future promotion discussion because {reason_text}."
+    if classification == "paper_candidate":
+        return f"Candidate survived deterministic gates, but paper use still requires explicit operator approval because {reason_text}."
+    return f"Treat as research-only until reviewed; rationale: {reason_text}."
+
+
+def _reason_text(reasons: Sequence[str]) -> str:
+    if not reasons:
+        return "no explicit reason was emitted"
+    return "; ".join(reason.replace("_", " ") for reason in reasons)
+
+
 def _evaluate_candidates(
     csv_result: LocalDailyBarsCsvResult,
     *,
@@ -781,6 +1108,14 @@ def _evaluate_candidates(
         ),
         None,
     )
+    buy_and_hold = next(
+        (
+            result
+            for result in raw_results
+            if result["candidate_id"] == _BUY_AND_HOLD_COMPARATOR_ID
+        ),
+        None,
+    )
     results: list[dict[str, object]] = []
     for result in raw_results:
         enriched = dict(result)
@@ -796,6 +1131,21 @@ def _evaluate_candidates(
         )
         enriched["baseline_volatility_delta"] = comparison.get("volatility_delta")
         enriched["baseline_sharpe_ratio_delta"] = comparison.get("sharpe_ratio_delta")
+        enriched["benchmark_buy_and_hold_comparison"] = _baseline_comparison(
+            enriched,
+            buy_and_hold,
+            baseline_candidate_id=_BUY_AND_HOLD_COMPARATOR_ID,
+        )
+        benchmark_comparison = dict(enriched["benchmark_buy_and_hold_comparison"])  # type: ignore[arg-type]
+        enriched["buy_and_hold_total_return_delta"] = benchmark_comparison.get(
+            "total_return_delta"
+        )
+        enriched["buy_and_hold_max_drawdown_delta"] = benchmark_comparison.get(
+            "max_drawdown_delta"
+        )
+        enriched["buy_and_hold_sharpe_ratio_delta"] = benchmark_comparison.get(
+            "sharpe_ratio_delta"
+        )
         _add_validation_window_baseline_comparisons(enriched, baseline)
         _add_cost_baseline_comparisons(enriched, baseline)
         enriched["out_of_sample_validation"] = _out_of_sample_validation_summary(
@@ -892,6 +1242,7 @@ def _candidate_base_result(
         "candidate_id": candidate.candidate_id,
         "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
         "strategy_family": candidate.strategy_family,
+        "strategy_hypothesis": _strategy_hypothesis(candidate.to_dict()),
         "symbol": candidate.symbol,
         "timeframe": candidate.timeframe,
         "role": candidate.role,
@@ -966,6 +1317,7 @@ def _rejected_data_result(
         "candidate_id": candidate.candidate_id,
         "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
         "strategy_family": candidate.strategy_family,
+        "strategy_hypothesis": _strategy_hypothesis(candidate.to_dict()),
         "symbol": candidate.symbol,
         "timeframe": candidate.timeframe,
         "role": candidate.role,
@@ -1016,11 +1368,17 @@ def _with_empty_metrics(base: dict[str, object]) -> dict[str, object]:
         "exposure_percentage": "0",
         "evaluated_return_count": 0,
         "benchmark_baseline_comparison": _empty_baseline_comparison(),
+        "benchmark_buy_and_hold_comparison": _empty_baseline_comparison(
+            baseline_candidate_id=_BUY_AND_HOLD_COMPARATOR_ID
+        ),
         "baseline_total_return_delta": None,
         "baseline_max_drawdown_delta": None,
         "baseline_annualized_return_delta": None,
         "baseline_volatility_delta": None,
         "baseline_sharpe_ratio_delta": None,
+        "buy_and_hold_total_return_delta": None,
+        "buy_and_hold_max_drawdown_delta": None,
+        "buy_and_hold_sharpe_ratio_delta": None,
         "full_sample_metrics": None,
         "validation_window_metrics": [],
         "out_of_sample_metrics": {
@@ -1329,6 +1687,24 @@ def _candidate_exposures(
     bars: tuple[LocalDailyBar, ...],
     candidate: StrategyChallengerCandidate,
 ) -> tuple[DailyExposure, ...]:
+    if candidate.strategy_family == "buy_and_hold_long_only":
+        return _buy_and_hold_exposures(bars)
+    if candidate.strategy_family == "time_series_momentum_long_only":
+        return _time_series_momentum_exposures(bars, candidate)
+    if candidate.strategy_family == "drawdown_filter_long_only":
+        return _drawdown_filter_exposures(bars, candidate)
+    if candidate.strategy_family not in {
+        "sma_crossover_long_only",
+        "sma_crossover_long_only_cash_risk_off",
+    }:
+        raise ValidationError(f"unsupported strategy_family: {candidate.strategy_family}")
+    return _sma_crossover_exposures(bars, candidate)
+
+
+def _sma_crossover_exposures(
+    bars: tuple[LocalDailyBar, ...],
+    candidate: StrategyChallengerCandidate,
+) -> tuple[DailyExposure, ...]:
     prices = tuple(bar.adjusted_close for bar in bars)
     fast_sum = _ZERO
     slow_sum = _ZERO
@@ -1351,6 +1727,46 @@ def _candidate_exposures(
 
         exposures.append(DailyExposure(date=bar.date, exposure=exposure))
 
+    return tuple(exposures)
+
+
+def _buy_and_hold_exposures(
+    bars: tuple[LocalDailyBar, ...],
+) -> tuple[DailyExposure, ...]:
+    return tuple(DailyExposure(date=bar.date, exposure=_ONE) for bar in bars)
+
+
+def _time_series_momentum_exposures(
+    bars: tuple[LocalDailyBar, ...],
+    candidate: StrategyChallengerCandidate,
+) -> tuple[DailyExposure, ...]:
+    prices = tuple(bar.adjusted_close for bar in bars)
+    exposures: list[DailyExposure] = []
+    for index, bar in enumerate(bars):
+        exposure = _ZERO
+        if index >= candidate.slow_window:
+            lookback_price = prices[index - candidate.slow_window]
+            if prices[index] > lookback_price:
+                exposure = _ONE
+        exposures.append(DailyExposure(date=bar.date, exposure=exposure))
+    return tuple(exposures)
+
+
+def _drawdown_filter_exposures(
+    bars: tuple[LocalDailyBar, ...],
+    candidate: StrategyChallengerCandidate,
+) -> tuple[DailyExposure, ...]:
+    prices = tuple(bar.adjusted_close for bar in bars)
+    threshold = Decimal("0.80")
+    exposures: list[DailyExposure] = []
+    for index, bar in enumerate(bars):
+        exposure = _ZERO
+        if index >= candidate.slow_window - 1:
+            window_start = index - candidate.slow_window + 1
+            rolling_high = max(prices[window_start : index + 1])
+            if prices[index] >= rolling_high * threshold:
+                exposure = _ONE
+        exposures.append(DailyExposure(date=bar.date, exposure=exposure))
     return tuple(exposures)
 
 
@@ -1381,11 +1797,16 @@ def _snapshot_from_local_bars(
 def _baseline_comparison(
     result: Mapping[str, object],
     baseline: Mapping[str, object] | None,
+    *,
+    baseline_candidate_id: str = _BASELINE_CANDIDATE_ID,
 ) -> dict[str, object]:
     if baseline is None or baseline.get("metrics_status") != "valid":
-        return _empty_baseline_comparison()
+        return _empty_baseline_comparison(baseline_candidate_id=baseline_candidate_id)
     if result.get("metrics_status") != "valid":
-        return _empty_baseline_comparison(baseline_available=True)
+        return _empty_baseline_comparison(
+            baseline_available=True,
+            baseline_candidate_id=baseline_candidate_id,
+        )
 
     total_return_delta = _decimal_from_result(result, "total_return") - _decimal_from_result(
         baseline,
@@ -1407,7 +1828,7 @@ def _baseline_comparison(
         "exposure_percentage",
     ) - _decimal_from_result(baseline, "exposure_percentage")
     return {
-        "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
+        "baseline_candidate_id": baseline_candidate_id,
         "baseline_available": True,
         "total_return_delta": _decimal_text(total_return_delta),
         "max_drawdown_delta": _decimal_text(drawdown_delta),
@@ -1417,16 +1838,17 @@ def _baseline_comparison(
         "exposure_percentage_delta": _decimal_text(exposure_delta),
         "return_improved": total_return_delta > _ZERO,
         "drawdown_improved": drawdown_delta < _ZERO,
-        "same_as_baseline": result.get("candidate_id") == _BASELINE_CANDIDATE_ID,
+        "same_as_baseline": result.get("candidate_id") == baseline_candidate_id,
     }
 
 
 def _empty_baseline_comparison(
     *,
     baseline_available: bool = False,
+    baseline_candidate_id: str = _BASELINE_CANDIDATE_ID,
 ) -> dict[str, object]:
     return {
-        "baseline_candidate_id": _BASELINE_CANDIDATE_ID,
+        "baseline_candidate_id": baseline_candidate_id,
         "baseline_available": baseline_available,
         "total_return_delta": None,
         "max_drawdown_delta": None,
@@ -1758,7 +2180,7 @@ def _build_promotion_recommendations(
         result
         for result in result_items
         if result.get("candidate_id") != _BASELINE_CANDIDATE_ID
-        and result.get("candidate_id") != _CASH_RISK_OFF_COMPARATOR_ID
+        and result.get("candidate_id") not in _COMPARATOR_CANDIDATE_IDS
         and result.get("metrics_status") == "valid"
     )
     best = max(candidates, key=_recommendation_sort_key, default=None)
