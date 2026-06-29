@@ -15,6 +15,7 @@ from algotrader.research.strategy_challenger_factory import (
     STRATEGY_CHALLENGER_FACTORY_LABELS,
     StrategyChallengerFactoryConfig,
     build_strategy_challenger_payload,
+    classify_strategy_challenger_promotion,
     run_strategy_challenger_factory,
 )
 
@@ -28,11 +29,14 @@ REQUIRED_ARTIFACTS = {
     "challenger_results.jsonl",
     "challenger_summary.md",
     "promotion_recommendations.json",
+    "validation_windows.json",
+    "cost_sensitivity.json",
     "manifest.json",
 }
 
 REQUIRED_RESULT_FIELDS = {
     "candidate_id",
+    "baseline_candidate_id",
     "strategy_family",
     "symbol",
     "timeframe",
@@ -54,6 +58,14 @@ REQUIRED_RESULT_FIELDS = {
     "transition_count",
     "exposure_percentage",
     "benchmark_baseline_comparison",
+    "validation_windows_evaluated",
+    "cost_assumptions_evaluated",
+    "full_sample_metrics",
+    "validation_window_metrics",
+    "out_of_sample_metrics",
+    "out_of_sample_validation",
+    "cost_adjusted_metrics",
+    "cost_sensitivity_summary",
     "limitations",
     "promotion_classification",
     "labels",
@@ -120,10 +132,117 @@ def test_factory_runs_with_fixture_data_and_emits_required_artifacts(tmp_path: P
         assert set(STRATEGY_CHALLENGER_FACTORY_LABELS) <= set(result["labels"])
 
     manifest = json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["artifact_count"] == 4
+    assert manifest["artifact_count"] == 6
     assert {artifact["name"] for artifact in manifest["artifacts"]} == REQUIRED_ARTIFACTS - {"manifest.json"}
     assert manifest["safety"]["broker_mutation_performed"] is False
     assert manifest["safety"]["live_mutation_performed"] is False
+
+    validation_windows = json.loads(
+        (output_root / "validation_windows.json").read_text(encoding="utf-8")
+    )
+    assert validation_windows["validation_windows"] == payload["validation_windows"]
+    cost_sensitivity = json.loads(
+        (output_root / "cost_sensitivity.json").read_text(encoding="utf-8")
+    )
+    assert cost_sensitivity["cost_assumptions"] == payload["cost_assumptions"]
+    assert {item["candidate_id"] for item in cost_sensitivity["results"]} == candidate_ids
+
+
+def test_validation_windows_are_deterministic_and_chronological(tmp_path: Path) -> None:
+    data_path = tmp_path / "spy_fixture.csv"
+    _write_trend_then_drawdown_csv(data_path)
+
+    first_payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out1", data_path=data_path)
+    )
+    second_payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out2", data_path=data_path)
+    )
+
+    assert first_payload["validation_windows"] == second_payload["validation_windows"]
+    windows = first_payload["validation_windows"]
+    assert [window["window_id"] for window in windows] == [
+        "full_sample",
+        "early_train",
+        "later_test",
+        "walk_forward_1",
+        "walk_forward_2",
+        "walk_forward_3",
+    ]
+    assert {window["window_id"] for window in windows} <= set(
+        _result_by_id(first_payload, "spy_sma_20_100_long_only")["validation_windows_evaluated"]
+    )
+
+    early = _window_by_id(windows, "early_train")
+    later = _window_by_id(windows, "later_test")
+    assert early["start_index"] == 0
+    assert early["end_index_exclusive"] == later["start_index"]
+    assert later["end_index_exclusive"] == _window_by_id(windows, "full_sample")["end_index_exclusive"]
+
+    walk_forward_windows = [
+        _window_by_id(windows, "walk_forward_1"),
+        _window_by_id(windows, "walk_forward_2"),
+        _window_by_id(windows, "walk_forward_3"),
+    ]
+    for previous, current in zip(walk_forward_windows, walk_forward_windows[1:]):
+        assert previous["end_index_exclusive"] == current["start_index"]
+    assert all(window["as_of_start"] <= window["as_of_end"] for window in windows)
+
+
+def test_candidate_metrics_are_produced_per_validation_window(tmp_path: Path) -> None:
+    data_path = tmp_path / "spy_fixture.csv"
+    _write_trend_then_drawdown_csv(data_path)
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out", data_path=data_path)
+    )
+
+    window_ids = {window["window_id"] for window in payload["validation_windows"]}
+    for result in payload["results"]:
+        if result["metrics_status"] != "valid":
+            continue
+        metrics_by_window = {
+            metric["window_id"]: metric for metric in result["validation_window_metrics"]
+        }
+        assert set(metrics_by_window) == window_ids
+        assert result["full_sample_metrics"]["window_id"] == "full_sample"
+        assert result["out_of_sample_metrics"]["primary_window_id"] == "later_test"
+        assert {metric["window_id"] for metric in result["out_of_sample_metrics"]["windows"]} == {
+            "later_test",
+            "walk_forward_1",
+            "walk_forward_2",
+            "walk_forward_3",
+        }
+        for metric in metrics_by_window.values():
+            assert metric["metrics_status"] == "valid"
+            assert "total_return" in metric
+            assert "max_drawdown" in metric
+            assert "sharpe_ratio" in metric
+            assert "transition_count" in metric
+            assert "exposure_percentage" in metric
+            assert "baseline_comparison" in metric
+
+
+def test_cost_sensitivity_penalizes_high_transition_strategies(tmp_path: Path) -> None:
+    data_path = tmp_path / "choppy_spy.csv"
+    _write_price_csv(data_path, _regime_flip_prices(count=900, regime=35))
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out", data_path=data_path)
+    )
+
+    baseline = _result_by_id(payload, "spy_sma_50_200_baseline")
+    high_transition = _result_by_id(payload, "spy_sma_10_50_long_only")
+    assert high_transition["transition_count"] > baseline["transition_count"]
+    assert Decimal(
+        high_transition["cost_sensitivity_summary"]["moderate_cost_return_degradation"]
+    ) > Decimal(baseline["cost_sensitivity_summary"]["moderate_cost_return_degradation"])
+
+    zero_cost = _cost_metrics_by_id(high_transition, "zero_cost")
+    moderate_cost = _cost_metrics_by_id(high_transition, "moderate_cost_5bps")
+    assert Decimal(moderate_cost["full_sample_metrics"]["total_return"]) < Decimal(
+        zero_cost["full_sample_metrics"]["total_return"]
+    )
 
 
 def test_promotion_classification_rejects_insufficient_history(tmp_path: Path) -> None:
@@ -170,6 +289,75 @@ def test_controlled_fixture_produces_preview_or_paper_candidate(tmp_path: Path) 
         result["promotion_classification"] in {"preview_only", "paper_candidate"}
         for result in challenger_results
     )
+
+
+def test_promotion_recommendations_exclude_baseline_comparators_from_best_candidate(
+    tmp_path: Path,
+) -> None:
+    data_path = tmp_path / "choppy_spy.csv"
+    _write_price_csv(data_path, _regime_flip_prices(count=900, regime=35))
+
+    payload = build_strategy_challenger_payload(
+        StrategyChallengerFactoryConfig(output_root=tmp_path / "out", data_path=data_path)
+    )
+
+    recommendations = payload["promotion_recommendations"]
+    assert recommendations["best_candidate_id"] not in {
+        "spy_sma_50_200_baseline",
+        "spy_sma_50_200_cash_risk_off_comparator",
+    }
+
+
+def test_candidate_cannot_be_paper_candidate_when_out_of_sample_fails() -> None:
+    result = _classification_candidate_result(
+        out_of_sample_validation={
+            "validation_passed": False,
+            "validation_failed": True,
+            "passed_window_count": 0,
+        }
+    )
+
+    classification, reasons = classify_strategy_challenger_promotion(
+        result,
+        _classification_baseline_result(),
+    )
+
+    assert classification == "keep_researching"
+    assert "full_sample_edge_failed_out_of_sample" in reasons
+
+
+def test_candidate_cannot_be_paper_candidate_when_cost_sensitivity_breaks_edge() -> None:
+    result = _classification_candidate_result(
+        cost_sensitivity_summary={
+            "edge_broken_by_moderate_cost": True,
+            "returns_highly_cost_sensitive": True,
+        }
+    )
+
+    classification, reasons = classify_strategy_challenger_promotion(
+        result,
+        _classification_baseline_result(),
+    )
+
+    assert classification == "keep_researching"
+    assert "cost_sensitivity_breaks_edge" in reasons
+
+
+def test_reject_classification_for_severe_return_degradation_despite_drawdown_improvement() -> None:
+    result = _classification_candidate_result(
+        total_return="-0.02",
+        baseline_total_return_delta="-0.08",
+        baseline_max_drawdown_delta="-0.03",
+        baseline_sharpe_ratio_delta="-0.20",
+    )
+
+    classification, reasons = classify_strategy_challenger_promotion(
+        result,
+        _classification_baseline_result(),
+    )
+
+    assert classification == "reject"
+    assert "drawdown_improvement_with_severe_return_degradation" in reasons
 
 
 def test_malformed_data_is_rejected_and_still_writes_artifacts(tmp_path: Path) -> None:
@@ -315,6 +503,63 @@ def _result_by_id(payload: dict[str, object], candidate_id: str) -> dict[str, ob
     raise AssertionError(candidate_id)
 
 
+def _window_by_id(windows: list[dict[str, object]], window_id: str) -> dict[str, object]:
+    for window in windows:
+        if window["window_id"] == window_id:
+            return window
+    raise AssertionError(window_id)
+
+
+def _cost_metrics_by_id(result: dict[str, object], cost_id: str) -> dict[str, object]:
+    for cost_metrics in result["cost_adjusted_metrics"]:
+        if cost_metrics["cost_id"] == cost_id:
+            return cost_metrics
+    raise AssertionError(cost_id)
+
+
+def _classification_baseline_result() -> dict[str, object]:
+    return {"metrics_status": "valid"}
+
+
+def _classification_candidate_result(
+    *,
+    total_return: str = "0.12",
+    baseline_total_return_delta: str = "0.08",
+    baseline_max_drawdown_delta: str = "0",
+    baseline_sharpe_ratio_delta: str = "0.20",
+    out_of_sample_validation: dict[str, object] | None = None,
+    cost_sensitivity_summary: dict[str, object] | None = None,
+) -> dict[str, object]:
+    return {
+        "candidate_id": "controlled_candidate",
+        "data_quality_status": "valid_local_daily_bars",
+        "metrics_status": "valid",
+        "usable_bars": 720,
+        "required_history_bars": 200,
+        "evaluated_return_count": 520,
+        "total_return": total_return,
+        "annualized_return": "0.08",
+        "max_drawdown": "0.12",
+        "annualized_volatility": "0.10",
+        "sharpe_ratio": "0.80",
+        "exposure_percentage": "55",
+        "baseline_total_return_delta": baseline_total_return_delta,
+        "baseline_max_drawdown_delta": baseline_max_drawdown_delta,
+        "baseline_sharpe_ratio_delta": baseline_sharpe_ratio_delta,
+        "out_of_sample_validation": out_of_sample_validation
+        or {
+            "validation_passed": True,
+            "validation_failed": False,
+            "passed_window_count": 4,
+        },
+        "cost_sensitivity_summary": cost_sensitivity_summary
+        or {
+            "edge_broken_by_moderate_cost": False,
+            "returns_highly_cost_sensitive": False,
+        },
+    }
+
+
 def _write_trend_then_drawdown_csv(path: Path) -> None:
     prices: list[Decimal] = []
     price = Decimal("100")
@@ -332,6 +577,21 @@ def _write_trend_then_drawdown_csv(path: Path) -> None:
 
 def _linear_prices(count: int, *, start: Decimal, step: Decimal) -> tuple[Decimal, ...]:
     return tuple(start + step * Decimal(index) for index in range(count))
+
+
+def _regime_flip_prices(count: int, regime: int) -> tuple[Decimal, ...]:
+    prices: list[Decimal] = []
+    price = Decimal("100")
+    direction = Decimal("0.6")
+    for index in range(count):
+        if index > 0 and index % regime == 0:
+            direction = -direction
+        price += direction
+        if price < Decimal("20"):
+            price = Decimal("20")
+            direction = abs(direction)
+        prices.append(price)
+    return tuple(prices)
 
 
 def _write_price_csv(path: Path, prices: tuple[Decimal, ...]) -> None:
