@@ -23,11 +23,13 @@ def test_refresh_script_contract_defaults_to_dry_run_and_requires_live_flag() ->
     script = REFRESH_SCRIPT.read_text(encoding="utf-8")
 
     assert "[ValidateSet(\"offline_fixture\", \"dry_run\", \"live_market_data_fetch\")]" in script
+    assert "[ValidateSet(\"SPY\", \"QQQ\", \"IWM\", \"TLT\", \"GLD\")]" in script
     assert "[string]$Mode = \"dry_run\"" in script
     assert "[switch]$LiveMarketDataFetchAuthorized" in script
     assert "[string]$StartDate = \"auto\"" in script
     assert "[string]$DotenvPath = \".env\"" in script
     assert "--live-market-data-fetch-authorized" in script
+    assert "--symbol" in script
     assert "--dotenv-path" in script
     assert "if ($LiveMarketDataFetchAuthorized)" in script
     assert "ALPACA_API_KEY" in script
@@ -66,6 +68,30 @@ def test_dry_run_builds_tiingo_request_without_network(tmp_path: Path) -> None:
     assert run_log.exists()
 
 
+def test_dry_run_builds_tiingo_request_for_approved_non_spy_without_network(
+    tmp_path: Path,
+) -> None:
+    payload = run_spy_adjusted_data_refresh(
+        SPYAdjustedDataRefreshConfig(
+            provider="tiingo",
+            expected_latest_bar_date=EXPECTED_DATE,
+            output_csv=tmp_path / "operator_input.csv",
+            canonical_csv=tmp_path / "canonical.csv",
+            run_log=tmp_path / "manifest.jsonl",
+            symbol="QQQ",
+            mode="dry_run",
+        ),
+        token_lookup=_raise_token_lookup,
+        http_get=_raise_http_get,
+    )
+
+    assert payload["refresh_state"] == "dry_run_refresh_plan_built"
+    assert payload["symbol"] == "QQQ"
+    assert "api.tiingo.com/tiingo/daily/QQQ/prices" in payload["provider_request"]["url"]
+    assert payload["network_access_attempted"] is False
+    assert payload["market_data_token_access_attempted"] is False
+
+
 def test_offline_fixture_refresh_normalizes_provider_data_into_canonical_schema(
     tmp_path: Path,
 ) -> None:
@@ -101,6 +127,45 @@ def test_offline_fixture_refresh_normalizes_provider_data_into_canonical_schema(
         encoding="utf-8"
     )
     assert payload["canonical_csv_sha256"]
+
+
+def test_offline_fixture_refresh_normalizes_approved_non_spy_symbol(
+    tmp_path: Path,
+) -> None:
+    fixture_csv = tmp_path / "tiingo_fixture.csv"
+    output_csv = tmp_path / "operator_input.csv"
+    canonical_csv = tmp_path / "canonical.csv"
+    run_log = tmp_path / "manifest.jsonl"
+    _write_canonical(canonical_csv, latest_date="2026-06-18", symbol="QQQ")
+    _write_provider_csv(
+        fixture_csv,
+        [
+            {"date": "2026-06-19T00:00:00.000Z", "adjClose": "550.50"},
+            {"date": "2026-06-22T00:00:00.000Z", "adjClose": "555.25"},
+        ],
+    )
+
+    payload = run_spy_adjusted_data_refresh(
+        SPYAdjustedDataRefreshConfig(
+            provider="tiingo",
+            expected_latest_bar_date=EXPECTED_DATE,
+            output_csv=output_csv,
+            canonical_csv=canonical_csv,
+            run_log=run_log,
+            symbol="QQQ",
+            mode="offline_fixture",
+            fixture_input_path=fixture_csv,
+        ),
+        token_lookup=_raise_token_lookup,
+        http_get=_raise_http_get,
+    )
+
+    assert payload["refresh_state"] == "accepted_adjusted_spy_data_refresh"
+    assert payload["symbol"] == "QQQ"
+    assert payload["existing_intake_manifest"]["symbol"] == "QQQ"
+    rows = output_csv.read_text(encoding="utf-8").splitlines()
+    assert rows[1].startswith("QQQ,2026-06-18,")
+    assert rows[-1].startswith("QQQ,2026-06-22,")
 
 
 def test_duplicate_dates_rejected(tmp_path: Path) -> None:
@@ -676,10 +741,10 @@ def _write_provider_csv(path: Path, rows: list[dict[str, str]]) -> None:
     path.write_text("".join(lines), encoding="utf-8")
 
 
-def _write_canonical(path: Path, *, latest_date: str) -> None:
+def _write_canonical(path: Path, *, latest_date: str, symbol: str = "SPY") -> None:
     path.write_text(
         "symbol,date,open,high,low,close,adjusted_close,volume\n"
-        f"SPY,{latest_date},500,501,499,500,500,1000\n",
+        f"{symbol},{latest_date},500,501,499,500,500,1000\n",
         encoding="utf-8",
     )
 

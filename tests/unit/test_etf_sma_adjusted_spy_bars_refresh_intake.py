@@ -282,6 +282,35 @@ def test_non_spy_symbol_rejected_if_symbol_column_exists(tmp_path) -> None:  # n
     _assert_safety_false(payload)
 
 
+def test_approved_non_spy_symbol_can_be_validated_offline(tmp_path) -> None:  # noqa: ANN001
+    input_csv = tmp_path / "qqq.csv"
+    rows = [
+        "symbol,date,open,high,low,close,adjusted_close,volume",
+        "QQQ,2026-06-06,100,101,99,100,100.25,1000",
+        "QQQ,2026-06-07,101,102,100,101,101.25,2000",
+    ]
+    input_csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    canonical_csv = tmp_path / "canonical.csv"
+    run_log = tmp_path / "manifest.jsonl"
+
+    config = EtfSmaAdjustedSpyBarsRefreshIntakeConfig(
+        expected_latest_bar_date="2026-06-07",
+        input_csv=input_csv,
+        canonical_csv=canonical_csv,
+        run_log=run_log,
+        symbol="QQQ",
+    )
+
+    payload = build_etf_sma_adjusted_spy_bars_refresh_intake(config)
+
+    assert payload["symbol"] == "QQQ"
+    assert payload["refresh_state"] == "accepted_current_adjusted_bars"
+    assert payload["accepted_row_count"] == 2
+    out_rows = canonical_csv.read_text(encoding="utf-8").splitlines()
+    assert out_rows[1].startswith("QQQ,2026-06-06,")
+    _assert_safety_false(payload)
+
+
 def test_accepted_current_date(tmp_path) -> None:  # noqa: ANN001
     input_csv = tmp_path / "current.csv"
     rows = [
