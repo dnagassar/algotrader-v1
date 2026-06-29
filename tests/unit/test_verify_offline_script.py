@@ -23,6 +23,7 @@ def test_verify_offline_script_declares_offline_guard_contract() -> None:
     assert "python\" (@(\"-m\", \"pytest\") + $GuardTestPaths)" in script
     assert "\"python\" @(\"-m\", \"pytest\")" in script
     assert "git\" @(\"diff\", \"--check\")" in script
+    assert "git\" @(\"ls-files\", \"runs\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily\")" in script
     assert "git\" @(\"ls-files\", \"runs/daily_soak\")" in script
     assert "git\" @(\"ls-files\", \"runs/paper_autopilot\")" in script
