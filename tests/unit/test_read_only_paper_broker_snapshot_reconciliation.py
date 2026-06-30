@@ -11,6 +11,7 @@ from algotrader.cli import main
 from algotrader.execution.alpaca_adapter import AlpacaClientAdapter
 from algotrader.execution.alpaca_broker import AlpacaPaperBroker
 from algotrader.execution.alpaca_client import (
+    AlpacaAccountResponse,
     AlpacaOrderResponse,
     AlpacaPositionResponse,
     AlpacaRecentOrderQuery,
@@ -32,6 +33,8 @@ MODULE_PATH = Path(
 GENERATED_AT = "2026-06-06T00:00:00+00:00"
 SENSITIVE_API_KEY = "m403-sensitive-api-key"
 SENSITIVE_SECRET_KEY = "m403-sensitive-secret-key"
+EXPECTED_ACCOUNT_ID = "paper-account-1"
+MISMATCHED_ACCOUNT_ID = "different-paper-account"
 ORDER_TIME = datetime(2026, 6, 6, 14, 30, tzinfo=UTC)
 FORBIDDEN_IMPORT_PREFIXES = (
     "alpaca",
@@ -83,25 +86,43 @@ def test_ready_snapshot_reconciliation_writes_one_safe_record(tmp_path) -> None:
     assert payload["source_review_state"] == "ready_for_operator_review"
     assert payload["source_cycle_decision"] == "buy_preview"
     assert payload["paper_profile_gate_passed"] is True
-    assert payload["account_observed"] is False
+    assert payload["broker_state_observed"] is True
+    assert payload["broker_access_performed"] is True
+    assert payload["account_read_attempted"] is True
+    assert payload["positions_read_attempted"] is True
+    assert payload["open_orders_read_attempted"] is True
+    assert payload["account_observed"] is True
     assert payload["positions_observed"] is True
     assert payload["orders_observed"] is True
     assert payload["recent_orders_observed"] is False
-    assert payload["account"] is None
-    assert payload["cash"] == ""
+    assert payload["account"]["cash"] == "100000"
+    assert payload["account"]["currency"] == "USD"
+    assert payload["account"]["status"] == "ACTIVE"
+    assert "account_id" not in payload["account"]
+    assert payload["expected_account_id_loaded"] is True
+    assert payload["expected_account_matched"] is True
+    assert payload["expected_account_match_mode"] == "account_id"
+    assert payload["account_validation_blocker"] == "none"
+    assert payload["account_status_observed"] is True
+    assert payload["account_status"] == "ACTIVE"
+    assert payload["cash"] == "100000"
     assert payload["buying_power"] == ""
-    assert payload["currency"] == ""
+    assert payload["currency"] == "USD"
     assert payload["position_count"] == 0
     assert payload["position_symbols"] == []
+    assert payload["spy_position_observed"] is True
     assert payload["spy_position_present"] is False
     assert payload["spy_position_qty"] == "0"
     assert payload["unexpected_non_spy_positions"] == []
+    assert payload["unexpected_non_spy_positions_observed"] is True
     assert payload["open_order_count"] == 0
+    assert payload["spy_open_orders_observed"] is True
     assert payload["open_spy_order_count"] == 0
     assert payload["recent_order_count"] == 0
     assert payload["recent_spy_order_count"] == 0
     assert payload["broker_observation_state"] == "observed"
     assert payload["reconciliation_state"] == "ready_for_operator_review"
+    assert payload["blocker_classification"] == "ready_for_operator_review"
     assert payload["blockers"] == []
     _assert_no_broker_authority(payload)
 
@@ -190,7 +211,27 @@ def test_incomplete_observation_blocks_without_forcing_ready(tmp_path) -> None: 
         _config(_write_source_review_packet(tmp_path), tmp_path / "m403.jsonl"),
         ReadOnlyPaperBrokerSnapshotObservation(
             paper_profile_gate_passed=True,
+            account_read_attempted=True,
+            positions_read_attempted=True,
+            open_orders_read_attempted=True,
+            broker_access_performed=True,
+            account_observed=True,
             positions_observed=True,
+            account={
+                "account_id": EXPECTED_ACCOUNT_ID,
+                "cash": "100000",
+                "currency": "USD",
+                "status": "ACTIVE",
+            },
+            expected_account_check={
+                "observed_account_id_present": True,
+                "observed_account_number_present": False,
+                "expected_account_configured": True,
+                "expected_account_id_matched": True,
+                "expected_account_number_matched": None,
+                "expected_account_matched": True,
+                "expected_account_match_mode": "account_id",
+            },
             positions=(),
             unavailable_observations=("open_orders",),
             network_access_attempted=True,
@@ -248,7 +289,7 @@ def test_live_url_detected_blocks_without_broker_observation(tmp_path) -> None: 
     _assert_no_broker_authority(payload)
 
 
-def test_cli_dispatch_reads_only_positions_and_open_orders(
+def test_cli_dispatch_reads_account_before_positions_and_open_orders(
     monkeypatch,
     capsys,
     tmp_path,
@@ -286,6 +327,7 @@ def test_cli_dispatch_reads_only_positions_and_open_orders(
     records = _read_jsonl(run_log)
     assert exit_code == 0
     assert fake_client.calls == [
+        "get_account",
         "get_positions",
         "get_orders",
     ]
@@ -298,16 +340,211 @@ def test_cli_dispatch_reads_only_positions_and_open_orders(
     ]
     assert records == [payload]
     assert payload["reconciliation_state"] == "ready_for_operator_review"
+    assert payload["broker_state_observed"] is True
+    assert payload["broker_access_performed"] is True
+    assert payload["account_read_attempted"] is True
+    assert payload["positions_read_attempted"] is True
+    assert payload["open_orders_read_attempted"] is True
     assert payload["network_access_attempted"] is True
     assert payload["credential_access_attempted"] is True
-    assert payload["account_observed"] is False
-    assert payload["account"] is None
-    assert payload["cash"] == ""
-    assert payload["buying_power"] == ""
+    assert payload["account_observed"] is True
+    assert payload["account"]["cash"] == "100000"
+    assert payload["account"]["currency"] == "USD"
+    assert payload["account"]["status"] == "ACTIVE"
+    assert "account_id" not in payload["account"]
+    assert payload["expected_account_id_loaded"] is True
+    assert payload["expected_account_matched"] is True
+    assert payload["expected_account_match_mode"] == "account_id"
+    assert payload["account_validation_blocker"] == "none"
+    assert payload["cash"] == "100000"
+    assert payload["buying_power"] == "200000"
     assert payload["recent_orders_observed"] is False
     assert payload["recent_orders"] == []
     assert SENSITIVE_API_KEY not in rendered
     assert SENSITIVE_SECRET_KEY not in rendered
+    assert EXPECTED_ACCOUNT_ID not in rendered
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_expected_account_missing_blocks_before_broker_build(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch, expected_account_id=None)
+    _forbid_broker_build(monkeypatch)
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_expected_missing.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert _read_jsonl(run_log) == [payload]
+    assert payload["reconciliation_state"] == "blocked_expected_account_id_unavailable"
+    assert payload["broker_observation_state"] == "expected_account_id_unavailable"
+    assert payload["expected_account_id_loaded"] is False
+    assert payload["expected_account_matched"] is None
+    assert payload["account_validation_blocker"] == "blocked_expected_account_id_unavailable"
+    assert payload["broker_access_performed"] is False
+    assert payload["account_read_attempted"] is False
+    assert payload["positions_read_attempted"] is False
+    assert payload["open_orders_read_attempted"] is False
+    assert payload["positions_observed"] is False
+    assert payload["open_orders_observed"] is False
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_paper_profile_without_credentials_classifies_credentials_unavailable(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    monkeypatch.delenv("ALPACA_API_KEY", raising=False)
+    monkeypatch.delenv("ALPACA_SECRET_KEY", raising=False)
+    _forbid_broker_build(monkeypatch)
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_credentials_missing.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert _read_jsonl(run_log) == [payload]
+    assert payload["reconciliation_state"] == "blocked_credentials_unavailable"
+    assert payload["broker_observation_state"] == "credentials_unavailable"
+    assert payload["account_validation_blocker"] == "blocked_credentials_unavailable"
+    assert payload["broker_access_performed"] is False
+    assert payload["account_read_attempted"] is False
+    assert payload["positions_read_attempted"] is False
+    assert payload["open_orders_read_attempted"] is False
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_expected_account_mismatch_stops_before_positions_and_orders(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeM403AlpacaClient(
+            positions=[],
+            account_id=MISMATCHED_ACCOUNT_ID,
+        ),
+    )
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_expected_mismatch.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 1
+    assert fake_client.calls == ["get_account"]
+    assert payload["reconciliation_state"] == "blocked_expected_account_mismatch"
+    assert payload["broker_observation_state"] == "expected_account_mismatch"
+    assert payload["expected_account_id_loaded"] is True
+    assert payload["expected_account_matched"] is False
+    assert payload["account_validation_blocker"] == "blocked_expected_account_mismatch"
+    assert payload["broker_access_performed"] is True
+    assert payload["account_read_attempted"] is True
+    assert payload["positions_read_attempted"] is False
+    assert payload["open_orders_read_attempted"] is False
+    assert EXPECTED_ACCOUNT_ID not in rendered
+    assert MISMATCHED_ACCOUNT_ID not in rendered
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_account_failure_stops_before_positions_and_orders(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeM403AlpacaClient(
+            positions=[],
+            fail_account=True,
+        ),
+    )
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_account_failed.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    assert exit_code == 1
+    assert fake_client.calls == ["get_account"]
+    assert payload["reconciliation_state"] == "blocked_account_unavailable"
+    assert payload["broker_observation_state"] == "account_unavailable"
+    assert payload["account_validation_blocker"] == "blocked_account_unavailable"
+    assert payload["broker_access_performed"] is True
+    assert payload["account_read_attempted"] is True
+    assert payload["positions_read_attempted"] is False
+    assert payload["open_orders_read_attempted"] is False
+    assert payload["unavailable_reasons"]["account"]["operation"] == "get_account"
     _assert_no_broker_authority(payload)
 
 
@@ -408,9 +645,28 @@ class FakeM403AlpacaClient(FakeAlpacaClient):
     def __init__(
         self,
         positions: list[AlpacaPositionResponse] | None = None,
+        *,
+        account_id: str = EXPECTED_ACCOUNT_ID,
+        account_status: str = "ACTIVE",
+        fail_account: bool = False,
     ) -> None:
         super().__init__(positions=positions)
+        self.account_id = account_id
+        self.account_status = account_status
+        self.fail_account = fail_account
         self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
+
+    def get_account(self) -> AlpacaAccountResponse:
+        self.calls.append("get_account")
+        if self.fail_account:
+            raise RuntimeError("fake account call failed")
+        return AlpacaAccountResponse(
+            account_id=self.account_id,
+            status=self.account_status,
+            cash=Decimal("100000"),
+            buying_power=Decimal("200000"),
+            equity=Decimal("100000"),
+        )
 
     def get_orders(self, query: AlpacaRecentOrderQuery) -> list[AlpacaOrderResponse]:
         self.calls.append("get_orders")
@@ -450,14 +706,36 @@ def _config(
 
 def _observation(
     *,
+    account: dict[str, object] | None = None,
     positions: tuple[dict[str, object], ...] = (),
     open_orders: tuple[dict[str, object], ...] = (),
     recent_orders: tuple[dict[str, object], ...] = (),
 ) -> ReadOnlyPaperBrokerSnapshotObservation:
+    checked_account = account or {
+        "account_id": EXPECTED_ACCOUNT_ID,
+        "cash": "100000",
+        "currency": "USD",
+        "status": "ACTIVE",
+    }
     return ReadOnlyPaperBrokerSnapshotObservation(
         paper_profile_gate_passed=True,
+        account_read_attempted=True,
+        positions_read_attempted=True,
+        open_orders_read_attempted=True,
+        broker_access_performed=True,
+        account_observed=True,
         positions_observed=True,
         orders_observed=True,
+        account=checked_account,
+        expected_account_check={
+            "observed_account_id_present": True,
+            "observed_account_number_present": False,
+            "expected_account_configured": True,
+            "expected_account_id_matched": True,
+            "expected_account_number_matched": None,
+            "expected_account_matched": True,
+            "expected_account_match_mode": "account_id",
+        },
         positions=positions,
         open_orders=open_orders,
         recent_orders=recent_orders,
@@ -513,11 +791,16 @@ def _set_env(
     *,
     profile: str = "paper",
     base_url: str = "https://paper.example.test",
+    expected_account_id: str | None = EXPECTED_ACCOUNT_ID,
 ) -> None:
     monkeypatch.setenv("APP_PROFILE", profile)
     monkeypatch.setenv("ALPACA_API_KEY", SENSITIVE_API_KEY)
     monkeypatch.setenv("ALPACA_SECRET_KEY", SENSITIVE_SECRET_KEY)
     monkeypatch.setenv("ALPACA_PAPER_BASE_URL", base_url)
+    if expected_account_id is None:
+        monkeypatch.delenv("ALPACA_EXPECTED_PAPER_ACCOUNT_ID", raising=False)
+    else:
+        monkeypatch.setenv("ALPACA_EXPECTED_PAPER_ACCOUNT_ID", expected_account_id)
     monkeypatch.delenv("ALGOTRADER_PAPER_HALT", raising=False)
 
 
@@ -525,13 +808,18 @@ def _install_fake_broker(
     monkeypatch,
     fake_client: FakeM403AlpacaClient,
 ) -> FakeM403AlpacaClient:
-    def build_broker(paper_config):  # noqa: ANN001
-        return AlpacaPaperBroker(
+    def build_broker_and_client(paper_config):  # noqa: ANN001
+        broker = AlpacaPaperBroker(
             adapter=AlpacaClientAdapter(fake_client),
             config=paper_config,
         )
+        return broker, fake_client
 
-    monkeypatch.setattr(cli_module, "_build_paper_broker", build_broker)
+    monkeypatch.setattr(
+        cli_module,
+        "_build_paper_broker_and_client",
+        build_broker_and_client,
+    )
     return fake_client
 
 
@@ -540,6 +828,7 @@ def _forbid_broker_build(monkeypatch) -> None:
         raise AssertionError("M403 profile gate failure must not build a broker")
 
     monkeypatch.setattr(cli_module, "_build_paper_broker", forbidden_build)
+    monkeypatch.setattr(cli_module, "_build_paper_broker_and_client", forbidden_build)
 
 
 def _run_json(argv: tuple[str, ...], capsys) -> tuple[int, dict[str, object]]:
@@ -551,6 +840,9 @@ def _run_json(argv: tuple[str, ...], capsys) -> tuple[int, dict[str, object]]:
 
 def _assert_no_broker_authority(payload: dict[str, object]) -> None:
     for field_name in (
+        "broker_mutation_performed",
+        "paper_submit_performed",
+        "live_mutation_performed",
         "paper_execution_authorized",
         "paper_submit_authorized",
         "submit_authorized",
@@ -561,6 +853,7 @@ def _assert_no_broker_authority(payload: dict[str, object]) -> None:
         "broker_action_performed",
         "broker_actions_performed",
         "live_authorized",
+        "live_endpoint_support",
     ):
         assert payload[field_name] is False
     for action in ("submit", "cancel", "replace", "close", "liquidate", "mutation"):

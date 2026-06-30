@@ -112,11 +112,17 @@ class ReadOnlyPaperBrokerSnapshotObservation:
     paper_profile_gate_passed: bool
     profile_gate_detail: str = ""
     live_url_detected: bool = False
+    account_read_attempted: bool = False
+    positions_read_attempted: bool = False
+    open_orders_read_attempted: bool = False
+    broker_access_performed: bool = False
     account_observed: bool = False
     positions_observed: bool = False
     orders_observed: bool = False
     recent_orders_observed: bool = False
     account: Mapping[str, object] | None = None
+    expected_account_check: Mapping[str, object] | None = None
+    account_validation_blocker: str = ""
     positions: tuple[Mapping[str, object], ...] = ()
     open_orders: tuple[Mapping[str, object], ...] = ()
     recent_orders: tuple[Mapping[str, object], ...] = ()
@@ -142,6 +148,10 @@ class ReadOnlyPaperBrokerSnapshotObservation:
             _bool(self.live_url_detected, "live_url_detected"),
         )
         for field_name in (
+            "account_read_attempted",
+            "positions_read_attempted",
+            "open_orders_read_attempted",
+            "broker_access_performed",
             "account_observed",
             "positions_observed",
             "orders_observed",
@@ -160,6 +170,16 @@ class ReadOnlyPaperBrokerSnapshotObservation:
             self,
             "account",
             _json_safe(dict(self.account)) if self.account is not None else None,
+        )
+        object.__setattr__(
+            self,
+            "expected_account_check",
+            _json_safe(dict(self.expected_account_check or {})),
+        )
+        object.__setattr__(
+            self,
+            "account_validation_blocker",
+            _string(self.account_validation_blocker, "account_validation_blocker"),
         )
         object.__setattr__(self, "positions", _mapping_tuple(self.positions, "positions"))
         object.__setattr__(
@@ -273,9 +293,17 @@ def build_read_only_paper_broker_snapshot_reconciliation(
     source_symbol = _payload_text(source_record, "symbol")
 
     account = dict(checked_observation.account or {})
+    public_account = _public_account_payload(account)
     positions = [dict(position) for position in checked_observation.positions]
     open_orders = [dict(order) for order in checked_observation.open_orders]
     recent_orders = [dict(order) for order in checked_observation.recent_orders]
+    expected_account_check = dict(checked_observation.expected_account_check or {})
+    account_status = _text(account.get("status")) if checked_observation.account_observed else ""
+    broker_state_observed = (
+        checked_observation.account_observed
+        and checked_observation.positions_observed
+        and checked_observation.orders_observed
+    )
 
     position_symbols = _symbols(positions)
     spy_positions = _by_symbol(positions, checked_config.symbol)
@@ -363,25 +391,55 @@ def build_read_only_paper_broker_snapshot_reconciliation(
             "live_url_detected": checked_observation.live_url_detected,
         },
         "live_url_detected": checked_observation.live_url_detected,
+        "diagnostic_timestamp": checked_config.generated_at,
+        "broker_state_observed": broker_state_observed,
+        "broker_access_performed": checked_observation.broker_access_performed,
+        "broker_mutation_performed": False,
+        "paper_submit_performed": False,
+        "live_mutation_performed": False,
+        "live_endpoint_support": False,
+        "expected_account_id_loaded": (
+            expected_account_check.get("expected_account_configured") is True
+        ),
+        "expected_account_check": expected_account_check,
+        "expected_account_matched": expected_account_check.get(
+            "expected_account_matched"
+        ),
+        "expected_account_match_mode": _text(
+            expected_account_check.get("expected_account_match_mode")
+        ),
+        "account_status_observed": bool(account_status),
+        "account_status": account_status,
+        "account_validation_blocker": (
+            checked_observation.account_validation_blocker or "none"
+        ),
+        "account_read_attempted": checked_observation.account_read_attempted,
+        "positions_read_attempted": checked_observation.positions_read_attempted,
+        "open_orders_read_attempted": checked_observation.open_orders_read_attempted,
         "account_observed": checked_observation.account_observed,
         "positions_observed": checked_observation.positions_observed,
         "orders_observed": checked_observation.orders_observed,
         "open_orders_observed": checked_observation.orders_observed,
         "recent_orders_observed": checked_observation.recent_orders_observed,
-        "account": account if checked_observation.account_observed else None,
+        "account": public_account if checked_observation.account_observed else None,
         "positions": positions,
         "open_orders": open_orders,
         "recent_orders": recent_orders,
-        "cash": _text(account.get("cash")),
-        "buying_power": _text(account.get("buying_power")),
-        "currency": _text(account.get("currency")),
+        "cash": _text(public_account.get("cash")),
+        "buying_power": _text(public_account.get("buying_power")),
+        "currency": _text(public_account.get("currency")),
         "position_count": len(positions),
         "position_symbols": position_symbols,
+        "spy_position_observed": checked_observation.positions_observed,
         "spy_position_present": bool(spy_positions),
         "spy_position_qty": _position_quantity_text(spy_positions),
         "unexpected_non_spy_positions": unexpected_non_spy_positions,
+        "unexpected_non_spy_positions_observed": (
+            checked_observation.positions_observed
+        ),
         "open_order_count": len(open_orders),
         "open_order_symbols": _symbols(open_orders),
+        "spy_open_orders_observed": checked_observation.orders_observed,
         "open_spy_orders": open_spy_orders,
         "open_spy_order_count": len(open_spy_orders),
         "unexpected_non_spy_open_orders": unexpected_non_spy_open_orders,
@@ -393,9 +451,11 @@ def build_read_only_paper_broker_snapshot_reconciliation(
         "broker_observation_state": broker_state,
         "reconciliation_state": state,
         "blockers": list(blockers),
+        "blocker_classification": state,
         "next_action": next_action,
         "unavailable_observations": list(checked_observation.unavailable_observations),
         "unavailable_reasons": dict(checked_observation.unavailable_reasons or {}),
+        "sanitized_errors": dict(checked_observation.unavailable_reasons or {}),
         "paper_lab_only": True,
         "operator_review_only": True,
         "read_only_broker_observation": True,
@@ -586,14 +646,22 @@ def _observation_blockers(
 ) -> tuple[str, ...]:
     if observation.live_url_detected:
         return ("live_url_detected",)
+    if observation.account_validation_blocker == "blocked_credentials_unavailable":
+        return ("blocked_credentials_unavailable",)
     if not observation.paper_profile_gate_passed:
         return ("paper_profile_gate_failed",)
+    if observation.account_validation_blocker:
+        return (observation.account_validation_blocker,)
 
     unavailable = list(observation.unavailable_observations)
+    if not observation.account_observed:
+        unavailable.append("account")
     if not observation.positions_observed and not observation.orders_observed:
         return _dedupe(("broker_observation_unavailable", *unavailable))
 
     blockers: list[str] = []
+    if not observation.account_observed:
+        blockers.append("account_observation_unavailable")
     if not observation.positions_observed:
         blockers.append("positions_observation_unavailable")
     if not observation.orders_observed:
@@ -616,11 +684,47 @@ def _classify(
             "live_url_detected",
             "fix_paper_base_url_then_rerun_read_only_snapshot_reconciliation",
         )
+    if "blocked_credentials_unavailable" in observation_blockers:
+        return (
+            "blocked_credentials_unavailable",
+            "credentials_unavailable",
+            "load_paper_credentials_in_scoped_broker_read_shell_then_rerun",
+        )
     if not observation.paper_profile_gate_passed:
         return (
             "blocked_profile_gate_failed",
             "profile_gate_failed",
             "fix_paper_profile_or_credentials_then_rerun_read_only_snapshot_reconciliation",
+        )
+    if "blocked_expected_account_id_unavailable" in observation_blockers:
+        return (
+            "blocked_expected_account_id_unavailable",
+            "expected_account_id_unavailable",
+            "configure_expected_paper_account_id_before_broker_observation",
+        )
+    if "blocked_expected_account_mismatch" in observation_blockers:
+        return (
+            "blocked_expected_account_mismatch",
+            "expected_account_mismatch",
+            "verify_expected_paper_account_without_exposing_account_id",
+        )
+    if "blocked_expected_account_match_not_observed" in observation_blockers:
+        return (
+            "blocked_expected_account_match_not_observed",
+            "expected_account_match_not_observed",
+            "use_account_identity_capable_read_only_path_before_positions_orders",
+        )
+    if "blocked_account_unavailable" in observation_blockers:
+        return (
+            "blocked_account_unavailable",
+            "account_unavailable",
+            "resolve_account_read_access_then_rerun_read_only_snapshot_reconciliation",
+        )
+    if "blocked_account_status_not_active" in observation_blockers:
+        return (
+            "blocked_account_status_not_active",
+            "account_status_not_active",
+            "operator_review_paper_account_status_before_positions_orders",
         )
     if "broker_observation_unavailable" in observation_blockers:
         return (
@@ -680,6 +784,14 @@ def _position_quantity_text(positions: list[dict[str, object]]) -> str:
     return _text(
         positions[0].get("quantity", positions[0].get("qty", ""))
     )
+
+
+def _public_account_payload(account: Mapping[str, object]) -> dict[str, object]:
+    return {
+        str(key): value
+        for key, value in account.items()
+        if str(key).lower() not in {"account_id", "account_number", "id"}
+    }
 
 
 def _position_symbol_tuple(value: object) -> tuple[str, ...]:

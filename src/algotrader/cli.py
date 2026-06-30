@@ -32,6 +32,7 @@ from .execution.paper_order_policy import (
 
 _PROFILE_NAMES = ("dev", "paper", "live")
 _PREVIEW_FORMATS = ("text", "json")
+_PAPER_EXPECTED_ACCOUNT_ENV = "ALPACA_EXPECTED_PAPER_ACCOUNT_ID"
 _DAILY_SOAK_DEFAULT_ROOT = "runs/daily_soak"
 _DAILY_SOAK_GOLDEN_CHECK_JSONL_FILENAME = "soak_golden_acceptance.jsonl"
 _DAILY_SOAK_GOLDEN_CHECK_TEXT_FILENAME = "soak_golden_acceptance.txt"
@@ -3327,6 +3328,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--generated-at",
         required=True,
         help="Timezone-aware ISO-8601 timestamp for the snapshot reconciliation.",
+    )
+    paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
+        "--expected-paper-account-id",
+        default=None,
+        help=(
+            "Optional expected paper account id. If omitted, "
+            "ALPACA_EXPECTED_PAPER_ACCOUNT_ID is used. The raw value is not "
+            "written to artifacts."
+        ),
     )
     paper_lab_read_only_broker_snapshot_reconciliation_parser.add_argument(
         "--format",
@@ -6905,6 +6915,7 @@ def _run_paper_lab_read_only_broker_snapshot_reconciliation(
         observation = _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             config,
             symbol=args.symbol,
+            expected_paper_account_id=args.expected_paper_account_id,
         )
         payload = build_read_only_paper_broker_snapshot_reconciliation(
             ReadOnlyPaperBrokerSnapshotReconciliationConfig(
@@ -8809,9 +8820,11 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     config,
     *,
     symbol: str,
+    expected_paper_account_id: str | None,
 ):
     from .execution.alpaca_client import AlpacaRecentOrderQuery
     from .execution.paper_lab_snapshot import (
+        account_observation_payload,
         order_observation_payloads,
         position_observation_payloads,
     )
@@ -8823,12 +8836,18 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     profile_passed = profile_gate.get("passed") is True
     live_url_detected = _paper_base_url_live_detected(config)
     profile_detail = str(profile_gate.get("detail", ""))
+    expected_account_id = _paper_expected_account_id(expected_paper_account_id)
+    expected_account_check = _paper_expected_account_check(expected_account_id)
     if not profile_passed:
+        credential_blocker = _paper_profile_credential_blocker(config)
         return ReadOnlyPaperBrokerSnapshotObservation(
             paper_profile_gate_passed=False,
             profile_gate_detail=profile_detail,
             live_url_detected=live_url_detected,
+            expected_account_check=expected_account_check,
+            account_validation_blocker=credential_blocker,
             unavailable_observations=(
+                "account",
                 "positions",
                 "open_orders",
             ),
@@ -8845,7 +8864,9 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             paper_profile_gate_passed=True,
             profile_gate_detail="live Alpaca URL detected for paper snapshot",
             live_url_detected=True,
+            expected_account_check=expected_account_check,
             unavailable_observations=(
+                "account",
                 "positions",
                 "open_orders",
             ),
@@ -8858,15 +8879,39 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             credential_access_attempted=True,
         )
 
+    if not expected_account_id:
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="",
+            live_url_detected=live_url_detected,
+            expected_account_check=expected_account_check,
+            account_validation_blocker="blocked_expected_account_id_unavailable",
+            unavailable_observations=(
+                "account",
+                "positions",
+                "open_orders",
+            ),
+            unavailable_reasons={
+                "expected_account": {
+                    "operation": "expected_account_configuration",
+                    "error_type": "ExpectedAccountUnavailable",
+                    "message": "expected paper account id is not configured",
+                }
+            },
+            credential_access_attempted=True,
+        )
+
     try:
-        broker = _build_paper_broker(config.alpaca_paper)
+        broker, client = _build_paper_broker_and_client(config.alpaca_paper)
     except Exception as exc:  # pragma: no cover - fake failure safety path
         return ReadOnlyPaperBrokerSnapshotObservation(
             paper_profile_gate_passed=True,
             profile_gate_detail="",
             live_url_detected=live_url_detected,
+            expected_account_check=expected_account_check,
             unavailable_observations=(
                 "broker",
+                "account",
                 "positions",
                 "open_orders",
             ),
@@ -8874,6 +8919,7 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
                 "broker": _paper_lab_read_only_observation_exception_payload(
                     exc,
                     config,
+                    operation="build_paper_broker",
                 )
             },
             credential_access_attempted=True,
@@ -8882,12 +8928,115 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     unavailable: list[str] = []
     reasons: dict[str, object] = {}
     network_access_attempted = False
+    account: dict[str, object] | None = None
     positions: tuple[dict[str, object], ...] = ()
     open_orders: tuple[dict[str, object], ...] = ()
+    account_observed = False
     positions_observed = False
     open_orders_observed = False
+    account_read_attempted = False
+    positions_read_attempted = False
+    open_orders_read_attempted = False
 
     try:
+        account_read_attempted = True
+        network_access_attempted = True
+        account = account_observation_payload(client.get_account())
+        account_observed = True
+    except Exception as exc:  # pragma: no cover - fake failure safety path
+        unavailable.append("account")
+        reasons["account"] = _paper_lab_read_only_observation_exception_payload(
+            exc,
+            config,
+            operation="get_account",
+        )
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="",
+            live_url_detected=live_url_detected,
+            account_read_attempted=account_read_attempted,
+            positions_read_attempted=False,
+            open_orders_read_attempted=False,
+            broker_access_performed=True,
+            account_observed=False,
+            positions_observed=False,
+            orders_observed=False,
+            expected_account_check=expected_account_check,
+            account_validation_blocker="blocked_account_unavailable",
+            unavailable_observations=tuple(unavailable),
+            unavailable_reasons=reasons,
+            network_access_attempted=network_access_attempted,
+            credential_access_attempted=True,
+        )
+
+    expected_account_check = _paper_expected_account_check(
+        expected_account_id,
+        observed_account_id=str(account.get("account_id", "")),
+        observed_account_number=str(account.get("account_number", "")),
+    )
+    expected_account_blocker = _paper_expected_account_blocker(expected_account_check)
+    if expected_account_blocker != "none":
+        blocker = (
+            "blocked_expected_account_mismatch"
+            if expected_account_blocker == "expected_account_mismatch"
+            else "blocked_expected_account_match_not_observed"
+        )
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="",
+            live_url_detected=live_url_detected,
+            account_read_attempted=account_read_attempted,
+            positions_read_attempted=False,
+            open_orders_read_attempted=False,
+            broker_access_performed=True,
+            account_observed=True,
+            positions_observed=False,
+            orders_observed=False,
+            account=account,
+            expected_account_check=expected_account_check,
+            account_validation_blocker=blocker,
+            unavailable_observations=("positions", "open_orders"),
+            unavailable_reasons={
+                "expected_account": {
+                    "operation": "expected_account_validation",
+                    "error_type": "ExpectedAccountValidationFailed",
+                    "message": expected_account_blocker,
+                }
+            },
+            network_access_attempted=network_access_attempted,
+            credential_access_attempted=True,
+        )
+
+    account_status = str(account.get("status", "")).strip().upper()
+    if account_status and account_status not in {"ACTIVE", "ACCOUNT_STATUS_ACTIVE"}:
+        return ReadOnlyPaperBrokerSnapshotObservation(
+            paper_profile_gate_passed=True,
+            profile_gate_detail="",
+            live_url_detected=live_url_detected,
+            account_read_attempted=account_read_attempted,
+            positions_read_attempted=False,
+            open_orders_read_attempted=False,
+            broker_access_performed=True,
+            account_observed=True,
+            positions_observed=False,
+            orders_observed=False,
+            account=account,
+            expected_account_check=expected_account_check,
+            account_validation_blocker="blocked_account_status_not_active",
+            unavailable_observations=("positions", "open_orders"),
+            unavailable_reasons={
+                "account": {
+                    "operation": "account_status_validation",
+                    "error_type": "AccountStatusNotActive",
+                    "message": "paper account status is not active",
+                }
+            },
+            network_access_attempted=network_access_attempted,
+            credential_access_attempted=True,
+        )
+
+    try:
+        positions_read_attempted = True
         network_access_attempted = True
         positions = tuple(position_observation_payloads(broker.get_positions()))
         positions_observed = True
@@ -8896,9 +9045,11 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
         reasons["positions"] = _paper_lab_read_only_observation_exception_payload(
             exc,
             config,
+            operation="get_positions",
         )
 
     try:
+        open_orders_read_attempted = True
         network_access_attempted = True
         open_query = AlpacaRecentOrderQuery(
             status_filter="open",
@@ -8909,15 +9060,26 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     except Exception as exc:  # pragma: no cover - fake failure safety path
         unavailable.append("open_orders")
         reasons["open_orders"] = (
-            _paper_lab_read_only_observation_exception_payload(exc, config)
+            _paper_lab_read_only_observation_exception_payload(
+                exc,
+                config,
+                operation="get_recent_orders",
+            )
         )
 
     return ReadOnlyPaperBrokerSnapshotObservation(
         paper_profile_gate_passed=True,
         profile_gate_detail="",
         live_url_detected=live_url_detected,
+        account_read_attempted=account_read_attempted,
+        positions_read_attempted=positions_read_attempted,
+        open_orders_read_attempted=open_orders_read_attempted,
+        broker_access_performed=network_access_attempted,
+        account_observed=account_observed,
         positions_observed=positions_observed,
         orders_observed=open_orders_observed,
+        account=account,
+        expected_account_check=expected_account_check,
         positions=positions,
         open_orders=open_orders,
         unavailable_observations=tuple(unavailable),
@@ -8930,11 +9092,93 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
 def _paper_lab_read_only_observation_exception_payload(
     exc: Exception,
     config,
+    *,
+    operation: str,
 ) -> dict[str, object]:
-    return {
+    payload = {
+        "operation": operation,
         "error_type": exc.__class__.__name__,
         "message": _redact_config_secrets(str(exc), config),
     }
+    status_code = getattr(exc, "status_code", None)
+    if status_code is None:
+        status_code = getattr(exc, "status", None)
+    if status_code is not None:
+        payload["status_code"] = str(status_code)
+    return payload
+
+
+def _paper_expected_account_id(explicit_value: str | None) -> str:
+    if explicit_value is not None:
+        return str(explicit_value).strip()
+
+    import os
+
+    return str(os.environ.get(_PAPER_EXPECTED_ACCOUNT_ENV, "")).strip()
+
+
+def _paper_expected_account_check(
+    expected_account_id: str | None,
+    *,
+    observed_account_id: str | None = None,
+    observed_account_number: str | None = None,
+) -> dict[str, object]:
+    expected = str(expected_account_id or "").strip()
+    observed_id = str(observed_account_id or "").strip()
+    observed_number = str(observed_account_number or "").strip()
+    configured = bool(expected)
+    account_id_matched = (
+        (observed_id == expected) if configured and observed_id else None
+    )
+    account_number_matched = (
+        (observed_number == expected) if configured and observed_number else None
+    )
+    if account_id_matched is True:
+        matched = True
+        match_mode = "account_id"
+    elif account_number_matched is True:
+        matched = True
+        match_mode = "account_number"
+    elif account_id_matched is False or account_number_matched is False:
+        matched = False
+        match_mode = "none"
+    else:
+        matched = None
+        match_mode = "none"
+    return {
+        "observed_account_id_present": bool(observed_id),
+        "observed_account_number_present": bool(observed_number),
+        "expected_account_configured": configured,
+        "expected_account_id_matched": account_id_matched,
+        "expected_account_number_matched": account_number_matched,
+        "expected_account_matched": matched,
+        "expected_account_match_mode": match_mode,
+    }
+
+
+def _paper_expected_account_blocker(expected_check: Mapping[str, object]) -> str:
+    if expected_check.get("expected_account_configured") is not True:
+        return "expected_paper_account_id_not_configured"
+    matched = expected_check.get("expected_account_matched")
+    if matched is True:
+        return "none"
+    if matched is False:
+        return "expected_account_mismatch"
+    return "expected_account_match_not_observed"
+
+
+def _paper_profile_credential_blocker(config) -> str:
+    paper_config = config.alpaca_paper
+    app_profile = str(getattr(paper_config, "app_profile", "")).strip().lower()
+    if app_profile != "paper":
+        return ""
+    api_key_loaded = bool(str(getattr(paper_config, "alpaca_api_key", "") or "").strip())
+    secret_key_loaded = bool(
+        str(getattr(paper_config, "alpaca_secret_key", "") or "").strip()
+    )
+    if api_key_loaded and secret_key_loaded:
+        return ""
+    return "blocked_credentials_unavailable"
 
 
 def _build_paper_lab_order_traceability_review_payload(
@@ -11147,13 +11391,18 @@ def _paper_base_url_live_detected(config) -> bool:
 
 
 def _build_paper_broker(paper_config):
+    broker, _client = _build_paper_broker_and_client(paper_config)
+    return broker
+
+
+def _build_paper_broker_and_client(paper_config):
     from .execution.alpaca_adapter import AlpacaClientAdapter
     from .execution.alpaca_broker import AlpacaPaperBroker
     from .execution.alpaca_sdk_client import AlpacaSdkClient
 
     client = AlpacaSdkClient(paper_config)
     adapter = AlpacaClientAdapter(client)
-    return AlpacaPaperBroker(adapter=adapter, config=paper_config)
+    return AlpacaPaperBroker(adapter=adapter, config=paper_config), client
 
 
 def _paper_halt_not_set() -> bool:
