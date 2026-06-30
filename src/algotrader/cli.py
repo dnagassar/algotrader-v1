@@ -8929,6 +8929,7 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     reasons: dict[str, object] = {}
     network_access_attempted = False
     account: dict[str, object] | None = None
+    account_identity: dict[str, str] = {}
     positions: tuple[dict[str, object], ...] = ()
     open_orders: tuple[dict[str, object], ...] = ()
     account_observed = False
@@ -8941,7 +8942,9 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
     try:
         account_read_attempted = True
         network_access_attempted = True
-        account = account_observation_payload(client.get_account())
+        raw_account = client.get_account()
+        account = account_observation_payload(raw_account)
+        account_identity = _paper_account_identity(raw_account)
         account_observed = True
     except Exception as exc:  # pragma: no cover - fake failure safety path
         unavailable.append("account")
@@ -8971,8 +8974,13 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
 
     expected_account_check = _paper_expected_account_check(
         expected_account_id,
-        observed_account_id=str(account.get("account_id", "")),
-        observed_account_number=str(account.get("account_number", "")),
+        observed_account_id=str(
+            account.get("account_id", "") or account_identity.get("account_id", "")
+        ),
+        observed_account_number=str(
+            account.get("account_number", "")
+            or account_identity.get("account_number", "")
+        ),
     )
     expected_account_blocker = _paper_expected_account_blocker(expected_account_check)
     if expected_account_blocker != "none":
@@ -9007,7 +9015,7 @@ def _observe_paper_lab_read_only_broker_snapshot_reconciliation(
             credential_access_attempted=True,
         )
 
-    account_status = str(account.get("status", "")).strip().upper()
+    account_status = _paper_account_status_for_validation(account.get("status", ""))
     if account_status and account_status not in {"ACTIVE", "ACCOUNT_STATUS_ACTIVE"}:
         return ReadOnlyPaperBrokerSnapshotObservation(
             paper_profile_gate_passed=True,
@@ -9115,6 +9123,37 @@ def _paper_expected_account_id(explicit_value: str | None) -> str:
     import os
 
     return str(os.environ.get(_PAPER_EXPECTED_ACCOUNT_ENV, "")).strip()
+
+
+def _paper_account_identity(account: object) -> dict[str, str]:
+    return {
+        "account_id": _paper_account_identity_field(account, "account_id", "id"),
+        "account_number": _paper_account_identity_field(account, "account_number"),
+    }
+
+
+def _paper_account_identity_field(account: object, *field_names: str) -> str:
+    if isinstance(account, Mapping):
+        for field_name in field_names:
+            value = account.get(field_name)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return ""
+
+    for field_name in field_names:
+        value = getattr(account, field_name, None)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+    return ""
+
+
+def _paper_account_status_for_validation(value: object) -> str:
+    status = str(value or "").strip()
+    if not status:
+        return ""
+    if "." in status:
+        status = status.rsplit(".", 1)[-1]
+    return status.strip().upper()
 
 
 def _paper_expected_account_check(

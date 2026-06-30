@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import algotrader.cli as cli_module
 from algotrader.cli import main
@@ -34,6 +35,7 @@ GENERATED_AT = "2026-06-06T00:00:00+00:00"
 SENSITIVE_API_KEY = "m403-sensitive-api-key"
 SENSITIVE_SECRET_KEY = "m403-sensitive-secret-key"
 EXPECTED_ACCOUNT_ID = "paper-account-1"
+EXPECTED_ACCOUNT_NUMBER = "paper-account-number-1"
 MISMATCHED_ACCOUNT_ID = "different-paper-account"
 ORDER_TIME = datetime(2026, 6, 6, 14, 30, tzinfo=UTC)
 FORBIDDEN_IMPORT_PREFIXES = (
@@ -366,6 +368,104 @@ def test_cli_dispatch_reads_account_before_positions_and_open_orders(
     _assert_no_broker_authority(payload)
 
 
+def test_cli_matches_raw_sdk_account_id_alias_without_serializing_identity(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeM403AlpacaClient(
+            positions=[],
+            account_identity_shape="sdk_id",
+            account_status="AccountStatus.ACTIVE",
+        ),
+    )
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_sdk_id_match.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 0
+    assert fake_client.calls == ["get_account", "get_positions", "get_orders"]
+    assert payload["reconciliation_state"] == "ready_for_operator_review"
+    assert payload["expected_account_matched"] is True
+    assert payload["expected_account_match_mode"] == "account_id"
+    assert "account_id" not in payload["account"]
+    assert "id" not in payload["account"]
+    assert EXPECTED_ACCOUNT_ID not in rendered
+    _assert_no_broker_authority(payload)
+
+
+def test_cli_matches_raw_sdk_account_number_without_serializing_identity(
+    monkeypatch,
+    capsys,
+    tmp_path,
+) -> None:
+    _set_env(monkeypatch, expected_account_id=EXPECTED_ACCOUNT_NUMBER)
+    fake_client = _install_fake_broker(
+        monkeypatch,
+        FakeM403AlpacaClient(
+            positions=[],
+            account_id=MISMATCHED_ACCOUNT_ID,
+            account_number=EXPECTED_ACCOUNT_NUMBER,
+            account_identity_shape="sdk_account_number",
+        ),
+    )
+    source_review_packet = _write_source_review_packet(tmp_path)
+    run_log = tmp_path / "runs" / "paper_lab" / "m403_account_number_match.jsonl"
+
+    exit_code, payload = _run_json(
+        (
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_COMMAND,
+            "--source-review-packet",
+            str(source_review_packet),
+            "--run-id",
+            READ_ONLY_PAPER_BROKER_SNAPSHOT_RECONCILIATION_RUN_ID,
+            "--run-log",
+            str(run_log),
+            "--generated-at",
+            GENERATED_AT,
+            "--format",
+            "json",
+        ),
+        capsys,
+    )
+
+    rendered = json.dumps(payload, sort_keys=True) + run_log.read_text(
+        encoding="utf-8"
+    )
+    assert exit_code == 0
+    assert fake_client.calls == ["get_account", "get_positions", "get_orders"]
+    assert payload["reconciliation_state"] == "ready_for_operator_review"
+    assert payload["expected_account_matched"] is True
+    assert payload["expected_account_match_mode"] == "account_number"
+    assert "account_id" not in payload["account"]
+    assert "account_number" not in payload["account"]
+    assert MISMATCHED_ACCOUNT_ID not in rendered
+    assert EXPECTED_ACCOUNT_NUMBER not in rendered
+    _assert_no_broker_authority(payload)
+
+
 def test_cli_expected_account_missing_blocks_before_broker_build(
     monkeypatch,
     capsys,
@@ -647,19 +747,42 @@ class FakeM403AlpacaClient(FakeAlpacaClient):
         positions: list[AlpacaPositionResponse] | None = None,
         *,
         account_id: str = EXPECTED_ACCOUNT_ID,
+        account_number: str = EXPECTED_ACCOUNT_NUMBER,
+        account_identity_shape: str = "account_id",
         account_status: str = "ACTIVE",
         fail_account: bool = False,
     ) -> None:
         super().__init__(positions=positions)
         self.account_id = account_id
+        self.account_number = account_number
+        self.account_identity_shape = account_identity_shape
         self.account_status = account_status
         self.fail_account = fail_account
         self.recent_order_queries: list[AlpacaRecentOrderQuery] = []
 
-    def get_account(self) -> AlpacaAccountResponse:
+    def get_account(self) -> object:
         self.calls.append("get_account")
         if self.fail_account:
             raise RuntimeError("fake account call failed")
+        if self.account_identity_shape == "sdk_id":
+            return SimpleNamespace(
+                id=self.account_id,
+                status=self.account_status,
+                cash=Decimal("100000"),
+                buying_power=Decimal("200000"),
+                equity=Decimal("100000"),
+                currency="USD",
+            )
+        if self.account_identity_shape == "sdk_account_number":
+            return SimpleNamespace(
+                id=self.account_id,
+                account_number=self.account_number,
+                status=self.account_status,
+                cash=Decimal("100000"),
+                buying_power=Decimal("200000"),
+                equity=Decimal("100000"),
+                currency="USD",
+            )
         return AlpacaAccountResponse(
             account_id=self.account_id,
             status=self.account_status,
