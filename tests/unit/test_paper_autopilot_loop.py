@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 import hashlib
 import json
@@ -12,6 +12,7 @@ from algotrader.execution.paper_autopilot_loop import (
     paper_autopilot_client_order_id,
     run_paper_autopilot_loop,
 )
+from algotrader.orchestration.strategy_router import StrategySignal
 
 
 GENERATED_AT = "2026-06-26T14:00:00+00:00"
@@ -29,6 +30,13 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
     record = _run(tmp_path, bars_csv, broker)
 
     assert record["sma_posture"] == "risk_on"
+    assert record["strategy_route_status"] == "action_routed"
+    assert record["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert record["strategy_route_paper_mutation_allowed"] is True
+    assert (
+        record["strategy_route_receipt"]["selected_signal_id"]
+        == "spy_sma_50_200_training_wheel"
+    )
     assert record["preview_action_decision"] == "hold/noop"
     assert record["execution_plan_status"] == "no_action_required"
     assert record["blocker_status"] == "none"
@@ -212,6 +220,29 @@ def test_paper_autopilot_blocks_duplicate_client_order_id(tmp_path: Path) -> Non
     assert broker.submitted_requests == []
 
 
+def test_paper_autopilot_conflicting_strategy_route_skips_broker_factory(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_forbidden_factory,
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+        candidate_strategy_signals=(_conflicting_promoted_signal(),),
+    )
+
+    assert record["strategy_route_status"] == "blocked"
+    assert record["strategy_route_reason"] == "conflict_requires_review"
+    assert record["blocker_status"] == "blocked/strategy_router_conflict_requires_review"
+    assert record["broker_state_observed"] is False
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+
+
 def test_paper_autopilot_blocks_expected_account_mismatch_before_positions(
     tmp_path: Path,
 ) -> None:
@@ -377,6 +408,24 @@ def _factory(fake_broker: FakeAutopilotBroker):
 
 def _forbidden_factory(_config):  # noqa: ANN001
     raise AssertionError("broker factory must not be called")
+
+
+def _conflicting_promoted_signal() -> StrategySignal:
+    return StrategySignal(
+        strategy_id="test_conflicting_promoted_candidate",
+        strategy_family="test_only_router_fixture",
+        symbol="SPY",
+        asset_class="equity",
+        signal_state="trade_candidate",
+        intended_action="sell_close",
+        intended_side="sell",
+        expected_holding_period="test_only",
+        max_loss_model="test_only",
+        risk_budget="test_only",
+        data_as_of=datetime(2026, 8, 8, tzinfo=UTC),
+        promotion_status="paper_mutation_candidate",
+        labels=("paper_lab_only", "not_live_authorized", "profit_claim=none"),
+    )
 
 
 def _fake_daily_lab(config):  # noqa: ANN001

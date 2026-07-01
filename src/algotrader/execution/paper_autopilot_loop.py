@@ -8,7 +8,7 @@ evaluator stays broker-free and network-free.
 from __future__ import annotations
 
 import csv
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
@@ -31,6 +31,14 @@ from algotrader.execution.etf_sma_daily_paper_lab import (
 from algotrader.execution.paper_autopilot_history import (
     PaperAutopilotHistoryConfig,
     update_paper_autopilot_operating_history,
+)
+from algotrader.orchestration.strategy_router import (
+    STRATEGY_ROUTER_LABEL,
+    SMA_TRAINING_WHEEL_STRATEGY_FAMILY,
+    StrategyRouteReceipt,
+    StrategySignal,
+    route_strategy_signals,
+    strategy_signal_from_etf_sma_result,
 )
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
@@ -210,6 +218,7 @@ def run_paper_autopilot_loop(
     broker_client_factory: BrokerClientFactory | None = None,
     daily_lab_runner: DailyLabRunner | None = None,
     timestamp: str | None = None,
+    candidate_strategy_signals: Iterable[StrategySignal] | None = None,
     update_history: bool = True,
 ) -> dict[str, Any]:
     """Run one bounded paper-autopilot cycle and write operating artifacts."""
@@ -237,21 +246,32 @@ def run_paper_autopilot_loop(
         ),
     )
     posture = _autopilot_posture(signal.posture)
+    primary_strategy_signal = strategy_signal_from_etf_sma_result(signal)
+    route_receipt = route_strategy_signals(
+        _strategy_signals(primary_strategy_signal, candidate_strategy_signals)
+    )
+    route_blocker = _paper_autopilot_route_blocker(route_receipt)
     preflight = _preflight(process_env)
     daily_cycle = _run_daily_cycle(
         resolved,
         output_root=output_root,
         daily_lab_runner=daily_lab_runner,
     )
-    broker_state = _observe_broker_state(
-        preflight=preflight,
-        env=process_env,
-        secret_values=secret_values,
-        broker_client_factory=broker_client_factory,
+    if route_blocker:
+        broker_state = _unobserved_broker_state(route_blocker)
+    else:
+        broker_state = _observe_broker_state(
+            preflight=preflight,
+            env=process_env,
+            secret_values=secret_values,
+            broker_client_factory=broker_client_factory,
+        )
+    safety_labels = _dedupe(
+        (*_safety_labels(broker_state["broker_state_observed"] is True), STRATEGY_ROUTER_LABEL)
     )
-    safety_labels = _safety_labels(broker_state["broker_state_observed"] is True)
     intent = _build_intent(
         posture=posture,
+        route_receipt=route_receipt,
         broker_state=broker_state,
         max_notional=resolved.max_notional,
     )
@@ -271,6 +291,7 @@ def run_paper_autopilot_loop(
         daily_cycle=daily_cycle,
         client_order_id=client_order_id,
         safety_labels=safety_labels,
+        broker_observation_required=route_blocker == "",
     )
     broker = broker_state.pop("_broker", None)
     action_result = _execute_plan(plan, broker=broker, secret_values=secret_values)
@@ -288,6 +309,7 @@ def run_paper_autopilot_loop(
         data_sha256=data_sha256,
         as_of_date=as_of_date,
         signal=signal.to_dict(),
+        route_receipt=route_receipt,
         posture=posture,
         preflight=preflight,
         broker_state=broker_state,
@@ -575,12 +597,60 @@ def _observe_broker_state(
     return state
 
 
+def _strategy_signals(
+    primary_strategy_signal: StrategySignal,
+    candidate_strategy_signals: Iterable[StrategySignal] | None,
+) -> tuple[StrategySignal, ...]:
+    if not isinstance(primary_strategy_signal, StrategySignal):
+        raise ValidationError("primary_strategy_signal must be a StrategySignal.")
+    if candidate_strategy_signals is None:
+        return (primary_strategy_signal,)
+    if isinstance(candidate_strategy_signals, (str, bytes)) or not isinstance(
+        candidate_strategy_signals,
+        Iterable,
+    ):
+        raise ValidationError(
+            "candidate_strategy_signals must be an iterable of StrategySignal values."
+        )
+    extra_signals = tuple(candidate_strategy_signals)
+    for index, signal in enumerate(extra_signals):
+        if not isinstance(signal, StrategySignal):
+            raise ValidationError(
+                f"candidate_strategy_signals[{index}] must be a StrategySignal."
+            )
+    return (primary_strategy_signal, *extra_signals)
+
+
+def _paper_autopilot_route_blocker(route_receipt: StrategyRouteReceipt) -> str:
+    if not isinstance(route_receipt, StrategyRouteReceipt):
+        raise ValidationError("route_receipt must be a StrategyRouteReceipt.")
+    if route_receipt.paper_mutation_allowed is not True:
+        return f"strategy_router_{route_receipt.reason}"
+
+    selected_signal = route_receipt.selected_signal
+    if selected_signal is None:
+        return "strategy_router_missing_selected_signal"
+    if selected_signal.strategy_family != SMA_TRAINING_WHEEL_STRATEGY_FAMILY:
+        return "unsupported_paper_strategy_requires_adapter"
+    if selected_signal.symbol != _SYMBOL:
+        return "unsupported_paper_strategy_symbol"
+    return ""
+
+
 def _build_intent(
     *,
     posture: str,
+    route_receipt: StrategyRouteReceipt,
     broker_state: Mapping[str, Any],
     max_notional: Decimal,
 ) -> PaperAutopilotExecutionIntent:
+    route_blocker = _paper_autopilot_route_blocker(route_receipt)
+    if route_blocker:
+        return PaperAutopilotExecutionIntent(
+            symbol=_SYMBOL,
+            action="blocked",
+            reason=route_blocker,
+        )
     if broker_state.get("broker_state_observed") is not True:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
@@ -648,6 +718,7 @@ def _build_plan(
     daily_cycle: Mapping[str, Any],
     client_order_id: str,
     safety_labels: Sequence[str],
+    broker_observation_required: bool = True,
 ) -> PaperAutopilotExecutionPlan:
     blockers = list(
         _plan_blockers(
@@ -656,6 +727,7 @@ def _build_plan(
             preflight,
             daily_cycle,
             client_order_id,
+            broker_observation_required=broker_observation_required,
         )
     )
     submit_allowed = intent.action in {"buy", "sell_close"} and not blockers
@@ -712,6 +784,8 @@ def _plan_blockers(
     preflight: Mapping[str, Any],
     daily_cycle: Mapping[str, Any],
     client_order_id: str,
+    *,
+    broker_observation_required: bool = True,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     if preflight.get("live_endpoint_or_profile_detected") is True:
@@ -720,7 +794,10 @@ def _plan_blockers(
     broker_blocker = _text(broker_state.get("blocker"))
     if broker_blocker and broker_blocker != "broker_state_not_observed":
         blockers.append(broker_blocker)
-    if broker_state.get("broker_state_observed") is not True:
+    if (
+        broker_observation_required
+        and broker_state.get("broker_state_observed") is not True
+    ):
         blockers.append("broker_state_not_observed")
     if intent.action == "blocked":
         blockers.append(intent.reason)
@@ -892,6 +969,7 @@ def _build_record(
     data_sha256: str,
     as_of_date: str,
     signal: Mapping[str, Any],
+    route_receipt: StrategyRouteReceipt,
     posture: str,
     preflight: Mapping[str, Any],
     broker_state: Mapping[str, Any],
@@ -931,6 +1009,7 @@ def _build_record(
     )
     broker_response = _mapping(action_result.get("broker_response"))
     request = _mapping(action_result.get("request"))
+    route_payload = route_receipt.to_dict()
     open_spy_orders = [
         order
         for order in _mapping_items(broker_state.get("open_orders"))
@@ -965,6 +1044,14 @@ def _build_record(
         "input_data_sha256": data_sha256,
         "sma_posture": posture,
         "signal": dict(signal),
+        "strategy_route_receipt": route_payload,
+        "strategy_route_status": route_receipt.route_status,
+        "strategy_route_reason": route_receipt.reason,
+        "strategy_route_action": route_receipt.route_action,
+        "strategy_route_paper_mutation_allowed": (
+            route_receipt.paper_mutation_allowed
+        ),
+        "selected_strategy_id": route_payload.get("selected_signal_id"),
         "broker_state_mode": broker_state.get("broker_state_mode"),
         "broker_state_observed": broker_state.get("broker_state_observed") is True,
         "broker_state": dict(broker_state),
@@ -1125,6 +1212,8 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- As-of date: `{record.get('as_of_date', '')}`",
             f"- Symbol: `{record.get('symbol', '')}`",
             f"- SMA posture: `{record.get('sma_posture', '')}`",
+            f"- Strategy route: `{record.get('strategy_route_status', '')}`",
+            f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- Execution plan: `{plan.get('execution_plan_id', '')}`",
             f"- Action decision: `{record.get('preview_action_decision', '')}`",
@@ -1153,6 +1242,8 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
             f"- Latest bar: `{record.get('data_latest_bar', '')}`",
             f"- Data freshness: `{record.get('data_freshness_status', '')}`",
             f"- SMA posture: `{record.get('sma_posture', '')}`",
+            f"- Strategy route: `{record.get('strategy_route_status', '')}`",
+            f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- Execution plan action: `{record.get('execution_plan_action', '')}`",
             f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
@@ -1171,6 +1262,11 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "data_latest_bar",
         "data_freshness_status",
         "sma_posture",
+        "strategy_route_status",
+        "strategy_route_reason",
+        "strategy_route_action",
+        "strategy_route_paper_mutation_allowed",
+        "selected_strategy_id",
         "broker_state_mode",
         "spy_position_observed",
         "open_spy_orders_observed",

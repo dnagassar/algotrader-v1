@@ -184,6 +184,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.risk_execution_flow",
     "algotrader.orchestration.execution_planning_flow",
     "algotrader.orchestration.execution_planning_policy",
+    "algotrader.orchestration.strategy_router",
     "algotrader.orchestration.etf_sma_execution_preview_bridge",
     "algotrader.orchestration.etf_sma_preview_jsonl_artifact",
     "algotrader.orchestration.etf_sma_paper_broker_preview",

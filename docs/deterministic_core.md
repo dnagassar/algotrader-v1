@@ -203,6 +203,17 @@ The strategy labels remain:
 - `not_live_authorized`
 - `profit_claim=none`
 
+Strategy routing:
+
+- multiple strategy signals may be represented before paper planning
+- `research_only`, `shadow_only`, and blocked strategy signals cannot feed
+  paper-mutating plans
+- only `paper_mutation_candidate` signals with required safety labels may route
+  toward the paper supervisor
+- conflicting promoted candidates block with operator review required
+- the current SPY SMA 50/200 path is the first router-compatible strategy, not
+  a broad strategy catalog
+
 The strategy does not imply:
 
 - live readiness
