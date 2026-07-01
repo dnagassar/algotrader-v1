@@ -12,7 +12,13 @@ from algotrader.execution.paper_autopilot_loop import (
     paper_autopilot_client_order_id,
     run_paper_autopilot_loop,
 )
-from algotrader.orchestration.strategy_router import StrategySignal
+from algotrader.orchestration.strategy_adapter_registry import (
+    StrategyAdapterRegistration,
+)
+from algotrader.orchestration.strategy_router import (
+    SMA_TRAINING_WHEEL_STRATEGY_ID,
+    StrategySignal,
+)
 
 
 GENERATED_AT = "2026-06-26T14:00:00+00:00"
@@ -37,6 +43,9 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
         record["strategy_route_receipt"]["selected_signal_id"]
         == "spy_sma_50_200_training_wheel"
     )
+    assert record["strategy_adapter_resolution_status"] == "resolved"
+    assert record["strategy_adapter_id"] == "spy_sma_50_200_paper_mutation_adapter"
+    assert record["strategy_adapter_paper_mutation_allowed"] is True
     assert record["preview_action_decision"] == "hold/noop"
     assert record["execution_plan_status"] == "no_action_required"
     assert record["blocker_status"] == "none"
@@ -240,6 +249,70 @@ def test_paper_autopilot_conflicting_strategy_route_skips_broker_factory(
     assert record["broker_state_observed"] is False
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+
+
+def test_paper_autopilot_missing_strategy_adapter_skips_broker_factory(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_forbidden_factory,
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+        strategy_adapter_registry=(),
+    )
+
+    assert record["strategy_route_status"] == "action_routed"
+    assert record["strategy_adapter_resolution_status"] == "blocked"
+    assert record["strategy_adapter_reason"] == "strategy_adapter_missing"
+    assert record["blocker_status"] == "blocked/strategy_adapter_missing"
+    assert record["broker_state_observed"] is False
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+
+
+def test_paper_autopilot_disabled_strategy_adapter_skips_broker_factory(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_forbidden_factory,
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+        strategy_adapter_registry=(
+            StrategyAdapterRegistration(
+                strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+                promotion_status="paper_mutation_candidate",
+                adapter_id="disabled_sma_adapter",
+                adapter_mode="paper_mutation",
+                asset_class="equity",
+                supported_symbols=("SPY",),
+                max_order_notional=Decimal("25.00"),
+                enabled=False,
+                required_labels=(
+                    "paper_lab_only",
+                    "not_live_authorized",
+                    "profit_claim=none",
+                ),
+                blocker="operator_disabled_strategy_adapter",
+            ),
+        ),
+    )
+
+    assert record["strategy_adapter_resolution_status"] == "blocked"
+    assert record["strategy_adapter_id"] == "disabled_sma_adapter"
+    assert record["strategy_adapter_reason"] == "operator_disabled_strategy_adapter"
+    assert record["blocker_status"] == "blocked/operator_disabled_strategy_adapter"
+    assert record["broker_state_observed"] is False
+    assert record["paper_submit_authorized"] is False
     assert record["broker_mutation_performed"] is False
 
 

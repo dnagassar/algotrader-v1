@@ -34,11 +34,16 @@ from algotrader.execution.paper_autopilot_history import (
 )
 from algotrader.orchestration.strategy_router import (
     STRATEGY_ROUTER_LABEL,
-    SMA_TRAINING_WHEEL_STRATEGY_FAMILY,
     StrategyRouteReceipt,
     StrategySignal,
     route_strategy_signals,
     strategy_signal_from_etf_sma_result,
+)
+from algotrader.orchestration.strategy_adapter_registry import (
+    DEFAULT_STRATEGY_ADAPTER_REGISTRY,
+    StrategyAdapterRegistryInput,
+    StrategyAdapterResolution,
+    resolve_strategy_route_adapter,
 )
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
@@ -219,6 +224,7 @@ def run_paper_autopilot_loop(
     daily_lab_runner: DailyLabRunner | None = None,
     timestamp: str | None = None,
     candidate_strategy_signals: Iterable[StrategySignal] | None = None,
+    strategy_adapter_registry: StrategyAdapterRegistryInput | None = None,
     update_history: bool = True,
 ) -> dict[str, Any]:
     """Run one bounded paper-autopilot cycle and write operating artifacts."""
@@ -250,7 +256,20 @@ def run_paper_autopilot_loop(
     route_receipt = route_strategy_signals(
         _strategy_signals(primary_strategy_signal, candidate_strategy_signals)
     )
-    route_blocker = _paper_autopilot_route_blocker(route_receipt)
+    adapter_resolution = resolve_strategy_route_adapter(
+        route_receipt,
+        registry=(
+            DEFAULT_STRATEGY_ADAPTER_REGISTRY
+            if strategy_adapter_registry is None
+            else strategy_adapter_registry
+        ),
+        adapter_mode="paper_mutation",
+        requested_order_notional=resolved.max_notional,
+    )
+    route_blocker = _paper_autopilot_route_blocker(
+        route_receipt,
+        adapter_resolution,
+    )
     preflight = _preflight(process_env)
     daily_cycle = _run_daily_cycle(
         resolved,
@@ -272,6 +291,7 @@ def run_paper_autopilot_loop(
     intent = _build_intent(
         posture=posture,
         route_receipt=route_receipt,
+        adapter_resolution=adapter_resolution,
         broker_state=broker_state,
         max_notional=resolved.max_notional,
     )
@@ -310,6 +330,7 @@ def run_paper_autopilot_loop(
         as_of_date=as_of_date,
         signal=signal.to_dict(),
         route_receipt=route_receipt,
+        adapter_resolution=adapter_resolution,
         posture=posture,
         preflight=preflight,
         broker_state=broker_state,
@@ -621,19 +642,20 @@ def _strategy_signals(
     return (primary_strategy_signal, *extra_signals)
 
 
-def _paper_autopilot_route_blocker(route_receipt: StrategyRouteReceipt) -> str:
+def _paper_autopilot_route_blocker(
+    route_receipt: StrategyRouteReceipt,
+    adapter_resolution: StrategyAdapterResolution,
+) -> str:
     if not isinstance(route_receipt, StrategyRouteReceipt):
         raise ValidationError("route_receipt must be a StrategyRouteReceipt.")
-    if route_receipt.paper_mutation_allowed is not True:
-        return f"strategy_router_{route_receipt.reason}"
-
-    selected_signal = route_receipt.selected_signal
-    if selected_signal is None:
-        return "strategy_router_missing_selected_signal"
-    if selected_signal.strategy_family != SMA_TRAINING_WHEEL_STRATEGY_FAMILY:
-        return "unsupported_paper_strategy_requires_adapter"
-    if selected_signal.symbol != _SYMBOL:
-        return "unsupported_paper_strategy_symbol"
+    if not isinstance(adapter_resolution, StrategyAdapterResolution):
+        raise ValidationError(
+            "adapter_resolution must be a StrategyAdapterResolution."
+        )
+    if adapter_resolution.resolution_status != "resolved":
+        return adapter_resolution.reason
+    if adapter_resolution.paper_mutation_allowed is not True:
+        return "strategy_adapter_not_paper_mutation"
     return ""
 
 
@@ -641,10 +663,14 @@ def _build_intent(
     *,
     posture: str,
     route_receipt: StrategyRouteReceipt,
+    adapter_resolution: StrategyAdapterResolution,
     broker_state: Mapping[str, Any],
     max_notional: Decimal,
 ) -> PaperAutopilotExecutionIntent:
-    route_blocker = _paper_autopilot_route_blocker(route_receipt)
+    route_blocker = _paper_autopilot_route_blocker(
+        route_receipt,
+        adapter_resolution,
+    )
     if route_blocker:
         return PaperAutopilotExecutionIntent(
             symbol=_SYMBOL,
@@ -970,6 +996,7 @@ def _build_record(
     as_of_date: str,
     signal: Mapping[str, Any],
     route_receipt: StrategyRouteReceipt,
+    adapter_resolution: StrategyAdapterResolution,
     posture: str,
     preflight: Mapping[str, Any],
     broker_state: Mapping[str, Any],
@@ -1010,6 +1037,7 @@ def _build_record(
     broker_response = _mapping(action_result.get("broker_response"))
     request = _mapping(action_result.get("request"))
     route_payload = route_receipt.to_dict()
+    adapter_payload = adapter_resolution.to_dict()
     open_spy_orders = [
         order
         for order in _mapping_items(broker_state.get("open_orders"))
@@ -1052,6 +1080,14 @@ def _build_record(
             route_receipt.paper_mutation_allowed
         ),
         "selected_strategy_id": route_payload.get("selected_signal_id"),
+        "strategy_adapter_resolution": adapter_payload,
+        "strategy_adapter_resolution_status": adapter_resolution.resolution_status,
+        "strategy_adapter_reason": adapter_resolution.reason,
+        "strategy_adapter_id": adapter_resolution.adapter_id,
+        "strategy_adapter_mode": adapter_resolution.adapter_mode,
+        "strategy_adapter_paper_mutation_allowed": (
+            adapter_resolution.paper_mutation_allowed
+        ),
         "broker_state_mode": broker_state.get("broker_state_mode"),
         "broker_state_observed": broker_state.get("broker_state_observed") is True,
         "broker_state": dict(broker_state),
@@ -1214,6 +1250,8 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- SMA posture: `{record.get('sma_posture', '')}`",
             f"- Strategy route: `{record.get('strategy_route_status', '')}`",
             f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
+            f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
+            f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- Execution plan: `{plan.get('execution_plan_id', '')}`",
             f"- Action decision: `{record.get('preview_action_decision', '')}`",
@@ -1244,6 +1282,8 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
             f"- SMA posture: `{record.get('sma_posture', '')}`",
             f"- Strategy route: `{record.get('strategy_route_status', '')}`",
             f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
+            f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
+            f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- Execution plan action: `{record.get('execution_plan_action', '')}`",
             f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
@@ -1267,6 +1307,11 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_route_action",
         "strategy_route_paper_mutation_allowed",
         "selected_strategy_id",
+        "strategy_adapter_resolution_status",
+        "strategy_adapter_reason",
+        "strategy_adapter_id",
+        "strategy_adapter_mode",
+        "strategy_adapter_paper_mutation_allowed",
         "broker_state_mode",
         "spy_position_observed",
         "open_spy_orders_observed",

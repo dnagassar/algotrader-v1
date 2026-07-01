@@ -37,9 +37,11 @@ STRATEGY_ROUTER_REQUIRED_LABELS = (
 )
 STRATEGY_ROUTER_LABEL = "strategy_router_contract"
 SMA_TRAINING_WHEEL_STRATEGY_FAMILY = "long_only_broad_etf_sma_trend_filter"
+SMA_TRAINING_WHEEL_STRATEGY_ID = "spy_sma_50_200_training_wheel"
 
 __all__ = [
     "SMA_TRAINING_WHEEL_STRATEGY_FAMILY",
+    "SMA_TRAINING_WHEEL_STRATEGY_ID",
     "STRATEGY_ROUTER_LABEL",
     "STRATEGY_ROUTER_REQUIRED_LABELS",
     "StrategyIntendedAction",
