@@ -187,6 +187,43 @@ def classify_paper_autopilot_operating_record(
     paper_submit_performed = record.get("paper_submit_performed") is True
     reconciliation_status = _text(record.get("reconciliation_status"))
 
+    if blocker_status in {
+        "blocked/expected_account_id_unavailable",
+        "blocked/expected_account_mismatch",
+        "blocked/expected_account_match_not_observed",
+    }:
+        return _classification(
+            "expected_account_blocked",
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=[blocker_status.replace("/", "_")],
+        )
+    if blocker_status == "blocked/account_status_not_active":
+        return _classification(
+            "paper_account_status_blocked",
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=["paper_account_status_not_active"],
+        )
+    if blocker_status == "blocked/no_new_completed_bar_noop":
+        return _classification(
+            "no_new_completed_bar_noop",
+            attention_required=False,
+            hard_stop=False,
+            reason_codes=["no_new_completed_bar_noop"],
+        )
+    if blocker_status in {
+        "blocked/stale_data_preview_only",
+        "blocked/blocked_future_dated_local_data",
+        "blocked/accepted_but_stale",
+        "blocked/stale_or_invalid_data",
+    }:
+        return _classification(
+            "data_freshness_blocked",
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=[blocker_status.replace("/", "_")],
+        )
     if (
         record.get("paper_profile_run") is True
         and record.get("broker_state_observed") is not True

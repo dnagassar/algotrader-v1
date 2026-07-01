@@ -47,6 +47,10 @@ PAPER_AUTOPILOT_DEFAULT_BARS_CSV = (
 PAPER_AUTOPILOT_MAX_NOTIONAL = Decimal("25.00")
 PAPER_AUTOPILOT_SPY_BUY_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-buy-"
 PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-close-"
+PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION = (
+    "v3_0_paper_only_mutation_supervisor_receipt_v1"
+)
+PAPER_MUTATION_SUPERVISOR_COMMAND = "scripts/run_spy_paper_mutation_supervisor.ps1"
 
 BrokerClientFactory = Callable[[AlpacaPaperConfig], Any]
 DailyLabRunner = Callable[[EtfSmaDailyPaperLabConfig], Mapping[str, Any]]
@@ -61,6 +65,7 @@ _SAFETY_LABELS = (
     "profit_claim=none",
     PAPER_AUTOPILOT_POLICY,
 )
+_EXPECTED_ACCOUNT_ENV = "ALPACA_EXPECTED_PAPER_ACCOUNT_ID"
 _CREDENTIAL_ENV_NAMES = (
     "ALPACA_API_KEY",
     "ALPACA_API_SECRET_KEY",
@@ -263,6 +268,7 @@ def run_paper_autopilot_loop(
         data_sha256=data_sha256,
         broker_state=broker_state,
         preflight=preflight,
+        daily_cycle=daily_cycle,
         client_order_id=client_order_id,
         safety_labels=safety_labels,
     )
@@ -402,6 +408,7 @@ def _run_daily_cycle(
 def _preflight(env: Mapping[str, str]) -> dict[str, Any]:
     app_profile = env.get("APP_PROFILE", "")
     base_url = env.get("ALPACA_PAPER_BASE_URL", DEFAULT_ALPACA_PAPER_BASE_URL)
+    expected_account_id_loaded = bool(env.get(_EXPECTED_ACCOUNT_ENV, "").strip())
     credential_presence = {
         f"{name}_loaded": name in env and bool(str(env.get(name, "")).strip())
         for name in _CREDENTIAL_ENV_NAMES
@@ -420,6 +427,7 @@ def _preflight(env: Mapping[str, str]) -> dict[str, Any]:
         app_profile == "paper"
         and credentials_ready
         and paper_url_confirmed
+        and expected_account_id_loaded
         and not live_indicators
     )
     return {
@@ -431,12 +439,18 @@ def _preflight(env: Mapping[str, str]) -> dict[str, Any]:
         "credential_values_printed": False,
         "paper_credentials_ready": credentials_ready,
         "paper_url_confirmed": paper_url_confirmed,
+        "expected_account_id_loaded": expected_account_id_loaded,
+        "expected_account_configured": expected_account_id_loaded,
         "paper_profile_ready": paper_profile_ready,
         "live_endpoint_or_profile_detected": bool(live_indicators),
         "live_safety_indicators": live_indicators,
         "live_safety_status": "blocked/live_safety"
         if live_indicators
         else "passed",
+        "paper_submit_gate_enabled": True,
+        "paper_submit_authorization_scope": "bounded_supervisor_run_only",
+        "live_authorized": False,
+        "live_endpoint_supported": False,
     }
 
 
@@ -450,7 +464,7 @@ def _observe_broker_state(
     if preflight.get("live_endpoint_or_profile_detected") is True:
         return _unobserved_broker_state("live_safety")
     if preflight.get("paper_profile_ready") is not True:
-        return _unobserved_broker_state("broker_state_not_observed")
+        return _unobserved_broker_state(_preflight_broker_blocker(preflight))
 
     config = AlpacaPaperConfig(
         app_profile="paper",
@@ -485,11 +499,55 @@ def _observe_broker_state(
         "spy_position_present": False,
         "unexpected_non_spy_positions": [],
         "open_spy_order_present": False,
+        "expected_account_check": _expected_account_check(
+            env.get(_EXPECTED_ACCOUNT_ENV)
+        ),
+        "expected_account_id_loaded": True,
+        "expected_account_configured": True,
+        "expected_account_matched": None,
+        "expected_account_match_mode": "none",
+        "expected_account_blocker": "expected_account_match_not_observed",
         "_broker": broker,
     }
     try:
-        state["account"] = _account_payload(_call_broker(broker, "get_account"))
+        raw_account = _call_broker(broker, "get_account")
+        state["account"] = _account_payload(raw_account)
         state["account_observation_available"] = True
+        expected_check = _expected_account_check(
+            env.get(_EXPECTED_ACCOUNT_ENV),
+            account=raw_account,
+        )
+        expected_blocker = _expected_account_blocker(expected_check)
+        state.update(
+            {
+                "expected_account_check": expected_check,
+                "expected_account_id_loaded": (
+                    expected_check.get("expected_account_configured") is True
+                ),
+                "expected_account_configured": (
+                    expected_check.get("expected_account_configured") is True
+                ),
+                "expected_account_matched": expected_check.get(
+                    "expected_account_matched"
+                ),
+                "expected_account_match_mode": _text(
+                    expected_check.get("expected_account_match_mode")
+                ),
+                "expected_account_blocker": expected_blocker,
+            }
+        )
+        if expected_blocker != "none":
+            return _blocked_after_account_state(
+                blocker=expected_blocker,
+                account=state["account"],
+                expected_check=expected_check,
+            )
+        if not _account_status_active(state["account"]):
+            return _blocked_after_account_state(
+                blocker="account_status_not_active",
+                account=state["account"],
+                expected_check=expected_check,
+            )
         positions = tuple(_call_broker(broker, "get_positions") or ())
         position_payloads = [_position_payload(position) for position in positions]
         state["positions"] = position_payloads
@@ -587,10 +645,19 @@ def _build_plan(
     data_sha256: str,
     broker_state: Mapping[str, Any],
     preflight: Mapping[str, Any],
+    daily_cycle: Mapping[str, Any],
     client_order_id: str,
     safety_labels: Sequence[str],
 ) -> PaperAutopilotExecutionPlan:
-    blockers = list(_plan_blockers(intent, broker_state, preflight, client_order_id))
+    blockers = list(
+        _plan_blockers(
+            intent,
+            broker_state,
+            preflight,
+            daily_cycle,
+            client_order_id,
+        )
+    )
     submit_allowed = intent.action in {"buy", "sell_close"} and not blockers
     paper_authorized = (
         submit_allowed
@@ -643,11 +710,16 @@ def _plan_blockers(
     intent: PaperAutopilotExecutionIntent,
     broker_state: Mapping[str, Any],
     preflight: Mapping[str, Any],
+    daily_cycle: Mapping[str, Any],
     client_order_id: str,
 ) -> tuple[str, ...]:
     blockers: list[str] = []
     if preflight.get("live_endpoint_or_profile_detected") is True:
         blockers.append("live_safety")
+    blockers.extend(_daily_cycle_blockers(daily_cycle))
+    broker_blocker = _text(broker_state.get("blocker"))
+    if broker_blocker and broker_blocker != "broker_state_not_observed":
+        blockers.append(broker_blocker)
     if broker_state.get("broker_state_observed") is not True:
         blockers.append("broker_state_not_observed")
     if intent.action == "blocked":
@@ -666,6 +738,34 @@ def _plan_blockers(
     return _dedupe(blockers)
 
 
+def _daily_cycle_blockers(daily_cycle: Mapping[str, Any]) -> tuple[str, ...]:
+    statuses = [
+        _normalized_status(daily_cycle.get("daily_cycle_data_refresh_status")),
+        _normalized_status(daily_cycle.get("daily_cycle_data_freshness_status")),
+        _normalized_status(daily_cycle.get("daily_cycle_blocker_status")),
+    ]
+    if "no_new_completed_bar_noop" in statuses:
+        return ("no_new_completed_bar_noop",)
+    for status in statuses:
+        if status in {
+            "stale_data_preview_only",
+            "blocked_future_dated_local_data",
+            "accepted_but_stale",
+        }:
+            return (status,)
+        if (
+            status
+            and status != "none"
+            and (
+                "stale" in status
+                or "invalid" in status
+                or status.startswith("blocked_future")
+            )
+        ):
+            return ("stale_or_invalid_data",)
+    return ()
+
+
 def _execute_plan(
     plan: PaperAutopilotExecutionPlan,
     *,
@@ -682,6 +782,7 @@ def _execute_plan(
         "broker_response": {},
         "broker_error": "",
         "mutation_status": "not_attempted",
+        "submit_response_ambiguous": False,
     }
     if not plan.submit_allowed:
         result["mutation_status"] = "blocked_before_submit" if plan.blockers else "noop"
@@ -711,6 +812,7 @@ def _execute_plan(
             {
                 "broker_error": _safe_exception_message(exc, secret_values),
                 "mutation_status": "ambiguous_submit_reconciliation_required",
+                "submit_response_ambiguous": True,
             }
         )
         return result
@@ -736,12 +838,6 @@ def _reconcile_after_action(
             "reconciliation_required": False,
             "post_submit_observation": {},
         }
-    if action_result.get("broker_error"):
-        return {
-            "reconciliation_status": "reconciliation_required",
-            "reconciliation_required": True,
-            "post_submit_observation": {},
-        }
     try:
         orders = _broker_orders(
             broker,
@@ -758,17 +854,34 @@ def _reconcile_after_action(
     matching = [
         order for order in order_payloads if order.get("client_order_id") == plan.client_order_id
     ]
+    submit_response_ambiguous = action_result.get("submit_response_ambiguous") is True
     return {
-        "reconciliation_status": "reconciled_submit_observed"
-        if matching
-        else "reconciliation_required",
-        "reconciliation_required": not bool(matching),
+        "reconciliation_status": _post_submit_reconciliation_status(
+            matching=bool(matching),
+            submit_response_ambiguous=submit_response_ambiguous,
+        ),
+        "reconciliation_required": submit_response_ambiguous or not bool(matching),
+        "submit_response_ambiguous": submit_response_ambiguous,
         "post_submit_observation": {
             "recent_order_count": len(order_payloads),
             "matching_client_order_id_found": bool(matching),
             "matching_orders": matching,
         },
     }
+
+
+def _post_submit_reconciliation_status(
+    *,
+    matching: bool,
+    submit_response_ambiguous: bool,
+) -> str:
+    if submit_response_ambiguous and matching:
+        return "ambiguous_submit_response_order_observed"
+    if submit_response_ambiguous:
+        return "ambiguous_submit_response_reconciliation_required"
+    if matching:
+        return "reconciled_submit_observed"
+    return "reconciliation_required"
 
 
 def _build_record(
@@ -796,6 +909,9 @@ def _build_record(
         "operating_record": str(output_root / "operating_record.jsonl"),
         "manifest": str(output_root / "manifest.json"),
         "latest_status": str(output_root / "latest_status.json"),
+        "supervisor_brief": str(output_root / "supervisor_brief.md"),
+        "supervisor_receipt": str(output_root / "supervisor_receipt.jsonl"),
+        "broker_snapshot": str(output_root / "broker_snapshot.json"),
         "operating_history": str(
             output_root.parent / "history" / "operating_history.jsonl"
         ),
@@ -805,14 +921,46 @@ def _build_record(
         ),
         "daily_cycle_output_root": str(output_root / "daily_cycle"),
     }
+    if action_result.get("submit_attempted") is True:
+        artifact_paths["mutation_receipt"] = str(output_root / "mutation_receipt.json")
+    final_classification = _final_classification(
+        blocker_status=blocker_status,
+        plan=plan,
+        action_result=action_result,
+        reconciliation=reconciliation,
+    )
+    broker_response = _mapping(action_result.get("broker_response"))
+    request = _mapping(action_result.get("request"))
+    open_spy_orders = [
+        order
+        for order in _mapping_items(broker_state.get("open_orders"))
+        if _text(order.get("symbol")).upper() == _SYMBOL
+    ]
     return {
         "schema_version": PAPER_AUTOPILOT_SCHEMA_VERSION,
+        "supervisor_schema_version": PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION,
         "run_id": run_id,
         "generated_at": generated_at,
+        "run_timestamp": generated_at,
         "policy": config.policy,
         "command": "paper-autopilot-loop",
+        "supervisor_command": PAPER_MUTATION_SUPERVISOR_COMMAND,
         "symbol": config.symbol,
         "as_of_date": as_of_date,
+        "data_latest_bar": _first_nonempty_text(
+            daily_cycle.get("daily_cycle_latest_bar_date"),
+            as_of_date,
+        ),
+        "latest_bar_date": _first_nonempty_text(
+            daily_cycle.get("daily_cycle_latest_bar_date"),
+            as_of_date,
+        ),
+        "data_freshness_status": _text(
+            daily_cycle.get("daily_cycle_data_freshness_status")
+        ),
+        "data_refresh_status": _text(
+            daily_cycle.get("daily_cycle_data_refresh_status")
+        ),
         "input_data_path": str(config.bars_csv),
         "input_data_sha256": data_sha256,
         "sma_posture": posture,
@@ -831,18 +979,44 @@ def _build_record(
             "paper_submit_authorized": plan.paper_submit_authorized,
             "submit_allowed": plan.submit_allowed,
         },
+        "execution_plan_action": plan.action,
+        "execution_plan_status": _execution_plan_status(plan),
         "preview_action_decision": _preview_action_decision(plan),
         "blocker_status": blocker_status,
         "blockers": list(plan.blockers),
+        "submit_blocker": plan.blockers[0] if plan.blockers else "",
         "action_result": dict(action_result),
         "reconciliation": dict(reconciliation),
         "reconciliation_status": reconciliation.get("reconciliation_status"),
         "next_operator_action": _next_operator_action(blocker_status, plan),
+        "final_classification": final_classification,
+        "classification": final_classification,
+        "spy_position_observed": broker_state.get("spy_position_present") is True,
+        "open_spy_orders_observed": len(open_spy_orders),
+        "expected_account_id_loaded": preflight.get("expected_account_id_loaded") is True,
+        "expected_account_matched": broker_state.get("expected_account_matched"),
+        "expected_account_match_mode": _text(
+            broker_state.get("expected_account_match_mode")
+        ),
         "paper_submit_authorized": plan.paper_submit_authorized,
         "paper_submit_performed": action_result.get("paper_submit_performed") is True,
         "broker_mutation_performed": action_result.get("broker_mutation_performed") is True,
+        "mutation_performed": action_result.get("broker_mutation_performed") is True,
+        "submit_response_ambiguous": (
+            action_result.get("submit_response_ambiguous") is True
+        ),
+        "order_id": _text(broker_response.get("order_id")),
+        "client_order_id": _text(broker_response.get("client_order_id")),
+        "requested_notional": _text(request.get("notional")),
+        "requested_quantity": _text(request.get("quantity")),
+        "order_status": _text(broker_response.get("status")),
+        "submitted_at": _text(broker_response.get("submitted_at")),
+        "fill_status": _text(broker_response.get("fill_status")),
         "live_mutation_performed": False,
         "live_trading_performed": False,
+        "live_authorized": False,
+        "live_endpoint_supported": False,
+        "paper_submit_authorization_scope": "bounded_supervisor_run_only",
         "credential_values_exposed": False,
         "daily_cycle": dict(daily_cycle),
         "safety_labels": list(safety_labels),
@@ -855,14 +1029,64 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
     record_path = output_root / "operating_record.jsonl"
     latest_path = output_root / "latest_status.json"
     manifest_path = output_root / "manifest.json"
+    supervisor_brief_path = output_root / "supervisor_brief.md"
+    supervisor_receipt_path = output_root / "supervisor_receipt.jsonl"
+    broker_snapshot_path = output_root / "broker_snapshot.json"
+    mutation_receipt_path = output_root / "mutation_receipt.json"
     brief_path.write_text(_render_operating_brief(record), encoding="utf-8", newline="\n")
+    supervisor_brief_path.write_text(
+        _render_supervisor_brief(record),
+        encoding="utf-8",
+        newline="\n",
+    )
     with record_path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(_json_safe(record), sort_keys=True, separators=(",", ":")) + "\n")
+    with supervisor_receipt_path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(
+            json.dumps(
+                _supervisor_receipt(record),
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
     latest_path.write_text(
         json.dumps(_json_safe(record), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
         newline="\n",
     )
+    broker_snapshot_path.write_text(
+        json.dumps(
+            _json_safe(_mapping(record.get("broker_state"))),
+            sort_keys=True,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    if record.get("paper_submit_performed") is True:
+        mutation_receipt_path.write_text(
+            json.dumps(
+                _json_safe(
+                    {
+                        "run_id": record.get("run_id"),
+                        "generated_at": record.get("generated_at"),
+                        "execution_plan_id": _mapping(
+                            record.get("execution_plan_summary")
+                        ).get("execution_plan_id"),
+                        "action_result": _mapping(record.get("action_result")),
+                        "reconciliation": _mapping(record.get("reconciliation")),
+                        "live_mutation_performed": False,
+                    }
+                ),
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
     manifest = {
         "manifest_version": "v207_paper_autopilot_manifest_v1",
         "run_id": record.get("run_id"),
@@ -875,8 +1099,15 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
             "operating_brief": _artifact_metadata(brief_path),
             "operating_record": _artifact_metadata(record_path),
             "latest_status": _artifact_metadata(latest_path),
+            "supervisor_brief": _artifact_metadata(supervisor_brief_path),
+            "supervisor_receipt": _artifact_metadata(supervisor_receipt_path),
+            "broker_snapshot": _artifact_metadata(broker_snapshot_path),
         },
     }
+    if mutation_receipt_path.is_file():
+        manifest["artifacts"]["mutation_receipt"] = _artifact_metadata(
+            mutation_receipt_path
+        )
     manifest_path.write_text(
         json.dumps(manifest, sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
@@ -903,6 +1134,7 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- Paper submit performed: `{record.get('paper_submit_performed')}`",
             f"- Broker mutation performed: `{record.get('broker_mutation_performed')}`",
             f"- Live mutation performed: `{record.get('live_mutation_performed')}`",
+            f"- Final classification: `{record.get('final_classification', '')}`",
             f"- Next operator action: `{record.get('next_operator_action', '')}`",
             "",
             "Safety labels: "
@@ -910,6 +1142,57 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             "",
         ]
     )
+
+
+def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
+    return "\n".join(
+        [
+            "# SPY Paper Mutation Supervisor Brief",
+            "",
+            f"- Run timestamp: `{record.get('run_timestamp', '')}`",
+            f"- Latest bar: `{record.get('data_latest_bar', '')}`",
+            f"- Data freshness: `{record.get('data_freshness_status', '')}`",
+            f"- SMA posture: `{record.get('sma_posture', '')}`",
+            f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
+            f"- Execution plan action: `{record.get('execution_plan_action', '')}`",
+            f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
+            f"- Mutation performed: `{record.get('mutation_performed')}`",
+            f"- Submit blocker: `{record.get('submit_blocker', '')}`",
+            f"- Final classification: `{record.get('final_classification', '')}`",
+            f"- Next operator action: `{record.get('next_operator_action', '')}`",
+            "",
+        ]
+    )
+
+
+def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
+    fields = (
+        "run_timestamp",
+        "data_latest_bar",
+        "data_freshness_status",
+        "sma_posture",
+        "broker_state_mode",
+        "spy_position_observed",
+        "open_spy_orders_observed",
+        "execution_plan_action",
+        "execution_plan_status",
+        "paper_submit_authorized",
+        "mutation_performed",
+        "submit_blocker",
+        "order_id",
+        "client_order_id",
+        "broker_mutation_performed",
+        "paper_submit_performed",
+        "live_mutation_performed",
+        "live_authorized",
+        "final_classification",
+        "next_operator_action",
+        "safety_labels",
+    )
+    return {
+        "supervisor_schema_version": PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION,
+        **{field: _json_safe(record.get(field)) for field in fields},
+    }
 
 
 def _final_blocker_status(
@@ -931,6 +1214,38 @@ def _final_blocker_status(
     return "none"
 
 
+def _final_classification(
+    *,
+    blocker_status: str,
+    plan: PaperAutopilotExecutionPlan,
+    action_result: Mapping[str, Any],
+    reconciliation: Mapping[str, Any],
+) -> str:
+    if action_result.get("submit_response_ambiguous") is True:
+        return "ambiguous_submit_response_reconciliation_required"
+    if blocker_status == "action/submitted":
+        if reconciliation.get("reconciliation_required") is True:
+            return "paper_submit_reconciliation_required"
+        return "paper_submit_reconciled"
+    if blocker_status == "none" and plan.action == "hold":
+        return "no_action_required_no_mutation"
+    if blocker_status == "blocked/no_new_completed_bar_noop":
+        return "no_new_completed_bar_noop"
+    if blocker_status != "none":
+        return blocker_status.replace("/", "_")
+    return "no_action_required_no_mutation"
+
+
+def _execution_plan_status(plan: PaperAutopilotExecutionPlan) -> str:
+    if plan.blockers:
+        return "blocked"
+    if plan.action == "hold":
+        return "no_action_required"
+    if plan.submit_allowed:
+        return "action_required"
+    return "blocked"
+
+
 def _preview_action_decision(plan: PaperAutopilotExecutionPlan) -> str:
     if plan.submit_allowed:
         return f"paper_{plan.action}_allowed"
@@ -945,6 +1260,15 @@ def _next_operator_action(blocker_status: str, plan: PaperAutopilotExecutionPlan
         "action/submitted": "review_latest_status_and_next_reconciliation_cycle",
         "blocked/live_safety": "stop_and_review_live_safety_before_any_paper_action",
         "blocked/broker_state_not_observed": "configure_verified_paper_profile_then_rerun",
+        "blocked/expected_account_id_unavailable": "configure_expected_paper_account_id_then_rerun",
+        "blocked/expected_account_mismatch": "stop_and_review_expected_paper_account_before_any_submit",
+        "blocked/expected_account_match_not_observed": "stop_and_review_expected_paper_account_before_any_submit",
+        "blocked/account_status_not_active": "stop_and_review_paper_account_status_before_any_submit",
+        "blocked/no_new_completed_bar_noop": "wait_for_next_completed_daily_bar",
+        "blocked/stale_data_preview_only": "refresh_or_validate_daily_bars_before_submit",
+        "blocked/blocked_future_dated_local_data": "fix_daily_bar_date_before_submit",
+        "blocked/accepted_but_stale": "refresh_or_validate_daily_bars_before_submit",
+        "blocked/stale_or_invalid_data": "refresh_or_validate_daily_bars_before_submit",
         "blocked/open_order_present": "reconcile_existing_spy_open_order_before_submit",
         "blocked/unexpected_non_spy_position": "operator_review_non_spy_position",
         "blocked/duplicate_client_order_id": "review_duplicate_client_order_id_before_rerun",
@@ -1037,6 +1361,19 @@ def _autopilot_posture(signal_posture: str) -> str:
     return "insufficient_history"
 
 
+def _preflight_broker_blocker(preflight: Mapping[str, Any]) -> str:
+    if preflight.get("live_endpoint_or_profile_detected") is True:
+        return "live_safety"
+    if (
+        preflight.get("APP_PROFILE_is_paper") is True
+        and preflight.get("paper_credentials_ready") is True
+        and preflight.get("paper_url_confirmed") is True
+        and preflight.get("expected_account_id_loaded") is not True
+    ):
+        return "expected_account_id_unavailable"
+    return "broker_state_not_observed"
+
+
 def _unobserved_broker_state(blocker: str) -> dict[str, Any]:
     return {
         "broker_state_mode": "broker_state_not_observed",
@@ -1055,8 +1392,109 @@ def _unobserved_broker_state(blocker: str) -> dict[str, Any]:
         "spy_position_present": False,
         "unexpected_non_spy_positions": [],
         "open_spy_order_present": False,
+        "expected_account_check": _expected_account_check(None),
+        "expected_account_id_loaded": False,
+        "expected_account_configured": False,
+        "expected_account_matched": None,
+        "expected_account_match_mode": "none",
+        "expected_account_blocker": "expected_account_id_unavailable",
         "_broker": None,
     }
+
+
+def _blocked_after_account_state(
+    *,
+    blocker: str,
+    account: Mapping[str, Any],
+    expected_check: Mapping[str, Any],
+) -> dict[str, Any]:
+    state = _unobserved_broker_state(blocker)
+    state.update(
+        {
+            "broker_state_mode": "alpaca_paper_account_validation_blocked",
+            "account_observation_available": True,
+            "account": dict(account),
+            "expected_account_check": dict(expected_check),
+            "expected_account_id_loaded": (
+                expected_check.get("expected_account_configured") is True
+            ),
+            "expected_account_configured": (
+                expected_check.get("expected_account_configured") is True
+            ),
+            "expected_account_matched": expected_check.get(
+                "expected_account_matched"
+            ),
+            "expected_account_match_mode": _text(
+                expected_check.get("expected_account_match_mode")
+            ),
+            "expected_account_blocker": blocker,
+            "_broker": None,
+        }
+    )
+    return state
+
+
+def _expected_account_check(
+    expected_account_id: str | None,
+    *,
+    account: Any | None = None,
+) -> dict[str, object]:
+    expected = _text(expected_account_id)
+    account_identity = _account_identity(account)
+    observed_id = account_identity["account_id"]
+    observed_number = account_identity["account_number"]
+    configured = bool(expected)
+    account_id_matched = (
+        (observed_id == expected) if configured and observed_id else None
+    )
+    account_number_matched = (
+        (observed_number == expected) if configured and observed_number else None
+    )
+    if account_id_matched is True:
+        matched = True
+        match_mode = "account_id"
+    elif account_number_matched is True:
+        matched = True
+        match_mode = "account_number"
+    elif account_id_matched is False or account_number_matched is False:
+        matched = False
+        match_mode = "none"
+    else:
+        matched = None
+        match_mode = "none"
+    return {
+        "observed_account_id_present": bool(observed_id),
+        "observed_account_number_present": bool(observed_number),
+        "expected_account_configured": configured,
+        "expected_account_id_matched": account_id_matched,
+        "expected_account_number_matched": account_number_matched,
+        "expected_account_matched": matched,
+        "expected_account_match_mode": match_mode,
+    }
+
+
+def _expected_account_blocker(expected_check: Mapping[str, Any]) -> str:
+    if expected_check.get("expected_account_configured") is not True:
+        return "expected_account_id_unavailable"
+    matched = expected_check.get("expected_account_matched")
+    if matched is True:
+        return "none"
+    if matched is False:
+        return "expected_account_mismatch"
+    return "expected_account_match_not_observed"
+
+
+def _account_identity(account: Any | None) -> dict[str, str]:
+    data = _object_data(account) if account is not None else {}
+    return {
+        "account_id": _text(_first_present(data, "account_id", "id")),
+        "account_number": _text(_first_present(data, "account_number")),
+    }
+
+
+def _account_status_active(account: Mapping[str, Any]) -> bool:
+    status = _normalized_status(account.get("status"))
+    return status in {"active", "account_status_active"}
 
 
 def _position_summary(positions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -1137,6 +1575,9 @@ def _order_payload(order: Any) -> dict[str, object]:
             _optional_decimal(_first_present(data, "filled_quantity", "filled_qty"))
         )
         or "",
+        "submitted_at": _text(_first_present(data, "submitted_at", "created_at")),
+        "filled_at": _text(_first_present(data, "filled_at")),
+        "fill_status": _fill_status(data),
     }
 
 
@@ -1153,6 +1594,14 @@ def _request_payload(request: AlpacaOrderRequest) -> dict[str, object]:
     }
 
 
+def _fill_status(data: Mapping[str, Any]) -> str:
+    status = _normalized_status(_first_present(data, "status", "raw_status"))
+    filled_qty = _optional_decimal(_first_present(data, "filled_quantity", "filled_qty"))
+    if filled_qty is not None and filled_qty > Decimal("0"):
+        return "filled_or_partially_filled"
+    return status or "unknown"
+
+
 def _object_data(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
@@ -1160,11 +1609,15 @@ def _object_data(value: Any) -> dict[str, Any]:
         return {field.name: getattr(value, field.name) for field in fields(value)}
     names = (
         "account_tradable",
+        "account_id",
+        "account_number",
         "asset_class",
         "buying_power",
         "cash",
         "client_order_id",
+        "created_at",
         "currency",
+        "filled_at",
         "filled_qty",
         "filled_quantity",
         "id",
@@ -1178,6 +1631,7 @@ def _object_data(value: Any) -> dict[str, Any]:
         "raw_status",
         "side",
         "status",
+        "submitted_at",
         "symbol",
         "time_in_force",
         "tradable",
@@ -1216,7 +1670,7 @@ def _live_indicators(env: Mapping[str, str]) -> list[str]:
 def _secret_values(env: Mapping[str, str]) -> tuple[str, ...]:
     return tuple(
         value
-        for name in _CREDENTIAL_ENV_NAMES
+        for name in (*_CREDENTIAL_ENV_NAMES, _EXPECTED_ACCOUNT_ENV)
         if (value := str(env.get(name, "")).strip())
     )
 
@@ -1399,6 +1853,8 @@ __all__ = [
     "PAPER_AUTOPILOT_POLICY",
     "PAPER_AUTOPILOT_SPY_BUY_CLIENT_ORDER_ID_PREFIX",
     "PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX",
+    "PAPER_MUTATION_SUPERVISOR_COMMAND",
+    "PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION",
     "PaperAutopilotExecutionIntent",
     "PaperAutopilotExecutionPlan",
     "PaperAutopilotLoopConfig",

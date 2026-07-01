@@ -17,6 +17,7 @@ from algotrader.execution.paper_autopilot_operator import (
 GENERATED_AT = "2026-06-26T14:00:00+00:00"
 PAPER_KEY = "paper-key-value"
 PAPER_SECRET = "paper-secret-value"
+EXPECTED_ACCOUNT_ID = "paper-account-id-should-not-serialize"
 
 
 def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
@@ -197,6 +198,7 @@ class FakeAutopilotBroker:
     def get_account(self) -> dict[str, object]:
         self.calls.append("get_account")
         return {
+            "account_id": EXPECTED_ACCOUNT_ID,
             "status": "ACTIVE",
             "tradable": True,
             "cash": Decimal("100000"),
@@ -260,6 +262,7 @@ def _paper_env() -> dict[str, str]:
         "APP_PROFILE": "paper",
         "APCA_API_KEY_ID": PAPER_KEY,
         "APCA_API_SECRET_KEY": PAPER_SECRET,
+        "ALPACA_EXPECTED_PAPER_ACCOUNT_ID": EXPECTED_ACCOUNT_ID,
         "ALPACA_PAPER_BASE_URL": DEFAULT_ALPACA_PAPER_BASE_URL,
     }
 

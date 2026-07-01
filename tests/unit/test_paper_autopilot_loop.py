@@ -17,6 +17,7 @@ from algotrader.execution.paper_autopilot_loop import (
 GENERATED_AT = "2026-06-26T14:00:00+00:00"
 PAPER_KEY = "paper-key-value"
 PAPER_SECRET = "paper-secret-value"
+EXPECTED_ACCOUNT_ID = "paper-account-id-should-not-serialize"
 
 
 def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) -> None:
@@ -29,7 +30,9 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
 
     assert record["sma_posture"] == "risk_on"
     assert record["preview_action_decision"] == "hold/noop"
+    assert record["execution_plan_status"] == "no_action_required"
     assert record["blocker_status"] == "none"
+    assert record["final_classification"] == "no_action_required_no_mutation"
     assert (
         record["daily_cycle"]["daily_cycle_data_freshness_status"]
         == "accepted_data_current"
@@ -41,6 +44,7 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
     assert record["broker_mutation_performed"] is False
+    assert record["mutation_performed"] is False
     assert broker.calls == [
         "get_account",
         "get_positions",
@@ -66,6 +70,9 @@ def test_paper_autopilot_buy_when_risk_on_without_position_or_order(
     assert record["broker_mutation_performed"] is True
     assert record["live_mutation_performed"] is False
     assert record["reconciliation_status"] == "reconciled_submit_observed"
+    assert record["final_classification"] == "paper_submit_reconciled"
+    assert record["order_id"] == "paper-order-1"
+    assert record["client_order_id"].startswith("pa-v207-spy-buy-")
     request = broker.submitted_requests[0]
     assert request.symbol == "SPY"
     assert request.side == "buy"
@@ -205,6 +212,72 @@ def test_paper_autopilot_blocks_duplicate_client_order_id(tmp_path: Path) -> Non
     assert broker.submitted_requests == []
 
 
+def test_paper_autopilot_blocks_expected_account_mismatch_before_positions(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env={**_paper_env(), "ALPACA_EXPECTED_PAPER_ACCOUNT_ID": "wrong-account"},
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["blocker_status"] == "blocked/expected_account_mismatch"
+    assert record["expected_account_id_loaded"] is True
+    assert record["expected_account_matched"] is False
+    assert record["paper_submit_authorized"] is False
+    assert record["broker_mutation_performed"] is False
+    assert broker.calls == ["get_account"]
+    assert broker.submitted_requests == []
+    _assert_no_sensitive_values(record)
+
+
+def test_paper_autopilot_no_new_completed_bar_never_submits(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab_no_new_bar,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["blocker_status"] == "blocked/no_new_completed_bar_noop"
+    assert record["final_classification"] == "no_new_completed_bar_noop"
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_ambiguous_submit_blocks_and_does_not_retry(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(raise_on_submit=True)
+
+    record = _run(tmp_path, bars_csv, broker)
+
+    assert record["blocker_status"] == "blocked/reconciliation_required"
+    assert (
+        record["final_classification"]
+        == "ambiguous_submit_response_reconciliation_required"
+    )
+    assert record["submit_response_ambiguous"] is True
+    assert record["paper_submit_performed"] is True
+    assert record["broker_mutation_performed"] is True
+    assert broker.calls.count("submit_order") == 1
+    assert broker.submitted_requests != []
+    _assert_no_sensitive_values(record)
+
+
 def test_runs_artifacts_remain_gitignored() -> None:
     assert "runs/" in Path(".gitignore").read_text(encoding="utf-8")
 
@@ -216,17 +289,19 @@ class FakeAutopilotBroker:
         positions: tuple[dict[str, object], ...] = (),
         open_orders: tuple[dict[str, object], ...] = (),
         recent_orders: tuple[dict[str, object], ...] = (),
+        raise_on_submit: bool = False,
     ) -> None:
         self.positions = positions
         self.open_orders = list(open_orders)
         self.recent_orders = list(recent_orders)
+        self.raise_on_submit = raise_on_submit
         self.submitted_requests = []
         self.calls: list[str] = []
 
     def get_account(self) -> dict[str, object]:
         self.calls.append("get_account")
         return {
-            "account_id": "paper-account-id-should-not-serialize",
+            "account_id": EXPECTED_ACCOUNT_ID,
             "status": "ACTIVE",
             "tradable": True,
             "cash": Decimal("100000"),
@@ -254,6 +329,8 @@ class FakeAutopilotBroker:
     def submit_order(self, request) -> dict[str, object]:  # noqa: ANN001
         self.calls.append("submit_order")
         self.submitted_requests.append(request)
+        if self.raise_on_submit:
+            raise RuntimeError("submit failed with secret=paper-secret-value")
         order = {
             "id": "paper-order-1",
             "client_order_id": request.client_order_id,
@@ -265,6 +342,7 @@ class FakeAutopilotBroker:
             "notional": request.notional,
             "qty": request.qty,
             "filled_qty": Decimal("0"),
+            "submitted_at": GENERATED_AT,
         }
         self.recent_orders.append(order)
         return order
@@ -285,6 +363,7 @@ def _paper_env() -> dict[str, str]:
         "APP_PROFILE": "paper",
         "APCA_API_KEY_ID": PAPER_KEY,
         "APCA_API_SECRET_KEY": PAPER_SECRET,
+        "ALPACA_EXPECTED_PAPER_ACCOUNT_ID": EXPECTED_ACCOUNT_ID,
         "ALPACA_PAPER_BASE_URL": DEFAULT_ALPACA_PAPER_BASE_URL,
     }
 
@@ -322,6 +401,12 @@ def _fake_daily_lab(config):  # noqa: ANN001
     }
 
 
+def _fake_daily_lab_no_new_bar(config):  # noqa: ANN001
+    payload = dict(_fake_daily_lab(config))
+    payload["data_refresh_status"] = "no_new_completed_bar_noop"
+    return payload
+
+
 def _write_bars(tmp_path: Path, *, posture: str) -> Path:
     path = tmp_path / f"{posture}.csv"
     start = date(2026, 1, 1)
@@ -344,6 +429,9 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     assert Path(paths["operating_record"]).is_file()
     assert Path(paths["manifest"]).is_file()
     assert Path(paths["latest_status"]).is_file()
+    assert Path(paths["supervisor_brief"]).is_file()
+    assert Path(paths["supervisor_receipt"]).is_file()
+    assert Path(paths["broker_snapshot"]).is_file()
     assert Path(paths["operating_history"]).is_file()
     assert Path(paths["latest_rollup"]).is_file()
     assert Path(paths["operating_summary"]).is_file()
@@ -351,6 +439,11 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     assert latest["run_id"] == record["run_id"]
     record_lines = Path(paths["operating_record"]).read_text(encoding="utf-8").splitlines()
     assert json.loads(record_lines[-1])["run_id"] == record["run_id"]
+    receipt_lines = (
+        Path(paths["supervisor_receipt"]).read_text(encoding="utf-8").splitlines()
+    )
+    receipt = json.loads(receipt_lines[-1])
+    assert receipt["final_classification"] == record["final_classification"]
     history_lines = (
         Path(paths["operating_history"]).read_text(encoding="utf-8").splitlines()
     )
@@ -363,5 +456,5 @@ def _assert_no_sensitive_values(record: dict[str, object]) -> None:
     rendered = json.dumps(record, sort_keys=True)
     assert PAPER_KEY not in rendered
     assert PAPER_SECRET not in rendered
-    assert "paper-account-id-should-not-serialize" not in rendered
+    assert EXPECTED_ACCOUNT_ID not in rendered
     assert record["credential_values_exposed"] is False
