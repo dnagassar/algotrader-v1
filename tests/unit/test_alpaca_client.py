@@ -15,6 +15,7 @@ from algotrader.execution.alpaca_client import (
     PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX,
     RECENT_ORDER_QUERY_CONTRACT_VERSION,
     V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+    V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX,
 )
 
 
@@ -182,7 +183,7 @@ def test_paper_autopilot_spy_close_request_uses_dedicated_namespace_only():
         )
 
 
-def test_v189_spy_certification_request_is_only_allowed_equity_limit_sell_shape():
+def test_spy_certification_request_allows_only_dedicated_equity_limit_drill_shape():
     request = AlpacaOrderRequest(
         client_order_id=V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
         symbol="spy",
@@ -203,7 +204,24 @@ def test_v189_spy_certification_request_is_only_allowed_equity_limit_sell_shape(
     assert request.time_in_force == "day"
     assert request.limit_price == Decimal("650.01")
 
-    with pytest.raises(ValueError, match="v1.89 SPY paper certification"):
+    buy_request = AlpacaOrderRequest(
+        client_order_id=f"{V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX}unit-test",
+        symbol="SPY",
+        side="buy",
+        asset_class="equity",
+        qty=Decimal("0.0001"),
+        order_type="limit",
+        time_in_force="day",
+        limit_price=Decimal("599.99"),
+    )
+
+    assert buy_request.symbol == "SPY"
+    assert buy_request.side == "buy"
+    assert buy_request.qty == Decimal("0.0001")
+    assert buy_request.order_type == "limit"
+    assert buy_request.limit_price == Decimal("599.99")
+
+    with pytest.raises(ValueError, match="SPY paper certification"):
         AlpacaOrderRequest(
             client_order_id="paper-certification-other",
             symbol="SPY",

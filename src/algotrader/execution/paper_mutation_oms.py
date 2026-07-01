@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation, ROUND_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_UP
 import hashlib
 import json
 import os
@@ -43,8 +43,14 @@ V189_TOTAL_SPY_EXPOSURE_CAP = Decimal("25")
 V189_CERTIFICATION_MAX_MARKET_VALUE = Decimal("1")
 V189_MIN_FRACTIONAL_QTY = Decimal("0.0001")
 V189_NON_MARKETABLE_LIMIT_MULTIPLIER = Decimal("1.05")
+V189_NON_MARKETABLE_BUY_LIMIT_MULTIPLIER = Decimal("0.95")
+DRILL_SIDE_AUTO = "auto"
+DRILL_SIDE_BUY = "buy"
+DRILL_SIDE_SELL = "sell"
 EXPECTED_PAPER_ACCOUNT_ENV = "ALPACA_EXPECTED_PAPER_ACCOUNT_ID"
 ALLOWED_LABELS = (
+    "paper_mutation_drill",
+    "not_strategy_signal",
     "paper_lab_only",
     "paper_certification_only",
     "strategy_order=false",
@@ -52,6 +58,8 @@ ALLOWED_LABELS = (
     "live_trading=false",
     "profit_claim=none",
     "networked_paper_only",
+    "broker_state_observed",
+    "paper_submit_authorized_for_drill_only",
     "paper_submit_authorized=true",
 )
 LIVE_ENDPOINT_FRAGMENTS = (
@@ -101,6 +109,7 @@ class PaperCertificationRuntime:
     run_id: str = V189_RUN_ID
     execution_mode: str = NETWORKED_PAPER_CERTIFICATION_MODE
     broker_state_mode: str = PAPER_BROKER_STATE_MODE
+    drill_side: str = DRILL_SIDE_AUTO
     paper_submit_authorized: bool = True
     labels: tuple[str, ...] = ALLOWED_LABELS
 
@@ -132,6 +141,10 @@ class PaperCertificationRuntime:
             "broker_state_mode",
             str(self.broker_state_mode).strip() or PAPER_BROKER_STATE_MODE,
         )
+        drill_side = str(self.drill_side).strip().lower() or DRILL_SIDE_AUTO
+        if drill_side not in {DRILL_SIDE_AUTO, DRILL_SIDE_BUY, DRILL_SIDE_SELL}:
+            raise ValueError("drill_side must be auto, buy, or sell.")
+        object.__setattr__(self, "drill_side", drill_side)
         object.__setattr__(
             self,
             "paper_submit_authorized",
@@ -340,6 +353,7 @@ def run_paper_certification_drill(
     final_order: dict[str, Any] = {}
     submit_ambiguous = False
     cancel_ambiguous = False
+    cancel_requested = False
     restart_recovery_performed = False
 
     preflight = _initial_preflight(
@@ -461,7 +475,10 @@ def run_paper_certification_drill(
                 certification_plan = _build_certification_plan(observed, runtime)
                 _write_json(output_root / "certification_plan.json", certification_plan)
                 if not certification_plan.get("certification_plan_id"):
-                    blocker = "blocked_risk_cap"
+                    blocker = str(
+                        certification_plan.get("blocker")
+                        or "blocked_no_safe_drill_order"
+                    )
                     outcome = blocker
                     _append_lifecycle(
                         lifecycle_path,
@@ -470,6 +487,16 @@ def run_paper_certification_drill(
                     )
                     raise _CertificationBlocked
                 request = _certification_order_request(certification_plan)
+                _append_lifecycle(
+                    lifecycle_path,
+                    "paper_mutation_drill_ready",
+                    {
+                        "classification": "paper_mutation_drill_ready",
+                        "client_order_id": runtime.client_order_id,
+                        "symbol": V189_SYMBOL,
+                        "not_strategy_signal": True,
+                    },
+                )
                 _append_lifecycle(
                     lifecycle_path,
                     "submit_attempt",
@@ -596,6 +623,7 @@ def run_paper_certification_drill(
         post_observation=post_observation,
         submit_ambiguous=submit_ambiguous,
         cancel_ambiguous=cancel_ambiguous,
+        cancel_requested=cancel_requested,
         restart_recovery_performed=restart_recovery_performed,
         paper_submit_performed=reported_paper_submit_performed,
         broker_mutation_performed=reported_broker_mutation_performed,
@@ -619,8 +647,16 @@ def run_paper_certification_drill(
 
     _write_json(output_root / "preflight.json", preflight)
     _write_json(output_root / "mutation_policy.json", policy)
+    _write_json(
+        output_root / "broker_snapshot_before_submit.json",
+        _broker_snapshot_payload(observed, preflight),
+    )
     _write_json(output_root / "reconciliation.json", reconciliation)
     _write_json(output_root / "latest_run.json", latest_run)
+    _write_json(
+        output_root / "mutation_receipt.json",
+        _mutation_receipt_payload(latest_run),
+    )
     (output_root / "operating_brief.md").write_text(
         _render_operating_brief(latest_run),
         encoding="utf-8",
@@ -650,6 +686,17 @@ def _runtime_labels(runtime: PaperCertificationRuntime | None) -> list[str]:
     labels.append(
         f"paper_submit_authorized={str(runtime.paper_submit_authorized).lower()}"
     )
+    return labels
+
+
+def _plan_labels(
+    runtime: PaperCertificationRuntime | None,
+    *,
+    reduce_only_drill: bool,
+) -> list[str]:
+    labels = _runtime_labels(runtime)
+    if reduce_only_drill and "reduce_only_drill" not in labels:
+        labels.append("reduce_only_drill")
     return labels
 
 
@@ -738,14 +785,10 @@ def _observed_preflight_blocker(preflight: Mapping[str, Any]) -> str:
         return "blocked_open_order_present"
     if preflight.get("duplicate_client_order_id_present") is True:
         return "blocked_duplicate_client_order_id"
-    if preflight.get("spy_position_present") is not True:
-        return "blocked_spy_position_missing"
     if preflight.get("spy_asset_certified") is not True:
         return "blocked_spy_asset_not_tradable"
     if preflight.get("reference_price_available") is not True:
         return "blocked_reference_price_unavailable"
-    if preflight.get("risk_cap_passed") is not True:
-        return "blocked_risk_cap"
     return ""
 
 
@@ -802,8 +845,20 @@ def _observed_preflight_fields(
         for order in all_orders
         if order.get("client_order_id") == runtime.client_order_id
     ]
-    reference_price = _reference_price_from_position(spy_position)
-    exposure = _decimal_or_zero(spy_position.get("market_value")) if spy_position else Decimal("0")
+    reference_price = _reference_price_from_position(
+        spy_position
+    ) or _reference_price_from_asset(asset)
+    exposure = (
+        _decimal_or_zero(spy_position.get("market_value"))
+        if spy_position
+        else Decimal("0")
+    )
+    spy_quantity = (
+        _decimal_or_zero(spy_position.get("quantity"))
+        if spy_position
+        else Decimal("0")
+    )
+    strategy_exposure_cap_passed = exposure <= V189_TOTAL_SPY_EXPOSURE_CAP
     asset_certified = (
         str(asset.get("symbol", "")).upper() == V189_SYMBOL
         and str(asset.get("status", "")).lower() in {"active", ""}
@@ -822,15 +877,19 @@ def _observed_preflight_fields(
         "open_spy_order_present": bool(open_spy_orders),
         "unexpected_non_spy_position_present": bool(non_spy_positions),
         "duplicate_client_order_id_present": bool(duplicate_orders),
-        "spy_position_present": spy_position is not None
-        and _decimal_or_zero(spy_position.get("quantity")) > Decimal("0"),
+        "spy_position_present": spy_quantity > Decimal("0"),
         "spy_asset_certified": asset_certified,
         "reference_price_available": reference_price is not None,
-        "risk_cap_passed": (
-            spy_position is not None
-            and Decimal("0") < exposure <= V189_TOTAL_SPY_EXPOSURE_CAP
+        "risk_cap_passed": strategy_exposure_cap_passed,
+        "strategy_exposure_cap_passed": strategy_exposure_cap_passed,
+        "strategy_exposure_cap": _decimal_text(V189_TOTAL_SPY_EXPOSURE_CAP),
+        "drill_order_cap": _decimal_text(V189_CERTIFICATION_MAX_MARKET_VALUE),
+        "existing_spy_exposure_above_strategy_cap": (
+            exposure > V189_TOTAL_SPY_EXPOSURE_CAP
         ),
         "spy_position_market_value": _decimal_text(exposure),
+        "spy_position_quantity": _decimal_text(spy_quantity),
+        "drill_side_requested": runtime.drill_side,
         "open_spy_order_count": len(open_spy_orders),
         "unexpected_non_spy_position_count": len(non_spy_positions),
         "duplicate_client_order_count": len(duplicate_orders),
@@ -922,25 +981,81 @@ def _build_certification_plan(
     runtime: PaperCertificationRuntime,
 ) -> dict[str, Any]:
     positions = _mapping_sequence(observed.get("positions"))
+    asset = _mapping(observed.get("asset"))
     spy_position = _spy_position(positions)
-    reference_price = _reference_price_from_position(spy_position)
-    if spy_position is None or reference_price is None:
-        return _empty_certification_plan(runtime)
+    reference_price = _reference_price_from_position(
+        spy_position
+    ) or _reference_price_from_asset(asset)
+    if reference_price is None:
+        return _empty_certification_plan(
+            runtime,
+            blocker="blocked_reference_price_unavailable",
+        )
 
-    existing_qty = _decimal_or_zero(spy_position.get("quantity"))
+    existing_qty = (
+        _decimal_or_zero(spy_position.get("quantity"))
+        if spy_position
+        else Decimal("0")
+    )
+    existing_exposure = (
+        _decimal_or_zero(spy_position.get("market_value"))
+        if spy_position
+        else Decimal("0")
+    )
+    requested_side = runtime.drill_side
+    side = (
+        DRILL_SIDE_SELL
+        if requested_side == DRILL_SIDE_AUTO and existing_qty > Decimal("0")
+        else DRILL_SIDE_BUY
+        if requested_side == DRILL_SIDE_AUTO
+        else requested_side
+    )
     quantity = V189_MIN_FRACTIONAL_QTY
     approximate_value = (quantity * reference_price).quantize(Decimal("0.0001"))
-    if existing_qty < quantity or approximate_value > V189_CERTIFICATION_MAX_MARKET_VALUE:
-        return _empty_certification_plan(runtime)
+    if approximate_value <= Decimal("0"):
+        return _empty_certification_plan(runtime, blocker="blocked_no_safe_drill_order")
+    if approximate_value > V189_CERTIFICATION_MAX_MARKET_VALUE:
+        blocker = (
+            "blocked_no_safe_reduce_only_drill_order"
+            if side == DRILL_SIDE_SELL
+            else "blocked_no_safe_buy_drill_order"
+        )
+        return _empty_certification_plan(runtime, blocker=blocker)
 
-    limit_price = (reference_price * V189_NON_MARKETABLE_LIMIT_MULTIPLIER).quantize(
+    if side == DRILL_SIDE_SELL:
+        if existing_qty < quantity:
+            return _empty_certification_plan(
+                runtime,
+                blocker="blocked_no_safe_reduce_only_drill_order",
+            )
+        post_order_exposure = max(Decimal("0"), existing_exposure - approximate_value)
+        reduce_only_drill = True
+        exposure_increasing_drill = False
+        expected_effect = "reduce_spy_exposure_if_filled"
+        limit_multiplier = V189_NON_MARKETABLE_LIMIT_MULTIPLIER
+        limit_rounding = ROUND_UP
+    elif side == DRILL_SIDE_BUY:
+        post_order_exposure = existing_exposure + approximate_value
+        if post_order_exposure > V189_TOTAL_SPY_EXPOSURE_CAP:
+            return _empty_certification_plan(runtime, blocker="blocked_risk_cap")
+        reduce_only_drill = False
+        exposure_increasing_drill = True
+        expected_effect = "increase_spy_exposure_if_filled_within_strategy_cap"
+        limit_multiplier = V189_NON_MARKETABLE_BUY_LIMIT_MULTIPLIER
+        limit_rounding = ROUND_DOWN
+    else:
+        return _empty_certification_plan(runtime, blocker="blocked_no_safe_drill_order")
+
+    limit_price = (reference_price * limit_multiplier).quantize(
         Decimal("0.01"),
-        rounding=ROUND_UP,
+        rounding=limit_rounding,
     )
+    if limit_price <= Decimal("0"):
+        return _empty_certification_plan(runtime, blocker="blocked_no_safe_drill_order")
     plan_source = {
         "client_order_id": runtime.client_order_id,
         "symbol": V189_SYMBOL,
-        "side": "sell",
+        "side": side,
         "order_type": "limit",
         "time_in_force": "day",
         "quantity": _decimal_text(quantity),
@@ -960,21 +1075,31 @@ def _build_certification_plan(
         "client_order_id": runtime.client_order_id,
         "symbol": V189_SYMBOL,
         "asset_class": "equity",
-        "side": "sell",
+        "side": side,
         "order_type": "limit",
         "time_in_force": "day",
         "quantity": _decimal_text(quantity),
         "limit_price": _decimal_text(limit_price),
         "reference_price": _decimal_text(reference_price),
         "approximate_reference_market_value": _decimal_text(approximate_value),
+        "strategy_exposure_cap": _decimal_text(V189_TOTAL_SPY_EXPOSURE_CAP),
+        "drill_order_cap": _decimal_text(V189_CERTIFICATION_MAX_MARKET_VALUE),
+        "current_spy_market_value": _decimal_text(existing_exposure),
+        "current_spy_quantity": _decimal_text(existing_qty),
+        "post_order_exposure_estimate": _decimal_text(post_order_exposure),
+        "reduce_only_drill": reduce_only_drill,
+        "exposure_increasing_drill": exposure_increasing_drill,
         "strategy_order": V189_STRATEGY_ORDER,
-        "labels": _runtime_labels(runtime),
-        "expected_effect": "reduce_spy_exposure_if_filled",
+        "not_strategy_signal": True,
+        "labels": _plan_labels(runtime, reduce_only_drill=reduce_only_drill),
+        "expected_effect": expected_effect,
     }
 
 
 def _empty_certification_plan(
     runtime: PaperCertificationRuntime | None = None,
+    *,
+    blocker: str = "",
 ) -> dict[str, Any]:
     client_order_id = (
         runtime.client_order_id if runtime is not None else certification_client_order_id()
@@ -990,6 +1115,7 @@ def _empty_certification_plan(
         "strategy_order": V189_STRATEGY_ORDER,
         "labels": labels,
         "status": "not_built",
+        "blocker": blocker,
     }
 
 
@@ -998,7 +1124,7 @@ def _certification_order_request(plan: Mapping[str, Any]) -> AlpacaOrderRequest:
         return _OfflineOmsOrderRequest(
             client_order_id=str(plan["client_order_id"]),
             symbol=str(plan["symbol"]),
-            side="sell",
+            side=str(plan.get("side", DRILL_SIDE_SELL)),
             asset_class="equity",
             qty=Decimal(str(plan["quantity"])),
             order_type="limit",
@@ -1008,7 +1134,7 @@ def _certification_order_request(plan: Mapping[str, Any]) -> AlpacaOrderRequest:
     return AlpacaOrderRequest(
         client_order_id=str(plan["client_order_id"]),
         symbol=str(plan["symbol"]),
-        side="sell",
+        side=str(plan.get("side", DRILL_SIDE_SELL)),
         asset_class="equity",
         qty=Decimal(str(plan["quantity"])),
         order_type="limit",
@@ -1186,6 +1312,7 @@ def _build_reconciliation(
     post_observation: Mapping[str, Any],
     submit_ambiguous: bool,
     cancel_ambiguous: bool,
+    cancel_requested: bool,
     restart_recovery_performed: bool,
     paper_submit_performed: bool,
     broker_mutation_performed: bool,
@@ -1202,6 +1329,8 @@ def _build_reconciliation(
         "client_order_id": runtime.client_order_id,
         "submit_ambiguous": submit_ambiguous,
         "cancel_ambiguous": cancel_ambiguous,
+        "cancel_requested": cancel_requested,
+        "paper_cancel_performed": cancel_requested,
         "restart_recovery_performed": restart_recovery_performed,
         "paper_submit_authorized": runtime.paper_submit_authorized,
         "paper_submit_performed": paper_submit_performed,
@@ -1221,7 +1350,10 @@ def _build_reconciliation(
         "preflight": dict(preflight),
         "certification_plan": dict(certification_plan),
         "post_observation": dict(post_observation),
-        "labels": _runtime_labels(runtime),
+        "labels": _plan_labels(
+            runtime,
+            reduce_only_drill=certification_plan.get("reduce_only_drill") is True,
+        ),
     }
 
 
@@ -1238,6 +1370,9 @@ def _mutation_policy_payload(runtime: PaperCertificationRuntime) -> dict[str, An
         "long_only": True,
         "strategy_order": V189_STRATEGY_ORDER,
         "total_spy_exposure_cap": _decimal_text(V189_TOTAL_SPY_EXPOSURE_CAP),
+        "strategy_exposure_cap": _decimal_text(V189_TOTAL_SPY_EXPOSURE_CAP),
+        "drill_order_cap": _decimal_text(V189_CERTIFICATION_MAX_MARKET_VALUE),
+        "reduce_only_drill_allowed_above_strategy_cap": True,
         "max_new_strategy_orders_per_completed_session_cycle": 1,
         "leverage_allowed": False,
         "shorting_allowed": False,
@@ -1286,16 +1421,21 @@ def _latest_run_payload(
         "paper_submit_authorized": runtime.paper_submit_authorized,
         "paper_submit_performed": paper_submit_performed,
         "broker_mutation_performed": broker_mutation_performed,
+        "paper_cancel_performed": reconciliation.get("paper_cancel_performed") is True,
         "real_broker_read_performed": preflight.get("real_broker_read_performed")
         is True,
         "real_broker_mutation_performed": broker_mutation_performed,
         "simulated_submit_performed": simulated_submit_performed,
         "simulated_broker_mutation_performed": simulated_broker_mutation_performed,
         "strategy_order": V189_STRATEGY_ORDER,
+        "not_strategy_signal": True,
         "live_trading": False,
         "profit_claim": "none",
         "labels": [
-            *_runtime_labels(runtime),
+            *_plan_labels(
+                runtime,
+                reduce_only_drill=certification_plan.get("reduce_only_drill") is True,
+            ),
             f"paper_submit_performed={str(paper_submit_performed).lower()}",
             f"broker_mutation_performed={str(broker_mutation_performed).lower()}",
             f"simulated_submit_performed={str(simulated_submit_performed).lower()}",
@@ -1308,13 +1448,71 @@ def _latest_run_payload(
         "artifact_paths": {
             "preflight": "preflight.json",
             "mutation_policy": "mutation_policy.json",
+            "broker_snapshot_before_submit": "broker_snapshot_before_submit.json",
             "certification_plan": "certification_plan.json",
             "order_lifecycle": "order_lifecycle.jsonl",
             "reconciliation": "reconciliation.json",
+            "mutation_receipt": "mutation_receipt.json",
             "operating_brief": "operating_brief.md",
             "manifest": "manifest.jsonl",
             "latest_run": "latest_run.json",
         },
+    }
+
+
+def _broker_snapshot_payload(
+    observed: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    return {
+        "snapshot_version": "v31_broker_snapshot_before_submit_v1",
+        "snapshot_role": "broker_snapshot_before_submit",
+        "broker_state_observed": preflight.get("broker_state_observed") is True,
+        "real_broker_read_performed": preflight.get("real_broker_read_performed")
+        is True,
+        "paper_endpoint_exact_match": preflight.get("paper_endpoint_exact_match")
+        is True,
+        "expected_paper_account_match": preflight.get("expected_paper_account_match")
+        is True,
+        "open_spy_order_present": preflight.get("open_spy_order_present") is True,
+        "unexpected_non_spy_position_present": preflight.get(
+            "unexpected_non_spy_position_present"
+        )
+        is True,
+        "observed": dict(observed),
+    }
+
+
+def _mutation_receipt_payload(latest_run: Mapping[str, Any]) -> dict[str, Any]:
+    reconciliation = _mapping(latest_run.get("reconciliation"))
+    certification_plan = _mapping(latest_run.get("certification_plan"))
+    final_order = _mapping(reconciliation.get("final_order"))
+    return {
+        "mutation_receipt_version": (
+            "v31_controlled_spy_paper_mutation_drill_receipt_v1"
+        ),
+        "drill_id": _text_field(latest_run, "run_id"),
+        "outcome_classification": _text_field(latest_run, "outcome_classification"),
+        "not_strategy_signal": True,
+        "symbol": _text_field(certification_plan, "symbol") or V189_SYMBOL,
+        "side": _text_field(certification_plan, "side"),
+        "order_type": _text_field(certification_plan, "order_type"),
+        "requested_notional": _text_field(certification_plan, "notional"),
+        "requested_qty": _text_field(certification_plan, "quantity"),
+        "requested_quantity": _text_field(certification_plan, "quantity"),
+        "limit_price": _text_field(certification_plan, "limit_price"),
+        "client_order_id": _text_field(latest_run, "client_order_id"),
+        "submitted_at": _text_field(final_order, "submitted_at"),
+        "broker_order_id": _text_field(final_order, "order_id"),
+        "final_order_state": _text_field(reconciliation, "final_order_status"),
+        "paper_submit_authorized": latest_run.get("paper_submit_authorized") is True,
+        "paper_submit_performed": latest_run.get("paper_submit_performed") is True,
+        "paper_cancel_performed": reconciliation.get("paper_cancel_performed") is True,
+        "broker_mutation_performed": (
+            latest_run.get("broker_mutation_performed") is True
+        ),
+        "live_mutation_performed": False,
+        "labels": list(latest_run.get("labels", [])),
     }
 
 
@@ -1357,7 +1555,9 @@ def _write_manifest(
         "mutation_policy.json",
         "certification_plan.json",
         "order_lifecycle.jsonl",
+        "broker_snapshot_before_submit.json",
         "reconciliation.json",
+        "mutation_receipt.json",
         "operating_brief.md",
         "latest_run.json",
     ):
@@ -1553,12 +1753,20 @@ def _order_payload(order: Any) -> dict[str, Any]:
 
 
 def _asset_payload(asset: Any) -> dict[str, Any]:
+    reference_price = _decimal_field(
+        asset,
+        "reference_price",
+        "last_price",
+        "market_price",
+        "price",
+    )
     return {
         "symbol": _text_field(asset, "symbol").upper(),
         "asset_class": _normalized_text_field(asset, "asset_class", "class"),
         "status": _normalized_text_field(asset, "status"),
         "tradable": _bool_field(asset, "tradable"),
         "fractionable": _bool_field(asset, "fractionable"),
+        "reference_price": _decimal_text(reference_price),
     }
 
 
@@ -1593,6 +1801,19 @@ def _reference_price_from_position(
     if quantity <= 0 or market_value <= 0:
         return None
     return (market_value / quantity).quantize(Decimal("0.0001"))
+
+
+def _reference_price_from_asset(asset: Mapping[str, Any]) -> Decimal | None:
+    for name in (
+        "reference_price",
+        "last_price",
+        "market_price",
+        "price",
+    ):
+        value = _decimal_or_zero(asset.get(name))
+        if value > Decimal("0"):
+            return value.quantize(Decimal("0.0001"))
+    return None
 
 
 def _credential_values(

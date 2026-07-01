@@ -104,6 +104,7 @@ class FakePaperClient:
             status=self.submit_status,
             qty=str(request.qty),
             limit_price=str(request.limit_price),
+            side=str(request.side),
         )
         self.all_orders = [self.current_order]
         self.open_orders = (
@@ -181,6 +182,61 @@ def test_exact_paper_endpoint_and_account_are_accepted(tmp_path: Path) -> None:
     assert len(client.submitted_requests) == 1
 
 
+def test_v31_drill_receipt_snapshot_and_labels(tmp_path: Path) -> None:
+    latest, root, _client = _run_drill(tmp_path)
+
+    required_labels = {
+        "paper_mutation_drill",
+        "not_strategy_signal",
+        "paper_lab_only",
+        "not_live_authorized",
+        "profit_claim=none",
+        "broker_state_observed",
+        "paper_submit_authorized_for_drill_only",
+        "reduce_only_drill",
+    }
+    assert required_labels <= set(latest["labels"])
+    assert latest["not_strategy_signal"] is True
+    assert latest["paper_cancel_performed"] is True
+    assert _artifact_names(root) >= {
+        "broker_snapshot_before_submit.json",
+        "mutation_receipt.json",
+    }
+
+    receipt = json.loads((root / "mutation_receipt.json").read_text(encoding="utf-8"))
+    assert receipt["drill_id"] == latest["run_id"]
+    assert receipt["not_strategy_signal"] is True
+    assert receipt["symbol"] == "SPY"
+    assert receipt["order_type"] == "limit"
+    assert receipt["requested_quantity"] == "0.0001"
+    assert receipt["paper_submit_performed"] is True
+    assert receipt["paper_cancel_performed"] is True
+    assert receipt["broker_mutation_performed"] is True
+    assert receipt["live_mutation_performed"] is False
+
+    snapshot = json.loads(
+        (root / "broker_snapshot_before_submit.json").read_text(encoding="utf-8")
+    )
+    assert snapshot["snapshot_role"] == "broker_snapshot_before_submit"
+    assert snapshot["broker_state_observed"] is True
+    assert snapshot["open_spy_order_present"] is False
+    assert snapshot["unexpected_non_spy_position_present"] is False
+
+    lifecycle_events = [
+        json.loads(line)["event_type"]
+        for line in (root / "order_lifecycle.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+    ]
+    assert lifecycle_events.index("paper_mutation_drill_ready") < lifecycle_events.index(
+        "submit_attempt"
+    )
+
+    manifest = json.loads((root / "manifest.jsonl").read_text(encoding="utf-8"))
+    assert "broker_snapshot_before_submit.json" in manifest["artifacts"]
+    assert "mutation_receipt.json" in manifest["artifacts"]
+
+
 def test_live_endpoint_is_rejected_before_broker_calls(tmp_path: Path) -> None:
     client = FakePaperClient()
     config = _config(endpoint="https://api.alpaca.markets")
@@ -255,14 +311,105 @@ def test_existing_open_spy_order_is_rejected(tmp_path: Path) -> None:
     assert client.submitted_requests == []
 
 
-def test_exposure_cap_is_rejected(tmp_path: Path) -> None:
+def test_exposure_above_strategy_cap_allows_reduce_only_sell_drill(
+    tmp_path: Path,
+) -> None:
     latest, _root, client = _run_drill(
         tmp_path,
         client=FakePaperClient(positions=[_spy_position(market_value="26.00")]),
     )
 
+    assert latest["outcome_classification"] == "submitted_cancel_confirmed"
+    assert latest["preflight"]["risk_cap_passed"] is False
+    assert latest["preflight"]["existing_spy_exposure_above_strategy_cap"] is True
+    plan = latest["certification_plan"]
+    assert plan["side"] == "sell"
+    assert plan["reduce_only_drill"] is True
+    assert plan["exposure_increasing_drill"] is False
+    assert Decimal(plan["quantity"]) <= Decimal(plan["current_spy_quantity"])
+    assert Decimal(plan["approximate_reference_market_value"]) <= Decimal(
+        plan["drill_order_cap"]
+    )
+    assert Decimal(plan["post_order_exposure_estimate"]) < Decimal(
+        plan["current_spy_market_value"]
+    )
+    assert "reduce_only_drill" in latest["labels"]
+    assert len(client.submitted_requests) == 1
+    assert client.submitted_requests[0].side == "sell"
+
+
+def test_exposure_above_strategy_cap_blocks_buy_drill(tmp_path: Path) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(positions=[_spy_position(market_value="26.00")]),
+        drill_side="buy",
+    )
+
     assert latest["outcome_classification"] == "blocked_risk_cap"
     assert latest["preflight"]["risk_cap_passed"] is False
+    assert latest["certification_plan"]["blocker"] == "blocked_risk_cap"
+    assert client.submitted_requests == []
+
+
+def test_reduce_only_drill_blocks_if_quantity_could_short(
+    tmp_path: Path,
+) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(positions=[_spy_position(qty="0.00001", market_value="0.006")]),
+        drill_side="sell",
+    )
+
+    assert (
+        latest["outcome_classification"]
+        == "blocked_no_safe_reduce_only_drill_order"
+    )
+    assert latest["certification_plan"]["blocker"] == (
+        "blocked_no_safe_reduce_only_drill_order"
+    )
+    assert client.submitted_requests == []
+
+
+def test_no_spy_position_allows_tiny_buy_within_strategy_cap(
+    tmp_path: Path,
+) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(
+            positions=[],
+            asset=_active_spy_asset(reference_price="100.00"),
+        ),
+    )
+
+    assert latest["outcome_classification"] == "submitted_cancel_confirmed"
+    assert latest["preflight"]["spy_position_present"] is False
+    plan = latest["certification_plan"]
+    assert plan["side"] == "buy"
+    assert plan["reduce_only_drill"] is False
+    assert plan["exposure_increasing_drill"] is True
+    assert Decimal(plan["post_order_exposure_estimate"]) <= Decimal(
+        plan["strategy_exposure_cap"]
+    )
+    assert Decimal(plan["approximate_reference_market_value"]) <= Decimal(
+        plan["drill_order_cap"]
+    )
+    assert len(client.submitted_requests) == 1
+    assert client.submitted_requests[0].side == "buy"
+
+
+def test_no_spy_position_blocks_buy_when_order_cap_cannot_be_respected(
+    tmp_path: Path,
+) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(
+            positions=[],
+            asset=_active_spy_asset(reference_price="20000.00"),
+        ),
+    )
+
+    assert latest["outcome_classification"] == "blocked_no_safe_buy_drill_order"
+    assert latest["certification_plan"]["blocker"] == "blocked_no_safe_buy_drill_order"
     assert client.submitted_requests == []
 
 
@@ -531,6 +678,7 @@ def _run_drill(
     config: AlpacaPaperConfig | None = None,
     env: dict[str, str] | None = None,
     expected_account_id: str = "paper-account-1",
+    drill_side: str = "auto",
 ) -> tuple[dict[str, object], Path, FakePaperClient]:
     output_root = root or tmp_path / "certification"
     fake_client = client or FakePaperClient()
@@ -544,6 +692,7 @@ def _run_drill(
             expected_paper_account_id=expected_account_id,
             timeout_seconds=0,
             poll_interval_seconds=0,
+            drill_side=drill_side,
         ),
         env=source_env,
     )
@@ -601,13 +750,14 @@ def _order(
     qty: str = "0.0001",
     filled_qty: str = "0",
     limit_price: str = "630.00",
+    side: str = "sell",
 ) -> dict[str, object]:
     return {
         "id": "paper-order-1",
         "client_order_id": V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
         "symbol": "SPY",
         "asset_class": "equity",
-        "side": "sell",
+        "side": side,
         "type": "limit",
         "time_in_force": "day",
         "qty": Decimal(qty),
@@ -620,14 +770,17 @@ def _order(
     }
 
 
-def _active_spy_asset() -> dict[str, object]:
-    return {
+def _active_spy_asset(reference_price: str | None = None) -> dict[str, object]:
+    asset: dict[str, object] = {
         "symbol": "SPY",
         "asset_class": "us_equity",
         "status": "active",
         "tradable": True,
         "fractionable": True,
     }
+    if reference_price is not None:
+        asset["reference_price"] = Decimal(reference_price)
+    return asset
 
 
 def _write_latest_run(

@@ -23,6 +23,7 @@ RECENT_ORDER_QUERY_CONTRACT_VERSION = "paper_recent_order_query_v1"
 _M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit"
 PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-close-"
 V189_SPY_CERTIFICATION_CLIENT_ORDER_ID = "paper-certification-v189-spy-sell-limit"
+V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX = "v31-spy-drill-"
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
 _RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
@@ -137,8 +138,8 @@ class AlpacaOrderRequest:
         v189_spy_certification = (
             asset_class == "equity"
             and normalized_symbol == "SPY"
-            and self.client_order_id == V189_SPY_CERTIFICATION_CLIENT_ORDER_ID
-            and side == "sell"
+            and _is_spy_certification_client_order_id(self.client_order_id)
+            and side in {"buy", "sell"}
             and order_type == "limit"
             and time_in_force == "day"
             and has_qty
@@ -172,15 +173,15 @@ class AlpacaOrderRequest:
             raise ValueError(
                 "Alpaca paper sell requests are restricted to BTCUSD crypto "
                 "close probes, the explicit M355 SPY paper close, or the "
-                "paper-autopilot SPY close namespace, or the v1.89 SPY paper "
-                "certification sell-limit drill."
+                "paper-autopilot SPY close namespace, or the v1.89/v3.1 "
+                "SPY paper certification limit drill."
             )
         if order_type not in {"market", "limit"}:
             raise ValueError("Alpaca paper order requests require market or limit type.")
         if order_type == "limit" and not v189_spy_certification:
             raise ValueError(
-                "Alpaca paper limit requests are restricted to the v1.89 SPY "
-                "paper certification drill."
+                "Alpaca paper limit requests are restricted to the v1.89/v3.1 "
+                "SPY paper certification drill."
             )
         if time_in_force not in _TIME_IN_FORCE_BY_ASSET_CLASS[asset_class]:
             raise ValueError(
@@ -248,6 +249,13 @@ class AlpacaClient(Protocol):
         ...
 
 
+def _is_spy_certification_client_order_id(client_order_id: str) -> bool:
+    return (
+        client_order_id == V189_SPY_CERTIFICATION_CLIENT_ORDER_ID
+        or client_order_id.startswith(V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX)
+    )
+
+
 def _positive_decimal(value: Decimal, field_name: str) -> Decimal:
     try:
         decimal_value = Decimal(str(value))
@@ -271,4 +279,5 @@ __all__ = [
     "PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX",
     "RECENT_ORDER_QUERY_CONTRACT_VERSION",
     "V189_SPY_CERTIFICATION_CLIENT_ORDER_ID",
+    "V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX",
 ]

@@ -10,6 +10,7 @@ import sys
 
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 from algotrader.execution.paper_mutation_oms import (
+    ALLOWED_LABELS,
     EXPECTED_PAPER_ACCOUNT_ENV,
     PaperCertificationRuntime,
     PaperMutationGateway,
@@ -33,6 +34,23 @@ def build_parser() -> argparse.ArgumentParser:
             "Expected Alpaca paper account id. Defaults to "
             f"{EXPECTED_PAPER_ACCOUNT_ENV}."
         ),
+    )
+    parser.add_argument(
+        "--client-order-id",
+        default=None,
+        help="Optional unique client order id for this bounded drill run.",
+    )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="Optional run id stored in the drill artifacts.",
+    )
+    parser.add_argument(
+        "--extra-label",
+        action="append",
+        default=[],
+        dest="extra_labels",
+        help="Additional non-secret safety label to include in artifacts.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -78,6 +96,9 @@ def main(argv: list[str] | None = None) -> int:
             expected_paper_account_id=str(expected_account or ""),
             timeout_seconds=args.timeout_seconds,
             poll_interval_seconds=args.poll_interval_seconds,
+            client_order_id=str(args.client_order_id or ""),
+            run_id=str(args.run_id or ""),
+            labels=tuple(dict.fromkeys((*ALLOWED_LABELS, *args.extra_labels))),
         ),
         env=env,
     )
