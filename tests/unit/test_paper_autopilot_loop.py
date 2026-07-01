@@ -17,6 +17,7 @@ from algotrader.orchestration.strategy_adapter_registry import (
 )
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     StrategySignal,
 )
 
@@ -250,6 +251,48 @@ def test_paper_autopilot_conflicting_strategy_route_skips_broker_factory(
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
     assert record["broker_mutation_performed"] is False
+
+
+def test_paper_autopilot_records_shadow_rsi_when_sma_has_insufficient_history(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_rsi_shadow_bars(tmp_path)
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_forbidden_factory,
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+    route_receipt = record["strategy_route_receipt"]
+    signals = route_receipt["signals"]
+
+    assert record["strategy_route_status"] == "blocked"
+    assert record["strategy_route_reason"] == "all_candidates_blocked"
+    assert record["strategy_route_paper_mutation_allowed"] is False
+    assert record["strategy_adapter_resolution_status"] == "blocked"
+    assert record["strategy_adapter_reason"] == "strategy_router_all_candidates_blocked"
+    assert record["blocker_status"] == "blocked/strategy_router_all_candidates_blocked"
+    assert record["broker_state_observed"] is False
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert [signal["strategy_id"] for signal in signals] == [
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    ]
+    assert signals[0]["signal_state"] == "insufficient_evidence"
+    assert signals[0]["intended_action"] == "no_action"
+    assert signals[1]["signal_state"] == "trade_candidate"
+    assert signals[1]["intended_action"] == "buy"
+    assert signals[1]["promotion_status"] == "shadow_only"
+    assert signals[1]["blockers"] == []
+    assert route_receipt["candidate_signal_ids"] == []
+    assert route_receipt["blocked_signal_ids"] == [
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    ]
 
 
 def test_paper_autopilot_missing_strategy_adapter_skips_broker_factory(
@@ -538,6 +581,20 @@ def _write_bars(tmp_path: Path, *, posture: str) -> Path:
         close = Decimal("100") + Decimal(index)
         if posture == "risk_off":
             close = Decimal("500") - Decimal(index)
+        rows.append(
+            f"{current.isoformat()},SPY,{close},{close},{close},{close},{close},1000"
+        )
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    return path
+
+
+def _write_rsi_shadow_bars(tmp_path: Path) -> Path:
+    path = tmp_path / "rsi_shadow_only.csv"
+    start = date(2026, 7, 25)
+    rows = ["date,symbol,open,high,low,close,adjusted_close,volume"]
+    for index in range(15):
+        current = start + timedelta(days=index)
+        close = Decimal(115 - index)
         rows.append(
             f"{current.isoformat()},SPY,{close},{close},{close},{close},{close},1000"
         )

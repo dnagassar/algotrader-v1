@@ -7,19 +7,27 @@ from pathlib import Path
 
 from algotrader.core.types import Bar
 from algotrader.orchestration.strategy_router import (
+    SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     STRATEGY_ROUTER_LABEL,
     StrategySignal,
     route_strategy_signals,
     strategy_signal_from_etf_sma_result,
+    strategy_signal_from_spy_rsi_mean_reversion_result,
 )
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
     evaluate_etf_sma_signal,
 )
+from algotrader.signals.spy_rsi_mean_reversion import (
+    SPYRsiMeanReversionSignalConfig,
+    evaluate_spy_rsi_mean_reversion_signal,
+)
 
 
 MODULE_PATH = Path("src/algotrader/orchestration/strategy_router.py")
 REQUIRED_LABELS = ("paper_lab_only", "not_live_authorized", "profit_claim=none")
+AS_OF = datetime(2026, 8, 8, tzinfo=UTC)
 
 
 def test_no_trade_strategy_does_not_suppress_promoted_candidate() -> None:
@@ -81,6 +89,30 @@ def test_shadow_only_candidate_cannot_route_for_paper_mutation() -> None:
     ) in receipt.blockers
 
 
+def test_sma_hold_noop_does_not_suppress_shadow_rsi_trade_candidate() -> None:
+    sma_hold = _dummy_signal(
+        strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID,
+        signal_state="no_trade",
+        intended_action="hold",
+        intended_side="",
+    )
+    rsi_shadow = _rsi_shadow_signal(_descending_prices())
+
+    receipt = route_strategy_signals((sma_hold, rsi_shadow))
+
+    assert receipt.route_status == "blocked"
+    assert receipt.reason == "all_candidates_blocked"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.signals == (sma_hold, rsi_shadow)
+    assert receipt.selected_signal is None
+    assert receipt.candidate_signal_ids == ()
+    assert receipt.blocked_signal_ids == (SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,)
+    assert (
+        "spy_rsi_14_mean_reversion_shadow:"
+        "promotion_status_not_paper_mutation_candidate:shadow_only"
+    ) in receipt.blockers
+
+
 def test_paper_mutation_candidate_routes_after_independent_safety_gates() -> None:
     receipt = route_strategy_signals((_dummy_signal(strategy_id="promoted"),))
 
@@ -109,6 +141,30 @@ def test_conflicting_promoted_candidates_block_for_review() -> None:
     assert receipt.reason == "conflict_requires_review"
     assert "conflict_requires_review" in receipt.blockers
     assert receipt.candidate_signal_ids == ("promoted_buy", "promoted_sell")
+
+
+def test_shadow_rsi_opposite_action_is_recorded_without_shadow_selection() -> None:
+    sma_buy = _dummy_signal(strategy_id=SMA_TRAINING_WHEEL_STRATEGY_ID)
+    rsi_shadow_sell = _rsi_shadow_signal(_ascending_prices())
+
+    receipt = route_strategy_signals((sma_buy, rsi_shadow_sell))
+    payload = receipt.to_dict()
+
+    assert rsi_shadow_sell.intended_action == "sell_close"
+    assert receipt.route_status == "action_routed"
+    assert receipt.paper_mutation_allowed is True
+    assert receipt.selected_signal is sma_buy
+    assert receipt.candidate_signal_ids == (SMA_TRAINING_WHEEL_STRATEGY_ID,)
+    assert receipt.blocked_signal_ids == (SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,)
+    assert (
+        "spy_rsi_14_mean_reversion_shadow:"
+        "promotion_status_not_paper_mutation_candidate:shadow_only"
+    ) in receipt.blockers
+    assert [signal["strategy_id"] for signal in payload["signals"]] == [
+        SMA_TRAINING_WHEEL_STRATEGY_ID,
+        SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    ]
+    assert payload["signals"][1]["promotion_status"] == "shadow_only"
 
 
 def test_all_blocked_candidates_produce_blocked_receipt() -> None:
@@ -260,3 +316,35 @@ def _bars(as_of: datetime, *, posture: str) -> tuple[Bar, ...]:
             )
         )
     return tuple(bars)
+
+
+def _rsi_shadow_signal(prices: tuple[Decimal, ...]) -> StrategySignal:
+    result = evaluate_spy_rsi_mean_reversion_signal(
+        _rsi_bars(prices),
+        SPYRsiMeanReversionSignalConfig(as_of=AS_OF),
+    )
+    return strategy_signal_from_spy_rsi_mean_reversion_result(result)
+
+
+def _descending_prices() -> tuple[Decimal, ...]:
+    return tuple(Decimal(115 - index) for index in range(15))
+
+
+def _ascending_prices() -> tuple[Decimal, ...]:
+    return tuple(Decimal(100 + index) for index in range(15))
+
+
+def _rsi_bars(prices: tuple[Decimal, ...]) -> tuple[Bar, ...]:
+    first = AS_OF - timedelta(days=len(prices) - 1)
+    return tuple(
+        Bar(
+            symbol="SPY",
+            timestamp=first + timedelta(days=index),
+            open=price,
+            high=price,
+            low=price,
+            close=price,
+            volume=Decimal("1000"),
+        )
+        for index, price in enumerate(prices)
+    )

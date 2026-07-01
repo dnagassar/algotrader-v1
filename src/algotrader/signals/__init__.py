@@ -9,6 +9,14 @@ from .etf_sma_evaluator import (
     EtfSmaSignalResult,
     evaluate_etf_sma_signal,
 )
+from .spy_rsi_mean_reversion import (
+    SPY_RSI_MEAN_REVERSION_LABELS,
+    SPY_RSI_MEAN_REVERSION_POSTURES,
+    SPYRsiMeanReversionSignalConfig,
+    SPYRsiMeanReversionSignalEvaluator,
+    SPYRsiMeanReversionSignalResult,
+    evaluate_spy_rsi_mean_reversion_signal,
+)
 from .signal_evaluation_input import SignalEvaluationInputSnapshot
 from .signal_evaluation_result import SignalEvaluationResult
 from .signal_input_bundle import SignalInputBundle
@@ -26,6 +34,11 @@ __all__ = [
     "EtfSmaSignalConfig",
     "EtfSmaSignalEvaluator",
     "EtfSmaSignalResult",
+    "SPY_RSI_MEAN_REVERSION_LABELS",
+    "SPY_RSI_MEAN_REVERSION_POSTURES",
+    "SPYRsiMeanReversionSignalConfig",
+    "SPYRsiMeanReversionSignalEvaluator",
+    "SPYRsiMeanReversionSignalResult",
     "SignalGenerator",
     "SignalEvaluationInputSnapshot",
     "SignalEvaluationResult",
@@ -34,6 +47,7 @@ __all__ = [
     "SignalInputValue",
     "ValidatedSignalDefinition",
     "evaluate_etf_sma_signal",
+    "evaluate_spy_rsi_mean_reversion_signal",
     "generate_momentum_buy_order",
     "validate_signal_input_bundle_completeness",
 ]

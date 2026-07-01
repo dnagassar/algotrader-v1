@@ -14,6 +14,8 @@ from algotrader.orchestration.strategy_adapter_registry import (
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_FAMILY,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
+    SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
     StrategySignal,
     route_strategy_signals,
@@ -103,6 +105,33 @@ def test_research_and_shadow_only_cannot_resolve_to_mutation_adapter() -> None:
             == f"promotion_status_not_paper_mutation_candidate:{promotion_status}"
         )
         assert resolution.paper_mutation_allowed is False
+
+
+def test_spy_rsi_shadow_candidate_cannot_resolve_to_mutation_adapter() -> None:
+    signal = _signal(
+        strategy_id=SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+        strategy_family=SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
+        promotion_status="shadow_only",
+    )
+
+    resolution = resolve_strategy_adapter(
+        signal,
+        registry=(
+            _registration(
+                strategy_id=signal.strategy_id,
+                adapter_id="spy_rsi_paper_mutation_adapter_not_allowed_fixture",
+            ),
+        ),
+        adapter_mode="paper_mutation",
+    )
+
+    assert resolution.resolution_status == "blocked"
+    assert (
+        resolution.reason
+        == "promotion_status_not_paper_mutation_candidate:shadow_only"
+    )
+    assert resolution.adapter_id == "spy_rsi_paper_mutation_adapter_not_allowed_fixture"
+    assert resolution.paper_mutation_allowed is False
 
 
 def test_paper_mutation_candidate_requires_enabled_mutation_adapter() -> None:

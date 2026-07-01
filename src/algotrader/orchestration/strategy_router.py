@@ -12,6 +12,9 @@ from algotrader.core.time import require_utc_datetime
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
 from algotrader.signals.etf_sma_evaluator import EtfSmaSignalResult
+from algotrader.signals.spy_rsi_mean_reversion import (
+    SPYRsiMeanReversionSignalResult,
+)
 
 StrategySignalState = Literal[
     "trade_candidate",
@@ -38,10 +41,14 @@ STRATEGY_ROUTER_REQUIRED_LABELS = (
 STRATEGY_ROUTER_LABEL = "strategy_router_contract"
 SMA_TRAINING_WHEEL_STRATEGY_FAMILY = "long_only_broad_etf_sma_trend_filter"
 SMA_TRAINING_WHEEL_STRATEGY_ID = "spy_sma_50_200_training_wheel"
+SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY = "mean_reversion"
+SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID = "spy_rsi_14_mean_reversion_shadow"
 
 __all__ = [
     "SMA_TRAINING_WHEEL_STRATEGY_FAMILY",
     "SMA_TRAINING_WHEEL_STRATEGY_ID",
+    "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY",
+    "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID",
     "STRATEGY_ROUTER_LABEL",
     "STRATEGY_ROUTER_REQUIRED_LABELS",
     "StrategyIntendedAction",
@@ -53,6 +60,7 @@ __all__ = [
     "StrategySignalState",
     "route_strategy_signals",
     "strategy_signal_from_etf_sma_result",
+    "strategy_signal_from_spy_rsi_mean_reversion_result",
 ]
 
 
@@ -397,6 +405,57 @@ def strategy_signal_from_etf_sma_result(
         risk_budget="bounded_paper_notional",
         data_as_of=result.as_of,
         promotion_status=promotion_status,
+        labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
+        blockers=blockers,
+        evidence_score=None,
+    )
+
+
+def strategy_signal_from_spy_rsi_mean_reversion_result(
+    result: SPYRsiMeanReversionSignalResult,
+) -> StrategySignal:
+    """Adapt the SPY RSI mean-reversion result into a shadow-only route signal."""
+
+    if not isinstance(result, SPYRsiMeanReversionSignalResult):
+        raise ValidationError("result must be a SPYRsiMeanReversionSignalResult.")
+
+    if result.posture == "oversold_buy_candidate":
+        signal_state: StrategySignalState = "trade_candidate"
+        intended_action: StrategyIntendedAction = "buy"
+        intended_side: StrategyIntendedSide = "buy"
+        blockers: tuple[str, ...] = ()
+    elif result.posture == "overbought_cash_candidate":
+        signal_state = "trade_candidate"
+        intended_action = "sell_close"
+        intended_side = "sell"
+        blockers = ()
+    elif result.posture == "insufficient_history":
+        signal_state = "insufficient_evidence"
+        intended_action = "no_action"
+        intended_side = ""
+        blockers = ("insufficient_history",)
+    else:
+        signal_state = "no_trade"
+        intended_action = "no_action"
+        intended_side = ""
+        blockers = ()
+
+    return StrategySignal(
+        strategy_id=(
+            f"{result.symbol.lower()}_rsi_"
+            f"{result.lookback_window}_mean_reversion_shadow"
+        ),
+        strategy_family=result.strategy_type,
+        symbol=result.symbol,
+        asset_class=result.asset_class,
+        signal_state=signal_state,
+        intended_action=intended_action,
+        intended_side=intended_side,
+        expected_holding_period="daily_mean_reversion_shadow_until_next_signal",
+        max_loss_model="not_modeled_shadow_signal_only",
+        risk_budget="none_shadow_only_no_allocation",
+        data_as_of=result.as_of,
+        promotion_status="shadow_only",
         labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
         blockers=blockers,
         evidence_score=None,

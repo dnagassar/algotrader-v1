@@ -38,6 +38,7 @@ from algotrader.orchestration.strategy_router import (
     StrategySignal,
     route_strategy_signals,
     strategy_signal_from_etf_sma_result,
+    strategy_signal_from_spy_rsi_mean_reversion_result,
 )
 from algotrader.orchestration.strategy_adapter_registry import (
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
@@ -48,6 +49,10 @@ from algotrader.orchestration.strategy_adapter_registry import (
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
     evaluate_etf_sma_signal,
+)
+from algotrader.signals.spy_rsi_mean_reversion import (
+    SPYRsiMeanReversionSignalConfig,
+    evaluate_spy_rsi_mean_reversion_signal,
 )
 
 
@@ -253,8 +258,21 @@ def run_paper_autopilot_loop(
     )
     posture = _autopilot_posture(signal.posture)
     primary_strategy_signal = strategy_signal_from_etf_sma_result(signal)
+    shadow_strategy_signal = strategy_signal_from_spy_rsi_mean_reversion_result(
+        evaluate_spy_rsi_mean_reversion_signal(
+            bars,
+            SPYRsiMeanReversionSignalConfig(
+                as_of=as_of_dt,
+                symbol=resolved.symbol,
+            ),
+        )
+    )
     route_receipt = route_strategy_signals(
-        _strategy_signals(primary_strategy_signal, candidate_strategy_signals)
+        _strategy_signals(
+            primary_strategy_signal,
+            (shadow_strategy_signal,),
+            candidate_strategy_signals,
+        )
     )
     adapter_resolution = resolve_strategy_route_adapter(
         route_receipt,
@@ -620,26 +638,40 @@ def _observe_broker_state(
 
 def _strategy_signals(
     primary_strategy_signal: StrategySignal,
+    shadow_strategy_signals: Iterable[StrategySignal] | None,
     candidate_strategy_signals: Iterable[StrategySignal] | None,
 ) -> tuple[StrategySignal, ...]:
     if not isinstance(primary_strategy_signal, StrategySignal):
         raise ValidationError("primary_strategy_signal must be a StrategySignal.")
-    if candidate_strategy_signals is None:
-        return (primary_strategy_signal,)
-    if isinstance(candidate_strategy_signals, (str, bytes)) or not isinstance(
-        candidate_strategy_signals,
-        Iterable,
-    ):
+    return (
+        primary_strategy_signal,
+        *_extra_strategy_signals(
+            shadow_strategy_signals,
+            field_name="shadow_strategy_signals",
+        ),
+        *_extra_strategy_signals(
+            candidate_strategy_signals,
+            field_name="candidate_strategy_signals",
+        ),
+    )
+
+
+def _extra_strategy_signals(
+    values: Iterable[StrategySignal] | None,
+    *,
+    field_name: str,
+) -> tuple[StrategySignal, ...]:
+    if values is None:
+        return ()
+    if isinstance(values, (str, bytes)) or not isinstance(values, Iterable):
         raise ValidationError(
-            "candidate_strategy_signals must be an iterable of StrategySignal values."
+            f"{field_name} must be an iterable of StrategySignal values."
         )
-    extra_signals = tuple(candidate_strategy_signals)
+    extra_signals = tuple(values)
     for index, signal in enumerate(extra_signals):
         if not isinstance(signal, StrategySignal):
-            raise ValidationError(
-                f"candidate_strategy_signals[{index}] must be a StrategySignal."
-            )
-    return (primary_strategy_signal, *extra_signals)
+            raise ValidationError(f"{field_name}[{index}] must be a StrategySignal.")
+    return extra_signals
 
 
 def _paper_autopilot_route_blocker(
