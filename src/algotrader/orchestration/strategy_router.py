@@ -15,6 +15,11 @@ from algotrader.signals.etf_sma_evaluator import EtfSmaSignalResult
 from algotrader.signals.spy_rsi_mean_reversion import (
     SPYRsiMeanReversionSignalResult,
 )
+from algotrader.signals.spy_vol_scaled_trend import (
+    SPY_VOL_SCALED_TREND_STRATEGY_FAMILY,
+    SPY_VOL_SCALED_TREND_STRATEGY_ID,
+    SPYVolScaledTrendSignalResult,
+)
 
 StrategySignalState = Literal[
     "trade_candidate",
@@ -43,12 +48,16 @@ SMA_TRAINING_WHEEL_STRATEGY_FAMILY = "long_only_broad_etf_sma_trend_filter"
 SMA_TRAINING_WHEEL_STRATEGY_ID = "spy_sma_50_200_training_wheel"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY = "mean_reversion"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID = "spy_rsi_14_mean_reversion_shadow"
+SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY = SPY_VOL_SCALED_TREND_STRATEGY_FAMILY
+SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID = SPY_VOL_SCALED_TREND_STRATEGY_ID
 
 __all__ = [
     "SMA_TRAINING_WHEEL_STRATEGY_FAMILY",
     "SMA_TRAINING_WHEEL_STRATEGY_ID",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID",
+    "SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY",
+    "SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID",
     "STRATEGY_ROUTER_LABEL",
     "STRATEGY_ROUTER_REQUIRED_LABELS",
     "StrategyIntendedAction",
@@ -61,6 +70,7 @@ __all__ = [
     "route_strategy_signals",
     "strategy_signal_from_etf_sma_result",
     "strategy_signal_from_spy_rsi_mean_reversion_result",
+    "strategy_signal_from_spy_vol_scaled_trend_result",
 ]
 
 
@@ -456,6 +466,55 @@ def strategy_signal_from_spy_rsi_mean_reversion_result(
         risk_budget="none_shadow_only_no_allocation",
         data_as_of=result.as_of,
         promotion_status="shadow_only",
+        labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
+        blockers=blockers,
+        evidence_score=None,
+    )
+
+
+def strategy_signal_from_spy_vol_scaled_trend_result(
+    result: SPYVolScaledTrendSignalResult,
+) -> StrategySignal:
+    """Adapt the SPY vol-scaled trend result into a preview-only route signal."""
+
+    if not isinstance(result, SPYVolScaledTrendSignalResult):
+        raise ValidationError("result must be a SPYVolScaledTrendSignalResult.")
+
+    if result.posture in {
+        "trend_on_full_exposure",
+        "trend_on_half_exposure_high_volatility",
+    }:
+        signal_state: StrategySignalState = "trade_candidate"
+        intended_action: StrategyIntendedAction = "buy"
+        intended_side: StrategyIntendedSide = "buy"
+        blockers: tuple[str, ...] = ()
+    elif result.posture == "trend_off_cash":
+        signal_state = "trade_candidate"
+        intended_action = "sell_close"
+        intended_side = "sell"
+        blockers = ()
+    else:
+        signal_state = "insufficient_evidence"
+        intended_action = "no_action"
+        intended_side = ""
+        blockers = tuple(result.blockers or ("insufficient_history",))
+
+    return StrategySignal(
+        strategy_id=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
+        strategy_family=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
+        symbol=result.symbol,
+        asset_class=result.asset_class,
+        signal_state=signal_state,
+        intended_action=intended_action,
+        intended_side=intended_side,
+        expected_holding_period="daily_vol_scaled_trend_preview_until_next_signal",
+        max_loss_model="not_modeled_preview_quarantine",
+        risk_budget=(
+            "preview_only_no_allocation_target_exposure="
+            f"{_decimal_text(result.target_exposure)}"
+        ),
+        data_as_of=result.as_of,
+        promotion_status="paper_preview_candidate",
         labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
         blockers=blockers,
         evidence_score=None,

@@ -9,11 +9,14 @@ from algotrader.core.types import Bar
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_LABEL,
     StrategySignal,
     route_strategy_signals,
     strategy_signal_from_etf_sma_result,
     strategy_signal_from_spy_rsi_mean_reversion_result,
+    strategy_signal_from_spy_vol_scaled_trend_result,
 )
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
@@ -22,6 +25,10 @@ from algotrader.signals.etf_sma_evaluator import (
 from algotrader.signals.spy_rsi_mean_reversion import (
     SPYRsiMeanReversionSignalConfig,
     evaluate_spy_rsi_mean_reversion_signal,
+)
+from algotrader.signals.spy_vol_scaled_trend import (
+    SPYVolScaledTrendSignalConfig,
+    evaluate_spy_vol_scaled_trend_signal,
 )
 
 
@@ -214,6 +221,33 @@ def test_sma_signal_output_is_represented_in_router_contract() -> None:
     assert set(REQUIRED_LABELS) <= set(signal.labels)
     assert receipt.paper_mutation_allowed is True
     assert receipt.selected_signal is signal
+
+
+def test_vol_scaled_trend_preview_signal_is_router_visible_but_not_mutating() -> None:
+    result = evaluate_spy_vol_scaled_trend_signal(
+        _bars(AS_OF, posture="risk_on"),
+        SPYVolScaledTrendSignalConfig(as_of=AS_OF),
+    )
+    signal = strategy_signal_from_spy_vol_scaled_trend_result(result)
+    receipt = route_strategy_signals((signal,))
+
+    assert signal.strategy_id == SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    assert signal.strategy_family == SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY
+    assert signal.symbol == "SPY"
+    assert signal.asset_class == "equity"
+    assert signal.signal_state == "trade_candidate"
+    assert signal.intended_action == "buy"
+    assert signal.promotion_status == "paper_preview_candidate"
+    assert "paper_preview_quarantine" in signal.labels
+    assert "not_live_authorized" in signal.labels
+    assert receipt.route_status == "blocked"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.selected_signal is None
+    assert receipt.blocked_signal_ids == (SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,)
+    assert (
+        "spy_vol_scaled_trend_20d_fixed:"
+        "promotion_status_not_paper_mutation_candidate:paper_preview_candidate"
+    ) in receipt.blockers
 
 
 def test_router_receipt_preserves_labels_and_blockers() -> None:

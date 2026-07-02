@@ -18,6 +18,7 @@ from algotrader.orchestration.strategy_adapter_registry import (
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     StrategySignal,
 )
 
@@ -47,6 +48,33 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
     assert record["strategy_adapter_resolution_status"] == "resolved"
     assert record["strategy_adapter_id"] == "spy_sma_50_200_paper_mutation_adapter"
     assert record["strategy_adapter_paper_mutation_allowed"] is True
+    assert record["strategy_preview_states"][0]["strategy_id"] == (
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    )
+    assert record["strategy_preview_states"][0]["promotion_status"] == (
+        "paper_preview_candidate"
+    )
+    assert record["strategy_preview_adapter_resolutions"][0]["adapter_mode"] == (
+        "preview_only"
+    )
+    assert (
+        record["strategy_preview_adapter_resolutions"][0][
+            "paper_mutation_allowed"
+        ]
+        is False
+    )
+    assert record["strategy_action_disagreements"] == [
+        {
+            "strategy_id": SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
+            "promotion_status": "paper_preview_candidate",
+            "preview_intended_action": "buy",
+            "paper_execution_plan_action": "hold",
+            "selected_strategy_id": SMA_TRAINING_WHEEL_STRATEGY_ID,
+            "selected_strategy_intended_action": "buy",
+            "paper_mutation_allowed": False,
+            "reason": "preview_candidate_disagrees_with_paper_execution_plan",
+        }
+    ]
     assert record["preview_action_decision"] == "hold/noop"
     assert record["execution_plan_status"] == "no_action_required"
     assert record["blocker_status"] == "none"
@@ -281,6 +309,7 @@ def test_paper_autopilot_records_shadow_rsi_when_sma_has_insufficient_history(
     assert [signal["strategy_id"] for signal in signals] == [
         SMA_TRAINING_WHEEL_STRATEGY_ID,
         SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     ]
     assert signals[0]["signal_state"] == "insufficient_evidence"
     assert signals[0]["intended_action"] == "no_action"
@@ -288,10 +317,27 @@ def test_paper_autopilot_records_shadow_rsi_when_sma_has_insufficient_history(
     assert signals[1]["intended_action"] == "buy"
     assert signals[1]["promotion_status"] == "shadow_only"
     assert signals[1]["blockers"] == []
+    assert signals[2]["signal_state"] == "insufficient_evidence"
+    assert signals[2]["intended_action"] == "no_action"
+    assert signals[2]["promotion_status"] == "paper_preview_candidate"
+    assert "paper_preview_quarantine" in signals[2]["labels"]
+    assert record["strategy_preview_states"][0]["strategy_id"] == (
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    )
+    assert record["strategy_preview_adapter_resolutions"][0]["adapter_mode"] == (
+        "preview_only"
+    )
+    assert (
+        record["strategy_preview_adapter_resolutions"][0][
+            "paper_mutation_allowed"
+        ]
+        is False
+    )
     assert route_receipt["candidate_signal_ids"] == []
     assert route_receipt["blocked_signal_ids"] == [
         SMA_TRAINING_WHEEL_STRATEGY_ID,
         SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     ]
 
 

@@ -6,7 +6,9 @@ from decimal import Decimal
 from pathlib import Path
 
 from algotrader.orchestration.strategy_adapter_registry import (
+    DEFAULT_STRATEGY_ADAPTER_REGISTRY,
     SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+    SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID,
     StrategyAdapterRegistration,
     resolve_strategy_adapter,
     resolve_strategy_route_adapter,
@@ -16,6 +18,8 @@ from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
     StrategySignal,
     route_strategy_signals,
@@ -39,6 +43,47 @@ def test_known_sma_strategy_resolves_through_default_registry() -> None:
     assert resolution.adapter_mode == "paper_mutation"
     assert resolution.paper_mutation_allowed is True
     assert resolution.to_dict()["adapter"]["supported_symbols"] == ["SPY"]
+
+
+def test_default_registry_keeps_sma_as_only_paper_mutation_adapter() -> None:
+    mutation_registrations = [
+        registration
+        for registration in DEFAULT_STRATEGY_ADAPTER_REGISTRY
+        if registration.enabled and registration.adapter_mode == "paper_mutation"
+    ]
+
+    assert [item.strategy_id for item in mutation_registrations] == [
+        SMA_TRAINING_WHEEL_STRATEGY_ID
+    ]
+    assert mutation_registrations[0].adapter_id == (
+        SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
+    )
+
+
+def test_vol_scaled_trend_resolves_only_to_preview_adapter() -> None:
+    signal = _signal(
+        strategy_id=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
+        strategy_family=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
+        promotion_status="paper_preview_candidate",
+        labels=(*REQUIRED_LABELS, "paper_preview_quarantine"),
+    )
+
+    preview_resolution = resolve_strategy_adapter(
+        signal,
+        adapter_mode="preview_only",
+    )
+    mutation_resolution = resolve_strategy_adapter(
+        signal,
+        adapter_mode="paper_mutation",
+    )
+
+    assert preview_resolution.resolution_status == "resolved"
+    assert preview_resolution.adapter_id == SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID
+    assert preview_resolution.adapter_mode == "preview_only"
+    assert preview_resolution.paper_mutation_allowed is False
+    assert mutation_resolution.resolution_status == "blocked"
+    assert mutation_resolution.reason == "strategy_adapter_mode_mismatch"
+    assert mutation_resolution.paper_mutation_allowed is False
 
 
 def test_unknown_strategy_blocks_even_when_router_would_route() -> None:

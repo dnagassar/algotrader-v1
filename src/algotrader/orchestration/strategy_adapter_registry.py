@@ -11,6 +11,7 @@ from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
     StrategyPromotionStatus,
     StrategyRouteReceipt,
@@ -27,10 +28,14 @@ StrategyAdapterRegistryInput = (
 SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID = (
     "spy_sma_50_200_paper_mutation_adapter"
 )
+SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID = (
+    "spy_vol_scaled_trend_20d_preview_adapter"
+)
 
 __all__ = [
     "DEFAULT_STRATEGY_ADAPTER_REGISTRY",
     "SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID",
+    "SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID",
     "StrategyAdapterMode",
     "StrategyAdapterRegistration",
     "StrategyAdapterRegistryInput",
@@ -525,5 +530,19 @@ DEFAULT_STRATEGY_ADAPTER_REGISTRY: tuple[StrategyAdapterRegistration, ...] = (
         max_order_notional=Decimal("25.00"),
         enabled=True,
         required_labels=STRATEGY_ROUTER_REQUIRED_LABELS,
+    ),
+    StrategyAdapterRegistration(
+        strategy_id=SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
+        promotion_status="paper_preview_candidate",
+        adapter_id=SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID,
+        adapter_mode="preview_only",
+        asset_class="equity",
+        supported_symbols=("SPY",),
+        max_order_notional=None,
+        enabled=True,
+        required_labels=(
+            *STRATEGY_ROUTER_REQUIRED_LABELS,
+            "paper_preview_quarantine",
+        ),
     ),
 )

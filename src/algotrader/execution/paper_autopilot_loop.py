@@ -39,11 +39,13 @@ from algotrader.orchestration.strategy_router import (
     route_strategy_signals,
     strategy_signal_from_etf_sma_result,
     strategy_signal_from_spy_rsi_mean_reversion_result,
+    strategy_signal_from_spy_vol_scaled_trend_result,
 )
 from algotrader.orchestration.strategy_adapter_registry import (
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
     StrategyAdapterRegistryInput,
     StrategyAdapterResolution,
+    resolve_strategy_adapter,
     resolve_strategy_route_adapter,
 )
 from algotrader.signals.etf_sma_evaluator import (
@@ -53,6 +55,10 @@ from algotrader.signals.etf_sma_evaluator import (
 from algotrader.signals.spy_rsi_mean_reversion import (
     SPYRsiMeanReversionSignalConfig,
     evaluate_spy_rsi_mean_reversion_signal,
+)
+from algotrader.signals.spy_vol_scaled_trend import (
+    SPYVolScaledTrendSignalConfig,
+    evaluate_spy_vol_scaled_trend_signal,
 )
 
 
@@ -267,22 +273,39 @@ def run_paper_autopilot_loop(
             ),
         )
     )
+    vol_scaled_trend_signal = evaluate_spy_vol_scaled_trend_signal(
+        bars,
+        SPYVolScaledTrendSignalConfig(
+            as_of=as_of_dt,
+            symbol=resolved.symbol,
+        ),
+    )
+    vol_scaled_trend_strategy_signal = (
+        strategy_signal_from_spy_vol_scaled_trend_result(vol_scaled_trend_signal)
+    )
+    adapter_registry = _stable_strategy_adapter_registry(strategy_adapter_registry)
     route_receipt = route_strategy_signals(
         _strategy_signals(
             primary_strategy_signal,
             (shadow_strategy_signal,),
-            candidate_strategy_signals,
+            (
+                vol_scaled_trend_strategy_signal,
+                *_extra_strategy_signals(
+                    candidate_strategy_signals,
+                    field_name="candidate_strategy_signals",
+                ),
+            ),
         )
     )
     adapter_resolution = resolve_strategy_route_adapter(
         route_receipt,
-        registry=(
-            DEFAULT_STRATEGY_ADAPTER_REGISTRY
-            if strategy_adapter_registry is None
-            else strategy_adapter_registry
-        ),
+        registry=adapter_registry,
         adapter_mode="paper_mutation",
         requested_order_notional=resolved.max_notional,
+    )
+    preview_adapter_resolutions = _preview_strategy_adapter_resolutions(
+        route_receipt,
+        registry=adapter_registry,
     )
     route_blocker = _paper_autopilot_route_blocker(
         route_receipt,
@@ -347,8 +370,10 @@ def run_paper_autopilot_loop(
         data_sha256=data_sha256,
         as_of_date=as_of_date,
         signal=signal.to_dict(),
+        vol_scaled_trend_signal=vol_scaled_trend_signal.to_dict(),
         route_receipt=route_receipt,
         adapter_resolution=adapter_resolution,
+        preview_adapter_resolutions=preview_adapter_resolutions,
         posture=posture,
         preflight=preflight,
         broker_state=broker_state,
@@ -674,6 +699,18 @@ def _extra_strategy_signals(
     return extra_signals
 
 
+def _stable_strategy_adapter_registry(
+    registry: StrategyAdapterRegistryInput | None,
+) -> StrategyAdapterRegistryInput:
+    if registry is None:
+        return DEFAULT_STRATEGY_ADAPTER_REGISTRY
+    if isinstance(registry, Mapping):
+        return registry
+    if isinstance(registry, (str, bytes)) or not isinstance(registry, Iterable):
+        return registry
+    return tuple(registry)
+
+
 def _paper_autopilot_route_blocker(
     route_receipt: StrategyRouteReceipt,
     adapter_resolution: StrategyAdapterResolution,
@@ -689,6 +726,24 @@ def _paper_autopilot_route_blocker(
     if adapter_resolution.paper_mutation_allowed is not True:
         return "strategy_adapter_not_paper_mutation"
     return ""
+
+
+def _preview_strategy_adapter_resolutions(
+    route_receipt: StrategyRouteReceipt,
+    *,
+    registry: StrategyAdapterRegistryInput,
+) -> tuple[dict[str, object], ...]:
+    if not isinstance(route_receipt, StrategyRouteReceipt):
+        raise ValidationError("route_receipt must be a StrategyRouteReceipt.")
+    return tuple(
+        resolve_strategy_adapter(
+            signal,
+            registry=registry,
+            adapter_mode="preview_only",
+        ).to_dict()
+        for signal in route_receipt.signals
+        if signal.promotion_status == "paper_preview_candidate"
+    )
 
 
 def _build_intent(
@@ -1027,8 +1082,10 @@ def _build_record(
     data_sha256: str,
     as_of_date: str,
     signal: Mapping[str, Any],
+    vol_scaled_trend_signal: Mapping[str, Any],
     route_receipt: StrategyRouteReceipt,
     adapter_resolution: StrategyAdapterResolution,
+    preview_adapter_resolutions: Sequence[Mapping[str, object]],
     posture: str,
     preflight: Mapping[str, Any],
     broker_state: Mapping[str, Any],
@@ -1070,6 +1127,12 @@ def _build_record(
     request = _mapping(action_result.get("request"))
     route_payload = route_receipt.to_dict()
     adapter_payload = adapter_resolution.to_dict()
+    strategy_signal_states = _strategy_signal_states(route_receipt)
+    strategy_preview_states = _strategy_preview_states(route_receipt)
+    strategy_action_disagreements = _strategy_action_disagreements(
+        route_receipt,
+        plan,
+    )
     open_spy_orders = [
         order
         for order in _mapping_items(broker_state.get("open_orders"))
@@ -1104,6 +1167,7 @@ def _build_record(
         "input_data_sha256": data_sha256,
         "sma_posture": posture,
         "signal": dict(signal),
+        "vol_scaled_trend_signal": dict(vol_scaled_trend_signal),
         "strategy_route_receipt": route_payload,
         "strategy_route_status": route_receipt.route_status,
         "strategy_route_reason": route_receipt.reason,
@@ -1112,6 +1176,12 @@ def _build_record(
             route_receipt.paper_mutation_allowed
         ),
         "selected_strategy_id": route_payload.get("selected_signal_id"),
+        "strategy_signal_states": strategy_signal_states,
+        "strategy_preview_states": strategy_preview_states,
+        "strategy_preview_adapter_resolutions": [
+            dict(resolution) for resolution in preview_adapter_resolutions
+        ],
+        "strategy_action_disagreements": strategy_action_disagreements,
         "strategy_adapter_resolution": adapter_payload,
         "strategy_adapter_resolution_status": adapter_resolution.resolution_status,
         "strategy_adapter_reason": adapter_resolution.reason,
@@ -1282,6 +1352,8 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- SMA posture: `{record.get('sma_posture', '')}`",
             f"- Strategy route: `{record.get('strategy_route_status', '')}`",
             f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
+            f"- Preview candidates: `{len(record.get('strategy_preview_states', []))}`",
+            f"- Preview disagreements: `{len(record.get('strategy_action_disagreements', []))}`",
             f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
@@ -1314,6 +1386,8 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
             f"- SMA posture: `{record.get('sma_posture', '')}`",
             f"- Strategy route: `{record.get('strategy_route_status', '')}`",
             f"- Selected strategy: `{record.get('selected_strategy_id', '')}`",
+            f"- Preview candidates: `{len(record.get('strategy_preview_states', []))}`",
+            f"- Preview disagreements: `{len(record.get('strategy_action_disagreements', []))}`",
             f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
@@ -1339,6 +1413,10 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_route_action",
         "strategy_route_paper_mutation_allowed",
         "selected_strategy_id",
+        "strategy_signal_states",
+        "strategy_preview_states",
+        "strategy_preview_adapter_resolutions",
+        "strategy_action_disagreements",
         "strategy_adapter_resolution_status",
         "strategy_adapter_reason",
         "strategy_adapter_id",
@@ -1425,6 +1503,53 @@ def _preview_action_decision(plan: PaperAutopilotExecutionPlan) -> str:
     if plan.action == "hold":
         return "hold/noop"
     return "blocked"
+
+
+def _strategy_signal_states(
+    route_receipt: StrategyRouteReceipt,
+) -> list[dict[str, object]]:
+    return [signal.to_dict() for signal in route_receipt.signals]
+
+
+def _strategy_preview_states(
+    route_receipt: StrategyRouteReceipt,
+) -> list[dict[str, object]]:
+    return [
+        signal.to_dict()
+        for signal in route_receipt.signals
+        if signal.promotion_status == "paper_preview_candidate"
+    ]
+
+
+def _strategy_action_disagreements(
+    route_receipt: StrategyRouteReceipt,
+    plan: PaperAutopilotExecutionPlan,
+) -> list[dict[str, object]]:
+    selected_signal = route_receipt.selected_signal
+    selected_action = "" if selected_signal is None else selected_signal.intended_action
+    disagreements: list[dict[str, object]] = []
+    for signal in route_receipt.signals:
+        if signal.promotion_status != "paper_preview_candidate":
+            continue
+        if signal.intended_action in {"hold", "no_action"}:
+            continue
+        if signal.intended_action == plan.action:
+            continue
+        disagreements.append(
+            {
+                "strategy_id": signal.strategy_id,
+                "promotion_status": signal.promotion_status,
+                "preview_intended_action": signal.intended_action,
+                "paper_execution_plan_action": plan.action,
+                "selected_strategy_id": (
+                    "" if selected_signal is None else selected_signal.strategy_id
+                ),
+                "selected_strategy_intended_action": selected_action,
+                "paper_mutation_allowed": False,
+                "reason": "preview_candidate_disagrees_with_paper_execution_plan",
+            }
+        )
+    return disagreements
 
 
 def _next_operator_action(blocker_status: str, plan: PaperAutopilotExecutionPlan) -> str:
