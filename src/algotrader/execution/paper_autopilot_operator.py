@@ -36,17 +36,29 @@ _SUMMARY_FIELDS = (
     "final_supervisor_classification",
     "run_id",
     "as_of_date",
+    "latest_bar_date",
+    "data_refresh_status",
+    "data_freshness_status",
     "symbol",
     "sma_posture",
+    "selected_strategy_id",
     "operating_mode",
+    "no_submit_mode",
     "broker_state_mode",
+    "broker_read_performed",
+    "broker_state_observed",
+    "expected_account_matched",
     "pre_broker_daily_cycle_status",
     "pre_broker_daily_cycle_classification",
     "blocker_status",
     "final_supervisor_status",
     "broker_observed_supervisor_status",
+    "execution_plan_action",
     "action_decision",
-    "no_submit_mode",
+    "vol_scaled_preview_visible",
+    "vol_scaled_preview_mutation_allowed",
+    "vol_scaled_preview_submit_allowed",
+    "vol_scaled_preview_non_mutation_status",
     "paper_submit_performed",
     "broker_mutation_performed",
     "live_mutation_performed",
@@ -186,10 +198,18 @@ def build_paper_autopilot_operator_summary(
         ),
         "run_id": _text(rollup.get("run_id")),
         "as_of_date": _text(rollup.get("as_of_date")),
+        "latest_bar_date": _text(rollup.get("latest_bar_date")),
+        "data_refresh_status": _text(rollup.get("data_refresh_status")),
+        "data_freshness_status": _text(rollup.get("data_freshness_status")),
         "symbol": _text(rollup.get("symbol")),
         "sma_posture": _text(rollup.get("sma_posture")),
+        "selected_strategy_id": _text(rollup.get("selected_strategy_id")),
         "operating_mode": _text(rollup.get("operating_mode")),
+        "no_submit_mode": rollup.get("no_submit_mode") is True,
         "broker_state_mode": _text(rollup.get("broker_state_mode")),
+        "broker_read_performed": rollup.get("broker_read_performed") is True,
+        "broker_state_observed": rollup.get("broker_state_observed") is True,
+        "expected_account_matched": rollup.get("expected_account_matched"),
         "pre_broker_daily_cycle_status": _text(
             rollup.get("pre_broker_daily_cycle_status")
         ),
@@ -201,8 +221,20 @@ def build_paper_autopilot_operator_summary(
         "broker_observed_supervisor_status": _text(
             rollup.get("broker_observed_supervisor_status")
         ),
+        "execution_plan_action": _text(rollup.get("execution_plan_action")),
         "action_decision": _text(rollup.get("action_decision")),
-        "no_submit_mode": rollup.get("no_submit_mode") is True,
+        "vol_scaled_preview_visible": (
+            rollup.get("vol_scaled_preview_visible") is True
+        ),
+        "vol_scaled_preview_mutation_allowed": (
+            rollup.get("vol_scaled_preview_mutation_allowed") is True
+        ),
+        "vol_scaled_preview_submit_allowed": (
+            rollup.get("vol_scaled_preview_submit_allowed") is True
+        ),
+        "vol_scaled_preview_non_mutation_status": _text(
+            rollup.get("vol_scaled_preview_non_mutation_status")
+        ),
         "paper_submit_performed": rollup.get("paper_submit_performed") is True,
         "broker_mutation_performed": rollup.get("broker_mutation_performed") is True,
         "live_mutation_performed": rollup.get("live_mutation_performed") is True,

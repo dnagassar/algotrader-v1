@@ -195,6 +195,14 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     summary = result["operator_summary"]
     assert summary["classification"] == "mutation_would_be_required_no_submit_mode"
     assert summary["operating_mode"] == "visibility/no_submit"
+    assert summary["latest_bar_date"] == "2026-08-08"
+    assert summary["data_refresh_status"] == "no_refresh_required"
+    assert summary["data_freshness_status"] == "accepted_data_current"
+    assert summary["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert summary["broker_read_performed"] is True
+    assert summary["broker_state_observed"] is True
+    assert summary["broker_state_mode"] == "alpaca_paper_observed"
+    assert summary["expected_account_matched"] is True
     assert summary["blocker_status"] == "blocked/mutation_would_be_required_no_submit_mode"
     assert summary["final_supervisor_status"] == (
         "blocked/mutation_would_be_required_no_submit_mode"
@@ -204,6 +212,14 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     )
     assert summary["action_decision"] == "paper_buy_blocked_no_submit_mode"
     assert summary["no_submit_mode"] is True
+    assert summary["execution_plan_action"] == "buy"
+    assert summary["vol_scaled_preview_visible"] is True
+    assert summary["vol_scaled_preview_mutation_allowed"] is False
+    assert summary["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        summary["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     assert summary["paper_submit_performed"] is False
     assert summary["broker_mutation_performed"] is False
     assert result["rollup"]["broker_read_performed"] is True
@@ -211,6 +227,23 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     assert result["rollup"]["mutation_would_be_required_without_no_submit"] is True
     assert broker.submitted_requests == []
     assert "submit_order" not in broker.calls
+    rendered = render_paper_autopilot_operator_summary(summary)
+    assert "operating_mode=visibility/no_submit" in rendered
+    assert "no_submit_mode=true" in rendered
+    assert "latest_bar_date=2026-08-08" in rendered
+    assert "data_refresh_status=no_refresh_required" in rendered
+    assert "broker_read_performed=true" in rendered
+    assert "broker_state_observed=true" in rendered
+    assert "expected_account_matched=true" in rendered
+    assert "selected_strategy_id=spy_sma_50_200_training_wheel" in rendered
+    assert "execution_plan_action=buy" in rendered
+    assert "broker_mutation_performed=false" in rendered
+    assert "paper_submit_performed=false" in rendered
+    assert "live_mutation_performed=false" in rendered
+    assert "vol_scaled_preview_visible=true" in rendered
+    assert "vol_scaled_preview_mutation_allowed=false" in rendered
+    assert "vol_scaled_preview_submit_allowed=false" in rendered
+    assert "vol_scaled_preview_non_mutation_status=preview_only_non_mutating" in rendered
     assert paper_autopilot_operator_exit_status(result) == 1
 
 

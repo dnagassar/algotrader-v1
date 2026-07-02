@@ -24,6 +24,20 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
 
     assert rollup["classification"] == "healthy_hold_noop"
     assert rollup["operating_mode"] == "bounded_paper_mutation"
+    assert rollup["latest_bar_date"] == "2026-08-08"
+    assert rollup["data_refresh_status"] == "no_refresh_required"
+    assert rollup["data_freshness_status"] == "accepted_data_current"
+    assert rollup["broker_read_performed"] is True
+    assert rollup["expected_account_matched"] is True
+    assert rollup["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert rollup["execution_plan_action"] == "hold"
+    assert rollup["vol_scaled_preview_visible"] is True
+    assert rollup["vol_scaled_preview_mutation_allowed"] is False
+    assert rollup["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        rollup["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     assert rollup["final_supervisor_status"] == "none"
     assert rollup["broker_observed_supervisor_status"] == "none"
     assert rollup["final_supervisor_classification"] == (
@@ -35,6 +49,12 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     assert paper_autopilot_history_exit_status(rollup) == 0
     rendered = render_paper_autopilot_history_status(rollup)
     assert "classification=healthy_hold_noop" in rendered
+    assert "latest_bar_date=2026-08-08" in rendered
+    assert "data_refresh_status=no_refresh_required" in rendered
+    assert "expected_account_matched=true" in rendered
+    assert "selected_strategy_id=spy_sma_50_200_training_wheel" in rendered
+    assert "execution_plan_action=hold" in rendered
+    assert "vol_scaled_preview_non_mutation_status=preview_only_non_mutating" in rendered
     assert "final_supervisor_status=none" in rendered
     assert "latest_rollup=" in rendered
     _assert_history_artifacts(rollup)
@@ -394,17 +414,24 @@ def _base_status(
         "policy": "paper_autopilot_unlocked",
         "symbol": "SPY",
         "as_of_date": "2026-08-08",
+        "latest_bar_date": "2026-08-08",
+        "data_refresh_status": "no_refresh_required",
+        "data_freshness_status": "accepted_data_current",
         "input_data_path": "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
         "input_data_sha256": "a" * 64,
         "sma_posture": "risk_on",
         "operating_mode": "bounded_paper_mutation",
         "broker_state_mode": "alpaca_paper_observed",
         "broker_state_observed": True,
+        "broker_read_performed": True,
+        "expected_account_matched": True,
+        "selected_strategy_id": "spy_sma_50_200_training_wheel",
         "pre_broker_daily_cycle_status": "no_refresh_required",
         "pre_broker_daily_cycle_classification": "pre_broker_daily_cycle_ready",
         "broker_state": {
             "unexpected_non_spy_positions": [],
             "open_spy_order_present": False,
+            "expected_account_matched": True,
         },
         "preflight": {
             "APP_PROFILE": "paper",
@@ -419,7 +446,20 @@ def _base_status(
             "paper_submit_authorized": False,
             "submit_allowed": False,
         },
+        "execution_plan_action": "hold",
         "preview_action_decision": "hold/noop",
+        "vol_scaled_preview": {
+            "strategy_id": "spy_vol_scaled_trend_20d_fixed",
+            "visible": True,
+            "submit_allowed": False,
+            "paper_mutation_allowed": False,
+            "mutation_allowed": False,
+            "non_mutation_status": "preview_only_non_mutating",
+        },
+        "vol_scaled_preview_visible": True,
+        "vol_scaled_preview_mutation_allowed": False,
+        "vol_scaled_preview_submit_allowed": False,
+        "vol_scaled_preview_non_mutation_status": "preview_only_non_mutating",
         "blocker_status": "none",
         "final_supervisor_status": "none",
         "broker_observed_supervisor_status": "none",

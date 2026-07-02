@@ -186,7 +186,14 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
 
     assert record["no_submit_mode"] is True
     assert record["operating_mode"] == "visibility/no_submit"
+    assert record["data_refresh_status"] == "no_refresh_required"
+    assert record["data_freshness_status"] == "accepted_data_current"
+    assert record["latest_bar_date"] == "2026-08-08"
     assert record["broker_read_performed"] is True
+    assert record["broker_state_observed"] is True
+    assert record["broker_state_mode"] == "alpaca_paper_observed"
+    assert record["expected_account_matched"] is True
+    assert record["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
     assert record["execution_plan_action"] == "buy"
     assert record["intended_mutation_action"] == "buy"
     assert record["mutation_would_be_required_without_no_submit"] is True
@@ -216,6 +223,13 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert record["broker_mutation_performed"] is False
     assert record["mutation_performed"] is False
     assert record["live_mutation_performed"] is False
+    assert record["vol_scaled_preview_visible"] is True
+    assert record["vol_scaled_preview_mutation_allowed"] is False
+    assert record["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        record["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     assert record["reconciliation_status"] == "not_required_no_broker_mutation"
     assert broker.calls == [
         "get_account",
@@ -228,8 +242,14 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
 
     assert receipt["no_submit_mode"] is True
     assert receipt["operating_mode"] == "visibility/no_submit"
+    assert receipt["data_refresh_status"] == "no_refresh_required"
+    assert receipt["data_freshness_status"] == "accepted_data_current"
+    assert receipt["latest_bar_date"] == "2026-08-08"
     assert receipt["broker_read_performed"] is True
     assert receipt["broker_state_observed"] is True
+    assert receipt["broker_state_mode"] == "alpaca_paper_observed"
+    assert receipt["expected_account_matched"] is True
+    assert receipt["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
     assert receipt["execution_plan_action"] == "buy"
     assert receipt["intended_mutation_action"] == "buy"
     assert receipt["paper_submit_authorized"] is False
@@ -254,6 +274,17 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
         SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
     )
     assert receipt["vol_scaled_trend_signal"]["submit_allowed"] is False
+    assert receipt["vol_scaled_preview"]["strategy_id"] == (
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    )
+    assert receipt["vol_scaled_preview"]["visible"] is True
+    assert receipt["vol_scaled_preview_visible"] is True
+    assert receipt["vol_scaled_preview_mutation_allowed"] is False
+    assert receipt["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        receipt["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     assert receipt["strategy_preview_states"][0]["strategy_id"] == (
         SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
     )
@@ -271,8 +302,22 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert rollup["classification"] == "mutation_would_be_required_no_submit_mode"
     assert rollup["no_submit_mode"] is True
     assert rollup["operating_mode"] == "visibility/no_submit"
+    assert rollup["data_refresh_status"] == "no_refresh_required"
+    assert rollup["data_freshness_status"] == "accepted_data_current"
+    assert rollup["latest_bar_date"] == "2026-08-08"
     assert rollup["broker_read_performed"] is True
+    assert rollup["broker_state_observed"] is True
+    assert rollup["expected_account_matched"] is True
+    assert rollup["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
+    assert rollup["execution_plan_action"] == "buy"
     assert rollup["broker_mutation_performed"] is False
+    assert rollup["vol_scaled_preview_visible"] is True
+    assert rollup["vol_scaled_preview_mutation_allowed"] is False
+    assert rollup["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        rollup["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     _assert_no_sensitive_values(record)
 
 

@@ -1167,6 +1167,11 @@ def _build_record(
     adapter_payload = adapter_resolution.to_dict()
     strategy_signal_states = _strategy_signal_states(route_receipt)
     strategy_preview_states = _strategy_preview_states(route_receipt)
+    vol_scaled_preview = _vol_scaled_preview_receipt(
+        signal_payload=vol_scaled_trend_signal,
+        preview_states=strategy_preview_states,
+        preview_adapter_resolutions=preview_adapter_resolutions,
+    )
     strategy_action_disagreements = _strategy_action_disagreements(
         route_receipt,
         plan,
@@ -1224,6 +1229,15 @@ def _build_record(
         "sma_posture": posture,
         "signal": dict(signal),
         "vol_scaled_trend_signal": dict(vol_scaled_trend_signal),
+        "vol_scaled_preview": vol_scaled_preview,
+        "vol_scaled_preview_visible": vol_scaled_preview["visible"],
+        "vol_scaled_preview_mutation_allowed": vol_scaled_preview[
+            "mutation_allowed"
+        ],
+        "vol_scaled_preview_submit_allowed": vol_scaled_preview["submit_allowed"],
+        "vol_scaled_preview_non_mutation_status": vol_scaled_preview[
+            "non_mutation_status"
+        ],
         "strategy_route_receipt": route_payload,
         "strategy_route_status": route_receipt.route_status,
         "strategy_route_reason": route_receipt.reason,
@@ -1556,7 +1570,9 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
 def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
     fields = (
         "run_timestamp",
+        "latest_bar_date",
         "data_latest_bar",
+        "data_refresh_status",
         "data_freshness_status",
         "sma_posture",
         "strategy_route_status",
@@ -1565,6 +1581,11 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_route_paper_mutation_allowed",
         "selected_strategy_id",
         "vol_scaled_trend_signal",
+        "vol_scaled_preview",
+        "vol_scaled_preview_visible",
+        "vol_scaled_preview_mutation_allowed",
+        "vol_scaled_preview_submit_allowed",
+        "vol_scaled_preview_non_mutation_status",
         "strategy_signal_states",
         "strategy_preview_states",
         "strategy_preview_adapter_resolutions",
@@ -1579,6 +1600,7 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "broker_read_performed",
         "spy_position_observed",
         "open_spy_orders_observed",
+        "expected_account_matched",
         "no_submit_mode",
         "operating_mode",
         "pre_broker_daily_cycle_status",
@@ -1688,6 +1710,56 @@ def _strategy_preview_states(
         for signal in route_receipt.signals
         if signal.promotion_status == "paper_preview_candidate"
     ]
+
+
+def _vol_scaled_preview_receipt(
+    *,
+    signal_payload: Mapping[str, Any],
+    preview_states: Sequence[Mapping[str, object]],
+    preview_adapter_resolutions: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    strategy_id = _text(signal_payload.get("strategy_id"))
+    preview_state = _first_mapping_by_strategy_id(preview_states, strategy_id)
+    adapter_resolution = _first_mapping_by_strategy_id(
+        preview_adapter_resolutions,
+        strategy_id,
+    )
+    visible = bool(strategy_id and preview_state)
+    submit_allowed = signal_payload.get("submit_allowed") is True
+    mutation_allowed = (
+        signal_payload.get("paper_mutation_allowed") is True
+        or adapter_resolution.get("paper_mutation_allowed") is True
+        or adapter_resolution.get("mutation_allowed") is True
+    )
+    if visible and not submit_allowed and not mutation_allowed:
+        non_mutation_status = "preview_only_non_mutating"
+    else:
+        non_mutation_status = "not_verified_non_mutating"
+    return {
+        "strategy_id": strategy_id,
+        "visible": visible,
+        "promotion_status": _first_nonempty_text(
+            preview_state.get("promotion_status"),
+            signal_payload.get("promotion_status"),
+        ),
+        "adapter_mode": _text(adapter_resolution.get("adapter_mode")),
+        "submit_allowed": submit_allowed,
+        "paper_mutation_allowed": mutation_allowed,
+        "mutation_allowed": mutation_allowed,
+        "non_mutation_status": non_mutation_status,
+    }
+
+
+def _first_mapping_by_strategy_id(
+    values: Sequence[Mapping[str, object]],
+    strategy_id: str,
+) -> Mapping[str, object]:
+    if not strategy_id:
+        return {}
+    for value in values:
+        if _text(value.get("strategy_id")) == strategy_id:
+            return value
+    return {}
 
 
 def _strategy_action_disagreements(
