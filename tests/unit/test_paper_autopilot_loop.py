@@ -313,6 +313,53 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
         rollup["autonomy_status"]
         == "paper_mutation_would_be_required_no_submit_mode"
     )
+    assert rollup["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert rollup["readiness_blockers"] == [
+        "no_submit_mode",
+        "paper_mutation_required",
+    ]
+    assert rollup["readiness_packet_generated"] is True
+    packet_path = Path(rollup["artifact_paths"]["paper_mutation_readiness_packet"])
+    assert packet_path.is_file()
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert packet["source_visibility_run_id"] == record["run_id"]
+    assert (
+        packet["source_autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
+    assert packet["source_execution_plan_id"] == record["execution_plan"][
+        "execution_plan_id"
+    ]
+    assert packet["source_client_order_id"] == record["execution_plan"][
+        "client_order_id"
+    ]
+    assert packet["symbol"] == "SPY"
+    assert packet["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
+    assert packet["strategy_adapter_id"] == "spy_sma_50_200_paper_mutation_adapter"
+    assert packet["strategy_adapter_mode"] == "paper_mutation"
+    assert packet["strategy_route_action"] == "buy"
+    assert packet["execution_plan_action"] == "buy"
+    assert packet["intended_mutation_action"] == "buy"
+    assert packet["side"] == "buy"
+    assert packet["notional"] == "25.00"
+    assert packet["quantity"] == ""
+    assert packet["notional_cap"] == "25.00"
+    assert packet["no_submit_mode"] is True
+    assert packet["broker_read_performed"] is True
+    assert packet["broker_state_observed"] is True
+    assert packet["broker_state_mode"] == "alpaca_paper_observed"
+    assert packet["expected_account_matched"] is True
+    assert packet["spy_position_observed"] is False
+    assert packet["spy_position_quantity"] == "0"
+    assert packet["open_spy_orders_observed"] == 0
+    assert packet["unexpected_non_spy_positions"] == []
+    assert packet["data_freshness_status"] == "accepted_data_current"
+    assert packet["latest_bar_date"] == "2026-08-08"
+    assert packet["paper_submit_authorized"] is False
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
+    assert packet["readiness_status"] == "readiness_blocked_no_submit_mode"
     assert rollup["no_submit_mode"] is True
     assert rollup["operating_mode"] == "visibility/no_submit"
     assert rollup["data_refresh_status"] == "no_refresh_required"
@@ -581,6 +628,13 @@ def test_paper_autopilot_conflicting_strategy_route_skips_broker_factory(
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
     assert record["broker_mutation_performed"] is False
+    rollup = json.loads(
+        Path(record["artifact_paths"]["latest_rollup"]).read_text(encoding="utf-8")
+    )
+    assert (
+        rollup["readiness_status"]
+        == "readiness_blocked_strategy_not_mutation_capable"
+    )
 
 
 def test_paper_autopilot_records_shadow_rsi_when_sma_has_insufficient_history(
@@ -705,6 +759,13 @@ def test_paper_autopilot_disabled_strategy_adapter_skips_broker_factory(
     assert record["broker_state_observed"] is False
     assert record["paper_submit_authorized"] is False
     assert record["broker_mutation_performed"] is False
+    rollup = json.loads(
+        Path(record["artifact_paths"]["latest_rollup"]).read_text(encoding="utf-8")
+    )
+    assert (
+        rollup["readiness_status"]
+        == "readiness_blocked_strategy_not_mutation_capable"
+    )
 
 
 def test_paper_autopilot_blocks_expected_account_mismatch_before_positions(
@@ -728,6 +789,10 @@ def test_paper_autopilot_blocks_expected_account_mismatch_before_positions(
     assert record["broker_mutation_performed"] is False
     assert broker.calls == ["get_account"]
     assert broker.submitted_requests == []
+    rollup = json.loads(
+        Path(record["artifact_paths"]["latest_rollup"]).read_text(encoding="utf-8")
+    )
+    assert rollup["readiness_status"] == "readiness_blocked_expected_account_mismatch"
     _assert_no_sensitive_values(record)
 
 
@@ -999,6 +1064,8 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     rollup = json.loads(Path(paths["latest_rollup"]).read_text(encoding="utf-8"))
     assert rollup["classification"] == "healthy_hold_noop"
     assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert rollup["readiness_status"] == "no_mutation_needed_continue"
+    assert rollup["readiness_packet_generated"] is False
 
 
 def _assert_no_sensitive_values(record: dict[str, object]) -> None:

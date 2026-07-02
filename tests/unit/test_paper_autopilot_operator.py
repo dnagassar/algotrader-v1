@@ -32,6 +32,10 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
     assert summary["classification"] == "healthy_hold_noop"
     assert summary["autonomy_status"] == "healthy_continue_next_daily_cycle"
     assert summary["autonomy_next_action"] == "continue_next_daily_cycle"
+    assert summary["readiness_status"] == "no_mutation_needed_continue"
+    assert summary["readiness_blockers"] == []
+    assert summary["required_operator_action"] == "continue_next_daily_cycle"
+    assert summary["readiness_packet_generated"] is False
     assert summary["changed_since_previous"] is False
     assert summary["hard_stop"] is False
     assert summary["attention_required"] is False
@@ -65,6 +69,8 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
     assert "classification=healthy_hold_noop" in rendered
     assert "autonomy_status=healthy_continue_next_daily_cycle" in rendered
     assert "autonomy_next_action=continue_next_daily_cycle" in rendered
+    assert "readiness_status=no_mutation_needed_continue" in rendered
+    assert "readiness_packet_generated=false" in rendered
     assert "changed_since_previous=false" in rendered
     assert "operator_exit_code=0" in rendered
     _assert_history_artifacts(result)
@@ -108,6 +114,7 @@ def test_operator_broker_state_not_observed_is_explicit_nonzero(
     assert summary["classification"] == "broker_state_not_observed"
     assert summary["autonomy_status"] == "blocked_configure_verified_paper_profile"
     assert summary["autonomy_next_action"] == "configure_verified_paper_profile_then_rerun"
+    assert summary["readiness_status"] == "readiness_blocked_broker_state_not_observed"
     assert summary["broker_state_mode"] == "broker_state_not_observed"
     assert summary["blocker_status"] == "blocked/broker_state_not_observed"
     assert summary["final_supervisor_status"] == "blocked/broker_state_not_observed"
@@ -223,6 +230,16 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
         summary["autonomy_next_action"]
         == "review_visibility_only_intended_action_no_submit_mode"
     )
+    assert summary["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert summary["readiness_blockers"] == [
+        "no_submit_mode",
+        "paper_mutation_required",
+    ]
+    assert summary["required_operator_action"] == (
+        "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval"
+    )
+    assert summary["readiness_packet_generated"] is True
+    assert summary["paper_mutation_readiness_packet"]
     assert summary["operating_mode"] == "visibility/no_submit"
     assert summary["latest_bar_date"] == "2026-08-08"
     assert summary["data_refresh_status"] == "no_refresh_required"
@@ -272,6 +289,9 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
         in rendered
     )
     assert "autonomy_next_action=review_visibility_only_intended_action_no_submit_mode" in rendered
+    assert "readiness_status=readiness_blocked_no_submit_mode" in rendered
+    assert "readiness_blockers=no_submit_mode,paper_mutation_required" in rendered
+    assert "readiness_packet_generated=true" in rendered
     assert "broker_mutation_performed=false" in rendered
     assert "paper_submit_performed=false" in rendered
     assert "live_mutation_performed=false" in rendered

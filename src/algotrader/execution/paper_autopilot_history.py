@@ -31,6 +31,12 @@ PAPER_AUTOPILOT_OPERATING_SUMMARY_FILENAME = "operating_summary.md"
 PAPER_AUTOPILOT_DAILY_AUTONOMY_LEDGER_FILENAME = "daily_autonomy_ledger.jsonl"
 PAPER_AUTOPILOT_LATEST_DAILY_AUTONOMY_FILENAME = "latest_daily_autonomy.json"
 PAPER_AUTOPILOT_DAILY_AUTONOMY_SUMMARY_FILENAME = "daily_autonomy_summary.md"
+PAPER_MUTATION_READINESS_PACKET_SCHEMA_VERSION = (
+    "v4_7_paper_mutation_readiness_packet_v1"
+)
+PAPER_MUTATION_READINESS_PACKET_FILENAME_PREFIX = (
+    "paper_mutation_readiness_packet_"
+)
 
 _REQUIRED_SAFETY_LABELS = frozenset({"paper_lab_only", "not_live_authorized"})
 _CONFIRMED_RECONCILIATION_STATUSES = frozenset(
@@ -45,6 +51,24 @@ _CONFIRMED_RECONCILIATION_STATUSES = frozenset(
     }
 )
 _HEALTHY_BLOCKERS = frozenset({"", "none"})
+_PAPER_MUTATION_ACTIONS = frozenset({"buy", "sell_close"})
+_READINESS_PACKET_AUTONOMY_STATUSES = frozenset(
+    {
+        "paper_mutation_would_be_required_no_submit_mode",
+        "paper_mutation_candidate_requires_explicit_authorized_run",
+    }
+)
+_STRATEGY_NOT_MUTATION_CAPABLE_BLOCKERS = frozenset(
+    {
+        "operator_disabled_strategy_adapter",
+        "strategy_adapter_missing",
+        "strategy_adapter_not_enabled",
+        "strategy_router_all_candidates_blocked",
+        "strategy_router_conflict_requires_review",
+        "strategy_not_paper_mutation_capable",
+        "strategy_route_not_mutation_capable",
+    }
+)
 _COMPARISON_FIELDS = (
     "as_of_date",
     "latest_bar_date",
@@ -67,6 +91,7 @@ _COMPARISON_FIELDS = (
     "reconciliation_status",
     "classification",
     "final_supervisor_classification",
+    "readiness_status",
     "vol_scaled_preview_intended_action",
     "broker_mutation_performed",
     "paper_submit_performed",
@@ -127,16 +152,35 @@ def update_paper_autopilot_operating_history(
         normalized,
         previous_record=previous_record,
     )
+    readiness = classify_paper_mutation_readiness_record(
+        {
+            **normalized,
+            **classification,
+            **autonomy,
+        }
+    )
     entry = {
         **normalized,
         **classification,
         **autonomy,
+        **readiness,
         "history_schema_version": PAPER_AUTOPILOT_HISTORY_SCHEMA_VERSION,
         "history_sequence": len(previous_records) + 1,
     }
     comparison = _compare_to_previous(entry, previous_record)
     entry["comparison_to_previous"] = comparison
     entry["changed_since_previous"] = comparison["changed_since_previous"]
+    readiness_packet_generated = _readiness_packet_should_be_generated(entry)
+    readiness_packet_path = _readiness_packet_path(history_root, entry)
+    entry["readiness_packet_generated"] = readiness_packet_generated
+    entry["paper_mutation_readiness_packet_path"] = (
+        str(readiness_packet_path) if readiness_packet_generated else ""
+    )
+    entry["paper_mutation_readiness_packet"] = (
+        build_paper_mutation_readiness_packet(entry)
+        if readiness_packet_generated
+        else {}
+    )
     autonomy_entry = _build_daily_autonomy_ledger_entry(entry, comparison)
 
     with history_path.open("a", encoding="utf-8", newline="\n") as handle:
@@ -155,6 +199,17 @@ def update_paper_autopilot_operating_history(
         encoding="utf-8",
         newline="\n",
     )
+    if readiness_packet_generated:
+        readiness_packet_path.write_text(
+            json.dumps(
+                entry["paper_mutation_readiness_packet"],
+                sort_keys=True,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
 
     rollup = _build_rollup(
         entry=entry,
@@ -166,6 +221,9 @@ def update_paper_autopilot_operating_history(
         autonomy_ledger_path=autonomy_ledger_path,
         autonomy_latest_path=autonomy_latest_path,
         autonomy_summary_path=autonomy_summary_path,
+        readiness_packet_path=readiness_packet_path
+        if readiness_packet_generated
+        else None,
     )
     rollup_path.write_text(
         json.dumps(rollup, sort_keys=True, indent=2) + "\n",
@@ -553,6 +611,211 @@ def classify_paper_autopilot_autonomy_record(
     )
 
 
+def classify_paper_mutation_readiness_record(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Classify whether the latest autonomy state is ready for paper mutation."""
+
+    blocker_status = _text(record.get("blocker_status"))
+    blocker_key = _blocker_key(blocker_status)
+    execution_plan_action = _text(record.get("execution_plan_action"))
+    intended_mutation_action = _first_nonempty_text(
+        record.get("intended_mutation_action"),
+        execution_plan_action if execution_plan_action in _PAPER_MUTATION_ACTIONS else "",
+    )
+
+    if _readiness_hard_stop_invariant(record):
+        return _readiness_classification(
+            "readiness_hard_stop_safety_invariant",
+            _readiness_reason_codes(record, fallback=("safety_invariant",)),
+            "stop_and_review_safety_invariant",
+        )
+
+    if (
+        record.get("status_artifact_available") is not True
+        or record.get("status_artifact_valid") is not True
+        or record.get("status_artifact_stale") is True
+    ):
+        return _readiness_classification(
+            "readiness_blocked_stale_data",
+            ("latest_status_artifact_unavailable_or_stale",),
+            "refresh_or_validate_daily_bars",
+        )
+
+    if _data_refresh_or_freshness_blocked(record):
+        return _readiness_classification(
+            "readiness_blocked_stale_data",
+            ("stale_or_invalid_data",),
+            "refresh_or_validate_daily_bars",
+        )
+
+    if record.get("expected_account_matched") is False or blocker_key in {
+        "expected_account_id_unavailable",
+        "expected_account_mismatch",
+        "expected_account_match_not_observed",
+    }:
+        return _readiness_classification(
+            "readiness_blocked_expected_account_mismatch",
+            (blocker_key or "expected_account_mismatch",),
+            "stop_and_review_expected_paper_account_before_any_submit",
+        )
+
+    if (
+        record.get("open_order_present") is True
+        or _int(record.get("open_spy_orders_observed")) > 0
+        or blocker_key == "open_order_present"
+    ):
+        return _readiness_classification(
+            "readiness_blocked_open_spy_order_present",
+            ("open_spy_order_present",),
+            "reconcile_existing_spy_open_order_before_submit",
+        )
+
+    if (
+        record.get("unexpected_non_spy_position") is True
+        or _int(record.get("unexpected_non_spy_positions_count")) > 0
+        or blocker_key == "unexpected_non_spy_position"
+    ):
+        return _readiness_classification(
+            "readiness_blocked_unexpected_non_spy_position",
+            ("unexpected_non_spy_position",),
+            "operator_review_non_spy_position",
+        )
+
+    if _selected_strategy_is_preview_only(record):
+        return _readiness_classification(
+            "readiness_blocked_preview_only_strategy",
+            ("preview_only_strategy",),
+            "keep_preview_only_strategy_quarantined",
+        )
+
+    if _strategy_not_mutation_capable(record, blocker_key=blocker_key):
+        return _readiness_classification(
+            "readiness_blocked_strategy_not_mutation_capable",
+            (blocker_key or "strategy_not_mutation_capable",),
+            "review_strategy_adapter_promotion_before_any_paper_mutation",
+        )
+
+    if record.get("broker_state_observed") is not True:
+        return _readiness_classification(
+            "readiness_blocked_broker_state_not_observed",
+            ("broker_state_not_observed",),
+            "configure_verified_paper_profile_then_rerun",
+        )
+
+    if (
+        record.get("no_submit_mode") is True
+        and (
+            record.get("mutation_would_be_required_without_no_submit") is True
+            or intended_mutation_action in _PAPER_MUTATION_ACTIONS
+        )
+    ):
+        return _readiness_classification(
+            "readiness_blocked_no_submit_mode",
+            ("no_submit_mode", "paper_mutation_required"),
+            "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval",
+        )
+
+    if record.get("paper_submit_performed") is True:
+        return _readiness_classification(
+            "no_mutation_needed_continue",
+            (),
+            "continue_next_daily_cycle",
+        )
+
+    if (
+        execution_plan_action in {"", "hold", "no_action"}
+        and blocker_status in _HEALTHY_BLOCKERS
+    ):
+        return _readiness_classification(
+            "no_mutation_needed_continue",
+            (),
+            "continue_next_daily_cycle",
+        )
+
+    if _text(record.get("autonomy_status")) == (
+        "paper_mutation_candidate_requires_explicit_authorized_run"
+    ):
+        if (
+            execution_plan_action in _PAPER_MUTATION_ACTIONS
+            and intended_mutation_action in _PAPER_MUTATION_ACTIONS
+            and record.get("paper_submit_authorized") is True
+            and record.get("paper_submit_performed") is not True
+            and record.get("broker_mutation_performed") is not True
+            and record.get("live_mutation_performed") is not True
+        ):
+            return _readiness_classification(
+                "readiness_ready_for_explicit_bounded_paper_authorized_run",
+                (),
+                "run_explicit_authorized_bounded_paper_mutation_after_operator_approval",
+            )
+        return _readiness_classification(
+            "readiness_hard_stop_safety_invariant",
+            ("paper_mutation_candidate_missing_authorization_gate",),
+            "stop_and_review_safety_invariant",
+        )
+
+    if blocker_status not in _HEALTHY_BLOCKERS:
+        return _readiness_classification(
+            "readiness_hard_stop_safety_invariant",
+            (blocker_key or "unclassified_blocker",),
+            "stop_and_review_safety_invariant",
+        )
+
+    return _readiness_classification(
+        "readiness_hard_stop_safety_invariant",
+        ("unclassified_readiness_state",),
+        "stop_and_review_safety_invariant",
+    )
+
+
+def build_paper_mutation_readiness_packet(
+    record: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Build the deterministic paper-mutation readiness packet."""
+
+    return {
+        "paper_mutation_readiness_packet_schema_version": (
+            PAPER_MUTATION_READINESS_PACKET_SCHEMA_VERSION
+        ),
+        "generated_at": _text(record.get("generated_at")),
+        "source_visibility_run_id": _text(record.get("run_id")),
+        "source_autonomy_status": _text(record.get("autonomy_status")),
+        "source_execution_plan_id": _text(record.get("execution_plan_id")),
+        "source_client_order_id": _text(record.get("client_order_id")),
+        "symbol": _text(record.get("symbol")),
+        "selected_strategy_id": _text(record.get("selected_strategy_id")),
+        "strategy_adapter_id": _text(record.get("strategy_adapter_id")),
+        "strategy_adapter_mode": _text(record.get("strategy_adapter_mode")),
+        "strategy_route_action": _text(record.get("strategy_route_action")),
+        "execution_plan_action": _text(record.get("execution_plan_action")),
+        "intended_mutation_action": _text(record.get("intended_mutation_action")),
+        "side": _text(record.get("side")),
+        "notional": _text(record.get("notional")),
+        "quantity": _text(record.get("quantity")),
+        "notional_cap": _text(record.get("notional_cap")),
+        "no_submit_mode": record.get("no_submit_mode") is True,
+        "broker_read_performed": record.get("broker_read_performed") is True,
+        "broker_state_observed": record.get("broker_state_observed") is True,
+        "broker_state_mode": _text(record.get("broker_state_mode")),
+        "expected_account_matched": record.get("expected_account_matched"),
+        "spy_position_observed": record.get("spy_position_observed") is True,
+        "spy_position_quantity": _text(record.get("spy_position_quantity")),
+        "open_spy_orders_observed": _int(record.get("open_spy_orders_observed")),
+        "unexpected_non_spy_positions": list(
+            _string_list(record.get("unexpected_non_spy_positions"))
+        ),
+        "data_freshness_status": _text(record.get("data_freshness_status")),
+        "latest_bar_date": _text(record.get("latest_bar_date")),
+        "paper_submit_authorized": record.get("paper_submit_authorized") is True,
+        "paper_submit_performed": record.get("paper_submit_performed") is True,
+        "broker_mutation_performed": record.get("broker_mutation_performed") is True,
+        "live_mutation_performed": record.get("live_mutation_performed") is True,
+        "readiness_status": _text(record.get("readiness_status")),
+        "readiness_blockers": list(_string_list(record.get("readiness_blockers"))),
+        "required_operator_action": _text(record.get("required_operator_action")),
+        "safety_labels": list(_string_list(record.get("safety_labels"))),
+    }
+
+
 def paper_autopilot_history_exit_status(rollup: Mapping[str, Any]) -> int:
     if rollup.get("hard_stop") is True:
         return 2
@@ -569,6 +832,12 @@ def render_paper_autopilot_history_status(rollup: Mapping[str, Any]) -> str:
         f"classification={_text(rollup.get('classification'))}",
         f"autonomy_status={_text(rollup.get('autonomy_status'))}",
         f"autonomy_next_action={_text(rollup.get('autonomy_next_action'))}",
+        f"readiness_status={_text(rollup.get('readiness_status'))}",
+        "readiness_blockers="
+        + ",".join(_string_list(rollup.get("readiness_blockers"))),
+        f"required_operator_action={_text(rollup.get('required_operator_action'))}",
+        "readiness_packet_generated="
+        f"{str(rollup.get('readiness_packet_generated') is True).lower()}",
         "changed_since_previous="
         f"{str(rollup.get('changed_since_previous') is True).lower()}",
         "final_supervisor_classification="
@@ -651,6 +920,8 @@ def render_paper_autopilot_history_status(rollup: Mapping[str, Any]) -> str:
         f"daily_autonomy_summary={_text(artifact_paths.get('daily_autonomy_summary'))}",
         f"latest_rollup={_text(artifact_paths.get('latest_rollup'))}",
         f"operating_summary={_text(artifact_paths.get('operating_summary'))}",
+        "paper_mutation_readiness_packet="
+        f"{_text(artifact_paths.get('paper_mutation_readiness_packet'))}",
     ]
     return "\n".join(lines) + "\n"
 
@@ -668,6 +939,10 @@ def render_paper_autopilot_operating_summary(rollup: Mapping[str, Any]) -> str:
             f"- Classification: `{_text(rollup.get('classification'))}`",
             f"- Autonomy status: `{_text(rollup.get('autonomy_status'))}`",
             f"- Autonomy next action: `{_text(rollup.get('autonomy_next_action'))}`",
+            f"- Readiness status: `{_text(rollup.get('readiness_status'))}`",
+            f"- Readiness blockers: `{', '.join(_string_list(rollup.get('readiness_blockers'))) or 'none'}`",
+            f"- Required operator action: `{_text(rollup.get('required_operator_action'))}`",
+            f"- Readiness packet generated: `{str(rollup.get('readiness_packet_generated') is True).lower()}`",
             f"- Changed since previous: `{str(rollup.get('changed_since_previous') is True).lower()}`",
             f"- Final supervisor classification: `{_text(rollup.get('final_supervisor_classification'))}`",
             f"- Attention required: `{str(rollup.get('attention_required') is True).lower()}`",
@@ -714,6 +989,7 @@ def render_paper_autopilot_operating_summary(rollup: Mapping[str, Any]) -> str:
             f"- Daily autonomy summary: `{_text(artifact_paths.get('daily_autonomy_summary'))}`",
             f"- Latest rollup: `{_text(artifact_paths.get('latest_rollup'))}`",
             f"- Operating summary: `{_text(artifact_paths.get('operating_summary'))}`",
+            f"- Paper mutation readiness packet: `{_text(artifact_paths.get('paper_mutation_readiness_packet'))}`",
             "",
         ]
     )
@@ -729,6 +1005,8 @@ def render_paper_autopilot_daily_autonomy_summary(
             "",
             f"- Autonomy status: `{_text(entry.get('autonomy_status'))}`",
             f"- Autonomy next action: `{_text(entry.get('autonomy_next_action'))}`",
+            f"- Readiness status: `{_text(entry.get('readiness_status'))}`",
+            f"- Required operator action: `{_text(entry.get('required_operator_action'))}`",
             f"- Changed since previous: `{str(entry.get('changed_since_previous') is True).lower()}`",
             f"- Hard stop: `{str(entry.get('hard_stop') is True).lower()}`",
             f"- Attention required: `{str(entry.get('attention_required') is True).lower()}`",
@@ -869,6 +1147,20 @@ def _normalize_status_payload(
             payload.get("strategy_route_action"),
             route_receipt.get("route_action"),
         ),
+        "strategy_route_paper_mutation_allowed": _bool_or_none(
+            payload.get("strategy_route_paper_mutation_allowed")
+        )
+        if payload.get("strategy_route_paper_mutation_allowed") not in (None, "")
+        else _bool_or_none(route_receipt.get("paper_mutation_allowed")),
+        "strategy_adapter_resolution_status": _text(
+            payload.get("strategy_adapter_resolution_status")
+        ),
+        "strategy_adapter_reason": _text(payload.get("strategy_adapter_reason")),
+        "strategy_adapter_id": _text(payload.get("strategy_adapter_id")),
+        "strategy_adapter_mode": _text(payload.get("strategy_adapter_mode")),
+        "strategy_adapter_paper_mutation_allowed": _bool_or_none(
+            payload.get("strategy_adapter_paper_mutation_allowed")
+        ),
         "pre_broker_daily_cycle_status": pre_broker_daily_cycle_status,
         "pre_broker_daily_cycle_classification": _first_nonempty_text(
             payload.get("pre_broker_daily_cycle_classification"),
@@ -895,6 +1187,28 @@ def _normalize_status_payload(
         "client_order_id": _first_nonempty_text(
             execution_plan_summary.get("client_order_id"),
             execution_plan.get("client_order_id"),
+        ),
+        "side": _first_nonempty_text(
+            payload.get("side"),
+            execution_plan_summary.get("side"),
+            execution_plan.get("side"),
+        ),
+        "notional": _first_nonempty_text(
+            payload.get("notional"),
+            execution_plan_summary.get("notional"),
+            execution_plan.get("notional"),
+            payload.get("requested_notional"),
+        ),
+        "quantity": _first_nonempty_text(
+            payload.get("quantity"),
+            execution_plan_summary.get("quantity"),
+            execution_plan.get("quantity"),
+            payload.get("requested_quantity"),
+        ),
+        "notional_cap": _first_nonempty_text(
+            payload.get("notional_cap"),
+            execution_plan_summary.get("notional_cap"),
+            execution_plan.get("notional_cap"),
         ),
         "no_submit_mode": no_submit_mode,
         "broker_read_performed": _bool(payload.get("broker_read_performed")),
@@ -1087,6 +1401,106 @@ def _autonomy_classification(
         "autonomy_hard_stop": hard_stop,
         "autonomy_reason_codes": list(reason_codes),
     }
+
+
+def _readiness_classification(
+    readiness_status: str,
+    readiness_blockers: Sequence[str],
+    required_operator_action: str,
+) -> dict[str, Any]:
+    return {
+        "readiness_status": readiness_status,
+        "readiness_blockers": list(readiness_blockers),
+        "required_operator_action": required_operator_action,
+    }
+
+
+def _readiness_hard_stop_invariant(record: Mapping[str, Any]) -> bool:
+    if _text(record.get("autonomy_status")) == "hard_stop_safety_invariant":
+        return True
+    if record.get("autonomy_hard_stop") is True:
+        return True
+    if record.get("live_mutation_performed") is True:
+        return True
+    if record.get("live_trading_performed") is True:
+        return True
+    if record.get("no_submit_mode") is True and (
+        record.get("paper_submit_performed") is True
+        or record.get("broker_mutation_performed") is True
+    ):
+        return True
+    if record.get("vol_scaled_preview_mutation_allowed") is True:
+        return True
+    return record.get("vol_scaled_preview_submit_allowed") is True
+
+
+def _readiness_reason_codes(
+    record: Mapping[str, Any],
+    *,
+    fallback: Sequence[str],
+) -> tuple[str, ...]:
+    reason_codes = _dedupe(
+        (
+            *_string_list(record.get("autonomy_reason_codes")),
+            *_string_list(record.get("reason_codes")),
+        )
+    )
+    return tuple(reason_codes or fallback)
+
+
+def _readiness_packet_should_be_generated(record: Mapping[str, Any]) -> bool:
+    return _text(record.get("autonomy_status")) in _READINESS_PACKET_AUTONOMY_STATUSES
+
+
+def _readiness_packet_path(history_root: Path, record: Mapping[str, Any]) -> Path:
+    run_id = _safe_filename_part(_text(record.get("run_id")) or "missing_run_id")
+    return history_root / f"{PAPER_MUTATION_READINESS_PACKET_FILENAME_PREFIX}{run_id}.json"
+
+
+def _safe_filename_part(value: str) -> str:
+    safe = "".join(
+        char if char.isalnum() or char in {"-", "_"} else "_"
+        for char in value.strip()
+    )
+    return safe or "missing_run_id"
+
+
+def _blocker_key(blocker_status: str) -> str:
+    if blocker_status.startswith("blocked/"):
+        return blocker_status.split("/", maxsplit=1)[1]
+    return blocker_status
+
+
+def _selected_strategy_is_preview_only(record: Mapping[str, Any]) -> bool:
+    selected_strategy_id = _text(record.get("selected_strategy_id")).lower()
+    adapter_mode = _normalized_status(record.get("strategy_adapter_mode"))
+    if adapter_mode == "preview_only":
+        return True
+    return selected_strategy_id == "spy_vol_scaled_trend_20d_fixed"
+
+
+def _strategy_not_mutation_capable(
+    record: Mapping[str, Any],
+    *,
+    blocker_key: str,
+) -> bool:
+    if blocker_key in _STRATEGY_NOT_MUTATION_CAPABLE_BLOCKERS:
+        return True
+    if blocker_key == "options_not_authorized":
+        return True
+    if _normalized_status(record.get("strategy_adapter_resolution_status")) == "blocked":
+        return True
+    if (
+        _text(record.get("execution_plan_action")) in _PAPER_MUTATION_ACTIONS
+        and record.get("strategy_adapter_paper_mutation_allowed") is False
+    ):
+        return True
+    if (
+        _text(record.get("strategy_route_action")) in _PAPER_MUTATION_ACTIONS
+        and record.get("strategy_route_paper_mutation_allowed") is False
+    ):
+        return True
+    return False
 
 
 def _data_refresh_or_freshness_blocked(record: Mapping[str, Any]) -> bool:
@@ -1286,6 +1700,12 @@ def _build_daily_autonomy_ledger_entry(
         "safety_labels": list(_string_list(entry.get("safety_labels"))),
         "autonomy_status": autonomy_status,
         "autonomy_next_action": autonomy_next_action,
+        "readiness_status": entry.get("readiness_status"),
+        "readiness_blockers": list(_string_list(entry.get("readiness_blockers"))),
+        "required_operator_action": entry.get("required_operator_action"),
+        "readiness_packet_generated": (
+            entry.get("readiness_packet_generated") is True
+        ),
         "changed_since_previous": comparison.get("changed_since_previous") is True,
         "hard_stop": hard_stop,
         "attention_required": attention_required,
@@ -1338,6 +1758,7 @@ def _build_rollup(
     autonomy_ledger_path: Path,
     autonomy_latest_path: Path,
     autonomy_summary_path: Path,
+    readiness_packet_path: Path | None,
 ) -> dict[str, Any]:
     hard_stop = entry.get("hard_stop") is True or entry.get("autonomy_hard_stop") is True
     attention_required = (
@@ -1356,6 +1777,18 @@ def _build_rollup(
         severity = "attention_required"
     else:
         severity = "healthy"
+    artifact_paths = {
+        "operating_history": str(history_path),
+        "daily_autonomy_ledger": str(autonomy_ledger_path),
+        "latest_daily_autonomy": str(autonomy_latest_path),
+        "daily_autonomy_summary": str(autonomy_summary_path),
+        "latest_rollup": str(rollup_path),
+        "operating_summary": str(summary_path),
+    }
+    if readiness_packet_path is not None:
+        artifact_paths["paper_mutation_readiness_packet"] = str(
+            readiness_packet_path
+        )
     return {
         "schema_version": PAPER_AUTOPILOT_HISTORY_SCHEMA_VERSION,
         "history_count": history_count,
@@ -1366,6 +1799,16 @@ def _build_rollup(
         "autonomy_hard_stop": entry.get("autonomy_hard_stop"),
         "autonomy_reason_codes": list(
             _string_list(entry.get("autonomy_reason_codes"))
+        ),
+        "readiness_status": entry.get("readiness_status"),
+        "readiness_blockers": list(_string_list(entry.get("readiness_blockers"))),
+        "required_operator_action": entry.get("required_operator_action"),
+        "readiness_packet_generated": entry.get("readiness_packet_generated") is True,
+        "paper_mutation_readiness_packet": dict(
+            _mapping(entry.get("paper_mutation_readiness_packet"))
+        ),
+        "paper_mutation_readiness_packet_path": entry.get(
+            "paper_mutation_readiness_packet_path"
         ),
         "changed_since_previous": comparison.get("changed_since_previous") is True,
         "attention_required": attention_required,
@@ -1396,6 +1839,18 @@ def _build_rollup(
         ),
         "selected_strategy_id": entry.get("selected_strategy_id"),
         "strategy_route_action": entry.get("strategy_route_action"),
+        "strategy_route_paper_mutation_allowed": entry.get(
+            "strategy_route_paper_mutation_allowed"
+        ),
+        "strategy_adapter_resolution_status": entry.get(
+            "strategy_adapter_resolution_status"
+        ),
+        "strategy_adapter_reason": entry.get("strategy_adapter_reason"),
+        "strategy_adapter_id": entry.get("strategy_adapter_id"),
+        "strategy_adapter_mode": entry.get("strategy_adapter_mode"),
+        "strategy_adapter_paper_mutation_allowed": entry.get(
+            "strategy_adapter_paper_mutation_allowed"
+        ),
         "pre_broker_daily_cycle_status": entry.get("pre_broker_daily_cycle_status"),
         "pre_broker_daily_cycle_classification": entry.get(
             "pre_broker_daily_cycle_classification"
@@ -1410,6 +1865,10 @@ def _build_rollup(
         ),
         "execution_plan_id": entry.get("execution_plan_id"),
         "client_order_id": entry.get("client_order_id"),
+        "side": entry.get("side"),
+        "notional": entry.get("notional"),
+        "quantity": entry.get("quantity"),
+        "notional_cap": entry.get("notional_cap"),
         "no_submit_mode": entry.get("no_submit_mode"),
         "execution_plan_action": entry.get("execution_plan_action"),
         "intended_mutation_action": entry.get("intended_mutation_action"),
@@ -1442,14 +1901,7 @@ def _build_rollup(
         "input_data_path": entry.get("input_data_path"),
         "input_data_sha256": entry.get("input_data_sha256"),
         "comparison_to_previous": dict(comparison),
-        "artifact_paths": {
-            "operating_history": str(history_path),
-            "daily_autonomy_ledger": str(autonomy_ledger_path),
-            "latest_daily_autonomy": str(autonomy_latest_path),
-            "daily_autonomy_summary": str(autonomy_summary_path),
-            "latest_rollup": str(rollup_path),
-            "operating_summary": str(summary_path),
-        },
+        "artifact_paths": artifact_paths,
     }
 
 
@@ -1595,9 +2047,13 @@ __all__ = [
     "PAPER_AUTOPILOT_DEFAULT_LATEST_STATUS_PATH",
     "PAPER_AUTOPILOT_HISTORY_SCHEMA_VERSION",
     "PAPER_AUTOPILOT_LATEST_DAILY_AUTONOMY_FILENAME",
+    "PAPER_MUTATION_READINESS_PACKET_FILENAME_PREFIX",
+    "PAPER_MUTATION_READINESS_PACKET_SCHEMA_VERSION",
     "PaperAutopilotHistoryConfig",
+    "build_paper_mutation_readiness_packet",
     "classify_paper_autopilot_autonomy_record",
     "classify_paper_autopilot_operating_record",
+    "classify_paper_mutation_readiness_record",
     "paper_autopilot_history_exit_status",
     "render_paper_autopilot_daily_autonomy_summary",
     "render_paper_autopilot_history_status",

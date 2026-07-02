@@ -25,6 +25,10 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     assert rollup["classification"] == "healthy_hold_noop"
     assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
     assert rollup["autonomy_next_action"] == "continue_next_daily_cycle"
+    assert rollup["readiness_status"] == "no_mutation_needed_continue"
+    assert rollup["readiness_blockers"] == []
+    assert rollup["required_operator_action"] == "continue_next_daily_cycle"
+    assert rollup["readiness_packet_generated"] is False
     assert rollup["changed_since_previous"] is False
     assert "risk_on_spy_position_already_held" in rollup["reason_codes"]
     assert rollup["operating_mode"] == "bounded_paper_mutation"
@@ -62,6 +66,8 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     assert "classification=healthy_hold_noop" in rendered
     assert "autonomy_status=healthy_continue_next_daily_cycle" in rendered
     assert "autonomy_next_action=continue_next_daily_cycle" in rendered
+    assert "readiness_status=no_mutation_needed_continue" in rendered
+    assert "readiness_packet_generated=false" in rendered
     assert "changed_since_previous=false" in rendered
     assert "latest_bar_date=2026-08-08" in rendered
     assert "data_refresh_status=no_refresh_required" in rendered
@@ -132,6 +138,224 @@ def test_risk_off_without_spy_position_is_healthy_noop_with_distinct_reason(
     assert "risk_off_no_spy_position_noop" in rollup["reason_codes"]
 
 
+def test_no_submit_mutation_required_generates_readiness_packet(
+    tmp_path: Path,
+) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "operating_mode": "visibility/no_submit",
+            "no_submit_mode": True,
+            "spy_position_observed": False,
+            "spy_position_quantity": "0",
+            "strategy_route_action": "buy",
+            "execution_plan_action": "buy",
+            "intended_mutation_action": "buy",
+            "mutation_would_be_required_without_no_submit": True,
+            "preview_action_decision": "paper_buy_blocked_no_submit_mode",
+            "blocker_status": "blocked/mutation_would_be_required_no_submit_mode",
+            "final_supervisor_status": (
+                "blocked/mutation_would_be_required_no_submit_mode"
+            ),
+            "broker_observed_supervisor_status": (
+                "blocked/mutation_would_be_required_no_submit_mode"
+            ),
+            "final_supervisor_classification": (
+                "mutation_would_be_required_no_submit_mode"
+            ),
+            "paper_submit_authorized": False,
+            "next_operator_action": (
+                "review_visibility_only_intended_action_no_submit_mode"
+            ),
+            "final_operator_action": (
+                "review_visibility_only_intended_action_no_submit_mode"
+            ),
+        }
+    )
+    status["broker_state"].update(
+        {
+            "spy_position_present": False,
+            "spy_position_quantity": "0",
+        }
+    )
+    status["execution_plan_summary"].update(
+        {
+            "action": "buy",
+            "side": "buy",
+            "notional": "25.00",
+            "notional_cap": "25.00",
+            "client_order_id": "pa-v207-spy-buy-20260808-aaaaaaaaaaaa",
+            "paper_submit_authorized": False,
+            "submit_allowed": False,
+            "no_submit_mode": True,
+            "mutation_would_be_required_without_no_submit": True,
+            "intended_mutation_action": "buy",
+        }
+    )
+    status["execution_plan"] = dict(status["execution_plan_summary"])
+
+    rollup = _update_history(tmp_path, status)
+
+    assert (
+        rollup["autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
+    assert rollup["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert rollup["readiness_blockers"] == [
+        "no_submit_mode",
+        "paper_mutation_required",
+    ]
+    assert rollup["readiness_packet_generated"] is True
+    packet_path = Path(
+        rollup["artifact_paths"]["paper_mutation_readiness_packet"]
+    )
+    assert packet_path.is_file()
+    packet = json.loads(packet_path.read_text(encoding="utf-8"))
+    assert packet["generated_at"] == status["generated_at"]
+    assert packet["source_visibility_run_id"] == status["run_id"]
+    assert (
+        packet["source_autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
+    assert packet["source_execution_plan_id"] == "plan-spy-20260808"
+    assert packet["source_client_order_id"].startswith("pa-v207-spy-buy-")
+    assert packet["symbol"] == "SPY"
+    assert packet["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert packet["strategy_adapter_id"] == "spy_sma_50_200_paper_mutation_adapter"
+    assert packet["strategy_adapter_mode"] == "paper_mutation"
+    assert packet["strategy_route_action"] == "buy"
+    assert packet["execution_plan_action"] == "buy"
+    assert packet["intended_mutation_action"] == "buy"
+    assert packet["side"] == "buy"
+    assert packet["notional"] == "25.00"
+    assert packet["quantity"] == ""
+    assert packet["notional_cap"] == "25.00"
+    assert packet["no_submit_mode"] is True
+    assert packet["broker_read_performed"] is True
+    assert packet["broker_state_observed"] is True
+    assert packet["broker_state_mode"] == "alpaca_paper_observed"
+    assert packet["expected_account_matched"] is True
+    assert packet["spy_position_observed"] is False
+    assert packet["spy_position_quantity"] == "0"
+    assert packet["open_spy_orders_observed"] == 0
+    assert packet["unexpected_non_spy_positions"] == []
+    assert packet["data_freshness_status"] == "accepted_data_current"
+    assert packet["latest_bar_date"] == "2026-08-08"
+    assert packet["paper_submit_authorized"] is False
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
+    assert packet["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert packet["readiness_blockers"] == [
+        "no_submit_mode",
+        "paper_mutation_required",
+    ]
+    assert packet["required_operator_action"] == (
+        "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval"
+    )
+    assert packet["safety_labels"] == status["safety_labels"]
+
+
+def test_paper_candidate_can_be_ready_only_for_explicit_bounded_run(
+    tmp_path: Path,
+) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "spy_position_observed": False,
+            "spy_position_quantity": "0",
+            "strategy_route_action": "buy",
+            "execution_plan_action": "buy",
+            "intended_mutation_action": "buy",
+            "preview_action_decision": "paper_buy_allowed",
+            "paper_submit_authorized": True,
+        }
+    )
+    status["broker_state"].update(
+        {
+            "spy_position_present": False,
+            "spy_position_quantity": "0",
+        }
+    )
+    status["execution_plan_summary"].update(
+        {
+            "action": "buy",
+            "side": "buy",
+            "notional": "25.00",
+            "notional_cap": "25.00",
+            "client_order_id": "pa-v207-spy-buy-20260808-aaaaaaaaaaaa",
+            "paper_submit_authorized": True,
+            "submit_allowed": True,
+            "intended_mutation_action": "buy",
+        }
+    )
+    status["execution_plan"] = dict(status["execution_plan_summary"])
+
+    rollup = _update_history(tmp_path, status)
+
+    assert (
+        rollup["autonomy_status"]
+        == "paper_mutation_candidate_requires_explicit_authorized_run"
+    )
+    assert (
+        rollup["readiness_status"]
+        == "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
+    assert rollup["readiness_blockers"] == []
+    assert rollup["readiness_packet_generated"] is True
+    packet = json.loads(
+        Path(rollup["artifact_paths"]["paper_mutation_readiness_packet"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        packet["readiness_status"]
+        == "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
+    assert packet["paper_submit_authorized"] is True
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
+
+
+def test_preview_only_strategy_never_becomes_readiness_ready(tmp_path: Path) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "selected_strategy_id": "spy_vol_scaled_trend_20d_fixed",
+            "strategy_adapter_id": "spy_vol_scaled_trend_preview_adapter",
+            "strategy_adapter_mode": "preview_only",
+            "strategy_adapter_paper_mutation_allowed": False,
+            "strategy_route_action": "buy",
+            "execution_plan_action": "buy",
+            "intended_mutation_action": "buy",
+            "preview_action_decision": "paper_buy_allowed",
+            "paper_submit_authorized": True,
+        }
+    )
+    status["execution_plan_summary"].update(
+        {
+            "action": "buy",
+            "side": "buy",
+            "notional": "25.00",
+            "notional_cap": "25.00",
+            "paper_submit_authorized": True,
+            "submit_allowed": True,
+            "intended_mutation_action": "buy",
+        }
+    )
+    status["execution_plan"] = dict(status["execution_plan_summary"])
+
+    rollup = _update_history(tmp_path, status)
+
+    assert (
+        rollup["autonomy_status"]
+        == "paper_mutation_candidate_requires_explicit_authorized_run"
+    )
+    assert rollup["readiness_status"] == "readiness_blocked_preview_only_strategy"
+    assert rollup["readiness_packet_generated"] is True
+
+
 def test_broker_state_not_observed_after_paper_profile_blocks(
     tmp_path: Path,
 ) -> None:
@@ -157,6 +381,8 @@ def test_broker_state_not_observed_after_paper_profile_blocks(
 
     assert rollup["classification"] == "broker_state_not_observed"
     assert rollup["autonomy_status"] == "blocked_configure_verified_paper_profile"
+    assert rollup["readiness_status"] == "readiness_blocked_broker_state_not_observed"
+    assert rollup["readiness_packet_generated"] is False
     assert rollup["autonomy_next_action"] == "configure_verified_paper_profile_then_rerun"
     assert rollup["attention_required"] is True
     assert paper_autopilot_history_exit_status(rollup) == 1
@@ -216,6 +442,7 @@ def test_live_safety_block_is_hard_stop(tmp_path: Path) -> None:
 
     assert rollup["classification"] == "live_safety_blocked"
     assert rollup["autonomy_status"] == "hard_stop_safety_invariant"
+    assert rollup["readiness_status"] == "readiness_hard_stop_safety_invariant"
     assert rollup["hard_stop"] is True
     assert "live_mutation_performed" in rollup["reason_codes"]
     assert paper_autopilot_history_exit_status(rollup) == 2
@@ -255,6 +482,7 @@ def test_no_submit_mutation_flags_are_hard_stop_safety_invariant(
     rollup = _update_history(tmp_path, status)
 
     assert rollup["autonomy_status"] == "hard_stop_safety_invariant"
+    assert rollup["readiness_status"] == "readiness_hard_stop_safety_invariant"
     assert rollup["hard_stop"] is True
     assert "paper_submit_performed_in_no_submit_mode" in rollup["reason_codes"]
     assert "broker_mutation_performed_in_no_submit_mode" in rollup["reason_codes"]
@@ -301,6 +529,10 @@ def test_unexpected_non_spy_position_blocks_for_attention(
 
     assert rollup["classification"] == "unexpected_position_blocked"
     assert rollup["autonomy_status"] == "blocked_unexpected_non_spy_position"
+    assert (
+        rollup["readiness_status"]
+        == "readiness_blocked_unexpected_non_spy_position"
+    )
     assert rollup["attention_required"] is True
 
 
@@ -319,6 +551,7 @@ def test_open_spy_order_conflict_blocks_for_attention(tmp_path: Path) -> None:
 
     assert rollup["classification"] == "open_order_conflict_blocked"
     assert rollup["autonomy_status"] == "blocked_open_spy_order_present"
+    assert rollup["readiness_status"] == "readiness_blocked_open_spy_order_present"
     assert rollup["attention_required"] is True
 
 
@@ -334,6 +567,7 @@ def test_missing_latest_status_artifact_classifies_stale_or_missing(
 
     assert rollup["classification"] == "stale_or_missing_status_artifact"
     assert rollup["autonomy_status"] == "blocked_refresh_or_validate_daily_bars"
+    assert rollup["readiness_status"] == "readiness_blocked_stale_data"
     assert rollup["attention_required"] is True
     assert rollup["hard_stop"] is False
     _assert_history_artifacts(rollup)
@@ -566,6 +800,12 @@ def _base_status(
         "unexpected_non_spy_positions_observed": 0,
         "selected_strategy_id": "spy_sma_50_200_training_wheel",
         "strategy_route_action": "hold",
+        "strategy_route_paper_mutation_allowed": True,
+        "strategy_adapter_resolution_status": "resolved",
+        "strategy_adapter_reason": "paper_mutation_adapter_resolved",
+        "strategy_adapter_id": "spy_sma_50_200_paper_mutation_adapter",
+        "strategy_adapter_mode": "paper_mutation",
+        "strategy_adapter_paper_mutation_allowed": True,
         "pre_broker_daily_cycle_status": "no_refresh_required",
         "pre_broker_daily_cycle_classification": "pre_broker_daily_cycle_ready",
         "broker_state": {
@@ -589,6 +829,10 @@ def _base_status(
             "client_order_id": "pa-v207-spy-noop-20260808-aaaaaaaaaaaa",
             "paper_submit_authorized": False,
             "submit_allowed": False,
+            "no_submit_mode": False,
+            "mutation_would_be_required_without_no_submit": False,
+            "intended_mutation_action": "",
+            "notional_cap": "25.00",
         },
         "execution_plan_action": "hold",
         "preview_action_decision": "hold/noop",

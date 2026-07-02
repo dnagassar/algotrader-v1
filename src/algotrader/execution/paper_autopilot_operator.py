@@ -35,6 +35,11 @@ _SUMMARY_FIELDS = (
     "classification",
     "autonomy_status",
     "autonomy_next_action",
+    "readiness_status",
+    "readiness_blockers",
+    "required_operator_action",
+    "readiness_packet_generated",
+    "paper_mutation_readiness_packet",
     "changed_since_previous",
     "hard_stop",
     "attention_required",
@@ -207,6 +212,17 @@ def build_paper_autopilot_operator_summary(
         "classification": classification,
         "autonomy_status": _text(rollup.get("autonomy_status")),
         "autonomy_next_action": _text(rollup.get("autonomy_next_action")),
+        "readiness_status": _text(rollup.get("readiness_status")),
+        "readiness_blockers": list(_string_list(rollup.get("readiness_blockers"))),
+        "required_operator_action": _text(rollup.get("required_operator_action")),
+        "readiness_packet_generated": (
+            rollup.get("readiness_packet_generated") is True
+        ),
+        "paper_mutation_readiness_packet": _text(
+            _mapping(rollup.get("artifact_paths")).get(
+                "paper_mutation_readiness_packet"
+            )
+        ),
         "changed_since_previous": rollup.get("changed_since_previous") is True,
         "hard_stop": rollup.get("hard_stop") is True,
         "attention_required": rollup.get("attention_required") is True,
@@ -326,6 +342,10 @@ def _string_list(value: object) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _mapping(value: object) -> Mapping[str, Any]:
+    return value if isinstance(value, Mapping) else {}
 
 
 def _text(value: object) -> str:
