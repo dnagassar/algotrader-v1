@@ -2590,6 +2590,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     paper_autopilot_loop_parser.add_argument("--max-notional", default="25.00")
     paper_autopilot_loop_parser.add_argument(
+        "--no-submit",
+        action="store_true",
+        help="Run visibility-only mode and hard-block paper broker mutation.",
+    )
+    paper_autopilot_loop_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -2652,6 +2657,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=200,
     )
     paper_autopilot_operator_parser.add_argument("--max-notional", default="25.00")
+    paper_autopilot_operator_parser.add_argument(
+        "--no-submit",
+        action="store_true",
+        help="Run visibility-only mode and hard-block paper broker mutation.",
+    )
     paper_autopilot_operator_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
@@ -6176,6 +6186,7 @@ def _run_paper_autopilot_loop(args: argparse.Namespace) -> int:
                 sma_fast_window=args.sma_fast_window,
                 sma_slow_window=args.sma_slow_window,
                 max_notional=args.max_notional,
+                no_submit=args.no_submit,
             )
         )
         if args.output_format == "json":
@@ -6245,6 +6256,7 @@ def _run_paper_autopilot_operator(args: argparse.Namespace) -> int:
                 sma_fast_window=args.sma_fast_window,
                 sma_slow_window=args.sma_slow_window,
                 max_notional=args.max_notional,
+                no_submit=args.no_submit,
             )
         )
         if args.output_format == "json":

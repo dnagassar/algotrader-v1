@@ -212,6 +212,13 @@ def classify_paper_autopilot_operating_record(
             hard_stop=False,
             reason_codes=["no_new_completed_bar_noop"],
         )
+    if blocker_status == "blocked/mutation_would_be_required_no_submit_mode":
+        return _classification(
+            "mutation_would_be_required_no_submit_mode",
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=["mutation_would_be_required_no_submit_mode"],
+        )
     if blocker_status in {
         "blocked/stale_data_preview_only",
         "blocked/blocked_future_dated_local_data",
@@ -438,6 +445,26 @@ def _normalize_status_payload(
             execution_plan_summary.get("client_order_id"),
             execution_plan.get("client_order_id"),
         ),
+        "no_submit_mode": _bool(payload.get("no_submit_mode"))
+        or _bool(execution_plan_summary.get("no_submit_mode"))
+        or _bool(execution_plan.get("no_submit_mode")),
+        "broker_read_performed": _bool(payload.get("broker_read_performed")),
+        "intended_mutation_action": _first_nonempty_text(
+            payload.get("intended_mutation_action"),
+            execution_plan_summary.get("intended_mutation_action"),
+            execution_plan.get("intended_mutation_action"),
+        ),
+        "mutation_would_be_required_without_no_submit": _bool(
+            payload.get("mutation_would_be_required_without_no_submit")
+        )
+        or _bool(
+            execution_plan_summary.get(
+                "mutation_would_be_required_without_no_submit"
+            )
+        )
+        or _bool(
+            execution_plan.get("mutation_would_be_required_without_no_submit")
+        ),
         "action_decision": _first_nonempty_text(
             payload.get("preview_action_decision"),
             action_result.get("action_decision"),
@@ -572,6 +599,12 @@ def _build_rollup(
         "blocker_status": entry.get("blocker_status"),
         "execution_plan_id": entry.get("execution_plan_id"),
         "client_order_id": entry.get("client_order_id"),
+        "no_submit_mode": entry.get("no_submit_mode"),
+        "broker_read_performed": entry.get("broker_read_performed"),
+        "intended_mutation_action": entry.get("intended_mutation_action"),
+        "mutation_would_be_required_without_no_submit": entry.get(
+            "mutation_would_be_required_without_no_submit"
+        ),
         "action_decision": entry.get("action_decision"),
         "paper_submit_authorized": entry.get("paper_submit_authorized"),
         "paper_submit_performed": entry.get("paper_submit_performed"),

@@ -129,6 +129,7 @@ class PaperAutopilotLoopConfig:
     sma_slow_window: int = 200
     max_notional: Decimal | str = PAPER_AUTOPILOT_MAX_NOTIONAL
     policy: str = PAPER_AUTOPILOT_POLICY
+    no_submit: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
@@ -156,6 +157,8 @@ class PaperAutopilotLoopConfig:
         )
         if self.policy != PAPER_AUTOPILOT_POLICY:
             raise ValidationError("paper autopilot policy is not authorized.")
+        if type(self.no_submit) is not bool:
+            raise ValidationError("no_submit must be a boolean.")
         if self.as_of_date is not None:
             _parse_date_text(self.as_of_date, "as_of_date")
         if self.run_date is not None:
@@ -202,6 +205,9 @@ class PaperAutopilotExecutionPlan:
     broker_state_mode: str
     paper_submit_authorized: bool
     submit_allowed: bool
+    no_submit_mode: bool
+    mutation_would_be_required_without_no_submit: bool
+    intended_mutation_action: str
     blockers: tuple[str, ...]
     safety_labels: tuple[str, ...]
 
@@ -222,6 +228,11 @@ class PaperAutopilotExecutionPlan:
             "broker_state_mode": self.broker_state_mode,
             "paper_submit_authorized": self.paper_submit_authorized,
             "submit_allowed": self.submit_allowed,
+            "no_submit_mode": self.no_submit_mode,
+            "mutation_would_be_required_without_no_submit": (
+                self.mutation_would_be_required_without_no_submit
+            ),
+            "intended_mutation_action": self.intended_mutation_action,
             "blockers": list(self.blockers),
             "safety_labels": list(self.safety_labels),
         }
@@ -735,7 +746,7 @@ def _preview_strategy_adapter_resolutions(
 ) -> tuple[dict[str, object], ...]:
     if not isinstance(route_receipt, StrategyRouteReceipt):
         raise ValidationError("route_receipt must be a StrategyRouteReceipt.")
-    return tuple(
+    resolutions = tuple(
         resolve_strategy_adapter(
             signal,
             registry=registry,
@@ -743,6 +754,13 @@ def _preview_strategy_adapter_resolutions(
         ).to_dict()
         for signal in route_receipt.signals
         if signal.promotion_status == "paper_preview_candidate"
+    )
+    return tuple(
+        {
+            **resolution,
+            "mutation_allowed": resolution.get("paper_mutation_allowed") is True,
+        }
+        for resolution in resolutions
     )
 
 
@@ -843,7 +861,14 @@ def _build_plan(
             broker_observation_required=broker_observation_required,
         )
     )
-    submit_allowed = intent.action in {"buy", "sell_close"} and not blockers
+    mutation_action = intent.action if intent.action in {"buy", "sell_close"} else ""
+    mutation_would_be_required_without_no_submit = bool(
+        config.no_submit and mutation_action and not blockers
+    )
+    submit_allowed = bool(mutation_action and not blockers)
+    if mutation_would_be_required_without_no_submit:
+        blockers.append("mutation_would_be_required_no_submit_mode")
+        submit_allowed = False
     paper_authorized = (
         submit_allowed
         and config.policy == PAPER_AUTOPILOT_POLICY
@@ -865,6 +890,11 @@ def _build_plan(
         "data_sha256": data_sha256,
         "broker_state_mode": _text(broker_state.get("broker_state_mode")),
         "paper_submit_authorized": paper_authorized,
+        "no_submit_mode": config.no_submit,
+        "mutation_would_be_required_without_no_submit": (
+            mutation_would_be_required_without_no_submit
+        ),
+        "intended_mutation_action": mutation_action,
         "blockers": blockers,
         "safety_labels": list(safety_labels),
     }
@@ -886,6 +916,11 @@ def _build_plan(
         broker_state_mode=_text(broker_state.get("broker_state_mode")),
         paper_submit_authorized=paper_authorized,
         submit_allowed=submit_allowed and paper_authorized,
+        no_submit_mode=config.no_submit,
+        mutation_would_be_required_without_no_submit=(
+            mutation_would_be_required_without_no_submit
+        ),
+        intended_mutation_action=mutation_action,
         blockers=tuple(_dedupe(blockers)),
         safety_labels=tuple(safety_labels),
     )
@@ -974,6 +1009,9 @@ def _execute_plan(
         "mutation_status": "not_attempted",
         "submit_response_ambiguous": False,
     }
+    if plan.no_submit_mode and plan.mutation_would_be_required_without_no_submit:
+        result["mutation_status"] = "blocked_no_submit_mode"
+        return result
     if not plan.submit_allowed:
         result["mutation_status"] = "blocked_before_submit" if plan.blockers else "noop"
         return result
@@ -1138,6 +1176,7 @@ def _build_record(
         for order in _mapping_items(broker_state.get("open_orders"))
         if _text(order.get("symbol")).upper() == _SYMBOL
     ]
+    broker_read_performed = _broker_read_performed(broker_state)
     return {
         "schema_version": PAPER_AUTOPILOT_SCHEMA_VERSION,
         "supervisor_schema_version": PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION,
@@ -1147,6 +1186,7 @@ def _build_record(
         "policy": config.policy,
         "command": "paper-autopilot-loop",
         "supervisor_command": PAPER_MUTATION_SUPERVISOR_COMMAND,
+        "no_submit_mode": plan.no_submit_mode,
         "symbol": config.symbol,
         "as_of_date": as_of_date,
         "data_latest_bar": _first_nonempty_text(
@@ -1192,6 +1232,7 @@ def _build_record(
         ),
         "broker_state_mode": broker_state.get("broker_state_mode"),
         "broker_state_observed": broker_state.get("broker_state_observed") is True,
+        "broker_read_performed": broker_read_performed,
         "broker_state": dict(broker_state),
         "preflight": dict(preflight),
         "execution_intent": intent.to_dict(),
@@ -1203,8 +1244,17 @@ def _build_record(
             "client_order_id": plan.client_order_id,
             "paper_submit_authorized": plan.paper_submit_authorized,
             "submit_allowed": plan.submit_allowed,
+            "no_submit_mode": plan.no_submit_mode,
+            "mutation_would_be_required_without_no_submit": (
+                plan.mutation_would_be_required_without_no_submit
+            ),
+            "intended_mutation_action": plan.intended_mutation_action,
         },
         "execution_plan_action": plan.action,
+        "intended_mutation_action": plan.intended_mutation_action,
+        "mutation_would_be_required_without_no_submit": (
+            plan.mutation_would_be_required_without_no_submit
+        ),
         "execution_plan_status": _execution_plan_status(plan),
         "preview_action_decision": _preview_action_decision(plan),
         "blocker_status": blocker_status,
@@ -1247,6 +1297,18 @@ def _build_record(
         "safety_labels": list(safety_labels),
         "artifact_paths": artifact_paths,
     }
+
+
+def _broker_read_performed(broker_state: Mapping[str, Any]) -> bool:
+    return any(
+        broker_state.get(field) is True
+        for field in (
+            "broker_state_observed",
+            "account_observation_available",
+            "positions_observation_available",
+            "orders_observation_available",
+        )
+    )
 
 
 def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> None:
@@ -1357,6 +1419,8 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
+            f"- No-submit mode: `{record.get('no_submit_mode')}`",
+            f"- Broker read performed: `{record.get('broker_read_performed')}`",
             f"- Execution plan: `{plan.get('execution_plan_id', '')}`",
             f"- Action decision: `{record.get('preview_action_decision', '')}`",
             f"- Blocker status: `{record.get('blocker_status', '')}`",
@@ -1391,7 +1455,10 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
             f"- Strategy adapter: `{record.get('strategy_adapter_id', '')}`",
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
+            f"- No-submit mode: `{record.get('no_submit_mode')}`",
+            f"- Broker read performed: `{record.get('broker_read_performed')}`",
             f"- Execution plan action: `{record.get('execution_plan_action', '')}`",
+            f"- Intended mutation action: `{record.get('intended_mutation_action', '')}`",
             f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
             f"- Mutation performed: `{record.get('mutation_performed')}`",
             f"- Submit blocker: `{record.get('submit_blocker', '')}`",
@@ -1413,6 +1480,7 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_route_action",
         "strategy_route_paper_mutation_allowed",
         "selected_strategy_id",
+        "vol_scaled_trend_signal",
         "strategy_signal_states",
         "strategy_preview_states",
         "strategy_preview_adapter_resolutions",
@@ -1423,10 +1491,15 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_adapter_mode",
         "strategy_adapter_paper_mutation_allowed",
         "broker_state_mode",
+        "broker_read_performed",
         "spy_position_observed",
         "open_spy_orders_observed",
+        "no_submit_mode",
         "execution_plan_action",
+        "intended_mutation_action",
+        "mutation_would_be_required_without_no_submit",
         "execution_plan_status",
+        "preview_action_decision",
         "paper_submit_authorized",
         "mutation_performed",
         "submit_blocker",
@@ -1482,6 +1555,8 @@ def _final_classification(
         return "no_action_required_no_mutation"
     if blocker_status == "blocked/no_new_completed_bar_noop":
         return "no_new_completed_bar_noop"
+    if blocker_status == "blocked/mutation_would_be_required_no_submit_mode":
+        return "mutation_would_be_required_no_submit_mode"
     if blocker_status != "none":
         return blocker_status.replace("/", "_")
     return "no_action_required_no_mutation"
@@ -1500,6 +1575,8 @@ def _execution_plan_status(plan: PaperAutopilotExecutionPlan) -> str:
 def _preview_action_decision(plan: PaperAutopilotExecutionPlan) -> str:
     if plan.submit_allowed:
         return f"paper_{plan.action}_allowed"
+    if plan.mutation_would_be_required_without_no_submit:
+        return f"paper_{plan.action}_blocked_no_submit_mode"
     if plan.action == "hold":
         return "hold/noop"
     return "blocked"
@@ -1563,6 +1640,9 @@ def _next_operator_action(blocker_status: str, plan: PaperAutopilotExecutionPlan
         "blocked/expected_account_match_not_observed": "stop_and_review_expected_paper_account_before_any_submit",
         "blocked/account_status_not_active": "stop_and_review_paper_account_status_before_any_submit",
         "blocked/no_new_completed_bar_noop": "wait_for_next_completed_daily_bar",
+        "blocked/mutation_would_be_required_no_submit_mode": (
+            "review_visibility_only_intended_action_no_submit_mode"
+        ),
         "blocked/stale_data_preview_only": "refresh_or_validate_daily_bars_before_submit",
         "blocked/blocked_future_dated_local_data": "fix_daily_bar_date_before_submit",
         "blocked/accepted_but_stale": "refresh_or_validate_daily_bars_before_submit",

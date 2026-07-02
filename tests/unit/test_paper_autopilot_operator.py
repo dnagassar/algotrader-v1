@@ -157,6 +157,39 @@ def test_operator_open_spy_order_conflict_is_nonzero(tmp_path: Path) -> None:
     assert paper_autopilot_operator_exit_status(result) == 1
 
 
+def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+
+    result = run_paper_autopilot_operator(
+        PaperAutopilotOperatorConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            no_submit=True,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    summary = result["operator_summary"]
+    assert summary["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert summary["blocker_status"] == "blocked/mutation_would_be_required_no_submit_mode"
+    assert summary["action_decision"] == "paper_buy_blocked_no_submit_mode"
+    assert summary["no_submit_mode"] is True
+    assert summary["paper_submit_performed"] is False
+    assert summary["broker_mutation_performed"] is False
+    assert result["rollup"]["broker_read_performed"] is True
+    assert result["rollup"]["intended_mutation_action"] == "buy"
+    assert result["rollup"]["mutation_would_be_required_without_no_submit"] is True
+    assert broker.submitted_requests == []
+    assert "submit_order" not in broker.calls
+    assert paper_autopilot_operator_exit_status(result) == 1
+
+
 def test_operator_missing_latest_status_artifact_is_nonzero(tmp_path: Path) -> None:
     def no_status_loop(*_args, **_kwargs):  # noqa: ANN002, ANN003
         return {"run_id": "loop-returned-without-status"}

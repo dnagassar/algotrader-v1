@@ -24,7 +24,10 @@ def test_run_spy_paper_mutation_supervisor_script_contract() -> None:
         "--history-root",
         "--bars-csv",
         "--max-notional",
+        "[switch]$NoSubmit",
+        "--no-submit",
         "preflight_expected_account_id_loaded",
+        "preflight_no_submit_mode",
         "preflight_paper_submit_authorization_scope=bounded_supervisor_run_only",
         "preflight_live_authorized=false",
         "Credential values are never printed",
@@ -61,6 +64,7 @@ def test_run_spy_paper_mutation_supervisor_invokes_operator_cli(
             "2026-01-01",
             "-Format",
             "json",
+            "-NoSubmit",
         ],
         cwd=PROJECT_ROOT,
         env=env,
@@ -73,6 +77,7 @@ def test_run_spy_paper_mutation_supervisor_invokes_operator_cli(
     assert result.returncode == 0, result.stdout + result.stderr
     assert "preflight_APP_PROFILE_is_paper=true" in result.stdout
     assert "preflight_expected_account_id_loaded=true" in result.stdout
+    assert "preflight_no_submit_mode=true" in result.stdout
     args = capture_path.read_text(encoding="utf-8")
     assert "-m algotrader.cli paper-autopilot-operator" in args
     assert "--output-root" in args
@@ -82,6 +87,7 @@ def test_run_spy_paper_mutation_supervisor_invokes_operator_cli(
     assert "--bars-csv" in args
     assert str(bars_csv) in args
     assert "--as-of-date 2026-01-01" in args
+    assert "--no-submit" in args
     assert "--format json" in args
 
 

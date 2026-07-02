@@ -150,6 +150,154 @@ def test_paper_autopilot_sell_close_when_risk_off_with_spy_position(
     _assert_no_sensitive_values(record)
 
 
+def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            no_submit=True,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+    receipt = _latest_jsonl(record["artifact_paths"]["supervisor_receipt"])
+    rollup = json.loads(
+        Path(record["artifact_paths"]["latest_rollup"]).read_text(encoding="utf-8")
+    )
+
+    assert record["no_submit_mode"] is True
+    assert record["broker_read_performed"] is True
+    assert record["execution_plan_action"] == "buy"
+    assert record["intended_mutation_action"] == "buy"
+    assert record["mutation_would_be_required_without_no_submit"] is True
+    assert record["execution_plan"]["submit_allowed"] is False
+    assert record["execution_plan"]["paper_submit_authorized"] is False
+    assert record["execution_plan"]["blockers"] == [
+        "mutation_would_be_required_no_submit_mode"
+    ]
+    assert record["blocker_status"] == "blocked/mutation_would_be_required_no_submit_mode"
+    assert record["final_classification"] == "mutation_would_be_required_no_submit_mode"
+    assert record["preview_action_decision"] == "paper_buy_blocked_no_submit_mode"
+    assert record["action_result"]["mutation_status"] == "blocked_no_submit_mode"
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert record["mutation_performed"] is False
+    assert record["live_mutation_performed"] is False
+    assert record["reconciliation_status"] == "not_required_no_broker_mutation"
+    assert broker.calls == [
+        "get_account",
+        "get_positions",
+        "get_orders:open:SPY",
+        "get_orders:all:SPY",
+    ]
+    assert broker.submitted_requests == []
+    assert "submit_order" not in broker.calls
+
+    assert receipt["no_submit_mode"] is True
+    assert receipt["broker_read_performed"] is True
+    assert receipt["execution_plan_action"] == "buy"
+    assert receipt["intended_mutation_action"] == "buy"
+    assert receipt["paper_submit_authorized"] is False
+    assert receipt["broker_mutation_performed"] is False
+    assert receipt["paper_submit_performed"] is False
+    assert receipt["live_mutation_performed"] is False
+    assert receipt["final_classification"] == "mutation_would_be_required_no_submit_mode"
+    assert receipt["preview_action_decision"] == "paper_buy_blocked_no_submit_mode"
+    assert receipt["vol_scaled_trend_signal"]["strategy_id"] == (
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    )
+    assert receipt["vol_scaled_trend_signal"]["submit_allowed"] is False
+    assert receipt["strategy_preview_states"][0]["strategy_id"] == (
+        SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
+    )
+    assert receipt["strategy_preview_states"][0]["promotion_status"] == (
+        "paper_preview_candidate"
+    )
+    assert receipt["strategy_preview_adapter_resolutions"][0]["adapter_mode"] == (
+        "preview_only"
+    )
+    assert (
+        receipt["strategy_preview_adapter_resolutions"][0]["paper_mutation_allowed"]
+        is False
+    )
+    assert receipt["strategy_preview_adapter_resolutions"][0]["mutation_allowed"] is False
+    assert rollup["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert rollup["no_submit_mode"] is True
+    assert rollup["broker_read_performed"] is True
+    assert rollup["broker_mutation_performed"] is False
+    _assert_no_sensitive_values(record)
+
+
+def test_paper_autopilot_no_submit_hold_remains_noop(tmp_path: Path) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(
+        positions=({"symbol": "SPY", "qty": Decimal("0.05"), "market_value": "30"},)
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            no_submit=True,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["no_submit_mode"] is True
+    assert record["execution_plan_action"] == "hold"
+    assert record["intended_mutation_action"] == ""
+    assert record["mutation_would_be_required_without_no_submit"] is False
+    assert record["preview_action_decision"] == "hold/noop"
+    assert record["blocker_status"] == "none"
+    assert record["final_classification"] == "no_action_required_no_mutation"
+    assert record["blockers"] == []
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_no_submit_does_not_mask_stale_data(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            no_submit=True,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab_stale,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["no_submit_mode"] is True
+    assert record["execution_plan_action"] == "buy"
+    assert record["intended_mutation_action"] == "buy"
+    assert record["mutation_would_be_required_without_no_submit"] is False
+    assert record["blocker_status"] == "blocked/stale_data_preview_only"
+    assert record["final_classification"] == "blocked_stale_data_preview_only"
+    assert record["blockers"] == ["stale_data_preview_only"]
+    assert record["action_result"]["mutation_status"] == "blocked_before_submit"
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert broker.submitted_requests == []
+
+
 def test_paper_autopilot_blocks_when_open_spy_order_present(tmp_path: Path) -> None:
     bars_csv = _write_bars(tmp_path, posture="risk_on")
     broker = FakeAutopilotBroker(
@@ -618,6 +766,13 @@ def _fake_daily_lab_no_new_bar(config):  # noqa: ANN001
     return payload
 
 
+def _fake_daily_lab_stale(config):  # noqa: ANN001
+    payload = dict(_fake_daily_lab(config))
+    payload["data_freshness_status"] = "stale_data_preview_only"
+    payload["data_refresh_status"] = "stale_data_preview_only"
+    return payload
+
+
 def _write_bars(tmp_path: Path, *, posture: str) -> Path:
     path = tmp_path / f"{posture}.csv"
     start = date(2026, 1, 1)
@@ -632,6 +787,10 @@ def _write_bars(tmp_path: Path, *, posture: str) -> Path:
         )
     path.write_text("\n".join(rows) + "\n", encoding="utf-8")
     return path
+
+
+def _latest_jsonl(path: str) -> dict[str, object]:
+    return json.loads(Path(path).read_text(encoding="utf-8").splitlines()[-1])
 
 
 def _write_rsi_shadow_bars(tmp_path: Path) -> Path:

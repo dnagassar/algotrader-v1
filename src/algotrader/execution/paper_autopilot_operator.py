@@ -40,6 +40,7 @@ _SUMMARY_FIELDS = (
     "broker_state_mode",
     "blocker_status",
     "action_decision",
+    "no_submit_mode",
     "paper_submit_performed",
     "broker_mutation_performed",
     "live_mutation_performed",
@@ -65,6 +66,7 @@ class PaperAutopilotOperatorConfig:
     sma_fast_window: int = 50
     sma_slow_window: int = 200
     max_notional: str = "25.00"
+    no_submit: bool = False
 
     def __post_init__(self) -> None:
         loop_config = self.to_loop_config()
@@ -86,6 +88,7 @@ class PaperAutopilotOperatorConfig:
             sma_fast_window=self.sma_fast_window,
             sma_slow_window=self.sma_slow_window,
             max_notional=self.max_notional,
+            no_submit=self.no_submit,
         )
 
 
@@ -178,6 +181,7 @@ def build_paper_autopilot_operator_summary(
         "broker_state_mode": _text(rollup.get("broker_state_mode")),
         "blocker_status": _text(rollup.get("blocker_status")),
         "action_decision": _text(rollup.get("action_decision")),
+        "no_submit_mode": rollup.get("no_submit_mode") is True,
         "paper_submit_performed": rollup.get("paper_submit_performed") is True,
         "broker_mutation_performed": rollup.get("broker_mutation_performed") is True,
         "live_mutation_performed": rollup.get("live_mutation_performed") is True,

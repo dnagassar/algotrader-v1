@@ -6,8 +6,8 @@ Runs the SPY paper-only mutation supervisor.
 Runs the bounded SPY SMA paper-autopilot operator. The operator runs the daily
 SPY paper-lab loop, observes verified Alpaca paper broker state, creates a
 broker-aware ExecutionPlan, and performs at most one bounded paper-only submit
-when the plan requires action. Credential values are never printed or loaded by
-this launcher.
+when the plan requires action unless -NoSubmit is set. Credential values are
+never printed or loaded by this launcher. Credential values are never printed.
 #>
 
 [CmdletBinding()]
@@ -21,6 +21,7 @@ param(
     [int]$SmaFastWindow = 50,
     [int]$SmaSlowWindow = 200,
     [string]$MaxNotional = "25.00",
+    [switch]$NoSubmit,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -67,6 +68,7 @@ Write-Host "preflight_APP_PROFILE_is_live=$($AppProfileIsLive.ToString().ToLower
 Write-Host "preflight_credential_variables_loaded=$($LoadedCredentialVariables.Count)"
 Write-Host "preflight_expected_account_id_loaded=$($ExpectedAccountLoaded.ToString().ToLowerInvariant())"
 Write-Host "preflight_live_endpoint_indicator=$($LiveEndpointIndicator.ToString().ToLowerInvariant())"
+Write-Host "preflight_no_submit_mode=$($NoSubmit.IsPresent.ToString().ToLowerInvariant())"
 Write-Host "preflight_paper_submit_authorization_scope=bounded_supervisor_run_only"
 Write-Host "preflight_live_authorized=false"
 
@@ -89,6 +91,10 @@ if (-not [string]::IsNullOrEmpty($AsOfDate)) {
 
 if (-not [string]::IsNullOrEmpty($RunDate)) {
     $CliArgs += @("--run-date", $RunDate)
+}
+
+if ($NoSubmit.IsPresent) {
+    $CliArgs += @("--no-submit")
 }
 
 Push-Location -LiteralPath $RepoRoot
