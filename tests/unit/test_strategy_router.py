@@ -8,6 +8,7 @@ from pathlib import Path
 from algotrader.core.types import Bar
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    OPTIONS_NOT_AUTHORIZED_BLOCKER,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
@@ -129,6 +130,27 @@ def test_paper_mutation_candidate_routes_after_independent_safety_gates() -> Non
     assert receipt.blockers == ()
     assert set(REQUIRED_LABELS) <= set(receipt.labels)
     assert STRATEGY_ROUTER_LABEL in receipt.labels
+
+
+def test_options_asset_class_cannot_route_for_paper_mutation() -> None:
+    receipt = route_strategy_signals(
+        (
+            _dummy_signal(
+                strategy_id="option_asset_class_fixture",
+                asset_class="option",
+            ),
+        )
+    )
+
+    assert receipt.route_status == "blocked"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.selected_signal is None
+    assert receipt.candidate_signal_ids == ()
+    assert receipt.blocked_signal_ids == ("option_asset_class_fixture",)
+    assert (
+        f"option_asset_class_fixture:{OPTIONS_NOT_AUTHORIZED_BLOCKER}"
+        in receipt.blockers
+    )
 
 
 def test_conflicting_promoted_candidates_block_for_review() -> None:
@@ -305,6 +327,7 @@ def test_strategy_router_hot_path_has_no_broker_or_network_imports() -> None:
 def _dummy_signal(
     *,
     strategy_id: str,
+    asset_class: str = "equity",
     signal_state: str = "trade_candidate",
     intended_action: str = "buy",
     intended_side: str = "buy",
@@ -316,7 +339,7 @@ def _dummy_signal(
         strategy_id=strategy_id,
         strategy_family="test_dummy_strategy_fixture",
         symbol="SPY",
-        asset_class="equity",
+        asset_class=asset_class,
         signal_state=signal_state,
         intended_action=intended_action,
         intended_side=intended_side,

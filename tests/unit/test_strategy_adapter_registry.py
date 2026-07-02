@@ -16,6 +16,7 @@ from algotrader.orchestration.strategy_adapter_registry import (
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_FAMILY,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
+    OPTIONS_NOT_AUTHORIZED_BLOCKER,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY,
@@ -248,6 +249,22 @@ def test_unsupported_asset_class_blocks() -> None:
 
     assert resolution.resolution_status == "blocked"
     assert resolution.reason == "strategy_adapter_unsupported_asset_class"
+    assert resolution.paper_mutation_allowed is False
+
+
+def test_options_asset_class_cannot_mutate_through_equity_sma_adapter() -> None:
+    signal = _signal(asset_class="option")
+    receipt = route_strategy_signals((signal,))
+    resolution = resolve_strategy_adapter(signal)
+
+    assert receipt.route_status == "blocked"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.blockers == (
+        f"{SMA_TRAINING_WHEEL_STRATEGY_ID}:{OPTIONS_NOT_AUTHORIZED_BLOCKER}",
+    )
+    assert resolution.resolution_status == "blocked"
+    assert resolution.reason == "strategy_adapter_unsupported_asset_class"
+    assert resolution.adapter_id == SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
     assert resolution.paper_mutation_allowed is False
 
 

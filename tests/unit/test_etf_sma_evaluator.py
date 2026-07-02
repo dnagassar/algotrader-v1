@@ -216,6 +216,11 @@ def test_invalid_windows_are_rejected(kwargs: dict[str, object]) -> None:
         EtfSmaSignalConfig(as_of=_AS_OF_200, **kwargs)
 
 
+def test_options_asset_class_is_rejected_by_etf_sma_config() -> None:
+    with pytest.raises(ValidationError, match="asset_class"):
+        EtfSmaSignalConfig(as_of=_AS_OF_200, asset_class="option")
+
+
 def test_mixed_symbol_input_is_rejected() -> None:
     bars = list(_bars(*(200 * ("10",))))
     bars[5] = _bar("IVV", _START + timedelta(days=5), "10")

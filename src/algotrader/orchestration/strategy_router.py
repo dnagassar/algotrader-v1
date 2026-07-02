@@ -44,6 +44,7 @@ STRATEGY_ROUTER_REQUIRED_LABELS = (
     "profit_claim=none",
 )
 STRATEGY_ROUTER_LABEL = "strategy_router_contract"
+OPTIONS_NOT_AUTHORIZED_BLOCKER = "options_not_authorized"
 SMA_TRAINING_WHEEL_STRATEGY_FAMILY = "long_only_broad_etf_sma_trend_filter"
 SMA_TRAINING_WHEEL_STRATEGY_ID = "spy_sma_50_200_training_wheel"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY = "mean_reversion"
@@ -54,6 +55,7 @@ SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID = SPY_VOL_SCALED_TREND_STRATEGY_ID
 __all__ = [
     "SMA_TRAINING_WHEEL_STRATEGY_FAMILY",
     "SMA_TRAINING_WHEEL_STRATEGY_ID",
+    "OPTIONS_NOT_AUTHORIZED_BLOCKER",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY",
     "SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID",
     "SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY",
@@ -565,6 +567,8 @@ def _paper_mutation_blockers(
         blockers.append(
             f"promotion_status_not_paper_mutation_candidate:{signal.promotion_status}"
         )
+    if signal.asset_class.strip().lower() in _OPTION_ASSET_CLASSES:
+        blockers.append(OPTIONS_NOT_AUTHORIZED_BLOCKER)
     for label in required_labels:
         if label not in signal.labels:
             blockers.append(f"missing_required_label:{label}")
@@ -712,3 +716,4 @@ _PROMOTION_STATUSES = (
     "paper_mutation_candidate",
 )
 _ROUTE_STATUSES = ("action_routed", "no_action_required", "blocked")
+_OPTION_ASSET_CLASSES = ("option", "options")
