@@ -47,9 +47,12 @@ _COMPARISON_FIELDS = (
     "broker_state_mode",
     "broker_state_observed",
     "blocker_status",
+    "final_supervisor_status",
+    "broker_observed_supervisor_status",
     "action_decision",
     "reconciliation_status",
     "classification",
+    "final_supervisor_classification",
 )
 
 
@@ -330,19 +333,30 @@ def render_paper_autopilot_history_status(rollup: Mapping[str, Any]) -> str:
     artifact_paths = _mapping(rollup.get("artifact_paths"))
     lines = [
         f"classification={_text(rollup.get('classification'))}",
+        "final_supervisor_classification="
+        f"{_text(rollup.get('final_supervisor_classification'))}",
         f"attention_required={str(rollup.get('attention_required') is True).lower()}",
         f"hard_stop={str(rollup.get('hard_stop') is True).lower()}",
         f"run_id={_text(rollup.get('run_id'))}",
         f"as_of_date={_text(rollup.get('as_of_date'))}",
         f"symbol={_text(rollup.get('symbol'))}",
         f"sma_posture={_text(rollup.get('sma_posture'))}",
+        f"operating_mode={_text(rollup.get('operating_mode'))}",
         f"broker_state_mode={_text(rollup.get('broker_state_mode'))}",
         "broker_state_observed="
         f"{str(rollup.get('broker_state_observed') is True).lower()}",
+        "pre_broker_daily_cycle_status="
+        f"{_text(rollup.get('pre_broker_daily_cycle_status'))}",
+        "pre_broker_daily_cycle_classification="
+        f"{_text(rollup.get('pre_broker_daily_cycle_classification'))}",
         f"blocker_status={_text(rollup.get('blocker_status'))}",
+        f"final_supervisor_status={_text(rollup.get('final_supervisor_status'))}",
+        "broker_observed_supervisor_status="
+        f"{_text(rollup.get('broker_observed_supervisor_status'))}",
         f"action_decision={_text(rollup.get('action_decision'))}",
         f"reconciliation_status={_text(rollup.get('reconciliation_status'))}",
         f"next_operator_action={_text(rollup.get('next_operator_action'))}",
+        f"final_operator_action={_text(rollup.get('final_operator_action'))}",
         "reason_codes=" + ",".join(_string_list(rollup.get("reason_codes"))),
         f"operating_history={_text(artifact_paths.get('operating_history'))}",
         f"latest_rollup={_text(artifact_paths.get('latest_rollup'))}",
@@ -359,18 +373,25 @@ def render_paper_autopilot_operating_summary(rollup: Mapping[str, Any]) -> str:
             "# Paper Autopilot Operating Summary",
             "",
             f"- Classification: `{_text(rollup.get('classification'))}`",
+            f"- Final supervisor classification: `{_text(rollup.get('final_supervisor_classification'))}`",
             f"- Attention required: `{str(rollup.get('attention_required') is True).lower()}`",
             f"- Hard stop: `{str(rollup.get('hard_stop') is True).lower()}`",
             f"- Run id: `{_text(rollup.get('run_id'))}`",
             f"- As-of date: `{_text(rollup.get('as_of_date'))}`",
             f"- Symbol: `{_text(rollup.get('symbol'))}`",
             f"- SMA posture: `{_text(rollup.get('sma_posture'))}`",
+            f"- Operating mode: `{_text(rollup.get('operating_mode'))}`",
             f"- Broker-state mode: `{_text(rollup.get('broker_state_mode'))}`",
             f"- Broker state observed: `{str(rollup.get('broker_state_observed') is True).lower()}`",
+            f"- Pre-broker daily-cycle status: `{_text(rollup.get('pre_broker_daily_cycle_status'))}`",
+            f"- Pre-broker daily-cycle classification: `{_text(rollup.get('pre_broker_daily_cycle_classification'))}`",
             f"- Blocker status: `{_text(rollup.get('blocker_status'))}`",
+            f"- Final supervisor status: `{_text(rollup.get('final_supervisor_status'))}`",
+            f"- Broker-observed supervisor status: `{_text(rollup.get('broker_observed_supervisor_status'))}`",
             f"- Action decision: `{_text(rollup.get('action_decision'))}`",
             f"- Reconciliation status: `{_text(rollup.get('reconciliation_status'))}`",
             f"- Next operator action: `{_text(rollup.get('next_operator_action'))}`",
+            f"- Final operator action: `{_text(rollup.get('final_operator_action'))}`",
             f"- Reason codes: `{reason_codes}`",
             "",
             "Artifacts:",
@@ -420,6 +441,7 @@ def _normalize_status_payload(
     payload = _mapping(status_load.get("payload"))
     broker_state = _mapping(payload.get("broker_state"))
     preflight = _mapping(payload.get("preflight"))
+    daily_cycle = _mapping(payload.get("daily_cycle"))
     execution_plan_summary = _mapping(payload.get("execution_plan_summary"))
     execution_plan = _mapping(payload.get("execution_plan"))
     action_result = _mapping(payload.get("action_result"))
@@ -428,15 +450,51 @@ def _normalize_status_payload(
     paper_profile_run = _bool(preflight.get("APP_PROFILE_is_paper")) or (
         _text(preflight.get("APP_PROFILE")) == "paper"
     )
+    no_submit_mode = (
+        _bool(payload.get("no_submit_mode"))
+        or _bool(execution_plan_summary.get("no_submit_mode"))
+        or _bool(execution_plan.get("no_submit_mode"))
+    )
+    blocker_status = _text(payload.get("blocker_status"))
+    final_supervisor_status = _first_nonempty_text(
+        payload.get("final_supervisor_status"),
+        blocker_status,
+    )
+    pre_broker_daily_cycle_status = _first_nonempty_text(
+        payload.get("pre_broker_daily_cycle_status"),
+        _pre_broker_daily_cycle_status(daily_cycle),
+    )
     record = {
         "run_id": _text(payload.get("run_id")),
         "generated_at": generated_at,
         "as_of_date": _text(payload.get("as_of_date")),
         "symbol": _text(payload.get("symbol")),
         "sma_posture": _text(payload.get("sma_posture")),
+        "operating_mode": _first_nonempty_text(
+            payload.get("operating_mode"),
+            _operating_mode(no_submit_mode),
+        ),
         "broker_state_mode": _text(payload.get("broker_state_mode")),
         "broker_state_observed": _bool(payload.get("broker_state_observed")),
-        "blocker_status": _text(payload.get("blocker_status")),
+        "pre_broker_daily_cycle_status": pre_broker_daily_cycle_status,
+        "pre_broker_daily_cycle_classification": _first_nonempty_text(
+            payload.get("pre_broker_daily_cycle_classification"),
+            _pre_broker_daily_cycle_classification(pre_broker_daily_cycle_status),
+        ),
+        "blocker_status": blocker_status,
+        "final_supervisor_status": final_supervisor_status,
+        "broker_observed_supervisor_status": _first_nonempty_text(
+            payload.get("broker_observed_supervisor_status"),
+            _broker_observed_supervisor_status(
+                broker_state_observed=_bool(payload.get("broker_state_observed")),
+                final_supervisor_status=final_supervisor_status,
+            ),
+        ),
+        "final_supervisor_classification": _first_nonempty_text(
+            payload.get("final_supervisor_classification"),
+            payload.get("final_classification"),
+            payload.get("classification"),
+        ),
         "execution_plan_id": _first_nonempty_text(
             execution_plan_summary.get("execution_plan_id"),
             execution_plan.get("execution_plan_id"),
@@ -445,9 +503,7 @@ def _normalize_status_payload(
             execution_plan_summary.get("client_order_id"),
             execution_plan.get("client_order_id"),
         ),
-        "no_submit_mode": _bool(payload.get("no_submit_mode"))
-        or _bool(execution_plan_summary.get("no_submit_mode"))
-        or _bool(execution_plan.get("no_submit_mode")),
+        "no_submit_mode": no_submit_mode,
         "broker_read_performed": _bool(payload.get("broker_read_performed")),
         "intended_mutation_action": _first_nonempty_text(
             payload.get("intended_mutation_action"),
@@ -481,8 +537,12 @@ def _normalize_status_payload(
             reconciliation.get("reconciliation_status"),
         ),
         "reconciliation_required": _bool(reconciliation.get("reconciliation_required"))
-        or _text(payload.get("blocker_status")) == "blocked/reconciliation_required",
+        or blocker_status == "blocked/reconciliation_required",
         "next_operator_action": _text(payload.get("next_operator_action")),
+        "final_operator_action": _first_nonempty_text(
+            payload.get("final_operator_action"),
+            payload.get("next_operator_action"),
+        ),
         "safety_labels": _string_list(payload.get("safety_labels")),
         "input_data_path": _text(payload.get("input_data_path")),
         "input_data_sha256": _text(payload.get("input_data_sha256")),
@@ -493,7 +553,7 @@ def _normalize_status_payload(
         or _text(payload.get("blocker_status"))
         == "blocked/unexpected_non_spy_position",
         "open_order_present": _bool(broker_state.get("open_spy_order_present"))
-        or _text(payload.get("blocker_status")) == "blocked/open_order_present",
+        or blocker_status == "blocked/open_order_present",
         "status_artifact_available": status_load.get("status_artifact_available")
         is True,
         "status_artifact_valid": status_load.get("status_artifact_valid") is True,
@@ -503,6 +563,60 @@ def _normalize_status_payload(
     }
     record["status_artifact_stale"] = _status_artifact_stale(record, previous_record)
     return record
+
+
+def _operating_mode(no_submit: bool) -> str:
+    return "visibility/no_submit" if no_submit else "bounded_paper_mutation"
+
+
+def _pre_broker_daily_cycle_status(daily_cycle: Mapping[str, Any]) -> str:
+    blocker_status = _text(daily_cycle.get("daily_cycle_blocker_status"))
+    if blocker_status and blocker_status != "none":
+        return blocker_status
+    for field_name in (
+        "daily_cycle_data_refresh_status",
+        "daily_cycle_data_freshness_status",
+        "daily_cycle_preview_decision",
+    ):
+        status = _text(daily_cycle.get(field_name))
+        if status:
+            return status
+    return "none" if daily_cycle.get("daily_cycle_ran") is True else ""
+
+
+def _pre_broker_daily_cycle_classification(status: str) -> str:
+    normalized = _normalized_status(status)
+    if normalized in {
+        "",
+        "none",
+        "no_refresh_required",
+        "accepted_data_current",
+        "fake_daily_cycle_ran",
+    }:
+        return "pre_broker_daily_cycle_ready"
+    if "broker_state_not_observed" in normalized:
+        return "pre_broker_broker_state_not_observed_context"
+    if normalized == "no_new_completed_bar_noop":
+        return "pre_broker_no_new_completed_bar_noop"
+    if (
+        "stale" in normalized
+        or "invalid" in normalized
+        or normalized.startswith("blocked_future")
+    ):
+        return "pre_broker_data_freshness_blocked"
+    if normalized.startswith("blocked"):
+        return "pre_broker_daily_cycle_blocked"
+    return "pre_broker_daily_cycle_context"
+
+
+def _broker_observed_supervisor_status(
+    *,
+    broker_state_observed: bool,
+    final_supervisor_status: str,
+) -> str:
+    if broker_state_observed:
+        return final_supervisor_status
+    return "broker_state_not_observed"
 
 
 def _classification(
@@ -594,9 +708,21 @@ def _build_rollup(
         "as_of_date": entry.get("as_of_date"),
         "symbol": entry.get("symbol"),
         "sma_posture": entry.get("sma_posture"),
+        "operating_mode": entry.get("operating_mode"),
         "broker_state_mode": entry.get("broker_state_mode"),
         "broker_state_observed": entry.get("broker_state_observed"),
+        "pre_broker_daily_cycle_status": entry.get("pre_broker_daily_cycle_status"),
+        "pre_broker_daily_cycle_classification": entry.get(
+            "pre_broker_daily_cycle_classification"
+        ),
         "blocker_status": entry.get("blocker_status"),
+        "final_supervisor_status": entry.get("final_supervisor_status"),
+        "broker_observed_supervisor_status": entry.get(
+            "broker_observed_supervisor_status"
+        ),
+        "final_supervisor_classification": entry.get(
+            "final_supervisor_classification"
+        ),
         "execution_plan_id": entry.get("execution_plan_id"),
         "client_order_id": entry.get("client_order_id"),
         "no_submit_mode": entry.get("no_submit_mode"),
@@ -613,6 +739,7 @@ def _build_rollup(
         "live_trading_performed": entry.get("live_trading_performed"),
         "reconciliation_status": entry.get("reconciliation_status"),
         "next_operator_action": entry.get("next_operator_action"),
+        "final_operator_action": entry.get("final_operator_action"),
         "safety_labels": list(_string_list(entry.get("safety_labels"))),
         "input_data_path": entry.get("input_data_path"),
         "input_data_sha256": entry.get("input_data_sha256"),
@@ -690,6 +817,10 @@ def _first_nonempty_text(*values: object) -> str:
         if text:
             return text
     return ""
+
+
+def _normalized_status(value: object) -> str:
+    return _text(value).lower().replace("-", "_").replace(" ", "_")
 
 
 def _text(value: object) -> str:

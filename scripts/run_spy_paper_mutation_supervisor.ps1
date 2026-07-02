@@ -62,6 +62,10 @@ if (-not [string]::IsNullOrEmpty($PaperBaseUrl)) {
     $LowerUrl = $PaperBaseUrl.ToLowerInvariant()
     $LiveEndpointIndicator = $LowerUrl.Contains("api.alpaca.markets") -and -not $LowerUrl.Contains("paper")
 }
+$OperatingMode = "bounded_paper_mutation"
+if ($NoSubmit.IsPresent) {
+    $OperatingMode = "visibility/no_submit"
+}
 
 Write-Host "preflight_APP_PROFILE_is_paper=$($AppProfileIsPaper.ToString().ToLowerInvariant())"
 Write-Host "preflight_APP_PROFILE_is_live=$($AppProfileIsLive.ToString().ToLowerInvariant())"
@@ -69,6 +73,7 @@ Write-Host "preflight_credential_variables_loaded=$($LoadedCredentialVariables.C
 Write-Host "preflight_expected_account_id_loaded=$($ExpectedAccountLoaded.ToString().ToLowerInvariant())"
 Write-Host "preflight_live_endpoint_indicator=$($LiveEndpointIndicator.ToString().ToLowerInvariant())"
 Write-Host "preflight_no_submit_mode=$($NoSubmit.IsPresent.ToString().ToLowerInvariant())"
+Write-Host "preflight_operating_mode=$OperatingMode"
 Write-Host "preflight_paper_submit_authorization_scope=bounded_supervisor_run_only"
 Write-Host "preflight_live_authorized=false"
 

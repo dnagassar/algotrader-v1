@@ -28,6 +28,7 @@ def test_run_spy_paper_mutation_supervisor_script_contract() -> None:
         "--no-submit",
         "preflight_expected_account_id_loaded",
         "preflight_no_submit_mode",
+        "preflight_operating_mode",
         "preflight_paper_submit_authorization_scope=bounded_supervisor_run_only",
         "preflight_live_authorized=false",
         "Credential values are never printed",
@@ -78,6 +79,7 @@ def test_run_spy_paper_mutation_supervisor_invokes_operator_cli(
     assert "preflight_APP_PROFILE_is_paper=true" in result.stdout
     assert "preflight_expected_account_id_loaded=true" in result.stdout
     assert "preflight_no_submit_mode=true" in result.stdout
+    assert "preflight_operating_mode=visibility/no_submit" in result.stdout
     args = capture_path.read_text(encoding="utf-8")
     assert "-m algotrader.cli paper-autopilot-operator" in args
     assert "--output-root" in args

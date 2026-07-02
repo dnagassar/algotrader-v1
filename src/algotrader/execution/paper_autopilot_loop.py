@@ -1177,6 +1177,17 @@ def _build_record(
         if _text(order.get("symbol")).upper() == _SYMBOL
     ]
     broker_read_performed = _broker_read_performed(broker_state)
+    operating_mode = _operating_mode(plan.no_submit_mode)
+    pre_broker_daily_cycle_status = _pre_broker_daily_cycle_status(daily_cycle)
+    pre_broker_daily_cycle_classification = (
+        _pre_broker_daily_cycle_classification(daily_cycle)
+    )
+    final_supervisor_status = blocker_status
+    broker_observed_supervisor_status = _broker_observed_supervisor_status(
+        broker_state=broker_state,
+        final_supervisor_status=final_supervisor_status,
+    )
+    final_operator_action = _next_operator_action(blocker_status, plan)
     return {
         "schema_version": PAPER_AUTOPILOT_SCHEMA_VERSION,
         "supervisor_schema_version": PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION,
@@ -1187,6 +1198,7 @@ def _build_record(
         "command": "paper-autopilot-loop",
         "supervisor_command": PAPER_MUTATION_SUPERVISOR_COMMAND,
         "no_submit_mode": plan.no_submit_mode,
+        "operating_mode": operating_mode,
         "symbol": config.symbol,
         "as_of_date": as_of_date,
         "data_latest_bar": _first_nonempty_text(
@@ -1205,6 +1217,10 @@ def _build_record(
         ),
         "input_data_path": str(config.bars_csv),
         "input_data_sha256": data_sha256,
+        "pre_broker_daily_cycle_status": pre_broker_daily_cycle_status,
+        "pre_broker_daily_cycle_classification": (
+            pre_broker_daily_cycle_classification
+        ),
         "sma_posture": posture,
         "signal": dict(signal),
         "vol_scaled_trend_signal": dict(vol_scaled_trend_signal),
@@ -1263,8 +1279,12 @@ def _build_record(
         "action_result": dict(action_result),
         "reconciliation": dict(reconciliation),
         "reconciliation_status": reconciliation.get("reconciliation_status"),
-        "next_operator_action": _next_operator_action(blocker_status, plan),
+        "next_operator_action": final_operator_action,
+        "final_operator_action": final_operator_action,
+        "final_supervisor_status": final_supervisor_status,
+        "broker_observed_supervisor_status": broker_observed_supervisor_status,
         "final_classification": final_classification,
+        "final_supervisor_classification": final_classification,
         "classification": final_classification,
         "spy_position_observed": broker_state.get("spy_position_present") is True,
         "open_spy_orders_observed": len(open_spy_orders),
@@ -1309,6 +1329,60 @@ def _broker_read_performed(broker_state: Mapping[str, Any]) -> bool:
             "orders_observation_available",
         )
     )
+
+
+def _operating_mode(no_submit: bool) -> str:
+    return "visibility/no_submit" if no_submit else "bounded_paper_mutation"
+
+
+def _pre_broker_daily_cycle_status(daily_cycle: Mapping[str, Any]) -> str:
+    blocker_status = _text(daily_cycle.get("daily_cycle_blocker_status"))
+    if blocker_status and blocker_status != "none":
+        return blocker_status
+    for field_name in (
+        "daily_cycle_data_refresh_status",
+        "daily_cycle_data_freshness_status",
+        "daily_cycle_preview_decision",
+    ):
+        status = _text(daily_cycle.get(field_name))
+        if status:
+            return status
+    return "none" if daily_cycle.get("daily_cycle_ran") is True else "not_run"
+
+
+def _pre_broker_daily_cycle_classification(daily_cycle: Mapping[str, Any]) -> str:
+    status = _normalized_status(_pre_broker_daily_cycle_status(daily_cycle))
+    if status in {
+        "",
+        "none",
+        "no_refresh_required",
+        "accepted_data_current",
+        "fake_daily_cycle_ran",
+    }:
+        return "pre_broker_daily_cycle_ready"
+    if "broker_state_not_observed" in status:
+        return "pre_broker_broker_state_not_observed_context"
+    if status == "no_new_completed_bar_noop":
+        return "pre_broker_no_new_completed_bar_noop"
+    if (
+        "stale" in status
+        or "invalid" in status
+        or status.startswith("blocked_future")
+    ):
+        return "pre_broker_data_freshness_blocked"
+    if status.startswith("blocked"):
+        return "pre_broker_daily_cycle_blocked"
+    return "pre_broker_daily_cycle_context"
+
+
+def _broker_observed_supervisor_status(
+    *,
+    broker_state: Mapping[str, Any],
+    final_supervisor_status: str,
+) -> str:
+    if broker_state.get("broker_state_observed") is True:
+        return final_supervisor_status
+    return "broker_state_not_observed"
 
 
 def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> None:
@@ -1420,17 +1494,22 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- No-submit mode: `{record.get('no_submit_mode')}`",
+            f"- Operating mode: `{record.get('operating_mode', '')}`",
+            f"- Pre-broker daily-cycle status: `{record.get('pre_broker_daily_cycle_status', '')}`",
+            f"- Pre-broker daily-cycle classification: `{record.get('pre_broker_daily_cycle_classification', '')}`",
             f"- Broker read performed: `{record.get('broker_read_performed')}`",
             f"- Execution plan: `{plan.get('execution_plan_id', '')}`",
             f"- Action decision: `{record.get('preview_action_decision', '')}`",
             f"- Blocker status: `{record.get('blocker_status', '')}`",
+            f"- Final supervisor status: `{record.get('final_supervisor_status', '')}`",
+            f"- Broker-observed supervisor status: `{record.get('broker_observed_supervisor_status', '')}`",
             f"- Reconciliation status: `{record.get('reconciliation_status', '')}`",
             f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
             f"- Paper submit performed: `{record.get('paper_submit_performed')}`",
             f"- Broker mutation performed: `{record.get('broker_mutation_performed')}`",
             f"- Live mutation performed: `{record.get('live_mutation_performed')}`",
-            f"- Final classification: `{record.get('final_classification', '')}`",
-            f"- Next operator action: `{record.get('next_operator_action', '')}`",
+            f"- Final supervisor classification: `{record.get('final_supervisor_classification', '')}`",
+            f"- Final operator action: `{record.get('final_operator_action', '')}`",
             "",
             "Safety labels: "
             + ", ".join(str(label) for label in record.get("safety_labels", [])),
@@ -1456,14 +1535,19 @@ def _render_supervisor_brief(record: Mapping[str, Any]) -> str:
             f"- Adapter resolution: `{record.get('strategy_adapter_resolution_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- No-submit mode: `{record.get('no_submit_mode')}`",
+            f"- Operating mode: `{record.get('operating_mode', '')}`",
+            f"- Pre-broker daily-cycle status: `{record.get('pre_broker_daily_cycle_status', '')}`",
+            f"- Pre-broker daily-cycle classification: `{record.get('pre_broker_daily_cycle_classification', '')}`",
             f"- Broker read performed: `{record.get('broker_read_performed')}`",
             f"- Execution plan action: `{record.get('execution_plan_action', '')}`",
             f"- Intended mutation action: `{record.get('intended_mutation_action', '')}`",
             f"- Paper submit authorized: `{record.get('paper_submit_authorized')}`",
             f"- Mutation performed: `{record.get('mutation_performed')}`",
             f"- Submit blocker: `{record.get('submit_blocker', '')}`",
-            f"- Final classification: `{record.get('final_classification', '')}`",
-            f"- Next operator action: `{record.get('next_operator_action', '')}`",
+            f"- Final supervisor status: `{record.get('final_supervisor_status', '')}`",
+            f"- Broker-observed supervisor status: `{record.get('broker_observed_supervisor_status', '')}`",
+            f"- Final supervisor classification: `{record.get('final_supervisor_classification', '')}`",
+            f"- Final operator action: `{record.get('final_operator_action', '')}`",
             "",
         ]
     )
@@ -1491,10 +1575,14 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "strategy_adapter_mode",
         "strategy_adapter_paper_mutation_allowed",
         "broker_state_mode",
+        "broker_state_observed",
         "broker_read_performed",
         "spy_position_observed",
         "open_spy_orders_observed",
         "no_submit_mode",
+        "operating_mode",
+        "pre_broker_daily_cycle_status",
+        "pre_broker_daily_cycle_classification",
         "execution_plan_action",
         "intended_mutation_action",
         "mutation_would_be_required_without_no_submit",
@@ -1509,8 +1597,12 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "paper_submit_performed",
         "live_mutation_performed",
         "live_authorized",
+        "final_supervisor_status",
+        "broker_observed_supervisor_status",
         "final_classification",
+        "final_supervisor_classification",
         "next_operator_action",
+        "final_operator_action",
         "safety_labels",
     )
     return {

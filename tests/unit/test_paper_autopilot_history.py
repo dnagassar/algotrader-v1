@@ -23,11 +23,19 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     rollup = _update_history(tmp_path, _base_status())
 
     assert rollup["classification"] == "healthy_hold_noop"
+    assert rollup["operating_mode"] == "bounded_paper_mutation"
+    assert rollup["final_supervisor_status"] == "none"
+    assert rollup["broker_observed_supervisor_status"] == "none"
+    assert rollup["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
+    assert rollup["final_operator_action"] == "continue_next_daily_cycle"
     assert rollup["attention_required"] is False
     assert rollup["hard_stop"] is False
     assert paper_autopilot_history_exit_status(rollup) == 0
     rendered = render_paper_autopilot_history_status(rollup)
     assert "classification=healthy_hold_noop" in rendered
+    assert "final_supervisor_status=none" in rendered
     assert "latest_rollup=" in rendered
     _assert_history_artifacts(rollup)
 
@@ -88,6 +96,46 @@ def test_broker_state_not_observed_after_paper_profile_blocks(
     assert rollup["classification"] == "broker_state_not_observed"
     assert rollup["attention_required"] is True
     assert paper_autopilot_history_exit_status(rollup) == 1
+
+
+def test_pre_broker_daily_cycle_broker_state_context_does_not_block_final_rollup(
+    tmp_path: Path,
+) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "daily_cycle": {
+                "daily_cycle_ran": True,
+                "daily_cycle_blocker_status": "blocked/broker_state_not_observed",
+                "daily_cycle_data_freshness_status": "accepted_data_current",
+                "daily_cycle_data_refresh_status": "no_refresh_required",
+            },
+            "pre_broker_daily_cycle_status": "blocked/broker_state_not_observed",
+            "pre_broker_daily_cycle_classification": (
+                "pre_broker_broker_state_not_observed_context"
+            ),
+            "final_supervisor_status": "none",
+            "broker_observed_supervisor_status": "none",
+            "final_supervisor_classification": "no_action_required_no_mutation",
+            "final_operator_action": "continue_next_daily_cycle",
+        }
+    )
+
+    rollup = _update_history(tmp_path, status)
+
+    assert rollup["classification"] == "healthy_hold_noop"
+    assert rollup["attention_required"] is False
+    assert rollup["pre_broker_daily_cycle_status"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert rollup["pre_broker_daily_cycle_classification"] == (
+        "pre_broker_broker_state_not_observed_context"
+    )
+    assert rollup["final_supervisor_status"] == "none"
+    assert rollup["broker_observed_supervisor_status"] == "none"
+    assert rollup["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
 
 
 def test_live_safety_block_is_hard_stop(tmp_path: Path) -> None:
@@ -349,8 +397,11 @@ def _base_status(
         "input_data_path": "runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
         "input_data_sha256": "a" * 64,
         "sma_posture": "risk_on",
+        "operating_mode": "bounded_paper_mutation",
         "broker_state_mode": "alpaca_paper_observed",
         "broker_state_observed": True,
+        "pre_broker_daily_cycle_status": "no_refresh_required",
+        "pre_broker_daily_cycle_classification": "pre_broker_daily_cycle_ready",
         "broker_state": {
             "unexpected_non_spy_positions": [],
             "open_spy_order_present": False,
@@ -370,12 +421,16 @@ def _base_status(
         },
         "preview_action_decision": "hold/noop",
         "blocker_status": "none",
+        "final_supervisor_status": "none",
+        "broker_observed_supervisor_status": "none",
+        "final_supervisor_classification": "no_action_required_no_mutation",
         "reconciliation": {
             "reconciliation_required": False,
             "reconciliation_status": "not_required_no_broker_mutation",
         },
         "reconciliation_status": "not_required_no_broker_mutation",
         "next_operator_action": "continue_next_daily_cycle",
+        "final_operator_action": "continue_next_daily_cycle",
         "paper_submit_authorized": False,
         "paper_submit_performed": False,
         "broker_mutation_performed": False,

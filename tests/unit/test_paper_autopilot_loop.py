@@ -78,7 +78,19 @@ def test_paper_autopilot_noop_when_already_positioned_risk_on(tmp_path: Path) ->
     assert record["preview_action_decision"] == "hold/noop"
     assert record["execution_plan_status"] == "no_action_required"
     assert record["blocker_status"] == "none"
+    assert record["operating_mode"] == "bounded_paper_mutation"
+    assert record["pre_broker_daily_cycle_status"] == "no_refresh_required"
+    assert (
+        record["pre_broker_daily_cycle_classification"]
+        == "pre_broker_daily_cycle_ready"
+    )
+    assert record["final_supervisor_status"] == "none"
+    assert record["broker_observed_supervisor_status"] == "none"
     assert record["final_classification"] == "no_action_required_no_mutation"
+    assert record["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
+    assert record["final_operator_action"] == "continue_next_daily_cycle"
     assert (
         record["daily_cycle"]["daily_cycle_data_freshness_status"]
         == "accepted_data_current"
@@ -173,6 +185,7 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     )
 
     assert record["no_submit_mode"] is True
+    assert record["operating_mode"] == "visibility/no_submit"
     assert record["broker_read_performed"] is True
     assert record["execution_plan_action"] == "buy"
     assert record["intended_mutation_action"] == "buy"
@@ -183,7 +196,19 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
         "mutation_would_be_required_no_submit_mode"
     ]
     assert record["blocker_status"] == "blocked/mutation_would_be_required_no_submit_mode"
+    assert record["final_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
+    assert record["broker_observed_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
     assert record["final_classification"] == "mutation_would_be_required_no_submit_mode"
+    assert record["final_supervisor_classification"] == (
+        "mutation_would_be_required_no_submit_mode"
+    )
+    assert record["final_operator_action"] == (
+        "review_visibility_only_intended_action_no_submit_mode"
+    )
     assert record["preview_action_decision"] == "paper_buy_blocked_no_submit_mode"
     assert record["action_result"]["mutation_status"] == "blocked_no_submit_mode"
     assert record["paper_submit_authorized"] is False
@@ -202,14 +227,28 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert "submit_order" not in broker.calls
 
     assert receipt["no_submit_mode"] is True
+    assert receipt["operating_mode"] == "visibility/no_submit"
     assert receipt["broker_read_performed"] is True
+    assert receipt["broker_state_observed"] is True
     assert receipt["execution_plan_action"] == "buy"
     assert receipt["intended_mutation_action"] == "buy"
     assert receipt["paper_submit_authorized"] is False
     assert receipt["broker_mutation_performed"] is False
     assert receipt["paper_submit_performed"] is False
     assert receipt["live_mutation_performed"] is False
+    assert receipt["final_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
+    assert receipt["broker_observed_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
     assert receipt["final_classification"] == "mutation_would_be_required_no_submit_mode"
+    assert receipt["final_supervisor_classification"] == (
+        "mutation_would_be_required_no_submit_mode"
+    )
+    assert receipt["final_operator_action"] == (
+        "review_visibility_only_intended_action_no_submit_mode"
+    )
     assert receipt["preview_action_decision"] == "paper_buy_blocked_no_submit_mode"
     assert receipt["vol_scaled_trend_signal"]["strategy_id"] == (
         SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID
@@ -231,6 +270,7 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert receipt["strategy_preview_adapter_resolutions"][0]["mutation_allowed"] is False
     assert rollup["classification"] == "mutation_would_be_required_no_submit_mode"
     assert rollup["no_submit_mode"] is True
+    assert rollup["operating_mode"] == "visibility/no_submit"
     assert rollup["broker_read_performed"] is True
     assert rollup["broker_mutation_performed"] is False
     _assert_no_sensitive_values(record)
@@ -255,6 +295,7 @@ def test_paper_autopilot_no_submit_hold_remains_noop(tmp_path: Path) -> None:
     )
 
     assert record["no_submit_mode"] is True
+    assert record["operating_mode"] == "visibility/no_submit"
     assert record["execution_plan_action"] == "hold"
     assert record["intended_mutation_action"] == ""
     assert record["mutation_would_be_required_without_no_submit"] is False
@@ -265,6 +306,59 @@ def test_paper_autopilot_no_submit_hold_remains_noop(tmp_path: Path) -> None:
     assert record["paper_submit_performed"] is False
     assert record["broker_mutation_performed"] is False
     assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_labels_pre_broker_daily_cycle_context(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(
+        positions=({"symbol": "SPY", "qty": Decimal("0.05"), "market_value": "30"},)
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab_pre_broker_not_observed,
+        timestamp=GENERATED_AT,
+    )
+    receipt = _latest_jsonl(record["artifact_paths"]["supervisor_receipt"])
+    rollup = json.loads(
+        Path(record["artifact_paths"]["latest_rollup"]).read_text(encoding="utf-8")
+    )
+
+    assert record["daily_cycle"]["daily_cycle_blocker_status"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert record["pre_broker_daily_cycle_status"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert record["pre_broker_daily_cycle_classification"] == (
+        "pre_broker_broker_state_not_observed_context"
+    )
+    assert record["broker_state_observed"] is True
+    assert record["blocker_status"] == "none"
+    assert record["final_supervisor_status"] == "none"
+    assert record["broker_observed_supervisor_status"] == "none"
+    assert record["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
+    assert record["final_operator_action"] == "continue_next_daily_cycle"
+    assert record["paper_submit_performed"] is False
+    assert record["broker_mutation_performed"] is False
+    assert receipt["pre_broker_daily_cycle_status"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert receipt["final_supervisor_status"] == "none"
+    assert receipt["broker_observed_supervisor_status"] == "none"
+    assert rollup["pre_broker_daily_cycle_status"] == (
+        "blocked/broker_state_not_observed"
+    )
+    assert rollup["classification"] == "healthy_hold_noop"
+    assert rollup["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
 
 
 def test_paper_autopilot_no_submit_does_not_mask_stale_data(
@@ -286,6 +380,7 @@ def test_paper_autopilot_no_submit_does_not_mask_stale_data(
     )
 
     assert record["no_submit_mode"] is True
+    assert record["operating_mode"] == "visibility/no_submit"
     assert record["execution_plan_action"] == "buy"
     assert record["intended_mutation_action"] == "buy"
     assert record["mutation_would_be_required_without_no_submit"] is False
@@ -770,6 +865,13 @@ def _fake_daily_lab_stale(config):  # noqa: ANN001
     payload = dict(_fake_daily_lab(config))
     payload["data_freshness_status"] = "stale_data_preview_only"
     payload["data_refresh_status"] = "stale_data_preview_only"
+    return payload
+
+
+def _fake_daily_lab_pre_broker_not_observed(config):  # noqa: ANN001
+    payload = dict(_fake_daily_lab(config))
+    payload["blocker_status"] = "blocked/broker_state_not_observed"
+    payload["next_operator_action"] = "configure_verified_paper_profile_then_rerun"
     return payload
 
 

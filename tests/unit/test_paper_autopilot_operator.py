@@ -31,10 +31,22 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
     summary = result["operator_summary"]
     assert summary["classification"] == "healthy_hold_noop"
     assert summary["anomaly_classification"] == "healthy_hold_noop"
+    assert summary["operating_mode"] == "bounded_paper_mutation"
+    assert summary["pre_broker_daily_cycle_status"] == "no_refresh_required"
+    assert (
+        summary["pre_broker_daily_cycle_classification"]
+        == "pre_broker_daily_cycle_ready"
+    )
+    assert summary["final_supervisor_status"] == "none"
+    assert summary["broker_observed_supervisor_status"] == "none"
+    assert summary["final_supervisor_classification"] == (
+        "no_action_required_no_mutation"
+    )
     assert summary["action_decision"] == "hold/noop"
     assert summary["paper_submit_performed"] is False
     assert summary["broker_mutation_performed"] is False
     assert summary["live_mutation_performed"] is False
+    assert summary["final_operator_action"] == "continue_next_daily_cycle"
     assert paper_autopilot_operator_exit_status(result) == 0
     assert result["rollup"]["history_count"] == 1
     rendered = render_paper_autopilot_operator_summary(summary)
@@ -53,6 +65,9 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "healthy_paper_action_reconciled"
+    assert summary["operating_mode"] == "bounded_paper_mutation"
+    assert summary["final_supervisor_status"] == "action/submitted"
+    assert summary["broker_observed_supervisor_status"] == "action/submitted"
     assert summary["action_decision"] == "paper_buy_allowed"
     assert summary["paper_submit_performed"] is True
     assert summary["broker_mutation_performed"] is True
@@ -77,6 +92,8 @@ def test_operator_broker_state_not_observed_is_explicit_nonzero(
     assert summary["classification"] == "broker_state_not_observed"
     assert summary["broker_state_mode"] == "broker_state_not_observed"
     assert summary["blocker_status"] == "blocked/broker_state_not_observed"
+    assert summary["final_supervisor_status"] == "blocked/broker_state_not_observed"
+    assert summary["broker_observed_supervisor_status"] == "broker_state_not_observed"
     assert paper_autopilot_operator_exit_status(result) == 1
 
 
@@ -177,7 +194,14 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert summary["operating_mode"] == "visibility/no_submit"
     assert summary["blocker_status"] == "blocked/mutation_would_be_required_no_submit_mode"
+    assert summary["final_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
+    assert summary["broker_observed_supervisor_status"] == (
+        "blocked/mutation_would_be_required_no_submit_mode"
+    )
     assert summary["action_decision"] == "paper_buy_blocked_no_submit_mode"
     assert summary["no_submit_mode"] is True
     assert summary["paper_submit_performed"] is False

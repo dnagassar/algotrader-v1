@@ -33,12 +33,18 @@ PAPER_AUTOPILOT_OPERATOR_COMMAND = "paper-autopilot-operator"
 
 _SUMMARY_FIELDS = (
     "classification",
+    "final_supervisor_classification",
     "run_id",
     "as_of_date",
     "symbol",
     "sma_posture",
+    "operating_mode",
     "broker_state_mode",
+    "pre_broker_daily_cycle_status",
+    "pre_broker_daily_cycle_classification",
     "blocker_status",
+    "final_supervisor_status",
+    "broker_observed_supervisor_status",
     "action_decision",
     "no_submit_mode",
     "paper_submit_performed",
@@ -47,6 +53,7 @@ _SUMMARY_FIELDS = (
     "reconciliation_status",
     "anomaly_classification",
     "next_operator_action",
+    "final_operator_action",
 )
 
 LoopRunner = Callable[..., Mapping[str, Any]]
@@ -174,12 +181,26 @@ def build_paper_autopilot_operator_summary(
     classification = _text(rollup.get("classification"))
     summary = {
         "classification": classification,
+        "final_supervisor_classification": _text(
+            rollup.get("final_supervisor_classification")
+        ),
         "run_id": _text(rollup.get("run_id")),
         "as_of_date": _text(rollup.get("as_of_date")),
         "symbol": _text(rollup.get("symbol")),
         "sma_posture": _text(rollup.get("sma_posture")),
+        "operating_mode": _text(rollup.get("operating_mode")),
         "broker_state_mode": _text(rollup.get("broker_state_mode")),
+        "pre_broker_daily_cycle_status": _text(
+            rollup.get("pre_broker_daily_cycle_status")
+        ),
+        "pre_broker_daily_cycle_classification": _text(
+            rollup.get("pre_broker_daily_cycle_classification")
+        ),
         "blocker_status": _text(rollup.get("blocker_status")),
+        "final_supervisor_status": _text(rollup.get("final_supervisor_status")),
+        "broker_observed_supervisor_status": _text(
+            rollup.get("broker_observed_supervisor_status")
+        ),
         "action_decision": _text(rollup.get("action_decision")),
         "no_submit_mode": rollup.get("no_submit_mode") is True,
         "paper_submit_performed": rollup.get("paper_submit_performed") is True,
@@ -188,6 +209,7 @@ def build_paper_autopilot_operator_summary(
         "reconciliation_status": _text(rollup.get("reconciliation_status")),
         "anomaly_classification": classification,
         "next_operator_action": _text(rollup.get("next_operator_action")),
+        "final_operator_action": _text(rollup.get("final_operator_action")),
         "operator_exit_code": operator_exit_code,
     }
     return summary
