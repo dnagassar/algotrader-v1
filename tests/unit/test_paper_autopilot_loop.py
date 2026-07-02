@@ -194,6 +194,11 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert record["broker_state_mode"] == "alpaca_paper_observed"
     assert record["expected_account_matched"] is True
     assert record["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
+    assert record["strategy_route_action"] == "buy"
+    assert record["spy_position_observed"] is False
+    assert record["spy_position_quantity"] == "0"
+    assert record["open_spy_orders_observed"] == 0
+    assert record["unexpected_non_spy_positions_observed"] == 0
     assert record["execution_plan_action"] == "buy"
     assert record["intended_mutation_action"] == "buy"
     assert record["mutation_would_be_required_without_no_submit"] is True
@@ -224,6 +229,7 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert record["mutation_performed"] is False
     assert record["live_mutation_performed"] is False
     assert record["vol_scaled_preview_visible"] is True
+    assert record["vol_scaled_preview_intended_action"] == "buy"
     assert record["vol_scaled_preview_mutation_allowed"] is False
     assert record["vol_scaled_preview_submit_allowed"] is False
     assert (
@@ -250,6 +256,8 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert receipt["broker_state_mode"] == "alpaca_paper_observed"
     assert receipt["expected_account_matched"] is True
     assert receipt["selected_strategy_id"] == SMA_TRAINING_WHEEL_STRATEGY_ID
+    assert receipt["strategy_route_action"] == "buy"
+    assert receipt["spy_position_quantity"] == "0"
     assert receipt["execution_plan_action"] == "buy"
     assert receipt["intended_mutation_action"] == "buy"
     assert receipt["paper_submit_authorized"] is False
@@ -279,6 +287,7 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     )
     assert receipt["vol_scaled_preview"]["visible"] is True
     assert receipt["vol_scaled_preview_visible"] is True
+    assert receipt["vol_scaled_preview_intended_action"] == "buy"
     assert receipt["vol_scaled_preview_mutation_allowed"] is False
     assert receipt["vol_scaled_preview_submit_allowed"] is False
     assert (
@@ -300,6 +309,10 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     )
     assert receipt["strategy_preview_adapter_resolutions"][0]["mutation_allowed"] is False
     assert rollup["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert (
+        rollup["autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
     assert rollup["no_submit_mode"] is True
     assert rollup["operating_mode"] == "visibility/no_submit"
     assert rollup["data_refresh_status"] == "no_refresh_required"
@@ -312,6 +325,7 @@ def test_paper_autopilot_no_submit_blocks_buy_visibility_only(
     assert rollup["execution_plan_action"] == "buy"
     assert rollup["broker_mutation_performed"] is False
     assert rollup["vol_scaled_preview_visible"] is True
+    assert rollup["vol_scaled_preview_intended_action"] == "buy"
     assert rollup["vol_scaled_preview_mutation_allowed"] is False
     assert rollup["vol_scaled_preview_submit_allowed"] is False
     assert (
@@ -964,6 +978,9 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     assert Path(paths["supervisor_receipt"]).is_file()
     assert Path(paths["broker_snapshot"]).is_file()
     assert Path(paths["operating_history"]).is_file()
+    assert Path(paths["daily_autonomy_ledger"]).is_file()
+    assert Path(paths["latest_daily_autonomy"]).is_file()
+    assert Path(paths["daily_autonomy_summary"]).is_file()
     assert Path(paths["latest_rollup"]).is_file()
     assert Path(paths["operating_summary"]).is_file()
     latest = json.loads(Path(paths["latest_status"]).read_text(encoding="utf-8"))
@@ -981,6 +998,7 @@ def _assert_artifacts(record: dict[str, object]) -> None:
     assert json.loads(history_lines[-1])["run_id"] == record["run_id"]
     rollup = json.loads(Path(paths["latest_rollup"]).read_text(encoding="utf-8"))
     assert rollup["classification"] == "healthy_hold_noop"
+    assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
 
 
 def _assert_no_sensitive_values(record: dict[str, object]) -> None:

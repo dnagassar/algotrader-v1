@@ -23,15 +23,26 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     rollup = _update_history(tmp_path, _base_status())
 
     assert rollup["classification"] == "healthy_hold_noop"
+    assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert rollup["autonomy_next_action"] == "continue_next_daily_cycle"
+    assert rollup["changed_since_previous"] is False
+    assert "risk_on_spy_position_already_held" in rollup["reason_codes"]
     assert rollup["operating_mode"] == "bounded_paper_mutation"
     assert rollup["latest_bar_date"] == "2026-08-08"
     assert rollup["data_refresh_status"] == "no_refresh_required"
     assert rollup["data_freshness_status"] == "accepted_data_current"
     assert rollup["broker_read_performed"] is True
     assert rollup["expected_account_matched"] is True
+    assert rollup["spy_position_observed"] is True
+    assert rollup["spy_position_quantity"] == "0.05"
+    assert rollup["open_spy_orders_observed"] == 0
+    assert rollup["unexpected_non_spy_positions_count"] == 0
+    assert rollup["unexpected_non_spy_positions"] == []
     assert rollup["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert rollup["strategy_route_action"] == "hold"
     assert rollup["execution_plan_action"] == "hold"
     assert rollup["vol_scaled_preview_visible"] is True
+    assert rollup["vol_scaled_preview_intended_action"] == "buy"
     assert rollup["vol_scaled_preview_mutation_allowed"] is False
     assert rollup["vol_scaled_preview_submit_allowed"] is False
     assert (
@@ -49,11 +60,16 @@ def test_healthy_broker_observed_hold_noop_classification(tmp_path: Path) -> Non
     assert paper_autopilot_history_exit_status(rollup) == 0
     rendered = render_paper_autopilot_history_status(rollup)
     assert "classification=healthy_hold_noop" in rendered
+    assert "autonomy_status=healthy_continue_next_daily_cycle" in rendered
+    assert "autonomy_next_action=continue_next_daily_cycle" in rendered
+    assert "changed_since_previous=false" in rendered
     assert "latest_bar_date=2026-08-08" in rendered
     assert "data_refresh_status=no_refresh_required" in rendered
     assert "expected_account_matched=true" in rendered
+    assert "spy_position_quantity=0.05" in rendered
     assert "selected_strategy_id=spy_sma_50_200_training_wheel" in rendered
     assert "execution_plan_action=hold" in rendered
+    assert "vol_scaled_preview_intended_action=buy" in rendered
     assert "vol_scaled_preview_non_mutation_status=preview_only_non_mutating" in rendered
     assert "final_supervisor_status=none" in rendered
     assert "latest_rollup=" in rendered
@@ -86,8 +102,34 @@ def test_healthy_paper_action_with_confirmed_reconciliation(
     rollup = _update_history(tmp_path, status)
 
     assert rollup["classification"] == "healthy_paper_action_reconciled"
+    assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
     assert rollup["attention_required"] is False
     assert rollup["paper_submit_performed"] is True
+
+
+def test_risk_off_without_spy_position_is_healthy_noop_with_distinct_reason(
+    tmp_path: Path,
+) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "sma_posture": "risk_off",
+            "spy_position_observed": False,
+            "spy_position_quantity": "0",
+            "preview_action_decision": "hold/noop",
+        }
+    )
+    status["broker_state"].update(
+        {
+            "spy_position_present": False,
+            "spy_position_quantity": "0",
+        }
+    )
+
+    rollup = _update_history(tmp_path, status)
+
+    assert rollup["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert "risk_off_no_spy_position_noop" in rollup["reason_codes"]
 
 
 def test_broker_state_not_observed_after_paper_profile_blocks(
@@ -114,6 +156,8 @@ def test_broker_state_not_observed_after_paper_profile_blocks(
     rollup = _update_history(tmp_path, status)
 
     assert rollup["classification"] == "broker_state_not_observed"
+    assert rollup["autonomy_status"] == "blocked_configure_verified_paper_profile"
+    assert rollup["autonomy_next_action"] == "configure_verified_paper_profile_then_rerun"
     assert rollup["attention_required"] is True
     assert paper_autopilot_history_exit_status(rollup) == 1
 
@@ -171,6 +215,7 @@ def test_live_safety_block_is_hard_stop(tmp_path: Path) -> None:
     rollup = _update_history(tmp_path, status)
 
     assert rollup["classification"] == "live_safety_blocked"
+    assert rollup["autonomy_status"] == "hard_stop_safety_invariant"
     assert rollup["hard_stop"] is True
     assert "live_mutation_performed" in rollup["reason_codes"]
     assert paper_autopilot_history_exit_status(rollup) == 2
@@ -192,6 +237,27 @@ def test_missing_required_safety_label_is_live_safety_hard_stop(
     assert rollup["classification"] == "live_safety_blocked"
     assert rollup["hard_stop"] is True
     assert "missing_safety_label:not_live_authorized" in rollup["reason_codes"]
+
+
+def test_no_submit_mutation_flags_are_hard_stop_safety_invariant(
+    tmp_path: Path,
+) -> None:
+    status = _base_status()
+    status.update(
+        {
+            "operating_mode": "visibility/no_submit",
+            "no_submit_mode": True,
+            "paper_submit_performed": True,
+            "broker_mutation_performed": True,
+        }
+    )
+
+    rollup = _update_history(tmp_path, status)
+
+    assert rollup["autonomy_status"] == "hard_stop_safety_invariant"
+    assert rollup["hard_stop"] is True
+    assert "paper_submit_performed_in_no_submit_mode" in rollup["reason_codes"]
+    assert "broker_mutation_performed_in_no_submit_mode" in rollup["reason_codes"]
 
 
 def test_reconciliation_required_blocks_for_attention(tmp_path: Path) -> None:
@@ -234,6 +300,7 @@ def test_unexpected_non_spy_position_blocks_for_attention(
     rollup = _update_history(tmp_path, status)
 
     assert rollup["classification"] == "unexpected_position_blocked"
+    assert rollup["autonomy_status"] == "blocked_unexpected_non_spy_position"
     assert rollup["attention_required"] is True
 
 
@@ -251,6 +318,7 @@ def test_open_spy_order_conflict_blocks_for_attention(tmp_path: Path) -> None:
     rollup = _update_history(tmp_path, status)
 
     assert rollup["classification"] == "open_order_conflict_blocked"
+    assert rollup["autonomy_status"] == "blocked_open_spy_order_present"
     assert rollup["attention_required"] is True
 
 
@@ -265,6 +333,7 @@ def test_missing_latest_status_artifact_classifies_stale_or_missing(
     )
 
     assert rollup["classification"] == "stale_or_missing_status_artifact"
+    assert rollup["autonomy_status"] == "blocked_refresh_or_validate_daily_bars"
     assert rollup["attention_required"] is True
     assert rollup["hard_stop"] is False
     _assert_history_artifacts(rollup)
@@ -282,7 +351,65 @@ def test_stale_latest_status_artifact_classifies_stale_or_missing(
     rollup = _update_history(tmp_path, old)
 
     assert rollup["classification"] == "stale_or_missing_status_artifact"
+    assert rollup["autonomy_status"] == "blocked_refresh_or_validate_daily_bars"
     assert rollup["comparison_to_previous"]["previous_run_id"] == "run-new"
+
+
+def test_daily_autonomy_transition_flags_are_recorded(tmp_path: Path) -> None:
+    first = _base_status(run_id="run-1", generated_at="2026-06-26T14:00:00+00:00")
+    second = _base_status(run_id="run-2", generated_at="2026-06-27T14:00:00+00:00")
+    second.update(
+        {
+            "latest_bar_date": "2026-08-09",
+            "broker_state_mode": "broker_state_not_observed",
+            "broker_state_observed": False,
+            "spy_position_observed": False,
+            "spy_position_quantity": "0",
+            "open_spy_orders_observed": 1,
+            "selected_strategy_id": "spy_sma_50_200_training_wheel_v2",
+            "execution_plan_action": "buy",
+            "preview_action_decision": "paper_buy_blocked_no_submit_mode",
+            "final_supervisor_classification": (
+                "mutation_would_be_required_no_submit_mode"
+            ),
+            "blocker_status": "blocked/mutation_would_be_required_no_submit_mode",
+            "vol_scaled_preview_intended_action": "sell_close",
+            "broker_mutation_performed": True,
+        }
+    )
+    second["broker_state"].update(
+        {
+            "broker_state_mode": "broker_state_not_observed",
+            "spy_position_present": False,
+            "spy_position_quantity": "0",
+            "open_spy_order_present": True,
+        }
+    )
+    second["execution_plan_summary"]["action"] = "buy"
+    _update_history(tmp_path, first)
+
+    rollup = _update_history(tmp_path, second)
+
+    comparison = rollup["comparison_to_previous"]
+    assert rollup["changed_since_previous"] is True
+    assert comparison["latest_bar_date_changed"] is True
+    assert comparison["broker_state_mode_changed"] is True
+    assert comparison["spy_position_changed"] is True
+    assert comparison["open_orders_changed"] is True
+    assert comparison["selected_strategy_changed"] is True
+    assert comparison["execution_plan_action_changed"] is True
+    assert comparison["final_supervisor_classification_changed"] is True
+    assert comparison["blocker_status_changed"] is True
+    assert comparison["vol_scaled_preview_action_changed"] is True
+    assert comparison["mutation_flags_changed"] is True
+    autonomy_latest = json.loads(
+        Path(rollup["artifact_paths"]["latest_daily_autonomy"]).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert autonomy_latest["changed_since_previous"] is True
+    assert autonomy_latest["latest_bar_date_changed"] is True
+    assert autonomy_latest["mutation_flags_changed"] is True
 
 
 def test_jsonl_append_behavior_is_deterministic(tmp_path: Path) -> None:
@@ -364,12 +491,19 @@ def _write_latest_status(tmp_path: Path, status: dict[str, object]) -> Path:
 def _assert_history_artifacts(rollup: dict[str, object]) -> None:
     artifact_paths = rollup["artifact_paths"]
     assert Path(artifact_paths["operating_history"]).is_file()
+    assert Path(artifact_paths["daily_autonomy_ledger"]).is_file()
+    assert Path(artifact_paths["latest_daily_autonomy"]).is_file()
+    assert Path(artifact_paths["daily_autonomy_summary"]).is_file()
     assert Path(artifact_paths["latest_rollup"]).is_file()
     assert Path(artifact_paths["operating_summary"]).is_file()
     latest_rollup = json.loads(
         Path(artifact_paths["latest_rollup"]).read_text(encoding="utf-8")
     )
     assert latest_rollup["classification"] == rollup["classification"]
+    latest_autonomy = json.loads(
+        Path(artifact_paths["latest_daily_autonomy"]).read_text(encoding="utf-8")
+    )
+    assert latest_autonomy["autonomy_status"] == rollup["autonomy_status"]
 
 
 def _history_lines(rollup: dict[str, object]) -> list[str]:
@@ -425,10 +559,20 @@ def _base_status(
         "broker_state_observed": True,
         "broker_read_performed": True,
         "expected_account_matched": True,
+        "spy_position_observed": True,
+        "spy_position_quantity": "0.05",
+        "open_spy_orders_observed": 0,
+        "unexpected_non_spy_positions": [],
+        "unexpected_non_spy_positions_observed": 0,
         "selected_strategy_id": "spy_sma_50_200_training_wheel",
+        "strategy_route_action": "hold",
         "pre_broker_daily_cycle_status": "no_refresh_required",
         "pre_broker_daily_cycle_classification": "pre_broker_daily_cycle_ready",
         "broker_state": {
+            "broker_state_mode": "alpaca_paper_observed",
+            "broker_state_observed": True,
+            "spy_position_present": True,
+            "spy_position_quantity": "0.05",
             "unexpected_non_spy_positions": [],
             "open_spy_order_present": False,
             "expected_account_matched": True,
@@ -451,12 +595,14 @@ def _base_status(
         "vol_scaled_preview": {
             "strategy_id": "spy_vol_scaled_trend_20d_fixed",
             "visible": True,
+            "intended_action": "buy",
             "submit_allowed": False,
             "paper_mutation_allowed": False,
             "mutation_allowed": False,
             "non_mutation_status": "preview_only_non_mutating",
         },
         "vol_scaled_preview_visible": True,
+        "vol_scaled_preview_intended_action": "buy",
         "vol_scaled_preview_mutation_allowed": False,
         "vol_scaled_preview_submit_allowed": False,
         "vol_scaled_preview_non_mutation_status": "preview_only_non_mutating",

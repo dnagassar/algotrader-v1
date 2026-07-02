@@ -1147,6 +1147,15 @@ def _build_record(
         "operating_history": str(
             output_root.parent / "history" / "operating_history.jsonl"
         ),
+        "daily_autonomy_ledger": str(
+            output_root.parent / "history" / "daily_autonomy_ledger.jsonl"
+        ),
+        "latest_daily_autonomy": str(
+            output_root.parent / "history" / "latest_daily_autonomy.json"
+        ),
+        "daily_autonomy_summary": str(
+            output_root.parent / "history" / "daily_autonomy_summary.md"
+        ),
         "latest_rollup": str(output_root.parent / "history" / "latest_rollup.json"),
         "operating_summary": str(
             output_root.parent / "history" / "operating_summary.md"
@@ -1231,6 +1240,9 @@ def _build_record(
         "vol_scaled_trend_signal": dict(vol_scaled_trend_signal),
         "vol_scaled_preview": vol_scaled_preview,
         "vol_scaled_preview_visible": vol_scaled_preview["visible"],
+        "vol_scaled_preview_intended_action": _text(
+            vol_scaled_preview["intended_action"]
+        ),
         "vol_scaled_preview_mutation_allowed": vol_scaled_preview[
             "mutation_allowed"
         ],
@@ -1301,7 +1313,14 @@ def _build_record(
         "final_supervisor_classification": final_classification,
         "classification": final_classification,
         "spy_position_observed": broker_state.get("spy_position_present") is True,
+        "spy_position_quantity": _text(broker_state.get("spy_position_quantity")),
         "open_spy_orders_observed": len(open_spy_orders),
+        "unexpected_non_spy_positions": list(
+            _string_list(broker_state.get("unexpected_non_spy_positions"))
+        ),
+        "unexpected_non_spy_positions_observed": len(
+            _string_list(broker_state.get("unexpected_non_spy_positions"))
+        ),
         "expected_account_id_loaded": preflight.get("expected_account_id_loaded") is True,
         "expected_account_matched": broker_state.get("expected_account_matched"),
         "expected_account_match_mode": _text(
@@ -1583,6 +1602,7 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "vol_scaled_trend_signal",
         "vol_scaled_preview",
         "vol_scaled_preview_visible",
+        "vol_scaled_preview_intended_action",
         "vol_scaled_preview_mutation_allowed",
         "vol_scaled_preview_submit_allowed",
         "vol_scaled_preview_non_mutation_status",
@@ -1599,7 +1619,10 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "broker_state_observed",
         "broker_read_performed",
         "spy_position_observed",
+        "spy_position_quantity",
         "open_spy_orders_observed",
+        "unexpected_non_spy_positions",
+        "unexpected_non_spy_positions_observed",
         "expected_account_matched",
         "no_submit_mode",
         "operating_mode",
@@ -1743,6 +1766,10 @@ def _vol_scaled_preview_receipt(
             signal_payload.get("promotion_status"),
         ),
         "adapter_mode": _text(adapter_resolution.get("adapter_mode")),
+        "intended_action": _first_nonempty_text(
+            preview_state.get("intended_action"),
+            signal_payload.get("intended_action"),
+        ),
         "submit_allowed": submit_allowed,
         "paper_mutation_allowed": mutation_allowed,
         "mutation_allowed": mutation_allowed,
@@ -2344,6 +2371,14 @@ def _mapping_items(value: object) -> tuple[Mapping[str, Any], ...]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
         return ()
     return tuple(item for item in value if isinstance(item, Mapping))
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        return [_text(item) for item in value if _text(item)]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def _dedupe(values: Sequence[str]) -> tuple[str, ...]:

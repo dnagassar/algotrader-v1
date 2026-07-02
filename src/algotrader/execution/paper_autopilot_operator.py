@@ -33,6 +33,12 @@ PAPER_AUTOPILOT_OPERATOR_COMMAND = "paper-autopilot-operator"
 
 _SUMMARY_FIELDS = (
     "classification",
+    "autonomy_status",
+    "autonomy_next_action",
+    "changed_since_previous",
+    "hard_stop",
+    "attention_required",
+    "reason_codes",
     "final_supervisor_classification",
     "run_id",
     "as_of_date",
@@ -48,6 +54,11 @@ _SUMMARY_FIELDS = (
     "broker_read_performed",
     "broker_state_observed",
     "expected_account_matched",
+    "spy_position_observed",
+    "spy_position_quantity",
+    "open_spy_orders_observed",
+    "unexpected_non_spy_positions_count",
+    "unexpected_non_spy_positions",
     "pre_broker_daily_cycle_status",
     "pre_broker_daily_cycle_classification",
     "blocker_status",
@@ -56,6 +67,7 @@ _SUMMARY_FIELDS = (
     "execution_plan_action",
     "action_decision",
     "vol_scaled_preview_visible",
+    "vol_scaled_preview_intended_action",
     "vol_scaled_preview_mutation_allowed",
     "vol_scaled_preview_submit_allowed",
     "vol_scaled_preview_non_mutation_status",
@@ -193,6 +205,12 @@ def build_paper_autopilot_operator_summary(
     classification = _text(rollup.get("classification"))
     summary = {
         "classification": classification,
+        "autonomy_status": _text(rollup.get("autonomy_status")),
+        "autonomy_next_action": _text(rollup.get("autonomy_next_action")),
+        "changed_since_previous": rollup.get("changed_since_previous") is True,
+        "hard_stop": rollup.get("hard_stop") is True,
+        "attention_required": rollup.get("attention_required") is True,
+        "reason_codes": list(_string_list(rollup.get("reason_codes"))),
         "final_supervisor_classification": _text(
             rollup.get("final_supervisor_classification")
         ),
@@ -210,6 +228,15 @@ def build_paper_autopilot_operator_summary(
         "broker_read_performed": rollup.get("broker_read_performed") is True,
         "broker_state_observed": rollup.get("broker_state_observed") is True,
         "expected_account_matched": rollup.get("expected_account_matched"),
+        "spy_position_observed": rollup.get("spy_position_observed") is True,
+        "spy_position_quantity": _text(rollup.get("spy_position_quantity")),
+        "open_spy_orders_observed": rollup.get("open_spy_orders_observed") or 0,
+        "unexpected_non_spy_positions_count": (
+            rollup.get("unexpected_non_spy_positions_count") or 0
+        ),
+        "unexpected_non_spy_positions": list(
+            _string_list(rollup.get("unexpected_non_spy_positions"))
+        ),
         "pre_broker_daily_cycle_status": _text(
             rollup.get("pre_broker_daily_cycle_status")
         ),
@@ -225,6 +252,9 @@ def build_paper_autopilot_operator_summary(
         "action_decision": _text(rollup.get("action_decision")),
         "vol_scaled_preview_visible": (
             rollup.get("vol_scaled_preview_visible") is True
+        ),
+        "vol_scaled_preview_intended_action": _text(
+            rollup.get("vol_scaled_preview_intended_action")
         ),
         "vol_scaled_preview_mutation_allowed": (
             rollup.get("vol_scaled_preview_mutation_allowed") is True
@@ -285,7 +315,17 @@ def _value_text(value: object) -> str:
         return "true"
     if value is False:
         return "false"
+    if isinstance(value, (list, tuple)):
+        return ",".join(_text(item) for item in value if _text(item))
     return _text(value)
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, (list, tuple)):
+        return [_text(item) for item in value if _text(item)]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def _text(value: object) -> str:

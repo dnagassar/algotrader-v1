@@ -30,6 +30,12 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
 
     summary = result["operator_summary"]
     assert summary["classification"] == "healthy_hold_noop"
+    assert summary["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert summary["autonomy_next_action"] == "continue_next_daily_cycle"
+    assert summary["changed_since_previous"] is False
+    assert summary["hard_stop"] is False
+    assert summary["attention_required"] is False
+    assert "risk_on_spy_position_already_held" in summary["reason_codes"]
     assert summary["anomaly_classification"] == "healthy_hold_noop"
     assert summary["operating_mode"] == "bounded_paper_mutation"
     assert summary["pre_broker_daily_cycle_status"] == "no_refresh_required"
@@ -43,6 +49,12 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
         "no_action_required_no_mutation"
     )
     assert summary["action_decision"] == "hold/noop"
+    assert summary["spy_position_observed"] is True
+    assert summary["spy_position_quantity"] == "0.05"
+    assert summary["open_spy_orders_observed"] == 0
+    assert summary["unexpected_non_spy_positions_count"] == 0
+    assert summary["unexpected_non_spy_positions"] == []
+    assert summary["vol_scaled_preview_intended_action"] == "buy"
     assert summary["paper_submit_performed"] is False
     assert summary["broker_mutation_performed"] is False
     assert summary["live_mutation_performed"] is False
@@ -51,6 +63,9 @@ def test_operator_healthy_hold_noop_returns_zero(tmp_path: Path) -> None:
     assert result["rollup"]["history_count"] == 1
     rendered = render_paper_autopilot_operator_summary(summary)
     assert "classification=healthy_hold_noop" in rendered
+    assert "autonomy_status=healthy_continue_next_daily_cycle" in rendered
+    assert "autonomy_next_action=continue_next_daily_cycle" in rendered
+    assert "changed_since_previous=false" in rendered
     assert "operator_exit_code=0" in rendered
     _assert_history_artifacts(result)
 
@@ -65,6 +80,7 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "healthy_paper_action_reconciled"
+    assert summary["autonomy_status"] == "healthy_continue_next_daily_cycle"
     assert summary["operating_mode"] == "bounded_paper_mutation"
     assert summary["final_supervisor_status"] == "action/submitted"
     assert summary["broker_observed_supervisor_status"] == "action/submitted"
@@ -90,6 +106,8 @@ def test_operator_broker_state_not_observed_is_explicit_nonzero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "broker_state_not_observed"
+    assert summary["autonomy_status"] == "blocked_configure_verified_paper_profile"
+    assert summary["autonomy_next_action"] == "configure_verified_paper_profile_then_rerun"
     assert summary["broker_state_mode"] == "broker_state_not_observed"
     assert summary["blocker_status"] == "blocked/broker_state_not_observed"
     assert summary["final_supervisor_status"] == "blocked/broker_state_not_observed"
@@ -116,6 +134,7 @@ def test_operator_live_safety_blocked_is_hard_stop_nonzero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "live_safety_blocked"
+    assert summary["autonomy_status"] == "hard_stop_safety_invariant"
     assert summary["blocker_status"] == "blocked/live_safety"
     assert result["rollup"]["hard_stop"] is True
     assert paper_autopilot_operator_exit_status(result) == 2
@@ -146,6 +165,7 @@ def test_operator_unexpected_non_spy_position_is_nonzero(tmp_path: Path) -> None
 
     summary = result["operator_summary"]
     assert summary["classification"] == "unexpected_position_blocked"
+    assert summary["autonomy_status"] == "blocked_unexpected_non_spy_position"
     assert summary["blocker_status"] == "blocked/unexpected_non_spy_position"
     assert summary["broker_mutation_performed"] is False
     assert paper_autopilot_operator_exit_status(result) == 1
@@ -169,6 +189,7 @@ def test_operator_open_spy_order_conflict_is_nonzero(tmp_path: Path) -> None:
 
     summary = result["operator_summary"]
     assert summary["classification"] == "open_order_conflict_blocked"
+    assert summary["autonomy_status"] == "blocked_open_spy_order_present"
     assert summary["blocker_status"] == "blocked/open_order_present"
     assert summary["broker_mutation_performed"] is False
     assert paper_autopilot_operator_exit_status(result) == 1
@@ -194,6 +215,14 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
 
     summary = result["operator_summary"]
     assert summary["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert (
+        summary["autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
+    assert (
+        summary["autonomy_next_action"]
+        == "review_visibility_only_intended_action_no_submit_mode"
+    )
     assert summary["operating_mode"] == "visibility/no_submit"
     assert summary["latest_bar_date"] == "2026-08-08"
     assert summary["data_refresh_status"] == "no_refresh_required"
@@ -214,6 +243,7 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     assert summary["no_submit_mode"] is True
     assert summary["execution_plan_action"] == "buy"
     assert summary["vol_scaled_preview_visible"] is True
+    assert summary["vol_scaled_preview_intended_action"] == "buy"
     assert summary["vol_scaled_preview_mutation_allowed"] is False
     assert summary["vol_scaled_preview_submit_allowed"] is False
     assert (
@@ -237,10 +267,16 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     assert "expected_account_matched=true" in rendered
     assert "selected_strategy_id=spy_sma_50_200_training_wheel" in rendered
     assert "execution_plan_action=buy" in rendered
+    assert (
+        "autonomy_status=paper_mutation_would_be_required_no_submit_mode"
+        in rendered
+    )
+    assert "autonomy_next_action=review_visibility_only_intended_action_no_submit_mode" in rendered
     assert "broker_mutation_performed=false" in rendered
     assert "paper_submit_performed=false" in rendered
     assert "live_mutation_performed=false" in rendered
     assert "vol_scaled_preview_visible=true" in rendered
+    assert "vol_scaled_preview_intended_action=buy" in rendered
     assert "vol_scaled_preview_mutation_allowed=false" in rendered
     assert "vol_scaled_preview_submit_allowed=false" in rendered
     assert "vol_scaled_preview_non_mutation_status=preview_only_non_mutating" in rendered
@@ -263,6 +299,7 @@ def test_operator_missing_latest_status_artifact_is_nonzero(tmp_path: Path) -> N
 
     summary = result["operator_summary"]
     assert summary["classification"] == "stale_or_missing_status_artifact"
+    assert summary["autonomy_status"] == "blocked_refresh_or_validate_daily_bars"
     assert summary["run_id"] == ""
     assert paper_autopilot_operator_exit_status(result) == 1
 
@@ -409,6 +446,9 @@ def _write_bars(tmp_path: Path, *, posture: str) -> Path:
 def _assert_history_artifacts(result: dict[str, object]) -> None:
     artifact_paths = result["rollup"]["artifact_paths"]
     assert Path(artifact_paths["operating_history"]).is_file()
+    assert Path(artifact_paths["daily_autonomy_ledger"]).is_file()
+    assert Path(artifact_paths["latest_daily_autonomy"]).is_file()
+    assert Path(artifact_paths["daily_autonomy_summary"]).is_file()
     assert Path(artifact_paths["latest_rollup"]).is_file()
     assert Path(artifact_paths["operating_summary"]).is_file()
     latest_rollup = json.loads(
