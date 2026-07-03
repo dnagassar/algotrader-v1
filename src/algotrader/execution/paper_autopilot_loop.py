@@ -33,6 +33,7 @@ from algotrader.execution.paper_autopilot_history import (
     update_paper_autopilot_operating_history,
 )
 from algotrader.orchestration.strategy_router import (
+    SMA_TRAINING_WHEEL_STRATEGY_ID,
     STRATEGY_ROUTER_LABEL,
     StrategyRouteReceipt,
     StrategySignal,
@@ -43,6 +44,7 @@ from algotrader.orchestration.strategy_router import (
 )
 from algotrader.orchestration.strategy_adapter_registry import (
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
+    SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
     StrategyAdapterRegistryInput,
     StrategyAdapterResolution,
     resolve_strategy_adapter,
@@ -130,6 +132,7 @@ class PaperAutopilotLoopConfig:
     max_notional: Decimal | str = PAPER_AUTOPILOT_MAX_NOTIONAL
     policy: str = PAPER_AUTOPILOT_POLICY
     no_submit: bool = False
+    readiness_packet_path: Path | str | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
@@ -163,6 +166,12 @@ class PaperAutopilotLoopConfig:
             _parse_date_text(self.as_of_date, "as_of_date")
         if self.run_date is not None:
             _parse_date_text(self.run_date, "run_date")
+        if self.readiness_packet_path is not None:
+            object.__setattr__(
+                self,
+                "readiness_packet_path",
+                _path(self.readiness_packet_path, "readiness_packet_path"),
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,6 +215,7 @@ class PaperAutopilotExecutionPlan:
     paper_submit_authorized: bool
     submit_allowed: bool
     no_submit_mode: bool
+    paper_mutation_readiness_gate: Mapping[str, object]
     mutation_would_be_required_without_no_submit: bool
     intended_mutation_action: str
     blockers: tuple[str, ...]
@@ -229,6 +239,9 @@ class PaperAutopilotExecutionPlan:
             "paper_submit_authorized": self.paper_submit_authorized,
             "submit_allowed": self.submit_allowed,
             "no_submit_mode": self.no_submit_mode,
+            "paper_mutation_readiness_gate": dict(
+                self.paper_mutation_readiness_gate
+            ),
             "mutation_would_be_required_without_no_submit": (
                 self.mutation_would_be_required_without_no_submit
             ),
@@ -258,6 +271,10 @@ def run_paper_autopilot_loop(
     run_id = f"paper_autopilot_{generated_at.replace(':', '').replace('-', '')}"
     process_env = _normalized_env(env)
     secret_values = _secret_values(process_env)
+    paper_mutation_readiness = _load_paper_mutation_readiness_packet(
+        resolved.readiness_packet_path,
+        secret_values=secret_values,
+    )
 
     bars_path = Path(resolved.bars_csv)
     bars = _load_bars(bars_path, resolved.symbol)
@@ -358,11 +375,14 @@ def run_paper_autopilot_loop(
         intent=intent,
         as_of_date=as_of_date,
         data_sha256=data_sha256,
+        route_receipt=route_receipt,
+        adapter_resolution=adapter_resolution,
         broker_state=broker_state,
         preflight=preflight,
         daily_cycle=daily_cycle,
         client_order_id=client_order_id,
         safety_labels=safety_labels,
+        paper_mutation_readiness=paper_mutation_readiness,
         broker_observation_required=route_blocker == "",
     )
     broker = broker_state.pop("_broker", None)
@@ -393,6 +413,7 @@ def run_paper_autopilot_loop(
         action_result=action_result,
         reconciliation=reconciliation,
         daily_cycle=daily_cycle,
+        paper_mutation_readiness=paper_mutation_readiness,
         blocker_status=blocker_status,
         safety_labels=safety_labels,
         output_root=output_root,
@@ -844,11 +865,14 @@ def _build_plan(
     intent: PaperAutopilotExecutionIntent,
     as_of_date: str,
     data_sha256: str,
+    route_receipt: StrategyRouteReceipt,
+    adapter_resolution: StrategyAdapterResolution,
     broker_state: Mapping[str, Any],
     preflight: Mapping[str, Any],
     daily_cycle: Mapping[str, Any],
     client_order_id: str,
     safety_labels: Sequence[str],
+    paper_mutation_readiness: Mapping[str, Any],
     broker_observation_required: bool = True,
 ) -> PaperAutopilotExecutionPlan:
     blockers = list(
@@ -865,6 +889,22 @@ def _build_plan(
     mutation_would_be_required_without_no_submit = bool(
         config.no_submit and mutation_action and not blockers
     )
+    readiness_gate = _paper_mutation_readiness_gate(
+        config=config,
+        mutation_action=mutation_action,
+        side=intent.side,
+        notional=intent.notional,
+        quantity=intent.quantity,
+        client_order_id=client_order_id,
+        as_of_date=as_of_date,
+        route_receipt=route_receipt,
+        adapter_resolution=adapter_resolution,
+        broker_state=broker_state,
+        preflight=preflight,
+        daily_cycle=daily_cycle,
+        paper_mutation_readiness=paper_mutation_readiness,
+    )
+    blockers.extend(_string_list(readiness_gate.get("blockers")))
     submit_allowed = bool(mutation_action and not blockers)
     if mutation_would_be_required_without_no_submit:
         blockers.append("mutation_would_be_required_no_submit_mode")
@@ -891,6 +931,9 @@ def _build_plan(
         "broker_state_mode": _text(broker_state.get("broker_state_mode")),
         "paper_submit_authorized": paper_authorized,
         "no_submit_mode": config.no_submit,
+        "paper_mutation_readiness_gate_status": _text(
+            readiness_gate.get("gate_status")
+        ),
         "mutation_would_be_required_without_no_submit": (
             mutation_would_be_required_without_no_submit
         ),
@@ -917,6 +960,7 @@ def _build_plan(
         paper_submit_authorized=paper_authorized,
         submit_allowed=submit_allowed and paper_authorized,
         no_submit_mode=config.no_submit,
+        paper_mutation_readiness_gate=readiness_gate,
         mutation_would_be_required_without_no_submit=(
             mutation_would_be_required_without_no_submit
         ),
@@ -989,6 +1033,316 @@ def _daily_cycle_blockers(daily_cycle: Mapping[str, Any]) -> tuple[str, ...]:
         ):
             return ("stale_or_invalid_data",)
     return ()
+
+
+def _load_paper_mutation_readiness_packet(
+    path: Path | str | None,
+    *,
+    secret_values: Sequence[str],
+) -> dict[str, Any]:
+    if path is None:
+        return {
+            "readiness_packet_path": "",
+            "readiness_packet_provided": False,
+            "readiness_packet_loaded": False,
+            "readiness_packet_load_error": "",
+            "packet": {},
+        }
+    packet_path = Path(path)
+    try:
+        payload = json.loads(packet_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "readiness_packet_path": str(packet_path),
+            "readiness_packet_provided": True,
+            "readiness_packet_loaded": False,
+            "readiness_packet_load_error": _safe_exception_message(
+                exc,
+                secret_values,
+            ),
+            "packet": {},
+        }
+    if not isinstance(payload, Mapping):
+        return {
+            "readiness_packet_path": str(packet_path),
+            "readiness_packet_provided": True,
+            "readiness_packet_loaded": False,
+            "readiness_packet_load_error": "readiness packet must be a JSON object",
+            "packet": {},
+        }
+    return {
+        "readiness_packet_path": str(packet_path),
+        "readiness_packet_provided": True,
+        "readiness_packet_loaded": True,
+        "readiness_packet_load_error": "",
+        "packet": dict(payload),
+    }
+
+
+def _paper_mutation_readiness_gate(
+    *,
+    config: PaperAutopilotLoopConfig,
+    mutation_action: str,
+    side: str,
+    notional: Decimal | None,
+    quantity: Decimal | None,
+    client_order_id: str,
+    as_of_date: str,
+    route_receipt: StrategyRouteReceipt,
+    adapter_resolution: StrategyAdapterResolution,
+    broker_state: Mapping[str, Any],
+    preflight: Mapping[str, Any],
+    daily_cycle: Mapping[str, Any],
+    paper_mutation_readiness: Mapping[str, Any],
+) -> dict[str, object]:
+    required = bool(mutation_action and not config.no_submit)
+    packet = _mapping(paper_mutation_readiness.get("packet"))
+    current_selected_strategy = (
+        "" if route_receipt.selected_signal is None else route_receipt.selected_signal.strategy_id
+    )
+    latest_bar_date = _first_nonempty_text(
+        daily_cycle.get("daily_cycle_latest_bar_date"),
+        as_of_date,
+    )
+    gate: dict[str, object] = {
+        "gate_status": "required" if required else "not_required",
+        "required_for_mutation": required,
+        "readiness_packet_path": _text(
+            paper_mutation_readiness.get("readiness_packet_path")
+        ),
+        "readiness_packet_provided": (
+            paper_mutation_readiness.get("readiness_packet_provided") is True
+        ),
+        "readiness_packet_loaded": (
+            paper_mutation_readiness.get("readiness_packet_loaded") is True
+        ),
+        "readiness_packet_consumed": False,
+        "readiness_packet_load_error": _text(
+            paper_mutation_readiness.get("readiness_packet_load_error")
+        ),
+        "readiness_status": _text(packet.get("readiness_status")),
+        "source_autonomy_status": _text(packet.get("source_autonomy_status")),
+        "source_visibility_run_id": _text(packet.get("source_visibility_run_id")),
+        "source_client_order_id": _text(packet.get("source_client_order_id")),
+        "current_selected_strategy_id": current_selected_strategy,
+        "current_strategy_adapter_id": adapter_resolution.adapter_id,
+        "current_strategy_adapter_mode": adapter_resolution.adapter_mode,
+        "current_latest_bar_date": latest_bar_date,
+        "current_data_freshness_status": _text(
+            daily_cycle.get("daily_cycle_data_freshness_status")
+        ),
+        "blockers": [],
+        "checks": {},
+    }
+    if not required:
+        gate["gate_status"] = (
+            "not_required_visibility_no_submit"
+            if mutation_action and config.no_submit
+            else "not_required_no_mutation"
+        )
+        return gate
+
+    checks: dict[str, object] = {}
+    blockers: list[str] = []
+
+    def add_check(name: str, passed: bool, blocker: str, detail: str) -> None:
+        checks[name] = {"passed": passed, "detail": detail}
+        if not passed:
+            blockers.append(blocker)
+
+    add_check(
+        "readiness_packet_provided",
+        paper_mutation_readiness.get("readiness_packet_provided") is True,
+        "paper_mutation_readiness_packet_missing",
+        _text(paper_mutation_readiness.get("readiness_packet_path")) or "missing",
+    )
+    add_check(
+        "readiness_packet_loaded",
+        paper_mutation_readiness.get("readiness_packet_loaded") is True,
+        "paper_mutation_readiness_packet_invalid",
+        _text(paper_mutation_readiness.get("readiness_packet_load_error"))
+        or "loaded",
+    )
+    if blockers:
+        gate["gate_status"] = "blocked"
+        gate["blockers"] = list(_dedupe(blockers))
+        gate["checks"] = checks
+        return gate
+
+    gate["readiness_packet_consumed"] = True
+    current_open_spy_orders = [
+        order
+        for order in _mapping_items(broker_state.get("open_orders"))
+        if _text(order.get("symbol")).upper() == _SYMBOL
+    ]
+    unexpected_non_spy_positions = _string_list(
+        broker_state.get("unexpected_non_spy_positions")
+    )
+    current_data_current = (
+        _normalized_status(daily_cycle.get("daily_cycle_data_freshness_status"))
+        == "accepted_data_current"
+        and latest_bar_date == as_of_date
+    )
+    current_notional_text = _decimal_text(notional) or ""
+    current_quantity_text = _decimal_text(quantity) or ""
+    packet_action = _first_nonempty_text(
+        packet.get("intended_mutation_action"),
+        packet.get("execution_plan_action"),
+    )
+    packet_client_order_id = _first_nonempty_text(
+        packet.get("source_client_order_id"),
+        packet.get("client_order_id"),
+    )
+    readiness_status = _normalized_status(packet.get("readiness_status"))
+    source_autonomy_status = _normalized_status(packet.get("source_autonomy_status"))
+
+    add_check(
+        "readiness_status_authorizes_mutation",
+        _readiness_status_authorizes_paper_mutation(packet),
+        "paper_mutation_readiness_status_not_authorized",
+        f"readiness_status={readiness_status};source_autonomy_status={source_autonomy_status}",
+    )
+    add_check(
+        "symbol_is_spy",
+        _text(packet.get("symbol")).upper() == _SYMBOL and config.symbol == _SYMBOL,
+        "paper_mutation_readiness_symbol_mismatch",
+        _text(packet.get("symbol")),
+    )
+    add_check(
+        "selected_strategy_is_training_wheel",
+        _text(packet.get("selected_strategy_id")) == SMA_TRAINING_WHEEL_STRATEGY_ID
+        and current_selected_strategy == SMA_TRAINING_WHEEL_STRATEGY_ID,
+        "paper_mutation_readiness_strategy_mismatch",
+        _text(packet.get("selected_strategy_id")),
+    )
+    add_check(
+        "strategy_adapter_is_paper_mutation",
+        _text(packet.get("strategy_adapter_mode")) == "paper_mutation"
+        and adapter_resolution.adapter_mode == "paper_mutation"
+        and adapter_resolution.adapter_id == SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID
+        and adapter_resolution.paper_mutation_allowed is True,
+        "paper_mutation_readiness_adapter_mismatch",
+        _text(packet.get("strategy_adapter_mode")),
+    )
+    add_check(
+        "packet_action_matches_current_plan",
+        packet_action == mutation_action
+        and _text(packet.get("execution_plan_action")) == mutation_action,
+        "paper_mutation_readiness_action_mismatch",
+        packet_action,
+    )
+    add_check(
+        "packet_order_identity_matches_current_plan",
+        packet_client_order_id == client_order_id,
+        "paper_mutation_readiness_order_id_mismatch",
+        packet_client_order_id,
+    )
+    add_check(
+        "packet_sizing_matches_current_plan",
+        _text(packet.get("side")) == side
+        and _text(packet.get("notional")) == current_notional_text
+        and _text(packet.get("quantity")) == current_quantity_text
+        and _text(packet.get("notional_cap")) == str(config.max_notional),
+        "paper_mutation_readiness_sizing_mismatch",
+        f"side={_text(packet.get('side'))};notional={_text(packet.get('notional'))};quantity={_text(packet.get('quantity'))}",
+    )
+    add_check(
+        "current_daily_data_is_fresh",
+        current_data_current,
+        "paper_mutation_readiness_data_not_current",
+        f"latest_bar_date={latest_bar_date};as_of_date={as_of_date}",
+    )
+    add_check(
+        "packet_daily_data_matches_current_data",
+        _text(packet.get("latest_bar_date")) == latest_bar_date
+        and _normalized_status(packet.get("data_freshness_status"))
+        == "accepted_data_current",
+        "paper_mutation_readiness_packet_stale",
+        f"packet_latest_bar_date={_text(packet.get('latest_bar_date'))}",
+    )
+    add_check(
+        "broker_read_performed",
+        _broker_read_performed(broker_state)
+        and packet.get("broker_read_performed") is True,
+        "paper_mutation_readiness_broker_read_missing",
+        "broker_read_performed",
+    )
+    add_check(
+        "broker_state_observed",
+        broker_state.get("broker_state_observed") is True
+        and packet.get("broker_state_observed") is True,
+        "paper_mutation_readiness_broker_state_not_observed",
+        "broker_state_observed",
+    )
+    add_check(
+        "broker_state_mode_is_paper_observed",
+        _text(broker_state.get("broker_state_mode")) == "alpaca_paper_observed"
+        and _text(packet.get("broker_state_mode")) == "alpaca_paper_observed",
+        "paper_mutation_readiness_broker_state_mode_mismatch",
+        _text(packet.get("broker_state_mode")),
+    )
+    add_check(
+        "expected_account_matched",
+        broker_state.get("expected_account_matched") is True
+        and packet.get("expected_account_matched") is True,
+        "paper_mutation_readiness_expected_account_mismatch",
+        str(packet.get("expected_account_matched")),
+    )
+    add_check(
+        "no_open_spy_orders",
+        len(current_open_spy_orders) == 0
+        and _int_value(packet.get("open_spy_orders_observed")) == 0,
+        "paper_mutation_readiness_open_spy_order_present",
+        f"current_open_spy_orders={len(current_open_spy_orders)}",
+    )
+    add_check(
+        "no_unexpected_non_spy_positions",
+        not unexpected_non_spy_positions
+        and not _string_list(packet.get("unexpected_non_spy_positions")),
+        "paper_mutation_readiness_unexpected_non_spy_position",
+        ",".join(unexpected_non_spy_positions),
+    )
+    add_check(
+        "no_live_endpoint_indicator",
+        preflight.get("live_endpoint_or_profile_detected") is not True,
+        "paper_mutation_readiness_live_endpoint_indicator",
+        str(preflight.get("live_endpoint_or_profile_detected") is True).lower(),
+    )
+    add_check(
+        "packet_has_no_prior_mutation",
+        packet.get("paper_submit_performed") is not True
+        and packet.get("broker_mutation_performed") is not True
+        and packet.get("live_mutation_performed") is not True,
+        "paper_mutation_readiness_prior_mutation_detected",
+        "prior_mutation_flags",
+    )
+    add_check(
+        "notional_within_existing_paper_cap",
+        notional is None or notional <= PAPER_AUTOPILOT_MAX_NOTIONAL,
+        "paper_mutation_readiness_notional_cap_exceeded",
+        current_notional_text,
+    )
+
+    gate["blockers"] = list(_dedupe(blockers))
+    gate["checks"] = checks
+    gate["gate_status"] = "authorized" if not blockers else "blocked"
+    return gate
+
+
+def _readiness_status_authorizes_paper_mutation(packet: Mapping[str, Any]) -> bool:
+    readiness_status = _normalized_status(packet.get("readiness_status"))
+    source_autonomy_status = _normalized_status(packet.get("source_autonomy_status"))
+    if readiness_status == "readiness_blocked_no_submit_mode":
+        return (
+            source_autonomy_status == "paper_mutation_would_be_required_no_submit_mode"
+            and packet.get("no_submit_mode") is True
+        )
+    if readiness_status == "readiness_ready_for_explicit_bounded_paper_authorized_run":
+        return source_autonomy_status in {
+            "paper_mutation_candidate_requires_explicit_authorized_run",
+            "paper_mutation_would_be_required_no_submit_mode",
+        }
+    return False
 
 
 def _execute_plan(
@@ -1132,6 +1486,7 @@ def _build_record(
     action_result: Mapping[str, Any],
     reconciliation: Mapping[str, Any],
     daily_cycle: Mapping[str, Any],
+    paper_mutation_readiness: Mapping[str, Any],
     blocker_status: str,
     safety_labels: Sequence[str],
     output_root: Path,
@@ -1202,6 +1557,8 @@ def _build_record(
         final_supervisor_status=final_supervisor_status,
     )
     final_operator_action = _next_operator_action(blocker_status, plan)
+    readiness_gate = _mapping(plan.paper_mutation_readiness_gate)
+    readiness_packet = _mapping(paper_mutation_readiness.get("packet"))
     return {
         "schema_version": PAPER_AUTOPILOT_SCHEMA_VERSION,
         "supervisor_schema_version": PAPER_MUTATION_SUPERVISOR_SCHEMA_VERSION,
@@ -1287,11 +1644,57 @@ def _build_record(
             "paper_submit_authorized": plan.paper_submit_authorized,
             "submit_allowed": plan.submit_allowed,
             "no_submit_mode": plan.no_submit_mode,
+            "paper_mutation_readiness_gate_status": _text(
+                readiness_gate.get("gate_status")
+            ),
+            "paper_mutation_readiness_packet_consumed": (
+                readiness_gate.get("readiness_packet_consumed") is True
+            ),
             "mutation_would_be_required_without_no_submit": (
                 plan.mutation_would_be_required_without_no_submit
             ),
             "intended_mutation_action": plan.intended_mutation_action,
         },
+        "paper_mutation_readiness": {
+            "readiness_packet_path": _text(
+                paper_mutation_readiness.get("readiness_packet_path")
+            ),
+            "readiness_packet_provided": (
+                paper_mutation_readiness.get("readiness_packet_provided") is True
+            ),
+            "readiness_packet_loaded": (
+                paper_mutation_readiness.get("readiness_packet_loaded") is True
+            ),
+            "readiness_packet_load_error": _text(
+                paper_mutation_readiness.get("readiness_packet_load_error")
+            ),
+            "readiness_packet": dict(readiness_packet),
+            "gate": dict(readiness_gate),
+        },
+        "paper_mutation_readiness_packet_path": _text(
+            paper_mutation_readiness.get("readiness_packet_path")
+        ),
+        "paper_mutation_readiness_packet_provided": (
+            paper_mutation_readiness.get("readiness_packet_provided") is True
+        ),
+        "paper_mutation_readiness_packet_loaded": (
+            paper_mutation_readiness.get("readiness_packet_loaded") is True
+        ),
+        "paper_mutation_readiness_packet_consumed": (
+            readiness_gate.get("readiness_packet_consumed") is True
+        ),
+        "paper_mutation_readiness_gate_status": _text(
+            readiness_gate.get("gate_status")
+        ),
+        "paper_mutation_readiness_gate_blockers": list(
+            _string_list(readiness_gate.get("blockers"))
+        ),
+        "paper_mutation_readiness_status": _text(
+            readiness_gate.get("readiness_status")
+        ),
+        "paper_mutation_source_autonomy_status": _text(
+            readiness_gate.get("source_autonomy_status")
+        ),
         "execution_plan_action": plan.action,
         "intended_mutation_action": plan.intended_mutation_action,
         "mutation_would_be_required_without_no_submit": (
@@ -1469,9 +1872,43 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
                         "execution_plan_id": _mapping(
                             record.get("execution_plan_summary")
                         ).get("execution_plan_id"),
+                        "submit_attempted": _mapping(
+                            record.get("action_result")
+                        ).get("submit_attempted"),
+                        "paper_submit_performed": record.get(
+                            "paper_submit_performed"
+                        ),
+                        "broker_mutation_performed": record.get(
+                            "broker_mutation_performed"
+                        ),
+                        "live_mutation_performed": False,
+                        "paper_mutation_readiness_gate_status": record.get(
+                            "paper_mutation_readiness_gate_status"
+                        ),
+                        "paper_mutation_readiness_packet_consumed": record.get(
+                            "paper_mutation_readiness_packet_consumed"
+                        ),
+                        "paper_mutation_readiness_status": record.get(
+                            "paper_mutation_readiness_status"
+                        ),
+                        "paper_mutation_source_autonomy_status": record.get(
+                            "paper_mutation_source_autonomy_status"
+                        ),
+                        "order_id": record.get("order_id"),
+                        "order_status": record.get("order_status"),
+                        "broker_state_after_submit": _mapping(
+                            record.get("reconciliation")
+                        ).get("post_submit_observation"),
+                        "reconciliation_status": record.get(
+                            "reconciliation_status"
+                        ),
+                        "ambiguity_status": (
+                            "ambiguous"
+                            if record.get("submit_response_ambiguous") is True
+                            else "not_ambiguous"
+                        ),
                         "action_result": _mapping(record.get("action_result")),
                         "reconciliation": _mapping(record.get("reconciliation")),
-                        "live_mutation_performed": False,
                     }
                 ),
                 sort_keys=True,
@@ -1633,6 +2070,14 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "mutation_would_be_required_without_no_submit",
         "execution_plan_status",
         "preview_action_decision",
+        "paper_mutation_readiness_packet_path",
+        "paper_mutation_readiness_packet_provided",
+        "paper_mutation_readiness_packet_loaded",
+        "paper_mutation_readiness_packet_consumed",
+        "paper_mutation_readiness_gate_status",
+        "paper_mutation_readiness_gate_blockers",
+        "paper_mutation_readiness_status",
+        "paper_mutation_source_autonomy_status",
         "paper_submit_authorized",
         "mutation_performed",
         "submit_blocker",
@@ -1694,6 +2139,8 @@ def _final_classification(
         return "no_new_completed_bar_noop"
     if blocker_status == "blocked/mutation_would_be_required_no_submit_mode":
         return "mutation_would_be_required_no_submit_mode"
+    if blocker_status.startswith("blocked/paper_mutation_readiness_"):
+        return "paper_mutation_readiness_blocked"
     if blocker_status != "none":
         return blocker_status.replace("/", "_")
     return "no_action_required_no_mutation"
@@ -1843,8 +2290,21 @@ def _next_operator_action(blocker_status: str, plan: PaperAutopilotExecutionPlan
         "blocked/duplicate_client_order_id": "review_duplicate_client_order_id_before_rerun",
         "blocked/insufficient_history": "wait_for_200_usable_asof_bars",
         "blocked/reconciliation_required": "stop_for_manual_reconciliation_review",
+        "blocked/paper_mutation_readiness_packet_missing": (
+            "run_visibility_no_submit_cycle_to_generate_readiness_packet"
+        ),
+        "blocked/paper_mutation_readiness_packet_invalid": (
+            "review_or_regenerate_paper_mutation_readiness_packet"
+        ),
+        "blocked/paper_mutation_readiness_status_not_authorized": (
+            "review_readiness_packet_authorization_status_before_submit"
+        ),
     }
-    return actions.get(blocker_status, f"review_blocker_before_{plan.action}")
+    if blocker_status in actions:
+        return actions[blocker_status]
+    if blocker_status.startswith("blocked/paper_mutation_readiness_"):
+        return "review_readiness_packet_and_current_gate_mismatch_before_submit"
+    return f"review_blocker_before_{plan.action}"
 
 
 def _load_bars(path: Path, symbol: str) -> list[Bar]:
@@ -2379,6 +2839,15 @@ def _string_list(value: object) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
+
+
+def _int_value(value: object) -> int:
+    if isinstance(value, bool):
+        return 0
+    try:
+        return int(str(value))
+    except (TypeError, ValueError):
+        return 0
 
 
 def _dedupe(values: Sequence[str]) -> tuple[str, ...]:

@@ -2,16 +2,22 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 from decimal import Decimal
+import hashlib
 import json
 from pathlib import Path
 
 from algotrader.config import DEFAULT_ALPACA_PAPER_BASE_URL
+from algotrader.execution.paper_autopilot_loop import paper_autopilot_client_order_id
 from algotrader.execution.paper_autopilot_operator import (
     PaperAutopilotOperatorConfig,
     paper_autopilot_operator_exit_status,
     render_paper_autopilot_operator_summary,
     run_paper_autopilot_operator,
 )
+from algotrader.orchestration.strategy_adapter_registry import (
+    SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+)
+from algotrader.orchestration.strategy_router import SMA_TRAINING_WHEEL_STRATEGY_ID
 
 
 GENERATED_AT = "2026-06-26T14:00:00+00:00"
@@ -81,8 +87,23 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
 ) -> None:
     bars_csv = _write_bars(tmp_path, posture="risk_on")
     broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
 
-    result = _run_operator(tmp_path, bars_csv, broker)
+    result = _run_operator(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=readiness_packet_path,
+    )
 
     summary = result["operator_summary"]
     assert summary["classification"] == "healthy_paper_action_reconciled"
@@ -91,6 +112,9 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
     assert summary["final_supervisor_status"] == "action/submitted"
     assert summary["broker_observed_supervisor_status"] == "action/submitted"
     assert summary["action_decision"] == "paper_buy_allowed"
+    assert summary["paper_mutation_readiness_packet_consumed"] is True
+    assert summary["paper_mutation_readiness_gate_status"] == "authorized"
+    assert summary["paper_mutation_readiness_status"] == "readiness_blocked_no_submit_mode"
     assert summary["paper_submit_performed"] is True
     assert summary["broker_mutation_performed"] is True
     assert summary["reconciliation_status"] == "reconciled_submit_observed"
@@ -150,8 +174,23 @@ def test_operator_live_safety_blocked_is_hard_stop_nonzero(
 def test_operator_reconciliation_required_is_nonzero(tmp_path: Path) -> None:
     bars_csv = _write_bars(tmp_path, posture="risk_on")
     broker = FakeAutopilotBroker(hide_submitted_order_from_reconciliation=True)
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
 
-    result = _run_operator(tmp_path, bars_csv, broker)
+    result = _run_operator(
+        tmp_path,
+        bars_csv,
+        broker,
+        readiness_packet_path=readiness_packet_path,
+    )
 
     summary = result["operator_summary"]
     assert summary["classification"] == "reconciliation_required"
@@ -551,18 +590,101 @@ def _run_operator(
     broker: FakeAutopilotBroker,
     *,
     no_submit: bool = False,
+    readiness_packet_path: Path | None = None,
 ) -> dict[str, object]:
     return run_paper_autopilot_operator(
         PaperAutopilotOperatorConfig(
             output_root=tmp_path / "out",
             bars_csv=bars_csv,
             no_submit=no_submit,
+            readiness_packet_path=readiness_packet_path,
         ),
         env=_paper_env(),
         broker_client_factory=_factory(broker),
         daily_lab_runner=_fake_daily_lab,
         timestamp=GENERATED_AT,
     )
+
+
+def _write_readiness_packet(
+    tmp_path: Path,
+    bars_csv: Path,
+    *,
+    action: str,
+    side: str,
+    notional: str,
+    quantity: str,
+    spy_position_observed: bool,
+    spy_position_quantity: str,
+) -> Path:
+    path = tmp_path / f"readiness_packet_{action}.json"
+    as_of_date = "2026-08-08"
+    data_sha256 = hashlib.sha256(bars_csv.read_bytes()).hexdigest()
+    client_order_id = paper_autopilot_client_order_id(
+        action=action,
+        symbol="SPY",
+        as_of_date=as_of_date,
+        data_sha256=data_sha256,
+    )
+    packet = {
+        "paper_mutation_readiness_packet_schema_version": (
+            "v4_7_paper_mutation_readiness_packet_v1"
+        ),
+        "generated_at": GENERATED_AT,
+        "source_visibility_run_id": "visibility-run-1",
+        "source_autonomy_status": "paper_mutation_would_be_required_no_submit_mode",
+        "source_execution_plan_id": "visibility-plan-1",
+        "source_client_order_id": client_order_id,
+        "symbol": "SPY",
+        "selected_strategy_id": SMA_TRAINING_WHEEL_STRATEGY_ID,
+        "strategy_adapter_id": SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
+        "strategy_adapter_mode": "paper_mutation",
+        "strategy_route_action": action,
+        "execution_plan_action": action,
+        "intended_mutation_action": action,
+        "side": side,
+        "notional": notional,
+        "quantity": quantity,
+        "notional_cap": "25.00",
+        "no_submit_mode": True,
+        "broker_read_performed": True,
+        "broker_state_observed": True,
+        "broker_state_mode": "alpaca_paper_observed",
+        "expected_account_matched": True,
+        "spy_position_observed": spy_position_observed,
+        "spy_position_quantity": spy_position_quantity,
+        "open_spy_orders_observed": 0,
+        "unexpected_non_spy_positions": [],
+        "data_freshness_status": "accepted_data_current",
+        "latest_bar_date": as_of_date,
+        "vol_scaled_preview_visible": True,
+        "vol_scaled_preview_intended_action": "buy",
+        "vol_scaled_preview_mutation_allowed": False,
+        "vol_scaled_preview_submit_allowed": False,
+        "vol_scaled_preview_non_mutation_status": "preview_only_non_mutating",
+        "paper_submit_authorized": False,
+        "paper_submit_performed": False,
+        "broker_mutation_performed": False,
+        "live_mutation_performed": False,
+        "readiness_status": "readiness_blocked_no_submit_mode",
+        "readiness_blockers": ["no_submit_mode", "paper_mutation_required"],
+        "required_operator_action": (
+            "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval"
+        ),
+        "safety_labels": [
+            "paper_lab_only",
+            "not_live_authorized",
+            "profit_claim=none",
+            "paper_autopilot_unlocked",
+            "broker_state_observed",
+        ],
+    }
+    path.write_text(
+        json.dumps(packet, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return path
 
 
 def _paper_env() -> dict[str, str]:

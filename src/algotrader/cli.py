@@ -2590,6 +2590,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     paper_autopilot_loop_parser.add_argument("--max-notional", default="25.00")
     paper_autopilot_loop_parser.add_argument(
+        "--readiness-packet",
+        default=None,
+        dest="readiness_packet_path",
+        help="Path to a prior paper-mutation readiness packet for bounded mutation mode.",
+    )
+    paper_autopilot_loop_parser.add_argument(
         "--no-submit",
         action="store_true",
         help="Run visibility-only mode and hard-block paper broker mutation.",
@@ -2657,6 +2663,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=200,
     )
     paper_autopilot_operator_parser.add_argument("--max-notional", default="25.00")
+    paper_autopilot_operator_parser.add_argument(
+        "--readiness-packet",
+        default=None,
+        dest="readiness_packet_path",
+        help="Path to a prior paper-mutation readiness packet for bounded mutation mode.",
+    )
     paper_autopilot_operator_parser.add_argument(
         "--no-submit",
         action="store_true",
@@ -6187,6 +6199,7 @@ def _run_paper_autopilot_loop(args: argparse.Namespace) -> int:
                 sma_slow_window=args.sma_slow_window,
                 max_notional=args.max_notional,
                 no_submit=args.no_submit,
+                readiness_packet_path=args.readiness_packet_path,
             )
         )
         if args.output_format == "json":

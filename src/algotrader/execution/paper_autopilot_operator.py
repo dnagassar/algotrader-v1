@@ -71,6 +71,10 @@ _SUMMARY_FIELDS = (
     "broker_observed_supervisor_status",
     "execution_plan_action",
     "action_decision",
+    "paper_mutation_readiness_packet_consumed",
+    "paper_mutation_readiness_gate_status",
+    "paper_mutation_readiness_status",
+    "paper_mutation_source_autonomy_status",
     "vol_scaled_preview_visible",
     "vol_scaled_preview_intended_action",
     "vol_scaled_preview_mutation_allowed",
@@ -103,6 +107,7 @@ class PaperAutopilotOperatorConfig:
     sma_slow_window: int = 200
     max_notional: str = "25.00"
     no_submit: bool = False
+    readiness_packet_path: Path | str | None = None
 
     def __post_init__(self) -> None:
         loop_config = self.to_loop_config()
@@ -125,6 +130,7 @@ class PaperAutopilotOperatorConfig:
             sma_slow_window=self.sma_slow_window,
             max_notional=self.max_notional,
             no_submit=self.no_submit,
+            readiness_packet_path=self.readiness_packet_path,
         )
 
 
@@ -266,6 +272,18 @@ def build_paper_autopilot_operator_summary(
         ),
         "execution_plan_action": _text(rollup.get("execution_plan_action")),
         "action_decision": _text(rollup.get("action_decision")),
+        "paper_mutation_readiness_packet_consumed": (
+            rollup.get("paper_mutation_readiness_packet_consumed") is True
+        ),
+        "paper_mutation_readiness_gate_status": _text(
+            rollup.get("paper_mutation_readiness_gate_status")
+        ),
+        "paper_mutation_readiness_status": _text(
+            rollup.get("paper_mutation_readiness_status")
+        ),
+        "paper_mutation_source_autonomy_status": _text(
+            rollup.get("paper_mutation_source_autonomy_status")
+        ),
         "vol_scaled_preview_visible": (
             rollup.get("vol_scaled_preview_visible") is True
         ),

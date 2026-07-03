@@ -327,6 +327,13 @@ def classify_paper_autopilot_operating_record(
             hard_stop=False,
             reason_codes=["mutation_would_be_required_no_submit_mode"],
         )
+    if blocker_status.startswith("blocked/paper_mutation_readiness_"):
+        return _classification(
+            "paper_mutation_readiness_blocked",
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=[blocker_status.replace("/", "_")],
+        )
     if blocker_status in {
         "blocked/stale_data_preview_only",
         "blocked/blocked_future_dated_local_data",
@@ -566,6 +573,18 @@ def classify_paper_autopilot_autonomy_record(
             reason_codes=[blocker_status.replace("/", "_")],
         )
 
+    if blocker_status.startswith("blocked/paper_mutation_readiness_"):
+        return _autonomy_classification(
+            "blocked_consume_paper_mutation_readiness_packet",
+            _first_nonempty_text(
+                record.get("final_operator_action"),
+                "run_visibility_no_submit_cycle_to_generate_readiness_packet",
+            ),
+            attention_required=True,
+            hard_stop=False,
+            reason_codes=[blocker_status.replace("/", "_")],
+        )
+
     mutation_required_no_submit = (
         record.get("mutation_would_be_required_without_no_submit") is True
         or blocker_status == "blocked/mutation_would_be_required_no_submit_mode"
@@ -712,6 +731,16 @@ def classify_paper_mutation_readiness_record(record: Mapping[str, Any]) -> dict[
             "readiness_blocked_no_submit_mode",
             ("no_submit_mode", "paper_mutation_required"),
             "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval",
+        )
+
+    if blocker_key.startswith("paper_mutation_readiness_"):
+        return _readiness_classification(
+            "readiness_blocked_paper_mutation_readiness_packet",
+            (blocker_key,),
+            _first_nonempty_text(
+                record.get("final_operator_action"),
+                "review_readiness_packet_before_bounded_paper_mutation",
+            ),
         )
 
     if record.get("paper_submit_performed") is True:
@@ -1083,6 +1112,10 @@ def _normalize_status_payload(
     reconciliation = _mapping(payload.get("reconciliation"))
     vol_scaled_preview = _mapping(payload.get("vol_scaled_preview"))
     vol_scaled_trend_signal = _mapping(payload.get("vol_scaled_trend_signal"))
+    paper_mutation_readiness = _mapping(payload.get("paper_mutation_readiness"))
+    paper_mutation_readiness_gate = _mapping(
+        _first_present(paper_mutation_readiness, "gate")
+    )
     generated_at = _text(payload.get("generated_at"))
     paper_profile_run = _bool(preflight.get("APP_PROFILE_is_paper")) or (
         _text(preflight.get("APP_PROFILE")) == "paper"
@@ -1263,6 +1296,38 @@ def _normalize_status_payload(
             action_result.get("action_decision"),
             execution_plan_summary.get("action"),
             execution_plan.get("action"),
+        ),
+        "paper_mutation_readiness_packet_path": _first_nonempty_text(
+            payload.get("paper_mutation_readiness_packet_path"),
+            paper_mutation_readiness.get("readiness_packet_path"),
+        ),
+        "paper_mutation_readiness_packet_provided": _bool(
+            payload.get("paper_mutation_readiness_packet_provided")
+        )
+        or _bool(paper_mutation_readiness.get("readiness_packet_provided")),
+        "paper_mutation_readiness_packet_loaded": _bool(
+            payload.get("paper_mutation_readiness_packet_loaded")
+        )
+        or _bool(paper_mutation_readiness.get("readiness_packet_loaded")),
+        "paper_mutation_readiness_packet_consumed": _bool(
+            payload.get("paper_mutation_readiness_packet_consumed")
+        )
+        or _bool(paper_mutation_readiness_gate.get("readiness_packet_consumed")),
+        "paper_mutation_readiness_gate_status": _first_nonempty_text(
+            payload.get("paper_mutation_readiness_gate_status"),
+            paper_mutation_readiness_gate.get("gate_status"),
+        ),
+        "paper_mutation_readiness_gate_blockers": _string_list(
+            payload.get("paper_mutation_readiness_gate_blockers")
+        )
+        or _string_list(paper_mutation_readiness_gate.get("blockers")),
+        "paper_mutation_readiness_status": _first_nonempty_text(
+            payload.get("paper_mutation_readiness_status"),
+            paper_mutation_readiness_gate.get("readiness_status"),
+        ),
+        "paper_mutation_source_autonomy_status": _first_nonempty_text(
+            payload.get("paper_mutation_source_autonomy_status"),
+            paper_mutation_readiness_gate.get("source_autonomy_status"),
         ),
         "paper_submit_authorized": _bool(payload.get("paper_submit_authorized")),
         "paper_submit_performed": _bool(payload.get("paper_submit_performed")),
@@ -1889,6 +1954,30 @@ def _build_rollup(
             "mutation_would_be_required_without_no_submit"
         ),
         "action_decision": entry.get("action_decision"),
+        "paper_mutation_readiness_packet_path": entry.get(
+            "paper_mutation_readiness_packet_path"
+        ),
+        "paper_mutation_readiness_packet_provided": entry.get(
+            "paper_mutation_readiness_packet_provided"
+        ),
+        "paper_mutation_readiness_packet_loaded": entry.get(
+            "paper_mutation_readiness_packet_loaded"
+        ),
+        "paper_mutation_readiness_packet_consumed": entry.get(
+            "paper_mutation_readiness_packet_consumed"
+        ),
+        "paper_mutation_readiness_gate_status": entry.get(
+            "paper_mutation_readiness_gate_status"
+        ),
+        "paper_mutation_readiness_gate_blockers": list(
+            _string_list(entry.get("paper_mutation_readiness_gate_blockers"))
+        ),
+        "paper_mutation_readiness_status": entry.get(
+            "paper_mutation_readiness_status"
+        ),
+        "paper_mutation_source_autonomy_status": entry.get(
+            "paper_mutation_source_autonomy_status"
+        ),
         "paper_submit_authorized": entry.get("paper_submit_authorized"),
         "paper_submit_performed": entry.get("paper_submit_performed"),
         "broker_mutation_performed": entry.get("broker_mutation_performed"),
