@@ -20,6 +20,7 @@ from algotrader.execution.alpaca_client import (
     AlpacaRecentOrderQuery,
     AlpacaPositionResponse,
     V189_SPY_CERTIFICATION_CLIENT_ORDER_ID,
+    V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX,
 )
 import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
 from algotrader.execution.alpaca_sdk_client import (
@@ -331,6 +332,47 @@ def test_v189_certification_request_uses_sdk_limit_shape() -> None:
     assert sdk_request.side.value == "sell"
     assert sdk_request.type.value == "limit"
     assert sdk_request.time_in_force.value == "day"
+
+
+def test_v412c_crypto_drill_request_uses_sdk_limit_shape() -> None:
+    request = AlpacaOrderRequest(
+        client_order_id=f"{V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX}btcusd",
+        symbol="BTCUSD",
+        side="buy",
+        asset_class="crypto",
+        qty=Decimal("0.000101"),
+        order_type="limit",
+        time_in_force="gtc",
+        limit_price=Decimal("99000.01"),
+    )
+
+    sdk_request = _to_sdk_order_request(request)
+
+    assert sdk_request.__class__.__name__ == "LimitOrderRequest"
+    assert sdk_request.symbol == "BTCUSD"
+    assert sdk_request.client_order_id == (
+        f"{V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX}btcusd"
+    )
+    assert Decimal(str(sdk_request.qty)) == Decimal("0.000101")
+    assert sdk_request.notional is None
+    assert Decimal(str(sdk_request.limit_price)) == Decimal("99000.01")
+    assert sdk_request.side.value == "buy"
+    assert sdk_request.type.value == "limit"
+    assert sdk_request.time_in_force.value == "gtc"
+
+
+def test_crypto_limit_request_outside_v412c_namespace_is_rejected() -> None:
+    with pytest.raises(ValueError, match="v4.12C BTCUSD crypto"):
+        AlpacaOrderRequest(
+            client_order_id="paper-order-probe-crypto-limit",
+            symbol="BTCUSD",
+            side="buy",
+            asset_class="crypto",
+            qty=Decimal("0.000101"),
+            order_type="limit",
+            time_in_force="gtc",
+            limit_price=Decimal("99000.01"),
+        )
 
 
 def test_alpaca_sdk_client_reports_sanitized_submit_stage() -> None:

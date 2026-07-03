@@ -24,6 +24,9 @@ _M355_SPY_CLOSE_CLIENT_ORDER_ID = "paper-order-close-m355_spy_paper_close_submit
 PAPER_AUTOPILOT_SPY_CLOSE_CLIENT_ORDER_ID_PREFIX = "pa-v207-spy-close-"
 V189_SPY_CERTIFICATION_CLIENT_ORDER_ID = "paper-certification-v189-spy-sell-limit"
 V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX = "v31-spy-drill-"
+V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX = (
+    "v412c-crypto-paper-mutation-drill-"
+)
 _RECENT_ORDER_QUERY_STATUSES = ("", "open", "closed", "all")
 _RECENT_ORDER_QUERY_DIRECTIONS = ("", "asc", "desc")
 _RECENT_ORDER_QUERY_SIDES = ("", "buy", "sell")
@@ -146,6 +149,19 @@ class AlpacaOrderRequest:
             and not has_notional
             and self.limit_price is not None
         )
+        v412c_crypto_paper_drill = (
+            asset_class == "crypto"
+            and normalized_symbol == "BTCUSD"
+            and self.client_order_id.startswith(
+                V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX
+            )
+            and side == "buy"
+            and order_type == "limit"
+            and time_in_force == "gtc"
+            and has_qty
+            and not has_notional
+            and self.limit_price is not None
+        )
         m355_spy_close = (
             asset_class == "equity"
             and normalized_symbol == "SPY"
@@ -178,10 +194,13 @@ class AlpacaOrderRequest:
             )
         if order_type not in {"market", "limit"}:
             raise ValueError("Alpaca paper order requests require market or limit type.")
-        if order_type == "limit" and not v189_spy_certification:
+        if order_type == "limit" and not (
+            v189_spy_certification or v412c_crypto_paper_drill
+        ):
             raise ValueError(
                 "Alpaca paper limit requests are restricted to the v1.89/v3.1 "
-                "SPY paper certification drill."
+                "SPY paper certification drill or the v4.12C BTCUSD crypto "
+                "paper mutation drill namespace."
             )
         if time_in_force not in _TIME_IN_FORCE_BY_ASSET_CLASS[asset_class]:
             raise ValueError(
@@ -283,4 +302,5 @@ __all__ = [
     "RECENT_ORDER_QUERY_CONTRACT_VERSION",
     "V189_SPY_CERTIFICATION_CLIENT_ORDER_ID",
     "V31_SPY_DRILL_CLIENT_ORDER_ID_PREFIX",
+    "V412C_CRYPTO_PAPER_MUTATION_DRILL_CLIENT_ORDER_ID_PREFIX",
 ]
