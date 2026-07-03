@@ -52,6 +52,45 @@ def test_crypto_bars_url_uses_official_v1beta3_endpoint_and_ascending_sort() -> 
     assert "limit=10000" in url
 
 
+def test_fetch_uses_get_request_without_body_and_keyword_timeout(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fetcher = load_fetcher()
+    credentials = fetcher.AlpacaCredentials(SENSITIVE_KEY, SENSITIVE_SECRET)
+    requests: list[object] = []
+
+    def opener(request: object, *args: object, **kwargs: object) -> FakeResponse:
+        requests.append(request)
+        assert args == ()
+        assert kwargs == {"timeout": 17}
+        assert request.get_method() == "GET"
+        assert request.data is None
+        lower_url = request.full_url.lower()
+        assert "v1beta3/crypto/us/bars" in lower_url
+        assert "orders" not in lower_url
+        assert "submit" not in lower_url
+        return FakeResponse({"bars": {"BTC/USD": _bars()}, "next_page_token": None})
+
+    payload = fetcher.fetch_alpaca_crypto_bars(
+        api_symbol="BTC/USD",
+        start=GENERATED_AT - timedelta(hours=80),
+        end=GENERATED_AT,
+        credentials=credentials,
+        allow_network=True,
+        market_data_fetch_authorized=True,
+        opener=opener,
+        timeout=17,
+    )
+    captured = capsys.readouterr()
+
+    assert len(requests) == 1
+    assert len(payload["bars"]["BTC/USD"]) == 60
+    assert captured.out == ""
+    assert captured.err == ""
+    assert SENSITIVE_KEY not in captured.out + captured.err
+    assert SENSITIVE_SECRET not in captured.out + captured.err
+
+
 def test_fetch_and_intake_uses_fake_opener_and_writes_canonical_outputs(
     tmp_path: Path,
 ) -> None:

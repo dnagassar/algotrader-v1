@@ -7,7 +7,7 @@ It never submits, cancels, replaces, closes, or liquidates orders.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 import json
 import os
@@ -15,7 +15,7 @@ from pathlib import Path
 import urllib.error
 import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, Protocol
 
 from algotrader.errors import ValidationError
 from algotrader.execution.crypto_bars_intake import (
@@ -47,7 +47,10 @@ _PUBLIC_ENV_NAMES = (
     "APCA_API_BASE_URL",
 )
 
-UrlOpen = Callable[[urllib.request.Request, int], Any]
+class UrlOpen(Protocol):
+    def __call__(self, request: urllib.request.Request, *, timeout: int) -> Any:
+        ...
+
 
 
 class CryptoBarsFetchError(ValueError):
@@ -188,7 +191,7 @@ def fetch_alpaca_crypto_bars(
             method="GET",
         )
         try:
-            with urlopen(request, timeout) as response:
+            with urlopen(request, timeout=timeout) as response:
                 response_bytes = response.read()
         except (OSError, urllib.error.HTTPError, urllib.error.URLError, RuntimeError) as exc:
             raise CryptoBarsFetchError(_sanitized_exception_message(exc, credentials)) from exc
