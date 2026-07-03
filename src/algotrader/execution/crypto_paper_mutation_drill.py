@@ -108,6 +108,50 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
 )
 _URL_PATTERN = re.compile(r"https?://[^\s)>\]\"']+")
 _SAFE_MESSAGE_LIMIT = 240
+_OBJECT_PAYLOAD_FIELDS = (
+    "id",
+    "account_id",
+    "account_number",
+    "status",
+    "currency",
+    "trading_blocked",
+    "account_blocked",
+    "symbol",
+    "asset_class",
+    "class",
+    "tradable",
+    "fractionable",
+    "marginable",
+    "min_order_size",
+    "min_trade_increment",
+    "min_order_increment",
+    "min_notional",
+    "min_order_notional",
+    "order_id",
+    "client_order_id",
+    "side",
+    "type",
+    "order_type",
+    "time_in_force",
+    "qty",
+    "quantity",
+    "notional",
+    "limit_price",
+    "filled_qty",
+    "filled_quantity",
+    "filled_avg_price",
+    "avg_fill_price",
+    "submitted_at",
+    "created_at",
+    "filled_at",
+    "canceled_at",
+    "cancelled_at",
+    "reject_reason",
+    "reason",
+    "market_value",
+    "average_entry_price",
+    "avg_entry_price",
+)
 
 BrokerClientFactory = Callable[[AlpacaPaperConfig], Any]
 
@@ -279,8 +323,10 @@ def run_crypto_paper_mutation_drill(
     observed = {
         **base,
         "account_observation": account_payload,
-        "expected_account_matched": not account_blockers
-        or "paper_account_expected_id_mismatch" not in account_blockers,
+        "expected_account_matched": _expected_account_matched(
+            account_payload,
+            expected_account,
+        ),
         "supervisor_observation": observed_record,
         "selected_asset_observation": asset_observation,
         "latest_bar_observation": latest_bar_result["receipt"],
@@ -442,6 +488,10 @@ def render_crypto_paper_mutation_drill_text(packet: Mapping[str, Any]) -> str:
         [
             f"outcome_classification={_clean_text(packet.get('outcome_classification'))}",
             f"blocker={_clean_text(packet.get('blocker'))}",
+            f"account_status={_clean_text(packet.get('account_status'))}",
+            f"account_blocked={_bool_text(packet.get('account_blocked'))}",
+            f"trading_blocked={_bool_text(packet.get('trading_blocked'))}",
+            f"expected_account_matched={_bool_text(packet.get('expected_account_matched'))}",
             f"selected_symbol={_clean_text(packet.get('selected_symbol'))}",
             f"side={_clean_text(packet.get('side'))}",
             f"order_type={_clean_text(packet.get('order_type'))}",
@@ -595,13 +645,16 @@ def _account_gate_blockers(
         blockers.append("paper_account_read_failed")
         return tuple(blockers)
     if not account:
-        blockers.append("paper_account_not_observed")
+        blockers.append("paper_account_status_unobserved")
         return tuple(blockers)
     values = _account_identity_values(account)
     if expected_paper_account_id and expected_paper_account_id not in values:
         blockers.append("paper_account_expected_id_mismatch")
-    status = _clean_text(account.get("status")).lower()
-    if status and status not in {"active", "account_active"}:
+    status = _clean_text(account.get("status"))
+    normalized_status = _normalized_enum_text(status)
+    if not normalized_status:
+        blockers.append("paper_account_status_unobserved")
+    elif normalized_status not in {"active", "account_active"}:
         blockers.append("paper_account_not_active")
     if _bool(account.get("trading_blocked")) or _bool(account.get("account_blocked")):
         blockers.append("paper_account_trading_blocked")
@@ -695,7 +748,7 @@ def _selected_asset_observation(client: Any, symbol: str) -> dict[str, Any]:
             asset
             for asset in assets
             if _normalize_symbol_text(asset.get("symbol")) == symbol
-            and _clean_text(asset.get("asset_class") or asset.get("class")).lower()
+            and _normalized_enum_text(asset.get("asset_class") or asset.get("class"))
             == "crypto"
         ),
         None,
@@ -709,7 +762,9 @@ def _selected_asset_observation(client: Any, symbol: str) -> dict[str, Any]:
                 [
                     asset
                     for asset in assets
-                    if _clean_text(asset.get("asset_class") or asset.get("class")).lower()
+                    if _normalized_enum_text(
+                        asset.get("asset_class") or asset.get("class")
+                    )
                     == "crypto"
                 ]
             ),
@@ -1158,6 +1213,7 @@ def _finalize_packet(
     cancel_result = _mapping(packet.get("cancel_result"))
     order_design = _mapping(packet.get("order_design"))
     supervisor = _mapping(packet.get("supervisor_observation"))
+    account = _mapping(packet.get("account_observation"))
     final_order = _mapping(packet.get("final_order"))
     finalized = {
         **packet,
@@ -1172,6 +1228,10 @@ def _finalize_packet(
         "broker_read_performed": supervisor.get("broker_read_performed") is True,
         "broker_state_mode": _clean_text(supervisor.get("broker_state_mode")),
         "crypto_trading_supported": supervisor.get("crypto_trading_supported") is True,
+        "account_status": _clean_text(account.get("status")),
+        "account_blocked": _bool(account.get("account_blocked")),
+        "trading_blocked": _bool(account.get("trading_blocked")),
+        "expected_account_matched": packet.get("expected_account_matched") is True,
         "selected_symbol": _clean_text(
             supervisor.get("selected_symbol") or packet.get("selected_symbol")
         ),
@@ -1278,6 +1338,10 @@ def _drill_receipt(packet: Mapping[str, Any]) -> dict[str, Any]:
         "run_timestamp",
         "outcome_classification",
         "blocker",
+        "account_status",
+        "account_blocked",
+        "trading_blocked",
+        "expected_account_matched",
         "selected_symbol",
         "side",
         "order_type",
@@ -1454,6 +1518,16 @@ def _account_payload(account: object) -> dict[str, Any]:
     }
 
 
+def _expected_account_matched(
+    account: Mapping[str, Any],
+    expected_paper_account_id: str,
+) -> bool:
+    return bool(
+        expected_paper_account_id
+        and expected_paper_account_id in _account_identity_values(account)
+    )
+
+
 def _account_identity_values(account: Mapping[str, Any]) -> set[str]:
     return {
         text
@@ -1526,19 +1600,46 @@ def _generic_payload(value: object) -> dict[str, Any]:
         return {}
     if isinstance(value, Mapping):
         return {str(key): _json_safe(item) for key, item in value.items()}
+    dumped = _model_dump_payload(value)
+    if dumped is not None:
+        return dumped
     return {key: _json_safe(item) for key, item in _object_data(value).items()}
+
+
+def _model_dump_payload(value: object) -> dict[str, Any] | None:
+    model_dump = getattr(value, "model_dump", None)
+    if not callable(model_dump):
+        return None
+    try:
+        dumped = model_dump(mode="json")
+    except TypeError:
+        try:
+            dumped = model_dump()
+        except Exception:
+            return None
+    except Exception:
+        return None
+    if not isinstance(dumped, Mapping):
+        return None
+    return _allowed_payload_fields(dumped)
+
+
+def _allowed_payload_fields(data: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        field: _json_safe(data[field])
+        for field in _OBJECT_PAYLOAD_FIELDS
+        if field in data and data[field] is not None
+    }
 
 
 def _object_data(value: object) -> dict[str, Any]:
     data: dict[str, Any] = {}
-    for name in dir(value):
-        if name.startswith("_"):
-            continue
+    for name in _OBJECT_PAYLOAD_FIELDS:
         try:
             item = getattr(value, name)
         except Exception:
             continue
-        if callable(item):
+        if item is None or callable(item):
             continue
         data[name] = item
     return data
@@ -1598,7 +1699,17 @@ def _order_status(order: Mapping[str, Any]) -> str:
 
 
 def _normalize_status(value: object) -> str:
-    return _clean_text(value).lower().replace(" ", "_")
+    return _normalized_enum_text(value)
+
+
+def _normalized_enum_text(value: object) -> str:
+    text = _clean_text(value)
+    if not text:
+        return ""
+    normalized = text.lower().replace(" ", "_")
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    return normalized
 
 
 def _order_symbol(order: Mapping[str, Any]) -> str:
@@ -1610,7 +1721,10 @@ def _position_symbol(position: Mapping[str, Any]) -> str:
 
 
 def _is_crypto_order(order: Mapping[str, Any], crypto_symbols: set[str]) -> bool:
-    return _clean_text(order.get("asset_class")).lower() == "crypto" or _order_symbol(order) in crypto_symbols
+    return (
+        _normalized_enum_text(order.get("asset_class")) == "crypto"
+        or _order_symbol(order) in crypto_symbols
+    )
 
 
 def _crypto_symbols(record: Mapping[str, Any]) -> set[str]:

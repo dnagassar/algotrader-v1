@@ -47,6 +47,21 @@ CRYPTO_PAPER_SUPERVISOR_SAFETY_LABELS = (
     "profit_claim=none",
 )
 CRYPTO_PAPER_SUPERVISOR_PREFERRED_SYMBOLS = ("BTCUSD", "ETHUSD")
+_ASSET_PAYLOAD_FIELDS = (
+    "symbol",
+    "name",
+    "asset_class",
+    "class",
+    "tradable",
+    "status",
+    "marginable",
+    "fractionable",
+    "min_order_size",
+    "min_trade_increment",
+    "min_order_increment",
+    "min_notional",
+    "min_order_notional",
+)
 
 CryptoCapabilitySource = Literal["observed", "simulated", "not_observed"]
 
@@ -464,13 +479,13 @@ def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, Any], ...]
         if not symbol:
             continue
         normalized_symbol = normalize_crypto_symbol(symbol)
-        asset_class = _first_text(data, "asset_class", "class").lower()
+        asset_class = _normalized_enum_text(_first_text(data, "asset_class", "class"))
         if asset_class and asset_class != ASSET_CLASS_CRYPTO:
             continue
         tradable = _bool_field(data, "tradable")
         if tradable is not True:
             continue
-        status = _first_text(data, "status").lower()
+        status = _normalized_enum_text(_first_text(data, "status"))
         if status and status not in {"active", "tradable"}:
             continue
         asset: dict[str, Any] = {
@@ -889,18 +904,41 @@ def _dedupe_assets(assets: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
 def _object_data(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return {str(key): item for key, item in value.items()}
+    dumped = _model_dump_payload(value)
+    if dumped is not None:
+        return dumped
     data: dict[str, Any] = {}
-    for name in dir(value):
-        if name.startswith("_"):
-            continue
+    for name in _ASSET_PAYLOAD_FIELDS:
         try:
             item = getattr(value, name)
         except Exception:
             continue
-        if callable(item):
+        if item is None or callable(item):
             continue
         data[name] = item
     return data
+
+
+def _model_dump_payload(value: Any) -> dict[str, Any] | None:
+    model_dump = getattr(value, "model_dump", None)
+    if not callable(model_dump):
+        return None
+    try:
+        dumped = model_dump(mode="json")
+    except TypeError:
+        try:
+            dumped = model_dump()
+        except Exception:
+            return None
+    except Exception:
+        return None
+    if not isinstance(dumped, Mapping):
+        return None
+    return {
+        field: dumped[field]
+        for field in _ASSET_PAYLOAD_FIELDS
+        if field in dumped and dumped[field] is not None
+    }
 
 
 def _unsupported_account_blocker(exc: Exception) -> str:
@@ -1059,6 +1097,16 @@ def _field_text(value: Any) -> str:
     if type(enum_value) is str:
         return enum_value.strip()
     return str(value).strip()
+
+
+def _normalized_enum_text(value: Any) -> str:
+    text = _field_text(value)
+    if not text:
+        return ""
+    normalized = text.lower().replace(" ", "_")
+    if "." in normalized:
+        normalized = normalized.rsplit(".", 1)[-1]
+    return normalized
 
 
 def _bool_field(data: Mapping[str, Any], field_name: str) -> bool | None:

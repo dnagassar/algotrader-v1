@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+import json
 import os
 from pathlib import Path
 import shutil
@@ -40,8 +41,8 @@ class FakeCryptoPaperClient:
     def __init__(
         self,
         *,
-        assets: tuple[dict[str, object], ...] | None = None,
-        account: dict[str, object] | None = None,
+        assets: tuple[object, ...] | None = None,
+        account: object | None = None,
         positions: tuple[dict[str, object], ...] = (),
         open_orders: tuple[dict[str, object], ...] = (),
         all_orders: tuple[dict[str, object], ...] = (),
@@ -70,17 +71,17 @@ class FakeCryptoPaperClient:
         self.cancelled_order_ids: list[str] = []
         self.current_order: dict[str, object] | None = None
 
-    def get_account(self) -> dict[str, object]:
+    def get_account(self) -> object:
         self.calls.append("get_account")
-        return dict(self.account)
+        return _copy_model(self.account)
 
-    def list_assets(self) -> list[dict[str, object]]:
+    def list_assets(self) -> list[object]:
         self.calls.append("list_assets")
-        return [dict(asset) for asset in self.assets]
+        return [_copy_model(asset) for asset in self.assets]
 
-    def get_all_assets(self) -> list[dict[str, object]]:
+    def get_all_assets(self) -> list[object]:
         self.calls.append("get_all_assets")
-        return [dict(asset) for asset in self.assets]
+        return [_copy_model(asset) for asset in self.assets]
 
     def get_positions(self) -> list[dict[str, object]]:
         self.calls.append("get_positions")
@@ -158,6 +159,26 @@ class FakeCryptoPaperClient:
                 "canceled_at": GENERATED_AT.isoformat(),
             }
         return {"id": order_id, "status": self.cancel_status}
+
+
+class FakePydanticTradingModel:
+    def __init__(self, **fields: object) -> None:
+        self._fields = dict(fields)
+        for key, value in fields.items():
+            setattr(self, key, value)
+
+    def model_dump(self, *args: object, **kwargs: object) -> dict[str, object]:
+        return dict(self._fields)
+
+    @property
+    def model_fields(self) -> object:
+        raise AssertionError("model_fields must not be read from model instances")
+
+    @property
+    def model_computed_fields(self) -> object:
+        raise AssertionError(
+            "model_computed_fields must not be read from model instances"
+        )
 
 
 def test_normal_crypto_visibility_remains_no_submit(tmp_path: Path) -> None:
@@ -240,6 +261,101 @@ def test_missing_min_notional_blocks_before_submit(tmp_path: Path) -> None:
 
     assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
     assert "min_notional_missing" in packet["blocker"]
+    assert fake_client.submitted_requests == []
+
+
+def test_observed_model_asset_and_active_account_feed_pre_submit_gate(
+    tmp_path: Path,
+) -> None:
+    leaked_model_secret = "model-secret-must-not-serialize"
+    fake_client = FakeCryptoPaperClient(
+        assets=(
+            FakePydanticTradingModel(
+                symbol="BTC/USD",
+                asset_class="AssetClass.CRYPTO",
+                tradable=True,
+                fractionable=True,
+                status="AssetStatus.ACTIVE",
+                min_order_size="0.000016268",
+                min_trade_increment="0.000000001",
+                min_notional="10.00",
+                api_key=leaked_model_secret,
+            ),
+        ),
+        account=FakePydanticTradingModel(
+            id=EXPECTED_ACCOUNT_ID,
+            account_id=EXPECTED_ACCOUNT_ID,
+            account_number=EXPECTED_ACCOUNT_ID,
+            status="AccountStatus.ACTIVE",
+            currency="USD",
+            trading_blocked=False,
+            account_blocked=False,
+            secret_key=leaked_model_secret,
+        ),
+        open_orders=(
+            _order(
+                client_order_id="other-btcusd-open-order",
+                symbol="BTCUSD",
+                status="accepted",
+            ),
+        ),
+    )
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "open_selected_symbol_order_exists" in packet["blocker"]
+    assert "selected_crypto_asset_not_observed" not in packet["blocker"]
+    assert "min_notional_missing" not in packet["blocker"]
+    assert "paper_account_not_active" not in packet["blocker"]
+    assert packet["account_status"] == "AccountStatus.ACTIVE"
+    assert packet["account_blocked"] is False
+    assert packet["trading_blocked"] is False
+    assert packet["expected_account_matched"] is True
+    assert packet["min_notional"] == "10.00"
+    assert fake_client.submitted_requests == []
+    assert leaked_model_secret not in json.dumps(packet, sort_keys=True)
+    for path_text in packet["artifact_paths"].values():
+        assert leaked_model_secret not in Path(path_text).read_text(encoding="utf-8")
+
+
+def test_missing_account_status_blocks_as_unobserved_before_submit(
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeCryptoPaperClient(
+        account={
+            "id": EXPECTED_ACCOUNT_ID,
+            "account_id": EXPECTED_ACCOUNT_ID,
+            "account_number": EXPECTED_ACCOUNT_ID,
+            "currency": "USD",
+        }
+    )
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "paper_account_status_unobserved" in packet["blocker"]
+    assert "paper_account_not_active" not in packet["blocker"]
+    assert packet["expected_account_matched"] is True
+    assert fake_client.submitted_requests == []
+
+
+def test_non_active_observed_account_blocks_before_submit(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(
+        account={
+            "id": EXPECTED_ACCOUNT_ID,
+            "account_id": EXPECTED_ACCOUNT_ID,
+            "account_number": EXPECTED_ACCOUNT_ID,
+            "status": "INACTIVE",
+            "currency": "USD",
+        }
+    )
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "paper_account_not_active" in packet["blocker"]
+    assert "paper_account_status_unobserved" not in packet["blocker"]
     assert fake_client.submitted_requests == []
 
 
@@ -591,6 +707,12 @@ def _write_bars(
         )
     path.write_text("".join(lines), encoding="utf-8")
     return path
+
+
+def _copy_model(value: object) -> object:
+    if isinstance(value, dict):
+        return dict(value)
+    return value
 
 
 def _btc_asset(
