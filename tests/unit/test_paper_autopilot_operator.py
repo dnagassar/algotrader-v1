@@ -174,6 +174,12 @@ def test_operator_unexpected_non_spy_position_is_nonzero(tmp_path: Path) -> None
     assert summary["classification"] == "unexpected_position_blocked"
     assert summary["autonomy_status"] == "blocked_unexpected_non_spy_position"
     assert summary["blocker_status"] == "blocked/unexpected_non_spy_position"
+    assert (
+        summary["readiness_status"]
+        == "readiness_blocked_unexpected_non_spy_position"
+    )
+    assert summary["required_operator_action"] == "operator_review_non_spy_position"
+    assert summary["readiness_packet_generated"] is False
     assert summary["broker_mutation_performed"] is False
     assert paper_autopilot_operator_exit_status(result) == 1
 
@@ -198,8 +204,66 @@ def test_operator_open_spy_order_conflict_is_nonzero(tmp_path: Path) -> None:
     assert summary["classification"] == "open_order_conflict_blocked"
     assert summary["autonomy_status"] == "blocked_open_spy_order_present"
     assert summary["blocker_status"] == "blocked/open_order_present"
+    assert summary["readiness_status"] == "readiness_blocked_open_spy_order_present"
+    assert (
+        summary["required_operator_action"]
+        == "reconcile_existing_spy_open_order_before_submit"
+    )
+    assert summary["readiness_packet_generated"] is False
     assert summary["broker_mutation_performed"] is False
     assert paper_autopilot_operator_exit_status(result) == 1
+
+
+def test_operator_no_submit_hold_noop_when_risk_on_position(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker(
+        positions=({"symbol": "SPY", "qty": Decimal("0.05"), "market_value": "30"},)
+    )
+
+    result = _run_operator(tmp_path, bars_csv, broker, no_submit=True)
+
+    summary = result["operator_summary"]
+    assert summary["classification"] == "healthy_hold_noop"
+    assert summary["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert summary["readiness_status"] == "no_mutation_needed_continue"
+    assert summary["required_operator_action"] == "continue_next_daily_cycle"
+    assert summary["readiness_packet_generated"] is False
+    assert summary["operating_mode"] == "visibility/no_submit"
+    assert summary["no_submit_mode"] is True
+    assert summary["execution_plan_action"] == "hold"
+    assert summary["paper_submit_performed"] is False
+    assert summary["broker_mutation_performed"] is False
+    assert broker.submitted_requests == []
+    assert paper_autopilot_operator_exit_status(result) == 0
+
+
+def test_operator_no_submit_hold_noop_when_risk_off_without_position(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_off")
+    broker = FakeAutopilotBroker()
+
+    result = _run_operator(tmp_path, bars_csv, broker, no_submit=True)
+
+    summary = result["operator_summary"]
+    assert summary["classification"] == "healthy_hold_noop"
+    assert summary["autonomy_status"] == "healthy_continue_next_daily_cycle"
+    assert summary["readiness_status"] == "no_mutation_needed_continue"
+    assert summary["required_operator_action"] == "continue_next_daily_cycle"
+    assert summary["readiness_packet_generated"] is False
+    assert summary["operating_mode"] == "visibility/no_submit"
+    assert summary["no_submit_mode"] is True
+    assert summary["sma_posture"] == "risk_off"
+    assert summary["spy_position_observed"] is False
+    assert summary["spy_position_quantity"] == "0"
+    assert summary["execution_plan_action"] == "hold"
+    assert "risk_off_no_spy_position_noop" in summary["reason_codes"]
+    assert summary["paper_submit_performed"] is False
+    assert summary["broker_mutation_performed"] is False
+    assert broker.submitted_requests == []
+    assert paper_autopilot_operator_exit_status(result) == 0
 
 
 def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
@@ -231,6 +295,10 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
         == "review_visibility_only_intended_action_no_submit_mode"
     )
     assert summary["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert (
+        summary["readiness_status"]
+        != "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
     assert summary["readiness_blockers"] == [
         "no_submit_mode",
         "paper_mutation_required",
@@ -272,6 +340,22 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     assert result["rollup"]["broker_read_performed"] is True
     assert result["rollup"]["intended_mutation_action"] == "buy"
     assert result["rollup"]["mutation_would_be_required_without_no_submit"] is True
+    packet = result["rollup"]["paper_mutation_readiness_packet"]
+    assert packet["symbol"] == "SPY"
+    assert packet["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert packet["strategy_adapter_mode"] == "paper_mutation"
+    assert packet["no_submit_mode"] is True
+    assert packet["paper_submit_authorized"] is False
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
+    assert packet["vol_scaled_preview_visible"] is True
+    assert packet["vol_scaled_preview_mutation_allowed"] is False
+    assert packet["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        packet["readiness_status"]
+        != "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
     assert broker.submitted_requests == []
     assert "submit_order" not in broker.calls
     rendered = render_paper_autopilot_operator_summary(summary)
@@ -300,6 +384,77 @@ def test_operator_no_submit_buy_intent_is_visibility_only_nonzero(
     assert "vol_scaled_preview_mutation_allowed=false" in rendered
     assert "vol_scaled_preview_submit_allowed=false" in rendered
     assert "vol_scaled_preview_non_mutation_status=preview_only_non_mutating" in rendered
+    assert paper_autopilot_operator_exit_status(result) == 1
+
+
+def test_operator_no_submit_sell_intent_is_visibility_only_nonzero(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_off")
+    broker = FakeAutopilotBroker(
+        positions=({"symbol": "SPY", "qty": Decimal("0.04"), "market_value": "24"},)
+    )
+
+    result = _run_operator(tmp_path, bars_csv, broker, no_submit=True)
+
+    summary = result["operator_summary"]
+    assert summary["classification"] == "mutation_would_be_required_no_submit_mode"
+    assert (
+        summary["autonomy_status"]
+        == "paper_mutation_would_be_required_no_submit_mode"
+    )
+    assert summary["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert (
+        summary["readiness_status"]
+        != "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
+    assert summary["readiness_blockers"] == [
+        "no_submit_mode",
+        "paper_mutation_required",
+    ]
+    assert summary["required_operator_action"] == (
+        "review_readiness_packet_then_run_explicit_authorized_bounded_paper_mutation_after_operator_approval"
+    )
+    assert summary["readiness_packet_generated"] is True
+    assert summary["paper_mutation_readiness_packet"]
+    assert summary["operating_mode"] == "visibility/no_submit"
+    assert summary["no_submit_mode"] is True
+    assert summary["sma_posture"] == "risk_off"
+    assert summary["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert summary["broker_state_observed"] is True
+    assert summary["spy_position_observed"] is True
+    assert summary["spy_position_quantity"] == "0.04"
+    assert summary["execution_plan_action"] == "sell_close"
+    assert summary["action_decision"] == "paper_sell_close_blocked_no_submit_mode"
+    assert summary["vol_scaled_preview_mutation_allowed"] is False
+    assert summary["vol_scaled_preview_submit_allowed"] is False
+    assert summary["paper_submit_performed"] is False
+    assert summary["broker_mutation_performed"] is False
+    assert summary["live_mutation_performed"] is False
+
+    packet = result["rollup"]["paper_mutation_readiness_packet"]
+    assert packet["symbol"] == "SPY"
+    assert packet["selected_strategy_id"] == "spy_sma_50_200_training_wheel"
+    assert packet["strategy_adapter_mode"] == "paper_mutation"
+    assert packet["execution_plan_action"] == "sell_close"
+    assert packet["intended_mutation_action"] == "sell_close"
+    assert packet["side"] == "sell"
+    assert packet["quantity"] == "0.04"
+    assert packet["notional"] == ""
+    assert packet["no_submit_mode"] is True
+    assert packet["paper_submit_authorized"] is False
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
+    assert packet["readiness_status"] == "readiness_blocked_no_submit_mode"
+    assert (
+        packet["readiness_status"]
+        != "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
+    assert packet["vol_scaled_preview_mutation_allowed"] is False
+    assert packet["vol_scaled_preview_submit_allowed"] is False
+    assert broker.submitted_requests == []
+    assert "submit_order" not in broker.calls
     assert paper_autopilot_operator_exit_status(result) == 1
 
 
@@ -394,9 +549,15 @@ def _run_operator(
     tmp_path: Path,
     bars_csv: Path,
     broker: FakeAutopilotBroker,
+    *,
+    no_submit: bool = False,
 ) -> dict[str, object]:
     return run_paper_autopilot_operator(
-        PaperAutopilotOperatorConfig(output_root=tmp_path / "out", bars_csv=bars_csv),
+        PaperAutopilotOperatorConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            no_submit=no_submit,
+        ),
         env=_paper_env(),
         broker_client_factory=_factory(broker),
         daily_lab_runner=_fake_daily_lab,

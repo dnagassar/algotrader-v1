@@ -241,6 +241,14 @@ def test_no_submit_mutation_required_generates_readiness_packet(
     assert packet["unexpected_non_spy_positions"] == []
     assert packet["data_freshness_status"] == "accepted_data_current"
     assert packet["latest_bar_date"] == "2026-08-08"
+    assert packet["vol_scaled_preview_visible"] is True
+    assert packet["vol_scaled_preview_intended_action"] == "buy"
+    assert packet["vol_scaled_preview_mutation_allowed"] is False
+    assert packet["vol_scaled_preview_submit_allowed"] is False
+    assert (
+        packet["vol_scaled_preview_non_mutation_status"]
+        == "preview_only_non_mutating"
+    )
     assert packet["paper_submit_authorized"] is False
     assert packet["paper_submit_performed"] is False
     assert packet["broker_mutation_performed"] is False
@@ -353,6 +361,10 @@ def test_preview_only_strategy_never_becomes_readiness_ready(tmp_path: Path) -> 
         == "paper_mutation_candidate_requires_explicit_authorized_run"
     )
     assert rollup["readiness_status"] == "readiness_blocked_preview_only_strategy"
+    assert (
+        rollup["readiness_status"]
+        != "readiness_ready_for_explicit_bounded_paper_authorized_run"
+    )
     assert rollup["readiness_packet_generated"] is True
 
 

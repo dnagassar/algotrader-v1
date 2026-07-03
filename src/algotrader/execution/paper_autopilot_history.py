@@ -805,6 +805,19 @@ def build_paper_mutation_readiness_packet(
         ),
         "data_freshness_status": _text(record.get("data_freshness_status")),
         "latest_bar_date": _text(record.get("latest_bar_date")),
+        "vol_scaled_preview_visible": record.get("vol_scaled_preview_visible") is True,
+        "vol_scaled_preview_intended_action": _text(
+            record.get("vol_scaled_preview_intended_action")
+        ),
+        "vol_scaled_preview_mutation_allowed": (
+            record.get("vol_scaled_preview_mutation_allowed") is True
+        ),
+        "vol_scaled_preview_submit_allowed": (
+            record.get("vol_scaled_preview_submit_allowed") is True
+        ),
+        "vol_scaled_preview_non_mutation_status": _text(
+            record.get("vol_scaled_preview_non_mutation_status")
+        ),
         "paper_submit_authorized": record.get("paper_submit_authorized") is True,
         "paper_submit_performed": record.get("paper_submit_performed") is True,
         "broker_mutation_performed": record.get("broker_mutation_performed") is True,
