@@ -84,6 +84,17 @@ class FakeSdkTradingClient:
             equity=Decimal("100000"),
         )
 
+    def get_all_assets(self) -> list[dict[str, object]]:
+        self.calls.append("get_all_assets")
+        return [
+            {
+                "symbol": "BTC/USD",
+                "asset_class": "crypto",
+                "tradable": True,
+                "status": "active",
+            }
+        ]
+
     def get_all_positions(self) -> list[AlpacaPositionResponse]:
         self.calls.append("get_all_positions")
         return [
@@ -210,14 +221,17 @@ def test_alpaca_sdk_client_delegates_protocol_methods_to_sdk_client() -> None:
     )
 
     account = client.get_account()
+    assets = client.list_assets()
     positions = client.get_positions()
     result = client.submit_order(request)
 
     assert account.account_id == "paper-account-1"
+    assert assets[0]["symbol"] == "BTC/USD"
     assert positions[0].symbol == "MSFT"
     assert result.client_order_id == "deterministic-order-1"
     assert fake_sdk_client.calls == [
         "get_account",
+        "get_all_assets",
         "get_all_positions",
         "submit_order",
     ]
@@ -230,6 +244,7 @@ def test_alpaca_sdk_client_remains_compatible_with_existing_adapter() -> None:
     adapter = AlpacaClientAdapter(client)
 
     account = adapter.get_account()
+    assets = adapter.list_assets()
     positions = adapter.list_positions()
     result = adapter.submit_order(
         proposed_order(),
@@ -239,6 +254,7 @@ def test_alpaca_sdk_client_remains_compatible_with_existing_adapter() -> None:
     )
 
     assert account.cash == Decimal("100000")
+    assert assets[0]["asset_class"] == "crypto"
     assert positions[0].symbol == "MSFT"
     assert result.accepted is True
     assert fake_sdk_client.submitted_orders[0].client_order_id == "adapter-order-1"

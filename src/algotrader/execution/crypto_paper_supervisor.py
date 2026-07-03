@@ -76,6 +76,9 @@ class CryptoCapabilityReceipt:
     crypto_trading_supported: bool
     eligible_crypto_symbols: tuple[str, ...]
     selected_symbol: str
+    selected_symbol_tradable: bool
+    selected_symbol_marginable: bool | None
+    selected_symbol_fractionable: bool | None
     min_order_size: str
     min_trade_increment: str
     min_order_increment: str
@@ -96,11 +99,18 @@ class CryptoCapabilityReceipt:
         for field_name in (
             "broker_read_performed",
             "crypto_trading_supported",
+            "selected_symbol_tradable",
             "paper_only_mode",
             "live_endpoint_indicator",
         ):
             if type(getattr(self, field_name)) is not bool:
                 raise ValidationError(f"{field_name} must be a boolean.")
+        for field_name in (
+            "selected_symbol_marginable",
+            "selected_symbol_fractionable",
+        ):
+            if getattr(self, field_name) is not None and type(getattr(self, field_name)) is not bool:
+                raise ValidationError(f"{field_name} must be a boolean or None.")
         object.__setattr__(
             self,
             "broker_state_mode",
@@ -153,6 +163,9 @@ class CryptoCapabilityReceipt:
             "crypto_trading_supported": self.crypto_trading_supported,
             "eligible_crypto_symbols": list(self.eligible_crypto_symbols),
             "selected_symbol": self.selected_symbol,
+            "selected_symbol_tradable": self.selected_symbol_tradable,
+            "selected_symbol_marginable": self.selected_symbol_marginable,
+            "selected_symbol_fractionable": self.selected_symbol_fractionable,
             "min_order_size": self.min_order_size,
             "min_trade_increment": self.min_trade_increment,
             "min_order_increment": self.min_order_increment,
@@ -270,6 +283,9 @@ def discover_crypto_paper_capability(
         crypto_trading_supported=supported,
         eligible_crypto_symbols=eligible_symbols,
         selected_symbol=selected_symbol,
+        selected_symbol_tradable=bool(metadata["selected_symbol_tradable"]),
+        selected_symbol_marginable=metadata["selected_symbol_marginable"],
+        selected_symbol_fractionable=metadata["selected_symbol_fractionable"],
         min_order_size=metadata["min_order_size"],
         min_trade_increment=metadata["min_trade_increment"],
         min_order_increment=metadata["min_order_increment"],
@@ -412,6 +428,9 @@ def _capability_receipt(
         crypto_trading_supported=False,
         eligible_crypto_symbols=eligible_crypto_symbols,
         selected_symbol=selected_symbol,
+        selected_symbol_tradable=False,
+        selected_symbol_marginable=None,
+        selected_symbol_fractionable=None,
         min_order_size="",
         min_trade_increment="",
         min_order_increment="",
@@ -437,8 +456,8 @@ def _broker_assets(broker: Any) -> tuple[Any, ...]:
     raise ValidationError("broker asset discovery method is unavailable.")
 
 
-def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, str], ...]:
-    assets: list[dict[str, str]] = []
+def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, Any], ...]:
+    assets: list[dict[str, Any]] = []
     for value in values:
         data = _object_data(value)
         symbol = _first_text(data, "symbol", "name")
@@ -448,12 +467,20 @@ def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, str], ...]
         asset_class = _first_text(data, "asset_class", "class").lower()
         if asset_class and asset_class != ASSET_CLASS_CRYPTO:
             continue
-        if _bool_field(data, "tradable") is False:
+        tradable = _bool_field(data, "tradable")
+        if tradable is not True:
             continue
         status = _first_text(data, "status").lower()
         if status and status not in {"active", "tradable"}:
             continue
-        asset = {"symbol": normalized_symbol}
+        asset: dict[str, Any] = {
+            "symbol": normalized_symbol,
+            "tradable": tradable,
+        }
+        for field_name in ("marginable", "fractionable"):
+            field_value = _bool_field(data, field_name)
+            if field_value is not None:
+                asset[field_name] = field_value
         for field_name in (
             "min_order_size",
             "min_trade_increment",
@@ -469,16 +496,25 @@ def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, str], ...]
 
 
 def _selected_asset_metadata(
-    asset: Mapping[str, str] | None,
+    asset: Mapping[str, Any] | None,
     selected_symbol: str,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     policy = paper_order_policy_for_asset_class(ASSET_CLASS_CRYPTO)
     min_notional = ""
+    selected_symbol_tradable = False
+    selected_symbol_marginable: bool | None = None
+    selected_symbol_fractionable: bool | None = None
     if asset is not None:
         min_notional = _first_text(asset, "min_notional", "min_order_notional")
+        selected_symbol_tradable = _bool_field(asset, "tradable") is True
+        selected_symbol_marginable = _bool_field(asset, "marginable")
+        selected_symbol_fractionable = _bool_field(asset, "fractionable")
     if not min_notional and selected_symbol == "BTCUSD" and policy.min_notional is not None:
         min_notional = str(policy.min_notional)
     return {
+        "selected_symbol_tradable": selected_symbol_tradable,
+        "selected_symbol_marginable": selected_symbol_marginable,
+        "selected_symbol_fractionable": selected_symbol_fractionable,
         "min_order_size": "" if asset is None else _first_text(asset, "min_order_size"),
         "min_trade_increment": (
             "" if asset is None else _first_text(asset, "min_trade_increment")
@@ -569,6 +605,13 @@ def _supervisor_blockers(
     adapter_resolution: Any,
 ) -> tuple[str, ...]:
     blockers: list[str] = [*capability.blockers, *data_blockers]
+    if capability.capability_source == "not_observed":
+        blockers.append("capability_not_observed")
+    if (
+        capability.capability_source != "not_observed"
+        and capability.crypto_trading_supported is not True
+    ):
+        blockers.append("unsupported_crypto_capability")
     if freshness_status != "current_for_24_7_crypto_lab":
         blockers.append(freshness_status)
     blockers.extend(_string_list(signal_payload.get("blockers")))
@@ -576,8 +619,9 @@ def _supervisor_blockers(
         blockers.append("strategy_adapter_not_resolved")
     elif adapter_resolution.resolution_status != "resolved":
         blockers.extend(adapter_resolution.blockers)
-    if signal_payload.get("intended_action") == "buy":
-        blockers.append("crypto_preview_only_no_submit")
+        if adapter_resolution.reason == "strategy_adapter_unsupported_symbol":
+            blockers.append("unsupported_crypto_capability")
+    blockers.append("crypto_preview_only_no_submit")
     return _dedupe(blockers)
 
 
@@ -590,22 +634,32 @@ def _readiness_status(
 ) -> str:
     if capability.live_endpoint_indicator:
         return "readiness_blocked_live_endpoint_indicator"
+    if capability.capability_source == "not_observed":
+        return "readiness_blocked_capability_not_observed"
     if capability.crypto_trading_supported is not True:
-        return "readiness_blocked_crypto_capability_not_supported"
+        return "readiness_blocked_unsupported_crypto_capability"
     if freshness_status != "current_for_24_7_crypto_lab":
         return "readiness_blocked_stale_crypto_data"
     if adapter_resolution is None or adapter_resolution.resolution_status != "resolved":
+        if (
+            adapter_resolution is not None
+            and adapter_resolution.reason == "strategy_adapter_unsupported_symbol"
+        ):
+            return "readiness_blocked_unsupported_crypto_capability"
         return "readiness_blocked_strategy_adapter"
     if signal_payload.get("posture") == "insufficient_history":
         return "readiness_blocked_insufficient_history"
-    if signal_payload.get("intended_action") == "buy":
-        return "readiness_blocked_crypto_preview_only_no_submit"
-    return "readiness_preview_only_continue"
+    return "readiness_blocked_crypto_preview_only_no_submit"
 
 
 def _action_decision(signal_payload: Mapping[str, Any], readiness_status: str) -> str:
-    if readiness_status == "readiness_blocked_crypto_preview_only_no_submit":
+    if (
+        readiness_status == "readiness_blocked_crypto_preview_only_no_submit"
+        and signal_payload.get("intended_action") == "buy"
+    ):
         return "preview_buy/no_submit"
+    if readiness_status == "readiness_blocked_crypto_preview_only_no_submit":
+        return "observe/no_action"
     if readiness_status == "readiness_preview_only_continue":
         return "observe/no_action"
     if signal_payload.get("posture") == "insufficient_history":
@@ -657,9 +711,20 @@ def _build_record(
         "freshness_policy": dict(freshness),
         "broker_state_mode": capability.broker_state_mode,
         "broker_read_performed": capability.broker_read_performed,
+        "capability_source": capability.capability_source,
         "crypto_trading_supported": capability.crypto_trading_supported,
         "crypto_capability": capability.to_dict(),
         "eligible_crypto_symbols": list(capability.eligible_crypto_symbols),
+        "selected_symbol_tradable": capability.selected_symbol_tradable,
+        "selected_symbol_marginable": capability.selected_symbol_marginable,
+        "selected_symbol_fractionable": capability.selected_symbol_fractionable,
+        "min_order_size": capability.min_order_size,
+        "min_trade_increment": capability.min_trade_increment,
+        "min_order_increment": capability.min_order_increment,
+        "min_notional": capability.min_notional,
+        "unsupported_jurisdiction_account_blocker": (
+            capability.unsupported_jurisdiction_account_blocker
+        ),
         "strategy_id": signal_payload.get("strategy_id", CRYPTO_TREND_STRATEGY_ID),
         "strategy_signal": dict(signal_payload),
         "strategy_posture": signal_payload.get("posture", ""),
@@ -699,8 +764,17 @@ def _supervisor_receipt(record: Mapping[str, Any]) -> dict[str, Any]:
         "data_freshness_status",
         "broker_state_mode",
         "broker_read_performed",
+        "capability_source",
         "crypto_trading_supported",
         "eligible_crypto_symbols",
+        "selected_symbol_tradable",
+        "selected_symbol_marginable",
+        "selected_symbol_fractionable",
+        "min_order_size",
+        "min_trade_increment",
+        "min_order_increment",
+        "min_notional",
+        "unsupported_jurisdiction_account_blocker",
         "strategy_id",
         "strategy_posture",
         "strategy_adapter_mode",
@@ -729,7 +803,9 @@ def _render_operating_brief(record: Mapping[str, Any]) -> str:
             f"- Data freshness: `{record.get('data_freshness_status', '')}`",
             f"- Broker-state mode: `{record.get('broker_state_mode', '')}`",
             f"- Broker read performed: `{record.get('broker_read_performed')}`",
+            f"- Capability source: `{record.get('capability_source', '')}`",
             f"- Crypto trading supported: `{record.get('crypto_trading_supported')}`",
+            f"- Selected symbol tradable: `{record.get('selected_symbol_tradable')}`",
             f"- Strategy posture: `{record.get('strategy_posture', '')}`",
             f"- Adapter mode: `{record.get('strategy_adapter_mode', '')}`",
             f"- Action decision: `{record.get('action_decision', '')}`",
@@ -747,6 +823,12 @@ def _final_operator_action(readiness_status: str) -> str:
         "readiness_blocked_live_endpoint_indicator": "block_crypto_lane_live_indicator",
         "readiness_blocked_crypto_capability_not_supported": (
             "block_crypto_lane_until_capability_observed"
+        ),
+        "readiness_blocked_capability_not_observed": (
+            "block_crypto_lane_until_capability_observed"
+        ),
+        "readiness_blocked_unsupported_crypto_capability": (
+            "block_crypto_lane_unsupported_capability"
         ),
         "readiness_blocked_stale_crypto_data": "block_crypto_lane_until_data_fresh",
         "readiness_blocked_strategy_adapter": "block_crypto_lane_adapter_review",
@@ -781,9 +863,9 @@ def _select_preferred_symbol(
 
 
 def _asset_by_symbol(
-    assets: Sequence[Mapping[str, str]],
+    assets: Sequence[Mapping[str, Any]],
     symbol: str,
-) -> Mapping[str, str] | None:
+) -> Mapping[str, Any] | None:
     if not symbol:
         return None
     for asset in assets:
@@ -792,9 +874,9 @@ def _asset_by_symbol(
     return None
 
 
-def _dedupe_assets(assets: Sequence[Mapping[str, str]]) -> tuple[dict[str, str], ...]:
+def _dedupe_assets(assets: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any], ...]:
     seen: set[str] = set()
-    result: list[dict[str, str]] = []
+    result: list[dict[str, Any]] = []
     for asset in assets:
         symbol = asset["symbol"]
         if symbol in seen:
@@ -954,8 +1036,17 @@ def _first_text(data: Mapping[str, Any], *names: str) -> str:
     for name in names:
         for key, value in data.items():
             if str(key).strip().lower() == name:
-                return "" if value is None else str(value).strip()
+                return _field_text(value)
     return ""
+
+
+def _field_text(value: Any) -> str:
+    if value is None:
+        return ""
+    enum_value = getattr(value, "value", None)
+    if type(enum_value) is str:
+        return enum_value.strip()
+    return str(value).strip()
 
 
 def _bool_field(data: Mapping[str, Any], field_name: str) -> bool | None:

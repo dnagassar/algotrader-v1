@@ -38,6 +38,17 @@ class FakeAlpacaClient:
             equity=Decimal("100000"),
         )
 
+    def list_assets(self) -> list[dict[str, object]]:
+        self.calls.append("list_assets")
+        return [
+            {
+                "symbol": "BTC/USD",
+                "asset_class": "crypto",
+                "tradable": True,
+                "status": "active",
+            }
+        ]
+
     def get_positions(self) -> list[AlpacaPositionResponse]:
         self.calls.append("get_positions")
         if self._positions is not None:

@@ -40,6 +40,15 @@ class AlpacaPaperBroker:
 
         return self._adapter.get_account()
 
+    def list_assets(self) -> tuple[Any, ...]:
+        if self._adapter is None:
+            raise BrokerNotImplementedError(
+                "AlpacaPaperBroker skeleton only; list_assets is not "
+                "implemented and performs no network calls."
+            )
+
+        return self._adapter.list_assets()
+
     def get_positions(self) -> tuple[Position, ...]:
         if self._adapter is None:
             raise BrokerNotImplementedError(

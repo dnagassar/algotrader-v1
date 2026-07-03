@@ -1,6 +1,16 @@
 """Deterministic signal-generation helpers."""
 
 from .base import SignalGenerator
+from .crypto_trend import (
+    CRYPTO_TREND_LABELS,
+    CRYPTO_TREND_POSTURES,
+    CRYPTO_TREND_STRATEGY_FAMILY,
+    CRYPTO_TREND_STRATEGY_ID,
+    CryptoTrendSignalConfig,
+    CryptoTrendSignalEvaluator,
+    CryptoTrendSignalResult,
+    evaluate_crypto_trend_signal,
+)
 from .etf_sma_evaluator import (
     ETF_SMA_SIGNAL_LABELS,
     ETF_SMA_SIGNAL_POSTURES,
@@ -41,6 +51,13 @@ from .validated_signal_definition import ValidatedSignalDefinition
 __all__ = [
     "ETF_SMA_SIGNAL_LABELS",
     "ETF_SMA_SIGNAL_POSTURES",
+    "CRYPTO_TREND_LABELS",
+    "CRYPTO_TREND_POSTURES",
+    "CRYPTO_TREND_STRATEGY_FAMILY",
+    "CRYPTO_TREND_STRATEGY_ID",
+    "CryptoTrendSignalConfig",
+    "CryptoTrendSignalEvaluator",
+    "CryptoTrendSignalResult",
     "EtfSmaSignalConfig",
     "EtfSmaSignalEvaluator",
     "EtfSmaSignalResult",
@@ -63,6 +80,7 @@ __all__ = [
     "SignalInputBundleCompletenessResult",
     "SignalInputValue",
     "ValidatedSignalDefinition",
+    "evaluate_crypto_trend_signal",
     "evaluate_etf_sma_signal",
     "evaluate_spy_rsi_mean_reversion_signal",
     "evaluate_spy_vol_scaled_trend_signal",

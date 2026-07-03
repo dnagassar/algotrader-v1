@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
-from typing import Optional, Protocol
+from typing import Any, Optional, Protocol
 
 
 _TIME_IN_FORCE_BY_ASSET_CLASS = {
@@ -232,6 +232,9 @@ class AlpacaClient(Protocol):
     """Minimal client protocol a future Alpaca adapter must satisfy."""
 
     def get_account(self) -> AlpacaAccountResponse:
+        ...
+
+    def list_assets(self) -> Sequence[Any]:
         ...
 
     def get_positions(self) -> Sequence[AlpacaPositionResponse]:

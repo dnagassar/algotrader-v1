@@ -67,6 +67,20 @@ class AlpacaClientAdapter:
         translated = translate_alpaca_account(response)
         return map_translated_account_to_account(translated)
 
+    def list_assets(self) -> tuple[Any, ...]:
+        method_name = self._assets_method_name()
+        responses = self._call_client(method_name)
+
+        if responses is None:
+            return ()
+
+        if not isinstance(responses, Iterable):
+            raise AlpacaAdapterError(
+                "Injected Alpaca-like client returned non-iterable assets."
+            )
+
+        return tuple(responses)
+
     def list_positions(self) -> tuple[Position, ...]:
         method_name = self._positions_method_name()
         responses = self._call_client(method_name)
@@ -183,6 +197,21 @@ class AlpacaClientAdapter:
         raise AlpacaAdapterError(
             "Injected Alpaca-like client must define get_positions() "
             "or get_all_positions()."
+        )
+
+    def _assets_method_name(self) -> str:
+        if hasattr(self._client, "list_assets"):
+            return "list_assets"
+
+        if hasattr(self._client, "get_all_assets"):
+            return "get_all_assets"
+
+        if hasattr(self._client, "get_assets"):
+            return "get_assets"
+
+        raise AlpacaAdapterError(
+            "Injected Alpaca-like client must define list_assets(), "
+            "get_all_assets(), or get_assets()."
         )
 
     def _orders_method_name(self) -> str:

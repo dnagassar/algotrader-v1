@@ -88,6 +88,12 @@ class AlpacaSdkClient(AlpacaClient):
     def get_account(self) -> AlpacaAccountResponse:
         return cast(AlpacaAccountResponse, self._sdk_client.get_account())
 
+    def list_assets(self) -> Sequence[Any]:
+        if hasattr(self._sdk_client, "get_all_assets"):
+            return cast(Sequence[Any], self._sdk_client.get_all_assets())
+
+        return cast(Sequence[Any], self._sdk_client.get_assets())
+
     def get_positions(self) -> Sequence[AlpacaPositionResponse]:
         if hasattr(self._sdk_client, "get_all_positions"):
             return cast(

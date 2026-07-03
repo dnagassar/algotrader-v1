@@ -43,6 +43,9 @@ def test_alpaca_paper_broker_without_adapter_remains_inert():
     with pytest.raises(BrokerNotImplementedError):
         broker.get_positions()
 
+    with pytest.raises(BrokerNotImplementedError):
+        broker.list_assets()
+
 
 def test_alpaca_paper_broker_submit_order_without_adapter_remains_inert():
     broker = AlpacaPaperBroker()
@@ -80,6 +83,17 @@ def test_broker_list_positions_delegates_to_injected_fake_adapter():
     assert positions[0].symbol == "MSFT"
     assert positions[0].quantity == Decimal("3")
     assert positions[0].average_price == Decimal("100.10")
+
+
+def test_broker_list_assets_delegates_to_injected_fake_adapter():
+    fake_client = FakeAlpacaClient()
+    broker = AlpacaPaperBroker(adapter=AlpacaClientAdapter(fake_client))
+
+    assets = broker.list_assets()
+
+    assert fake_client.calls == ["list_assets"]
+    assert assets[0]["symbol"] == "BTC/USD"
+    assert assets[0]["asset_class"] == "crypto"
 
 
 def test_broker_get_positions_delegates_to_injected_fake_adapter():
