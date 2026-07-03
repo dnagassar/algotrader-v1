@@ -548,7 +548,7 @@ def _parse_bar_row(row: Mapping[str, object]) -> Bar:
     open_price = _optional_decimal(_row_text(row, "open")) or close
     high = _optional_decimal(_row_text(row, "high")) or max(open_price, close)
     low = _optional_decimal(_row_text(row, "low")) or min(open_price, close)
-    volume = _optional_decimal(_row_text(row, "volume")) or Decimal("0")
+    volume = _optional_nonnegative_decimal(_row_text(row, "volume"))
     return Bar(
         symbol=symbol,
         timestamp=_row_datetime(row),
@@ -981,6 +981,18 @@ def _optional_decimal(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
     return _positive_decimal(value, "decimal")
+
+
+def _optional_nonnegative_decimal(value: object) -> Decimal:
+    if value in (None, ""):
+        return Decimal("0")
+    try:
+        decimal_value = value if isinstance(value, Decimal) else Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError("decimal must be a non-negative decimal.") from exc
+    if not decimal_value.is_finite() or decimal_value < Decimal("0"):
+        raise ValidationError("decimal must be a non-negative decimal.")
+    return decimal_value
 
 
 def _path(value: object, field_name: str) -> Path:
