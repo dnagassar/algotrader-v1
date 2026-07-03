@@ -11,6 +11,11 @@ from typing import Literal
 from algotrader.core.time import require_utc_datetime
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
+from algotrader.signals.crypto_trend import (
+    CRYPTO_TREND_STRATEGY_FAMILY,
+    CRYPTO_TREND_STRATEGY_ID,
+    CryptoTrendSignalResult,
+)
 from algotrader.signals.etf_sma_evaluator import EtfSmaSignalResult
 from algotrader.signals.spy_rsi_mean_reversion import (
     SPYRsiMeanReversionSignalResult,
@@ -51,8 +56,12 @@ SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_FAMILY = "mean_reversion"
 SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID = "spy_rsi_14_mean_reversion_shadow"
 SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_FAMILY = SPY_VOL_SCALED_TREND_STRATEGY_FAMILY
 SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID = SPY_VOL_SCALED_TREND_STRATEGY_ID
+CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY = CRYPTO_TREND_STRATEGY_FAMILY
+CRYPTO_TREND_PREVIEW_STRATEGY_ID = CRYPTO_TREND_STRATEGY_ID
 
 __all__ = [
+    "CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY",
+    "CRYPTO_TREND_PREVIEW_STRATEGY_ID",
     "SMA_TRAINING_WHEEL_STRATEGY_FAMILY",
     "SMA_TRAINING_WHEEL_STRATEGY_ID",
     "OPTIONS_NOT_AUTHORIZED_BLOCKER",
@@ -70,6 +79,7 @@ __all__ = [
     "StrategySignal",
     "StrategySignalState",
     "route_strategy_signals",
+    "strategy_signal_from_crypto_trend_result",
     "strategy_signal_from_etf_sma_result",
     "strategy_signal_from_spy_rsi_mean_reversion_result",
     "strategy_signal_from_spy_vol_scaled_trend_result",
@@ -515,6 +525,49 @@ def strategy_signal_from_spy_vol_scaled_trend_result(
             "preview_only_no_allocation_target_exposure="
             f"{_decimal_text(result.target_exposure)}"
         ),
+        data_as_of=result.as_of,
+        promotion_status="paper_preview_candidate",
+        labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),
+        blockers=blockers,
+        evidence_score=None,
+    )
+
+
+def strategy_signal_from_crypto_trend_result(
+    result: CryptoTrendSignalResult,
+) -> StrategySignal:
+    """Adapt the crypto preview trend result into the router contract."""
+
+    if not isinstance(result, CryptoTrendSignalResult):
+        raise ValidationError("result must be a CryptoTrendSignalResult.")
+
+    if result.posture == "risk_on":
+        signal_state: StrategySignalState = "trade_candidate"
+        intended_action: StrategyIntendedAction = "buy"
+        intended_side: StrategyIntendedSide = "buy"
+        blockers: tuple[str, ...] = ()
+    elif result.posture == "risk_off":
+        signal_state = "no_trade"
+        intended_action = "hold"
+        intended_side = ""
+        blockers = ()
+    else:
+        signal_state = "insufficient_evidence"
+        intended_action = "no_action"
+        intended_side = ""
+        blockers = tuple(result.blockers or ("insufficient_history",))
+
+    return StrategySignal(
+        strategy_id=CRYPTO_TREND_PREVIEW_STRATEGY_ID,
+        strategy_family=CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY,
+        symbol=result.symbol,
+        asset_class=result.asset_class,
+        signal_state=signal_state,
+        intended_action=intended_action,
+        intended_side=intended_side,
+        expected_holding_period="crypto_24_7_trend_preview_until_next_signal",
+        max_loss_model="not_modeled_crypto_preview_only",
+        risk_budget="preview_only_no_allocation",
         data_as_of=result.as_of,
         promotion_status="paper_preview_candidate",
         labels=tuple(_dedupe((*result.labels, STRATEGY_ROUTER_LABEL))),

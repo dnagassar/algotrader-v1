@@ -10,6 +10,7 @@ from typing import Literal
 from algotrader.core.validation import symbol_value
 from algotrader.errors import ValidationError
 from algotrader.orchestration.strategy_router import (
+    CRYPTO_TREND_PREVIEW_STRATEGY_ID,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_STRATEGY_ID,
     STRATEGY_ROUTER_REQUIRED_LABELS,
@@ -31,8 +32,10 @@ SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID = (
 SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID = (
     "spy_vol_scaled_trend_20d_preview_adapter"
 )
+CRYPTO_TREND_PREVIEW_ADAPTER_ID = "crypto_sma_20_50_preview_adapter"
 
 __all__ = [
+    "CRYPTO_TREND_PREVIEW_ADAPTER_ID",
     "DEFAULT_STRATEGY_ADAPTER_REGISTRY",
     "SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID",
     "SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID",
@@ -543,6 +546,20 @@ DEFAULT_STRATEGY_ADAPTER_REGISTRY: tuple[StrategyAdapterRegistration, ...] = (
         required_labels=(
             *STRATEGY_ROUTER_REQUIRED_LABELS,
             "paper_preview_quarantine",
+        ),
+    ),
+    StrategyAdapterRegistration(
+        strategy_id=CRYPTO_TREND_PREVIEW_STRATEGY_ID,
+        promotion_status="paper_preview_candidate",
+        adapter_id=CRYPTO_TREND_PREVIEW_ADAPTER_ID,
+        adapter_mode="preview_only",
+        asset_class="crypto",
+        supported_symbols=("BTCUSD", "ETHUSD"),
+        max_order_notional=None,
+        enabled=True,
+        required_labels=(
+            *STRATEGY_ROUTER_REQUIRED_LABELS,
+            "crypto_preview_only",
         ),
     ),
 )

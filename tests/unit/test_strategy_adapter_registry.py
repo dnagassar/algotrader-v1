@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from algotrader.orchestration.strategy_adapter_registry import (
+    CRYPTO_TREND_PREVIEW_ADAPTER_ID,
     DEFAULT_STRATEGY_ADAPTER_REGISTRY,
     SMA_TRAINING_WHEEL_PAPER_MUTATION_ADAPTER_ID,
     SPY_VOL_SCALED_TREND_PREVIEW_ADAPTER_ID,
@@ -14,6 +15,8 @@ from algotrader.orchestration.strategy_adapter_registry import (
     resolve_strategy_route_adapter,
 )
 from algotrader.orchestration.strategy_router import (
+    CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY,
+    CRYPTO_TREND_PREVIEW_STRATEGY_ID,
     SMA_TRAINING_WHEEL_STRATEGY_FAMILY,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     OPTIONS_NOT_AUTHORIZED_BLOCKER,
@@ -85,6 +88,52 @@ def test_vol_scaled_trend_resolves_only_to_preview_adapter() -> None:
     assert mutation_resolution.resolution_status == "blocked"
     assert mutation_resolution.reason == "strategy_adapter_mode_mismatch"
     assert mutation_resolution.paper_mutation_allowed is False
+
+
+def test_crypto_trend_resolves_only_to_preview_adapter() -> None:
+    signal = _signal(
+        strategy_id=CRYPTO_TREND_PREVIEW_STRATEGY_ID,
+        strategy_family=CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY,
+        symbol="BTCUSD",
+        asset_class="crypto",
+        promotion_status="paper_preview_candidate",
+        labels=(*REQUIRED_LABELS, "crypto_preview_only"),
+    )
+
+    preview_resolution = resolve_strategy_adapter(
+        signal,
+        adapter_mode="preview_only",
+    )
+    mutation_resolution = resolve_strategy_adapter(
+        signal,
+        adapter_mode="paper_mutation",
+    )
+
+    assert preview_resolution.resolution_status == "resolved"
+    assert preview_resolution.adapter_id == CRYPTO_TREND_PREVIEW_ADAPTER_ID
+    assert preview_resolution.adapter_mode == "preview_only"
+    assert preview_resolution.paper_mutation_allowed is False
+    assert mutation_resolution.resolution_status == "blocked"
+    assert mutation_resolution.reason == "strategy_adapter_mode_mismatch"
+    assert mutation_resolution.paper_mutation_allowed is False
+
+
+def test_crypto_trend_rejects_unsupported_crypto_symbol() -> None:
+    signal = _signal(
+        strategy_id=CRYPTO_TREND_PREVIEW_STRATEGY_ID,
+        strategy_family=CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY,
+        symbol="DOGEUSD",
+        asset_class="crypto",
+        promotion_status="paper_preview_candidate",
+        labels=(*REQUIRED_LABELS, "crypto_preview_only"),
+    )
+
+    resolution = resolve_strategy_adapter(signal, adapter_mode="preview_only")
+
+    assert resolution.resolution_status == "blocked"
+    assert resolution.reason == "strategy_adapter_unsupported_symbol"
+    assert resolution.adapter_id == CRYPTO_TREND_PREVIEW_ADAPTER_ID
+    assert resolution.paper_mutation_allowed is False
 
 
 def test_unknown_strategy_blocks_even_when_router_would_route() -> None:

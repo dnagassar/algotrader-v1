@@ -7,6 +7,8 @@ from pathlib import Path
 
 from algotrader.core.types import Bar
 from algotrader.orchestration.strategy_router import (
+    CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY,
+    CRYPTO_TREND_PREVIEW_STRATEGY_ID,
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     OPTIONS_NOT_AUTHORIZED_BLOCKER,
     SPY_RSI_MEAN_REVERSION_SHADOW_STRATEGY_ID,
@@ -15,9 +17,14 @@ from algotrader.orchestration.strategy_router import (
     STRATEGY_ROUTER_LABEL,
     StrategySignal,
     route_strategy_signals,
+    strategy_signal_from_crypto_trend_result,
     strategy_signal_from_etf_sma_result,
     strategy_signal_from_spy_rsi_mean_reversion_result,
     strategy_signal_from_spy_vol_scaled_trend_result,
+)
+from algotrader.signals.crypto_trend import (
+    CryptoTrendSignalConfig,
+    evaluate_crypto_trend_signal,
 )
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
@@ -272,6 +279,33 @@ def test_vol_scaled_trend_preview_signal_is_router_visible_but_not_mutating() ->
     ) in receipt.blockers
 
 
+def test_crypto_trend_preview_signal_is_router_visible_but_not_mutating() -> None:
+    result = evaluate_crypto_trend_signal(
+        _crypto_bars(AS_OF, posture="risk_on"),
+        CryptoTrendSignalConfig(as_of=AS_OF, symbol="BTC/USD"),
+    )
+    signal = strategy_signal_from_crypto_trend_result(result)
+    receipt = route_strategy_signals((signal,))
+
+    assert signal.strategy_id == CRYPTO_TREND_PREVIEW_STRATEGY_ID
+    assert signal.strategy_family == CRYPTO_TREND_PREVIEW_STRATEGY_FAMILY
+    assert signal.symbol == "BTCUSD"
+    assert signal.asset_class == "crypto"
+    assert signal.signal_state == "trade_candidate"
+    assert signal.intended_action == "buy"
+    assert signal.promotion_status == "paper_preview_candidate"
+    assert "crypto_preview_only" in signal.labels
+    assert "profit_claim=none" in signal.labels
+    assert receipt.route_status == "blocked"
+    assert receipt.paper_mutation_allowed is False
+    assert receipt.selected_signal is None
+    assert receipt.blocked_signal_ids == (CRYPTO_TREND_PREVIEW_STRATEGY_ID,)
+    assert (
+        "crypto_sma_20_50_training_wheel_preview:"
+        "promotion_status_not_paper_mutation_candidate:paper_preview_candidate"
+    ) in receipt.blockers
+
+
 def test_router_receipt_preserves_labels_and_blockers() -> None:
     receipt = route_strategy_signals(
         (
@@ -405,3 +439,25 @@ def _rsi_bars(prices: tuple[Decimal, ...]) -> tuple[Bar, ...]:
         )
         for index, price in enumerate(prices)
     )
+
+
+def _crypto_bars(as_of: datetime, *, posture: str) -> tuple[Bar, ...]:
+    first = as_of - timedelta(hours=59)
+    bars: list[Bar] = []
+    for index in range(60):
+        close = Decimal("100") + Decimal(index)
+        if posture == "risk_off":
+            close = Decimal("300") - Decimal(index)
+        timestamp = first + timedelta(hours=index)
+        bars.append(
+            Bar(
+                symbol="BTCUSD",
+                timestamp=timestamp,
+                open=close,
+                high=close,
+                low=close,
+                close=close,
+                volume=Decimal("1"),
+            )
+        )
+    return tuple(bars)
