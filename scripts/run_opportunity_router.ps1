@@ -15,6 +15,7 @@ param(
     [string]$SpyBarsCsv = "",
     [string]$CryptoBarsCsv = "runs\operator_input\crypto_paper_bars.csv",
     [string]$CryptoVisibilityStatus = "runs\crypto_paper_visibility\latest\latest_status.json",
+    [string]$CryptoRouterInputManifest = "",
     [string]$AsOfTimestamp,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
@@ -107,6 +108,9 @@ $Args = @(
 
 if (-not [string]::IsNullOrWhiteSpace($SpyBarsCsv)) {
     $Args += @("--spy-bars-csv", $SpyBarsCsv)
+}
+if (-not [string]::IsNullOrWhiteSpace($CryptoRouterInputManifest)) {
+    $Args += @("--crypto-router-input-manifest", $CryptoRouterInputManifest)
 }
 if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
     $Args += @("--as-of", $AsOfTimestamp)

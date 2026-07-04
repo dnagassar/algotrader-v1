@@ -46,6 +46,9 @@ OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_BARS_CSV = Path("runs/operator_input/crypto_pa
 OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_VISIBILITY_STATUS = Path(
     "runs/crypto_paper_visibility/latest/latest_status.json"
 )
+OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_ROUTER_INPUT_MANIFEST = Path(
+    "runs/crypto_universe_refresh/latest/crypto_router_input_manifest.json"
+)
 
 OPPORTUNITY_ROUTER_REQUIRED_LABELS = (
     "paper_lab_only",
@@ -80,6 +83,7 @@ __all__ = [
     "CRYPTO_VOL_ADJUSTED_MOMENTUM_STRATEGY_FAMILY",
     "CRYPTO_VOL_ADJUSTED_MOMENTUM_STRATEGY_ID",
     "OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_BARS_CSV",
+    "OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_ROUTER_INPUT_MANIFEST",
     "OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_VISIBILITY_STATUS",
     "OPPORTUNITY_ROUTER_DEFAULT_OUTPUT_ROOT",
     "OPPORTUNITY_ROUTER_DEFAULT_SPY_BARS_CSV",
@@ -556,6 +560,7 @@ def build_crypto_opportunity_candidates(
     *,
     bars_csv: Path | str = OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_BARS_CSV,
     crypto_visibility_status: Path | str = OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_VISIBILITY_STATUS,
+    crypto_router_input_manifest: Path | str | None = None,
     as_of: datetime,
 ) -> tuple[
     tuple[OpportunityCandidate, ...],
@@ -565,6 +570,11 @@ def build_crypto_opportunity_candidates(
     """Load local crypto universe/history artifacts and build candidates."""
 
     as_of_value = _utc_datetime(as_of, "as_of")
+    if crypto_router_input_manifest not in (None, ""):
+        return _build_crypto_candidates_from_router_input_manifest(
+            Path(str(crypto_router_input_manifest)),
+            as_of_value,
+        )
     bars_path = Path(bars_csv)
     status_path = Path(crypto_visibility_status)
     bars_by_symbol = _read_crypto_bars_by_symbol(bars_path)
@@ -810,6 +820,7 @@ def run_opportunity_router(
     spy_bars_csv: Path | str | None = None,
     crypto_bars_csv: Path | str = OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_BARS_CSV,
     crypto_visibility_status: Path | str = OPPORTUNITY_ROUTER_DEFAULT_CRYPTO_VISIBILITY_STATUS,
+    crypto_router_input_manifest: Path | str | None = None,
     as_of: datetime | str | None = None,
     write_artifacts: bool = True,
 ) -> dict[str, object]:
@@ -825,6 +836,7 @@ def run_opportunity_router(
     ) = build_crypto_opportunity_candidates(
         bars_csv=crypto_bars_csv,
         crypto_visibility_status=crypto_visibility_status,
+        crypto_router_input_manifest=crypto_router_input_manifest,
         as_of=as_of_value,
     )
     candidates = (*spy_candidates, *crypto_candidates)
@@ -997,6 +1009,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Local crypto visibility latest_status.json.",
     )
     parser.add_argument(
+        "--crypto-router-input-manifest",
+        default="",
+        help="Optional crypto refresh router input manifest.",
+    )
+    parser.add_argument(
         "--as-of",
         default="",
         help="Optional UTC ISO as-of timestamp for deterministic runs.",
@@ -1014,6 +1031,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         spy_bars_csv=args.spy_bars_csv or None,
         crypto_bars_csv=args.crypto_bars_csv,
         crypto_visibility_status=args.crypto_visibility_status,
+        crypto_router_input_manifest=args.crypto_router_input_manifest or None,
         as_of=args.as_of or None,
         write_artifacts=True,
     )
@@ -1568,6 +1586,111 @@ def _candidate_categories(
     }
 
 
+def _build_crypto_candidates_from_router_input_manifest(
+    manifest_path: Path,
+    as_of: datetime,
+) -> tuple[
+    tuple[OpportunityCandidate, ...],
+    dict[str, object],
+    dict[str, object],
+]:
+    if not manifest_path.is_file():
+        raise ValidationError(f"crypto router input manifest is missing: {manifest_path}")
+    manifest = _read_json_mapping(manifest_path)
+    as_of_value = _utc_datetime(as_of, "as_of")
+    orderability_path = _resolve_manifest_path(
+        manifest_path,
+        _first_text(manifest, "crypto_orderability_metadata_path")
+        or "crypto_orderability_metadata.json",
+    )
+    history_manifest_path = _resolve_manifest_path(
+        manifest_path,
+        _first_text(manifest, "crypto_history_manifest_path")
+        or "crypto_history_manifest.json",
+    )
+    orderability_payload = _read_json_mapping(orderability_path)
+    history_payload = _read_json_mapping(history_manifest_path)
+    metadata_by_symbol = _metadata_records_from_refresh(orderability_payload)
+    history_by_symbol = _history_records_from_refresh(history_payload)
+    symbols = _crypto_symbol_sequence(manifest.get("symbols"))
+    if not symbols:
+        symbols = tuple(sorted(set(metadata_by_symbol) | set(history_by_symbol)))
+    if not symbols:
+        symbols = ("BTCUSD",)
+
+    source_mode = _first_text(manifest, "source_mode") or "crypto_router_input_manifest"
+    broker_state_mode = _broker_state_mode(manifest.get("broker_state_mode"))
+    candidates: list[OpportunityCandidate] = []
+    data_quality_records: list[dict[str, object]] = []
+    history_symbols: list[str] = []
+    metadata_gap_symbols: list[str] = []
+    for symbol in symbols:
+        history_record = history_by_symbol.get(symbol, {})
+        data_path_text = _first_text(history_record, "data_path")
+        data_path = (
+            _resolve_manifest_path(history_manifest_path, data_path_text)
+            if data_path_text
+            else history_manifest_path.parent / f"missing_{symbol}.csv"
+        )
+        bars_by_symbol = _read_crypto_bars_by_symbol(data_path)
+        symbol_bars = bars_by_symbol.get(symbol, ())
+        if symbol_bars:
+            history_symbols.append(symbol)
+        metadata = metadata_by_symbol.get(symbol)
+        if metadata is None:
+            metadata_gap_symbols.append(symbol)
+        candidates.extend(
+            build_crypto_opportunity_candidates_for_symbol(
+                symbol=symbol,
+                bars=symbol_bars,
+                as_of=as_of_value,
+                asset_metadata=metadata,
+                broker_state_mode=broker_state_mode,
+                source=source_mode,
+                data_path=str(data_path),
+            )
+        )
+        data_quality_records.append(
+            classify_bar_history(
+                symbol=symbol,
+                asset_class="crypto",
+                bars=symbol_bars,
+                as_of=as_of_value,
+                required_bar_count=50,
+                max_bar_age=timedelta(hours=2),
+                data_path=str(data_path),
+                source_mode=source_mode,
+            ).to_dict()
+        )
+
+    universe_manifest = {
+        "schema_version": OPPORTUNITY_ROUTER_SCHEMA_VERSION,
+        "asset_class": "crypto",
+        "source_mode": "crypto_router_input_manifest",
+        "source_path": str(manifest_path),
+        "broker_state_mode": broker_state_mode,
+        "capability_source": source_mode,
+        "symbol_count": len(symbols),
+        "symbols": list(symbols),
+        "history_symbol_count": len(set(history_symbols)),
+        "history_symbols": sorted(set(history_symbols)),
+        "metadata_symbol_count": len(metadata_by_symbol),
+        "metadata_symbols": sorted(metadata_by_symbol),
+        "metadata_gap_symbols": metadata_gap_symbols,
+        "blockers": list(_string_sequence(manifest.get("blockers"))),
+        "labels": list(_string_sequence(manifest.get("labels"))),
+    }
+    data_quality_report = {
+        "schema_version": OPPORTUNITY_ROUTER_SCHEMA_VERSION,
+        "asset_class": "crypto",
+        "as_of": as_of_value.isoformat(),
+        "data_path": str(history_manifest_path),
+        "symbol_count": len(symbols),
+        "records": data_quality_records,
+    }
+    return tuple(candidates), universe_manifest, data_quality_report
+
+
 def _load_crypto_universe_source(
     status_path: Path,
     bars_by_symbol: Mapping[str, tuple[Bar, ...]],
@@ -1668,6 +1791,51 @@ def _metadata_from_status(
         normalized = normalize_crypto_asset_metadata(selected_payload)
         metadata[str(normalized["symbol"])] = normalized
     return metadata
+
+
+def _metadata_records_from_refresh(
+    payload: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
+    metadata: dict[str, Mapping[str, object]] = {}
+    for record in _mapping_sequence(payload.get("records")):
+        symbol_text = _first_text(record, "symbol")
+        if not symbol_text:
+            continue
+        symbol = normalize_crypto_symbol(symbol_text)
+        metadata_status = _first_text(record, "metadata_status")
+        if metadata_status in {"metadata_not_observed", "metadata_invalid"}:
+            continue
+        metadata[symbol] = dict(record)
+    return metadata
+
+
+def _history_records_from_refresh(
+    payload: Mapping[str, object],
+) -> dict[str, Mapping[str, object]]:
+    records: dict[str, Mapping[str, object]] = {}
+    for record in _mapping_sequence(payload.get("records")):
+        symbol_text = _first_text(record, "symbol")
+        if symbol_text:
+            records[normalize_crypto_symbol(symbol_text)] = dict(record)
+    return records
+
+
+def _read_json_mapping(path: Path) -> Mapping[str, object]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValidationError(f"unable to read JSON artifact: {path}") from exc
+    if not isinstance(payload, Mapping):
+        raise ValidationError(f"JSON artifact must contain an object: {path}")
+    return payload
+
+
+def _resolve_manifest_path(anchor_path: Path, value: object) -> Path:
+    text = _required_string(_text(value), "manifest path")
+    path = Path(text)
+    if path.is_absolute():
+        return path
+    return anchor_path.parent / path
 
 
 def _crypto_symbols_from_status(
