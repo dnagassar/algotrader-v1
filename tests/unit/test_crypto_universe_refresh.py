@@ -29,11 +29,27 @@ def test_crypto_metadata_normalization_handles_variants_and_blockers() -> None:
             "tradable": True,
             "status": "active",
             "min_order_notional": "10",
+            "min_order_size": "0.01",
             "min_trade_increment": "0.000001",
             "price_increment": "0.01",
         },
         source_mode="offline_fixture",
         broker_state_mode="simulated_offline",
+    )
+    qty_only = normalize_crypto_orderability_record(
+        symbol="BTCUSD",
+        metadata={
+            "symbol": "BTC/USD",
+            "asset_class": "crypto",
+            "tradable": True,
+            "status": "active",
+            "min_order_size": "0.0002",
+            "min_trade_increment": "0.00000001",
+            "price_increment": "0.01",
+        },
+        source_mode="local_replay",
+        broker_state_mode="alpaca_paper_observed",
+        latest_price=Decimal("50000"),
     )
     missing_increment = normalize_crypto_orderability_record(
         symbol="DOGEUSD",
@@ -67,11 +83,22 @@ def test_crypto_metadata_normalization_handles_variants_and_blockers() -> None:
     assert complete["symbol"] == "SOLUSD"
     assert complete["min_notional"] == "10"
     assert complete["min_order_notional"] == "10"
-    assert complete["orderability_status"] == "orderable"
+    assert complete["broker_observed_min_notional"] == "10"
+    assert complete["broker_observed_min_order_size"] == "0.01"
+    assert complete["orderability_status"] == "notional_orderable"
     assert complete["metadata_blockers"] == []
-    assert missing_increment["metadata_status"] == "metadata_incomplete"
-    assert missing_increment["orderability_status"] == "metadata_missing"
-    assert "metadata_missing_size_increment" in missing_increment["orderability_blockers"]
+    assert qty_only["min_notional"] == ""
+    assert qty_only["broker_observed_min_notional"] == ""
+    assert qty_only["broker_observed_min_order_size"] == "0.0002"
+    assert qty_only["broker_observed_min_trade_increment"] == "0.00000001"
+    assert qty_only["derived_min_order_value"] == "10"
+    assert qty_only["orderability_status"] == "qty_orderable_notional_unobserved"
+    assert qty_only["orderability_basis"] == "broker_qty_metadata_notional_unobserved"
+    assert qty_only["metadata_blockers"] == []
+    assert missing_increment["metadata_status"] == "metadata_partial"
+    assert missing_increment["orderability_status"] == "metadata_partial"
+    assert "metadata_missing_min_order_size" in missing_increment["orderability_blockers"]
+    assert "metadata_missing_min_trade_increment" in missing_increment["orderability_blockers"]
     assert not_observed["metadata_status"] == "metadata_not_observed"
     assert "metadata_not_observed" in not_observed["metadata_blockers"]
     assert not_orderable["orderability_status"] == "not_orderable"
@@ -151,6 +178,7 @@ def test_local_replay_normalizes_existing_visibility_and_bars(tmp_path: Path) ->
                         "status": "active",
                         "min_order_notional": "10",
                         "min_order_size": "0.0001",
+                        "min_trade_increment": "0.0001",
                     },
                     "DOGE/USD": {
                         "asset_class": "crypto",
@@ -184,8 +212,8 @@ def test_local_replay_normalizes_existing_visibility_and_bars(tmp_path: Path) ->
     assert packet["summary"]["symbol_count"] == 3
     assert packet["summary"]["local_artifacts_discovered_count"] == 2
     assert packet["summary"]["local_artifacts_accepted_count"] == 2
-    assert metadata["ETHUSD"]["orderability_status"] == "orderable"
-    assert metadata["DOGEUSD"]["orderability_status"] == "metadata_missing"
+    assert metadata["ETHUSD"]["orderability_status"] == "notional_orderable"
+    assert metadata["DOGEUSD"]["orderability_status"] == "metadata_partial"
     assert metadata["MATICUSD"]["metadata_status"] == "metadata_not_observed"
     assert history["ETHUSD"]["history_status"] == "sufficient_history"
     assert history["DOGEUSD"]["missing_history_blocker"] is True
@@ -305,7 +333,8 @@ def test_router_consumes_local_replay_manifest_and_marks_real_local_backing(
                         "tradable": True,
                         "status": "active",
                         "min_notional": "10",
-                        "qty_increment": "0.0001",
+                        "min_order_size": "0.0001",
+                        "min_trade_increment": "0.0001",
                     }
                 },
             },
@@ -358,7 +387,8 @@ def test_router_returns_no_trade_when_all_refreshed_crypto_inputs_blocked(
                         "tradable": True,
                         "status": "active",
                         "min_notional": "10",
-                        "qty_increment": "0.0001",
+                        "min_order_size": "0.0001",
+                        "min_trade_increment": "0.0001",
                     }
                 },
             },
@@ -404,7 +434,8 @@ def test_refresh_history_report_detects_stale_insufficient_and_duplicate_data(
             "tradable": True,
             "status": "active",
             "min_notional": "10",
-            "qty_increment": "0.0001",
+            "min_order_size": "0.0001",
+            "min_trade_increment": "0.0001",
         }
         for symbol in ("STALE/USD", "SHORT/USD", "DUP/USD")
     }

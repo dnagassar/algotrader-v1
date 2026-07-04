@@ -714,6 +714,16 @@ def normalize_crypto_asset_metadata(value: Mapping[str, object] | object) -> dic
     min_trade_increment = _first_text(raw, "min_trade_increment")
     price_increment = _first_text(raw, "price_increment")
     qty_increment = _first_text(raw, "qty_increment", "min_order_increment")
+    orderability_status = _normalized_enum_text(_first_text(raw, "orderability_status"))
+    orderability_basis = _normalized_enum_text(_first_text(raw, "orderability_basis"))
+    broker_observed_min_notional = _first_text(raw, "broker_observed_min_notional")
+    broker_observed_min_order_size = _first_text(raw, "broker_observed_min_order_size")
+    broker_observed_min_trade_increment = _first_text(
+        raw,
+        "broker_observed_min_trade_increment",
+    )
+    broker_observed_price_increment = _first_text(raw, "broker_observed_price_increment")
+    derived_min_order_value = _first_text(raw, "derived_min_order_value")
     return {
         "symbol": symbol,
         "asset_class": "crypto",
@@ -726,6 +736,13 @@ def normalize_crypto_asset_metadata(value: Mapping[str, object] | object) -> dic
         "min_trade_increment": min_trade_increment,
         "price_increment": price_increment,
         "qty_increment": qty_increment,
+        "orderability_status": orderability_status,
+        "orderability_basis": orderability_basis,
+        "broker_observed_min_notional": broker_observed_min_notional,
+        "broker_observed_min_order_size": broker_observed_min_order_size,
+        "broker_observed_min_trade_increment": broker_observed_min_trade_increment,
+        "broker_observed_price_increment": broker_observed_price_increment,
+        "derived_min_order_value": derived_min_order_value,
         "metadata_fields_present": sorted(
             key
             for key, item in {
@@ -736,6 +753,13 @@ def normalize_crypto_asset_metadata(value: Mapping[str, object] | object) -> dic
                 "min_trade_increment": min_trade_increment,
                 "price_increment": price_increment,
                 "qty_increment": qty_increment,
+                "orderability_status": orderability_status,
+                "orderability_basis": orderability_basis,
+                "broker_observed_min_notional": broker_observed_min_notional,
+                "broker_observed_min_order_size": broker_observed_min_order_size,
+                "broker_observed_min_trade_increment": broker_observed_min_trade_increment,
+                "broker_observed_price_increment": broker_observed_price_increment,
+                "derived_min_order_value": derived_min_order_value,
             }.items()
             if item not in (None, "")
         ),
@@ -1451,7 +1475,7 @@ def _candidate_blockers(
         blockers.append(freshness_status)
     if broker_state_mode not in _SELECTABLE_BROKER_STATE_MODES:
         blockers.append(broker_state_mode)
-    if orderability_status != "orderable":
+    if not _is_orderability_selectable(orderability_status):
         blockers.append(orderability_status)
     for label in OPPORTUNITY_ROUTER_REQUIRED_LABELS:
         if label not in labels:
@@ -1490,7 +1514,9 @@ def _score_components(
     broker_state = (
         Decimal("10") if broker_state_mode in _SELECTABLE_BROKER_STATE_MODES else Decimal("0")
     )
-    orderability = Decimal("5") if orderability_status == "orderable" else Decimal("0")
+    orderability = (
+        Decimal("5") if _is_orderability_selectable(orderability_status) else Decimal("0")
+    )
     safety = (
         Decimal("5")
         if set(OPPORTUNITY_ROUTER_REQUIRED_LABELS).issubset(set(labels))
@@ -1518,7 +1544,7 @@ def _is_selectable(candidate: OpportunityCandidate) -> bool:
         and candidate.history_status == "sufficient_history"
         and candidate.freshness_status == "fresh"
         and candidate.broker_state_mode in _SELECTABLE_BROKER_STATE_MODES
-        and candidate.orderability_status == "orderable"
+        and _is_orderability_selectable(candidate.orderability_status)
         and candidate.profit_claim == "none"
         and set(OPPORTUNITY_ROUTER_REQUIRED_LABELS).issubset(set(candidate.labels))
     )
@@ -1561,7 +1587,7 @@ def _candidate_categories(
         "metadata_blocked": tuple(
             candidate.candidate_id
             for candidate in candidates
-            if candidate.orderability_status != "orderable"
+            if not _is_orderability_selectable(candidate.orderability_status)
         ),
         "broker_state_not_observed": tuple(
             candidate.candidate_id
@@ -2041,19 +2067,58 @@ def _history_gaps(bars: Sequence[Bar]) -> dict[str, int]:
 def _orderability_status(metadata: Mapping[str, object] | None) -> str:
     if metadata is None:
         return "metadata_missing"
-    if metadata.get("tradable") is not True:
+    observed_status = _text(metadata.get("orderability_status"))
+    if observed_status in {
+        "metadata_missing",
+        "metadata_partial",
+        "not_orderable",
+        "future_disabled",
+        "unknown",
+    }:
+        return observed_status
+    tradable = metadata.get("tradable")
+    if tradable is False:
         return "not_orderable"
-    status = _text(metadata.get("status")).lower()
-    if status and status not in {"active", "tradable"}:
-        return "not_orderable"
-    has_notional = bool(_text(metadata.get("min_notional")))
-    has_size_increment = any(
-        _text(metadata.get(field))
-        for field in ("min_order_size", "min_trade_increment", "qty_increment")
-    )
-    if not has_notional or not has_size_increment:
+    if tradable is not True:
         return "metadata_missing"
-    return "orderable"
+    status = _text(metadata.get("status")).lower()
+    if not status:
+        return "metadata_partial"
+    if status not in {"active", "tradable"}:
+        return "not_orderable"
+    has_min_order_size = _positive_decimal_observed(
+        metadata.get("min_order_size"),
+        "min_order_size",
+    )
+    has_min_trade_increment = _positive_decimal_observed(
+        metadata.get("min_trade_increment"),
+        "min_trade_increment",
+    )
+    if not has_min_order_size or not has_min_trade_increment:
+        return "metadata_partial"
+    min_notional = _text(metadata.get("min_notional"))
+    if min_notional and not _positive_decimal_observed(min_notional, "min_notional"):
+        return "metadata_partial"
+    computed_status = (
+        "notional_orderable" if min_notional else "qty_orderable_notional_unobserved"
+    )
+    if observed_status in _SELECTABLE_ORDERABILITY_STATUSES:
+        return observed_status
+    return computed_status
+
+
+def _is_orderability_selectable(status: str) -> bool:
+    return status in _SELECTABLE_ORDERABILITY_STATUSES
+
+
+def _positive_decimal_observed(value: object, field_name: str) -> bool:
+    if not _text(value):
+        return False
+    try:
+        parsed = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return False
+    return parsed.is_finite() and parsed > Decimal("0")
 
 
 def _asset_metadata_payload(value: Mapping[str, object] | object) -> dict[str, object]:
@@ -2686,10 +2751,20 @@ _SELECTABLE_BROKER_STATE_MODES = (
 )
 _ORDERABILITY_STATUSES = (
     "orderable",
+    "notional_orderable",
+    "qty_orderable",
+    "qty_orderable_notional_unobserved",
     "metadata_missing",
+    "metadata_partial",
     "not_orderable",
     "future_disabled",
     "unknown",
+)
+_SELECTABLE_ORDERABILITY_STATUSES = (
+    "orderable",
+    "notional_orderable",
+    "qty_orderable",
+    "qty_orderable_notional_unobserved",
 )
 _BLOCKER_STATUSES = ("eligible", "blocked")
 _ASSET_METADATA_FIELDS = (
@@ -2708,6 +2783,13 @@ _ASSET_METADATA_FIELDS = (
     "min_order_increment",
     "price_increment",
     "qty_increment",
+    "orderability_status",
+    "orderability_basis",
+    "broker_observed_min_notional",
+    "broker_observed_min_order_size",
+    "broker_observed_min_trade_increment",
+    "broker_observed_price_increment",
+    "derived_min_order_value",
 )
 _ASSET_METADATA_LOOKUP = {
     _field_lookup_key(field): field for field in _ASSET_METADATA_FIELDS

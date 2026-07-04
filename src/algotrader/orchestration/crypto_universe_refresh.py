@@ -181,6 +181,7 @@ def build_crypto_universe_refresh_packet(
             metadata=inputs.metadata_by_symbol.get(symbol),
             source_mode=inputs.source_mode,
             broker_state_mode=inputs.broker_state_mode,
+            latest_price=_latest_close_price(bars, as_of_value),
         )
         history = _history_record(
             symbol=symbol,
@@ -224,7 +225,9 @@ def build_crypto_universe_refresh_packet(
         )
 
     metadata_valid = [
-        record for record in metadata_records if record["orderability_status"] == "orderable"
+        record
+        for record in metadata_records
+        if _is_orderability_ready(_text(record["orderability_status"]))
     ]
     history_valid = [
         record
@@ -254,6 +257,9 @@ def build_crypto_universe_refresh_packet(
             )
         )
     artifact_discovery = inputs.local_artifact_discovery
+    orderability_counts = Counter(
+        _text(record.get("orderability_status")) for record in metadata_records
+    )
     summary = {
         "schema_version": CRYPTO_UNIVERSE_REFRESH_SCHEMA_VERSION,
         "as_of": as_of_value.isoformat(),
@@ -266,6 +272,15 @@ def build_crypto_universe_refresh_packet(
         "valid_history_count": len(history_valid),
         "eligible_input_symbol_count": len(eligible_input_symbols),
         "eligible_input_symbols": eligible_input_symbols,
+        "orderability_status_counts": dict(sorted(orderability_counts.items())),
+        "notional_orderable_metadata_count": orderability_counts.get("notional_orderable", 0),
+        "qty_orderable_metadata_count": (
+            orderability_counts.get("qty_orderable", 0)
+            + orderability_counts.get("qty_orderable_notional_unobserved", 0)
+        ),
+        "derived_min_order_value_count": sum(
+            1 for record in metadata_records if _text(record.get("derived_min_order_value"))
+        ),
         "top_blockers": _top_blockers(top_blockers),
         "broker_state_mode": inputs.broker_state_mode,
         "broker_read_observed": inputs.broker_read_observed,
@@ -316,6 +331,12 @@ def build_crypto_universe_refresh_packet(
         "records": metadata_records,
         "valid_metadata_count": len(metadata_valid),
         "orderable_symbol_count": len(metadata_valid),
+        "orderability_status_counts": dict(sorted(orderability_counts.items())),
+        "notional_orderable_metadata_count": orderability_counts.get("notional_orderable", 0),
+        "qty_orderable_metadata_count": (
+            orderability_counts.get("qty_orderable", 0)
+            + orderability_counts.get("qty_orderable_notional_unobserved", 0)
+        ),
         "top_blockers": _top_blockers(
             Counter(
                 blocker
@@ -409,6 +430,7 @@ def normalize_crypto_orderability_record(
     metadata: Mapping[str, object] | object | None,
     source_mode: str,
     broker_state_mode: str = "broker_state_not_observed",
+    latest_price: Decimal | str | None = None,
 ) -> dict[str, object]:
     """Normalize one symbol's allowlisted orderability metadata."""
 
@@ -426,6 +448,12 @@ def normalize_crypto_orderability_record(
         "min_trade_increment": "",
         "price_increment": "",
         "qty_increment": "",
+        "broker_observed_min_notional": "",
+        "broker_observed_min_order_size": "",
+        "broker_observed_min_trade_increment": "",
+        "broker_observed_price_increment": "",
+        "derived_min_order_value": "",
+        "orderability_basis": "",
     }
     if metadata is None:
         return {
@@ -434,6 +462,7 @@ def normalize_crypto_orderability_record(
             "metadata_blockers": ["metadata_missing", "metadata_not_observed"],
             "orderability_status": "metadata_missing",
             "orderability_blockers": ["metadata_missing", "metadata_not_observed"],
+            "orderability_basis": "metadata_not_observed",
         }
 
     raw = _allowed_metadata_payload(metadata)
@@ -445,6 +474,7 @@ def normalize_crypto_orderability_record(
             "metadata_blockers": ["metadata_missing", "metadata_symbol_mismatch"],
             "orderability_status": "metadata_missing",
             "orderability_blockers": ["metadata_missing", "metadata_symbol_mismatch"],
+            "orderability_basis": "metadata_symbol_mismatch",
         }
     payload = {"symbol": normalized_symbol, **raw}
     try:
@@ -456,6 +486,7 @@ def normalize_crypto_orderability_record(
             "metadata_blockers": ["metadata_missing", "metadata_invalid"],
             "orderability_status": "metadata_missing",
             "orderability_blockers": ["metadata_missing", "metadata_invalid"],
+            "orderability_basis": "metadata_invalid",
         }
 
     min_order_notional = _first_text(raw, "min_order_notional")
@@ -470,14 +501,24 @@ def normalize_crypto_orderability_record(
         "price_increment": _text(normalized.get("price_increment")),
         "qty_increment": _text(normalized.get("qty_increment")),
     }
-    orderability_status, blockers = _orderability_status_and_blockers(record)
+    record["broker_observed_min_notional"] = _text(record.get("min_notional"))
+    record["broker_observed_min_order_size"] = _text(record.get("min_order_size"))
+    record["broker_observed_min_trade_increment"] = _text(record.get("min_trade_increment"))
+    record["broker_observed_price_increment"] = _text(record.get("price_increment"))
+    record["derived_min_order_value"] = _derived_min_order_value(
+        latest_price=latest_price,
+        min_order_size=record.get("min_order_size"),
+    )
+    orderability_status, blockers, basis = _orderability_status_and_blockers(record)
     metadata_blockers = tuple(
         blocker for blocker in blockers if blocker.startswith("metadata_")
     )
-    if orderability_status == "orderable":
+    if _is_orderability_ready(orderability_status):
         metadata_status = "metadata_observed"
+    elif "metadata_invalid" in blockers:
+        metadata_status = "metadata_invalid"
     elif "metadata_missing" in blockers:
-        metadata_status = "metadata_incomplete"
+        metadata_status = "metadata_partial"
     else:
         metadata_status = "metadata_observed"
     return {
@@ -486,6 +527,7 @@ def normalize_crypto_orderability_record(
         "metadata_blockers": list(metadata_blockers),
         "orderability_status": orderability_status,
         "orderability_blockers": list(blockers),
+        "orderability_basis": basis,
     }
 
 
@@ -659,7 +701,8 @@ def _offline_fixture_inputs(as_of: datetime) -> CryptoRefreshInputs:
             "tradable": True,
             "status": "active",
             "min_notional": "10",
-            "qty_increment": "0.001",
+            "min_order_size": "0.001",
+            "min_trade_increment": "0.001",
             "price_increment": "0.01",
         },
         "ADAUSD": {
@@ -1107,8 +1150,9 @@ def _local_replay_classifications(
     freshness_status = _first_text(history, "freshness_status")
     data_quality_status = _first_text(history, "data_quality_status")
     if (
-        metadata_status in {"", "metadata_not_observed", "metadata_incomplete", "metadata_invalid"}
-        or orderability_status == "metadata_missing"
+        metadata_status
+        in {"", "metadata_not_observed", "metadata_incomplete", "metadata_invalid", "metadata_partial"}
+        or orderability_status in {"metadata_missing", "metadata_partial"}
         or "metadata_missing" in metadata_blockers
     ):
         classifications.append("metadata_missing")
@@ -1295,6 +1339,20 @@ def _write_bars_csv(path: Path, bars: object) -> None:
             )
 
 
+def _latest_close_price(bars: Iterable[Bar], as_of: datetime) -> Decimal | None:
+    as_of_value = _utc_datetime(as_of, "as_of")
+    usable = [
+        bar
+        for bar in bars
+        if isinstance(bar, Bar)
+        and _utc_datetime(bar.timestamp, "timestamp") <= as_of_value
+    ]
+    if not usable:
+        return None
+    latest = max(usable, key=lambda bar: _utc_datetime(bar.timestamp, "timestamp"))
+    return latest.close
+
+
 def _fixture_bars(
     symbol: str,
     as_of: datetime,
@@ -1323,28 +1381,84 @@ def _fixture_bars(
     return tuple(bars)
 
 
-def _orderability_status_and_blockers(record: Mapping[str, object]) -> tuple[str, tuple[str, ...]]:
+def _orderability_status_and_blockers(
+    record: Mapping[str, object],
+) -> tuple[str, tuple[str, ...], str]:
     blockers: list[str] = []
-    if record.get("tradable") is not True:
+    tradable = record.get("tradable")
+    if tradable is False:
         blockers.append("not_orderable")
+    elif tradable is not True:
+        blockers.append("metadata_missing")
+        blockers.append("metadata_missing_tradable")
     status = _text(record.get("status")).lower()
-    if status and status not in {"active", "tradable"}:
+    if not status:
+        blockers.append("metadata_missing")
+        blockers.append("metadata_missing_status")
+    elif status not in {"active", "tradable"}:
         blockers.append("not_orderable")
-    if not _text(record.get("min_notional")):
+
+    if not _text(record.get("min_order_size")):
         blockers.append("metadata_missing")
-        blockers.append("metadata_missing_min_notional")
-    if not any(
-        _text(record.get(field))
-        for field in ("min_order_size", "min_trade_increment", "qty_increment")
-    ):
+        blockers.append("metadata_missing_min_order_size")
+    elif not _has_positive_decimal(record.get("min_order_size"), "min_order_size"):
+        blockers.append("metadata_invalid")
+        blockers.append("metadata_invalid_min_order_size")
+
+    if not _text(record.get("min_trade_increment")):
         blockers.append("metadata_missing")
-        blockers.append("metadata_missing_size_increment")
+        blockers.append("metadata_missing_min_trade_increment")
+    elif not _has_positive_decimal(record.get("min_trade_increment"), "min_trade_increment"):
+        blockers.append("metadata_invalid")
+        blockers.append("metadata_invalid_min_trade_increment")
+
+    min_notional = _text(record.get("min_notional"))
+    if min_notional and not _has_positive_decimal(min_notional, "min_notional"):
+        blockers.append("metadata_invalid")
+        blockers.append("metadata_invalid_min_notional")
+
     blockers = list(_dedupe(blockers))
     if "not_orderable" in blockers:
-        return "not_orderable", tuple(blockers)
+        return "not_orderable", tuple(blockers), "broker_marked_not_orderable"
     if blockers:
-        return "metadata_missing", tuple(blockers)
-    return "orderable", ()
+        return "metadata_partial", tuple(blockers), "metadata_observed_but_partial"
+    if min_notional:
+        return "notional_orderable", (), "broker_notional_and_qty_metadata"
+    return (
+        "qty_orderable_notional_unobserved",
+        (),
+        "broker_qty_metadata_notional_unobserved",
+    )
+
+
+def _is_orderability_ready(status: str) -> bool:
+    return status in _ORDERABILITY_READY_STATUSES
+
+
+def _has_positive_decimal(value: object, field_name: str) -> bool:
+    if not _text(value):
+        return False
+    try:
+        _positive_decimal(value, field_name)
+    except ValidationError:
+        return False
+    return True
+
+
+def _derived_min_order_value(
+    *,
+    latest_price: Decimal | str | None,
+    min_order_size: object,
+) -> str:
+    if latest_price is None or not _text(min_order_size):
+        return ""
+    try:
+        return _decimal_text(
+            _positive_decimal(latest_price, "latest_price")
+            * _positive_decimal(min_order_size, "min_order_size")
+        )
+    except ValidationError:
+        return ""
 
 
 def _allowed_metadata_payload(value: Mapping[str, object] | object) -> dict[str, object]:
@@ -1696,6 +1810,12 @@ _BROKER_STATE_MODES = (
     "offline_preview_only",
     "blocked_live_endpoint_indicator",
     "unknown",
+)
+_ORDERABILITY_READY_STATUSES = (
+    "orderable",
+    "notional_orderable",
+    "qty_orderable",
+    "qty_orderable_notional_unobserved",
 )
 _METADATA_FIELDS = (
     "symbol",

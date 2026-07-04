@@ -71,7 +71,7 @@ def test_crypto_candidate_source_adapts_non_btc_symbol_and_first_pass_strategies
             "status": "active",
             "min_order_notional": "10",
             "min_order_size": "0.0001",
-            "qty_increment": "0.0001",
+            "min_trade_increment": "0.0001",
             "price_increment": "0.01",
         }
     )
@@ -102,7 +102,9 @@ def test_metadata_variant_normalization_marks_missing_gaps_without_assuming_trad
             "symbol": "SOL/USD",
             "class": "crypto",
             "tradable": True,
+            "status": "active",
             "min_order_notional": "10",
+            "min_order_size": "0.01",
             "min_trade_increment": "0.000001",
             "price_increment": "0.01",
         }
@@ -117,10 +119,71 @@ def test_metadata_variant_normalization_marks_missing_gaps_without_assuming_trad
 
     assert complete["symbol"] == "SOLUSD"
     assert complete["min_notional"] == "10"
+    assert complete["min_order_size"] == "0.01"
     assert complete["min_trade_increment"] == "0.000001"
     assert complete["price_increment"] == "0.01"
-    assert all(candidate.orderability_status == "metadata_missing" for candidate in missing)
-    assert all("metadata_missing" in candidate.blockers for candidate in missing)
+    assert all(candidate.orderability_status == "metadata_partial" for candidate in missing)
+    assert all("metadata_partial" in candidate.blockers for candidate in missing)
+
+
+def test_crypto_qty_orderable_without_observed_notional_can_be_selected() -> None:
+    candidates = build_crypto_opportunity_candidates_for_symbol(
+        symbol="BTC/USD",
+        bars=_bars("BTCUSD", AS_OF, count=80, posture="up"),
+        as_of=AS_OF,
+        asset_metadata={
+            "symbol": "BTC/USD",
+            "asset_class": "crypto",
+            "tradable": True,
+            "status": "active",
+            "min_order_size": "0.00001",
+            "min_trade_increment": "0.000000001",
+        },
+        broker_state_mode="alpaca_paper_observed",
+    )
+    decision = route_opportunities(candidates, as_of=AS_OF).to_dict()
+
+    assert all(
+        candidate.orderability_status == "qty_orderable_notional_unobserved"
+        for candidate in candidates
+    )
+    assert all("metadata_partial" not in candidate.blockers for candidate in candidates)
+    assert decision["decision"] == "selected"
+    assert decision["selected_symbol"] == "BTCUSD"
+
+
+def test_crypto_missing_required_qty_metadata_remains_blocked() -> None:
+    missing_size = build_crypto_opportunity_candidates_for_symbol(
+        symbol="SOLUSD",
+        bars=_bars("SOLUSD", AS_OF, count=80, posture="up"),
+        as_of=AS_OF,
+        asset_metadata={
+            "symbol": "SOLUSD",
+            "asset_class": "crypto",
+            "tradable": True,
+            "status": "active",
+            "min_trade_increment": "0.000001",
+        },
+        broker_state_mode="alpaca_paper_observed",
+    )
+    missing_increment = build_crypto_opportunity_candidates_for_symbol(
+        symbol="DOGEUSD",
+        bars=_bars("DOGEUSD", AS_OF, count=80, posture="up"),
+        as_of=AS_OF,
+        asset_metadata={
+            "symbol": "DOGEUSD",
+            "asset_class": "crypto",
+            "tradable": True,
+            "status": "active",
+            "min_order_size": "1",
+        },
+        broker_state_mode="alpaca_paper_observed",
+    )
+
+    assert all(candidate.orderability_status == "metadata_partial" for candidate in missing_size)
+    assert all(candidate.orderability_status == "metadata_partial" for candidate in missing_increment)
+    assert all("metadata_partial" in candidate.blockers for candidate in missing_size)
+    assert all("metadata_partial" in candidate.blockers for candidate in missing_increment)
 
 
 def test_history_classifier_reports_missing_stale_insufficient_and_duplicate_data() -> None:
