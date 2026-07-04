@@ -152,6 +152,10 @@ _OBJECT_PAYLOAD_FIELDS = (
     "average_entry_price",
     "avg_entry_price",
 )
+_OBJECT_PAYLOAD_FIELD_LOOKUP = {
+    re.sub(r"[^a-z0-9]", "", field.lower()): field
+    for field in _OBJECT_PAYLOAD_FIELDS
+}
 
 BrokerClientFactory = Callable[[AlpacaPaperConfig], Any]
 
@@ -493,6 +497,10 @@ def render_crypto_paper_mutation_drill_text(packet: Mapping[str, Any]) -> str:
             f"trading_blocked={_bool_text(packet.get('trading_blocked'))}",
             f"expected_account_matched={_bool_text(packet.get('expected_account_matched'))}",
             f"selected_symbol={_clean_text(packet.get('selected_symbol'))}",
+            "selected_symbol_tradable="
+            f"{_bool_text(packet.get('selected_symbol_tradable'))}",
+            "selected_symbol_fractionable="
+            f"{_bool_text(packet.get('selected_symbol_fractionable'))}",
             f"side={_clean_text(packet.get('side'))}",
             f"order_type={_clean_text(packet.get('order_type'))}",
             f"limit_price={_clean_text(packet.get('limit_price'))}",
@@ -501,6 +509,8 @@ def render_crypto_paper_mutation_drill_text(packet: Mapping[str, Any]) -> str:
             f"estimated_notional={_clean_text(packet.get('estimated_notional'))}",
             f"max_drill_notional={_clean_text(packet.get('max_drill_notional'))}",
             f"min_notional={_clean_text(packet.get('min_notional'))}",
+            f"min_order_size={_clean_text(packet.get('min_order_size'))}",
+            f"min_trade_increment={_clean_text(packet.get('min_trade_increment'))}",
             f"client_order_id={_clean_text(packet.get('client_order_id'))}",
             f"submit_attempted={_bool_text(packet.get('submit_attempted'))}",
             f"submit_status={_clean_text(packet.get('submit_status'))}",
@@ -1343,6 +1353,8 @@ def _drill_receipt(packet: Mapping[str, Any]) -> dict[str, Any]:
         "trading_blocked",
         "expected_account_matched",
         "selected_symbol",
+        "selected_symbol_tradable",
+        "selected_symbol_fractionable",
         "side",
         "order_type",
         "time_in_force",
@@ -1352,6 +1364,8 @@ def _drill_receipt(packet: Mapping[str, Any]) -> dict[str, Any]:
         "estimated_notional",
         "max_drill_notional",
         "min_notional",
+        "min_order_size",
+        "min_trade_increment",
         "client_order_id",
         "broker_read_performed",
         "broker_state_mode",
@@ -1599,7 +1613,7 @@ def _generic_payload(value: object) -> dict[str, Any]:
     if value is None:
         return {}
     if isinstance(value, Mapping):
-        return {str(key): _json_safe(item) for key, item in value.items()}
+        return _allowed_payload_fields(value)
     dumped = _model_dump_payload(value)
     if dumped is not None:
         return dumped
@@ -1625,11 +1639,19 @@ def _model_dump_payload(value: object) -> dict[str, Any] | None:
 
 
 def _allowed_payload_fields(data: Mapping[str, Any]) -> dict[str, Any]:
-    return {
-        field: _json_safe(data[field])
-        for field in _OBJECT_PAYLOAD_FIELDS
-        if field in data and data[field] is not None
-    }
+    allowed: dict[str, Any] = {}
+    for key, value in data.items():
+        if value is None:
+            continue
+        field = _OBJECT_PAYLOAD_FIELD_LOOKUP.get(_payload_field_lookup_key(key))
+        if field is None:
+            continue
+        allowed[field] = _json_safe(value)
+    return allowed
+
+
+def _payload_field_lookup_key(value: object) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(value).strip().lower())
 
 
 def _object_data(value: object) -> dict[str, Any]:

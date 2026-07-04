@@ -312,11 +312,58 @@ def test_observed_model_asset_and_active_account_feed_pre_submit_gate(
     assert packet["account_blocked"] is False
     assert packet["trading_blocked"] is False
     assert packet["expected_account_matched"] is True
+    assert packet["selected_symbol_tradable"] is True
+    assert packet["selected_symbol_fractionable"] is True
     assert packet["min_notional"] == "10.00"
+    assert packet["min_order_size"] == "0.000016268"
+    assert Decimal(str(packet["min_trade_increment"])) == Decimal("0.000000001")
+    _assert_bounded_order_design(packet)
     assert fake_client.submitted_requests == []
     assert leaked_model_secret not in json.dumps(packet, sort_keys=True)
     for path_text in packet["artifact_paths"].values():
         assert leaked_model_secret not in Path(path_text).read_text(encoding="utf-8")
+
+
+def test_observed_dict_asset_min_notional_alias_reaches_drill_receipt_and_sizing(
+    tmp_path: Path,
+) -> None:
+    asset = _btc_asset()
+    asset["Min_Notional"] = asset.pop("min_notional")
+    fake_client = FakeCryptoPaperClient(
+        assets=(asset,),
+        open_orders=(
+            _order(
+                client_order_id="other-btcusd-open-order",
+                symbol="BTCUSD",
+                status="accepted",
+            ),
+        ),
+    )
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "open_selected_symbol_order_exists" in packet["blocker"]
+    assert "min_notional_missing" not in packet["blocker"]
+    assert packet["selected_symbol"] == "BTCUSD"
+    assert packet["selected_symbol_tradable"] is True
+    assert packet["selected_symbol_fractionable"] is True
+    assert packet["min_notional"] == "10.00"
+    assert packet["min_order_size"] == "0.000016268"
+    assert Decimal(str(packet["min_trade_increment"])) == Decimal("0.000000001")
+    _assert_bounded_order_design(packet)
+    assert fake_client.submitted_requests == []
+
+    receipt = json.loads(
+        Path(packet["artifact_paths"]["drill_receipt"]).read_text(encoding="utf-8")
+    )
+    assert receipt["selected_symbol"] == "BTCUSD"
+    assert receipt["selected_symbol_tradable"] is True
+    assert receipt["selected_symbol_fractionable"] is True
+    assert receipt["min_notional"] == "10.00"
+    assert receipt["min_order_size"] == "0.000016268"
+    assert Decimal(str(receipt["min_trade_increment"])) == Decimal("0.000000001")
+    _assert_bounded_order_design(receipt)
 
 
 def test_missing_account_status_blocks_as_unobserved_before_submit(
@@ -713,6 +760,16 @@ def _copy_model(value: object) -> object:
     if isinstance(value, dict):
         return dict(value)
     return value
+
+
+def _assert_bounded_order_design(packet: dict[str, object]) -> None:
+    for field in ("limit_price", "quantity", "target_notional", "estimated_notional"):
+        assert packet[field]
+    min_notional = Decimal(str(packet["min_notional"]))
+    estimated_notional = Decimal(str(packet["estimated_notional"]))
+    max_notional = Decimal(str(packet["max_drill_notional"]))
+    assert estimated_notional >= min_notional
+    assert estimated_notional <= max_notional
 
 
 def _btc_asset(
