@@ -270,6 +270,7 @@ class OpportunityCandidate:
             "router_score": _decimal_text(self.router_score),
             "labels": list(self.labels),
             "profit_claim": self.profit_claim,
+            "candidate_backing": _candidate_backing(self.source, self.labels),
         }
 
 
@@ -376,6 +377,9 @@ class OpportunityRouterDecision:
             "selected_asset_class": "" if selected is None else selected.asset_class,
             "selected_strategy_id": "" if selected is None else selected.strategy_id,
             "selected_evidence_tier": "" if selected is None else selected.evidence_tier,
+            "selected_candidate_backing": (
+                "" if selected is None else _candidate_backing(selected.source, selected.labels)
+            ),
             "selected_router_score": (
                 "" if selected is None else _decimal_text(selected.router_score)
             ),
@@ -761,13 +765,7 @@ def route_opportunities(
             key=lambda item: (-item[1], item[0]),
         )[:10]
     )
-    labels = _dedupe(
-        (
-            *OPPORTUNITY_ROUTER_REQUIRED_LABELS,
-            "offline_only",
-            "router_score_is_not_expected_profit",
-        )
-    )
+    labels = _router_decision_labels(candidate_values)
     return OpportunityRouterDecision(
         as_of=as_of_value,
         decision="selected" if selected is not None else "no_trade",
@@ -809,7 +807,7 @@ def build_opportunity_router_packet(
             "network_access_attempted": False,
             "broker_read_performed_current_run": False,
             "profit_claim": "none",
-            "labels": list(OPPORTUNITY_ROUTER_SAFETY_LABELS),
+            "labels": list(_router_safety_labels(candidate_values)),
         },
     }
 
@@ -969,6 +967,7 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             f"- Selected asset class: `{selected_mapping.get('asset_class', '')}`",
             f"- Selected strategy: `{selected_mapping.get('strategy_id', '')}`",
             f"- Selected evidence tier: `{selected_mapping.get('evidence_tier', '')}`",
+            f"- Selected candidate backing: `{decision.get('selected_candidate_backing', '')}`",
             "- Router score components: "
             f"`{json.dumps(score_components, sort_keys=True)}`",
             f"- Top blockers: `{_brief_blockers(top_blockers)}`",
@@ -1212,7 +1211,7 @@ def _crypto_trend_candidate(
         freshness_status=quality.freshness_status,
         broker_state_mode=broker_state_mode,
         orderability_status=orderability_status,
-        labels=_crypto_labels(),
+        labels=_crypto_labels(source),
         risk_notes=tuple(risk_notes),
     )
 
@@ -1281,7 +1280,7 @@ def _crypto_vol_adjusted_momentum_candidate(
         freshness_status=quality.freshness_status,
         broker_state_mode=broker_state_mode,
         orderability_status=orderability_status,
-        labels=_crypto_labels(),
+        labels=_crypto_labels(source),
         risk_notes=tuple(risk_notes),
         signal_strength_score=strength,
     )
@@ -1352,7 +1351,7 @@ def _crypto_breakout_reversion_candidate(
         freshness_status=quality.freshness_status,
         broker_state_mode=broker_state_mode,
         orderability_status=orderability_status,
-        labels=_crypto_labels(),
+        labels=_crypto_labels(source),
         risk_notes=tuple(risk_notes),
         signal_strength_score=strength,
     )
@@ -2283,6 +2282,7 @@ def _write_candidates_csv(
         "router_score",
         "labels",
         "profit_claim",
+        "candidate_backing",
     )
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=fieldnames, lineterminator="\n")
@@ -2318,6 +2318,40 @@ def _validate_candidate_consistency(candidate: OpportunityCandidate) -> None:
         raise ValidationError("profit_claim=none label is required.")
     if candidate.profit_claim != "none":
         raise ValidationError("profit_claim must be none.")
+
+
+def _candidate_backing(source: str, labels: Sequence[str]) -> str:
+    label_set = set(labels)
+    if "real_local_artifact_backed" in label_set or source == "local_replay":
+        return "real_local_artifact_backed"
+    if "fixture_backed" in label_set or source == "offline_fixture":
+        return "fixture_backed"
+    if "paper_read_only" in label_set or source == "paper_read_only":
+        return "paper_read_only_artifact_backed"
+    return "unknown"
+
+
+def _router_decision_labels(candidates: Sequence[OpportunityCandidate]) -> tuple[str, ...]:
+    labels = [*OPPORTUNITY_ROUTER_REQUIRED_LABELS, "offline_only", "router_score_is_not_expected_profit"]
+    labels.extend(_backing_labels(candidates))
+    return _dedupe(labels)
+
+
+def _router_safety_labels(candidates: Sequence[OpportunityCandidate]) -> tuple[str, ...]:
+    labels = [*OPPORTUNITY_ROUTER_SAFETY_LABELS]
+    labels.extend(_backing_labels(candidates))
+    return _dedupe(labels)
+
+
+def _backing_labels(candidates: Sequence[OpportunityCandidate]) -> tuple[str, ...]:
+    labels: list[str] = []
+    for candidate in candidates:
+        if "local_replay" in candidate.labels:
+            labels.append("local_replay")
+        backing = _candidate_backing(candidate.source, candidate.labels)
+        if backing != "unknown":
+            labels.append(backing)
+    return _dedupe(labels)
 
 
 def _candidate_tuple(values: Iterable[OpportunityCandidate]) -> tuple[OpportunityCandidate, ...]:
@@ -2366,8 +2400,8 @@ def _spy_labels() -> tuple[str, ...]:
     )
 
 
-def _crypto_labels() -> tuple[str, ...]:
-    return (
+def _crypto_labels(source: str = "") -> tuple[str, ...]:
+    labels = (
         "paper_lab_only",
         "research_only",
         "not_live_authorized",
@@ -2376,6 +2410,11 @@ def _crypto_labels() -> tuple[str, ...]:
         "offline_only",
         "crypto_preview_only",
     )
+    if source == "offline_fixture":
+        labels = (*labels, "fixture_backed")
+    if source == "local_replay":
+        labels = (*labels, "local_replay", "real_local_artifact_backed")
+    return _dedupe(labels)
 
 
 def _normalized_symbol(value: object, asset_class: object) -> str:

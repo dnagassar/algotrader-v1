@@ -41,6 +41,11 @@ CRYPTO_UNIVERSE_REFRESH_OFFLINE_LABELS = (
     *CRYPTO_UNIVERSE_REFRESH_REQUIRED_LABELS,
     "offline_only",
 )
+CRYPTO_UNIVERSE_REFRESH_LOCAL_REPLAY_LABELS = (
+    *CRYPTO_UNIVERSE_REFRESH_REQUIRED_LABELS,
+    "offline_only",
+    "local_replay",
+)
 CRYPTO_UNIVERSE_REFRESH_PAPER_READ_LABELS = (
     *CRYPTO_UNIVERSE_REFRESH_REQUIRED_LABELS,
     "paper_read_only",
@@ -77,6 +82,7 @@ class CryptoRefreshInputs:
     bars_by_symbol: Mapping[str, tuple[Bar, ...]]
     input_blockers: tuple[str, ...]
     broker_read_observed: bool
+    local_artifact_discovery: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_mode", _required_string(self.source_mode, "source_mode"))
@@ -102,6 +108,11 @@ class CryptoRefreshInputs:
         )
         if type(self.broker_read_observed) is not bool:
             raise ValidationError("broker_read_observed must be a boolean.")
+        object.__setattr__(
+            self,
+            "local_artifact_discovery",
+            MappingProxyType(dict(self.local_artifact_discovery or {})),
+        )
 
 
 def run_crypto_universe_refresh(
@@ -144,11 +155,12 @@ def build_crypto_universe_refresh_packet(
 
     as_of_value = _utc_datetime(as_of, "as_of")
     root = Path(output_root)
-    labels = (
-        CRYPTO_UNIVERSE_REFRESH_PAPER_READ_LABELS
-        if inputs.mode == "paper_read_only"
-        else CRYPTO_UNIVERSE_REFRESH_OFFLINE_LABELS
-    )
+    if inputs.mode == "paper_read_only":
+        labels = CRYPTO_UNIVERSE_REFRESH_PAPER_READ_LABELS
+    elif inputs.mode == "local_replay":
+        labels = CRYPTO_UNIVERSE_REFRESH_LOCAL_REPLAY_LABELS
+    else:
+        labels = CRYPTO_UNIVERSE_REFRESH_OFFLINE_LABELS
     symbols = tuple(
         sorted(
             set(inputs.symbols)
@@ -195,6 +207,7 @@ def build_crypto_universe_refresh_packet(
                 "symbol": symbol,
                 "asset_class": "crypto",
                 "source_mode": inputs.source_mode,
+                "input_backing": _input_backing(inputs.source_mode),
                 "broker_state_mode": inputs.broker_state_mode,
                 "metadata_status": metadata["metadata_status"],
                 "orderability_status": metadata["orderability_status"],
@@ -206,6 +219,7 @@ def build_crypto_universe_refresh_packet(
                 "orderability_blockers": metadata["orderability_blockers"],
                 "history_blockers": history["blockers"],
                 "blockers": list(symbol_blockers),
+                "local_replay_classifications": [],
             }
         )
 
@@ -229,6 +243,17 @@ def build_crypto_universe_refresh_packet(
     eligible_input_symbols = sorted(
         metadata_valid_symbols & history_valid_symbols if selectable_broker else set()
     )
+    for record in router_symbol_records:
+        symbol = str(record.get("symbol", ""))
+        record["local_replay_classifications"] = list(
+            _local_replay_classifications(
+                metadata=_matching_record(metadata_records, symbol),
+                history=_matching_record(history_records, symbol),
+                symbol_blockers=_string_sequence(record.get("blockers")),
+                router_ready=symbol in eligible_input_symbols,
+            )
+        )
+    artifact_discovery = inputs.local_artifact_discovery
     summary = {
         "schema_version": CRYPTO_UNIVERSE_REFRESH_SCHEMA_VERSION,
         "as_of": as_of_value.isoformat(),
@@ -251,6 +276,24 @@ def build_crypto_universe_refresh_packet(
         "live_mutation_performed": False,
         "network_access_attempted": False,
         "profit_claim": "none",
+        "local_artifacts_discovered": list(
+            _mapping_sequence(artifact_discovery.get("discovered_artifacts"))
+        ),
+        "local_artifacts_accepted": list(
+            _mapping_sequence(artifact_discovery.get("accepted_artifacts"))
+        ),
+        "local_artifacts_rejected": list(
+            _mapping_sequence(artifact_discovery.get("rejected_artifacts"))
+        ),
+        "local_artifacts_discovered_count": int(
+            artifact_discovery.get("discovered_artifact_count") or 0
+        ),
+        "local_artifacts_accepted_count": int(
+            artifact_discovery.get("accepted_artifact_count") or 0
+        ),
+        "local_artifacts_rejected_count": int(
+            artifact_discovery.get("rejected_artifact_count") or 0
+        ),
     }
     crypto_universe = {
         **summary,
@@ -330,6 +373,7 @@ def build_crypto_universe_refresh_packet(
         "live_mutation_performed": False,
         "network_access_attempted": False,
         "profit_claim": "none",
+        "local_artifact_discovery": dict(artifact_discovery),
     }
     return {
         "schema_version": CRYPTO_UNIVERSE_REFRESH_SCHEMA_VERSION,
@@ -554,6 +598,9 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             f"- valid_metadata_count: {summary.get('valid_metadata_count', 0)}",
             f"- valid_history_count: {summary.get('valid_history_count', 0)}",
             f"- eligible_input_symbol_count: {summary.get('eligible_input_symbol_count', 0)}",
+            f"- local_artifacts_discovered: {summary.get('local_artifacts_discovered_count', 0)}",
+            f"- local_artifacts_accepted: {summary.get('local_artifacts_accepted_count', 0)}",
+            f"- local_artifacts_rejected: {summary.get('local_artifacts_rejected_count', 0)}",
             f"- top_blockers: `{_brief_blockers(top_blockers)}`",
             f"- broker_state_mode: `{summary.get('broker_state_mode', '')}`",
             f"- broker_read_observed: `{_bool_text(summary.get('broker_read_observed'))}`",
@@ -642,8 +689,20 @@ def _local_replay_inputs(
     bars_csv: Path,
     crypto_visibility_status: Path,
 ) -> CryptoRefreshInputs:
-    status = _read_json_mapping(crypto_visibility_status)
-    bars_by_symbol = _read_crypto_bars_by_symbol(bars_csv)
+    discovery = _discover_local_replay_artifacts(
+        bars_csv=bars_csv,
+        crypto_visibility_status=crypto_visibility_status,
+        include_repo_roots=(
+            bars_csv == CRYPTO_UNIVERSE_REFRESH_DEFAULT_BARS_CSV
+            and crypto_visibility_status == CRYPTO_UNIVERSE_REFRESH_DEFAULT_VISIBILITY_STATUS
+        ),
+    )
+    selected_visibility_path = Path(
+        str(discovery.get("selected_visibility_artifact") or crypto_visibility_status)
+    )
+    selected_bars_path = Path(str(discovery.get("selected_bars_artifact") or bars_csv))
+    status = _read_local_replay_status(selected_visibility_path)
+    bars_by_symbol = _read_crypto_bars_by_symbol(selected_bars_path)
     capability = _mapping(status.get("crypto_capability"))
     metadata_by_symbol = _metadata_by_symbol_from_status(status, capability)
     symbols = _symbols_from_status_and_bars(status, capability, metadata_by_symbol, bars_by_symbol)
@@ -653,10 +712,13 @@ def _local_replay_inputs(
     broker_read_observed = broker_read_observed or capability_broker_read
     source_mode = "local_replay"
     blockers = list(_string_sequence(status.get("blockers")))
-    if not crypto_visibility_status.is_file():
-        blockers.append("crypto_visibility_artifact_missing")
-    if not bars_csv.is_file():
-        blockers.append("crypto_bars_artifact_missing")
+    blockers.extend(_string_sequence(discovery.get("blockers")))
+    if not selected_visibility_path.is_file():
+        blockers.append("local_artifact_missing")
+        blockers.append("metadata_missing")
+    if not selected_bars_path.is_file():
+        blockers.append("local_artifact_missing")
+        blockers.append("history_missing")
     if mode == "paper_read_only":
         source_mode = "paper_read_only"
         if not broker_read_observed:
@@ -670,14 +732,286 @@ def _local_replay_inputs(
     return CryptoRefreshInputs(
         mode=mode,
         source_mode=source_mode,
-        source_path=str(crypto_visibility_status),
+        source_path=(
+            f"visibility={selected_visibility_path};history={selected_bars_path}"
+        ),
         broker_state_mode=broker_state_mode,
         symbols=symbols,
         metadata_by_symbol=metadata_by_symbol,
         bars_by_symbol=bars_by_symbol,
         input_blockers=tuple(blockers),
         broker_read_observed=broker_read_observed,
+        local_artifact_discovery=discovery,
     )
+
+
+def _discover_local_replay_artifacts(
+    *,
+    bars_csv: Path,
+    crypto_visibility_status: Path,
+    include_repo_roots: bool,
+) -> dict[str, object]:
+    candidate_paths = _local_replay_candidate_paths(
+        bars_csv=bars_csv,
+        crypto_visibility_status=crypto_visibility_status,
+        include_repo_roots=include_repo_roots,
+    )
+    discovered: list[dict[str, object]] = []
+    accepted: list[dict[str, object]] = []
+    rejected: list[dict[str, object]] = []
+    for path in candidate_paths:
+        artifact_type = _local_replay_artifact_type(path)
+        if not artifact_type:
+            continue
+        record = {
+            "path": str(path),
+            "artifact_type": artifact_type,
+            "classification": "real_local_replay_candidate",
+        }
+        if not path.is_file():
+            if path in {bars_csv, crypto_visibility_status}:
+                rejected.append(
+                    {
+                        **record,
+                        "exists": False,
+                        "classification": "local_artifact_missing",
+                        "rejection_reason": "local_artifact_missing",
+                    }
+                )
+            continue
+        discovered.append({**record, "exists": True})
+        if artifact_type == "crypto_bars":
+            accepted_record, rejected_record = _inspect_crypto_bars_artifact(path, record)
+        else:
+            accepted_record, rejected_record = _inspect_crypto_status_artifact(path, record)
+        if accepted_record:
+            accepted.append(accepted_record)
+        if rejected_record:
+            rejected.append(rejected_record)
+
+    selected_visibility = _select_local_replay_artifact(
+        accepted,
+        artifact_type="crypto_visibility_status",
+        preferred_path=crypto_visibility_status,
+    )
+    selected_bars = _select_local_replay_artifact(
+        accepted,
+        artifact_type="crypto_bars",
+        preferred_path=bars_csv,
+    )
+    blockers: list[str] = []
+    if not selected_visibility:
+        blockers.extend(("local_artifact_missing", "metadata_missing"))
+    if not selected_bars:
+        blockers.extend(("local_artifact_missing", "history_missing"))
+    return {
+        "discovery_mode": "local_replay",
+        "discovery_roots": [str(root) for root in _local_replay_roots(include_repo_roots)],
+        "discovered_artifacts": discovered,
+        "accepted_artifacts": accepted,
+        "rejected_artifacts": rejected,
+        "discovered_artifact_count": len(discovered),
+        "accepted_artifact_count": len(accepted),
+        "rejected_artifact_count": len(rejected),
+        "selected_visibility_artifact": selected_visibility,
+        "selected_bars_artifact": selected_bars,
+        "blockers": list(_dedupe(blockers)),
+    }
+
+
+def _local_replay_candidate_paths(
+    *,
+    bars_csv: Path,
+    crypto_visibility_status: Path,
+    include_repo_roots: bool,
+) -> tuple[Path, ...]:
+    paths: list[Path] = [crypto_visibility_status, bars_csv]
+    for root in _local_replay_roots(include_repo_roots):
+        if not root.is_dir():
+            continue
+        for pattern in ("*.json", "*.jsonl", "*.csv"):
+            paths.extend(
+                path
+                for path in sorted(root.rglob(pattern))
+                if _local_replay_artifact_type(path)
+            )
+    seen: set[str] = set()
+    result: list[Path] = []
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            result.append(path)
+    return tuple(result)
+
+
+def _local_replay_roots(include_repo_roots: bool) -> tuple[Path, ...]:
+    if not include_repo_roots:
+        return ()
+    return (
+        Path("runs/operator_input"),
+        Path("runs/crypto_paper_visibility"),
+        Path("runs/crypto_paper_mutation_drill"),
+        Path("runs/broker_snapshots"),
+        Path("runs/paper_broker_snapshots"),
+        Path(".data"),
+    )
+
+
+def _local_replay_artifact_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    lowered = str(path).replace("\\", "/").lower()
+    if suffix == ".csv" and ("crypto" in lowered or path.name.lower().endswith("bars.csv")):
+        return "crypto_bars"
+    if suffix in {".json", ".jsonl"} and (
+        "crypto" in lowered
+        or "status" in path.name.lower()
+        or path.name.lower() in {"latest_status.json", "supervisor_receipt.jsonl", "drill_receipt.jsonl"}
+    ):
+        return "crypto_visibility_status"
+    return ""
+
+
+def _inspect_crypto_bars_artifact(
+    path: Path,
+    record: Mapping[str, object],
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    try:
+        bars_by_symbol = _read_crypto_bars_by_symbol(path)
+    except ValidationError as exc:
+        return None, {
+            **dict(record),
+            "exists": True,
+            "classification": "local_artifact_rejected",
+            "rejection_reason": f"malformed_crypto_bars:{exc}",
+        }
+    if not bars_by_symbol:
+        return None, {
+            **dict(record),
+            "exists": True,
+            "classification": "local_artifact_rejected",
+            "rejection_reason": "no_crypto_bars",
+        }
+    return {
+        **dict(record),
+        "exists": True,
+        "classification": "real_local_replay_candidate",
+        "accepted_reason": "crypto_bars_observed",
+        "symbol_count": len(bars_by_symbol),
+        "symbols": sorted(bars_by_symbol),
+    }, None
+
+
+def _inspect_crypto_status_artifact(
+    path: Path,
+    record: Mapping[str, object],
+) -> tuple[dict[str, object] | None, dict[str, object] | None]:
+    payload, rejection_reason = _read_json_or_jsonl_mapping(path)
+    if payload is None:
+        return None, {
+            **dict(record),
+            "exists": True,
+            "classification": "local_artifact_rejected",
+            "rejection_reason": rejection_reason,
+        }
+    if not _is_crypto_status_payload(payload):
+        return None, {
+            **dict(record),
+            "exists": True,
+            "classification": "local_artifact_rejected",
+            "rejection_reason": "not_crypto_status_artifact",
+        }
+    symbols = _symbols_from_status_and_bars(
+        payload,
+        _mapping(payload.get("crypto_capability")),
+        _metadata_by_symbol_from_status(payload, _mapping(payload.get("crypto_capability"))),
+        {},
+    )
+    return {
+        **dict(record),
+        "exists": True,
+        "classification": "real_local_replay_candidate",
+        "accepted_reason": "crypto_status_observed",
+        "symbol_count": len(symbols),
+        "symbols": list(symbols),
+    }, None
+
+
+def _read_json_or_jsonl_mapping(path: Path) -> tuple[Mapping[str, object] | None, str]:
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return None, "unreadable_artifact"
+    try:
+        if path.suffix.lower() == ".jsonl":
+            for line in text.splitlines():
+                if line.strip():
+                    payload = json.loads(line)
+                    break
+            else:
+                return None, "empty_jsonl_artifact"
+        else:
+            payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None, "malformed_json_artifact"
+    if not isinstance(payload, Mapping):
+        return None, "json_artifact_not_object"
+    return payload, ""
+
+
+def _read_local_replay_status(path: Path) -> Mapping[str, object]:
+    payload, _reason = _read_json_or_jsonl_mapping(path)
+    return payload or {}
+
+
+def _is_crypto_status_payload(payload: Mapping[str, object]) -> bool:
+    capability = _mapping(payload.get("crypto_capability"))
+    return (
+        _first_text(payload, "asset_class", "universe") == "crypto"
+        or bool(capability)
+        or bool(_string_sequence(payload.get("eligible_crypto_symbols")))
+        or bool(_first_text(payload, "selected_symbol", "symbol"))
+    )
+
+
+def _select_local_replay_artifact(
+    accepted: Sequence[Mapping[str, object]],
+    *,
+    artifact_type: str,
+    preferred_path: Path,
+) -> str:
+    candidates = [
+        record
+        for record in accepted
+        if _text(record.get("artifact_type")) == artifact_type
+    ]
+    if not candidates:
+        return ""
+    selected = max(
+        candidates,
+        key=lambda record: _local_replay_artifact_score(record, preferred_path),
+    )
+    return _text(selected.get("path"))
+
+
+def _local_replay_artifact_score(
+    record: Mapping[str, object],
+    preferred_path: Path,
+) -> tuple[int, str]:
+    path_text = _text(record.get("path"))
+    normalized = path_text.replace("\\", "/").lower()
+    score = 0
+    if path_text == str(preferred_path):
+        score += 100
+    if "/latest/" in normalized:
+        score += 30
+    if "runs/operator_input" in normalized:
+        score += 25
+    if "runs/crypto_paper_visibility" in normalized:
+        score += 25
+    if Path(path_text).name.lower() == "latest_status.json":
+        score += 10
+    return score, path_text
 
 
 def _history_record(
@@ -733,6 +1067,66 @@ def _history_record(
         "insufficient_history_blocker": "insufficient_history" in blockers,
         "blockers": blockers,
     }
+
+
+def _matching_record(records: Sequence[Mapping[str, object]], symbol: str) -> Mapping[str, object]:
+    normalized = normalize_crypto_symbol(symbol)
+    for record in records:
+        symbol_text = _first_text(record, "symbol")
+        if symbol_text and normalize_crypto_symbol(symbol_text) == normalized:
+            return record
+    return {}
+
+
+def _input_backing(source_mode: str) -> str:
+    if source_mode == "offline_fixture":
+        return "fixture_backed"
+    if source_mode == "local_replay":
+        return "real_local_artifact_backed"
+    if source_mode == "paper_read_only":
+        return "paper_read_only_artifact_backed"
+    return "unknown"
+
+
+def _local_replay_classifications(
+    *,
+    metadata: Mapping[str, object],
+    history: Mapping[str, object],
+    symbol_blockers: Sequence[str],
+    router_ready: bool,
+) -> tuple[str, ...]:
+    classifications: list[str] = []
+    if _first_text(metadata, "source_mode") == "local_replay" or _first_text(history, "source_mode") == "local_replay":
+        classifications.append("real_local_replay_candidate")
+    metadata_status = _first_text(metadata, "metadata_status")
+    orderability_status = _first_text(metadata, "orderability_status")
+    metadata_blockers = set(_string_sequence(metadata.get("metadata_blockers"))) | set(
+        _string_sequence(metadata.get("orderability_blockers"))
+    )
+    history_status = _first_text(history, "history_status")
+    freshness_status = _first_text(history, "freshness_status")
+    data_quality_status = _first_text(history, "data_quality_status")
+    if (
+        metadata_status in {"", "metadata_not_observed", "metadata_incomplete", "metadata_invalid"}
+        or orderability_status == "metadata_missing"
+        or "metadata_missing" in metadata_blockers
+    ):
+        classifications.append("metadata_missing")
+    if history_status == "missing_history" or data_quality_status == "missing_data":
+        classifications.append("history_missing")
+    if freshness_status == "stale_data":
+        classifications.append("history_stale")
+    if history_status == "insufficient_history":
+        classifications.append("insufficient_history")
+    if "local_artifact_missing" in set(symbol_blockers) or (
+        "metadata_missing" in classifications and "history_missing" in classifications
+    ):
+        classifications.append("local_artifact_missing")
+    if router_ready:
+        classifications.append("router_ready")
+    elif symbol_blockers:
+        classifications.append("router_blocked")
+    return _dedupe(classifications)
 
 
 def _metadata_by_symbol_from_status(
@@ -1283,6 +1677,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"valid_metadata_count={summary.get('valid_metadata_count', 0)}")
         print(f"valid_history_count={summary.get('valid_history_count', 0)}")
         print(f"eligible_input_symbol_count={summary.get('eligible_input_symbol_count', 0)}")
+        print(f"local_artifacts_discovered_count={summary.get('local_artifacts_discovered_count', 0)}")
+        print(f"local_artifacts_accepted_count={summary.get('local_artifacts_accepted_count', 0)}")
+        print(f"local_artifacts_rejected_count={summary.get('local_artifacts_rejected_count', 0)}")
         print(f"broker_read_observed={_bool_text(summary.get('broker_read_observed'))}")
         print(f"paper_submit_performed=false")
         print(f"broker_mutation_performed=false")

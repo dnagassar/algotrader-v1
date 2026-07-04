@@ -182,12 +182,76 @@ def test_local_replay_normalizes_existing_visibility_and_bars(tmp_path: Path) ->
     }
 
     assert packet["summary"]["symbol_count"] == 3
+    assert packet["summary"]["local_artifacts_discovered_count"] == 2
+    assert packet["summary"]["local_artifacts_accepted_count"] == 2
     assert metadata["ETHUSD"]["orderability_status"] == "orderable"
     assert metadata["DOGEUSD"]["orderability_status"] == "metadata_missing"
     assert metadata["MATICUSD"]["metadata_status"] == "metadata_not_observed"
     assert history["ETHUSD"]["history_status"] == "sufficient_history"
     assert history["DOGEUSD"]["missing_history_blocker"] is True
     assert history["MATICUSD"]["missing_data_blocker"] is True
+    router_records = {
+        record["symbol"]: record
+        for record in packet["crypto_router_input_manifest"]["records"]
+    }
+    assert packet["crypto_router_input_manifest"]["router_ready_symbols"] == ["ETHUSD"]
+    assert "local_replay" in packet["crypto_router_input_manifest"]["labels"]
+    assert "router_ready" in router_records["ETHUSD"]["local_replay_classifications"]
+    assert "metadata_missing" in router_records["DOGEUSD"]["local_replay_classifications"]
+    assert "local_artifact_missing" in router_records["MATICUSD"]["local_replay_classifications"]
+
+
+def test_local_replay_reports_missing_artifacts_without_repo_fallback(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_universe_refresh" / "missing"
+
+    packet = run_crypto_universe_refresh(
+        output_root=output_root,
+        mode="local_replay",
+        bars_csv=tmp_path / "missing_crypto_bars.csv",
+        crypto_visibility_status=tmp_path / "missing_latest_status.json",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    summary = packet["summary"]
+    record = packet["crypto_router_input_manifest"]["records"][0]
+    blockers = {item["blocker"] for item in summary["top_blockers"]}
+
+    assert summary["local_artifacts_discovered_count"] == 0
+    assert summary["local_artifacts_accepted_count"] == 0
+    assert summary["local_artifacts_rejected_count"] == 2
+    assert summary["eligible_input_symbol_count"] == 0
+    assert "local_artifact_missing" in blockers
+    assert "metadata_missing" in record["local_replay_classifications"]
+    assert "history_missing" in record["local_replay_classifications"]
+    assert "router_blocked" in record["local_replay_classifications"]
+
+
+def test_local_replay_rejects_malformed_artifacts(tmp_path: Path) -> None:
+    bars_csv = tmp_path / "crypto_bars.csv"
+    status_json = tmp_path / "latest_status.json"
+    output_root = tmp_path / "runs" / "crypto_universe_refresh" / "malformed"
+    bars_csv.write_text(
+        "timestamp,symbol,asset_class,open,high,low,close,volume\n"
+        "not-a-date,BTCUSD,crypto,1,1,1,1,1\n",
+        encoding="utf-8",
+    )
+    status_json.write_text("{not-json", encoding="utf-8")
+
+    packet = run_crypto_universe_refresh(
+        output_root=output_root,
+        mode="local_replay",
+        bars_csv=bars_csv,
+        crypto_visibility_status=status_json,
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    rejected = packet["summary"]["local_artifacts_rejected"]
+    reasons = {record["rejection_reason"] for record in rejected}
+
+    assert packet["summary"]["local_artifacts_discovered_count"] == 2
+    assert packet["summary"]["local_artifacts_accepted_count"] == 0
+    assert "malformed_json_artifact" in reasons
+    assert "no_crypto_bars" in reasons
 
 
 def test_router_consumes_refresh_manifest_and_selects_fixture_crypto(tmp_path: Path) -> None:
@@ -212,12 +276,68 @@ def test_router_consumes_refresh_manifest_and_selects_fixture_crypto(tmp_path: P
     assert decision["decision"] == "selected"
     assert decision["selected_asset_class"] == "crypto"
     assert decision["selected_symbol"] == "BTCUSD"
+    assert decision["selected_candidate_backing"] == "fixture_backed"
+    assert decision["selected_candidate"]["candidate_backing"] == "fixture_backed"
     assert decision["eligible_candidate_count"] >= 1
     assert any(
         candidate["symbol"] == "ETHUSD" and candidate["blocker_status"] == "blocked"
         for candidate in packet["candidates"]
     )
     assert (router_root / "manifest.json").is_file()
+
+
+def test_router_consumes_local_replay_manifest_and_marks_real_local_backing(
+    tmp_path: Path,
+) -> None:
+    bars_csv = tmp_path / "crypto_bars.csv"
+    status_json = tmp_path / "latest_status.json"
+    refresh_root = tmp_path / "runs" / "crypto_universe_refresh" / "local_replay"
+    router_root = tmp_path / "runs" / "opportunity_router" / "local_replay"
+    _write_crypto_csv(bars_csv, "ETHUSD", count=80)
+    status_json.write_text(
+        json.dumps(
+            {
+                "broker_state_mode": "alpaca_paper_observed",
+                "eligible_crypto_symbols": ["ETH/USD"],
+                "asset_metadata": {
+                    "ETH/USD": {
+                        "asset_class": "crypto",
+                        "tradable": True,
+                        "status": "active",
+                        "min_notional": "10",
+                        "qty_increment": "0.0001",
+                    }
+                },
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    run_crypto_universe_refresh(
+        output_root=refresh_root,
+        mode="local_replay",
+        bars_csv=bars_csv,
+        crypto_visibility_status=status_json,
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+
+    packet = run_opportunity_router(
+        output_root=router_root,
+        spy_bars_csv=tmp_path / "missing_spy.csv",
+        crypto_router_input_manifest=refresh_root / "crypto_router_input_manifest.json",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    decision = packet["router_decision"]
+
+    assert decision["decision"] == "selected"
+    assert decision["selected_asset_class"] == "crypto"
+    assert decision["selected_symbol"] == "ETHUSD"
+    assert decision["selected_candidate_backing"] == "real_local_artifact_backed"
+    assert "local_replay" in decision["labels"]
+    assert "real_local_artifact_backed" in decision["selected_candidate"]["labels"]
+    assert packet["safety"]["paper_submit_performed"] is False
 
 
 def test_router_returns_no_trade_when_all_refreshed_crypto_inputs_blocked(
@@ -319,6 +439,12 @@ def test_refresh_history_report_detects_stale_insufficient_and_duplicate_data(
     assert history["SHORTUSD"]["insufficient_history_blocker"] is True
     assert history["DUPUSD"]["duplicate_timestamp_status"] == "duplicate_timestamps_present"
     assert "duplicate_timestamps" in history["DUPUSD"]["blockers"]
+    router_records = {
+        record["symbol"]: record
+        for record in packet["crypto_router_input_manifest"]["records"]
+    }
+    assert "history_stale" in router_records["STALEUSD"]["local_replay_classifications"]
+    assert "insufficient_history" in router_records["SHORTUSD"]["local_replay_classifications"]
 
 
 def test_crypto_universe_refresh_has_no_broker_network_or_mutation_imports() -> None:
