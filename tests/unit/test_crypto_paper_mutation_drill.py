@@ -22,6 +22,7 @@ from algotrader.execution.crypto_paper_mutation_drill import (
     OUTCOME_SUBMITTED_PARTIAL_CANCELLED,
     OUTCOME_SUBMITTED_REJECTED,
     deterministic_crypto_paper_drill_client_order_id,
+    render_crypto_paper_mutation_drill_text,
     run_crypto_paper_mutation_drill,
 )
 from algotrader.execution.crypto_paper_visibility_operator import (
@@ -273,12 +274,71 @@ def test_non_tradable_symbol_blocks_before_submit(tmp_path: Path) -> None:
 
 
 def test_missing_min_notional_blocks_before_submit(tmp_path: Path) -> None:
-    fake_client = FakeCryptoPaperClient(assets=(_btc_asset(min_notional=""),))
+    asset = _btc_asset()
+    del asset["min_notional"]
+    fake_client = FakeCryptoPaperClient(assets=(asset,))
 
     packet = _run_drill(tmp_path, fake_client)
 
-    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
-    assert "min_notional_missing" in packet["blocker"]
+    _assert_broker_omitted_min_notional_blocks(packet)
+    assert packet["min_notional"] == ""
+    assert packet["target_notional"] == ""
+    assert packet["estimated_notional"] == ""
+    assert packet["broker_capability_observed_fields"] == [
+        "min_order_size",
+        "min_trade_increment",
+    ]
+    rendered = render_crypto_paper_mutation_drill_text(packet)
+    assert "broker_capability_observed=true" in rendered
+    assert "broker_capability_missing=true" in rendered
+    assert "no_submit_visibility_passed=true" in rendered
+    assert "mutation_eligibility_blocked=true" in rendered
+    receipt = json.loads(
+        Path(packet["artifact_paths"]["drill_receipt"]).read_text(encoding="utf-8")
+    )
+    assert receipt["broker_capability_observed"] is True
+    assert receipt["broker_capability_missing"] is True
+    assert receipt["broker_capability_missing_fields"] == ["min_notional"]
+    assert receipt["no_submit_visibility_passed"] is True
+    assert receipt["mutation_eligibility_blocked"] is True
+    assert "repair" not in str(packet["next_operator_action"])
+    assert "10.00" not in json.dumps(packet["order_design"], sort_keys=True)
+    assert fake_client.submitted_requests == []
+
+
+def test_blank_min_notional_blocks_before_submit(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(assets=(_btc_asset(min_notional="   "),))
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    _assert_broker_omitted_min_notional_blocks(packet)
+    assert packet["min_notional"] == ""
+    assert packet["target_notional"] == ""
+    assert packet["estimated_notional"] == ""
+    assert fake_client.submitted_requests == []
+
+
+def test_zero_min_notional_blocks_before_submit(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(assets=(_btc_asset(min_notional="0"),))
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    _assert_broker_omitted_min_notional_blocks(packet)
+    assert packet["min_notional"] == "0"
+    assert packet["target_notional"] == ""
+    assert packet["estimated_notional"] == ""
+    assert fake_client.submitted_requests == []
+
+
+def test_invalid_min_notional_blocks_before_submit(tmp_path: Path) -> None:
+    fake_client = FakeCryptoPaperClient(assets=(_btc_asset(min_notional="not-a-number"),))
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    _assert_broker_omitted_min_notional_blocks(packet)
+    assert packet["min_notional"] == "not-a-number"
+    assert packet["target_notional"] == ""
+    assert packet["estimated_notional"] == ""
     assert fake_client.submitted_requests == []
 
 
@@ -335,6 +395,19 @@ def test_observed_model_asset_and_active_account_feed_pre_submit_gate(
     assert packet["min_notional"] == "10.00"
     assert packet["min_order_size"] == "0.000016268"
     assert Decimal(str(packet["min_trade_increment"])) == Decimal("0.000000001")
+    assert packet["broker_capability_observed"] is True
+    assert packet["broker_capability_missing"] is False
+    assert packet["broker_capability_observed_fields"] == [
+        "min_order_size",
+        "min_trade_increment",
+        "min_notional",
+    ]
+    assert packet["broker_capability_missing_fields"] == []
+    assert packet["min_notional_policy"] == "broker_observed_min_notional_valid"
+    assert packet["no_submit_visibility_passed"] is True
+    assert packet["mutation_eligibility_blocked"] is True
+    assert "open_selected_symbol_order_exists" in packet["mutation_eligibility_blockers"]
+    assert "min_notional_missing" not in packet["mutation_eligibility_blockers"]
     _assert_bounded_order_design(packet)
     assert fake_client.submitted_requests == []
     assert leaked_model_secret not in json.dumps(packet, sort_keys=True)
@@ -606,6 +679,7 @@ def test_submit_then_cancel_submits_exactly_one_bounded_limit_order(
     assert packet["paper_submit_authorized"] is True
     assert packet["paper_submit_performed"] is True
     assert packet["broker_mutation_performed"] is True
+    assert packet["mutation_eligibility_blocked"] is False
     assert packet["live_mutation_performed"] is False
     assert len(fake_client.submitted_requests) == 1
     request = fake_client.submitted_requests[0]
@@ -846,6 +920,26 @@ def _assert_bounded_order_design(packet: dict[str, object]) -> None:
     max_notional = Decimal(str(packet["max_drill_notional"]))
     assert estimated_notional >= min_notional
     assert estimated_notional <= max_notional
+
+
+def _assert_broker_omitted_min_notional_blocks(packet: dict[str, object]) -> None:
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "min_notional_missing" in packet["blocker"]
+    assert packet["broker_capability_observed"] is True
+    assert packet["broker_capability_missing"] is True
+    assert "min_notional" in packet["broker_capability_missing_fields"]
+    assert packet["min_notional_policy"] == (
+        "broker_min_notional_absent_or_invalid_requires_separate_policy"
+    )
+    assert packet["no_submit_visibility_passed"] is True
+    assert packet["mutation_eligibility_blocked"] is True
+    assert "min_notional_missing" in packet["mutation_eligibility_blockers"]
+    assert packet["next_operator_action"] == (
+        "separate_policy_required_before_broker_omitted_min_notional_mutation_drill"
+    )
+    assert packet["paper_submit_performed"] is False
+    assert packet["broker_mutation_performed"] is False
+    assert packet["live_mutation_performed"] is False
 
 
 def _btc_asset(

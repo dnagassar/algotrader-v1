@@ -102,6 +102,15 @@ _CANCELABLE_STATUSES = {
 }
 _OPEN_STATUSES = _CANCELABLE_STATUSES | {"pending_cancel", "accepted_for_bidding"}
 _KNOWN_CRYPTO_SYMBOLS = {"BTCUSD", "ETHUSD", "BTC/USD", "ETH/USD"}
+_BROKER_CAPABILITY_REPORT_FIELDS = (
+    "min_order_size",
+    "min_trade_increment",
+    "min_order_increment",
+    "min_notional",
+)
+_BROKER_OMITTED_MIN_NOTIONAL_ACTION = (
+    "separate_policy_required_before_broker_omitted_min_notional_mutation_drill"
+)
 _BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(api[_-]?key|authorization|secret(?:[_-]?key)?|token)\b"
@@ -325,6 +334,7 @@ def run_crypto_paper_mutation_drill(
             *position_result["blockers"],
         )
     )
+    capability_report = _broker_capability_report(observed_record, asset_observation)
     observed = {
         **base,
         "account_observation": account_payload,
@@ -340,6 +350,20 @@ def run_crypto_paper_mutation_drill(
         "position_scan": position_result["receipt"],
         "existing_client_order_id_order": existing_order,
         "pre_submit_gate_blockers": pre_submit_blockers,
+        "broker_capability_observed": capability_report[
+            "broker_capability_observed"
+        ],
+        "broker_capability_missing": capability_report["broker_capability_missing"],
+        "broker_capability_observed_fields": capability_report[
+            "broker_capability_observed_fields"
+        ],
+        "broker_capability_missing_fields": capability_report[
+            "broker_capability_missing_fields"
+        ],
+        "min_notional_policy": capability_report["min_notional_policy"],
+        "no_submit_visibility_passed": _no_submit_visibility_passed(observed_record),
+        "mutation_eligibility_blocked": bool(pre_submit_blockers),
+        "mutation_eligibility_blockers": pre_submit_blockers,
     }
 
     if existing_order:
@@ -364,7 +388,10 @@ def run_crypto_paper_mutation_drill(
             observed,
             outcome_classification=OUTCOME_BLOCKED_PRE_SUBMIT,
             blocker=",".join(pre_submit_blockers),
-            next_operator_action="repair_pre_submit_gate_before_crypto_drill",
+            next_operator_action=_pre_submit_next_operator_action(
+                pre_submit_blockers,
+                asset_observation=asset_observation,
+            ),
             write_artifacts=write_artifacts,
         )
 
@@ -512,6 +539,19 @@ def render_crypto_paper_mutation_drill_text(packet: Mapping[str, Any]) -> str:
             f"min_notional={_clean_text(packet.get('min_notional'))}",
             f"min_order_size={_clean_text(packet.get('min_order_size'))}",
             f"min_trade_increment={_clean_text(packet.get('min_trade_increment'))}",
+            "broker_capability_observed="
+            f"{_bool_text(packet.get('broker_capability_observed'))}",
+            "broker_capability_missing="
+            f"{_bool_text(packet.get('broker_capability_missing'))}",
+            "broker_capability_observed_fields="
+            f"{_csv_text(packet.get('broker_capability_observed_fields'))}",
+            "broker_capability_missing_fields="
+            f"{_csv_text(packet.get('broker_capability_missing_fields'))}",
+            f"min_notional_policy={_clean_text(packet.get('min_notional_policy'))}",
+            "no_submit_visibility_passed="
+            f"{_bool_text(packet.get('no_submit_visibility_passed'))}",
+            "mutation_eligibility_blocked="
+            f"{_bool_text(packet.get('mutation_eligibility_blocked'))}",
             f"client_order_id={_clean_text(packet.get('client_order_id'))}",
             f"submit_attempted={_bool_text(packet.get('submit_attempted'))}",
             f"submit_status={_clean_text(packet.get('submit_status'))}",
@@ -576,6 +616,14 @@ def _base_packet(
         "strategy_adapter_mode": "preview_only",
         "normal_crypto_visibility_path_remains_no_submit": True,
         "no_submit_mode_can_mutate": False,
+        "broker_capability_observed": False,
+        "broker_capability_missing": False,
+        "broker_capability_observed_fields": [],
+        "broker_capability_missing_fields": [],
+        "min_notional_policy": "not_observed",
+        "no_submit_visibility_passed": False,
+        "mutation_eligibility_blocked": True,
+        "mutation_eligibility_blockers": [],
         "paper_lab_only": True,
         "not_live_authorized": True,
         "profit_claim": "none",
@@ -721,7 +769,7 @@ def _supervisor_gate_blockers(
         blockers.append("selected_symbol_not_tradable")
     if record.get("selected_symbol_fractionable") is not True:
         blockers.append("selected_symbol_fractionable_required")
-    if not _clean_text(record.get("min_notional")):
+    if _positive_decimal_or_none(record.get("min_notional")) is None:
         blockers.append("min_notional_missing")
     if record.get("data_freshness_status") != "current_for_24_7_crypto_lab":
         blockers.append("crypto_bars_not_current")
@@ -821,9 +869,71 @@ def _asset_observation_blockers(asset_observation: Mapping[str, Any]) -> tuple[s
         blockers.append("selected_asset_observation_failed")
     if asset_observation.get("selected_asset_observed") is not True:
         blockers.append("selected_crypto_asset_not_observed")
-    if not _clean_text(asset_observation.get("min_notional")):
+    if _positive_decimal_or_none(asset_observation.get("min_notional")) is None:
         blockers.append("min_notional_missing")
     return tuple(blockers)
+
+
+def _broker_capability_report(
+    record: Mapping[str, Any],
+    asset_observation: Mapping[str, Any],
+) -> dict[str, Any]:
+    selected_asset_observed = asset_observation.get("selected_asset_observed") is True
+    source = asset_observation if selected_asset_observed else record
+    observed_fields = [
+        field
+        for field in _BROKER_CAPABILITY_REPORT_FIELDS
+        if (
+            _positive_decimal_or_none(source.get(field)) is not None
+            if field == "min_notional"
+            else bool(_clean_text(source.get(field) or record.get(field)))
+        )
+    ]
+    missing_fields: list[str] = []
+    if not selected_asset_observed:
+        missing_fields.append("selected_crypto_asset")
+    if _positive_decimal_or_none(source.get("min_notional")) is None:
+        missing_fields.append("min_notional")
+    min_notional_policy = (
+        "broker_observed_min_notional_valid"
+        if "min_notional" in observed_fields
+        else "selected_crypto_asset_not_observed"
+        if not selected_asset_observed
+        else "broker_min_notional_absent_or_invalid_requires_separate_policy"
+    )
+    return {
+        "broker_capability_observed": (
+            selected_asset_observed or record.get("broker_read_performed") is True
+        ),
+        "broker_capability_missing": bool(missing_fields),
+        "broker_capability_observed_fields": observed_fields,
+        "broker_capability_missing_fields": missing_fields,
+        "min_notional_policy": min_notional_policy,
+    }
+
+
+def _no_submit_visibility_passed(record: Mapping[str, Any]) -> bool:
+    return (
+        record.get("readiness_status")
+        == "readiness_blocked_crypto_preview_only_no_submit"
+        and record.get("no_submit_mode") is True
+        and record.get("paper_submit_performed") is False
+        and record.get("broker_mutation_performed") is False
+        and record.get("live_mutation_performed") is False
+    )
+
+
+def _pre_submit_next_operator_action(
+    blockers: Sequence[str],
+    *,
+    asset_observation: Mapping[str, Any],
+) -> str:
+    if (
+        "min_notional_missing" in blockers
+        and asset_observation.get("selected_asset_observed") is True
+    ):
+        return _BROKER_OMITTED_MIN_NOTIONAL_ACTION
+    return "repair_pre_submit_gate_before_crypto_drill"
 
 
 def _latest_usable_bar(path: Path, *, symbol: str, as_of: datetime) -> dict[str, Any]:
@@ -861,7 +971,8 @@ def _build_order_design(
     client_order_id: str,
 ) -> tuple[dict[str, Any], tuple[str, ...]]:
     blockers: list[str] = []
-    min_notional = _decimal_or_none(supervisor_record.get("min_notional"))
+    raw_min_notional = supervisor_record.get("min_notional")
+    min_notional = _positive_decimal_or_none(raw_min_notional)
     min_order_size = _decimal_or_none(supervisor_record.get("min_order_size"))
     min_trade_increment = _decimal_or_none(supervisor_record.get("min_trade_increment"))
     if min_notional is None:
@@ -881,7 +992,7 @@ def _build_order_design(
             "order_type": CRYPTO_PAPER_MUTATION_DRILL_ORDER_TYPE,
             "time_in_force": CRYPTO_PAPER_MUTATION_DRILL_TIME_IN_FORCE,
             "max_drill_notional": str(max_notional),
-            "min_notional": "" if min_notional is None else str(min_notional),
+            "min_notional": _clean_text(raw_min_notional),
             "min_order_size": "" if min_order_size is None else str(min_order_size),
             "min_trade_increment": str(min_trade_increment),
         }, tuple(blockers)
@@ -1228,6 +1339,10 @@ def _finalize_packet(
     supervisor = _mapping(packet.get("supervisor_observation"))
     account = _mapping(packet.get("account_observation"))
     final_order = _mapping(packet.get("final_order"))
+    mutation_eligibility_blocked = (
+        packet.get("mutation_eligibility_blocked") is True
+        or outcome_classification == OUTCOME_BLOCKED_PRE_SUBMIT
+    )
     finalized = {
         **packet,
         "outcome_classification": outcome_classification,
@@ -1261,6 +1376,27 @@ def _finalize_packet(
         ),
         "normal_visibility_live_mutation_performed": (
             supervisor.get("live_mutation_performed") is True
+        ),
+        "broker_capability_observed": (
+            packet.get("broker_capability_observed") is True
+        ),
+        "broker_capability_missing": (
+            packet.get("broker_capability_missing") is True
+        ),
+        "broker_capability_observed_fields": _text_list(
+            packet.get("broker_capability_observed_fields")
+        ),
+        "broker_capability_missing_fields": _text_list(
+            packet.get("broker_capability_missing_fields")
+        ),
+        "min_notional_policy": _clean_text(packet.get("min_notional_policy")),
+        "no_submit_visibility_passed": (
+            packet.get("no_submit_visibility_passed") is True
+        ),
+        "mutation_eligibility_blocked": mutation_eligibility_blocked,
+        "mutation_eligibility_blockers": _text_list(
+            packet.get("mutation_eligibility_blockers")
+            or packet.get("pre_submit_gate_blockers")
         ),
         "min_notional": _clean_text(
             order_design.get("min_notional") or supervisor.get("min_notional")
@@ -1369,6 +1505,14 @@ def _drill_receipt(packet: Mapping[str, Any]) -> dict[str, Any]:
         "min_notional",
         "min_order_size",
         "min_trade_increment",
+        "broker_capability_observed",
+        "broker_capability_missing",
+        "broker_capability_observed_fields",
+        "broker_capability_missing_fields",
+        "min_notional_policy",
+        "no_submit_visibility_passed",
+        "mutation_eligibility_blocked",
+        "mutation_eligibility_blockers",
         "client_order_id",
         "broker_read_performed",
         "broker_state_mode",
@@ -1403,6 +1547,11 @@ def _render_operating_brief(packet: Mapping[str, Any]) -> str:
             f"- Quantity: `{packet.get('quantity', '')}`",
             f"- Target/estimated notional: `{packet.get('target_notional', '')}` / `{packet.get('estimated_notional', '')}`",
             f"- Cap/min notional: `{packet.get('max_drill_notional', '')}` / `{packet.get('min_notional', '')}`",
+            f"- Broker capability observed: `{packet.get('broker_capability_observed')}`",
+            f"- Broker capability missing: `{packet.get('broker_capability_missing')}`",
+            f"- Min notional policy: `{packet.get('min_notional_policy', '')}`",
+            f"- No-submit visibility passed: `{packet.get('no_submit_visibility_passed')}`",
+            f"- Mutation eligibility blocked: `{packet.get('mutation_eligibility_blocked')}`",
             f"- Client order id: `{packet.get('client_order_id', '')}`",
             f"- Broker read performed: `{packet.get('broker_read_performed')}`",
             f"- Submit/cancel attempted: `{packet.get('submit_attempted')}` / `{packet.get('cancel_attempted')}`",
@@ -1888,6 +2037,13 @@ def _positive_decimal(value: object, field_name: str) -> Decimal:
     return decimal_value
 
 
+def _positive_decimal_or_none(value: object) -> Decimal | None:
+    decimal_value = _decimal_or_none(value)
+    if decimal_value is None or decimal_value <= Decimal("0"):
+        return None
+    return decimal_value
+
+
 def _decimal_or_none(value: object) -> Decimal | None:
     if value in (None, ""):
         return None
@@ -1942,6 +2098,17 @@ def _bool_field(data: Mapping[str, Any], field_name: str) -> bool | None:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _csv_text(value: object) -> str:
+    return ",".join(_text_list(value))
+
+
+def _text_list(value: object) -> list[str]:
+    if isinstance(value, (list, tuple, set)):
+        return [text for item in value if (text := _clean_text(item))]
+    text = _clean_text(value)
+    return [text] if text else []
 
 
 def _mapping(value: object) -> dict[str, Any]:

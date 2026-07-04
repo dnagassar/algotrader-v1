@@ -198,6 +198,7 @@ def test_crypto_no_submit_supervisor_receipt_is_preview_only_and_non_mutating(
     assert record["capability_source"] == "observed"
     assert record["crypto_trading_supported"] is True
     assert record["selected_symbol_tradable"] is True
+    assert record["min_notional"] == ""
     assert record["strategy_id"] == "crypto_sma_20_50_training_wheel_preview"
     assert record["strategy_posture"] == "risk_on"
     assert record["strategy_adapter_mode"] == "preview_only"
