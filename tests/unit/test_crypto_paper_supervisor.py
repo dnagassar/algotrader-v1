@@ -56,6 +56,63 @@ def test_crypto_capability_receipt_selects_preferred_observed_symbol() -> None:
     assert receipt.blockers == ()
 
 
+def test_crypto_capability_merges_allowlisted_model_attrs_missing_from_dump() -> None:
+    asset = FakePartialDumpCryptoAsset(
+        model_dump_fields=(
+            "symbol",
+            "asset_class",
+            "tradable",
+            "fractionable",
+            "status",
+            "min_order_size",
+            "min_trade_increment",
+        ),
+        symbol="BTC/USD",
+        asset_class="AssetClass.CRYPTO",
+        tradable=True,
+        fractionable=True,
+        status="AssetStatus.ACTIVE",
+        min_order_size="0.000016268",
+        min_trade_increment="1E-9",
+        min_notional="10.00",
+        api_key="must-not-be-serialized",
+    )
+
+    receipt = discover_crypto_paper_capability(
+        assets=(asset,),
+        capability_source="observed",
+    )
+
+    assert receipt.capability_source == "observed"
+    assert receipt.selected_symbol == "BTCUSD"
+    assert receipt.selected_symbol_tradable is True
+    assert receipt.selected_symbol_fractionable is True
+    assert receipt.min_notional == "10.00"
+    assert receipt.min_order_size == "0.000016268"
+    assert Decimal(receipt.min_trade_increment) == Decimal("0.000000001")
+    assert "api_key" not in receipt.to_dict()
+
+
+def test_crypto_capability_does_not_default_missing_min_notional() -> None:
+    receipt = discover_crypto_paper_capability(
+        assets=(
+            CryptoAsset(
+                symbol="BTC/USD",
+                fractionable=True,
+                min_order_size="0.000016268",
+                min_trade_increment="1E-9",
+            ),
+        ),
+        capability_source="observed",
+    )
+
+    assert receipt.capability_source == "observed"
+    assert receipt.selected_symbol == "BTCUSD"
+    assert receipt.min_order_size == "0.000016268"
+    assert Decimal(receipt.min_trade_increment) == Decimal("0.000000001")
+    assert receipt.min_notional == ""
+
+
 def test_crypto_capability_not_observed_does_not_select_symbol() -> None:
     receipt = discover_crypto_paper_capability()
 
@@ -289,6 +346,30 @@ class FakeCryptoAssetBroker:
     def list_assets(self) -> tuple[CryptoAsset, ...]:
         self.calls.append("list_assets")
         return self.assets
+
+
+class FakePartialDumpCryptoAsset:
+    def __init__(
+        self,
+        *,
+        model_dump_fields: tuple[str, ...],
+        **fields: object,
+    ) -> None:
+        self._fields = dict(fields)
+        self._model_dump_fields = model_dump_fields
+        for key, value in fields.items():
+            setattr(self, key, value)
+
+    def model_dump(self, *args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            key: self._fields[key]
+            for key in self._model_dump_fields
+            if key in self._fields
+        }
+
+    @property
+    def model_fields(self) -> object:
+        raise AssertionError("model_fields must not be read from asset instances")
 
 
 @dataclass(frozen=True)

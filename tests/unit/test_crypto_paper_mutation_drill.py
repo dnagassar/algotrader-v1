@@ -181,6 +181,24 @@ class FakePydanticTradingModel:
         )
 
 
+class FakePartialDumpTradingModel(FakePydanticTradingModel):
+    def __init__(
+        self,
+        *,
+        model_dump_fields: tuple[str, ...],
+        **fields: object,
+    ) -> None:
+        super().__init__(**fields)
+        self._model_dump_fields = model_dump_fields
+
+    def model_dump(self, *args: object, **kwargs: object) -> dict[str, object]:
+        return {
+            key: self._fields[key]
+            for key in self._model_dump_fields
+            if key in self._fields
+        }
+
+
 def test_normal_crypto_visibility_remains_no_submit(tmp_path: Path) -> None:
     bars_csv = _write_bars(tmp_path)
     fake_client = FakeCryptoPaperClient()
@@ -364,6 +382,64 @@ def test_observed_dict_asset_min_notional_alias_reaches_drill_receipt_and_sizing
     assert receipt["min_order_size"] == "0.000016268"
     assert Decimal(str(receipt["min_trade_increment"])) == Decimal("0.000000001")
     _assert_bounded_order_design(receipt)
+
+
+def test_observed_partial_model_asset_min_notional_reaches_drill_gate_and_sizing(
+    tmp_path: Path,
+) -> None:
+    leaked_model_secret = "partial-model-secret-must-not-serialize"
+    asset = FakePartialDumpTradingModel(
+        model_dump_fields=(
+            "symbol",
+            "asset_class",
+            "tradable",
+            "fractionable",
+            "status",
+            "min_order_size",
+            "min_trade_increment",
+        ),
+        symbol="BTC/USD",
+        asset_class="AssetClass.CRYPTO",
+        tradable=True,
+        fractionable=True,
+        status="AssetStatus.ACTIVE",
+        min_order_size="0.000016268",
+        min_trade_increment="1E-9",
+        min_notional="10.00",
+        secret_key=leaked_model_secret,
+    )
+    fake_client = FakeCryptoPaperClient(
+        assets=(asset,),
+        open_orders=(
+            _order(
+                client_order_id="other-btcusd-open-order",
+                symbol="BTCUSD",
+                status="accepted",
+            ),
+        ),
+    )
+
+    packet = _run_drill(tmp_path, fake_client)
+
+    assert packet["outcome_classification"] == OUTCOME_BLOCKED_PRE_SUBMIT
+    assert "open_selected_symbol_order_exists" in packet["blocker"]
+    assert "min_notional_missing" not in packet["blocker"]
+    assert packet["selected_symbol"] == "BTCUSD"
+    assert packet["selected_symbol_tradable"] is True
+    assert packet["selected_symbol_fractionable"] is True
+    assert packet["min_notional"] == "10.00"
+    assert packet["min_order_size"] == "0.000016268"
+    assert Decimal(str(packet["min_trade_increment"])) == Decimal("0.000000001")
+    _assert_bounded_order_design(packet)
+    assert fake_client.submitted_requests == []
+
+    supervisor = packet["supervisor_observation"]
+    selected_asset = packet["selected_asset_observation"]
+    assert supervisor["min_notional"] == "10.00"
+    assert selected_asset["min_notional"] == "10.00"
+    assert leaked_model_secret not in json.dumps(packet, sort_keys=True)
+    for path_text in packet["artifact_paths"].values():
+        assert leaked_model_secret not in Path(path_text).read_text(encoding="utf-8")
 
 
 def test_missing_account_status_blocks_as_unobserved_before_submit(

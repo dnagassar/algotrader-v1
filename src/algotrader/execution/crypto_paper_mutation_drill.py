@@ -32,6 +32,7 @@ from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
 from algotrader.execution.crypto_paper_supervisor import (
     CRYPTO_PAPER_SUPERVISOR_DEFAULT_BARS_CSV,
     CryptoPaperSupervisorConfig,
+    crypto_asset_capability_payload,
     run_crypto_paper_supervisor,
 )
 from algotrader.signals.crypto_trend import (
@@ -746,7 +747,9 @@ def _supervisor_gate_blockers(
 
 def _selected_asset_observation(client: Any, symbol: str) -> dict[str, Any]:
     try:
-        assets = tuple(_generic_payload(asset) for asset in client.list_assets())
+        assets = tuple(
+            crypto_asset_capability_payload(asset) for asset in client.list_assets()
+        )
     except Exception as exc:  # noqa: BLE001 - receipt fails closed.
         return {
             "asset_read_error": _safe_exception_message(exc),

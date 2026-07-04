@@ -19,7 +19,6 @@ from algotrader.execution.asset_freshness_policy import (
     DEFAULT_CRYPTO_MAX_BAR_AGE,
     evaluate_asset_class_freshness,
 )
-from algotrader.execution.paper_order_policy import paper_order_policy_for_asset_class
 from algotrader.orchestration.strategy_adapter_registry import (
     StrategyAdapterRegistryInput,
     resolve_strategy_adapter,
@@ -62,6 +61,10 @@ _ASSET_PAYLOAD_FIELDS = (
     "min_notional",
     "min_order_notional",
 )
+_ASSET_PAYLOAD_FIELD_LOOKUP = {
+    "".join(ch for ch in field.lower() if ch.isalnum()): field
+    for field in _ASSET_PAYLOAD_FIELDS
+}
 
 CryptoCapabilitySource = Literal["observed", "simulated", "not_observed"]
 
@@ -74,6 +77,7 @@ __all__ = [
     "CryptoCapabilityReceipt",
     "CryptoCapabilitySource",
     "CryptoPaperSupervisorConfig",
+    "crypto_asset_capability_payload",
     "discover_crypto_paper_capability",
     "run_crypto_paper_supervisor",
     "write_crypto_paper_supervisor_artifacts",
@@ -474,7 +478,7 @@ def _broker_assets(broker: Any) -> tuple[Any, ...]:
 def _eligible_crypto_assets(values: Iterable[Any]) -> tuple[dict[str, Any], ...]:
     assets: list[dict[str, Any]] = []
     for value in values:
-        data = _object_data(value)
+        data = crypto_asset_capability_payload(value)
         symbol = _first_text(data, "symbol", "name")
         if not symbol:
             continue
@@ -514,7 +518,6 @@ def _selected_asset_metadata(
     asset: Mapping[str, Any] | None,
     selected_symbol: str,
 ) -> dict[str, Any]:
-    policy = paper_order_policy_for_asset_class(ASSET_CLASS_CRYPTO)
     min_notional = ""
     selected_symbol_tradable = False
     selected_symbol_marginable: bool | None = None
@@ -524,8 +527,6 @@ def _selected_asset_metadata(
         selected_symbol_tradable = _bool_field(asset, "tradable") is True
         selected_symbol_marginable = _bool_field(asset, "marginable")
         selected_symbol_fractionable = _bool_field(asset, "fractionable")
-    if not min_notional and selected_symbol == "BTCUSD" and policy.min_notional is not None:
-        min_notional = str(policy.min_notional)
     return {
         "selected_symbol_tradable": selected_symbol_tradable,
         "selected_symbol_marginable": selected_symbol_marginable,
@@ -901,14 +902,15 @@ def _dedupe_assets(assets: Sequence[Mapping[str, Any]]) -> tuple[dict[str, Any],
     return tuple(result)
 
 
-def _object_data(value: Any) -> dict[str, Any]:
+def crypto_asset_capability_payload(value: Any) -> dict[str, Any]:
+    """Return allowlisted primitive crypto asset capability fields."""
+
     if isinstance(value, Mapping):
-        return {str(key): item for key, item in value.items()}
-    dumped = _model_dump_payload(value)
-    if dumped is not None:
-        return dumped
-    data: dict[str, Any] = {}
+        return _allowed_asset_payload_fields(value)
+    data = _model_dump_payload(value) or {}
     for name in _ASSET_PAYLOAD_FIELDS:
+        if _first_text(data, name):
+            continue
         try:
             item = getattr(value, name)
         except Exception:
@@ -934,11 +936,23 @@ def _model_dump_payload(value: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(dumped, Mapping):
         return None
-    return {
-        field: dumped[field]
-        for field in _ASSET_PAYLOAD_FIELDS
-        if field in dumped and dumped[field] is not None
-    }
+    return _allowed_asset_payload_fields(dumped)
+
+
+def _allowed_asset_payload_fields(data: Mapping[str, Any]) -> dict[str, Any]:
+    allowed: dict[str, Any] = {}
+    for key, value in data.items():
+        if value is None:
+            continue
+        field = _ASSET_PAYLOAD_FIELD_LOOKUP.get(_payload_field_lookup_key(key))
+        if field is None:
+            continue
+        allowed[field] = value
+    return allowed
+
+
+def _payload_field_lookup_key(value: object) -> str:
+    return "".join(ch for ch in str(value).strip().lower() if ch.isalnum())
 
 
 def _unsupported_account_blocker(exc: Exception) -> str:
