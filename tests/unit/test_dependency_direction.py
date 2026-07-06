@@ -191,6 +191,7 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.crypto_paper_oms_dry_run",
     "algotrader.orchestration.crypto_paper_submit_approval_packet",
     "algotrader.orchestration.crypto_paper_certification_ingestion",
+    "algotrader.orchestration.crypto_paper_fill_exit_ingestion",
     "algotrader.orchestration.strategy_adapter_registry",
     "algotrader.orchestration.etf_sma_execution_preview_bridge",
     "algotrader.orchestration.etf_sma_preview_jsonl_artifact",
