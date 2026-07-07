@@ -1,12 +1,13 @@
 <#
 .SYNOPSIS
-Runs the v6.0 supervised crypto trader demo.
+Runs the v6.1 crypto SimBroker operating loop.
 
 .DESCRIPTION
 Default SimBroker mode is fully offline and uses a deterministic local
-simulation broker. AlpacaPaper mode is optional and refuses to proceed unless
-the operator passes -Mode AlpacaPaper -AllowAlpacaPaperMutation in a dedicated
-paper shell. Credential values are never printed.
+simulation broker with persisted local state. AlpacaPaper mode is optional and
+refuses to proceed unless the operator passes -Mode AlpacaPaper
+-AllowAlpacaPaperMutation in a dedicated paper shell. Credential values are
+never printed.
 #>
 
 [CmdletBinding()]
@@ -15,7 +16,12 @@ param(
     [ValidateSet("SimBroker", "AlpacaPaper")]
     [string]$Mode = "SimBroker",
     [switch]$AllowAlpacaPaperMutation,
+    [string]$StateRoot = "",
+    [Alias("AsOf")]
     [string]$AsOfTimestamp = "",
+    [ValidateSet("risk_on", "risk_off", "all_blocked", "bad_data")]
+    [string]$Scenario = "risk_on",
+    [switch]$ResetState,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -84,6 +90,7 @@ foreach ($EndpointName in @("ALPACA_BASE_URL", "ALPACA_PAPER_BASE_URL", "APCA_AP
 
 Write-Host "tomorrow_crypto_trader_demo_command=run_tomorrow_crypto_trader_demo"
 Write-Host "tomorrow_crypto_trader_demo_mode=$Mode"
+Write-Host "tomorrow_crypto_trader_demo_scenario=$Scenario"
 Write-Host "tomorrow_crypto_trader_demo_default_simbroker_offline=$((Format-Bool ($Mode -eq 'SimBroker')))"
 Write-Host "preflight_APP_PROFILE_is_paper=$(Format-Bool $AppProfileIsPaper)"
 Write-Host "preflight_APP_PROFILE_is_live=$(Format-Bool $AppProfileIsLive)"
@@ -135,11 +142,18 @@ $Args = @(
     "-m", "algotrader.execution.tomorrow_crypto_trader_demo",
     "--output-root", $OutputRoot,
     "--mode", $Mode,
+    "--scenario", $Scenario,
     "--format", $Format
 )
 
+if (-not [string]::IsNullOrWhiteSpace($StateRoot)) {
+    $Args += @("--state-root", $StateRoot)
+}
 if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
     $Args += @("--as-of", $AsOfTimestamp)
+}
+if ($ResetState.IsPresent) {
+    $Args += @("--reset-state")
 }
 if ($AllowAlpacaPaperMutation.IsPresent) {
     $Args += @("--allow-alpaca-paper-mutation")

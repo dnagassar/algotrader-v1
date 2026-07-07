@@ -1,8 +1,9 @@
-"""v6.0 supervised crypto trader demo with an offline simulation broker.
+"""v6.1 supervised crypto trader demo with an offline simulation broker.
 
 The default path is intentionally local-only. It creates fixture-backed crypto
 bars, evaluates a small supervised decision router, builds an ExecutionPlan, and
-lets a deterministic simulation broker consume only accepted plan intents.
+lets a deterministic simulation broker consume only accepted plan intents while
+persisting simulated cash, positions, orders, fills, and cycle history.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ from pathlib import Path
 import subprocess
 from typing import Any, Literal
 
-from algotrader.core.types import Bar, OrderSide, OrderStatus, OrderType, ProposedOrder, Quote
+from algotrader.core.types import Bar, Fill, OrderSide, OrderStatus, OrderType, ProposedOrder, Quote
 from algotrader.execution.simulator import ExecutionResult, simulate_order
 from algotrader.orchestration.execution_planning_flow import (
     ExecutionPlan,
@@ -37,18 +38,19 @@ from algotrader.orchestration.risk_execution_flow import (
 )
 from algotrader.orchestration.screener_signal_flow import ScreenerSignalEvaluation
 from algotrader.orchestration.signal_risk_flow import SignalRiskEvaluation
-from algotrader.portfolio.state import Account, PortfolioState, apply_fill
+from algotrader.portfolio.state import Account, PortfolioState, Position, apply_fill
 from algotrader.risk.config import RiskConfig
 from algotrader.risk.engine import RiskEngine
 from algotrader.risk.state import RiskVerdict
 from algotrader.signals.crypto_trend import normalize_crypto_symbol
 
-SCHEMA_VERSION = "v6_0_tomorrow_supervised_crypto_paper_trader_demo_v1"
+SCHEMA_VERSION = "v6_1_crypto_simbroker_multi_cycle_operating_loop_v1"
 COMMAND_NAME = "run_tomorrow_crypto_trader_demo"
 VALIDATOR_COMMAND_NAME = "validate_tomorrow_crypto_trader_demo"
 DEFAULT_OUTPUT_ROOT = Path("runs/crypto_trader_demo/latest")
 DEFAULT_AS_OF = datetime(2026, 7, 6, 14, 30, tzinfo=UTC)
 DEFAULT_UNIVERSE = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
+DEFAULT_SCENARIO = "risk_on"
 
 MAX_NOTIONAL_PER_ORDER = Decimal("5")
 MAX_TOTAL_DEMO_EXPOSURE = Decimal("25")
@@ -99,6 +101,14 @@ REQUIRED_ARTIFACTS = (
     "next_operator_action.json",
 )
 
+STATE_ARTIFACTS = (
+    "simbroker_state.json",
+    "positions.json",
+    "fills.jsonl",
+    "cycle_history.jsonl",
+    "events.jsonl",
+)
+
 FORBIDDEN_SENTINELS = (
     "SENTINEL_ALPACA_SECRET_DO_NOT_PRINT",
     "script-paper-key-value-not-for-output",
@@ -108,12 +118,14 @@ FORBIDDEN_SENTINELS = (
 )
 
 Mode = Literal["SimBroker", "AlpacaPaper"]
+Scenario = Literal["risk_on", "risk_off", "all_blocked", "bad_data"]
 
 __all__ = [
     "ALPACA_PAPER_SAFETY_LABELS",
     "COMMAND_NAME",
     "DEFAULT_AS_OF",
     "DEFAULT_OUTPUT_ROOT",
+    "DEFAULT_SCENARIO",
     "DEFAULT_UNIVERSE",
     "MAX_NOTIONAL_PER_ORDER",
     "MAX_TOTAL_DEMO_EXPOSURE",
@@ -121,6 +133,7 @@ __all__ = [
     "REQUIRED_SAFETY_LABELS",
     "SCHEMA_VERSION",
     "SIMBROKER_SAFETY_LABELS",
+    "STATE_ARTIFACTS",
     "VALIDATOR_COMMAND_NAME",
     "SimulationBroker",
     "main",
@@ -170,6 +183,7 @@ class DemoCandidate:
 
 @dataclass(frozen=True, slots=True)
 class DemoPlanMaterial:
+    planned_action: str
     selected_candidate: DemoCandidate | None
     order: ProposedOrder | None
     quote: Quote | None
@@ -180,6 +194,21 @@ class DemoPlanMaterial:
     planning_policy: PlanningPolicyResult
     client_order_id: str
     blockers: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SimBrokerStateSnapshot:
+    state_root: Path
+    exists: bool
+    payload: Mapping[str, object]
+    portfolio: PortfolioState
+    seen_client_order_ids: tuple[str, ...]
+    orders: tuple[Mapping[str, object], ...]
+    fills: tuple[Mapping[str, object], ...]
+    cycle_history: tuple[Mapping[str, object], ...]
+    events: tuple[Mapping[str, object], ...]
+    open_orders: tuple[Mapping[str, object], ...]
+    errors: tuple[str, ...]
 
 
 class SimulationBroker:
@@ -210,14 +239,18 @@ class SimulationBroker:
         run_id: str,
         as_of: datetime,
         event_sink: list[dict[str, object]],
+        cycle_index: int = 0,
+        cycle_key: str = "",
     ) -> dict[str, object]:
         if plan.intents and not planning_policy.accepted_intents:
-            return self._block(
-                "no_policy_accepted_intents",
-                run_id=run_id,
-                as_of=as_of,
-                event_sink=event_sink,
-            )
+                return self._block(
+                    "no_policy_accepted_intents",
+                    run_id=run_id,
+                    as_of=as_of,
+                    event_sink=event_sink,
+                    cycle_index=cycle_index,
+                    cycle_key=cycle_key,
+                )
 
         for intent in planning_policy.accepted_intents:
             evaluation = intent.source_evaluation
@@ -230,6 +263,8 @@ class SimulationBroker:
                     run_id=run_id,
                     as_of=as_of,
                     event_sink=event_sink,
+                    cycle_index=cycle_index,
+                    cycle_key=cycle_key,
                 )
             client_order_id = order.client_order_id or ""
             if not client_order_id:
@@ -238,6 +273,8 @@ class SimulationBroker:
                     run_id=run_id,
                     as_of=as_of,
                     event_sink=event_sink,
+                    cycle_index=cycle_index,
+                    cycle_key=cycle_key,
                 )
             if client_order_id in self._seen_client_order_ids:
                 return self._block(
@@ -245,6 +282,8 @@ class SimulationBroker:
                     run_id=run_id,
                     as_of=as_of,
                     event_sink=event_sink,
+                    cycle_index=cycle_index,
+                    cycle_key=cycle_key,
                     symbol=order.symbol,
                     client_order_id=client_order_id,
                 )
@@ -254,6 +293,8 @@ class SimulationBroker:
                     run_id=run_id,
                     as_of=as_of,
                     event_sink=event_sink,
+                    cycle_index=cycle_index,
+                    cycle_key=cycle_key,
                     symbol=order.symbol,
                     client_order_id=client_order_id,
                 )
@@ -262,6 +303,8 @@ class SimulationBroker:
             action = {
                 "event_type": "simulation_order_submitted",
                 "run_id": run_id,
+                "cycle_index": cycle_index,
+                "cycle_key": cycle_key,
                 "timestamp": as_of.isoformat(),
                 "broker_mode": "simulation_broker",
                 "symbol": order.symbol,
@@ -275,13 +318,21 @@ class SimulationBroker:
             event_sink.append(action)
 
             execution = simulate_order(order=order, quote=quote, order_id=client_order_id)
-            self._record_execution(execution, run_id=run_id, event_sink=event_sink)
+            self._record_execution(
+                execution,
+                run_id=run_id,
+                event_sink=event_sink,
+                cycle_index=cycle_index,
+                cycle_key=cycle_key,
+            )
             if execution.fill is not None:
                 self._portfolio = apply_fill(self._portfolio, execution.fill)
                 event_sink.append(
                     {
                         "event_type": "simulation_reconciliation_checked",
                         "run_id": run_id,
+                        "cycle_index": cycle_index,
+                        "cycle_key": cycle_key,
                         "timestamp": as_of.isoformat(),
                         "broker_mode": "simulation_broker",
                         "portfolio": _portfolio_snapshot(self._portfolio),
@@ -331,11 +382,15 @@ class SimulationBroker:
         *,
         run_id: str,
         event_sink: list[dict[str, object]],
+        cycle_index: int = 0,
+        cycle_key: str = "",
     ) -> None:
         ack = execution.ack
         ack_event = {
             "event_type": "simulation_order_acknowledged",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": ack.timestamp.isoformat(),
             "broker_mode": "simulation_broker",
             "client_order_id": ack.order_id,
@@ -352,6 +407,8 @@ class SimulationBroker:
         fill_event = {
             "event_type": "simulation_order_filled",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": fill.timestamp.isoformat(),
             "broker_mode": "simulation_broker",
             "client_order_id": fill.order_id,
@@ -372,12 +429,16 @@ class SimulationBroker:
         run_id: str,
         as_of: datetime,
         event_sink: list[dict[str, object]],
+        cycle_index: int = 0,
+        cycle_key: str = "",
         symbol: str = "",
         client_order_id: str = "",
     ) -> dict[str, object]:
         event = {
             "event_type": "simulation_blocked",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": as_of.isoformat(),
             "broker_mode": "simulation_broker",
             "blocker": blocker,
@@ -403,12 +464,15 @@ def run_tomorrow_crypto_trader_demo(
     allow_alpaca_paper_mutation: bool = False,
     universe: Sequence[str] = DEFAULT_UNIVERSE,
     as_of: datetime | str | None = None,
+    state_root: Path | str | None = None,
+    scenario: Scenario | str = DEFAULT_SCENARIO,
+    reset_state: bool = False,
     write_artifacts: bool = True,
     existing_client_order_ids: Iterable[str] = (),
     paper_environment: Mapping[str, object] | None = None,
     alpaca_paper_snapshot: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
-    """Run the v6.0 demo packet builder.
+    """Run the v6.1 deterministic SimBroker operating-loop packet builder.
 
     SimBroker is the only implemented acceptance path. AlpacaPaper mode returns
     explicit gated statuses without contacting a broker.
@@ -416,7 +480,9 @@ def run_tomorrow_crypto_trader_demo(
 
     run_mode = _mode(mode)
     as_of_value = _utc_datetime(as_of or DEFAULT_AS_OF, "as_of")
+    scenario_value = _scenario(scenario)
     root = Path(output_root)
+    state_root_path = _state_root(root, state_root)
     normalized_universe = tuple(normalize_crypto_symbol(symbol) for symbol in universe)
     git_state = _git_state()
     run_id = _run_id(run_mode, as_of_value, normalized_universe, git_state["short_sha"])
@@ -449,7 +515,31 @@ def run_tomorrow_crypto_trader_demo(
             )
         return packet
 
-    bars_by_symbol = _offline_fixture_bars(normalized_universe, as_of_value)
+    state_snapshot = _load_simbroker_state(
+        state_root_path,
+        reset_state=reset_state,
+    )
+    cycle_index = _next_cycle_index(state_snapshot)
+    cycle_key = _cycle_key(
+        as_of=as_of_value,
+        scenario=scenario_value,
+        universe=normalized_universe,
+    )
+    events[0].update(
+        {
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
+            "scenario": scenario_value,
+            "state_root": str(state_root_path),
+            "reset_state": reset_state,
+        }
+    )
+
+    bars_by_symbol = _offline_fixture_bars(
+        normalized_universe,
+        as_of_value,
+        scenario_value,
+    )
     input_paths: dict[str, object] = {}
     if write_artifacts:
         input_path = root / "inputs" / "offline_crypto_bars.csv"
@@ -468,51 +558,141 @@ def run_tomorrow_crypto_trader_demo(
             {
                 "event_type": "candidate_evaluated",
                 "run_id": run_id,
+                "cycle_index": cycle_index,
+                "cycle_key": cycle_key,
                 "timestamp": as_of_value.isoformat(),
                 "candidate": candidate.to_dict(),
             }
         )
 
-    plan_material = _build_plan_material(
-        candidates=candidates,
-        bars_by_symbol=bars_by_symbol,
-        run_id=run_id,
-        as_of=as_of_value,
-        git_short_sha=git_state["short_sha"],
-        existing_client_order_ids=existing_client_order_ids,
+    state_blocker = _state_blocker(state_snapshot)
+    combined_existing_client_order_ids = _dedupe(
+        (*state_snapshot.seen_client_order_ids, *tuple(str(item) for item in existing_client_order_ids))
     )
-    events.extend(_plan_events(plan_material, run_id=run_id, as_of=as_of_value))
-
-    sim_broker = SimulationBroker(existing_client_order_ids=existing_client_order_ids)
-    broker_result = sim_broker.apply_plan(
-        plan=plan_material.execution_plan,
-        planning_policy=plan_material.planning_policy,
-        run_id=run_id,
-        as_of=as_of_value,
-        event_sink=events,
+    sim_broker = SimulationBroker(
+        portfolio=state_snapshot.portfolio,
+        existing_client_order_ids=combined_existing_client_order_ids,
     )
+    if state_blocker:
+        plan_material = _empty_plan_material(
+            planned_action="blocked_state_reconciliation",
+            blockers=(state_blocker,),
+            selected_candidate=None,
+        )
+        broker_result = _blocked_broker_result(
+            state_blocker,
+            portfolio=state_snapshot.portfolio,
+        )
+        events.append(
+            {
+                "event_type": "simulation_blocked",
+                "run_id": run_id,
+                "cycle_index": cycle_index,
+                "cycle_key": cycle_key,
+                "timestamp": as_of_value.isoformat(),
+                "broker_mode": "simulation_broker",
+                "blocker": state_blocker,
+                "simulated": True,
+            }
+        )
+    else:
+        plan_material = _build_plan_material(
+            candidates=candidates,
+            bars_by_symbol=bars_by_symbol,
+            run_id=run_id,
+            as_of=as_of_value,
+            git_short_sha=git_state["short_sha"],
+            existing_client_order_ids=combined_existing_client_order_ids,
+            portfolio=state_snapshot.portfolio,
+            scenario=scenario_value,
+        )
+        events.extend(
+            _plan_events(
+                plan_material,
+                run_id=run_id,
+                as_of=as_of_value,
+                cycle_index=cycle_index,
+                cycle_key=cycle_key,
+            )
+        )
+        broker_result = sim_broker.apply_plan(
+            plan=plan_material.execution_plan,
+            planning_policy=plan_material.planning_policy,
+            run_id=run_id,
+            as_of=as_of_value,
+            event_sink=events,
+            cycle_index=cycle_index,
+            cycle_key=cycle_key,
+        )
     decision = _sim_decision(plan_material, broker_result)
     final_blocker = _final_blocker(plan_material, broker_result)
     simulation_mutation_occurred = bool(sim_broker.fill_ledger)
+    safety = _simbroker_safety(simulation_mutation_occurred=simulation_mutation_occurred)
+    safety_labels = _simbroker_labels(
+        simulation_mutation_occurred=simulation_mutation_occurred,
+    )
     events.append(
         {
             "event_type": "demo_run_completed",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": as_of_value.isoformat(),
             "mode": run_mode,
+            "scenario": scenario_value,
+            "planned_action": plan_material.planned_action,
             "decision": decision,
             "final_blocker_status": final_blocker,
+            "simulation_mutation_occurred": simulation_mutation_occurred,
+            "safety_labels": list(safety_labels),
         }
     )
-
-    safety = _simbroker_safety(simulation_mutation_occurred=simulation_mutation_occurred)
+    cycle_record = _cycle_record(
+        cycle_index=cycle_index,
+        cycle_key=cycle_key,
+        run_id=run_id,
+        as_of=as_of_value,
+        scenario=scenario_value,
+        plan_material=plan_material,
+        decision=decision,
+        final_blocker=final_blocker,
+        simulation_mutation_occurred=simulation_mutation_occurred,
+        portfolio_before=state_snapshot.portfolio,
+        portfolio_after=sim_broker.portfolio,
+        fill_ledger=sim_broker.fill_ledger,
+        safety_labels=safety_labels,
+    )
+    cumulative_events = (
+        (*state_snapshot.events, *events)
+        if not state_snapshot.errors
+        else tuple(events)
+    )
+    updated_state = _updated_simbroker_state(
+        state_snapshot=state_snapshot,
+        portfolio=sim_broker.portfolio,
+        orders=sim_broker.action_ledger,
+        fills=sim_broker.fill_ledger,
+        cycle_record=cycle_record,
+        events=cumulative_events,
+        safety_labels=safety_labels,
+    )
+    state_artifact_paths = _state_artifact_paths(state_root_path)
+    if write_artifacts and not state_snapshot.errors:
+        state_artifact_paths = _write_simbroker_state_artifacts(
+            state_root_path,
+            updated_state,
+        )
     packet = {
         "schema_version": SCHEMA_VERSION,
         "record_type": "tomorrow_crypto_trader_demo",
         "operator_command": COMMAND_NAME,
         "run_id": run_id,
         "as_of": as_of_value.isoformat(),
+        "cycle_index": cycle_index,
+        "cycle_key": cycle_key,
+        "scenario": scenario_value,
         "output_root": str(root),
+        "state_root": str(state_root_path),
         "mode": run_mode,
         "broker_mode": "simulation_broker",
         "git_state": git_state,
@@ -539,8 +719,9 @@ def run_tomorrow_crypto_trader_demo(
         "selected_candidate_status": (
             "selected_candidate_for_supervised_demo"
             if plan_material.selected_candidate is not None
-            else "no_trade_all_scores_below_threshold"
+            else plan_material.planned_action
         ),
+        "planned_action": plan_material.planned_action,
         "decision": decision,
         "risk_decision": _risk_decision(plan_material.risk),
         "execution_intent": _execution_intent_record(plan_material),
@@ -554,16 +735,28 @@ def run_tomorrow_crypto_trader_demo(
         },
         "sim_broker_action_ledger": list(sim_broker.action_ledger),
         "fill_ledger": list(sim_broker.fill_ledger),
+        "cumulative_fill_ledger": list(_mapping_sequence(updated_state.get("fills"))),
         "portfolio_snapshot": _portfolio_snapshot(sim_broker.portfolio),
+        "state_reconciliation": {
+            "status": "failed" if state_snapshot.errors else "passed",
+            "errors": list(state_snapshot.errors),
+            "state_root": str(state_root_path),
+            "state_exists": state_snapshot.exists,
+            "open_simulated_order_count": len(state_snapshot.open_orders),
+            "portfolio_before": _portfolio_snapshot(state_snapshot.portfolio),
+            "portfolio_after": _portfolio_snapshot(sim_broker.portfolio),
+        },
+        "cycle_record": cycle_record,
         "broker_result": broker_result,
         "final_blocker_status": final_blocker,
         "blockers": list(_dedupe((*plan_material.blockers, _text(broker_result.get("blocker"))))),
         "next_operator_action": _next_action(decision, final_blocker),
         "safety": safety,
-        "safety_labels": list(SIMBROKER_SAFETY_LABELS),
-        "labels": list(SIMBROKER_SAFETY_LABELS),
+        "safety_labels": list(safety_labels),
+        "labels": list(safety_labels),
         "profit_claim": "none",
-        "events": events,
+        "state_artifact_paths": state_artifact_paths,
+        "events": list(cumulative_events),
     }
     if write_artifacts:
         packet["artifact_paths"] = write_tomorrow_crypto_trader_demo_artifacts(root, packet)
@@ -600,6 +793,7 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         "mode": _text(packet.get("mode")),
         "broker_mode": _text(packet.get("broker_mode")),
         "required_artifacts": {},
+        "state_artifacts": {},
         "generated_under_runs": _generated_under_runs(root),
         "safety": dict(_mapping(packet.get("safety"))),
         "safety_labels": list(_string_sequence(packet.get("safety_labels"))),
@@ -624,6 +818,18 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         for name, path in sorted(paths.items())
         if name != "manifest"
     }
+    manifest["state_artifacts"] = {
+        name: {
+            "path": str(path),
+            "exists": path.is_file(),
+            "sha256": _file_sha256(path) if path.is_file() else "",
+        }
+        for name, path in sorted(
+            (name, Path(path_text))
+            for name, path_text in _mapping(packet.get("state_artifact_paths")).items()
+            if _text(path_text)
+        )
+    }
     _write_json(paths["manifest"], manifest)
     return artifact_paths
 
@@ -635,12 +841,17 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
     positions = _mapping_sequence(_mapping(packet.get("portfolio_snapshot")).get("positions"))
     safety_labels = _string_sequence(packet.get("safety_labels"))
     lines = [
-        "# v6.0 Tomorrow Supervised Crypto Trader Demo",
+        "# v6.1 Crypto SimBroker Multi-Cycle Operating Loop",
         "",
         f"- run_id: `{_text(packet.get('run_id'))}`",
+        f"- cycle_index: `{_text(packet.get('cycle_index'))}`",
+        f"- cycle_key: `{_text(packet.get('cycle_key'))}`",
         f"- as_of: `{_text(packet.get('as_of'))}`",
+        f"- scenario: `{_text(packet.get('scenario'))}`",
         f"- mode: `{_text(packet.get('mode'))}`",
         f"- broker_mode: `{_text(packet.get('broker_mode'))}`",
+        f"- state_root: `{_text(packet.get('state_root'))}`",
+        f"- planned_action: `{_text(packet.get('planned_action'))}`",
         f"- decision: `{_text(packet.get('decision'))}`",
         f"- selected_symbol: `{selected_symbol}`",
         f"- final_blocker_status: `{_text(packet.get('final_blocker_status'))}`",
@@ -689,6 +900,9 @@ def validate_tomorrow_crypto_trader_demo(
     manifest = _read_json_or_error(artifact_paths["manifest.json"], errors)
     next_action = _read_json_or_error(artifact_paths["next_operator_action.json"], errors)
     events = _read_jsonl_or_error(artifact_paths["events.jsonl"], errors)
+    state_paths: dict[str, Path] = {}
+    state_payload: Mapping[str, object] = {}
+    state_events: tuple[Mapping[str, object], ...] = ()
     brief_text = ""
     try:
         brief_text = artifact_paths["operating_brief.md"].read_text(encoding="utf-8")
@@ -698,6 +912,41 @@ def validate_tomorrow_crypto_trader_demo(
 
     if record:
         _validate_record_contract(record, events, errors)
+        if _text(record.get("mode")) == "SimBroker":
+            state_paths = _state_paths_for_record(record, root)
+            for name, path in state_paths.items():
+                if not path.is_file():
+                    errors.append(f"missing_state_artifact:{name}")
+            state_payload = _read_json_or_error(
+                state_paths.get("simbroker_state.json", root / "__missing_state__.json"),
+                errors,
+            )
+            positions_payload = _read_json_or_error(
+                state_paths.get("positions.json", root / "__missing_positions__.json"),
+                errors,
+            )
+            fills = _read_jsonl_or_error(
+                state_paths.get("fills.jsonl", root / "__missing_fills__.jsonl"),
+                errors,
+            )
+            cycle_history = _read_jsonl_or_error(
+                state_paths.get("cycle_history.jsonl", root / "__missing_cycle_history__.jsonl"),
+                errors,
+            )
+            state_events = _read_jsonl_or_error(
+                state_paths.get("events.jsonl", root / "__missing_state_events__.jsonl"),
+                errors,
+            )
+            if state_payload:
+                _validate_state_artifacts(
+                    record=record,
+                    state_payload=state_payload,
+                    positions_payload=positions_payload,
+                    fills=fills,
+                    cycle_history=cycle_history,
+                    state_events=state_events,
+                    errors=errors,
+                )
     if manifest:
         _validate_labels("manifest", manifest, errors)
     if next_action:
@@ -717,6 +966,7 @@ def validate_tomorrow_crypto_trader_demo(
         "validation_status": "failed" if errors else "passed",
         "errors": errors,
         "required_artifacts": {name: str(path) for name, path in artifact_paths.items()},
+        "state_artifacts": {name: str(path) for name, path in state_paths.items()},
     }
 
 
@@ -730,6 +980,15 @@ def _validate_record_contract(
     mode = _text(record.get("mode"))
     broker_mode = _text(record.get("broker_mode"))
     if mode == "SimBroker":
+        labels = set(_string_sequence(record.get("safety_labels") or record.get("labels")))
+        for label in SIMBROKER_SAFETY_LABELS:
+            if label not in labels:
+                errors.append(f"operating_record_missing_label:{label}")
+        expected_mutation_label = (
+            f"simulation_mutation_occurred={_bool_text(safety.get('simulation_mutation_occurred'))}"
+        )
+        if expected_mutation_label not in labels:
+            errors.append(f"operating_record_missing_label:{expected_mutation_label}")
         expected_false = (
             "paper_submit_authorized",
             "broker_mutation_authorized",
@@ -743,6 +1002,8 @@ def _validate_record_contract(
         for field in expected_false:
             if safety.get(field) is not False:
                 errors.append(f"simbroker_flag_not_false:{field}")
+        if safety.get("simulation_mutation_authorized") is not True:
+            errors.append("simbroker_simulation_mutation_not_authorized")
         if broker_mode != "simulation_broker":
             errors.append("simbroker_broker_mode_mismatch")
         if safety.get("broker_state_mode") != "offline_simulation":
@@ -768,7 +1029,7 @@ def _validate_record_contract(
             errors.append("alpaca_paper_live_endpoint_touched")
 
     selected = record.get("selected_candidate")
-    if isinstance(selected, Mapping):
+    if isinstance(selected, Mapping) and _text(record.get("planned_action")) == "simulated_buy":
         if selected.get("data_gate_passed") is not True:
             errors.append("selected_candidate_without_data_gate")
         if selected.get("orderability_gate_passed") is not True:
@@ -792,6 +1053,127 @@ def _validate_labels(
     for label in REQUIRED_SAFETY_LABELS:
         if label not in labels:
             errors.append(f"{name}_missing_label:{label}")
+
+
+def _state_paths_for_record(
+    record: Mapping[str, object],
+    output_root: Path,
+) -> dict[str, Path]:
+    explicit = _mapping(record.get("state_artifact_paths"))
+    if explicit:
+        return {
+            name: Path(_text(explicit.get(name)))
+            for name in STATE_ARTIFACTS
+            if _text(explicit.get(name))
+        }
+    state_root_text = _text(record.get("state_root"))
+    state_root = Path(state_root_text) if state_root_text else output_root / "state"
+    return {name: state_root / name for name in STATE_ARTIFACTS}
+
+
+def _validate_state_artifacts(
+    *,
+    record: Mapping[str, object],
+    state_payload: Mapping[str, object],
+    positions_payload: Mapping[str, object],
+    fills: Sequence[Mapping[str, object]],
+    cycle_history: Sequence[Mapping[str, object]],
+    state_events: Sequence[Mapping[str, object]],
+    errors: list[str],
+) -> None:
+    _validate_labels("simbroker_state", state_payload, errors)
+    if positions_payload:
+        _validate_labels("positions", positions_payload, errors)
+    if state_payload.get("record_type") != "simbroker_state":
+        errors.append("simbroker_state_record_type_mismatch")
+    if state_payload.get("broker_mode") != "simulation_broker":
+        errors.append("simbroker_state_broker_mode_mismatch")
+    state_fills = _mapping_sequence(state_payload.get("fills"))
+    state_cycles = _mapping_sequence(state_payload.get("cycle_history"))
+    if len(state_fills) != len(fills):
+        errors.append("state_fills_jsonl_count_mismatch")
+    if len(state_cycles) != len(cycle_history):
+        errors.append("state_cycle_history_jsonl_count_mismatch")
+    state_errors: list[str] = []
+    portfolio = _portfolio_from_state(state_payload, state_errors)
+    state_errors.extend(_state_reconciliation_errors(state_payload, portfolio))
+    for error in _dedupe(state_errors):
+        errors.append(error)
+    _validate_cycle_history(cycle_history, fills, errors)
+    _validate_event_cycle_order(state_events, errors)
+    open_orders = _mapping_sequence(state_payload.get("open_orders"))
+    if open_orders and _text(record.get("final_blocker_status")) != "open_simulated_order_present":
+        errors.append("open_simulated_order_without_blocker")
+    record_cycle_index = record.get("cycle_index")
+    if record_cycle_index not in (None, "") and cycle_history:
+        last_cycle = cycle_history[-1]
+        if _text(last_cycle.get("cycle_index")) != _text(record_cycle_index):
+            errors.append("record_cycle_not_latest_state_cycle")
+
+
+def _validate_cycle_history(
+    cycle_history: Sequence[Mapping[str, object]],
+    fills: Sequence[Mapping[str, object]],
+    errors: list[str],
+) -> None:
+    prior_index = 0
+    mutated_cycle_keys: set[str] = set()
+    fills_by_cycle: dict[str, int] = {}
+    for fill in fills:
+        cycle_index = _text(fill.get("cycle_index"))
+        fills_by_cycle[cycle_index] = fills_by_cycle.get(cycle_index, 0) + 1
+    for cycle in cycle_history:
+        try:
+            cycle_index = int(str(cycle.get("cycle_index")))
+        except (TypeError, ValueError):
+            errors.append("cycle_history_invalid_cycle_index")
+            continue
+        if cycle_index <= prior_index:
+            errors.append("cycle_history_not_monotonic")
+        prior_index = cycle_index
+        cycle_key = _text(cycle.get("cycle_key"))
+        fill_count = int(cycle.get("fill_count", 0) or 0)
+        planned_action = _text(cycle.get("planned_action"))
+        if planned_action.startswith("hold") and fill_count != 0:
+            errors.append(f"hold_cycle_has_fill:{cycle_index}")
+        if planned_action.startswith("hold") and fills_by_cycle.get(str(cycle_index), 0):
+            errors.append(f"hold_cycle_has_simulated_fill:{cycle_index}")
+        if cycle.get("simulation_mutation_occurred") is True:
+            if cycle_key in mutated_cycle_keys:
+                errors.append(f"duplicate_cycle_mutation:{cycle_key}")
+            mutated_cycle_keys.add(cycle_key)
+        if planned_action == "simulated_exit" and fill_count > 0:
+            before = _decimal_or_error(
+                _mapping(cycle.get("portfolio_before")).get("gross_exposure", "0"),
+                "cycle.portfolio_before.gross_exposure",
+                errors,
+            )
+            after = _decimal_or_error(
+                _mapping(cycle.get("portfolio_after")).get("gross_exposure", "0"),
+                "cycle.portfolio_after.gross_exposure",
+                errors,
+            )
+            if after >= before:
+                errors.append(f"exit_cycle_did_not_reduce_exposure:{cycle_index}")
+
+
+def _validate_event_cycle_order(
+    events: Sequence[Mapping[str, object]],
+    errors: list[str],
+) -> None:
+    prior = 0
+    for event in events:
+        value = event.get("cycle_index")
+        if value in (None, ""):
+            continue
+        try:
+            cycle_index = int(str(value))
+        except (TypeError, ValueError):
+            errors.append("event_invalid_cycle_index")
+            continue
+        if cycle_index < prior:
+            errors.append("event_cycle_order_not_monotonic")
+        prior = cycle_index
 
 
 def _alpaca_paper_packet(
@@ -955,10 +1337,38 @@ def _paper_credentials_loaded(env: Mapping[str, object]) -> bool:
 def _offline_fixture_bars(
     universe: Sequence[str],
     as_of: datetime,
+    scenario: Scenario = DEFAULT_SCENARIO,
 ) -> dict[str, tuple[Bar, ...]]:
     bars: dict[str, tuple[Bar, ...]] = {}
     for symbol in universe:
         normalized = normalize_crypto_symbol(symbol)
+        if scenario == "risk_off":
+            bars[normalized] = _fixture_series(
+                normalized,
+                as_of,
+                count=80,
+                start="220" if normalized == "BTCUSD" else "120",
+                step="-0.90",
+            )
+            continue
+        if scenario == "all_blocked":
+            bars[normalized] = _fixture_series(
+                normalized,
+                as_of,
+                count=80,
+                start="100",
+                step="0",
+            )
+            continue
+        if scenario == "bad_data":
+            bars[normalized] = _fixture_series(
+                normalized,
+                as_of,
+                count=12,
+                start="100",
+                step="0",
+            )
+            continue
         if normalized == "BTCUSD":
             bars[normalized] = _fixture_series(normalized, as_of, count=80, start="100", step="1.20")
         elif normalized == "ETHUSD":
@@ -1106,28 +1516,53 @@ def _build_plan_material(
     as_of: datetime,
     git_short_sha: str,
     existing_client_order_ids: Iterable[str],
+    portfolio: PortfolioState,
+    scenario: Scenario,
 ) -> DemoPlanMaterial:
     selected = _select_candidate(candidates)
     duplicate_ids = set(existing_client_order_ids)
+    position = _first_open_position(portfolio)
+    data_blocked = _candidate_data_blocked(candidates)
     blockers: list[str] = []
-    if selected is None:
-        blockers.append("no_trade_all_scores_below_threshold")
-        empty_plan = build_execution_plan(())
-        return DemoPlanMaterial(
-            selected_candidate=None,
-            order=None,
-            quote=None,
-            risk=None,
-            risk_evaluation=None,
-            execution_intents=(),
-            execution_plan=empty_plan,
-            planning_policy=apply_max_intents_execution_planning_policy(
-                empty_plan,
-                MaxAcceptedIntentsPolicyConfig(max_accepted_intents=1),
-            ),
-            client_order_id="",
-            blockers=tuple(blockers),
+
+    if position is not None:
+        if selected is not None and scenario == "risk_on":
+            return _empty_plan_material(
+                planned_action="hold_existing_position_risk_on",
+                blockers=(),
+                selected_candidate=selected,
+            )
+        if scenario == "risk_off" and not data_blocked:
+            return _build_exit_plan_material(
+                position=position,
+                bars_by_symbol=bars_by_symbol,
+                run_id=run_id,
+                as_of=as_of,
+                git_short_sha=git_short_sha,
+                existing_client_order_ids=duplicate_ids,
+                portfolio=portfolio,
+            )
+        blocker = "data_quality_block" if data_blocked else "all_candidates_failed_gates"
+        return _empty_plan_material(
+            planned_action="blocked_no_trade",
+            blockers=(blocker,),
+            selected_candidate=selected,
         )
+
+    if selected is None:
+        if scenario == "risk_off" and not data_blocked:
+            return _empty_plan_material(
+                planned_action="hold_no_position_risk_off",
+                blockers=(),
+                selected_candidate=None,
+            )
+        blockers.append("data_quality_block" if data_blocked else "all_candidates_failed_gates")
+        return _empty_plan_material(
+            planned_action="blocked_no_trade",
+            blockers=tuple(blockers),
+            selected_candidate=None,
+        )
+
     latest_price = selected.latest_price
     if latest_price is None:
         blockers.append("latest_price_missing")
@@ -1163,7 +1598,6 @@ def _build_plan_material(
         quantity=quantity,
         client_order_id=client_order_id,
     )
-    portfolio = PortfolioState(account=Account(SIMULATED_STARTING_CASH, "USD"))
     risk = RiskEngine(
         RiskConfig(
             max_order_notional=MAX_NOTIONAL_PER_ORDER,
@@ -1217,7 +1651,123 @@ def _build_plan_material(
         MaxAcceptedIntentsPolicyConfig(max_accepted_intents=1),
     )
     return DemoPlanMaterial(
+        planned_action="simulated_buy",
         selected_candidate=selected if risk_passed else None,
+        order=order if risk_passed else None,
+        quote=quote,
+        risk=risk,
+        risk_evaluation=risk_eval,
+        execution_intents=intents,
+        execution_plan=plan,
+        planning_policy=policy,
+        client_order_id=client_order_id,
+        blockers=tuple(_dedupe(blockers)),
+    )
+
+
+def _empty_plan_material(
+    *,
+    planned_action: str,
+    blockers: Sequence[str],
+    selected_candidate: DemoCandidate | None,
+) -> DemoPlanMaterial:
+    empty_plan = build_execution_plan(())
+    return DemoPlanMaterial(
+        planned_action=planned_action,
+        selected_candidate=selected_candidate,
+        order=None,
+        quote=None,
+        risk=None,
+        risk_evaluation=None,
+        execution_intents=(),
+        execution_plan=empty_plan,
+        planning_policy=apply_max_intents_execution_planning_policy(
+            empty_plan,
+            MaxAcceptedIntentsPolicyConfig(max_accepted_intents=1),
+        ),
+        client_order_id="",
+        blockers=tuple(_dedupe(blockers)),
+    )
+
+
+def _build_exit_plan_material(
+    *,
+    position: Position,
+    bars_by_symbol: Mapping[str, tuple[Bar, ...]],
+    run_id: str,
+    as_of: datetime,
+    git_short_sha: str,
+    existing_client_order_ids: set[str],
+    portfolio: PortfolioState,
+) -> DemoPlanMaterial:
+    blockers: list[str] = []
+    bars = tuple(bars_by_symbol.get(position.symbol, ()))
+    usable = tuple(bar for bar in sorted(bars, key=lambda item: item.timestamp) if bar.timestamp <= as_of)
+    if not usable:
+        return _empty_plan_material(
+            planned_action="blocked_no_trade",
+            blockers=("latest_price_missing",),
+            selected_candidate=None,
+        )
+    latest_price = usable[-1].close
+    strategy_id = f"{position.symbol.lower()}_risk_off_exit_demo"
+    client_order_id = _client_order_id(
+        run_id=run_id,
+        symbol=position.symbol,
+        side="sell",
+        as_of=as_of,
+        strategy_id=strategy_id,
+        git_short_sha=git_short_sha,
+    )
+    if client_order_id in existing_client_order_ids:
+        blockers.append("duplicate_client_order_id")
+    quote = Quote(
+        symbol=position.symbol,
+        timestamp=as_of,
+        bid=latest_price * Decimal("0.999"),
+        ask=latest_price,
+    )
+    order = ProposedOrder(
+        symbol=position.symbol,
+        side=OrderSide.SELL,
+        order_type=OrderType.MARKET,
+        quantity=position.quantity,
+        client_order_id=client_order_id,
+    )
+    risk = RiskEngine(
+        RiskConfig(
+            max_order_notional=MAX_TOTAL_DEMO_EXPOSURE,
+            allow_short=False,
+            allow_fractional_shares=True,
+            max_positions=MAX_OPEN_EXPOSURE_SYMBOLS,
+        )
+    ).check(order, portfolio, quote)
+    if not risk.allowed:
+        blockers.append(risk.reason or "risk_rejected")
+    risk_passed = risk.allowed and not blockers
+    screener_eval = ScreenerSignalEvaluation(
+        symbol=position.symbol,
+        previous_bar=usable[-1],
+        quote=quote,
+        order=order if risk_passed else None,
+    )
+    risk_eval = SignalRiskEvaluation(
+        symbol=position.symbol,
+        previous_bar=screener_eval.previous_bar,
+        quote=screener_eval.quote,
+        order=order if risk_passed else None,
+        risk=risk,
+        status="risk_approved" if risk_passed else "risk_rejected",
+    )
+    intents = build_execution_intents_from_risk_approved((risk_eval,))
+    plan = build_execution_plan(intents)
+    policy = apply_max_intents_execution_planning_policy(
+        plan,
+        MaxAcceptedIntentsPolicyConfig(max_accepted_intents=1),
+    )
+    return DemoPlanMaterial(
+        planned_action="simulated_exit",
+        selected_candidate=None,
         order=order if risk_passed else None,
         quote=quote,
         risk=risk,
@@ -1244,31 +1794,60 @@ def _select_candidate(candidates: Sequence[DemoCandidate]) -> DemoCandidate | No
     return sorted(eligible, key=lambda item: (-item.score, item.symbol))[0]
 
 
+def _first_open_position(portfolio: PortfolioState) -> Position | None:
+    open_positions = [position for position in portfolio.positions if not position.is_flat]
+    if not open_positions:
+        return None
+    return sorted(open_positions, key=lambda item: item.symbol)[0]
+
+
+def _candidate_data_blocked(candidates: Sequence[DemoCandidate]) -> bool:
+    if not candidates:
+        return True
+    return all(
+        not candidate.data_gate_passed
+        or "insufficient_history" in candidate.blockers
+        or "latest_price_missing" in candidate.blockers
+        for candidate in candidates
+    )
+
+
 def _plan_events(
     plan_material: DemoPlanMaterial,
     *,
     run_id: str,
     as_of: datetime,
+    cycle_index: int,
+    cycle_key: str,
 ) -> list[dict[str, object]]:
     return [
         {
             "event_type": "execution_intent_created",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": as_of.isoformat(),
+            "planned_action": plan_material.planned_action,
             "intent_count": len(plan_material.execution_intents),
             "client_order_id": plan_material.client_order_id,
         },
         {
             "event_type": "execution_plan_created",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": as_of.isoformat(),
+            "planned_action": plan_material.planned_action,
             "intent_count": len(plan_material.execution_plan.intents),
             "immutable_pre_broker_plan": True,
         },
         {
             "event_type": "planning_policy_decision",
             "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
             "timestamp": as_of.isoformat(),
+            "planned_action": plan_material.planned_action,
             "accepted_count": len(plan_material.planning_policy.accepted_intents),
             "skipped_count": len(plan_material.planning_policy.skipped_intents),
         },
@@ -1277,6 +1856,10 @@ def _plan_events(
 
 def _simbroker_safety(*, simulation_mutation_occurred: bool) -> dict[str, object]:
     return {
+        "simulation_or_paper_only": True,
+        "not_live_authorized": True,
+        "no_real_capital": True,
+        "profit_claim": "none",
         "broker_mode": "simulation_broker",
         "paper_submit_authorized": False,
         "broker_mutation_authorized": False,
@@ -1388,20 +1971,512 @@ def _alpaca_next_action(status: str) -> str:
     return "not_attempted_simbroker_acceptance_is_primary"
 
 
+def _state_root(output_root: Path, state_root: Path | str | None) -> Path:
+    return Path(state_root) if state_root is not None else output_root / "state"
+
+
+def _load_simbroker_state(
+    state_root: Path,
+    *,
+    reset_state: bool,
+) -> SimBrokerStateSnapshot:
+    state_path = state_root / "simbroker_state.json"
+    if reset_state or not state_path.is_file():
+        return _state_snapshot_from_payload(
+            state_root,
+            _initial_simbroker_state(state_root),
+            exists=False,
+        )
+    try:
+        payload = json.loads(state_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return _state_snapshot_from_payload(
+            state_root,
+            _initial_simbroker_state(state_root),
+            exists=True,
+            extra_errors=("invalid_json:simbroker_state.json",),
+        )
+    except OSError:
+        return _state_snapshot_from_payload(
+            state_root,
+            _initial_simbroker_state(state_root),
+            exists=True,
+            extra_errors=("unreadable_json:simbroker_state.json",),
+        )
+    if not isinstance(payload, Mapping):
+        return _state_snapshot_from_payload(
+            state_root,
+            _initial_simbroker_state(state_root),
+            exists=True,
+            extra_errors=("json_not_object:simbroker_state.json",),
+        )
+    return _state_snapshot_from_payload(state_root, payload, exists=True)
+
+
+def _state_snapshot_from_payload(
+    state_root: Path,
+    payload: Mapping[str, object],
+    *,
+    exists: bool,
+    extra_errors: Sequence[str] = (),
+) -> SimBrokerStateSnapshot:
+    errors: list[str] = list(extra_errors)
+    if payload.get("record_type") != "simbroker_state":
+        errors.append("state_record_type_mismatch")
+    if payload.get("broker_mode") != "simulation_broker":
+        errors.append("state_broker_mode_mismatch")
+    portfolio = _portfolio_from_state(payload, errors)
+    orders = _mapping_sequence(payload.get("orders"))
+    fills = _mapping_sequence(payload.get("fills"))
+    cycle_history = _mapping_sequence(payload.get("cycle_history"))
+    events = _mapping_sequence(payload.get("events"))
+    open_orders = _mapping_sequence(payload.get("open_orders"))
+    seen_client_order_ids = _dedupe(
+        (
+            *_string_sequence(payload.get("seen_client_order_ids")),
+            *(
+                _text(order.get("client_order_id"))
+                for order in orders
+                if _text(order.get("client_order_id"))
+            ),
+            *(
+                _text(fill.get("client_order_id"))
+                for fill in fills
+                if _text(fill.get("client_order_id"))
+            ),
+        )
+    )
+    errors.extend(_state_reconciliation_errors(payload, portfolio))
+    return SimBrokerStateSnapshot(
+        state_root=state_root,
+        exists=exists,
+        payload=payload,
+        portfolio=portfolio,
+        seen_client_order_ids=seen_client_order_ids,
+        orders=orders,
+        fills=fills,
+        cycle_history=cycle_history,
+        events=events,
+        open_orders=open_orders,
+        errors=tuple(_dedupe(errors)),
+    )
+
+
+def _initial_simbroker_state(state_root: Path) -> dict[str, object]:
+    labels = _simbroker_labels(simulation_mutation_occurred=False)
+    portfolio = PortfolioState(account=Account(SIMULATED_STARTING_CASH, "USD"))
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "simbroker_state",
+        "state_root": str(state_root),
+        "broker_mode": "simulation_broker",
+        "cash": SIMULATED_STARTING_CASH,
+        "currency": "USD",
+        "positions": [],
+        "gross_exposure": Decimal("0"),
+        "open_orders": [],
+        "orders": [],
+        "fills": [],
+        "seen_client_order_ids": [],
+        "cycle_history": [],
+        "events": [],
+        "portfolio_snapshot": _portfolio_snapshot(portfolio),
+        "safety": _simbroker_safety(simulation_mutation_occurred=False),
+        "safety_labels": list(labels),
+        "labels": list(labels),
+        "profit_claim": "none",
+    }
+
+
+def _portfolio_from_state(
+    payload: Mapping[str, object],
+    errors: list[str],
+) -> PortfolioState:
+    cash = _decimal_or_error(payload.get("cash", SIMULATED_STARTING_CASH), "cash", errors)
+    if cash < 0:
+        errors.append("state_cash_negative")
+        cash = Decimal("0")
+    currency = _text(payload.get("currency")) or "USD"
+    positions: list[Position] = []
+    for index, item in enumerate(_mapping_sequence(payload.get("positions"))):
+        symbol = _text(item.get("symbol"))
+        quantity = _decimal_or_error(item.get("quantity", "0"), f"positions[{index}].quantity", errors)
+        average_price = _decimal_or_error(
+            item.get("average_price", "0"),
+            f"positions[{index}].average_price",
+            errors,
+        )
+        if quantity < 0:
+            errors.append(f"positions[{index}].quantity_negative")
+            continue
+        if average_price < 0:
+            errors.append(f"positions[{index}].average_price_negative")
+            continue
+        if quantity == 0:
+            continue
+        try:
+            positions.append(Position(symbol, quantity, average_price))
+        except Exception:
+            errors.append(f"positions[{index}].invalid_position")
+    try:
+        return PortfolioState(
+            account=Account(cash, currency),
+            positions=tuple(positions),
+        )
+    except Exception:
+        errors.append("state_portfolio_invalid")
+        return PortfolioState(account=Account(SIMULATED_STARTING_CASH, "USD"))
+
+
+def _state_reconciliation_errors(
+    payload: Mapping[str, object],
+    portfolio: PortfolioState,
+) -> tuple[str, ...]:
+    errors: list[str] = []
+    expected = PortfolioState(account=Account(SIMULATED_STARTING_CASH, "USD"))
+    for index, fill_payload in enumerate(_mapping_sequence(payload.get("fills"))):
+        try:
+            side = OrderSide(_text(fill_payload.get("side")))
+            fill = Fill(
+                order_id=_text(fill_payload.get("client_order_id"))
+                or _text(fill_payload.get("order_id")),
+                symbol=_text(fill_payload.get("symbol")),
+                side=side,
+                quantity=_decimal_or_error(
+                    fill_payload.get("quantity", "0"),
+                    f"fills[{index}].quantity",
+                    errors,
+                ),
+                price=_decimal_or_error(
+                    fill_payload.get("price", "0"),
+                    f"fills[{index}].price",
+                    errors,
+                ),
+                timestamp=_utc_datetime(
+                    fill_payload.get("timestamp"),
+                    f"fills[{index}].timestamp",
+                ),
+            )
+            expected = apply_fill(expected, fill)
+        except Exception:
+            errors.append(f"fills[{index}].invalid_fill")
+    if expected.account.cash != portfolio.account.cash:
+        errors.append("state_cash_arithmetic_mismatch")
+    expected_positions = {
+        position.symbol: position for position in expected.positions if not position.is_flat
+    }
+    actual_positions = {
+        position.symbol: position for position in portfolio.positions if not position.is_flat
+    }
+    if set(expected_positions) != set(actual_positions):
+        errors.append("state_position_symbols_mismatch")
+    for symbol, expected_position in expected_positions.items():
+        actual_position = actual_positions.get(symbol)
+        if actual_position is None:
+            continue
+        if actual_position.quantity != expected_position.quantity:
+            errors.append(f"state_position_quantity_mismatch:{symbol}")
+        if actual_position.average_price != expected_position.average_price:
+            errors.append(f"state_position_average_price_mismatch:{symbol}")
+    gross_exposure = sum(
+        position.quantity * position.average_price for position in portfolio.positions
+    )
+    recorded_gross = _decimal_or_error(
+        payload.get("gross_exposure", gross_exposure),
+        "gross_exposure",
+        errors,
+    )
+    if recorded_gross != gross_exposure:
+        errors.append("state_gross_exposure_mismatch")
+    return tuple(_dedupe(errors))
+
+
+def _state_blocker(state_snapshot: SimBrokerStateSnapshot) -> str:
+    if state_snapshot.errors:
+        return "state_reconciliation_failed"
+    if state_snapshot.open_orders:
+        return "open_simulated_order_present"
+    return ""
+
+
+def _blocked_broker_result(
+    blocker: str,
+    *,
+    portfolio: PortfolioState,
+) -> dict[str, object]:
+    return {
+        "status": "blocked",
+        "blocker": blocker,
+        "action_count": 0,
+        "fill_count": 0,
+        "portfolio": _portfolio_snapshot(portfolio),
+    }
+
+
+def _next_cycle_index(state_snapshot: SimBrokerStateSnapshot) -> int:
+    indices: list[int] = []
+    for cycle in state_snapshot.cycle_history:
+        value = cycle.get("cycle_index")
+        if isinstance(value, int):
+            indices.append(value)
+            continue
+        try:
+            indices.append(int(str(value)))
+        except (TypeError, ValueError):
+            continue
+    return max(indices, default=0) + 1
+
+
+def _cycle_key(
+    *,
+    as_of: datetime,
+    scenario: Scenario,
+    universe: Sequence[str],
+) -> str:
+    digest = hashlib.sha256(
+        "|".join((as_of.isoformat(), scenario, ",".join(universe))).encode("utf-8")
+    ).hexdigest()[:10]
+    return f"{as_of.strftime('%Y%m%dT%H%M%SZ')}_{scenario}_{digest}"
+
+
+def _cycle_record(
+    *,
+    cycle_index: int,
+    cycle_key: str,
+    run_id: str,
+    as_of: datetime,
+    scenario: Scenario,
+    plan_material: DemoPlanMaterial,
+    decision: str,
+    final_blocker: str,
+    simulation_mutation_occurred: bool,
+    portfolio_before: PortfolioState,
+    portfolio_after: PortfolioState,
+    fill_ledger: Sequence[Mapping[str, object]],
+    safety_labels: Sequence[str],
+) -> dict[str, object]:
+    order = plan_material.order
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "simbroker_cycle",
+        "cycle_index": cycle_index,
+        "cycle_key": cycle_key,
+        "run_id": run_id,
+        "as_of": as_of.isoformat(),
+        "scenario": scenario,
+        "broker_mode": "simulation_broker",
+        "planned_action": plan_material.planned_action,
+        "decision": decision,
+        "final_blocker_status": final_blocker,
+        "client_order_id": plan_material.client_order_id,
+        "symbol": "" if order is None else order.symbol,
+        "side": "" if order is None else order.side.value,
+        "fill_count": len(fill_ledger),
+        "simulation_mutation_occurred": simulation_mutation_occurred,
+        "portfolio_before": _portfolio_snapshot(portfolio_before),
+        "portfolio_after": _portfolio_snapshot(portfolio_after),
+        "safety_labels": list(safety_labels),
+        "labels": list(safety_labels),
+        "profit_claim": "none",
+    }
+
+
+def _updated_simbroker_state(
+    *,
+    state_snapshot: SimBrokerStateSnapshot,
+    portfolio: PortfolioState,
+    orders: Sequence[Mapping[str, object]],
+    fills: Sequence[Mapping[str, object]],
+    cycle_record: Mapping[str, object],
+    events: Sequence[Mapping[str, object]],
+    safety_labels: Sequence[str],
+) -> dict[str, object]:
+    prior_orders = list(state_snapshot.orders)
+    prior_fills = list(state_snapshot.fills)
+    prior_cycles = list(state_snapshot.cycle_history)
+    order_records = [
+        _state_order_record(order, cycle_record, safety_labels)
+        for order in orders
+        if _text(order.get("event_type")) in {
+            "simulation_order_submitted",
+            "simulation_order_acknowledged",
+            "simulation_order_canceled",
+        }
+    ]
+    fill_records = [
+        _state_fill_record(fill, cycle_record, safety_labels)
+        for fill in fills
+    ]
+    seen_client_order_ids = _dedupe(
+        (
+            *state_snapshot.seen_client_order_ids,
+            *(
+                _text(order.get("client_order_id"))
+                for order in order_records
+                if _text(order.get("client_order_id"))
+            ),
+            *(
+                _text(fill.get("client_order_id"))
+                for fill in fill_records
+                if _text(fill.get("client_order_id"))
+            ),
+        )
+    )
+    portfolio_payload = _portfolio_state_payload(portfolio)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "simbroker_state",
+        "state_root": str(state_snapshot.state_root),
+        "broker_mode": "simulation_broker",
+        "cash": portfolio.account.cash,
+        "currency": portfolio.account.currency,
+        "positions": portfolio_payload["positions"],
+        "gross_exposure": portfolio_payload["gross_exposure"],
+        "open_orders": list(state_snapshot.open_orders),
+        "orders": [*prior_orders, *order_records],
+        "fills": [*prior_fills, *fill_records],
+        "seen_client_order_ids": list(seen_client_order_ids),
+        "cycle_history": [*prior_cycles, dict(cycle_record)],
+        "events": [dict(event) for event in events],
+        "portfolio_snapshot": _portfolio_snapshot(portfolio),
+        "safety": _simbroker_safety(
+            simulation_mutation_occurred=_text(cycle_record.get("simulation_mutation_occurred")) == "true"
+        ),
+        "safety_labels": list(safety_labels),
+        "labels": list(safety_labels),
+        "profit_claim": "none",
+    }
+
+
+def _state_order_record(
+    order: Mapping[str, object],
+    cycle_record: Mapping[str, object],
+    safety_labels: Sequence[str],
+) -> dict[str, object]:
+    return {
+        **dict(order),
+        "cycle_index": cycle_record.get("cycle_index"),
+        "cycle_key": cycle_record.get("cycle_key"),
+        "run_id": cycle_record.get("run_id"),
+        "broker_mode": "simulation_broker",
+        "safety_labels": list(safety_labels),
+        "labels": list(safety_labels),
+        "profit_claim": "none",
+    }
+
+
+def _state_fill_record(
+    fill: Mapping[str, object],
+    cycle_record: Mapping[str, object],
+    safety_labels: Sequence[str],
+) -> dict[str, object]:
+    return {
+        **dict(fill),
+        "cycle_index": cycle_record.get("cycle_index"),
+        "cycle_key": cycle_record.get("cycle_key"),
+        "run_id": cycle_record.get("run_id"),
+        "broker_mode": "simulation_broker",
+        "safety_labels": list(safety_labels),
+        "labels": list(safety_labels),
+        "profit_claim": "none",
+    }
+
+
+def _portfolio_state_payload(portfolio: PortfolioState) -> dict[str, object]:
+    return {
+        "positions": [_position_snapshot(position) for position in portfolio.positions],
+        "gross_exposure": sum(
+            position.quantity * position.average_price for position in portfolio.positions
+        ),
+    }
+
+
+def _write_simbroker_state_artifacts(
+    state_root: Path,
+    state_payload: Mapping[str, object],
+) -> dict[str, str]:
+    state_root.mkdir(parents=True, exist_ok=True)
+    paths = {name: state_root / name for name in STATE_ARTIFACTS}
+    _write_json(paths["simbroker_state.json"], state_payload)
+    positions_payload = {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "simbroker_positions",
+        "broker_mode": "simulation_broker",
+        "state_root": str(state_root),
+        "cash": state_payload.get("cash"),
+        "currency": state_payload.get("currency"),
+        "positions": list(_mapping_sequence(state_payload.get("positions"))),
+        "gross_exposure": state_payload.get("gross_exposure"),
+        "safety": dict(_mapping(state_payload.get("safety"))),
+        "safety_labels": list(_string_sequence(state_payload.get("safety_labels"))),
+        "labels": list(_string_sequence(state_payload.get("labels"))),
+        "profit_claim": "none",
+    }
+    _write_json(paths["positions.json"], positions_payload)
+    _write_events(paths["fills.jsonl"], _mapping_sequence(state_payload.get("fills")))
+    _write_events(
+        paths["cycle_history.jsonl"],
+        _mapping_sequence(state_payload.get("cycle_history")),
+    )
+    _write_events(paths["events.jsonl"], _mapping_sequence(state_payload.get("events")))
+    return {name: str(path) for name, path in paths.items()}
+
+
+def _state_artifact_paths(state_root: Path) -> dict[str, str]:
+    return {name: str(state_root / name) for name in STATE_ARTIFACTS}
+
+
+def _simbroker_labels(*, simulation_mutation_occurred: bool) -> tuple[str, ...]:
+    return (
+        *SIMBROKER_SAFETY_LABELS,
+        f"simulation_mutation_occurred={_bool_text(simulation_mutation_occurred)}",
+    )
+
+
 def _sim_decision(
     plan_material: DemoPlanMaterial,
     broker_result: Mapping[str, object],
 ) -> str:
-    if _text(broker_result.get("status")) == "completed" and plan_material.selected_candidate:
+    broker_status = _text(broker_result.get("status"))
+    broker_blocker = _text(broker_result.get("blocker"))
+    if broker_status == "blocked" and broker_blocker:
+        if broker_blocker == "duplicate_client_order_id":
+            return "blocked_duplicate_client_order_id"
+        if broker_blocker == "state_reconciliation_failed":
+            return "blocked_state_reconciliation_failed"
+        if broker_blocker == "open_simulated_order_present":
+            return "blocked_open_simulated_order_present"
+        return broker_blocker
+    if plan_material.planned_action == "hold_existing_position_risk_on":
+        return "hold_noop_existing_simulated_position"
+    if plan_material.planned_action == "hold_no_position_risk_off":
+        return "hold_noop_no_simulated_position"
+    if plan_material.planned_action == "blocked_no_trade":
+        if "data_quality_block" in plan_material.blockers:
+            return "blocked_no_trade_data_quality"
+        return "blocked_no_trade_all_candidates_failed_gates"
+    fill_count = int(broker_result.get("fill_count", 0) or 0)
+    if (
+        broker_status == "completed"
+        and plan_material.planned_action == "simulated_exit"
+        and plan_material.order is not None
+        and fill_count > 0
+    ):
+        return "offline_simulated_exit_only"
+    if (
+        broker_status == "completed"
+        and plan_material.planned_action == "simulated_buy"
+        and plan_material.order is not None
+        and fill_count > 0
+    ):
         return "offline_simulated_trade_only"
     if plan_material.blockers:
         if "duplicate_client_order_id" in plan_material.blockers:
             return "blocked_duplicate_client_order_id"
         if any("risk" in blocker for blocker in plan_material.blockers):
             return "no_trade_risk_block"
-    blocker = _text(broker_result.get("blocker"))
-    if blocker:
-        return blocker
+    if broker_blocker:
+        return broker_blocker
     return "no_trade_all_scores_below_threshold"
 
 
@@ -1412,6 +2487,13 @@ def _final_blocker(
     broker_blocker = _text(broker_result.get("blocker"))
     if broker_blocker:
         return broker_blocker
+    if plan_material.planned_action in {
+        "hold_existing_position_risk_on",
+        "hold_no_position_risk_off",
+    }:
+        return "none"
+    if plan_material.planned_action in {"simulated_buy", "simulated_exit"} and not plan_material.blockers:
+        return "none"
     if plan_material.blockers:
         return ",".join(plan_material.blockers)
     if not plan_material.selected_candidate:
@@ -1670,6 +2752,12 @@ def _mode(value: object) -> Mode:
     raise ValueError("mode must be SimBroker or AlpacaPaper.")
 
 
+def _scenario(value: object) -> Scenario:
+    if value in {"risk_on", "risk_off", "all_blocked", "bad_data"}:
+        return value  # type: ignore[return-value]
+    raise ValueError("scenario must be risk_on, risk_off, all_blocked, or bad_data.")
+
+
 def _utc_datetime(value: object, field_name: str) -> datetime:
     if isinstance(value, datetime):
         parsed = value
@@ -1715,6 +2803,18 @@ def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
 
 
+def _decimal_or_error(
+    value: object,
+    field_name: str,
+    errors: list[str],
+) -> Decimal:
+    try:
+        return Decimal(str(value))
+    except Exception:
+        errors.append(f"invalid_decimal:{field_name}")
+        return Decimal("0")
+
+
 def _decimal_text(value: Decimal) -> str:
     return format(value.normalize(), "f")
 
@@ -1749,12 +2849,19 @@ def _json_safe(value: object) -> object:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog=COMMAND_NAME,
-        description="Run or validate the v6.0 supervised crypto trader demo.",
+        description="Run or validate the v6.1 crypto SimBroker operating loop.",
     )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
+    parser.add_argument("--state-root", type=Path, default=None)
     parser.add_argument("--mode", choices=("SimBroker", "AlpacaPaper"), default="SimBroker")
     parser.add_argument("--allow-alpaca-paper-mutation", action="store_true")
     parser.add_argument("--as-of", default="")
+    parser.add_argument(
+        "--scenario",
+        choices=("risk_on", "risk_off", "all_blocked", "bad_data"),
+        default=DEFAULT_SCENARIO,
+    )
+    parser.add_argument("--reset-state", action="store_true")
     parser.add_argument("--validate-only", action="store_true")
     parser.add_argument("--format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv)
@@ -1773,6 +2880,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         mode=args.mode,
         allow_alpaca_paper_mutation=args.allow_alpaca_paper_mutation,
         as_of=args.as_of or None,
+        state_root=args.state_root,
+        scenario=args.scenario,
+        reset_state=args.reset_state,
         write_artifacts=True,
     )
     if args.format == "json":
@@ -1783,6 +2893,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("tomorrow_crypto_trader_demo_status=complete")
         print(f"mode={packet.get('mode', '')}")
         print(f"broker_mode={packet.get('broker_mode', '')}")
+        print(f"scenario={packet.get('scenario', '')}")
+        print(f"cycle_index={packet.get('cycle_index', '')}")
+        print(f"planned_action={packet.get('planned_action', '')}")
         print(f"decision={packet.get('decision', '')}")
         print(f"final_blocker_status={packet.get('final_blocker_status', '')}")
         print(f"simulation_mutation_occurred={_bool_text(safety.get('simulation_mutation_occurred'))}")

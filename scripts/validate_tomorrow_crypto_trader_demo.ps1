@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-Validates the v6.0 supervised crypto trader demo artifact packet.
+Validates the v6.1 crypto SimBroker operating-loop artifact packet.
 
 .DESCRIPTION
 Checks required JSON/JSONL/Markdown artifacts, safety labels, SimBroker mode
-flags, selected-candidate gate consistency, tracked runs status, and credential
-sentinel exposure. This validator does not read brokers, mutate brokers, load
-credentials, or contact the network.
+flags, selected-candidate gate consistency, state ledger continuity, tracked
+runs status, and credential sentinel exposure. This validator does not read
+brokers, mutate brokers, load credentials, or contact the network.
 #>
 
 [CmdletBinding()]

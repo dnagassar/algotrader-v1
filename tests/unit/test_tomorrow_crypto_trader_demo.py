@@ -16,6 +16,7 @@ from algotrader.execution.tomorrow_crypto_trader_demo import (
     MAX_TOTAL_DEMO_EXPOSURE,
     REQUIRED_ARTIFACTS,
     REQUIRED_SAFETY_LABELS,
+    STATE_ARTIFACTS,
     run_tomorrow_crypto_trader_demo,
     validate_tomorrow_crypto_trader_demo,
 )
@@ -92,6 +93,117 @@ def test_simbroker_caps_are_enforced_in_selected_fill(tmp_path: Path) -> None:
     assert portfolio["positions"][0]["symbol"] == "BTCUSD"
 
 
+def test_second_identical_cycle_holds_without_duplicate_buy(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    first = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_on",
+        write_artifacts=True,
+    )
+    second = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_on",
+        write_artifacts=True,
+    )
+
+    assert first["decision"] == "offline_simulated_trade_only"
+    assert second["decision"] == "hold_noop_existing_simulated_position"
+    assert second["planned_action"] == "hold_existing_position_risk_on"
+    assert second["fill_ledger"] == []
+    assert second["safety"]["simulation_mutation_occurred"] is False
+    state = _read_state(second)
+    assert len(state["fills"]) == 1
+    assert len(state["cycle_history"]) == 2
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+def test_risk_off_cycle_exits_existing_simulated_position(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_on",
+        write_artifacts=True,
+    )
+
+    exit_packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_off",
+        write_artifacts=True,
+    )
+
+    assert exit_packet["decision"] == "offline_simulated_exit_only"
+    assert exit_packet["planned_action"] == "simulated_exit"
+    assert exit_packet["fill_ledger"][0]["side"] == "sell"
+    assert exit_packet["portfolio_snapshot"]["positions"] == []
+    state = _read_state(exit_packet)
+    assert state["positions"] == []
+    assert len(state["fills"]) == 2
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+def test_no_position_risk_off_cycle_holds_noop(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_off",
+        write_artifacts=True,
+    )
+
+    assert packet["decision"] == "hold_noop_no_simulated_position"
+    assert packet["planned_action"] == "hold_no_position_risk_off"
+    assert packet["fill_ledger"] == []
+    assert packet["final_blocker_status"] == "none"
+    assert packet["safety"]["simulation_mutation_occurred"] is False
+
+
+def test_all_blocked_candidates_produce_blocked_no_trade(tmp_path: Path) -> None:
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=tmp_path / "runs" / "crypto_trader_demo" / "latest",
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="all_blocked",
+        write_artifacts=True,
+    )
+
+    assert packet["decision"] == "blocked_no_trade_all_candidates_failed_gates"
+    assert packet["planned_action"] == "blocked_no_trade"
+    assert packet["fill_ledger"] == []
+    assert packet["safety"]["simulation_mutation_occurred"] is False
+
+
+def test_corrupted_state_blocks_safely_without_simulated_fill(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    state_root = tmp_path / "runs" / "crypto_trader_demo" / "state"
+    state_root.mkdir(parents=True)
+    (state_root / "simbroker_state.json").write_text("{not-json", encoding="utf-8")
+
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        state_root=state_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_on",
+        write_artifacts=True,
+    )
+
+    assert packet["decision"] == "blocked_state_reconciliation_failed"
+    assert packet["final_blocker_status"] == "state_reconciliation_failed"
+    assert packet["fill_ledger"] == []
+    assert packet["safety"]["simulation_mutation_occurred"] is False
+
+
 def test_duplicate_client_order_id_blocks_before_simulated_fill(tmp_path: Path) -> None:
     output_root = tmp_path / "runs" / "crypto_trader_demo" / "first"
     first = run_tomorrow_crypto_trader_demo(
@@ -114,6 +226,67 @@ def test_duplicate_client_order_id_blocks_before_simulated_fill(tmp_path: Path) 
     assert "duplicate_client_order_id" in second["final_blocker_status"]
     assert second["fill_ledger"] == []
     assert second["safety"]["simulation_mutation_occurred"] is False
+
+
+def test_validator_catches_missing_and_corrupt_state_artifacts(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    state_paths = {name: Path(path) for name, path in packet["state_artifact_paths"].items()}
+    state_paths["positions.json"].unlink()
+
+    missing_validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert missing_validation["validation_status"] == "failed"
+    assert "missing_state_artifact:positions.json" in missing_validation["errors"]
+
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        scenario="risk_on",
+        reset_state=True,
+        write_artifacts=True,
+    )
+    state_paths = {
+        name: Path(path)
+        for name, path in json.loads((output_root / "operating_record.json").read_text("utf-8"))[
+            "state_artifact_paths"
+        ].items()
+    }
+    state_paths["simbroker_state.json"].write_text("{bad-json", encoding="utf-8")
+
+    corrupt_validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert corrupt_validation["validation_status"] == "failed"
+    assert "invalid_json:simbroker_state.json" in corrupt_validation["errors"]
+
+
+def test_validator_catches_inconsistent_cash_exposure_arithmetic(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    state_path = Path(packet["state_artifact_paths"]["simbroker_state.json"])
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["cash"] = "999"
+    state_path.write_text(
+        json.dumps(state, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "state_cash_arithmetic_mismatch" in validation["errors"]
 
 
 def test_simbroker_artifacts_do_not_capture_loaded_credential_values(
@@ -351,6 +524,63 @@ def test_generated_runs_artifacts_remain_untracked(tmp_path: Path) -> None:
     assert manifest["generated_under_runs"] is True
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == ""
+
+
+def test_state_artifacts_are_written_with_required_labels(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+
+    for artifact_name in STATE_ARTIFACTS:
+        assert Path(packet["state_artifact_paths"][artifact_name]).is_file()
+    state = _read_state(packet)
+    assert set(REQUIRED_SAFETY_LABELS) <= set(state["safety_labels"])
+    assert "simulation_mutation_occurred=true" in state["safety_labels"]
+
+
+def test_default_run_script_remains_backward_compatible(tmp_path: Path) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(tmp_path, capture_path)
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT_PATH),
+            "-OutputRoot",
+            str(output_root),
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    captured = capture_path.read_text(encoding="utf-8")
+    assert "--output-root" in captured
+    assert str(output_root) in captured
+    assert "--mode SimBroker" in captured
+    assert "--scenario risk_on" in captured
+    assert "--state-root" not in captured
+    assert "--reset-state" not in captured
+
+
+def _read_state(packet: Mapping[str, object]) -> Mapping[str, object]:
+    state_paths = packet["state_artifact_paths"]
+    assert isinstance(state_paths, Mapping)
+    state_path = Path(str(state_paths["simbroker_state.json"]))
+    return json.loads(state_path.read_text(encoding="utf-8"))
 
 
 def _fake_python_env(tmp_path: Path, capture_path: Path) -> dict[str, str]:
