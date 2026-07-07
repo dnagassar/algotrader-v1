@@ -90,7 +90,39 @@ BROKER_OBSERVED_READINESS_DECISIONS = (
     "broker_observed_blocked_not_authorized",
     "broker_observed_blocked_not_paper_profile",
     "broker_observed_blocked_live_endpoint_detected",
+    "broker_observed_blocked_adapter_unavailable",
+    "broker_observed_blocked_read_not_implemented",
+    "broker_observed_blocked_read_failed",
     "broker_observed_blocked_ambiguous_response",
+)
+
+BROKER_OBSERVED_CONSISTENCY_FIELDS = (
+    "broker_read_authorized",
+    "broker_read_attempted",
+    "broker_read_occurred",
+    "broker_read_blocked",
+    "broker_read_adapter_unavailable",
+    "broker_read_failed",
+    "broker_state_observed",
+    "network_used",
+    "broker_observed_readiness_decision",
+    "broker_observed_blocker",
+    "live_endpoint_touched",
+    "credential_values_exposed",
+    "paper_submit_occurred",
+    "broker_mutation_occurred",
+)
+
+RUN_SUMMARY_CONSOLE_FIELDS = (
+    "status",
+    "mode",
+    "broker_mode",
+    "scenario",
+    "cycle_index",
+    "planned_action",
+    "decision",
+    "final_blocker_status",
+    *BROKER_OBSERVED_CONSISTENCY_FIELDS,
 )
 
 REQUIRED_SAFETY_LABELS = (
@@ -133,6 +165,7 @@ REQUIRED_ARTIFACTS = (
     "events.jsonl",
     "manifest.json",
     "next_operator_action.json",
+    "run_summary.json",
     "paper_readiness_packet.json",
     "paper_readiness_packet.md",
 )
@@ -718,6 +751,10 @@ def run_tomorrow_crypto_trader_demo(
         broker_state_observed=broker_state_observed,
         network_used=run_network_used,
     )
+    broker_observed_telemetry = _broker_observed_consistency_summary(
+        broker_observed=broker_observed_preview,
+        safety=safety,
+    )
     events.append(
         {
             "event_type": "paper_readiness_evaluated",
@@ -748,7 +785,13 @@ def run_tomorrow_crypto_trader_demo(
                 ],
                 "blocker_code": broker_observed_preview["blocker_code"],
                 "broker_read_authorized": broker_observed_preview["broker_read_authorized"],
+                "broker_read_attempted": broker_observed_preview["broker_read_attempted"],
                 "broker_read_occurred": broker_observed_preview["broker_read_occurred"],
+                "broker_read_blocked": broker_observed_preview["broker_read_blocked"],
+                "broker_read_adapter_unavailable": broker_observed_preview[
+                    "broker_read_adapter_unavailable"
+                ],
+                "broker_read_failed": broker_observed_preview["broker_read_failed"],
                 "broker_state_observed": broker_observed_preview["broker_state_observed"],
                 "live_endpoint_touched": broker_observed_preview["live_endpoint_touched"],
                 "paper_submit_authorized": False,
@@ -830,8 +873,15 @@ def run_tomorrow_crypto_trader_demo(
         ],
         "blocker_code": broker_observed_preview["blocker_code"] or "none",
         "broker_read_authorized": broker_observed_preview["broker_read_authorized"],
+        "broker_read_attempted": broker_observed_preview["broker_read_attempted"],
         "broker_read_occurred": broker_observed_preview["broker_read_occurred"],
+        "broker_read_blocked": broker_observed_preview["broker_read_blocked"],
+        "broker_read_adapter_unavailable": broker_observed_preview[
+            "broker_read_adapter_unavailable"
+        ],
+        "broker_read_failed": broker_observed_preview["broker_read_failed"],
         "broker_state_observed": broker_observed_preview["broker_state_observed"],
+        "network_used": broker_observed_preview["network_used"],
         "paper_submit_authorized": False,
         "next_operator_action": broker_observed_preview["next_operator_action"],
     }
@@ -857,15 +907,16 @@ def run_tomorrow_crypto_trader_demo(
             "market_data_observed": False,
             "orderability_basis": "offline_fixture",
             "orderability_observed": False,
-            "broker_state_observed": False,
-            "broker_state_mode": "offline_simulation",
+            "broker_state_observed": broker_state_observed,
+            "broker_state_mode": safety["broker_state_mode"],
             "fixture_readiness_basis": paper_readiness_packet["readiness_basis"],
             "fixture_readiness_decision": paper_readiness_packet["readiness_decision"],
             "broker_observed_readiness_requested": broker_observed_readiness,
             "broker_observed_readiness_decision": broker_observed_preview[
                 "broker_observed_readiness_decision"
             ],
-            "network_used": False,
+            "broker_observed_blocker": broker_observed_preview["blocker_code"],
+            "network_used": run_network_used,
         },
         "candidate_universe": list(normalized_universe),
         "evaluated_subset": list(normalized_universe),
@@ -891,7 +942,7 @@ def run_tomorrow_crypto_trader_demo(
             "adapter": "simulation_broker",
             "accepted_execution_plan_required": True,
             "broker_sdk_imported": False,
-            "network_used": False,
+            "network_used": run_network_used,
         },
         "sim_broker_action_ledger": list(sim_broker.action_ledger),
         "fill_ledger": list(sim_broker.fill_ledger),
@@ -903,6 +954,8 @@ def run_tomorrow_crypto_trader_demo(
         "paper_readiness_packet": paper_readiness_packet,
         "broker_observed_readiness_requested": broker_observed_readiness,
         "broker_observed_readiness_preview": broker_observed_preview,
+        "broker_observed_telemetry": broker_observed_telemetry,
+        **broker_observed_telemetry,
         "final_blocker_status": final_blocker,
         "blockers": list(_dedupe((*plan_material.blockers, _text(broker_result.get("blocker"))))),
         "next_operator_action": next_operator_action,
@@ -932,6 +985,7 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         "events": root / "events.jsonl",
         "manifest": root / "manifest.json",
         "next_operator_action": root / "next_operator_action.json",
+        "run_summary": root / "run_summary.json",
         "paper_readiness_packet": root / "paper_readiness_packet.json",
         "paper_readiness_packet_markdown": root / "paper_readiness_packet.md",
     }
@@ -945,6 +999,9 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         )
     artifact_paths = {key: str(path) for key, path in paths.items()}
     packet_payload = {**dict(packet), "artifact_paths": artifact_paths}
+    run_summary = _run_summary_payload(packet_payload)
+    packet_payload["run_summary"] = run_summary
+    broker_observed_telemetry = _mapping(packet_payload.get("broker_observed_telemetry"))
     next_action = {
         **_mapping(packet.get("next_operator_action")),
         "run_id": _text(packet.get("run_id")),
@@ -992,12 +1049,54 @@ def write_tomorrow_crypto_trader_demo_artifacts(
                     packet.get("broker_observed_readiness_preview")
                 ).get("broker_read_occurred")
                 is True,
+                "broker_read_attempted": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_attempted")
+                is True,
+                "broker_read_blocked": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_blocked")
+                is True,
+                "broker_read_adapter_unavailable": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_adapter_unavailable")
+                is True,
+                "broker_read_failed": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_failed")
+                is True,
+                "broker_state_observed": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_state_observed")
+                is True,
+                "network_used": _mapping(packet.get("safety")).get("network_used") is True,
+                "live_endpoint_touched": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("live_endpoint_touched")
+                is True,
+                "credential_values_exposed": _mapping(packet.get("safety")).get(
+                    "credential_values_exposed"
+                )
+                is True,
+                "paper_submit_occurred": _mapping(packet.get("safety")).get(
+                    "paper_submit_occurred"
+                )
+                is True,
+                "broker_mutation_occurred": _mapping(packet.get("safety")).get(
+                    "broker_mutation_occurred"
+                )
+                is True,
                 "artifact": (
                     "broker_observed_readiness_packet"
                     if broker_observed_packet
                     else ""
                 ),
             },
+        },
+        "broker_observed_telemetry": dict(broker_observed_telemetry),
+        "run_summary": {
+            "artifact": "run_summary",
+            "console_fields": dict(_mapping(run_summary.get("console_fields"))),
         },
         "safety": dict(_mapping(packet.get("safety"))),
         "safety_labels": list(_string_sequence(packet.get("safety_labels"))),
@@ -1013,6 +1112,7 @@ def write_tomorrow_crypto_trader_demo_artifacts(
     _write_json(paths["operating_record"], packet_payload)
     _write_events(paths["events"], _mapping_sequence(packet.get("events")))
     _write_json(paths["next_operator_action"], next_action)
+    _write_json(paths["run_summary"], run_summary)
     _write_json(
         paths["paper_readiness_packet"],
         _mapping(packet.get("paper_readiness_packet")),
@@ -1123,8 +1223,11 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             f"- broker_observed_readiness_decision: `{_text(broker_observed.get('broker_observed_readiness_decision'))}`",
             f"- blocker_status: `{broker_observed_blocker}`",
             f"- broker_read_authorized: `{_bool_text(broker_observed.get('broker_read_authorized'))}`",
+            f"- broker_read_attempted: `{_bool_text(broker_observed.get('broker_read_attempted'))}`",
             f"- broker_read_occurred: `{_bool_text(broker_observed.get('broker_read_occurred'))}`",
+            f"- broker_read_blocked: `{_bool_text(broker_observed.get('broker_read_blocked'))}`",
             f"- broker_state_observed: `{_bool_text(broker_observed.get('broker_state_observed'))}`",
+            f"- network_used: `{_bool_text(broker_observed.get('network_used'))}`",
             f"- paper_submit_authorized: `{_bool_text(broker_observed.get('paper_submit_authorized'))}`",
             f"- next_operator_action: `{_text(broker_observed.get('next_operator_action'))}`",
             "",
@@ -1184,8 +1287,13 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- broker_observed_readiness_decision: `{_text(packet.get('broker_observed_readiness_decision'))}`",
             f"- blocker_code: `{_text(packet.get('blocker_code')) or 'none'}`",
             f"- broker_read_authorized: `{_bool_text(packet.get('broker_read_authorized'))}`",
+            f"- broker_read_attempted: `{_bool_text(packet.get('broker_read_attempted'))}`",
             f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
+            f"- broker_read_blocked: `{_bool_text(packet.get('broker_read_blocked'))}`",
+            f"- broker_read_adapter_unavailable: `{_bool_text(packet.get('broker_read_adapter_unavailable'))}`",
+            f"- broker_read_failed: `{_bool_text(packet.get('broker_read_failed'))}`",
             f"- broker_state_observed: `{_bool_text(packet.get('broker_state_observed'))}`",
+            f"- network_used: `{_bool_text(packet.get('network_used'))}`",
             f"- broker_endpoint_type: `{_text(packet.get('broker_endpoint_type'))}`",
             f"- live_endpoint_touched: `{_bool_text(packet.get('live_endpoint_touched'))}`",
             f"- paper_account_status: `{_text(packet.get('paper_account_status')) or 'not_observed'}`",
@@ -1218,6 +1326,7 @@ def validate_tomorrow_crypto_trader_demo(
     record = _read_json_or_error(artifact_paths["operating_record.json"], errors)
     manifest = _read_json_or_error(artifact_paths["manifest.json"], errors)
     next_action = _read_json_or_error(artifact_paths["next_operator_action.json"], errors)
+    run_summary = _read_json_or_error(artifact_paths["run_summary.json"], errors)
     paper_readiness = _read_json_or_error(
         artifact_paths["paper_readiness_packet.json"],
         errors,
@@ -1315,10 +1424,18 @@ def validate_tomorrow_crypto_trader_demo(
                 markdown=broker_observed_text,
                 errors=errors,
             )
+        if run_summary:
+            _validate_run_summary(
+                run_summary=run_summary,
+                record=record,
+                broker_observed_readiness=broker_observed_readiness,
+                errors=errors,
+            )
     if manifest:
         _validate_labels("manifest", manifest, errors)
         _validate_manifest_references_paper_readiness(manifest, errors)
         _validate_manifest_readiness_bases(manifest, record, errors)
+        _validate_manifest_telemetry(manifest, record, broker_observed_readiness, errors)
     if next_action:
         _validate_labels("next_operator_action", next_action, errors)
     if brief_text:
@@ -1333,6 +1450,11 @@ def validate_tomorrow_crypto_trader_demo(
         errors.append("generated_runs_artifacts_tracked")
     _validate_forbidden_sentinels(root, errors)
 
+    validation_fields = _validation_summary_fields(
+        record=record,
+        broker_observed_readiness=broker_observed_readiness,
+        run_summary=run_summary,
+    )
     return {
         "schema_version": SCHEMA_VERSION,
         "record_type": "tomorrow_crypto_trader_demo_validation",
@@ -1341,6 +1463,7 @@ def validate_tomorrow_crypto_trader_demo(
         "errors": errors,
         "required_artifacts": {name: str(path) for name, path in artifact_paths.items()},
         "state_artifacts": {name: str(path) for name, path in state_paths.items()},
+        **validation_fields,
     }
 
 
@@ -1414,6 +1537,44 @@ def _validate_record_contract(
             errors.append("simbroker_invalid_market_data_basis")
         if safety.get("simulation_mutation_occurred") is True and not events:
             errors.append("events_empty_after_simulated_action")
+        telemetry = _mapping(record.get("broker_observed_telemetry"))
+        if telemetry:
+            for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
+                if field not in telemetry:
+                    errors.append(f"operating_record_broker_observed_telemetry_missing:{field}")
+                elif record.get(field) != telemetry.get(field):
+                    errors.append(f"operating_record_top_level_telemetry_mismatch:{field}")
+            if telemetry.get("network_used") != safety.get("network_used"):
+                errors.append("operating_record_safety_network_flag_mismatch")
+            if telemetry.get("broker_read_occurred") != safety.get("broker_read_occurred"):
+                errors.append("operating_record_safety_broker_read_flag_mismatch")
+            if telemetry.get("broker_state_observed") != safety.get("broker_state_observed"):
+                errors.append("operating_record_safety_broker_state_flag_mismatch")
+            if telemetry.get("network_used") != provenance.get("network_used"):
+                errors.append("operating_record_provenance_network_flag_mismatch")
+            if telemetry.get("broker_state_observed") != provenance.get("broker_state_observed"):
+                errors.append("operating_record_provenance_broker_state_flag_mismatch")
+            adapter = _mapping(record.get("broker_mode_adapter"))
+            if telemetry.get("network_used") != adapter.get("network_used"):
+                errors.append("operating_record_adapter_network_flag_mismatch")
+            decision = _text(telemetry.get("broker_observed_readiness_decision"))
+            blocker = _text(telemetry.get("broker_observed_blocker"))
+            if broker_observed_requested and not decision:
+                errors.append("broker_observed_readiness_decision_missing")
+            if (
+                telemetry.get("broker_read_authorized") is True
+                and telemetry.get("broker_read_occurred") is False
+                and not blocker
+            ):
+                errors.append("broker_read_authorized_without_read_or_blocker")
+            if (
+                telemetry.get("network_used") is True
+                and telemetry.get("broker_read_occurred") is False
+                and not blocker
+            ):
+                errors.append("inconsistent_network_without_broker_read")
+        else:
+            errors.append("operating_record_broker_observed_telemetry_missing")
     if mode == "AlpacaPaper":
         if broker_mode != "alpaca_paper":
             errors.append("alpaca_paper_broker_mode_mismatch")
@@ -1434,6 +1595,45 @@ def _validate_record_contract(
                 errors.append("paper_candidate_without_min_notional_verification")
             if selected.get("qty_increment_verified") is not True:
                 errors.append("paper_candidate_without_qty_increment_verification")
+
+
+def _validate_run_summary(
+    *,
+    run_summary: Mapping[str, object],
+    record: Mapping[str, object],
+    broker_observed_readiness: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    _validate_labels("run_summary", run_summary, errors)
+    if run_summary.get("record_type") != "tomorrow_crypto_trader_demo_run_summary":
+        errors.append("run_summary_record_type_mismatch")
+    if _text(run_summary.get("run_id")) != _text(record.get("run_id")):
+        errors.append("run_summary_run_id_mismatch")
+    fields = _mapping(run_summary.get("console_fields"))
+    if not fields:
+        errors.append("run_summary_console_fields_missing")
+        return
+    expected_lines = _console_summary_lines(fields)
+    if list(_string_sequence(run_summary.get("console_lines"))) != expected_lines:
+        errors.append("run_summary_console_lines_mismatch")
+
+    record_telemetry = _mapping(record.get("broker_observed_telemetry"))
+    for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
+        if field not in fields:
+            errors.append(f"run_summary_console_field_missing:{field}")
+            continue
+        if fields.get(field) != record_telemetry.get(field):
+            if field == "network_used":
+                errors.append("inconsistent_console_artifact_network_flag")
+            else:
+                errors.append(f"inconsistent_console_artifact_field:{field}")
+
+    if broker_observed_readiness:
+        _validate_broker_observed_artifact_consistency(
+            record=record,
+            broker_observed_readiness=broker_observed_readiness,
+            errors=errors,
+        )
 
 
 def _validate_paper_readiness_packet(
@@ -1571,11 +1771,42 @@ def _validate_broker_observed_readiness_packet(
         packet.get("safety")
     ).get("broker_read_authorized") is not True:
         errors.append("broker_read_safety_occurred_without_authorization")
+    if packet.get("broker_read_occurred") is True and packet.get("broker_read_attempted") is not True:
+        errors.append("broker_read_occurred_without_attempt")
+    if packet.get("broker_state_observed") is True and packet.get("broker_read_occurred") is not True:
+        errors.append("broker_state_observed_without_broker_read")
     if (
         record.get("broker_observed_readiness_requested") is not True
         and packet.get("broker_read_occurred") is True
     ):
         errors.append("broker_read_occurred_in_default_simbroker_mode")
+    blocker_code = _text(packet.get("blocker_code"))
+    if (
+        packet.get("broker_read_authorized") is True
+        and packet.get("broker_read_occurred") is False
+        and not blocker_code
+    ):
+        errors.append("broker_read_authorized_without_read_or_blocker")
+    if (
+        packet.get("network_used") is True
+        and packet.get("broker_read_occurred") is False
+        and not blocker_code
+    ):
+        errors.append("inconsistent_network_without_broker_read")
+    if packet.get("broker_read_blocked") is True and not blocker_code:
+        errors.append("broker_read_blocked_without_blocker")
+    if decision in {
+        "broker_observed_blocked_credentials_not_loaded",
+        "broker_observed_blocked_not_authorized",
+        "broker_observed_blocked_not_paper_profile",
+        "broker_observed_blocked_live_endpoint_detected",
+        "broker_observed_blocked_adapter_unavailable",
+        "broker_observed_blocked_read_not_implemented",
+        "broker_observed_blocked_read_failed",
+        "broker_observed_blocked_ambiguous_response",
+    }:
+        if packet.get("broker_read_blocked") is not True:
+            errors.append("broker_observed_blocked_decision_without_blocked_flag")
 
     if decision == "broker_observed_ready_preview":
         if packet.get("broker_read_occurred") is not True:
@@ -1602,6 +1833,27 @@ def _validate_broker_observed_readiness_packet(
 
     if markdown and decision and decision not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_decision")
+
+
+def _validate_broker_observed_artifact_consistency(
+    *,
+    record: Mapping[str, object],
+    broker_observed_readiness: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    record_telemetry = _mapping(record.get("broker_observed_telemetry"))
+    packet_summary = _broker_observed_consistency_summary(
+        broker_observed=broker_observed_readiness,
+        safety=_mapping(record.get("safety")),
+    )
+    for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
+        if record_telemetry.get(field) != packet_summary.get(field):
+            if field == "network_used":
+                errors.append("inconsistent_operating_record_broker_observed_network_flag")
+            elif field == "broker_read_occurred":
+                errors.append("inconsistent_operating_record_broker_observed_read_flag")
+            else:
+                errors.append(f"inconsistent_operating_record_broker_observed_field:{field}")
 
 
 def _validate_manifest_references_paper_readiness(
@@ -1644,6 +1896,49 @@ def _validate_manifest_readiness_bases(
             errors.append(
                 "manifest_missing_required_artifact:broker_observed_readiness_packet_markdown"
             )
+
+
+def _validate_manifest_telemetry(
+    manifest: Mapping[str, object],
+    record: Mapping[str, object],
+    broker_observed_readiness: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    record_telemetry = _mapping(record.get("broker_observed_telemetry"))
+    manifest_telemetry = _mapping(manifest.get("broker_observed_telemetry"))
+    if not manifest_telemetry:
+        errors.append("manifest_broker_observed_telemetry_missing")
+    for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
+        if manifest_telemetry.get(field) != record_telemetry.get(field):
+            errors.append(f"inconsistent_manifest_operating_record_field:{field}")
+
+    broker_observed = _mapping(_mapping(manifest.get("readiness_bases")).get("broker_observed"))
+    field_map = {
+        "decision": "broker_observed_readiness_decision",
+        "blocker_code": "broker_observed_blocker",
+        "broker_read_authorized": "broker_read_authorized",
+        "broker_read_attempted": "broker_read_attempted",
+        "broker_read_occurred": "broker_read_occurred",
+        "broker_read_blocked": "broker_read_blocked",
+        "broker_read_adapter_unavailable": "broker_read_adapter_unavailable",
+        "broker_read_failed": "broker_read_failed",
+        "broker_state_observed": "broker_state_observed",
+        "network_used": "network_used",
+        "live_endpoint_touched": "live_endpoint_touched",
+        "credential_values_exposed": "credential_values_exposed",
+        "paper_submit_occurred": "paper_submit_occurred",
+        "broker_mutation_occurred": "broker_mutation_occurred",
+    }
+    for manifest_field, telemetry_field in field_map.items():
+        if broker_observed.get(manifest_field) != record_telemetry.get(telemetry_field):
+            errors.append(f"inconsistent_manifest_readiness_basis_field:{manifest_field}")
+
+    if broker_observed_readiness:
+        _validate_broker_observed_artifact_consistency(
+            record=record,
+            broker_observed_readiness=broker_observed_readiness,
+            errors=errors,
+        )
 
 
 def _validate_labels(
@@ -1974,7 +2269,11 @@ def _broker_observed_readiness_preview(
         "fixture_blocker_code": _text(fixture_readiness.get("blocker_code")),
         "broker_read_requested": requested,
         "broker_read_authorized": broker_read_authorized,
+        "broker_read_attempted": False,
         "broker_read_occurred": False,
+        "broker_read_blocked": False,
+        "broker_read_adapter_unavailable": False,
+        "broker_read_failed": False,
         "broker_state_observed": False,
         "broker_endpoint_type": endpoint["broker_endpoint_type"],
         "endpoint_proven_paper": endpoint["endpoint_proven_paper"],
@@ -2018,31 +2317,47 @@ def _broker_observed_readiness_preview(
         )
     if not broker_read_authorized:
         return _broker_observed_packet_with_decision(
-            base_packet,
+            {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_not_authorized",
             blocker_code="broker_read_not_authorized",
             next_operator_action="rerun_with_allow_alpaca_paper_read_in_paper_shell",
         )
     if _text(env.get("APP_PROFILE")) != "paper":
         return _broker_observed_packet_with_decision(
-            base_packet,
+            {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_not_paper_profile",
             blocker_code="app_profile_not_paper",
             next_operator_action="set_APP_PROFILE_paper_in_dedicated_paper_shell",
         )
     if not _paper_credentials_loaded(env):
         return _broker_observed_packet_with_decision(
-            base_packet,
+            {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_credentials_not_loaded",
             blocker_code="credentials_not_loaded",
             next_operator_action="load_paper_credentials_without_printing_values",
         )
     if endpoint["endpoint_proven_paper"] is not True:
         return _broker_observed_packet_with_decision(
-            base_packet,
+            {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_live_endpoint_detected",
             blocker_code="paper_endpoint_not_proven",
             next_operator_action="fix_endpoint_to_paper_before_any_broker_read",
+        )
+
+    if (
+        paper_environment is not None
+        and broker_client is None
+        and broker_client_factory is None
+    ):
+        return _broker_observed_packet_with_decision(
+            {
+                **base_packet,
+                "broker_read_blocked": True,
+                "broker_read_adapter_unavailable": True,
+            },
+            decision="broker_observed_blocked_adapter_unavailable",
+            blocker_code="broker_read_adapter_unavailable",
+            next_operator_action="provide_read_only_adapter_before_broker_observed_readiness",
         )
 
     read_attempted = False
@@ -2050,6 +2365,34 @@ def _broker_observed_readiness_preview(
         client = broker_client or (
             broker_client_factory() if broker_client_factory is not None else _build_alpaca_read_client()
         )
+        if client is None:
+            return _broker_observed_packet_with_decision(
+                {
+                    **base_packet,
+                    "broker_read_blocked": True,
+                    "broker_read_adapter_unavailable": True,
+                },
+                decision="broker_observed_blocked_adapter_unavailable",
+                blocker_code="broker_read_adapter_unavailable",
+                next_operator_action="provide_read_only_adapter_before_broker_observed_readiness",
+            )
+        missing_methods = [
+            method_name
+            for method_name in ("get_account", "get_positions", "get_orders", "list_assets")
+            if not callable(getattr(client, method_name, None))
+        ]
+        if missing_methods:
+            return _broker_observed_packet_with_decision(
+                {
+                    **base_packet,
+                    "broker_read_blocked": True,
+                    "broker_read_adapter_unavailable": True,
+                    "missing_read_methods": missing_methods,
+                },
+                decision="broker_observed_blocked_read_not_implemented",
+                blocker_code="broker_read_not_implemented",
+                next_operator_action="implement_required_read_methods_before_retry",
+            )
         read_attempted = True
         account = _call_read_method(client, "get_account")
         positions = tuple(_call_read_method(client, "get_positions") or ())
@@ -2059,16 +2402,19 @@ def _broker_observed_readiness_preview(
         return _broker_observed_packet_with_decision(
             {
                 **base_packet,
-                "broker_read_occurred": read_attempted,
+                "broker_read_attempted": read_attempted,
+                "broker_read_occurred": False,
+                "broker_read_blocked": True,
+                "broker_read_failed": read_attempted,
                 "network_used": (
                     (True if network_used is None else network_used) if read_attempted else False
                 ),
                 "broker_error_type": exc.__class__.__name__,
                 "broker_error": _safe_broker_observed_error(exc),
             },
-            decision="broker_observed_blocked_ambiguous_response",
-            blocker_code="broker_response_ambiguous",
-            next_operator_action="operator_review_broker_response_before_retry",
+            decision="broker_observed_blocked_read_failed",
+            blocker_code="broker_read_failed",
+            next_operator_action="operator_review_broker_read_failure_before_retry",
         )
 
     positions_summary = _observed_positions_summary(positions, symbol)
@@ -2094,6 +2440,7 @@ def _broker_observed_readiness_preview(
     account_blocked = _optional_bool(_field(account, "account_blocked"))
     observed_packet = {
         **base_packet,
+        "broker_read_attempted": True,
         "broker_read_occurred": True,
         "broker_state_observed": True,
         "paper_account_status": account_status,
@@ -2176,7 +2523,11 @@ def _broker_observed_packet_with_decision(
         "simulation_mutation_authorized": False,
         "simulation_mutation_occurred": False,
         "broker_read_authorized": payload["broker_read_authorized"],
+        "broker_read_attempted": payload["broker_read_attempted"],
         "broker_read_occurred": payload["broker_read_occurred"],
+        "broker_read_blocked": payload["broker_read_blocked"],
+        "broker_read_adapter_unavailable": payload["broker_read_adapter_unavailable"],
+        "broker_read_failed": payload["broker_read_failed"],
         "broker_state_observed": payload["broker_state_observed"],
         "broker_endpoint_type": payload["broker_endpoint_type"],
         "live_endpoint_touched": False,
@@ -2188,7 +2539,11 @@ def _broker_observed_packet_with_decision(
         *REQUIRED_SAFETY_LABELS,
         "broker_mode=alpaca_paper_read_only",
         f"broker_read_authorized={_bool_text(payload['broker_read_authorized'])}",
+        f"broker_read_attempted={_bool_text(payload['broker_read_attempted'])}",
         f"broker_read_occurred={_bool_text(payload['broker_read_occurred'])}",
+        f"broker_read_blocked={_bool_text(payload['broker_read_blocked'])}",
+        f"broker_read_adapter_unavailable={_bool_text(payload['broker_read_adapter_unavailable'])}",
+        f"broker_read_failed={_bool_text(payload['broker_read_failed'])}",
         f"broker_state_observed={_bool_text(payload['broker_state_observed'])}",
         f"live_endpoint_touched={_bool_text(payload['live_endpoint_touched'])}",
         f"network_used={_bool_text(payload['network_used'])}",
@@ -2203,6 +2558,125 @@ def _broker_observed_packet_with_decision(
     payload["labels"] = list(labels)
     payload["profit_claim"] = "none"
     return payload
+
+
+def _broker_observed_consistency_summary(
+    *,
+    broker_observed: Mapping[str, object],
+    safety: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "broker_read_authorized": broker_observed.get("broker_read_authorized") is True,
+        "broker_read_attempted": broker_observed.get("broker_read_attempted") is True,
+        "broker_read_occurred": broker_observed.get("broker_read_occurred") is True,
+        "broker_read_blocked": broker_observed.get("broker_read_blocked") is True,
+        "broker_read_adapter_unavailable": (
+            broker_observed.get("broker_read_adapter_unavailable") is True
+        ),
+        "broker_read_failed": broker_observed.get("broker_read_failed") is True,
+        "broker_state_observed": broker_observed.get("broker_state_observed") is True,
+        "network_used": (
+            broker_observed.get("network_used") is True
+            if "network_used" in broker_observed
+            else safety.get("network_used") is True
+        ),
+        "broker_observed_readiness_decision": _text(
+            broker_observed.get("broker_observed_readiness_decision")
+            or broker_observed.get("readiness_decision")
+            or broker_observed.get("final_readiness_decision")
+        ),
+        "broker_observed_blocker": _text(broker_observed.get("blocker_code")),
+        "live_endpoint_touched": broker_observed.get("live_endpoint_touched") is True,
+        "credential_values_exposed": (
+            broker_observed.get("credential_values_exposed") is True
+            if "credential_values_exposed" in broker_observed
+            else safety.get("credential_values_exposed") is True
+        ),
+        "paper_submit_occurred": (
+            broker_observed.get("paper_submit_occurred") is True
+            if "paper_submit_occurred" in broker_observed
+            else safety.get("paper_submit_occurred") is True
+        ),
+        "broker_mutation_occurred": (
+            broker_observed.get("broker_mutation_occurred") is True
+            if "broker_mutation_occurred" in broker_observed
+            else safety.get("broker_mutation_occurred") is True
+        ),
+    }
+
+
+def _run_summary_payload(packet: Mapping[str, object]) -> dict[str, object]:
+    telemetry = _mapping(packet.get("broker_observed_telemetry"))
+    if not telemetry:
+        telemetry = {
+            field: packet.get(field)
+            for field in BROKER_OBSERVED_CONSISTENCY_FIELDS
+            if field in packet
+        }
+    console_fields = {
+        "status": "complete",
+        "mode": _text(packet.get("mode")),
+        "broker_mode": _text(packet.get("broker_mode")),
+        "scenario": _text(packet.get("scenario")),
+        "cycle_index": _text(packet.get("cycle_index")),
+        "planned_action": _text(packet.get("planned_action")),
+        "decision": _text(packet.get("decision")),
+        "final_blocker_status": _text(packet.get("final_blocker_status")),
+        **{
+            field: telemetry.get(field)
+            for field in BROKER_OBSERVED_CONSISTENCY_FIELDS
+        },
+    }
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "tomorrow_crypto_trader_demo_run_summary",
+        "run_id": _text(packet.get("run_id")),
+        "as_of": _text(packet.get("as_of")),
+        "console_prefix": "tomorrow_crypto_trader_demo",
+        "console_fields": console_fields,
+        "console_lines": _console_summary_lines(console_fields),
+        "safety_labels": list(_string_sequence(packet.get("safety_labels"))),
+        "labels": list(_string_sequence(packet.get("labels"))),
+        "profit_claim": "none",
+    }
+
+
+def _console_summary_lines(fields: Mapping[str, object]) -> list[str]:
+    lines: list[str] = []
+    ordered_keys = [
+        key
+        for key in RUN_SUMMARY_CONSOLE_FIELDS
+        if key in fields
+    ]
+    ordered_keys.extend(sorted(key for key in fields if key not in set(ordered_keys)))
+    for key in ordered_keys:
+        value = fields.get(key)
+        if type(value) is bool:
+            rendered = _bool_text(value)
+        else:
+            rendered = _text(value)
+        lines.append(f"tomorrow_crypto_trader_demo_{key}={rendered}")
+    return lines
+
+
+def _validation_summary_fields(
+    *,
+    record: Mapping[str, object],
+    broker_observed_readiness: Mapping[str, object],
+    run_summary: Mapping[str, object],
+) -> dict[str, object]:
+    source = _mapping(record.get("broker_observed_telemetry"))
+    if not source:
+        source = _mapping(run_summary.get("console_fields"))
+    if not source:
+        source = _broker_observed_consistency_summary(
+            broker_observed=broker_observed_readiness,
+            safety=_mapping(record.get("safety")),
+        )
+    return {
+        field: source.get(field)
+        for field in BROKER_OBSERVED_CONSISTENCY_FIELDS
+    }
 
 
 def _broker_endpoint_status(env: Mapping[str, object]) -> dict[str, object]:
@@ -4517,6 +4991,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(_json_safe(validation), sort_keys=True))
         else:
             print(f"tomorrow_crypto_trader_demo_validation_status={validation['validation_status']}")
+            for field in BROKER_OBSERVED_CONSISTENCY_FIELDS:
+                value = validation.get(field)
+                if type(value) is bool:
+                    rendered = _bool_text(value)
+                else:
+                    rendered = _text(value)
+                print(f"tomorrow_crypto_trader_demo_validator_{field}={rendered}")
             print("errors=" + ",".join(_string_sequence(validation.get("errors"))))
         return 0 if validation["validation_status"] == "passed" else 1
 
@@ -4535,21 +5016,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.format == "json":
         print(json.dumps(_json_safe(packet), sort_keys=True))
     else:
-        safety = _mapping(packet.get("safety"))
-        artifact_paths = _mapping(packet.get("artifact_paths"))
-        print("tomorrow_crypto_trader_demo_status=complete")
-        print(f"mode={packet.get('mode', '')}")
-        print(f"broker_mode={packet.get('broker_mode', '')}")
-        print(f"scenario={packet.get('scenario', '')}")
-        print(f"cycle_index={packet.get('cycle_index', '')}")
-        print(f"planned_action={packet.get('planned_action', '')}")
-        print(f"decision={packet.get('decision', '')}")
-        print(f"final_blocker_status={packet.get('final_blocker_status', '')}")
-        print(f"simulation_mutation_occurred={_bool_text(safety.get('simulation_mutation_occurred'))}")
-        print(f"paper_submit_occurred={_bool_text(safety.get('paper_submit_occurred'))}")
-        print(f"broker_mutation_occurred={_bool_text(safety.get('broker_mutation_occurred'))}")
-        print(f"network_used={_bool_text(safety.get('network_used'))}")
-        print(f"artifact_operating_record={artifact_paths.get('operating_record', '')}")
+        run_summary = _run_summary_payload(packet)
+        for line in _string_sequence(run_summary.get("console_lines")):
+            print(line)
     return 0
 
 

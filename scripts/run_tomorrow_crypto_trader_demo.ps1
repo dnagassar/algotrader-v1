@@ -113,8 +113,6 @@ if ($LiveEndpointIndicator -and -not $BrokerObservedReadiness.IsPresent) {
 
 if ($Mode -eq "SimBroker") {
     Write-Host "tomorrow_crypto_trader_demo_broker_mode=simulation_broker"
-    Write-Host "tomorrow_crypto_trader_demo_network_used=false"
-    Write-Host "tomorrow_crypto_trader_demo_broker_read_occurred=false"
     Write-Host "tomorrow_crypto_trader_demo_paper_submit_authorized=false"
     Write-Host "tomorrow_crypto_trader_demo_broker_mutation_authorized=false"
     if (

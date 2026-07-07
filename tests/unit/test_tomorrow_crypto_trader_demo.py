@@ -78,6 +78,20 @@ class _FakeBrokerReadClient:
         return self.assets
 
 
+class _FailingBrokerReadClient:
+    def get_account(self) -> Mapping[str, object]:
+        raise RuntimeError("paper read failed")
+
+    def get_positions(self) -> list[Mapping[str, object]]:
+        return []
+
+    def get_orders(self, query: object | None = None) -> list[Mapping[str, object]]:
+        return []
+
+    def list_assets(self) -> list[Mapping[str, object]]:
+        return []
+
+
 def test_simbroker_end_to_end_run_writes_valid_artifact_packet(tmp_path: Path) -> None:
     output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
 
@@ -662,7 +676,9 @@ def test_broker_observed_mode_refuses_without_explicit_read_authorization(
         "broker_observed_blocked_not_authorized"
     )
     assert broker["broker_read_authorized"] is False
+    assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
     assert broker["broker_state_observed"] is False
     assert broker["paper_submit_authorized"] is False
     assert broker["broker_mutation_occurred"] is False
@@ -687,7 +703,9 @@ def test_broker_observed_mode_refuses_without_paper_profile() -> None:
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_not_paper_profile"
     )
+    assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
 
 
 def test_broker_observed_mode_refuses_missing_credentials_without_exposing_values(
@@ -718,8 +736,153 @@ def test_broker_observed_mode_refuses_missing_credentials_without_exposing_value
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_credentials_not_loaded"
     )
+    assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
+    assert broker["network_used"] is False
     assert SENSITIVE_KEY not in emitted
+
+
+def test_default_simbroker_has_consistent_offline_broker_observed_flags(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+
+    expected = {
+        "broker_read_authorized": False,
+        "broker_read_attempted": False,
+        "broker_read_occurred": False,
+        "broker_read_blocked": False,
+        "broker_read_adapter_unavailable": False,
+        "broker_read_failed": False,
+        "broker_state_observed": False,
+        "network_used": False,
+        "broker_observed_readiness_decision": "broker_observed_not_attempted",
+        "broker_observed_blocker": "broker_observed_not_requested",
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_occurred": False,
+    }
+
+    record, manifest, run_summary, broker = _read_consistency_artifacts(output_root)
+
+    assert broker == {}
+    assert packet["broker_observed_telemetry"] == expected
+    assert record["broker_observed_telemetry"] == expected
+    assert manifest["broker_observed_telemetry"] == expected
+    assert {
+        field: run_summary["console_fields"][field]
+        for field in expected
+    } == expected
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+def test_broker_observed_without_credentials_records_consistent_block(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment={"APP_PROFILE": "paper"},
+        write_artifacts=True,
+    )
+
+    record, manifest, run_summary, broker = _read_consistency_artifacts(output_root)
+
+    assert broker["broker_observed_readiness_decision"] == (
+        "broker_observed_blocked_credentials_not_loaded"
+    )
+    assert broker["broker_read_authorized"] is True
+    assert broker["broker_read_attempted"] is False
+    assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
+    assert broker["network_used"] is False
+    _assert_consistent_telemetry(record, manifest, run_summary, broker)
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+def test_broker_observed_fake_credentials_without_adapter_blocks_explicitly(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        write_artifacts=True,
+    )
+
+    record, manifest, run_summary, broker = _read_consistency_artifacts(output_root)
+
+    assert broker["broker_observed_readiness_decision"] == (
+        "broker_observed_blocked_adapter_unavailable"
+    )
+    assert broker["blocker_code"] == "broker_read_adapter_unavailable"
+    assert broker["broker_read_authorized"] is True
+    assert broker["broker_read_attempted"] is False
+    assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
+    assert broker["broker_read_adapter_unavailable"] is True
+    assert broker["network_used"] is False
+    _assert_consistent_telemetry(record, manifest, run_summary, broker)
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+def test_network_without_completed_broker_read_requires_explicit_blocker(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FailingBrokerReadClient(),
+        broker_observed_network_used=True,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+
+    assert broker["broker_observed_readiness_decision"] == (
+        "broker_observed_blocked_read_failed"
+    )
+    assert broker["broker_read_attempted"] is True
+    assert broker["broker_read_occurred"] is False
+    assert broker["network_used"] is True
+    assert broker["blocker_code"] == "broker_read_failed"
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+    broker["blocker_code"] = ""
+    broker["broker_observed_readiness_decision"] = ""
+    broker["readiness_decision"] = ""
+    broker["final_readiness_decision"] = ""
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_network_without_broker_read" in validation["errors"]
 
 
 def test_broker_observed_mode_refuses_live_or_unproven_endpoint() -> None:
@@ -744,7 +907,9 @@ def test_broker_observed_mode_refuses_live_or_unproven_endpoint() -> None:
     )
     assert broker["broker_endpoint_type"] == "live_or_unproven"
     assert broker["live_endpoint_touched"] is False
+    assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
+    assert broker["broker_read_blocked"] is True
 
 
 def test_fake_broker_read_adapter_can_produce_broker_observed_ready_preview(
@@ -889,6 +1054,139 @@ def test_validator_catches_inconsistent_broker_read_flags(tmp_path: Path) -> Non
     assert "broker_read_occurred_without_authorization" in validation["errors"]
 
 
+def test_validator_fails_when_broker_observed_network_flags_disagree(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["network_used"] = True
+    broker["safety"]["network_used"] = True
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_operating_record_broker_observed_network_flag" in validation[
+        "errors"
+    ]
+
+
+def test_validator_fails_when_broker_observed_read_flags_disagree(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["broker_read_occurred"] = False
+    broker["safety"]["broker_read_occurred"] = False
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_operating_record_broker_observed_read_flag" in validation["errors"]
+
+
+def test_validator_fails_when_run_summary_network_disagrees_with_record(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    summary_path = output_root / "run_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["console_fields"]["network_used"] = True
+    summary["console_lines"] = [
+        (
+            "tomorrow_crypto_trader_demo_network_used=true"
+            if line == "tomorrow_crypto_trader_demo_network_used=false"
+            else line
+        )
+        for line in summary["console_lines"]
+    ]
+    _write_json_fixture(summary_path, summary)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_console_artifact_network_flag" in validation["errors"]
+
+
+def test_validator_fails_when_authorized_read_has_no_decision_or_blocker(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["broker_observed_readiness_decision"] = ""
+    broker["readiness_decision"] = ""
+    broker["final_readiness_decision"] = ""
+    broker["blocker_code"] = ""
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "broker_observed_readiness_decision_missing" in validation["errors"]
+    assert "broker_read_authorized_without_read_or_blocker" in validation["errors"]
+
+
+def test_validator_fails_when_broker_observed_packet_missing_after_request(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=False,
+        write_artifacts=True,
+    )
+    (output_root / "broker_observed_readiness_packet.json").unlink()
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "missing_artifact:broker_observed_readiness_packet.json" in validation["errors"]
+
+
 def test_validator_catches_false_broker_observed_approval(tmp_path: Path) -> None:
     output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
     run_tomorrow_crypto_trader_demo(
@@ -993,7 +1291,6 @@ def test_scripts_expose_simbroker_and_validator_contracts() -> None:
         assert fragment in run_script
     for fragment in (
         "validate_tomorrow_crypto_trader_demo",
-        "tomorrow_crypto_trader_demo_validator_network_used=false",
         "--validate-only",
     ):
         assert fragment in validator_script
@@ -1187,6 +1484,54 @@ def _write_json_fixture(path: Path, payload: Mapping[str, object]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _read_consistency_artifacts(
+    output_root: Path,
+) -> tuple[
+    Mapping[str, object],
+    Mapping[str, object],
+    Mapping[str, object],
+    Mapping[str, object],
+]:
+    record = json.loads((output_root / "operating_record.json").read_text(encoding="utf-8"))
+    manifest = json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
+    run_summary = json.loads((output_root / "run_summary.json").read_text(encoding="utf-8"))
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8")) if broker_path.exists() else {}
+    return record, manifest, run_summary, broker
+
+
+def _assert_consistent_telemetry(
+    record: Mapping[str, object],
+    manifest: Mapping[str, object],
+    run_summary: Mapping[str, object],
+    broker: Mapping[str, object],
+) -> None:
+    expected = record["broker_observed_telemetry"]
+    assert isinstance(expected, Mapping)
+    assert manifest["broker_observed_telemetry"] == expected
+    for field, value in expected.items():
+        assert run_summary["console_fields"][field] == value
+    if broker:
+        assert {
+            "broker_read_authorized": broker["broker_read_authorized"],
+            "broker_read_attempted": broker["broker_read_attempted"],
+            "broker_read_occurred": broker["broker_read_occurred"],
+            "broker_read_blocked": broker["broker_read_blocked"],
+            "broker_read_adapter_unavailable": broker["broker_read_adapter_unavailable"],
+            "broker_read_failed": broker["broker_read_failed"],
+            "broker_state_observed": broker["broker_state_observed"],
+            "network_used": broker["network_used"],
+            "broker_observed_readiness_decision": broker[
+                "broker_observed_readiness_decision"
+            ],
+            "broker_observed_blocker": broker["blocker_code"],
+            "live_endpoint_touched": broker["live_endpoint_touched"],
+            "credential_values_exposed": broker["credential_values_exposed"],
+            "paper_submit_occurred": broker["paper_submit_occurred"],
+            "broker_mutation_occurred": broker["broker_mutation_occurred"],
+        } == expected
 
 
 def _paper_read_env() -> Mapping[str, object]:

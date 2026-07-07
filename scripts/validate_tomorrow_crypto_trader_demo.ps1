@@ -32,9 +32,6 @@ function Get-PythonCommand {
 }
 
 Write-Host "tomorrow_crypto_trader_demo_validator_command=validate_tomorrow_crypto_trader_demo"
-Write-Host "tomorrow_crypto_trader_demo_validator_network_used=false"
-Write-Host "tomorrow_crypto_trader_demo_validator_broker_read_occurred=false"
-Write-Host "tomorrow_crypto_trader_demo_validator_broker_mutation_occurred=false"
 Write-Host "Credential values are never printed"
 
 $Python = Get-PythonCommand
