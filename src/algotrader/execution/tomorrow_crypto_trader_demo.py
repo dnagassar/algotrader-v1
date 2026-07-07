@@ -84,6 +84,7 @@ PAPER_READINESS_BLOCKERS = (
 
 BROKER_OBSERVED_READINESS_DECISIONS = (
     "broker_observed_ready_preview",
+    "broker_observed_ready_preview_with_fixture_price",
     "broker_observed_blocked_preview",
     "broker_observed_not_attempted",
     "broker_observed_blocked_credentials_not_loaded",
@@ -98,15 +99,22 @@ BROKER_OBSERVED_READINESS_DECISIONS = (
 
 BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
     "broker_min_notional_field_missing",
+    "broker_min_notional_direct_field_missing_but_equivalent_available",
+    "broker_min_notional_equivalent_not_available",
     "broker_min_order_size_field_missing",
     "broker_qty_increment_field_missing",
     "broker_orderability_metadata_missing",
     "broker_orderability_metadata_ambiguous",
     "broker_price_metadata_missing",
     "broker_price_metadata_stale",
+    "broker_price_not_broker_observed",
+    "broker_price_source_not_acceptable_for_equivalence",
     "broker_intended_notional_below_min_notional",
+    "broker_derived_min_notional_exceeds_intended_notional",
     "broker_estimated_quantity_below_min_order_size",
     "broker_estimated_quantity_not_increment_aligned",
+    "broker_min_order_size_or_increment_missing_for_derivation",
+    "broker_quantity_increment_alignment_failed",
     "broker_min_notional_not_verified",
 )
 
@@ -138,6 +146,22 @@ BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "broker_observed_quantity_increment_check_status",
     "broker_observed_price_source",
     "broker_observed_price_check_status",
+    "direct_min_notional_available",
+    "direct_min_notional_source",
+    "derived_min_notional_available",
+    "derived_min_notional_value",
+    "derived_min_notional_formula",
+    "derived_min_notional_sources",
+    "derived_min_notional_check_status",
+    "min_notional_equivalence_basis",
+    "price_source_for_derivation",
+    "price_source_acceptability",
+    "final_feasibility_basis",
+)
+
+BROKER_OBSERVED_APPROVED_READINESS_DECISIONS = (
+    "broker_observed_ready_preview",
+    "broker_observed_ready_preview_with_fixture_price",
 )
 
 RUN_SUMMARY_CONSOLE_FIELDS = (
@@ -1456,6 +1480,42 @@ def _broker_observed_evidence_table_rows(
             _markdown_table_value(min_notional_check.get("status")),
         ),
         (
+            "direct_min_notional_available",
+            _markdown_table_value(packet.get("direct_min_notional_available")),
+            _markdown_table_value(packet.get("direct_min_notional_source")),
+            "observed" if packet.get("direct_min_notional_available") is True else "missing",
+        ),
+        (
+            "derived_min_notional",
+            _markdown_table_value(packet.get("derived_min_notional_value")),
+            _markdown_table_value(packet.get("derived_min_notional_sources")),
+            _markdown_table_value(packet.get("derived_min_notional_check_status")),
+        ),
+        (
+            "derived_min_notional_formula",
+            _markdown_table_value(packet.get("derived_min_notional_formula")),
+            "readiness_packet",
+            "present" if _text(packet.get("derived_min_notional_formula")) else "missing",
+        ),
+        (
+            "min_notional_equivalence_basis",
+            _markdown_table_value(packet.get("min_notional_equivalence_basis")),
+            "readiness_packet",
+            _markdown_table_value(packet.get("derived_min_notional_check_status")),
+        ),
+        (
+            "price_source_for_derivation",
+            _markdown_table_value(packet.get("price_source_for_derivation")),
+            _markdown_table_value(packet.get("price_source_acceptability")),
+            _markdown_table_value(price_check.get("status")),
+        ),
+        (
+            "final_feasibility_basis",
+            _markdown_table_value(packet.get("final_feasibility_basis")),
+            "readiness_packet",
+            _markdown_table_value(packet.get("broker_observed_readiness_decision")),
+        ),
+        (
             "min_order_size",
             _markdown_table_value(min_order_size_check.get("min_order_size")),
             _markdown_table_value(min_order_size_check.get("source")),
@@ -1493,6 +1553,12 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- blocker_codes: `{','.join(_string_sequence(packet.get('blocker_codes'))) or 'none'}`",
             f"- intended_notional: `{_text(packet.get('intended_notional')) or 'none'}`",
             f"- estimated_quantity: `{_text(packet.get('estimated_quantity')) or 'none'}`",
+            f"- direct_min_notional_available: `{_bool_text(packet.get('direct_min_notional_available'))}`",
+            f"- derived_min_notional_available: `{_bool_text(packet.get('derived_min_notional_available'))}`",
+            f"- derived_min_notional_value: `{_text(packet.get('derived_min_notional_value')) or 'none'}`",
+            f"- price_source_for_derivation: `{_text(packet.get('price_source_for_derivation')) or 'none'}`",
+            f"- price_source_acceptability: `{_text(packet.get('price_source_acceptability')) or 'none'}`",
+            f"- final_feasibility_basis: `{_text(packet.get('final_feasibility_basis')) or 'none'}`",
             f"- broker_read_authorized: `{_bool_text(packet.get('broker_read_authorized'))}`",
             f"- broker_read_attempted: `{_bool_text(packet.get('broker_read_attempted'))}`",
             f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
@@ -2058,8 +2124,50 @@ def _validate_broker_observed_readiness_packet(
     price_check = _mapping(packet.get("broker_observed_price_freshness_check"))
     if not price_check:
         price_check = _mapping(packet.get("observed_latest_price_basis"))
+    equivalence_fields = _broker_observed_min_notional_equivalence_fields(
+        min_notional_check
+    )
+    for field, expected_value in equivalence_fields.items():
+        if field not in packet:
+            errors.append(f"broker_observed_readiness_equivalence_field_missing:{field}")
+            continue
+        actual_value = packet.get(field)
+        if field == "derived_min_notional_value":
+            actual_value = _evidence_decimal_text(actual_value)
+        if actual_value != expected_value:
+            errors.append(f"broker_observed_readiness_equivalence_field_mismatch:{field}")
 
-    if decision == "broker_observed_ready_preview":
+    direct_min_notional_available = packet.get("direct_min_notional_available") is True
+    derived_min_notional_available = packet.get("derived_min_notional_available") is True
+    derived_min_notional = _first_decimal(
+        packet.get("derived_min_notional_value"),
+        min_notional_check.get("derived_min_notional_value"),
+    )
+    price_source_for_derivation = _text(packet.get("price_source_for_derivation"))
+    if (
+        packet.get("broker_read_occurred") is True
+        and _mapping(packet.get("observed_crypto_assets_or_orderability_summary")).get(
+            "asset_found"
+        )
+        is True
+        and not direct_min_notional_available
+        and not derived_min_notional_available
+    ):
+        errors.append("broker_observed_direct_min_notional_missing_without_derived_evidence")
+    if derived_min_notional_available:
+        if not _text(packet.get("derived_min_notional_formula")):
+            errors.append("broker_observed_derived_min_notional_missing_formula")
+        if not _text(packet.get("derived_min_notional_sources")):
+            errors.append("broker_observed_derived_min_notional_missing_sources")
+        if derived_min_notional is None:
+            errors.append("broker_observed_derived_min_notional_value_missing")
+    if (
+        decision == "broker_observed_ready_preview"
+        and price_source_for_derivation != "broker_observed"
+    ):
+        errors.append("broker_price_not_broker_observed")
+
+    if decision in BROKER_OBSERVED_APPROVED_READINESS_DECISIONS:
         if _text(packet.get("fixture_readiness_decision")) != "fixture_ready_preview":
             errors.append("broker_observed_ready_without_fixture_ready_preview")
         if not _text(packet.get("symbol")):
@@ -2093,10 +2201,20 @@ def _validate_broker_observed_readiness_packet(
             errors.append("broker_observed_ready_without_increment_evidence")
         if min_notional_check.get("source") == "deterministic_fixture":
             errors.append("broker_observed_ready_with_fixture_only_min_notional_evidence")
-        if min_notional_check.get("source") != "broker_observed":
+        if not direct_min_notional_available and not derived_min_notional_available:
+            errors.append("broker_observed_ready_without_min_notional_evidence")
+        if min_notional_check.get("source") not in {
+            "broker_observed",
+            "broker_observed_equivalent",
+        }:
             errors.append("broker_observed_ready_without_broker_observed_min_notional")
         if min_notional_check.get("status") != "passed":
             errors.append("broker_observed_ready_without_min_notional_check")
+        if (
+            derived_min_notional_available
+            and packet.get("derived_min_notional_check_status") != "passed"
+        ):
+            errors.append("broker_observed_ready_without_derived_min_notional_check")
         if min_order_size_check.get("source") != "broker_observed":
             errors.append("broker_observed_ready_without_broker_observed_min_order_size")
         if min_order_size_check.get("status") != "passed":
@@ -2111,6 +2229,35 @@ def _validate_broker_observed_readiness_packet(
             errors.append("broker_observed_ready_without_accepted_price_basis")
         if packet.get("broker_endpoint_type") != "paper":
             errors.append("broker_observed_ready_without_paper_endpoint")
+        if _mapping(packet.get("observed_open_orders_summary")).get("open_order_present") is True:
+            errors.append("broker_observed_ready_with_open_order_present")
+        if _mapping(packet.get("observed_positions_summary")).get(
+            "unexpected_preexisting_position"
+        ) is True:
+            errors.append("broker_observed_ready_with_unexpected_preexisting_position")
+        intended_notional = _first_decimal(packet.get("intended_notional"))
+        estimated_quantity = _first_decimal(packet.get("estimated_quantity"))
+        min_order_size = _first_decimal(min_order_size_check.get("min_order_size"))
+        quantity_increment = _first_decimal(quantity_increment_check.get("quantity_increment"))
+        if (
+            derived_min_notional_available
+            and intended_notional is not None
+            and derived_min_notional is not None
+            and intended_notional < derived_min_notional
+        ):
+            errors.append("broker_observed_ready_with_intended_below_derived_min_notional")
+        if (
+            estimated_quantity is not None
+            and min_order_size is not None
+            and estimated_quantity < min_order_size
+        ):
+            errors.append("broker_observed_ready_with_quantity_below_min_order_size")
+        aligned, _remainder = _quantity_increment_aligned(
+            estimated_quantity,
+            quantity_increment,
+        )
+        if aligned is not True:
+            errors.append("broker_observed_ready_with_quantity_increment_misaligned")
 
     if markdown and decision and decision not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_decision")
@@ -2558,6 +2705,17 @@ def _broker_observed_readiness_preview(
         "estimated_quantity": estimated_quantity,
         "latest_price": price_evidence.get("latest_price"),
         "latest_price_basis": price_evidence,
+        "direct_min_notional_available": False,
+        "direct_min_notional_source": "unavailable",
+        "derived_min_notional_available": False,
+        "derived_min_notional_value": "",
+        "derived_min_notional_formula": "",
+        "derived_min_notional_sources": "",
+        "derived_min_notional_check_status": "not_observed",
+        "min_notional_equivalence_basis": "unavailable",
+        "price_source_for_derivation": price_evidence.get("source"),
+        "price_source_acceptability": price_evidence.get("price_source_acceptability"),
+        "final_feasibility_basis": "not_evaluated",
         "readiness_basis": "broker_observed",
         "fixture_readiness_decision": fixture_decision,
         "fixture_blocker_code": _text(fixture_readiness.get("blocker_code")),
@@ -2614,6 +2772,17 @@ def _broker_observed_readiness_preview(
             "source": "unavailable",
             "intended_notional": intended_notional,
             "min_notional": None,
+            "direct_min_notional_available": False,
+            "direct_min_notional_source": "unavailable",
+            "derived_min_notional_available": False,
+            "derived_min_notional_value": None,
+            "derived_min_notional_formula": "",
+            "derived_min_notional_sources": "",
+            "derived_min_notional_check_status": "not_observed",
+            "min_notional_equivalence_basis": "unavailable",
+            "price_source_for_derivation": price_evidence.get("source"),
+            "price_source_acceptability": price_evidence.get("price_source_acceptability"),
+            "final_feasibility_basis": "not_evaluated",
             "blocker_code": "broker_min_notional_field_missing",
         },
         "broker_observed_min_order_size_check": {
@@ -2760,24 +2929,29 @@ def _broker_observed_readiness_preview(
         fixture_readiness=fixture_readiness,
         asset_summary=asset_summary,
     )
+    min_notional_check = _mapping(checks["min_notional"])
+    equivalence_fields = _broker_observed_min_notional_equivalence_fields(
+        min_notional_check
+    )
     min_increment_basis = {
         "status": (
             "verified"
-            if _mapping(checks["min_notional"]).get("status") == "passed"
+            if min_notional_check.get("status") == "passed"
             and _mapping(checks["min_order_size"]).get("status") == "passed"
             and _mapping(checks["quantity_increment"]).get("status") == "passed"
             else "missing"
         ),
-        "min_notional_verified": _mapping(checks["min_notional"]).get("verified") is True,
+        "min_notional_verified": min_notional_check.get("verified") is True,
         "min_order_size_verified": _mapping(checks["min_order_size"]).get("verified") is True,
         "quantity_increment_verified": _mapping(checks["quantity_increment"]).get("verified")
         is True,
-        "min_notional": asset_summary["min_notional"],
+        "min_notional": min_notional_check.get("min_notional"),
         "min_order_size": asset_summary["min_order_size"],
         "quantity_increment": asset_summary["quantity_increment"],
-        "min_notional_source": asset_summary.get("min_notional_source"),
+        "min_notional_source": min_notional_check.get("source"),
         "min_order_size_source": asset_summary.get("min_order_size_source"),
         "quantity_increment_source": asset_summary.get("quantity_increment_source"),
+        **equivalence_fields,
         "broker_observed": True,
         "basis": asset_summary["basis"],
     }
@@ -2797,6 +2971,7 @@ def _broker_observed_readiness_preview(
         "observed_crypto_assets_or_orderability_summary": asset_summary,
         "observed_min_notional_or_increment_basis": min_increment_basis,
         "observed_latest_price_basis": checks["price"],
+        **equivalence_fields,
         "broker_orderability_raw_field_presence": asset_summary.get("raw_field_presence"),
         "broker_orderability_field_sources": asset_summary.get("field_sources"),
         "broker_orderability_normalized": asset_summary.get("normalized_orderability_fields"),
@@ -2824,9 +2999,14 @@ def _broker_observed_readiness_preview(
             blocker_code=blockers[0],
             next_operator_action="resolve_broker_observed_blocker_before_any_paper_submit",
         )
+    ready_decision = (
+        "broker_observed_ready_preview"
+        if _text(equivalence_fields.get("price_source_for_derivation")) == "broker_observed"
+        else "broker_observed_ready_preview_with_fixture_price"
+    )
     return _broker_observed_packet_with_decision(
         observed_packet,
-        decision="broker_observed_ready_preview",
+        decision=ready_decision,
         blocker_code="",
         next_operator_action="operator_review_broker_observed_readiness_no_submit",
     )
@@ -2920,6 +3100,54 @@ def _broker_observed_packet_with_decision(
     return payload
 
 
+def _broker_observed_min_notional_equivalence_fields(
+    min_notional_check: Mapping[str, object],
+) -> dict[str, object]:
+    return {
+        "direct_min_notional_available": min_notional_check.get(
+            "direct_min_notional_available"
+        )
+        is True,
+        "direct_min_notional_source": _text(
+            min_notional_check.get("direct_min_notional_source")
+        )
+        or "unavailable",
+        "derived_min_notional_available": min_notional_check.get(
+            "derived_min_notional_available"
+        )
+        is True,
+        "derived_min_notional_value": _evidence_decimal_text(
+            min_notional_check.get("derived_min_notional_value")
+        ),
+        "derived_min_notional_formula": _text(
+            min_notional_check.get("derived_min_notional_formula")
+        ),
+        "derived_min_notional_sources": _text(
+            min_notional_check.get("derived_min_notional_sources")
+        ),
+        "derived_min_notional_check_status": _text(
+            min_notional_check.get("derived_min_notional_check_status")
+        )
+        or "not_observed",
+        "min_notional_equivalence_basis": _text(
+            min_notional_check.get("min_notional_equivalence_basis")
+        )
+        or "unavailable",
+        "price_source_for_derivation": _text(
+            min_notional_check.get("price_source_for_derivation")
+        )
+        or "unavailable",
+        "price_source_acceptability": _text(
+            min_notional_check.get("price_source_acceptability")
+        )
+        or "blocked_unavailable",
+        "final_feasibility_basis": _text(
+            min_notional_check.get("final_feasibility_basis")
+        )
+        or "not_evaluated",
+    }
+
+
 def _broker_observed_evidence_consistency_fields(
     broker_observed: Mapping[str, object],
 ) -> dict[str, object]:
@@ -2993,6 +3221,7 @@ def _broker_observed_evidence_consistency_fields(
         ),
         "broker_observed_price_source": _text(price_check.get("source")),
         "broker_observed_price_check_status": _text(price_check.get("status")),
+        **_broker_observed_min_notional_equivalence_fields(min_notional_check),
     }
 
 
@@ -3484,6 +3713,16 @@ def _source_for_latest_price_basis(basis_text: str, broker_observed: bool) -> st
     return "unavailable"
 
 
+def _price_source_acceptability(status: str, source: str) -> str:
+    if status != "passed":
+        return "blocked_price_check_failed"
+    if source == "broker_observed":
+        return "accepted_broker_observed"
+    if source in {"deterministic_fixture", "local_replay"}:
+        return "accepted_readiness_only_preview"
+    return "blocked_unacceptable_source"
+
+
 def _broker_observed_price_evidence(
     fixture_readiness: Mapping[str, object],
 ) -> dict[str, object]:
@@ -3515,14 +3754,15 @@ def _broker_observed_price_evidence(
     else:
         status = "blocked"
         blocker = "broker_price_metadata_missing"
-    accepted = status == "passed" and source in {
-        "broker_observed",
-        "deterministic_fixture",
-        "local_replay",
+    acceptability = _price_source_acceptability(status, source)
+    accepted = acceptability in {
+        "accepted_broker_observed",
+        "accepted_readiness_only_preview",
     }
     return {
         "status": status,
         "source": source,
+        "price_source_acceptability": acceptability,
         "basis": basis_text,
         "latest_price": latest_price,
         "latest_price_timestamp": latest_check.get(
@@ -3576,11 +3816,82 @@ def _broker_observed_orderability_check(
 def _broker_observed_min_notional_check(
     *,
     intended_notional: Decimal | None,
+    estimated_quantity: Decimal | None,
     asset_summary: Mapping[str, object],
+    price_check: Mapping[str, object],
 ) -> dict[str, object]:
     min_notional = _first_decimal(asset_summary.get("min_notional"))
     source = _text(asset_summary.get("min_notional_source")) or "unavailable"
-    if source != "broker_observed" or min_notional is None or min_notional <= Decimal("0"):
+    direct_available = (
+        source == "broker_observed"
+        and min_notional is not None
+        and min_notional > Decimal("0")
+    )
+    price = _first_decimal(price_check.get("latest_price"))
+    price_source = _text(price_check.get("source")) or "unavailable"
+    price_acceptability = (
+        _text(price_check.get("price_source_acceptability"))
+        or _price_source_acceptability(_text(price_check.get("status")), price_source)
+    )
+    min_order_size = _first_decimal(asset_summary.get("min_order_size"))
+    min_order_size_source = _text(asset_summary.get("min_order_size_source")) or "unavailable"
+    quantity_increment = _first_decimal(asset_summary.get("quantity_increment"))
+    quantity_increment_source = (
+        _text(asset_summary.get("quantity_increment_source")) or "unavailable"
+    )
+    derived_min_notional = (
+        min_order_size * price
+        if min_order_size is not None
+        and min_order_size > Decimal("0")
+        and price is not None
+        and price > Decimal("0")
+        else None
+    )
+    derived_sources = (
+        f"min_order_size={min_order_size_source};"
+        f"quantity_increment={quantity_increment_source};"
+        f"price={price_source}"
+    )
+    derived_formula = "broker_observed_min_order_size * selected_price"
+    base = {
+        "direct_min_notional_available": direct_available,
+        "direct_min_notional_source": source,
+        "derived_min_notional_available": False,
+        "derived_min_notional_value": derived_min_notional,
+        "derived_min_notional_formula": derived_formula if derived_min_notional is not None else "",
+        "derived_min_notional_sources": derived_sources,
+        "derived_min_notional_check_status": "not_applicable",
+        "min_notional_equivalence_basis": (
+            "direct_broker_min_notional" if direct_available else "none"
+        ),
+        "price_source_for_derivation": price_source,
+        "price_source_acceptability": price_acceptability,
+        "final_feasibility_basis": (
+            "direct_broker_min_notional" if direct_available else "blocked_no_min_notional_evidence"
+        ),
+    }
+    if direct_available:
+        if intended_notional is None or intended_notional < min_notional:
+            return {
+                **base,
+                "status": "blocked",
+                "verified": False,
+                "source": source,
+                "intended_notional": intended_notional,
+                "min_notional": min_notional,
+                "blocker_code": "broker_intended_notional_below_min_notional",
+                "final_feasibility_basis": "blocked_direct_min_notional_exceeds_intended_notional",
+            }
+        return {
+            **base,
+            "status": "passed",
+            "verified": True,
+            "source": source,
+            "intended_notional": intended_notional,
+            "min_notional": min_notional,
+            "blocker_code": "",
+        }
+    if source not in {"", "unavailable"}:
         blocker = (
             "broker_min_notional_field_missing"
             if source in {"", "unavailable"}
@@ -3592,23 +3903,110 @@ def _broker_observed_min_notional_check(
             "source": source,
             "intended_notional": intended_notional,
             "min_notional": min_notional,
+            **base,
+            "derived_min_notional_check_status": "blocked",
             "blocker_code": blocker,
         }
-    if intended_notional is None or intended_notional < min_notional:
+    if (
+        min_order_size_source != "broker_observed"
+        or min_order_size is None
+        or min_order_size <= Decimal("0")
+        or quantity_increment_source != "broker_observed"
+        or quantity_increment is None
+        or quantity_increment <= Decimal("0")
+    ):
         return {
+            **base,
             "status": "blocked",
             "verified": False,
-            "source": source,
+            "source": "unavailable",
             "intended_notional": intended_notional,
-            "min_notional": min_notional,
-            "blocker_code": "broker_intended_notional_below_min_notional",
+            "min_notional": None,
+            "derived_min_notional_check_status": "blocked",
+            "final_feasibility_basis": "blocked_missing_min_order_size_or_increment",
+            "blocker_code": "broker_min_order_size_or_increment_missing_for_derivation",
+        }
+    aligned, remainder = _quantity_increment_aligned(estimated_quantity, quantity_increment)
+    if aligned is not True:
+        return {
+            **base,
+            "status": "blocked",
+            "verified": False,
+            "source": "broker_observed_equivalent",
+            "intended_notional": intended_notional,
+            "min_notional": derived_min_notional,
+            "derived_min_notional_check_status": "blocked",
+            "quantity_increment_remainder": remainder,
+            "final_feasibility_basis": "blocked_quantity_increment_alignment_failed",
+            "blocker_code": "broker_quantity_increment_alignment_failed",
+        }
+    if estimated_quantity is None or estimated_quantity < min_order_size:
+        return {
+            **base,
+            "status": "blocked",
+            "verified": False,
+            "source": "broker_observed_equivalent",
+            "intended_notional": intended_notional,
+            "min_notional": derived_min_notional,
+            "derived_min_notional_check_status": "blocked",
+            "final_feasibility_basis": "blocked_quantity_below_min_order_size",
+            "blocker_code": "broker_estimated_quantity_below_min_order_size",
+        }
+    if price_acceptability not in {
+        "accepted_broker_observed",
+        "accepted_readiness_only_preview",
+    }:
+        return {
+            **base,
+            "status": "blocked",
+            "verified": False,
+            "source": "broker_observed_equivalent",
+            "intended_notional": intended_notional,
+            "min_notional": derived_min_notional,
+            "derived_min_notional_check_status": "blocked",
+            "final_feasibility_basis": "blocked_price_source_not_acceptable",
+            "blocker_code": "broker_price_source_not_acceptable_for_equivalence",
+        }
+    if derived_min_notional is None:
+        return {
+            **base,
+            "status": "blocked",
+            "verified": False,
+            "source": "broker_observed_equivalent",
+            "intended_notional": intended_notional,
+            "min_notional": None,
+            "derived_min_notional_check_status": "blocked",
+            "blocker_code": "broker_min_notional_equivalent_not_available",
+        }
+    if intended_notional is None or intended_notional < derived_min_notional:
+        return {
+            **base,
+            "status": "blocked",
+            "verified": False,
+            "source": "broker_observed_equivalent",
+            "intended_notional": intended_notional,
+            "min_notional": derived_min_notional,
+            "derived_min_notional_available": True,
+            "derived_min_notional_check_status": "blocked",
+            "min_notional_equivalence_basis": "derived_from_broker_min_order_size_and_selected_price",
+            "final_feasibility_basis": "blocked_derived_min_notional_exceeds_intended_notional",
+            "blocker_code": "broker_derived_min_notional_exceeds_intended_notional",
         }
     return {
+        **base,
         "status": "passed",
         "verified": True,
-        "source": source,
+        "source": "broker_observed_equivalent",
         "intended_notional": intended_notional,
-        "min_notional": min_notional,
+        "min_notional": derived_min_notional,
+        "derived_min_notional_available": True,
+        "derived_min_notional_check_status": "passed",
+        "min_notional_equivalence_basis": "derived_from_broker_min_order_size_and_selected_price",
+        "final_feasibility_basis": (
+            "derived_min_notional_equivalent_with_broker_observed_price"
+            if price_source == "broker_observed"
+            else "derived_min_notional_equivalent_with_readiness_only_price"
+        ),
         "blocker_code": "",
     }
 
@@ -3718,21 +4116,26 @@ def _broker_observed_feasibility_checks(
 ) -> dict[str, dict[str, object]]:
     intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
     estimated_quantity = _first_decimal(fixture_readiness.get("estimated_quantity"))
+    price = _broker_observed_price_evidence(fixture_readiness)
+    min_order_size = _broker_observed_min_order_size_check(
+        estimated_quantity=estimated_quantity,
+        asset_summary=asset_summary,
+    )
+    quantity_increment = _broker_observed_quantity_increment_check(
+        estimated_quantity=estimated_quantity,
+        asset_summary=asset_summary,
+    )
     return {
         "orderability": _broker_observed_orderability_check(asset_summary),
-        "price": _broker_observed_price_evidence(fixture_readiness),
+        "price": price,
         "min_notional": _broker_observed_min_notional_check(
             intended_notional=intended_notional,
-            asset_summary=asset_summary,
-        ),
-        "min_order_size": _broker_observed_min_order_size_check(
             estimated_quantity=estimated_quantity,
             asset_summary=asset_summary,
+            price_check=price,
         ),
-        "quantity_increment": _broker_observed_quantity_increment_check(
-            estimated_quantity=estimated_quantity,
-            asset_summary=asset_summary,
-        ),
+        "min_order_size": min_order_size,
+        "quantity_increment": quantity_increment,
     }
 
 
