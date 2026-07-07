@@ -764,6 +764,7 @@ def test_broker_observed_mode_refuses_without_explicit_read_authorization(
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_not_authorized"
     )
+    assert broker["blocker_code"] == "broker_price_read_not_authorized"
     assert broker["broker_read_authorized"] is False
     assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
@@ -792,6 +793,7 @@ def test_broker_observed_mode_refuses_without_paper_profile() -> None:
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_not_paper_profile"
     )
+    assert broker["blocker_code"] == "broker_price_read_blocked_not_paper_profile"
     assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
     assert broker["broker_read_blocked"] is True
@@ -824,6 +826,9 @@ def test_broker_observed_mode_refuses_missing_credentials_without_exposing_value
 
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_credentials_not_loaded"
+    )
+    assert broker["blocker_code"] == (
+        "broker_price_read_blocked_credentials_not_loaded"
     )
     assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
@@ -940,6 +945,9 @@ def test_broker_observed_without_credentials_records_consistent_block(
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_credentials_not_loaded"
     )
+    assert broker["blocker_code"] == (
+        "broker_price_read_blocked_credentials_not_loaded"
+    )
     assert broker["broker_read_authorized"] is True
     assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
@@ -969,7 +977,7 @@ def test_broker_observed_fake_credentials_without_adapter_blocks_explicitly(
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_adapter_unavailable"
     )
-    assert broker["blocker_code"] == "broker_read_adapter_unavailable"
+    assert broker["blocker_code"] == "broker_price_adapter_unavailable"
     assert broker["broker_read_authorized"] is True
     assert broker["broker_read_attempted"] is False
     assert broker["broker_read_occurred"] is False
@@ -1005,7 +1013,7 @@ def test_network_without_completed_broker_read_requires_explicit_blocker(
     assert broker["broker_read_attempted"] is True
     assert broker["broker_read_occurred"] is False
     assert broker["network_used"] is True
-    assert broker["blocker_code"] == "broker_read_failed"
+    assert broker["blocker_code"] == "broker_price_read_failed"
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
 
     broker["blocker_code"] = ""
@@ -1039,6 +1047,9 @@ def test_broker_observed_mode_refuses_live_or_unproven_endpoint() -> None:
 
     assert broker["broker_observed_readiness_decision"] == (
         "broker_observed_blocked_live_endpoint_detected"
+    )
+    assert broker["blocker_code"] == (
+        "broker_price_read_blocked_live_endpoint_detected"
     )
     assert broker["broker_endpoint_type"] == "live_or_unproven"
     assert broker["live_endpoint_touched"] is False
@@ -1220,6 +1231,79 @@ def test_broker_or_provider_observed_price_with_derived_equivalent_can_use_plain
 
 
 @pytest.mark.parametrize(
+    ("client_kwargs", "expected_price", "expected_basis", "expected_call"),
+    [
+        (
+            {"latest_quote": _latest_quote()},
+            "125",
+            "broker_observed_latest_quote_mid",
+            "get_latest_quote:BTCUSD",
+        ),
+        (
+            {"latest_trade": _latest_trade()},
+            "125",
+            "broker_observed_latest_trade",
+            "get_latest_trade:BTCUSD",
+        ),
+        (
+            {"latest_bar": _latest_bar()},
+            "125",
+            "broker_observed_latest_bar_close",
+            "get_latest_bar:BTCUSD",
+        ),
+        (
+            {
+                "latest_quote": {
+                    "BTC/USD": {
+                        "timestamp": AS_OF.isoformat(),
+                        "bid_price": "124.50",
+                        "ask_price": "125.50",
+                        "source": "broker_observed",
+                        "basis": "broker_observed_latest_quote_mid",
+                    }
+                }
+            },
+            "125",
+            "broker_observed_latest_quote_mid",
+            "get_latest_quote:BTCUSD",
+        ),
+    ],
+)
+def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
+    client_kwargs: Mapping[str, object],
+    expected_price: str,
+    expected_basis: str,
+    expected_call: str,
+) -> None:
+    fake = _FakeBrokerReadClient(**client_kwargs)
+
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(latest_price="100"),
+        paper_environment=_paper_read_env(),
+        broker_client=fake,
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_ready_preview"
+    assert broker["latest_price_value"] == expected_price
+    assert broker["latest_price_source"] == "broker_observed"
+    assert broker["latest_price_basis"] == expected_basis
+    assert broker["latest_price_freshness_status"] == "fresh"
+    assert broker["latest_price_source_acceptability"] == "accepted_broker_observed"
+    assert broker["price_evidence_status"] == "passed"
+    assert broker["price_evidence_blocker"] == ""
+    assert broker["paper_submit_occurred"] is False
+    assert broker["broker_mutation_occurred"] is False
+    assert expected_call in fake.calls
+
+
+@pytest.mark.parametrize(
     ("client_kwargs", "expected_blocker", "expected_freshness"),
     [
         (
@@ -1233,6 +1317,16 @@ def test_broker_or_provider_observed_price_with_derived_equivalent_can_use_plain
                     _latest_trade(price="125"),
                     _latest_trade(price="126"),
                 ]
+            },
+            "broker_latest_price_ambiguous",
+            "ambiguous",
+        ),
+        (
+            {
+                "latest_quote": {
+                    "BTCUSD": _latest_quote(),
+                    "ETHUSD": _latest_quote(symbol="ETHUSD"),
+                }
             },
             "broker_latest_price_ambiguous",
             "ambiguous",

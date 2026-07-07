@@ -23,6 +23,7 @@ from algotrader.execution.alpaca_client import (
 
 
 SdkClientFactory = Callable[[AlpacaPaperConfig], Any]
+CryptoDataClientFactory = Callable[[AlpacaPaperConfig], Any]
 
 
 class AlpacaSdkClientError(RuntimeError):
@@ -45,6 +46,19 @@ class AlpacaSdkClientError(RuntimeError):
         )
 
 
+class AlpacaSdkClientReadError(RuntimeError):
+    """Raised with sanitized SDK read-boundary diagnostics."""
+
+    def __init__(self, stage: str, cause: Exception):
+        self.error_stage = stage
+        self.cause_type = cause.__class__.__name__
+        self.sanitized_message = _sanitized_exception_message(cause)
+        super().__init__(
+            f"Alpaca SDK {stage}: cause_type={self.cause_type}"
+            f"{_read_diagnostic_message_suffix(self.sanitized_message)}."
+        )
+
+
 class AlpacaSdkClient(AlpacaClient):
     """Thin SDK boundary over alpaca-py's trading client.
 
@@ -62,6 +76,8 @@ class AlpacaSdkClient(AlpacaClient):
         *,
         sdk_client: Any | None = None,
         sdk_client_factory: SdkClientFactory | None = None,
+        sdk_crypto_data_client: Any | None = None,
+        sdk_crypto_data_client_factory: CryptoDataClientFactory | None = None,
     ) -> None:
         require_paper_profile(config)
 
@@ -69,8 +85,19 @@ class AlpacaSdkClient(AlpacaClient):
             raise ValueError(
                 "Provide either sdk_client or sdk_client_factory, not both."
             )
+        if (
+            sdk_crypto_data_client is not None
+            and sdk_crypto_data_client_factory is not None
+        ):
+            raise ValueError(
+                "Provide either sdk_crypto_data_client or "
+                "sdk_crypto_data_client_factory, not both."
+            )
 
+        self._config = config
         self._uses_alpaca_sdk_request_shape = sdk_client is None
+        self._sdk_crypto_data_client = sdk_crypto_data_client
+        self._sdk_crypto_data_client_factory = sdk_crypto_data_client_factory
 
         if sdk_client is not None:
             self._sdk_client = sdk_client
@@ -84,6 +111,12 @@ class AlpacaSdkClient(AlpacaClient):
         """Return the injected SDK trading client for a scoped OMS boundary."""
 
         return self._sdk_client
+
+    @property
+    def raw_crypto_data_client(self) -> Any:
+        """Return or lazily construct the injected SDK crypto data client."""
+
+        return self._crypto_data_client()
 
     def get_account(self) -> AlpacaAccountResponse:
         return cast(AlpacaAccountResponse, self._sdk_client.get_account())
@@ -145,6 +178,52 @@ class AlpacaSdkClient(AlpacaClient):
                 exc,
             ) from exc
 
+    def get_crypto_latest_quote(self, symbol: str) -> Any:
+        request = _to_sdk_crypto_latest_quote_request(symbol)
+        try:
+            return self._crypto_data_client().get_crypto_latest_quote(request)
+        except Exception as exc:
+            raise AlpacaSdkClientReadError(
+                "get_crypto_latest_quote_failed",
+                exc,
+            ) from exc
+
+    def get_latest_crypto_quote(self, symbol: str) -> Any:
+        return self.get_crypto_latest_quote(symbol)
+
+    def get_crypto_latest_trade(self, symbol: str) -> Any:
+        request = _to_sdk_crypto_latest_trade_request(symbol)
+        try:
+            return self._crypto_data_client().get_crypto_latest_trade(request)
+        except Exception as exc:
+            raise AlpacaSdkClientReadError(
+                "get_crypto_latest_trade_failed",
+                exc,
+            ) from exc
+
+    def get_latest_crypto_trade(self, symbol: str) -> Any:
+        return self.get_crypto_latest_trade(symbol)
+
+    def get_crypto_latest_bar(self, symbol: str) -> Any:
+        request = _to_sdk_crypto_latest_bar_request(symbol)
+        try:
+            return self._crypto_data_client().get_crypto_latest_bar(request)
+        except Exception as exc:
+            raise AlpacaSdkClientReadError(
+                "get_crypto_latest_bar_failed",
+                exc,
+            ) from exc
+
+    def get_latest_crypto_bar(self, symbol: str) -> Any:
+        return self.get_crypto_latest_bar(symbol)
+
+    def _crypto_data_client(self) -> Any:
+        if self._sdk_crypto_data_client is None:
+            factory = self._sdk_crypto_data_client_factory or _create_crypto_data_client
+            self._sdk_crypto_data_client = factory(self._config)
+
+        return self._sdk_crypto_data_client
+
 
 def _create_trading_client(config: AlpacaPaperConfig) -> Any:
     from alpaca.trading.client import TradingClient
@@ -155,6 +234,33 @@ def _create_trading_client(config: AlpacaPaperConfig) -> Any:
         paper=True,
         url_override=config.alpaca_paper_base_url,
     )
+
+
+def _create_crypto_data_client(config: AlpacaPaperConfig) -> Any:
+    from alpaca.data.historical import CryptoHistoricalDataClient
+
+    return CryptoHistoricalDataClient(
+        api_key=config.alpaca_api_key,
+        secret_key=config.alpaca_secret_key,
+    )
+
+
+def _to_sdk_crypto_latest_quote_request(symbol: str) -> Any:
+    from alpaca.data.requests import CryptoLatestQuoteRequest
+
+    return CryptoLatestQuoteRequest(symbol_or_symbols=symbol)
+
+
+def _to_sdk_crypto_latest_trade_request(symbol: str) -> Any:
+    from alpaca.data.requests import CryptoLatestTradeRequest
+
+    return CryptoLatestTradeRequest(symbol_or_symbols=symbol)
+
+
+def _to_sdk_crypto_latest_bar_request(symbol: str) -> Any:
+    from alpaca.data.requests import CryptoLatestBarRequest
+
+    return CryptoLatestBarRequest(symbol_or_symbols=symbol)
 
 
 def _to_sdk_order_request(request: AlpacaOrderRequest) -> Any:
@@ -262,6 +368,13 @@ def _diagnostic_message_suffix(diagnostics: dict[str, Any]) -> str:
     return " " + " ".join(parts)
 
 
+def _read_diagnostic_message_suffix(sanitized_message: str) -> str:
+    if not sanitized_message:
+        return ""
+
+    return f" api_error_message={sanitized_message}"
+
+
 def _safe_exception_attr(exc: Exception, name: str) -> Any:
     try:
         return getattr(exc, name)
@@ -300,4 +413,8 @@ def _safe_text(value: Any) -> str:
     return str(value)
 
 
-__all__ = ["AlpacaSdkClient", "AlpacaSdkClientError"]
+__all__ = [
+    "AlpacaSdkClient",
+    "AlpacaSdkClientError",
+    "AlpacaSdkClientReadError",
+]

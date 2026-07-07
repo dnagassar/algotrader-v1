@@ -26,8 +26,10 @@ import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
 from algotrader.execution.alpaca_sdk_client import (
     AlpacaSdkClient,
     AlpacaSdkClientError,
+    AlpacaSdkClientReadError,
 )
 from algotrader.execution.alpaca_sdk_client import (
+    _create_crypto_data_client,
     _create_trading_client,
     _to_sdk_get_orders_request,
     _to_sdk_order_request,
@@ -139,6 +141,50 @@ class FakeSdkTradingClient:
                 asset_class="equity",
             )
         ]
+
+
+class FakeSdkCryptoDataClient:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.requests: list[object] = []
+
+    def get_crypto_latest_quote(self, request: object) -> dict[str, object]:
+        self.calls.append("get_crypto_latest_quote")
+        self.requests.append(request)
+        return {
+            "BTCUSD": {
+                "timestamp": NOW.isoformat(),
+                "bid_price": "124.50",
+                "ask_price": "125.50",
+            }
+        }
+
+    def get_crypto_latest_trade(self, request: object) -> dict[str, object]:
+        self.calls.append("get_crypto_latest_trade")
+        self.requests.append(request)
+        return {
+            "BTCUSD": {
+                "timestamp": NOW.isoformat(),
+                "price": "125",
+            }
+        }
+
+    def get_crypto_latest_bar(self, request: object) -> dict[str, object]:
+        self.calls.append("get_crypto_latest_bar")
+        self.requests.append(request)
+        return {
+            "BTCUSD": {
+                "timestamp": NOW.isoformat(),
+                "close": "125",
+            }
+        }
+
+
+class FailingSdkCryptoDataClient:
+    def get_crypto_latest_quote(self, request: object) -> object:
+        raise APIError(
+            f"latest quote failed at {API_ERROR_URL} token={SENSITIVE_SECRET_KEY}"
+        )
 
 
 class FailingSdkTradingClient(FakeSdkTradingClient):
@@ -271,6 +317,79 @@ def test_alpaca_sdk_client_forwards_internal_recent_order_query_to_fake_client()
     assert orders[0].symbol == "MSFT"
     assert fake_sdk_client.calls == ["get_orders"]
     assert fake_sdk_client.order_queries == [query]
+
+
+def test_alpaca_sdk_client_constructs_crypto_data_client_lazily_for_latest_reads() -> None:
+    fake_trading_client = FakeSdkTradingClient()
+    fake_crypto_client = FakeSdkCryptoDataClient()
+    factory_calls: list[AlpacaPaperConfig] = []
+    config = valid_config()
+
+    def crypto_factory(config: AlpacaPaperConfig) -> FakeSdkCryptoDataClient:
+        factory_calls.append(config)
+        return fake_crypto_client
+
+    client = AlpacaSdkClient(
+        config,
+        sdk_client=fake_trading_client,
+        sdk_crypto_data_client_factory=crypto_factory,
+    )
+
+    assert factory_calls == []
+
+    latest_quote = client.get_crypto_latest_quote("BTCUSD")
+
+    assert latest_quote["BTCUSD"]["bid_price"] == "124.50"
+    assert factory_calls == [config]
+    assert fake_crypto_client.calls == ["get_crypto_latest_quote"]
+    request = fake_crypto_client.requests[0]
+    assert request.__class__.__name__ == "CryptoLatestQuoteRequest"
+    assert request.symbol_or_symbols == "BTCUSD"
+    assert fake_trading_client.calls == []
+
+
+def test_alpaca_sdk_client_delegates_latest_crypto_trade_and_bar_reads() -> None:
+    fake_crypto_client = FakeSdkCryptoDataClient()
+    client = AlpacaSdkClient(
+        valid_config(),
+        sdk_client=FakeSdkTradingClient(),
+        sdk_crypto_data_client=fake_crypto_client,
+    )
+
+    latest_trade = client.get_latest_crypto_trade("BTCUSD")
+    latest_bar = client.get_latest_crypto_bar("BTCUSD")
+
+    assert latest_trade["BTCUSD"]["price"] == "125"
+    assert latest_bar["BTCUSD"]["close"] == "125"
+    assert fake_crypto_client.calls == [
+        "get_crypto_latest_trade",
+        "get_crypto_latest_bar",
+    ]
+    assert [request.__class__.__name__ for request in fake_crypto_client.requests] == [
+        "CryptoLatestTradeRequest",
+        "CryptoLatestBarRequest",
+    ]
+    assert [
+        request.symbol_or_symbols for request in fake_crypto_client.requests
+    ] == ["BTCUSD", "BTCUSD"]
+
+
+def test_alpaca_sdk_client_sanitizes_latest_crypto_read_errors() -> None:
+    client = AlpacaSdkClient(
+        valid_config(secret_key=SENSITIVE_SECRET_KEY),
+        sdk_client=FakeSdkTradingClient(),
+        sdk_crypto_data_client=FailingSdkCryptoDataClient(),
+    )
+
+    with pytest.raises(AlpacaSdkClientReadError) as exc_info:
+        client.get_crypto_latest_quote("BTCUSD")
+
+    message = str(exc_info.value)
+    assert exc_info.value.error_stage == "get_crypto_latest_quote_failed"
+    assert "cause_type=APIError" in message
+    assert "api_error_message=latest quote failed" in message
+    assert API_ERROR_URL not in message
+    assert SENSITIVE_SECRET_KEY not in message
 
 
 def test_recent_order_query_uses_sdk_get_orders_request_shape() -> None:
@@ -585,6 +704,22 @@ def test_default_trading_client_factory_constructs_without_network(
 
     assert client is not None
     assert client.__class__.__name__ == "TradingClient"
+
+
+def test_default_crypto_data_client_factory_constructs_without_network(
+    monkeypatch,
+) -> None:
+    def fail_on_network(*args, **kwargs):  # noqa: ANN002, ANN003
+        raise AssertionError("network call attempted")
+
+    monkeypatch.setattr(socket, "create_connection", fail_on_network)
+    monkeypatch.setattr(socket, "socket", fail_on_network)
+    monkeypatch.setattr(requests.sessions.Session, "request", fail_on_network)
+
+    client = _create_crypto_data_client(valid_config())
+
+    assert client is not None
+    assert client.__class__.__name__ == "CryptoHistoricalDataClient"
 
 
 def test_alpaca_sdk_client_does_not_expose_sensitive_config_surfaces(

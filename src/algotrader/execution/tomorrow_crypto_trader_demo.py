@@ -138,6 +138,12 @@ BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
     "broker_price_not_broker_observed",
     "broker_price_source_not_acceptable_for_full_readiness",
     "broker_price_evidence_not_verified",
+    "broker_price_adapter_unavailable",
+    "broker_price_read_failed",
+    "broker_price_read_not_authorized",
+    "broker_price_read_blocked_not_paper_profile",
+    "broker_price_read_blocked_credentials_not_loaded",
+    "broker_price_read_blocked_live_endpoint_detected",
     "broker_quote_bid_ask_invalid",
     "broker_trade_price_invalid",
     "broker_bar_close_invalid",
@@ -3096,28 +3102,28 @@ def _broker_observed_readiness_preview(
         return _broker_observed_packet_with_decision(
             {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_not_authorized",
-            blocker_code="broker_read_not_authorized",
+            blocker_code="broker_price_read_not_authorized",
             next_operator_action="rerun_with_allow_alpaca_paper_read_in_paper_shell",
         )
     if _text(env.get("APP_PROFILE")) != "paper":
         return _broker_observed_packet_with_decision(
             {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_not_paper_profile",
-            blocker_code="app_profile_not_paper",
+            blocker_code="broker_price_read_blocked_not_paper_profile",
             next_operator_action="set_APP_PROFILE_paper_in_dedicated_paper_shell",
         )
     if not _paper_credentials_loaded(env):
         return _broker_observed_packet_with_decision(
             {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_credentials_not_loaded",
-            blocker_code="credentials_not_loaded",
+            blocker_code="broker_price_read_blocked_credentials_not_loaded",
             next_operator_action="load_paper_credentials_without_printing_values",
         )
     if endpoint["endpoint_proven_paper"] is not True:
         return _broker_observed_packet_with_decision(
             {**base_packet, "broker_read_blocked": True},
             decision="broker_observed_blocked_live_endpoint_detected",
-            blocker_code="paper_endpoint_not_proven",
+            blocker_code="broker_price_read_blocked_live_endpoint_detected",
             next_operator_action="fix_endpoint_to_paper_before_any_broker_read",
         )
 
@@ -3133,7 +3139,7 @@ def _broker_observed_readiness_preview(
                 "broker_read_adapter_unavailable": True,
             },
             decision="broker_observed_blocked_adapter_unavailable",
-            blocker_code="broker_read_adapter_unavailable",
+            blocker_code="broker_price_adapter_unavailable",
             next_operator_action="provide_read_only_adapter_before_broker_observed_readiness",
         )
 
@@ -3150,7 +3156,7 @@ def _broker_observed_readiness_preview(
                     "broker_read_adapter_unavailable": True,
                 },
                 decision="broker_observed_blocked_adapter_unavailable",
-                blocker_code="broker_read_adapter_unavailable",
+                blocker_code="broker_price_adapter_unavailable",
                 next_operator_action="provide_read_only_adapter_before_broker_observed_readiness",
             )
         missing_methods = [
@@ -3167,7 +3173,7 @@ def _broker_observed_readiness_preview(
                     "missing_read_methods": missing_methods,
                 },
                 decision="broker_observed_blocked_read_not_implemented",
-                blocker_code="broker_read_not_implemented",
+                blocker_code="broker_price_adapter_unavailable",
                 next_operator_action="implement_required_read_methods_before_retry",
             )
         read_attempted = True
@@ -3200,7 +3206,7 @@ def _broker_observed_readiness_preview(
                 "broker_error": _safe_broker_observed_error(exc),
             },
             decision="broker_observed_blocked_read_failed",
-            blocker_code="broker_read_failed",
+            blocker_code="broker_price_read_failed",
             next_operator_action="operator_review_broker_read_failure_before_retry",
         )
 
@@ -3756,6 +3762,27 @@ def _latest_price_evidence_from_response(
             blocker_code="broker_latest_price_missing",
             freshness_status="unavailable",
         )
+    if isinstance(response, Mapping) and _looks_like_latest_price_symbol_map(response):
+        rows = tuple(response.items())
+        if len(rows) != 1:
+            return _latest_price_evidence(
+                selected_symbol=selected_symbol,
+                source="ambiguous",
+                basis=default_basis,
+                as_of=as_of,
+                latest_price=None,
+                observed_at=None,
+                raw_symbol=selected_symbol,
+                blocker_code="broker_latest_price_ambiguous",
+                freshness_status="ambiguous",
+            )
+        response_symbol, response_value = rows[0]
+        if isinstance(response_value, Mapping):
+            payload = dict(response_value)
+            payload.setdefault("symbol", response_symbol)
+            response = payload
+        else:
+            response = response_value
     if isinstance(response, Sequence) and not isinstance(response, (str, bytes, bytearray)):
         rows = tuple(response)
         if len(rows) != 1:
@@ -3872,6 +3899,42 @@ def _latest_price_evidence_from_response(
         raw_symbol=raw_symbol,
         blocker_code=blocker,
     )
+
+
+LATEST_PRICE_DIRECT_RESPONSE_FIELDS = (
+    "latest_price_value",
+    "latest_price",
+    "latest_price_bid",
+    "latest_price_ask",
+    "latest_price_mid",
+    "latest_price_last",
+    "bid",
+    "bid_price",
+    "bp",
+    "ask",
+    "ask_price",
+    "ap",
+    "last",
+    "last_price",
+    "trade_price",
+    "price",
+    "p",
+    "close",
+    "close_price",
+    "c",
+    "timestamp",
+    "time",
+    "t",
+    "symbol",
+    "basis",
+    "source",
+)
+
+
+def _looks_like_latest_price_symbol_map(response: Mapping[object, object]) -> bool:
+    if not response:
+        return False
+    return not any(field in response for field in LATEST_PRICE_DIRECT_RESPONSE_FIELDS)
 
 
 def _latest_price_basis_kind(basis: str) -> str:
