@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Validates the v6.1 crypto SimBroker operating-loop artifact packet.
+Validates the v6.2 crypto SimBroker operating-loop and paper-readiness artifacts.
 
 .DESCRIPTION
 Checks required JSON/JSONL/Markdown artifacts, safety labels, SimBroker mode

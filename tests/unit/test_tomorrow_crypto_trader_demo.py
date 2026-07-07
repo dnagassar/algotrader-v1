@@ -17,6 +17,7 @@ from algotrader.execution.tomorrow_crypto_trader_demo import (
     REQUIRED_ARTIFACTS,
     REQUIRED_SAFETY_LABELS,
     STATE_ARTIFACTS,
+    build_no_submit_paper_readiness_packet,
     run_tomorrow_crypto_trader_demo,
     validate_tomorrow_crypto_trader_demo,
 )
@@ -58,9 +59,28 @@ def test_simbroker_end_to_end_run_writes_valid_artifact_packet(tmp_path: Path) -
     assert packet["safety"]["simulation_mutation_occurred"] is True
     assert packet["safety"]["network_used"] is False
     assert set(REQUIRED_SAFETY_LABELS) <= set(packet["safety_labels"])
+    readiness = packet["paper_readiness_packet"]
+    assert readiness["record_type"] == "paper_readiness_packet"
+    assert readiness["symbol"] == "BTCUSD"
+    assert readiness["side"] == "buy"
+    assert readiness["readiness_decision"] == "paper_ready_preview_only"
+    assert readiness["blocker_code"] == ""
+    assert readiness["paper_submit_authorized"] is False
+    assert readiness["paper_submit_occurred"] is False
+    assert readiness["broker_read_occurred"] is False
+    assert readiness["broker_mutation_occurred"] is False
+    assert readiness["network_used"] is False
+    assert readiness["min_notional_basis"]["verified"] is True
+    assert readiness["quantity_increment_basis"]["verified"] is True
+    assert readiness["orderability_basis"]["broker_observed"] is False
 
     for artifact_name in REQUIRED_ARTIFACTS:
         assert (output_root / artifact_name).is_file()
+    manifest = json.loads((output_root / "manifest.json").read_text(encoding="utf-8"))
+    assert "paper_readiness_packet" in manifest["required_artifacts"]
+    assert "paper_readiness_packet_markdown" in manifest["required_artifacts"]
+    brief = (output_root / "operating_brief.md").read_text(encoding="utf-8")
+    assert "Paper readiness preview" in brief
 
     events = [
         json.loads(line)
@@ -71,9 +91,51 @@ def test_simbroker_end_to_end_run_writes_valid_artifact_packet(tmp_path: Path) -
     assert "simulation_order_submitted" in event_types
     assert "simulation_order_filled" in event_types
     assert "simulation_reconciliation_checked" in event_types
+    assert "paper_readiness_evaluated" in event_types
 
     validation = validate_tomorrow_crypto_trader_demo(output_root)
     assert validation["validation_status"] == "passed", validation["errors"]
+
+
+@pytest.mark.parametrize(
+    ("overrides", "expected_decision"),
+    [
+        ({"latest_price": None, "intent": False}, "blocked_missing_price"),
+        (
+            {"latest_price_timestamp": datetime(2026, 7, 6, 11, 0, tzinfo=UTC)},
+            "blocked_stale_price",
+        ),
+        ({"orderability_verified": False}, "blocked_missing_orderability"),
+        ({"min_notional_verified": False}, "blocked_min_notional_or_increment_not_verified"),
+        ({"quantity_increment_verified": False}, "blocked_min_notional_or_increment_not_verified"),
+        ({"quantity": "0.10"}, "blocked_exceeds_max_notional"),
+        ({"portfolio_gross_exposure": "24"}, "blocked_exceeds_total_exposure"),
+        ({"existing_client_order_ids": ("cid",)}, "blocked_duplicate_client_order_id"),
+        ({"open_orders": ({"symbol": "BTCUSD", "status": "open"},)}, "blocked_open_order_present"),
+        (
+            {"positions": ({"symbol": "BTCUSD", "quantity": "0.01", "average_price": "100"},)},
+            "blocked_unexpected_preexisting_position",
+        ),
+        ({"selected": False, "intent": False}, "blocked_no_selected_candidate"),
+        ({"state_status": "failed", "state_errors": ("invalid_json:simbroker_state.json",)}, "blocked_sim_state_reconciliation_failed"),
+    ],
+)
+def test_paper_readiness_packet_blocks_required_conditions(
+    overrides: Mapping[str, object],
+    expected_decision: str,
+) -> None:
+    packet = _paper_readiness_packet(**overrides)
+
+    assert packet["readiness_decision"] == expected_decision
+    assert packet["blocker_code"] == expected_decision
+    assert packet["paper_submit_authorized"] is False
+    assert packet["paper_submit_occurred"] is False
+    assert packet["broker_mutation_authorized"] is False
+    assert packet["broker_mutation_occurred"] is False
+    assert packet["broker_read_occurred"] is False
+    assert packet["broker_state_observed"] is False
+    assert packet["network_used"] is False
+    assert packet["credential_values_exposed"] is False
 
 
 def test_simbroker_caps_are_enforced_in_selected_fill(tmp_path: Path) -> None:
@@ -287,6 +349,121 @@ def test_validator_catches_inconsistent_cash_exposure_arithmetic(tmp_path: Path)
 
     assert validation["validation_status"] == "failed"
     assert "state_cash_arithmetic_mismatch" in validation["errors"]
+
+
+def test_validator_catches_missing_paper_readiness_packet(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    (output_root / "paper_readiness_packet.json").unlink()
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "missing_artifact:paper_readiness_packet.json" in validation["errors"]
+    assert "selected_candidate_or_execution_plan_missing_paper_readiness_packet" in validation[
+        "errors"
+    ]
+
+
+def test_validator_catches_inconsistent_paper_readiness_safety_flags(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    readiness_path = output_root / "paper_readiness_packet.json"
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    readiness["paper_submit_occurred"] = True
+    readiness["safety"]["paper_submit_occurred"] = True
+    _write_json_fixture(readiness_path, readiness)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "paper_readiness_flag_not_false:paper_submit_occurred" in validation["errors"]
+    assert "paper_readiness_safety_flag_not_false:paper_submit_occurred" in validation[
+        "errors"
+    ]
+
+
+def test_validator_catches_false_paper_readiness_approval_without_min_evidence(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    readiness_path = output_root / "paper_readiness_packet.json"
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    readiness["readiness_decision"] = "paper_ready_preview_only"
+    readiness["final_readiness_decision"] = "paper_ready_preview_only"
+    readiness["blocker_code"] = ""
+    readiness["min_notional_basis"]["verified"] = False
+    readiness["min_notional_basis"]["status"] = "missing"
+    _write_json_fixture(readiness_path, readiness)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "paper_readiness_approved_without_min_notional_evidence" in validation["errors"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected_error"),
+    [
+        (
+            {"max_order_notional_check": {"status": "blocked"}},
+            "paper_readiness_approved_despite_max_notional_check",
+        ),
+        (
+            {"max_total_exposure_check": {"status": "blocked"}},
+            "paper_readiness_approved_despite_total_exposure_check",
+        ),
+        (
+            {"duplicate_client_order_id_check": {"status": "blocked"}},
+            "paper_readiness_approved_despite_duplicate_client_order_id_check",
+        ),
+        (
+            {"state_reconciliation_check": {"status": "failed"}},
+            "paper_readiness_approved_despite_state_reconciliation_failed",
+        ),
+    ],
+)
+def test_validator_catches_false_paper_readiness_approval_with_failed_checks(
+    tmp_path: Path,
+    mutation: Mapping[str, Mapping[str, object]],
+    expected_error: str,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        write_artifacts=True,
+    )
+    readiness_path = output_root / "paper_readiness_packet.json"
+    readiness = json.loads(readiness_path.read_text(encoding="utf-8"))
+    readiness["readiness_decision"] = "paper_ready_preview_only"
+    readiness["final_readiness_decision"] = "paper_ready_preview_only"
+    readiness["blocker_code"] = ""
+    for section, values in mutation.items():
+        readiness[section].update(values)
+    _write_json_fixture(readiness_path, readiness)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert expected_error in validation["errors"]
 
 
 def test_simbroker_artifacts_do_not_capture_loaded_credential_values(
@@ -574,6 +751,87 @@ def test_default_run_script_remains_backward_compatible(tmp_path: Path) -> None:
     assert "--scenario risk_on" in captured
     assert "--state-root" not in captured
     assert "--reset-state" not in captured
+
+
+def _paper_readiness_packet(
+    *,
+    latest_price: object = "100",
+    latest_price_timestamp: object = AS_OF,
+    orderability_verified: object = True,
+    min_notional_verified: object = True,
+    quantity_increment_verified: object = True,
+    quantity: object = "0.05",
+    selected: bool = True,
+    intent: bool = True,
+    portfolio_gross_exposure: object = "0",
+    positions: object = (),
+    existing_client_order_ids: object = (),
+    open_orders: object = (),
+    state_status: str = "passed",
+    state_errors: object = (),
+) -> Mapping[str, object]:
+    selected_candidate = None
+    if selected:
+        selected_candidate = {
+            "symbol": "BTCUSD",
+            "strategy_id": "btc_fixture_strategy",
+            "latest_price": latest_price,
+            "orderability_gate_passed": orderability_verified,
+            "min_notional_verified": min_notional_verified,
+            "qty_increment_verified": quantity_increment_verified,
+            "features": {"latest_price_timestamp": latest_price_timestamp},
+        }
+    execution_intent = None
+    if intent:
+        execution_intent = {
+            "symbol": "BTCUSD",
+            "side": "buy",
+            "quantity": quantity,
+            "client_order_id": "cid",
+            "status": "risk_approved",
+            "note": "ExecutionIntent is not a broker order.",
+        }
+    return build_no_submit_paper_readiness_packet(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        selected_candidate=selected_candidate,
+        execution_intent=execution_intent,
+        execution_plan={
+            "immutable_pre_broker": True,
+            "intent_count": 1 if intent else 0,
+            "intents": [{"symbol": "BTCUSD", "status": "risk_approved"}] if intent else [],
+        },
+        planned_action="simulated_buy" if selected else "blocked_no_trade",
+        state_reconciliation={"status": state_status, "errors": list(state_errors)},
+        portfolio_snapshot={
+            "gross_exposure": portfolio_gross_exposure,
+            "positions": list(positions),
+        },
+        existing_client_order_ids=tuple(existing_client_order_ids),
+        open_orders=tuple(open_orders),
+        readiness_basis={
+            "symbol": "BTCUSD" if selected or intent else "",
+            "side": "buy" if selected or intent else "",
+            "client_order_id": "cid" if selected or intent else "",
+            "latest_price": latest_price,
+            "latest_price_timestamp": latest_price_timestamp,
+            "estimated_quantity": quantity if latest_price is not None else None,
+            "orderability_verified": orderability_verified,
+            "min_notional_verified": min_notional_verified,
+            "quantity_increment_verified": quantity_increment_verified,
+            "min_notional": "1",
+            "quantity_increment": "0.00000001",
+        },
+    )
+
+
+def _write_json_fixture(path: Path, payload: Mapping[str, object]) -> None:
+    path.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
 
 
 def _read_state(packet: Mapping[str, object]) -> Mapping[str, object]:

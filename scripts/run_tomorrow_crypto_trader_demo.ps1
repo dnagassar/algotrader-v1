@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Runs the v6.1 crypto SimBroker operating loop.
+Runs the v6.2 crypto SimBroker operating loop with a no-submit paper-readiness packet.
 
 .DESCRIPTION
 Default SimBroker mode is fully offline and uses a deterministic local

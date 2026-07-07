@@ -1,9 +1,10 @@
-"""v6.1 supervised crypto trader demo with an offline simulation broker.
+"""v6.2 supervised crypto trader demo with an offline simulation broker.
 
 The default path is intentionally local-only. It creates fixture-backed crypto
 bars, evaluates a small supervised decision router, builds an ExecutionPlan, and
 lets a deterministic simulation broker consume only accepted plan intents while
-persisting simulated cash, positions, orders, fills, and cycle history.
+persisting simulated cash, positions, orders, fills, and cycle history. It also
+emits a deterministic no-submit paper-readiness preview packet.
 """
 
 from __future__ import annotations
@@ -44,7 +45,7 @@ from algotrader.risk.engine import RiskEngine
 from algotrader.risk.state import RiskVerdict
 from algotrader.signals.crypto_trend import normalize_crypto_symbol
 
-SCHEMA_VERSION = "v6_1_crypto_simbroker_multi_cycle_operating_loop_v1"
+SCHEMA_VERSION = "v6_2_crypto_no_submit_paper_readiness_bridge_v1"
 COMMAND_NAME = "run_tomorrow_crypto_trader_demo"
 VALIDATOR_COMMAND_NAME = "validate_tomorrow_crypto_trader_demo"
 DEFAULT_OUTPUT_ROOT = Path("runs/crypto_trader_demo/latest")
@@ -59,6 +60,22 @@ SIMULATED_STARTING_CASH = Decimal("25")
 QTY_INCREMENT = Decimal("0.00000001")
 MIN_ORDER_SIZE = Decimal("0.00000001")
 MIN_NOTIONAL = Decimal("1")
+PAPER_READINESS_PRICE_MAX_AGE = timedelta(hours=2)
+
+PAPER_READINESS_DECISIONS = (
+    "paper_ready_preview_only",
+    "blocked_missing_price",
+    "blocked_stale_price",
+    "blocked_missing_orderability",
+    "blocked_min_notional_or_increment_not_verified",
+    "blocked_exceeds_max_notional",
+    "blocked_exceeds_total_exposure",
+    "blocked_duplicate_client_order_id",
+    "blocked_open_order_present",
+    "blocked_unexpected_preexisting_position",
+    "blocked_no_selected_candidate",
+    "blocked_sim_state_reconciliation_failed",
+)
 
 REQUIRED_SAFETY_LABELS = (
     "simulation_or_paper_only",
@@ -77,6 +94,7 @@ SIMBROKER_SAFETY_LABELS = (
     "simulation_mutation_authorized=true",
     "paper_submit_occurred=false",
     "broker_mutation_occurred=false",
+    "broker_read_occurred=false",
     "broker_state_observed=false",
     "broker_state_mode=offline_simulation",
     "network_used=false",
@@ -99,6 +117,8 @@ REQUIRED_ARTIFACTS = (
     "events.jsonl",
     "manifest.json",
     "next_operator_action.json",
+    "paper_readiness_packet.json",
+    "paper_readiness_packet.md",
 )
 
 STATE_ARTIFACTS = (
@@ -136,8 +156,10 @@ __all__ = [
     "STATE_ARTIFACTS",
     "VALIDATOR_COMMAND_NAME",
     "SimulationBroker",
+    "build_no_submit_paper_readiness_packet",
     "main",
     "render_operating_brief",
+    "render_paper_readiness_packet",
     "run_tomorrow_crypto_trader_demo",
     "validate_tomorrow_crypto_trader_demo",
     "write_tomorrow_crypto_trader_demo_artifacts",
@@ -631,6 +653,42 @@ def run_tomorrow_crypto_trader_demo(
     safety_labels = _simbroker_labels(
         simulation_mutation_occurred=simulation_mutation_occurred,
     )
+    state_reconciliation = {
+        "status": "failed" if state_snapshot.errors else "passed",
+        "errors": list(state_snapshot.errors),
+        "state_root": str(state_root_path),
+        "state_exists": state_snapshot.exists,
+        "open_simulated_order_count": len(state_snapshot.open_orders),
+        "portfolio_before": _portfolio_snapshot(state_snapshot.portfolio),
+        "portfolio_after": _portfolio_snapshot(sim_broker.portfolio),
+    }
+    paper_readiness_packet = _paper_readiness_packet_for_plan(
+        run_id=run_id,
+        cycle_index=cycle_index,
+        as_of=as_of_value,
+        planned_action=plan_material.planned_action,
+        candidates=candidates,
+        plan_material=plan_material,
+        state_snapshot=state_snapshot,
+        state_reconciliation=state_reconciliation,
+        existing_client_order_ids=combined_existing_client_order_ids,
+    )
+    events.append(
+        {
+            "event_type": "paper_readiness_evaluated",
+            "run_id": run_id,
+            "cycle_index": cycle_index,
+            "cycle_key": cycle_key,
+            "timestamp": as_of_value.isoformat(),
+            "readiness_decision": paper_readiness_packet["readiness_decision"],
+            "blocker_code": paper_readiness_packet["blocker_code"],
+            "paper_submit_authorized": False,
+            "paper_submit_occurred": False,
+            "broker_mutation_occurred": False,
+            "broker_read_occurred": False,
+            "network_used": False,
+        }
+    )
     events.append(
         {
             "event_type": "demo_run_completed",
@@ -644,6 +702,7 @@ def run_tomorrow_crypto_trader_demo(
             "decision": decision,
             "final_blocker_status": final_blocker,
             "simulation_mutation_occurred": simulation_mutation_occurred,
+            "paper_readiness_decision": paper_readiness_packet["readiness_decision"],
             "safety_labels": list(safety_labels),
         }
     )
@@ -682,6 +741,16 @@ def run_tomorrow_crypto_trader_demo(
             state_root_path,
             updated_state,
         )
+    next_operator_action = _next_action(decision, final_blocker)
+    next_operator_action["paper_readiness_preview"] = {
+        "selected_symbol": paper_readiness_packet["symbol"] or "none",
+        "action": paper_readiness_packet["side"] or plan_material.planned_action,
+        "readiness_decision": paper_readiness_packet["readiness_decision"],
+        "blocker_code": paper_readiness_packet["blocker_code"] or "none",
+        "paper_submit_authorized": False,
+        "next_operator_action": paper_readiness_packet["next_operator_action"],
+    }
+
     packet = {
         "schema_version": SCHEMA_VERSION,
         "record_type": "tomorrow_crypto_trader_demo",
@@ -737,20 +806,13 @@ def run_tomorrow_crypto_trader_demo(
         "fill_ledger": list(sim_broker.fill_ledger),
         "cumulative_fill_ledger": list(_mapping_sequence(updated_state.get("fills"))),
         "portfolio_snapshot": _portfolio_snapshot(sim_broker.portfolio),
-        "state_reconciliation": {
-            "status": "failed" if state_snapshot.errors else "passed",
-            "errors": list(state_snapshot.errors),
-            "state_root": str(state_root_path),
-            "state_exists": state_snapshot.exists,
-            "open_simulated_order_count": len(state_snapshot.open_orders),
-            "portfolio_before": _portfolio_snapshot(state_snapshot.portfolio),
-            "portfolio_after": _portfolio_snapshot(sim_broker.portfolio),
-        },
+        "state_reconciliation": state_reconciliation,
         "cycle_record": cycle_record,
         "broker_result": broker_result,
+        "paper_readiness_packet": paper_readiness_packet,
         "final_blocker_status": final_blocker,
         "blockers": list(_dedupe((*plan_material.blockers, _text(broker_result.get("blocker"))))),
-        "next_operator_action": _next_action(decision, final_blocker),
+        "next_operator_action": next_operator_action,
         "safety": safety,
         "safety_labels": list(safety_labels),
         "labels": list(safety_labels),
@@ -775,6 +837,8 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         "events": root / "events.jsonl",
         "manifest": root / "manifest.json",
         "next_operator_action": root / "next_operator_action.json",
+        "paper_readiness_packet": root / "paper_readiness_packet.json",
+        "paper_readiness_packet_markdown": root / "paper_readiness_packet.md",
     }
     artifact_paths = {key: str(path) for key, path in paths.items()}
     packet_payload = {**dict(packet), "artifact_paths": artifact_paths}
@@ -809,6 +873,15 @@ def write_tomorrow_crypto_trader_demo_artifacts(
     _write_json(paths["operating_record"], packet_payload)
     _write_events(paths["events"], _mapping_sequence(packet.get("events")))
     _write_json(paths["next_operator_action"], next_action)
+    _write_json(
+        paths["paper_readiness_packet"],
+        _mapping(packet.get("paper_readiness_packet")),
+    )
+    paths["paper_readiness_packet_markdown"].write_text(
+        render_paper_readiness_packet(_mapping(packet.get("paper_readiness_packet"))) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     manifest["required_artifacts"] = {
         name: {
             "path": str(path),
@@ -837,6 +910,10 @@ def write_tomorrow_crypto_trader_demo_artifacts(
 def render_operating_brief(packet: Mapping[str, object]) -> str:
     selected = _mapping(packet.get("selected_candidate"))
     selected_symbol = _text(selected.get("symbol")) or "none"
+    paper = _mapping(packet.get("paper_readiness_packet"))
+    paper_symbol = _text(paper.get("symbol")) or selected_symbol
+    paper_action = _text(paper.get("side") or packet.get("planned_action")) or "none"
+    paper_blocker = _text(paper.get("blocker_code")) or "none"
     fills = _mapping_sequence(packet.get("fill_ledger"))
     positions = _mapping_sequence(_mapping(packet.get("portfolio_snapshot")).get("positions"))
     safety_labels = _string_sequence(packet.get("safety_labels"))
@@ -873,6 +950,14 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             "## Selected Candidate",
             json.dumps(_json_safe(selected), sort_keys=True),
             "",
+            "## Paper readiness preview",
+            f"- selected_symbol: `{paper_symbol}`",
+            f"- action: `{paper_action}`",
+            f"- readiness_decision: `{_text(paper.get('readiness_decision'))}`",
+            f"- blocker_status: `{paper_blocker}`",
+            f"- paper_submit_authorized: `{_bool_text(paper.get('paper_submit_authorized'))}`",
+            f"- next_operator_action: `{_text(paper.get('next_operator_action'))}`",
+            "",
             "## Simulated Fills",
             json.dumps(_json_safe(fills), sort_keys=True),
             "",
@@ -884,6 +969,37 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def render_paper_readiness_packet(packet: Mapping[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Paper Readiness Packet",
+            "",
+            f"- run_id: `{_text(packet.get('run_id'))}`",
+            f"- cycle_index: `{_text(packet.get('cycle_index'))}`",
+            f"- symbol: `{_text(packet.get('symbol')) or 'none'}`",
+            f"- side: `{_text(packet.get('side')) or 'none'}`",
+            f"- readiness_decision: `{_text(packet.get('readiness_decision'))}`",
+            f"- blocker_code: `{_text(packet.get('blocker_code')) or 'none'}`",
+            f"- intended_notional: `{_text(packet.get('intended_notional'))}`",
+            f"- estimated_quantity: `{_text(packet.get('estimated_quantity'))}`",
+            f"- paper_submit_authorized: `{_bool_text(packet.get('paper_submit_authorized'))}`",
+            f"- paper_submit_occurred: `{_bool_text(packet.get('paper_submit_occurred'))}`",
+            f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
+            f"- broker_mutation_occurred: `{_bool_text(packet.get('broker_mutation_occurred'))}`",
+            f"- network_used: `{_bool_text(packet.get('network_used'))}`",
+            "",
+            "## Bases",
+            f"- latest_price_basis: `{_text(_mapping(packet.get('latest_price_basis')).get('basis'))}`",
+            f"- orderability_basis: `{_text(_mapping(packet.get('orderability_basis')).get('basis'))}`",
+            f"- min_notional_basis: `{_text(_mapping(packet.get('min_notional_basis')).get('basis'))}`",
+            f"- quantity_increment_basis: `{_text(_mapping(packet.get('quantity_increment_basis')).get('basis'))}`",
+            "",
+            "## Safety Labels",
+            *[f"- `{label}`" for label in _string_sequence(packet.get("safety_labels"))],
+        ]
+    )
 
 
 def validate_tomorrow_crypto_trader_demo(
@@ -899,19 +1015,42 @@ def validate_tomorrow_crypto_trader_demo(
     record = _read_json_or_error(artifact_paths["operating_record.json"], errors)
     manifest = _read_json_or_error(artifact_paths["manifest.json"], errors)
     next_action = _read_json_or_error(artifact_paths["next_operator_action.json"], errors)
+    paper_readiness = _read_json_or_error(
+        artifact_paths["paper_readiness_packet.json"],
+        errors,
+    )
     events = _read_jsonl_or_error(artifact_paths["events.jsonl"], errors)
     state_paths: dict[str, Path] = {}
     state_payload: Mapping[str, object] = {}
     state_events: tuple[Mapping[str, object], ...] = ()
     brief_text = ""
+    paper_readiness_text = ""
     try:
         brief_text = artifact_paths["operating_brief.md"].read_text(encoding="utf-8")
     except OSError:
         if artifact_paths["operating_brief.md"].is_file():
             errors.append("operating_brief_unreadable")
+    try:
+        paper_readiness_text = artifact_paths["paper_readiness_packet.md"].read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        if artifact_paths["paper_readiness_packet.md"].is_file():
+            errors.append("paper_readiness_packet_md_unreadable")
 
     if record:
         _validate_record_contract(record, events, errors)
+        if paper_readiness:
+            _validate_paper_readiness_packet(
+                packet=paper_readiness,
+                record=record,
+                markdown=paper_readiness_text,
+                errors=errors,
+            )
+        elif isinstance(record.get("selected_candidate"), Mapping) or int(
+            _mapping(record.get("execution_plan")).get("intent_count", 0) or 0
+        ) > 0:
+            errors.append("selected_candidate_or_execution_plan_missing_paper_readiness_packet")
         if _text(record.get("mode")) == "SimBroker":
             state_paths = _state_paths_for_record(record, root)
             for name, path in state_paths.items():
@@ -949,12 +1088,17 @@ def validate_tomorrow_crypto_trader_demo(
                 )
     if manifest:
         _validate_labels("manifest", manifest, errors)
+        _validate_manifest_references_paper_readiness(manifest, errors)
     if next_action:
         _validate_labels("next_operator_action", next_action, errors)
     if brief_text:
         for label in REQUIRED_SAFETY_LABELS:
             if label not in brief_text:
                 errors.append(f"operating_brief_missing_label:{label}")
+        if "Paper readiness preview" not in brief_text:
+            errors.append("operating_brief_missing_paper_readiness_preview")
+    if paper_readiness_text and "Paper Readiness Packet" not in paper_readiness_text:
+        errors.append("paper_readiness_packet_md_missing_title")
     if _git_ls_files_runs():
         errors.append("generated_runs_artifacts_tracked")
     _validate_forbidden_sentinels(root, errors)
@@ -994,6 +1138,7 @@ def _validate_record_contract(
             "broker_mutation_authorized",
             "paper_submit_occurred",
             "broker_mutation_occurred",
+            "broker_read_occurred",
             "broker_state_observed",
             "network_used",
             "credential_values_exposed",
@@ -1042,6 +1187,96 @@ def _validate_record_contract(
                 errors.append("paper_candidate_without_min_notional_verification")
             if selected.get("qty_increment_verified") is not True:
                 errors.append("paper_candidate_without_qty_increment_verification")
+
+
+def _validate_paper_readiness_packet(
+    *,
+    packet: Mapping[str, object],
+    record: Mapping[str, object],
+    markdown: str,
+    errors: list[str],
+) -> None:
+    _validate_labels("paper_readiness_packet", packet, errors)
+    if packet.get("record_type") != "paper_readiness_packet":
+        errors.append("paper_readiness_packet_record_type_mismatch")
+    if _text(packet.get("run_id")) != _text(record.get("run_id")):
+        errors.append("paper_readiness_packet_run_id_mismatch")
+    decision = _text(packet.get("readiness_decision") or packet.get("final_readiness_decision"))
+    if not decision:
+        errors.append("paper_readiness_decision_missing")
+    elif decision not in PAPER_READINESS_DECISIONS:
+        errors.append(f"paper_readiness_decision_invalid:{decision}")
+
+    for field in (
+        "paper_submit_authorized",
+        "paper_submit_occurred",
+        "broker_mutation_authorized",
+        "broker_mutation_occurred",
+        "broker_read_occurred",
+        "broker_state_observed",
+        "network_used",
+        "credential_values_exposed",
+    ):
+        if packet.get(field) is not False:
+            errors.append(f"paper_readiness_flag_not_false:{field}")
+        if _mapping(packet.get("safety")).get(field) is not False:
+            errors.append(f"paper_readiness_safety_flag_not_false:{field}")
+
+    if markdown:
+        if decision and decision not in markdown:
+            errors.append("paper_readiness_packet_md_missing_decision")
+        if _text(packet.get("symbol")) and _text(packet.get("symbol")) not in markdown:
+            errors.append("paper_readiness_packet_md_missing_symbol")
+
+    embedded = _mapping(record.get("paper_readiness_packet"))
+    if embedded and _text(embedded.get("readiness_decision")) != decision:
+        errors.append("embedded_paper_readiness_decision_mismatch")
+
+    if decision == "paper_ready_preview_only":
+        _validate_paper_ready_checks(packet, errors)
+
+
+def _validate_paper_ready_checks(
+    packet: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    if _mapping(packet.get("min_notional_basis")).get("verified") is not True:
+        errors.append("paper_readiness_approved_without_min_notional_evidence")
+    if _mapping(packet.get("quantity_increment_basis")).get("verified") is not True:
+        errors.append("paper_readiness_approved_without_quantity_increment_evidence")
+    if _mapping(packet.get("orderability_basis")).get("verified") is not True:
+        errors.append("paper_readiness_approved_without_orderability_evidence")
+    if _mapping(packet.get("stale_missing_price_policy_result")).get("status") != "passed":
+        errors.append("paper_readiness_approved_without_valid_price")
+    if _mapping(packet.get("max_order_notional_check")).get("status") != "passed":
+        errors.append("paper_readiness_approved_despite_max_notional_check")
+    if _mapping(packet.get("max_total_exposure_check")).get("status") != "passed":
+        errors.append("paper_readiness_approved_despite_total_exposure_check")
+    if _mapping(packet.get("duplicate_client_order_id_check")).get("status") != "passed":
+        errors.append("paper_readiness_approved_despite_duplicate_client_order_id_check")
+    if _mapping(packet.get("one_open_order_per_symbol_check")).get("status") != "passed":
+        errors.append("paper_readiness_approved_despite_open_order_check")
+    if _mapping(packet.get("preexisting_position_policy_result")).get("status") not in {
+        "passed",
+        "allowed_exit",
+    }:
+        errors.append("paper_readiness_approved_despite_preexisting_position_check")
+    if _mapping(packet.get("state_reconciliation_check")).get("status") != "passed":
+        errors.append("paper_readiness_approved_despite_state_reconciliation_failed")
+
+
+def _validate_manifest_references_paper_readiness(
+    manifest: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    required = _mapping(manifest.get("required_artifacts"))
+    for name in ("paper_readiness_packet", "paper_readiness_packet_markdown"):
+        artifact = _mapping(required.get(name))
+        if not artifact:
+            errors.append(f"manifest_missing_required_artifact:{name}")
+            continue
+        if artifact.get("exists") is not True:
+            errors.append(f"manifest_required_artifact_missing:{name}")
 
 
 def _validate_labels(
@@ -1448,7 +1683,8 @@ def _candidate_for_symbol(
     data_gate_passed = len(usable) >= 50
     if not data_gate_passed:
         blockers.append("insufficient_history")
-    latest_price = usable[-1].close if usable else None
+    latest_bar = usable[-1] if usable else None
+    latest_price = None if latest_bar is None else latest_bar.close
     short_sma = _mean_close(usable[-20:]) if len(usable) >= 20 else None
     long_sma = _mean_close(usable[-50:]) if len(usable) >= 50 else None
     trend_risk_on = short_sma is not None and long_sma is not None and short_sma > long_sma
@@ -1504,6 +1740,7 @@ def _candidate_for_symbol(
             "volatility_sane": volatility_sane,
             "usable_bar_count": len(usable),
             "latest_price": latest_price,
+            "latest_price_timestamp": None if latest_bar is None else latest_bar.timestamp,
         },
     )
 
@@ -1877,6 +2114,480 @@ def _simbroker_safety(*, simulation_mutation_occurred: bool) -> dict[str, object
         "credential_values_exposed": False,
         "live_authorized": False,
     }
+
+
+def build_no_submit_paper_readiness_packet(
+    *,
+    run_id: str,
+    cycle_index: int,
+    as_of: datetime | str,
+    selected_candidate: Mapping[str, object] | None,
+    execution_intent: Mapping[str, object] | None,
+    execution_plan: Mapping[str, object] | None,
+    planned_action: str,
+    state_reconciliation: Mapping[str, object] | None,
+    portfolio_snapshot: Mapping[str, object] | None,
+    existing_client_order_ids: Iterable[str] = (),
+    open_orders: Sequence[Mapping[str, object]] = (),
+    readiness_basis: Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    """Build a deterministic no-submit paper-readiness preview packet."""
+
+    as_of_value = _utc_datetime(as_of, "as_of")
+    selected = _mapping(selected_candidate)
+    intent = _mapping(execution_intent)
+    plan = _mapping(execution_plan)
+    basis = _mapping(readiness_basis)
+    portfolio = _mapping(portfolio_snapshot)
+    state = _mapping(state_reconciliation)
+    safety = _paper_readiness_safety()
+    labels = _paper_readiness_safety_labels()
+
+    symbol = _readiness_symbol(selected, intent, basis)
+    side = _readiness_side(intent, basis, planned_action, selected)
+    strategy_id = _text(selected.get("strategy_id") or basis.get("strategy_id"))
+    client_order_id = _text(intent.get("client_order_id") or basis.get("client_order_id"))
+    latest_price = _first_decimal(
+        basis.get("latest_price"),
+        selected.get("latest_price"),
+    )
+    latest_price_timestamp = _datetime_or_none(
+        basis.get("latest_price_timestamp")
+        or _mapping(selected.get("features")).get("latest_price_timestamp")
+    )
+    price_max_age = _decimal_or_none(basis.get("price_max_age_seconds"))
+    max_age_seconds = (
+        PAPER_READINESS_PRICE_MAX_AGE.total_seconds()
+        if price_max_age is None
+        else float(price_max_age)
+    )
+    stale_after = as_of_value - timedelta(seconds=max_age_seconds)
+    price_present = latest_price is not None and latest_price > Decimal("0")
+    price_stale = (
+        price_present
+        and (
+            latest_price_timestamp is None
+            or latest_price_timestamp < stale_after
+            or latest_price_timestamp > as_of_value
+        )
+    )
+    quantity = _first_decimal(
+        basis.get("estimated_quantity"),
+        basis.get("quantity"),
+        intent.get("quantity"),
+    )
+    if quantity is None and latest_price is not None and latest_price > Decimal("0") and side == "buy":
+        quantity = _demo_quantity(latest_price)
+    intended_notional = _first_decimal(basis.get("intended_notional"))
+    if intended_notional is None and quantity is not None and latest_price is not None:
+        intended_notional = quantity * latest_price
+
+    orderability_verified = _strict_true(
+        basis.get("orderability_verified", selected.get("orderability_gate_passed"))
+    )
+    min_notional_verified = _strict_true(
+        basis.get("min_notional_verified", selected.get("min_notional_verified"))
+    )
+    quantity_increment_verified = _strict_true(
+        basis.get(
+            "quantity_increment_verified",
+            basis.get("qty_increment_verified", selected.get("qty_increment_verified")),
+        )
+    )
+    min_notional = (
+        _first_decimal(basis.get("min_notional")) or MIN_NOTIONAL
+        if min_notional_verified
+        else None
+    )
+    quantity_increment = (
+        _first_decimal(basis.get("quantity_increment"), basis.get("qty_increment")) or QTY_INCREMENT
+        if quantity_increment_verified
+        else None
+    )
+    max_order_notional = _first_decimal(basis.get("max_order_notional")) or MAX_NOTIONAL_PER_ORDER
+    max_total_exposure = _first_decimal(basis.get("max_total_exposure")) or MAX_TOTAL_DEMO_EXPOSURE
+    current_exposure = _first_decimal(portfolio.get("gross_exposure")) or Decimal("0")
+    projected_total_exposure = _projected_exposure(
+        current_exposure=current_exposure,
+        intended_notional=intended_notional,
+        side=side,
+    )
+
+    duplicate_ids = set(_dedupe((*existing_client_order_ids, *_string_sequence(basis.get("seen_client_order_ids")))))
+    duplicate_client_order_id = bool(client_order_id and client_order_id in duplicate_ids)
+    open_symbol_orders = tuple(
+        order for order in open_orders if _open_order_matches_symbol(order, symbol)
+    )
+    positions = _mapping_sequence(portfolio.get("positions"))
+    matching_positions = tuple(
+        position for position in positions if _position_matches_symbol(position, symbol)
+    )
+    preexisting_position_blocked = bool(matching_positions and side != "sell")
+    state_status = _text(state.get("status")) or "passed"
+    state_passed = state_status == "passed"
+    has_selected_or_plan = bool(
+        symbol
+        and (
+            selected
+            or intent
+            or int(plan.get("intent_count", 0) or 0) > 0
+        )
+    )
+
+    latest_price_check = {
+        "status": "blocked" if not price_present or price_stale else "passed",
+        "policy": "latest_price_required_and_not_older_than_offline_fixture_threshold",
+        "latest_price": latest_price,
+        "latest_price_timestamp": latest_price_timestamp,
+        "as_of": as_of_value,
+        "max_age_seconds": int(max_age_seconds),
+        "stale_after": stale_after,
+        "missing": not price_present,
+        "stale": bool(price_stale),
+        "fresh_market_data_claimed": False,
+    }
+    orderability_check = {
+        "status": "passed" if orderability_verified else "blocked",
+        "verified": orderability_verified,
+        "basis": _text(basis.get("orderability_basis")) or "deterministic_offline_fixture_symbol_universe",
+        "broker_observed": False,
+    }
+    min_notional_basis = {
+        "status": "verified" if min_notional_verified else "missing",
+        "verified": min_notional_verified,
+        "min_notional": min_notional,
+        "basis": _text(basis.get("min_notional_basis")) or "deterministic_demo_fixture",
+        "broker_observed": False,
+    }
+    quantity_increment_basis = {
+        "status": "verified" if quantity_increment_verified else "missing",
+        "verified": quantity_increment_verified,
+        "quantity_increment": quantity_increment,
+        "basis": _text(basis.get("quantity_increment_basis")) or "deterministic_demo_fixture",
+        "broker_observed": False,
+    }
+    duplicate_check = {
+        "status": "blocked" if duplicate_client_order_id else "passed",
+        "client_order_id": client_order_id,
+        "duplicate": duplicate_client_order_id,
+        "basis": "local_simbroker_seen_client_order_ids_only",
+    }
+    max_order_check = {
+        "status": _cap_status(intended_notional, max_order_notional),
+        "intended_notional": intended_notional,
+        "max_order_notional": max_order_notional,
+    }
+    total_exposure_check = {
+        "status": _cap_status(projected_total_exposure, max_total_exposure),
+        "current_total_exposure": current_exposure,
+        "projected_total_exposure": projected_total_exposure,
+        "max_total_exposure": max_total_exposure,
+    }
+    one_open_order_check = {
+        "status": "blocked" if open_symbol_orders else "passed",
+        "symbol": symbol,
+        "open_order_count_for_symbol": len(open_symbol_orders),
+        "basis": "local_simbroker_state_only",
+    }
+    preexisting_position_policy = {
+        "status": (
+            "blocked"
+            if preexisting_position_blocked
+            else "allowed_exit"
+            if matching_positions and side == "sell"
+            else "passed"
+        ),
+        "symbol": symbol,
+        "side": side,
+        "matching_position_count": len(matching_positions),
+        "policy": "paper_preview_blocks_new_buy_when_local_sim_position_exists",
+    }
+    state_check = {
+        "status": state_status,
+        "passed": state_passed,
+        "errors": list(_string_sequence(state.get("errors"))),
+    }
+
+    blocker_code = _paper_readiness_blocker(
+        state_passed=state_passed,
+        has_selected_or_plan=has_selected_or_plan,
+        price_present=price_present,
+        price_stale=bool(price_stale),
+        orderability_verified=orderability_verified,
+        min_notional_verified=min_notional_verified,
+        quantity_increment_verified=quantity_increment_verified,
+        max_order_status=_text(max_order_check.get("status")),
+        total_exposure_status=_text(total_exposure_check.get("status")),
+        duplicate_client_order_id=duplicate_client_order_id,
+        open_order_present=bool(open_symbol_orders),
+        preexisting_position_blocked=preexisting_position_blocked,
+    )
+    decision = blocker_code or "paper_ready_preview_only"
+    next_operator_action = (
+        "operator_review_preview_packet_no_submit"
+        if decision == "paper_ready_preview_only"
+        else "resolve_paper_readiness_blocker_before_any_paper_submit"
+    )
+
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "paper_readiness_packet",
+        "run_id": run_id,
+        "cycle_index": cycle_index,
+        "as_of": as_of_value,
+        "symbol": symbol,
+        "side": side,
+        "strategy_id": strategy_id,
+        "client_order_id": client_order_id,
+        "planned_action": planned_action,
+        "execution_intent_summary": dict(intent),
+        "execution_plan_summary": dict(plan),
+        "intended_notional": intended_notional,
+        "estimated_quantity": quantity,
+        "latest_price": latest_price,
+        "latest_price_basis": {
+            "basis": _text(basis.get("latest_price_basis")) or "offline_fixture_latest_bar_close",
+            "market_data_observed": False,
+            "broker_observed": False,
+            "latest_price_check": latest_price_check,
+        },
+        "orderability_basis": orderability_check,
+        "min_notional_basis": min_notional_basis,
+        "quantity_increment_basis": quantity_increment_basis,
+        "duplicate_client_order_id_check": duplicate_check,
+        "max_order_notional_check": max_order_check,
+        "max_total_exposure_check": total_exposure_check,
+        "one_open_order_per_symbol_check": one_open_order_check,
+        "preexisting_position_policy_result": preexisting_position_policy,
+        "stale_missing_price_policy_result": latest_price_check,
+        "state_reconciliation_check": state_check,
+        "final_readiness_decision": decision,
+        "readiness_decision": decision,
+        "blocker_code": blocker_code,
+        "next_operator_action": next_operator_action,
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "broker_read_occurred": False,
+        "broker_state_observed": False,
+        "network_used": False,
+        "credential_values_exposed": False,
+        "safety": safety,
+        "safety_labels": list(labels),
+        "labels": list(labels),
+        "profit_claim": "none",
+    }
+
+
+def _paper_readiness_packet_for_plan(
+    *,
+    run_id: str,
+    cycle_index: int,
+    as_of: datetime,
+    planned_action: str,
+    candidates: Sequence[DemoCandidate],
+    plan_material: DemoPlanMaterial,
+    state_snapshot: SimBrokerStateSnapshot,
+    state_reconciliation: Mapping[str, object],
+    existing_client_order_ids: Iterable[str],
+) -> dict[str, object]:
+    selected = plan_material.selected_candidate or _select_candidate(candidates)
+    selected_payload = None if selected is None else selected.to_dict()
+    intent_payload = _execution_intent_record(plan_material)
+    plan_payload = _execution_plan_record(plan_material.execution_plan)
+    latest_timestamp = None
+    latest_price = None
+    if selected is not None:
+        latest_timestamp = _mapping(selected.features).get("latest_price_timestamp")
+        latest_price = selected.latest_price
+    if latest_price is None and plan_material.quote is not None:
+        latest_price = plan_material.quote.ask
+        latest_timestamp = plan_material.quote.timestamp
+    quantity = None if plan_material.order is None else plan_material.order.quantity
+    if quantity is None and latest_price is not None and latest_price > Decimal("0") and planned_action != "simulated_exit":
+        quantity = _demo_quantity(latest_price)
+    intended_notional = None
+    if quantity is not None and latest_price is not None:
+        intended_notional = quantity * latest_price
+    return build_no_submit_paper_readiness_packet(
+        run_id=run_id,
+        cycle_index=cycle_index,
+        as_of=as_of,
+        selected_candidate=selected_payload,
+        execution_intent=intent_payload,
+        execution_plan=plan_payload,
+        planned_action=planned_action,
+        state_reconciliation=state_reconciliation,
+        portfolio_snapshot=_portfolio_snapshot(state_snapshot.portfolio),
+        existing_client_order_ids=existing_client_order_ids,
+        open_orders=state_snapshot.open_orders,
+        readiness_basis={
+            "symbol": "" if selected is None else selected.symbol,
+            "side": _plan_material_side(plan_material, planned_action),
+            "strategy_id": "" if selected is None else selected.strategy_id,
+            "client_order_id": plan_material.client_order_id,
+            "latest_price": latest_price,
+            "latest_price_timestamp": latest_timestamp,
+            "estimated_quantity": quantity,
+            "intended_notional": intended_notional,
+            "latest_price_basis": "offline_fixture_latest_bar_close",
+            "orderability_basis": "deterministic_offline_fixture_symbol_universe",
+            "orderability_verified": bool(selected is not None and selected.orderability_gate_passed)
+            or bool(intent_payload),
+            "min_notional_basis": "deterministic_demo_fixture",
+            "min_notional_verified": bool(selected is not None and selected.min_notional_verified)
+            or bool(intent_payload),
+            "quantity_increment_basis": "deterministic_demo_fixture",
+            "quantity_increment_verified": bool(
+                selected is not None and selected.qty_increment_verified
+            )
+            or bool(intent_payload),
+            "min_notional": MIN_NOTIONAL,
+            "quantity_increment": QTY_INCREMENT,
+            "max_order_notional": MAX_NOTIONAL_PER_ORDER,
+            "max_total_exposure": MAX_TOTAL_DEMO_EXPOSURE,
+        },
+    )
+
+
+def _paper_readiness_safety() -> dict[str, object]:
+    return {
+        "simulation_or_paper_only": True,
+        "not_live_authorized": True,
+        "no_real_capital": True,
+        "profit_claim": "none",
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "broker_read_occurred": False,
+        "broker_state_observed": False,
+        "network_used": False,
+        "credential_values_exposed": False,
+        "live_authorized": False,
+        "live_endpoint_touched": False,
+    }
+
+
+def _paper_readiness_safety_labels() -> tuple[str, ...]:
+    return (
+        *REQUIRED_SAFETY_LABELS,
+        "paper_submit_occurred=false",
+        "broker_mutation_occurred=false",
+        "broker_read_occurred=false",
+        "broker_state_observed=false",
+        "network_used=false",
+        "live_authorized=false",
+        "live_endpoint_touched=false",
+    )
+
+
+def _paper_readiness_blocker(
+    *,
+    state_passed: bool,
+    has_selected_or_plan: bool,
+    price_present: bool,
+    price_stale: bool,
+    orderability_verified: bool,
+    min_notional_verified: bool,
+    quantity_increment_verified: bool,
+    max_order_status: str,
+    total_exposure_status: str,
+    duplicate_client_order_id: bool,
+    open_order_present: bool,
+    preexisting_position_blocked: bool,
+) -> str:
+    if not state_passed:
+        return "blocked_sim_state_reconciliation_failed"
+    if not has_selected_or_plan:
+        return "blocked_no_selected_candidate"
+    if not price_present:
+        return "blocked_missing_price"
+    if price_stale:
+        return "blocked_stale_price"
+    if not orderability_verified:
+        return "blocked_missing_orderability"
+    if not min_notional_verified or not quantity_increment_verified:
+        return "blocked_min_notional_or_increment_not_verified"
+    if max_order_status == "blocked":
+        return "blocked_exceeds_max_notional"
+    if total_exposure_status == "blocked":
+        return "blocked_exceeds_total_exposure"
+    if duplicate_client_order_id:
+        return "blocked_duplicate_client_order_id"
+    if open_order_present:
+        return "blocked_open_order_present"
+    if preexisting_position_blocked:
+        return "blocked_unexpected_preexisting_position"
+    return ""
+
+
+def _readiness_symbol(
+    selected: Mapping[str, object],
+    intent: Mapping[str, object],
+    basis: Mapping[str, object],
+) -> str:
+    return _text(intent.get("symbol") or selected.get("symbol") or basis.get("symbol"))
+
+
+def _readiness_side(
+    intent: Mapping[str, object],
+    basis: Mapping[str, object],
+    planned_action: str,
+    selected: Mapping[str, object],
+) -> str:
+    side = _text(intent.get("side") or basis.get("side"))
+    if side:
+        return side
+    if planned_action == "simulated_exit":
+        return "sell"
+    if selected or planned_action in {"simulated_buy", "hold_existing_position_risk_on"}:
+        return "buy"
+    return ""
+
+
+def _plan_material_side(plan_material: DemoPlanMaterial, planned_action: str) -> str:
+    if plan_material.order is not None:
+        return plan_material.order.side.value
+    if planned_action == "simulated_exit":
+        return "sell"
+    if plan_material.selected_candidate is not None or planned_action == "hold_existing_position_risk_on":
+        return "buy"
+    return ""
+
+
+def _projected_exposure(
+    *,
+    current_exposure: Decimal,
+    intended_notional: Decimal | None,
+    side: str,
+) -> Decimal | None:
+    if intended_notional is None:
+        return None
+    if side == "sell":
+        return max(Decimal("0"), current_exposure - intended_notional)
+    return current_exposure + intended_notional
+
+
+def _cap_status(value: Decimal | None, cap: Decimal) -> str:
+    if value is None:
+        return "not_evaluated"
+    return "blocked" if value > cap else "passed"
+
+
+def _open_order_matches_symbol(order: Mapping[str, object], symbol: str) -> bool:
+    if not symbol or _text(order.get("symbol")) != symbol:
+        return False
+    status = _text(order.get("status")).lower()
+    return status not in {"filled", "canceled", "cancelled", "closed"}
+
+
+def _position_matches_symbol(position: Mapping[str, object], symbol: str) -> bool:
+    if not symbol or _text(position.get("symbol")) != symbol:
+        return False
+    quantity = _first_decimal(position.get("quantity"))
+    return quantity is None or quantity > Decimal("0")
 
 
 def _risk_decision(risk: RiskVerdict | None) -> dict[str, object]:
@@ -2801,6 +3512,39 @@ def _text(value: object) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _strict_true(value: object) -> bool:
+    return value is True
+
+
+def _first_decimal(*values: object) -> Decimal | None:
+    for value in values:
+        parsed = _decimal_or_none(value)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except Exception:
+        return None
+    if not parsed.is_finite():
+        return None
+    return parsed
+
+
+def _datetime_or_none(value: object) -> datetime | None:
+    if value in (None, ""):
+        return None
+    try:
+        return _utc_datetime(value, "timestamp")
+    except Exception:
+        return None
 
 
 def _decimal_or_error(
