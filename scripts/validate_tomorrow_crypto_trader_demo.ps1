@@ -1,12 +1,13 @@
 <#
 .SYNOPSIS
-Validates the v6.2 crypto SimBroker operating-loop and paper-readiness artifacts.
+Validates the v6.3 crypto SimBroker operating-loop and readiness artifacts.
 
 .DESCRIPTION
 Checks required JSON/JSONL/Markdown artifacts, safety labels, SimBroker mode
-flags, selected-candidate gate consistency, state ledger continuity, tracked
-runs status, and credential sentinel exposure. This validator does not read
-brokers, mutate brokers, load credentials, or contact the network.
+flags, selected-candidate gate consistency, fixture readiness, optional
+broker-observed readiness, state ledger continuity, tracked runs status, and
+credential sentinel exposure. This validator does not read brokers, mutate
+brokers, load credentials, or contact the network.
 #>
 
 [CmdletBinding()]

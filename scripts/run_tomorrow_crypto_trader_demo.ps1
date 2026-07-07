@@ -1,13 +1,14 @@
 <#
 .SYNOPSIS
-Runs the v6.2 crypto SimBroker operating loop with a no-submit paper-readiness packet.
+Runs the v6.3 crypto SimBroker operating loop with fixture and optional broker-observed readiness packets.
 
 .DESCRIPTION
 Default SimBroker mode is fully offline and uses a deterministic local
 simulation broker with persisted local state. AlpacaPaper mode is optional and
 refuses to proceed unless the operator passes -Mode AlpacaPaper
 -AllowAlpacaPaperMutation in a dedicated paper shell. Credential values are
-never printed.
+never printed. Broker-observed readiness is a separate read-only lane gated by
+-BrokerObservedReadiness and -AllowAlpacaPaperRead.
 #>
 
 [CmdletBinding()]
@@ -16,6 +17,8 @@ param(
     [ValidateSet("SimBroker", "AlpacaPaper")]
     [string]$Mode = "SimBroker",
     [switch]$AllowAlpacaPaperMutation,
+    [switch]$BrokerObservedReadiness,
+    [switch]$AllowAlpacaPaperRead,
     [string]$StateRoot = "",
     [Alias("AsOf")]
     [string]$AsOfTimestamp = "",
@@ -92,6 +95,8 @@ Write-Host "tomorrow_crypto_trader_demo_command=run_tomorrow_crypto_trader_demo"
 Write-Host "tomorrow_crypto_trader_demo_mode=$Mode"
 Write-Host "tomorrow_crypto_trader_demo_scenario=$Scenario"
 Write-Host "tomorrow_crypto_trader_demo_default_simbroker_offline=$((Format-Bool ($Mode -eq 'SimBroker')))"
+Write-Host "tomorrow_crypto_trader_demo_broker_observed_readiness=$(Format-Bool $BrokerObservedReadiness.IsPresent)"
+Write-Host "tomorrow_crypto_trader_demo_broker_read_authorized=$(Format-Bool $AllowAlpacaPaperRead.IsPresent)"
 Write-Host "preflight_APP_PROFILE_is_paper=$(Format-Bool $AppProfileIsPaper)"
 Write-Host "preflight_APP_PROFILE_is_live=$(Format-Bool $AppProfileIsLive)"
 Write-Host "preflight_credential_variables_loaded=$(Format-Bool $CredentialVariablesLoaded)"
@@ -101,7 +106,7 @@ Write-Host "preflight_live_endpoint_indicator=$(Format-Bool $LiveEndpointIndicat
 Write-Host "Credential values are never printed"
 Write-Host "tomorrow_crypto_trader_demo_live_authorized=false"
 
-if ($LiveEndpointIndicator) {
+if ($LiveEndpointIndicator -and -not $BrokerObservedReadiness.IsPresent) {
     Write-Host "tomorrow_crypto_trader_demo_status=blocked_live_endpoint_indicator"
     exit 2
 }
@@ -112,7 +117,10 @@ if ($Mode -eq "SimBroker") {
     Write-Host "tomorrow_crypto_trader_demo_broker_read_occurred=false"
     Write-Host "tomorrow_crypto_trader_demo_paper_submit_authorized=false"
     Write-Host "tomorrow_crypto_trader_demo_broker_mutation_authorized=false"
-    if ($AppProfileIsPaper -or $AppProfileIsLive -or $CredentialVariablesLoaded -or $NetworkFlagsLoaded) {
+    if (
+        -not $BrokerObservedReadiness.IsPresent -and
+        ($AppProfileIsPaper -or $AppProfileIsLive -or $CredentialVariablesLoaded -or $NetworkFlagsLoaded)
+    ) {
         Write-Host "tomorrow_crypto_trader_demo_status=blocked_unsafe_simbroker_environment"
         exit 2
     }
@@ -157,6 +165,12 @@ if ($ResetState.IsPresent) {
 }
 if ($AllowAlpacaPaperMutation.IsPresent) {
     $Args += @("--allow-alpaca-paper-mutation")
+}
+if ($BrokerObservedReadiness.IsPresent) {
+    $Args += @("--broker-observed-readiness")
+}
+if ($AllowAlpacaPaperRead.IsPresent) {
+    $Args += @("--allow-alpaca-paper-read")
 }
 
 $ExitCode = 0

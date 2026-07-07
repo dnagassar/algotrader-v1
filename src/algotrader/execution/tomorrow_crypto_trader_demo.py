@@ -10,7 +10,7 @@ emits a deterministic no-submit paper-readiness preview packet.
 from __future__ import annotations
 
 import argparse
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 import csv
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -45,13 +45,14 @@ from algotrader.risk.engine import RiskEngine
 from algotrader.risk.state import RiskVerdict
 from algotrader.signals.crypto_trend import normalize_crypto_symbol
 
-SCHEMA_VERSION = "v6_2_crypto_no_submit_paper_readiness_bridge_v1"
+SCHEMA_VERSION = "v6_3_crypto_gated_broker_observed_readiness_lane_v1"
 COMMAND_NAME = "run_tomorrow_crypto_trader_demo"
 VALIDATOR_COMMAND_NAME = "validate_tomorrow_crypto_trader_demo"
 DEFAULT_OUTPUT_ROOT = Path("runs/crypto_trader_demo/latest")
 DEFAULT_AS_OF = datetime(2026, 7, 6, 14, 30, tzinfo=UTC)
 DEFAULT_UNIVERSE = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
 DEFAULT_SCENARIO = "risk_on"
+DEFAULT_ALPACA_PAPER_ENDPOINT = "https://paper-api.alpaca.markets"
 
 MAX_NOTIONAL_PER_ORDER = Decimal("5")
 MAX_TOTAL_DEMO_EXPOSURE = Decimal("25")
@@ -63,7 +64,11 @@ MIN_NOTIONAL = Decimal("1")
 PAPER_READINESS_PRICE_MAX_AGE = timedelta(hours=2)
 
 PAPER_READINESS_DECISIONS = (
-    "paper_ready_preview_only",
+    "fixture_ready_preview",
+    "fixture_blocked_preview",
+)
+
+PAPER_READINESS_BLOCKERS = (
     "blocked_missing_price",
     "blocked_stale_price",
     "blocked_missing_orderability",
@@ -75,6 +80,17 @@ PAPER_READINESS_DECISIONS = (
     "blocked_unexpected_preexisting_position",
     "blocked_no_selected_candidate",
     "blocked_sim_state_reconciliation_failed",
+)
+
+BROKER_OBSERVED_READINESS_DECISIONS = (
+    "broker_observed_ready_preview",
+    "broker_observed_blocked_preview",
+    "broker_observed_not_attempted",
+    "broker_observed_blocked_credentials_not_loaded",
+    "broker_observed_blocked_not_authorized",
+    "broker_observed_blocked_not_paper_profile",
+    "broker_observed_blocked_live_endpoint_detected",
+    "broker_observed_blocked_ambiguous_response",
 )
 
 REQUIRED_SAFETY_LABELS = (
@@ -159,6 +175,7 @@ __all__ = [
     "build_no_submit_paper_readiness_packet",
     "main",
     "render_operating_brief",
+    "render_broker_observed_readiness_packet",
     "render_paper_readiness_packet",
     "run_tomorrow_crypto_trader_demo",
     "validate_tomorrow_crypto_trader_demo",
@@ -484,6 +501,8 @@ def run_tomorrow_crypto_trader_demo(
     output_root: Path | str = DEFAULT_OUTPUT_ROOT,
     mode: Mode = "SimBroker",
     allow_alpaca_paper_mutation: bool = False,
+    broker_observed_readiness: bool = False,
+    allow_alpaca_paper_read: bool = False,
     universe: Sequence[str] = DEFAULT_UNIVERSE,
     as_of: datetime | str | None = None,
     state_root: Path | str | None = None,
@@ -493,6 +512,9 @@ def run_tomorrow_crypto_trader_demo(
     existing_client_order_ids: Iterable[str] = (),
     paper_environment: Mapping[str, object] | None = None,
     alpaca_paper_snapshot: Mapping[str, object] | None = None,
+    broker_observed_client: object | None = None,
+    broker_observed_client_factory: Callable[[], object] | None = None,
+    broker_observed_network_used: bool | None = None,
 ) -> dict[str, object]:
     """Run the v6.1 deterministic SimBroker operating-loop packet builder.
 
@@ -649,10 +671,6 @@ def run_tomorrow_crypto_trader_demo(
     decision = _sim_decision(plan_material, broker_result)
     final_blocker = _final_blocker(plan_material, broker_result)
     simulation_mutation_occurred = bool(sim_broker.fill_ledger)
-    safety = _simbroker_safety(simulation_mutation_occurred=simulation_mutation_occurred)
-    safety_labels = _simbroker_labels(
-        simulation_mutation_occurred=simulation_mutation_occurred,
-    )
     state_reconciliation = {
         "status": "failed" if state_snapshot.errors else "passed",
         "errors": list(state_snapshot.errors),
@@ -673,6 +691,33 @@ def run_tomorrow_crypto_trader_demo(
         state_reconciliation=state_reconciliation,
         existing_client_order_ids=combined_existing_client_order_ids,
     )
+    broker_observed_preview = _broker_observed_readiness_preview(
+        run_id=run_id,
+        cycle_index=cycle_index,
+        as_of=as_of_value,
+        requested=broker_observed_readiness,
+        broker_read_authorized=allow_alpaca_paper_read,
+        fixture_readiness=paper_readiness_packet,
+        paper_environment=paper_environment,
+        broker_client=broker_observed_client,
+        broker_client_factory=broker_observed_client_factory,
+        network_used=broker_observed_network_used,
+    )
+    broker_read_occurred = broker_observed_preview["broker_read_occurred"] is True
+    broker_state_observed = broker_observed_preview["broker_state_observed"] is True
+    run_network_used = broker_observed_preview["network_used"] is True
+    safety = _simbroker_safety(
+        simulation_mutation_occurred=simulation_mutation_occurred,
+        broker_read_occurred=broker_read_occurred,
+        broker_state_observed=broker_state_observed,
+        network_used=run_network_used,
+    )
+    safety_labels = _simbroker_labels(
+        simulation_mutation_occurred=simulation_mutation_occurred,
+        broker_read_occurred=broker_read_occurred,
+        broker_state_observed=broker_state_observed,
+        network_used=run_network_used,
+    )
     events.append(
         {
             "event_type": "paper_readiness_evaluated",
@@ -682,6 +727,7 @@ def run_tomorrow_crypto_trader_demo(
             "timestamp": as_of_value.isoformat(),
             "readiness_decision": paper_readiness_packet["readiness_decision"],
             "blocker_code": paper_readiness_packet["blocker_code"],
+            "readiness_basis": paper_readiness_packet["readiness_basis"],
             "paper_submit_authorized": False,
             "paper_submit_occurred": False,
             "broker_mutation_occurred": False,
@@ -689,6 +735,28 @@ def run_tomorrow_crypto_trader_demo(
             "network_used": False,
         }
     )
+    if broker_observed_readiness:
+        events.append(
+            {
+                "event_type": "broker_observed_readiness_evaluated",
+                "run_id": run_id,
+                "cycle_index": cycle_index,
+                "cycle_key": cycle_key,
+                "timestamp": as_of_value.isoformat(),
+                "broker_observed_readiness_decision": broker_observed_preview[
+                    "broker_observed_readiness_decision"
+                ],
+                "blocker_code": broker_observed_preview["blocker_code"],
+                "broker_read_authorized": broker_observed_preview["broker_read_authorized"],
+                "broker_read_occurred": broker_observed_preview["broker_read_occurred"],
+                "broker_state_observed": broker_observed_preview["broker_state_observed"],
+                "live_endpoint_touched": broker_observed_preview["live_endpoint_touched"],
+                "paper_submit_authorized": False,
+                "paper_submit_occurred": False,
+                "broker_mutation_occurred": False,
+                "network_used": broker_observed_preview["network_used"],
+            }
+        )
     events.append(
         {
             "event_type": "demo_run_completed",
@@ -703,6 +771,9 @@ def run_tomorrow_crypto_trader_demo(
             "final_blocker_status": final_blocker,
             "simulation_mutation_occurred": simulation_mutation_occurred,
             "paper_readiness_decision": paper_readiness_packet["readiness_decision"],
+            "broker_observed_readiness_decision": broker_observed_preview[
+                "broker_observed_readiness_decision"
+            ],
             "safety_labels": list(safety_labels),
         }
     )
@@ -746,9 +817,23 @@ def run_tomorrow_crypto_trader_demo(
         "selected_symbol": paper_readiness_packet["symbol"] or "none",
         "action": paper_readiness_packet["side"] or plan_material.planned_action,
         "readiness_decision": paper_readiness_packet["readiness_decision"],
+        "readiness_basis": paper_readiness_packet["readiness_basis"],
         "blocker_code": paper_readiness_packet["blocker_code"] or "none",
         "paper_submit_authorized": False,
         "next_operator_action": paper_readiness_packet["next_operator_action"],
+    }
+    next_operator_action["broker_observed_readiness_preview"] = {
+        "requested": broker_observed_readiness,
+        "selected_symbol": broker_observed_preview["symbol"] or "none",
+        "broker_observed_readiness_decision": broker_observed_preview[
+            "broker_observed_readiness_decision"
+        ],
+        "blocker_code": broker_observed_preview["blocker_code"] or "none",
+        "broker_read_authorized": broker_observed_preview["broker_read_authorized"],
+        "broker_read_occurred": broker_observed_preview["broker_read_occurred"],
+        "broker_state_observed": broker_observed_preview["broker_state_observed"],
+        "paper_submit_authorized": False,
+        "next_operator_action": broker_observed_preview["next_operator_action"],
     }
 
     packet = {
@@ -774,6 +859,12 @@ def run_tomorrow_crypto_trader_demo(
             "orderability_observed": False,
             "broker_state_observed": False,
             "broker_state_mode": "offline_simulation",
+            "fixture_readiness_basis": paper_readiness_packet["readiness_basis"],
+            "fixture_readiness_decision": paper_readiness_packet["readiness_decision"],
+            "broker_observed_readiness_requested": broker_observed_readiness,
+            "broker_observed_readiness_decision": broker_observed_preview[
+                "broker_observed_readiness_decision"
+            ],
             "network_used": False,
         },
         "candidate_universe": list(normalized_universe),
@@ -810,6 +901,8 @@ def run_tomorrow_crypto_trader_demo(
         "cycle_record": cycle_record,
         "broker_result": broker_result,
         "paper_readiness_packet": paper_readiness_packet,
+        "broker_observed_readiness_requested": broker_observed_readiness,
+        "broker_observed_readiness_preview": broker_observed_preview,
         "final_blocker_status": final_blocker,
         "blockers": list(_dedupe((*plan_material.blockers, _text(broker_result.get("blocker"))))),
         "next_operator_action": next_operator_action,
@@ -820,6 +913,8 @@ def run_tomorrow_crypto_trader_demo(
         "state_artifact_paths": state_artifact_paths,
         "events": list(cumulative_events),
     }
+    if broker_observed_readiness:
+        packet["broker_observed_readiness_packet"] = broker_observed_preview
     if write_artifacts:
         packet["artifact_paths"] = write_tomorrow_crypto_trader_demo_artifacts(root, packet)
     return packet
@@ -840,6 +935,14 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         "paper_readiness_packet": root / "paper_readiness_packet.json",
         "paper_readiness_packet_markdown": root / "paper_readiness_packet.md",
     }
+    broker_observed_packet = _mapping(packet.get("broker_observed_readiness_packet"))
+    if broker_observed_packet:
+        paths["broker_observed_readiness_packet"] = (
+            root / "broker_observed_readiness_packet.json"
+        )
+        paths["broker_observed_readiness_packet_markdown"] = (
+            root / "broker_observed_readiness_packet.md"
+        )
     artifact_paths = {key: str(path) for key, path in paths.items()}
     packet_payload = {**dict(packet), "artifact_paths": artifact_paths}
     next_action = {
@@ -859,6 +962,43 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         "required_artifacts": {},
         "state_artifacts": {},
         "generated_under_runs": _generated_under_runs(root),
+        "readiness_bases": {
+            "fixture": {
+                "decision": _text(
+                    _mapping(packet.get("paper_readiness_packet")).get("readiness_decision")
+                ),
+                "blocker_code": _text(
+                    _mapping(packet.get("paper_readiness_packet")).get("blocker_code")
+                ),
+                "artifact": "paper_readiness_packet",
+            },
+            "broker_observed": {
+                "requested": packet.get("broker_observed_readiness_requested") is True,
+                "decision": _text(
+                    _mapping(packet.get("broker_observed_readiness_preview")).get(
+                        "broker_observed_readiness_decision"
+                    )
+                ),
+                "blocker_code": _text(
+                    _mapping(packet.get("broker_observed_readiness_preview")).get(
+                        "blocker_code"
+                    )
+                ),
+                "broker_read_authorized": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_authorized")
+                is True,
+                "broker_read_occurred": _mapping(
+                    packet.get("broker_observed_readiness_preview")
+                ).get("broker_read_occurred")
+                is True,
+                "artifact": (
+                    "broker_observed_readiness_packet"
+                    if broker_observed_packet
+                    else ""
+                ),
+            },
+        },
         "safety": dict(_mapping(packet.get("safety"))),
         "safety_labels": list(_string_sequence(packet.get("safety_labels"))),
         "labels": list(_string_sequence(packet.get("labels"))),
@@ -882,6 +1022,22 @@ def write_tomorrow_crypto_trader_demo_artifacts(
         encoding="utf-8",
         newline="\n",
     )
+    if broker_observed_packet:
+        _write_json(paths["broker_observed_readiness_packet"], broker_observed_packet)
+        paths["broker_observed_readiness_packet_markdown"].write_text(
+            render_broker_observed_readiness_packet(broker_observed_packet) + "\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+    else:
+        for stale_path in (
+            root / "broker_observed_readiness_packet.json",
+            root / "broker_observed_readiness_packet.md",
+        ):
+            try:
+                stale_path.unlink()
+            except FileNotFoundError:
+                pass
     manifest["required_artifacts"] = {
         name: {
             "path": str(path),
@@ -911,9 +1067,11 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
     selected = _mapping(packet.get("selected_candidate"))
     selected_symbol = _text(selected.get("symbol")) or "none"
     paper = _mapping(packet.get("paper_readiness_packet"))
+    broker_observed = _mapping(packet.get("broker_observed_readiness_preview"))
     paper_symbol = _text(paper.get("symbol")) or selected_symbol
     paper_action = _text(paper.get("side") or packet.get("planned_action")) or "none"
     paper_blocker = _text(paper.get("blocker_code")) or "none"
+    broker_observed_blocker = _text(broker_observed.get("blocker_code")) or "none"
     fills = _mapping_sequence(packet.get("fill_ledger"))
     positions = _mapping_sequence(_mapping(packet.get("portfolio_snapshot")).get("positions"))
     safety_labels = _string_sequence(packet.get("safety_labels"))
@@ -953,10 +1111,22 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             "## Paper readiness preview",
             f"- selected_symbol: `{paper_symbol}`",
             f"- action: `{paper_action}`",
+            f"- readiness_basis: `{_text(paper.get('readiness_basis'))}`",
             f"- readiness_decision: `{_text(paper.get('readiness_decision'))}`",
             f"- blocker_status: `{paper_blocker}`",
             f"- paper_submit_authorized: `{_bool_text(paper.get('paper_submit_authorized'))}`",
             f"- next_operator_action: `{_text(paper.get('next_operator_action'))}`",
+            "",
+            "## Broker-observed readiness preview",
+            f"- requested: `{_bool_text(broker_observed.get('broker_read_requested'))}`",
+            f"- selected_symbol: `{_text(broker_observed.get('symbol')) or 'none'}`",
+            f"- broker_observed_readiness_decision: `{_text(broker_observed.get('broker_observed_readiness_decision'))}`",
+            f"- blocker_status: `{broker_observed_blocker}`",
+            f"- broker_read_authorized: `{_bool_text(broker_observed.get('broker_read_authorized'))}`",
+            f"- broker_read_occurred: `{_bool_text(broker_observed.get('broker_read_occurred'))}`",
+            f"- broker_state_observed: `{_bool_text(broker_observed.get('broker_state_observed'))}`",
+            f"- paper_submit_authorized: `{_bool_text(broker_observed.get('paper_submit_authorized'))}`",
+            f"- next_operator_action: `{_text(broker_observed.get('next_operator_action'))}`",
             "",
             "## Simulated Fills",
             json.dumps(_json_safe(fills), sort_keys=True),
@@ -981,6 +1151,7 @@ def render_paper_readiness_packet(packet: Mapping[str, object]) -> str:
             f"- symbol: `{_text(packet.get('symbol')) or 'none'}`",
             f"- side: `{_text(packet.get('side')) or 'none'}`",
             f"- readiness_decision: `{_text(packet.get('readiness_decision'))}`",
+            f"- readiness_basis: `{_text(packet.get('readiness_basis'))}`",
             f"- blocker_code: `{_text(packet.get('blocker_code')) or 'none'}`",
             f"- intended_notional: `{_text(packet.get('intended_notional'))}`",
             f"- estimated_quantity: `{_text(packet.get('estimated_quantity'))}`",
@@ -995,6 +1166,38 @@ def render_paper_readiness_packet(packet: Mapping[str, object]) -> str:
             f"- orderability_basis: `{_text(_mapping(packet.get('orderability_basis')).get('basis'))}`",
             f"- min_notional_basis: `{_text(_mapping(packet.get('min_notional_basis')).get('basis'))}`",
             f"- quantity_increment_basis: `{_text(_mapping(packet.get('quantity_increment_basis')).get('basis'))}`",
+            "",
+            "## Safety Labels",
+            *[f"- `{label}`" for label in _string_sequence(packet.get("safety_labels"))],
+        ]
+    )
+
+
+def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str:
+    return "\n".join(
+        [
+            "# Broker-Observed Readiness Packet",
+            "",
+            f"- run_id: `{_text(packet.get('run_id'))}`",
+            f"- cycle_index: `{_text(packet.get('cycle_index'))}`",
+            f"- symbol: `{_text(packet.get('symbol')) or 'none'}`",
+            f"- broker_observed_readiness_decision: `{_text(packet.get('broker_observed_readiness_decision'))}`",
+            f"- blocker_code: `{_text(packet.get('blocker_code')) or 'none'}`",
+            f"- broker_read_authorized: `{_bool_text(packet.get('broker_read_authorized'))}`",
+            f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
+            f"- broker_state_observed: `{_bool_text(packet.get('broker_state_observed'))}`",
+            f"- broker_endpoint_type: `{_text(packet.get('broker_endpoint_type'))}`",
+            f"- live_endpoint_touched: `{_bool_text(packet.get('live_endpoint_touched'))}`",
+            f"- paper_account_status: `{_text(packet.get('paper_account_status')) or 'not_observed'}`",
+            f"- paper_submit_authorized: `{_bool_text(packet.get('paper_submit_authorized'))}`",
+            f"- broker_mutation_occurred: `{_bool_text(packet.get('broker_mutation_occurred'))}`",
+            f"- next_operator_action: `{_text(packet.get('next_operator_action'))}`",
+            "",
+            "## Observed Summaries",
+            f"- positions: `{_text(_mapping(packet.get('observed_positions_summary')).get('status'))}`",
+            f"- open_orders: `{_text(_mapping(packet.get('observed_open_orders_summary')).get('status'))}`",
+            f"- crypto_assets: `{_text(_mapping(packet.get('observed_crypto_assets_or_orderability_summary')).get('status'))}`",
+            f"- min_notional_or_increment: `{_text(_mapping(packet.get('observed_min_notional_or_increment_basis')).get('status'))}`",
             "",
             "## Safety Labels",
             *[f"- `{label}`" for label in _string_sequence(packet.get("safety_labels"))],
@@ -1019,6 +1222,9 @@ def validate_tomorrow_crypto_trader_demo(
         artifact_paths["paper_readiness_packet.json"],
         errors,
     )
+    broker_observed_path = root / "broker_observed_readiness_packet.json"
+    broker_observed_md_path = root / "broker_observed_readiness_packet.md"
+    broker_observed_readiness: Mapping[str, object] = {}
     events = _read_jsonl_or_error(artifact_paths["events.jsonl"], errors)
     state_paths: dict[str, Path] = {}
     state_payload: Mapping[str, object] = {}
@@ -1052,6 +1258,16 @@ def validate_tomorrow_crypto_trader_demo(
         ) > 0:
             errors.append("selected_candidate_or_execution_plan_missing_paper_readiness_packet")
         if _text(record.get("mode")) == "SimBroker":
+            if record.get("broker_observed_readiness_requested") is True:
+                if not broker_observed_path.is_file():
+                    errors.append("missing_artifact:broker_observed_readiness_packet.json")
+                else:
+                    broker_observed_readiness = _read_json_or_error(
+                        broker_observed_path,
+                        errors,
+                    )
+                if not broker_observed_md_path.is_file():
+                    errors.append("missing_artifact:broker_observed_readiness_packet.md")
             state_paths = _state_paths_for_record(record, root)
             for name, path in state_paths.items():
                 if not path.is_file():
@@ -1086,9 +1302,23 @@ def validate_tomorrow_crypto_trader_demo(
                     state_events=state_events,
                     errors=errors,
                 )
+        if broker_observed_readiness:
+            broker_observed_text = ""
+            try:
+                broker_observed_text = broker_observed_md_path.read_text(encoding="utf-8")
+            except OSError:
+                if broker_observed_md_path.is_file():
+                    errors.append("broker_observed_readiness_packet_md_unreadable")
+            _validate_broker_observed_readiness_packet(
+                packet=broker_observed_readiness,
+                record=record,
+                markdown=broker_observed_text,
+                errors=errors,
+            )
     if manifest:
         _validate_labels("manifest", manifest, errors)
         _validate_manifest_references_paper_readiness(manifest, errors)
+        _validate_manifest_readiness_bases(manifest, record, errors)
     if next_action:
         _validate_labels("next_operator_action", next_action, errors)
     if brief_text:
@@ -1124,8 +1354,19 @@ def _validate_record_contract(
     mode = _text(record.get("mode"))
     broker_mode = _text(record.get("broker_mode"))
     if mode == "SimBroker":
+        broker_observed_requested = record.get("broker_observed_readiness_requested") is True
         labels = set(_string_sequence(record.get("safety_labels") or record.get("labels")))
-        for label in SIMBROKER_SAFETY_LABELS:
+        expected_labels = (
+            _simbroker_labels(
+                simulation_mutation_occurred=safety.get("simulation_mutation_occurred") is True,
+                broker_read_occurred=safety.get("broker_read_occurred") is True,
+                broker_state_observed=safety.get("broker_state_observed") is True,
+                network_used=safety.get("network_used") is True,
+            )
+            if broker_observed_requested
+            else SIMBROKER_SAFETY_LABELS
+        )
+        for label in expected_labels:
             if label not in labels:
                 errors.append(f"operating_record_missing_label:{label}")
         expected_mutation_label = (
@@ -1138,20 +1379,26 @@ def _validate_record_contract(
             "broker_mutation_authorized",
             "paper_submit_occurred",
             "broker_mutation_occurred",
-            "broker_read_occurred",
-            "broker_state_observed",
-            "network_used",
             "credential_values_exposed",
             "live_authorized",
         )
         for field in expected_false:
             if safety.get(field) is not False:
                 errors.append(f"simbroker_flag_not_false:{field}")
+        if not broker_observed_requested:
+            for field in ("broker_read_occurred", "broker_state_observed", "network_used"):
+                if safety.get(field) is not False:
+                    errors.append(f"simbroker_flag_not_false:{field}")
+        if safety.get("broker_read_occurred") is True and not broker_observed_requested:
+            errors.append("broker_read_occurred_in_default_simbroker_mode")
         if safety.get("simulation_mutation_authorized") is not True:
             errors.append("simbroker_simulation_mutation_not_authorized")
         if broker_mode != "simulation_broker":
             errors.append("simbroker_broker_mode_mismatch")
-        if safety.get("broker_state_mode") != "offline_simulation":
+        allowed_state_modes = {"offline_simulation"}
+        if broker_observed_requested:
+            allowed_state_modes.add("alpaca_paper_read_only_observed")
+        if safety.get("broker_state_mode") not in allowed_state_modes:
             errors.append("simbroker_broker_state_mode_not_offline")
         provenance = _mapping(record.get("data_provenance"))
         if provenance.get("market_data_observed") is not False:
@@ -1206,6 +1453,17 @@ def _validate_paper_readiness_packet(
         errors.append("paper_readiness_decision_missing")
     elif decision not in PAPER_READINESS_DECISIONS:
         errors.append(f"paper_readiness_decision_invalid:{decision}")
+    if decision.startswith("broker_observed_"):
+        errors.append("fixture_readiness_labeled_as_broker_observed")
+    if _text(packet.get("readiness_basis")) != "fixture":
+        errors.append("paper_readiness_basis_not_fixture")
+    blocker_code = _text(packet.get("blocker_code"))
+    if blocker_code and blocker_code not in PAPER_READINESS_BLOCKERS:
+        errors.append(f"paper_readiness_blocker_invalid:{blocker_code}")
+    if decision == "fixture_ready_preview" and blocker_code:
+        errors.append("fixture_ready_preview_has_blocker")
+    if decision == "fixture_blocked_preview" and not blocker_code:
+        errors.append("fixture_blocked_preview_missing_blocker")
 
     for field in (
         "paper_submit_authorized",
@@ -1232,7 +1490,7 @@ def _validate_paper_readiness_packet(
     if embedded and _text(embedded.get("readiness_decision")) != decision:
         errors.append("embedded_paper_readiness_decision_mismatch")
 
-    if decision == "paper_ready_preview_only":
+    if decision == "fixture_ready_preview":
         _validate_paper_ready_checks(packet, errors)
 
 
@@ -1265,6 +1523,87 @@ def _validate_paper_ready_checks(
         errors.append("paper_readiness_approved_despite_state_reconciliation_failed")
 
 
+def _validate_broker_observed_readiness_packet(
+    *,
+    packet: Mapping[str, object],
+    record: Mapping[str, object],
+    markdown: str,
+    errors: list[str],
+) -> None:
+    _validate_labels("broker_observed_readiness_packet", packet, errors)
+    if packet.get("record_type") != "broker_observed_readiness_packet":
+        errors.append("broker_observed_readiness_packet_record_type_mismatch")
+    if _text(packet.get("run_id")) != _text(record.get("run_id")):
+        errors.append("broker_observed_readiness_packet_run_id_mismatch")
+    decision = _text(
+        packet.get("broker_observed_readiness_decision")
+        or packet.get("readiness_decision")
+        or packet.get("final_readiness_decision")
+    )
+    if not decision:
+        errors.append("broker_observed_readiness_decision_missing")
+    elif decision not in BROKER_OBSERVED_READINESS_DECISIONS:
+        errors.append(f"broker_observed_readiness_decision_invalid:{decision}")
+    if decision in {"fixture_ready_preview", "fixture_blocked_preview"}:
+        errors.append("broker_observed_readiness_labeled_as_fixture")
+    if _text(packet.get("readiness_basis")) != "broker_observed":
+        errors.append("broker_observed_readiness_basis_mismatch")
+
+    for field in (
+        "paper_submit_authorized",
+        "paper_submit_occurred",
+        "broker_mutation_authorized",
+        "broker_mutation_occurred",
+        "simulation_mutation_authorized",
+        "simulation_mutation_occurred",
+        "credential_values_exposed",
+        "live_authorized",
+        "live_endpoint_touched",
+    ):
+        if packet.get(field) is not False:
+            errors.append(f"broker_observed_readiness_flag_not_false:{field}")
+        if _mapping(packet.get("safety")).get(field) is not False:
+            errors.append(f"broker_observed_readiness_safety_flag_not_false:{field}")
+
+    if packet.get("broker_read_occurred") is True and packet.get("broker_read_authorized") is not True:
+        errors.append("broker_read_occurred_without_authorization")
+    if _mapping(packet.get("safety")).get("broker_read_occurred") is True and _mapping(
+        packet.get("safety")
+    ).get("broker_read_authorized") is not True:
+        errors.append("broker_read_safety_occurred_without_authorization")
+    if (
+        record.get("broker_observed_readiness_requested") is not True
+        and packet.get("broker_read_occurred") is True
+    ):
+        errors.append("broker_read_occurred_in_default_simbroker_mode")
+
+    if decision == "broker_observed_ready_preview":
+        if packet.get("broker_read_occurred") is not True:
+            errors.append("broker_observed_ready_without_broker_read")
+        if packet.get("broker_read_authorized") is not True:
+            errors.append("broker_observed_ready_without_authorization")
+        if packet.get("broker_state_observed") is not True:
+            errors.append("broker_observed_ready_without_state_observed")
+        if packet.get("live_endpoint_touched") is not False:
+            errors.append("broker_observed_ready_with_live_endpoint_touched")
+        if packet.get("app_profile_is_paper") is not True:
+            errors.append("broker_observed_ready_without_paper_profile")
+        if _mapping(packet.get("observed_crypto_assets_or_orderability_summary")).get(
+            "orderability_verified"
+        ) is not True:
+            errors.append("broker_observed_ready_without_orderability_evidence")
+        min_increment = _mapping(packet.get("observed_min_notional_or_increment_basis"))
+        if min_increment.get("min_notional_verified") is not True:
+            errors.append("broker_observed_ready_without_min_notional_evidence")
+        if min_increment.get("quantity_increment_verified") is not True:
+            errors.append("broker_observed_ready_without_increment_evidence")
+        if packet.get("broker_endpoint_type") != "paper":
+            errors.append("broker_observed_ready_without_paper_endpoint")
+
+    if markdown and decision and decision not in markdown:
+        errors.append("broker_observed_readiness_packet_md_missing_decision")
+
+
 def _validate_manifest_references_paper_readiness(
     manifest: Mapping[str, object],
     errors: list[str],
@@ -1277,6 +1616,34 @@ def _validate_manifest_references_paper_readiness(
             continue
         if artifact.get("exists") is not True:
             errors.append(f"manifest_required_artifact_missing:{name}")
+
+
+def _validate_manifest_readiness_bases(
+    manifest: Mapping[str, object],
+    record: Mapping[str, object],
+    errors: list[str],
+) -> None:
+    bases = _mapping(manifest.get("readiness_bases"))
+    fixture = _mapping(bases.get("fixture"))
+    broker_observed = _mapping(bases.get("broker_observed"))
+    fixture_decision = _text(fixture.get("decision"))
+    broker_decision = _text(broker_observed.get("decision"))
+    if fixture_decision.startswith("broker_observed_"):
+        errors.append("manifest_fixture_readiness_labeled_broker_observed")
+    if broker_decision in {"fixture_ready_preview", "fixture_blocked_preview"}:
+        errors.append("manifest_broker_observed_readiness_labeled_fixture")
+    if not fixture_decision:
+        errors.append("manifest_fixture_readiness_decision_missing")
+    if not broker_decision:
+        errors.append("manifest_broker_observed_readiness_decision_missing")
+    if record.get("broker_observed_readiness_requested") is True:
+        required = _mapping(manifest.get("required_artifacts"))
+        if not _mapping(required.get("broker_observed_readiness_packet")):
+            errors.append("manifest_missing_required_artifact:broker_observed_readiness_packet")
+        if not _mapping(required.get("broker_observed_readiness_packet_markdown")):
+            errors.append(
+                "manifest_missing_required_artifact:broker_observed_readiness_packet_markdown"
+            )
 
 
 def _validate_labels(
@@ -1550,11 +1917,20 @@ def _paper_environment_from_os() -> dict[str, object]:
         "ALPACA_SECRET_KEY",
         "APCA_API_KEY_ID",
         "APCA_API_SECRET_KEY",
+        "ALPACA_BASE_URL",
+        "ALPACA_PAPER_BASE_URL",
+        "APCA_API_BASE_URL",
     )
     return {
         name: (
             os.environ.get(name)
-            if name == "APP_PROFILE"
+            if name
+            in {
+                "APP_PROFILE",
+                "ALPACA_BASE_URL",
+                "ALPACA_PAPER_BASE_URL",
+                "APCA_API_BASE_URL",
+            }
             else bool(os.environ.get(name))
         )
         for name in names
@@ -1567,6 +1943,498 @@ def _paper_credentials_loaded(env: Mapping[str, object]) -> bool:
     )
     apca_pair = bool(env.get("APCA_API_KEY_ID")) and bool(env.get("APCA_API_SECRET_KEY"))
     return alpaca_pair or apca_pair
+
+
+def _broker_observed_readiness_preview(
+    *,
+    run_id: str,
+    cycle_index: int,
+    as_of: datetime,
+    requested: bool,
+    broker_read_authorized: bool,
+    fixture_readiness: Mapping[str, object],
+    paper_environment: Mapping[str, object] | None,
+    broker_client: object | None,
+    broker_client_factory: Callable[[], object] | None,
+    network_used: bool | None,
+) -> dict[str, object]:
+    env = paper_environment or _paper_environment_from_os()
+    endpoint = _broker_endpoint_status(env)
+    symbol = _text(fixture_readiness.get("symbol"))
+    fixture_decision = _text(fixture_readiness.get("readiness_decision"))
+    base_packet = {
+        "schema_version": SCHEMA_VERSION,
+        "record_type": "broker_observed_readiness_packet",
+        "run_id": run_id,
+        "cycle_index": cycle_index,
+        "as_of": as_of,
+        "symbol": symbol,
+        "readiness_basis": "broker_observed",
+        "fixture_readiness_decision": fixture_decision,
+        "fixture_blocker_code": _text(fixture_readiness.get("blocker_code")),
+        "broker_read_requested": requested,
+        "broker_read_authorized": broker_read_authorized,
+        "broker_read_occurred": False,
+        "broker_state_observed": False,
+        "broker_endpoint_type": endpoint["broker_endpoint_type"],
+        "endpoint_proven_paper": endpoint["endpoint_proven_paper"],
+        "configured_endpoint_names": endpoint["configured_endpoint_names"],
+        "app_profile_is_paper": _text(env.get("APP_PROFILE")) == "paper",
+        "live_endpoint_touched": False,
+        "paper_account_status": "",
+        "trading_blocked": None,
+        "account_blocked": None,
+        "observed_positions_summary": _empty_observed_summary("positions_not_observed"),
+        "observed_open_orders_summary": _empty_observed_summary("open_orders_not_observed"),
+        "observed_crypto_assets_or_orderability_summary": _empty_observed_summary(
+            "crypto_assets_not_observed"
+        ),
+        "observed_min_notional_or_increment_basis": {
+            "status": "not_observed",
+            "min_notional_verified": False,
+            "quantity_increment_verified": False,
+            "broker_observed": False,
+        },
+        "observed_latest_price_basis": {
+            "status": "not_available",
+            "broker_observed": False,
+        },
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "simulation_mutation_authorized": False,
+        "simulation_mutation_occurred": False,
+        "credential_values_exposed": False,
+        "live_authorized": False,
+        "network_used": False,
+    }
+    if not requested:
+        return _broker_observed_packet_with_decision(
+            base_packet,
+            decision="broker_observed_not_attempted",
+            blocker_code="broker_observed_not_requested",
+            next_operator_action="default_fixture_preview_only_no_broker_read",
+        )
+    if not broker_read_authorized:
+        return _broker_observed_packet_with_decision(
+            base_packet,
+            decision="broker_observed_blocked_not_authorized",
+            blocker_code="broker_read_not_authorized",
+            next_operator_action="rerun_with_allow_alpaca_paper_read_in_paper_shell",
+        )
+    if _text(env.get("APP_PROFILE")) != "paper":
+        return _broker_observed_packet_with_decision(
+            base_packet,
+            decision="broker_observed_blocked_not_paper_profile",
+            blocker_code="app_profile_not_paper",
+            next_operator_action="set_APP_PROFILE_paper_in_dedicated_paper_shell",
+        )
+    if not _paper_credentials_loaded(env):
+        return _broker_observed_packet_with_decision(
+            base_packet,
+            decision="broker_observed_blocked_credentials_not_loaded",
+            blocker_code="credentials_not_loaded",
+            next_operator_action="load_paper_credentials_without_printing_values",
+        )
+    if endpoint["endpoint_proven_paper"] is not True:
+        return _broker_observed_packet_with_decision(
+            base_packet,
+            decision="broker_observed_blocked_live_endpoint_detected",
+            blocker_code="paper_endpoint_not_proven",
+            next_operator_action="fix_endpoint_to_paper_before_any_broker_read",
+        )
+
+    read_attempted = False
+    try:
+        client = broker_client or (
+            broker_client_factory() if broker_client_factory is not None else _build_alpaca_read_client()
+        )
+        read_attempted = True
+        account = _call_read_method(client, "get_account")
+        positions = tuple(_call_read_method(client, "get_positions") or ())
+        open_orders = tuple(_read_open_orders(client, symbol))
+        assets = tuple(_call_read_method(client, "list_assets") or ())
+    except Exception as exc:
+        return _broker_observed_packet_with_decision(
+            {
+                **base_packet,
+                "broker_read_occurred": read_attempted,
+                "network_used": (
+                    (True if network_used is None else network_used) if read_attempted else False
+                ),
+                "broker_error_type": exc.__class__.__name__,
+                "broker_error": _safe_broker_observed_error(exc),
+            },
+            decision="broker_observed_blocked_ambiguous_response",
+            blocker_code="broker_response_ambiguous",
+            next_operator_action="operator_review_broker_response_before_retry",
+        )
+
+    positions_summary = _observed_positions_summary(positions, symbol)
+    open_orders_summary = _observed_open_orders_summary(open_orders, symbol)
+    asset_summary = _observed_crypto_asset_summary(assets, symbol)
+    min_increment_basis = {
+        "status": (
+            "verified"
+            if asset_summary["orderability_verified"]
+            and asset_summary["min_notional_verified"]
+            and asset_summary["quantity_increment_verified"]
+            else "missing"
+        ),
+        "min_notional_verified": asset_summary["min_notional_verified"],
+        "quantity_increment_verified": asset_summary["quantity_increment_verified"],
+        "min_notional": asset_summary["min_notional"],
+        "quantity_increment": asset_summary["quantity_increment"],
+        "broker_observed": True,
+        "basis": asset_summary["basis"],
+    }
+    account_status = _text(_field(account, "status"))
+    trading_blocked = _optional_bool(_field(account, "trading_blocked"))
+    account_blocked = _optional_bool(_field(account, "account_blocked"))
+    observed_packet = {
+        **base_packet,
+        "broker_read_occurred": True,
+        "broker_state_observed": True,
+        "paper_account_status": account_status,
+        "trading_blocked": trading_blocked,
+        "account_blocked": account_blocked,
+        "observed_positions_summary": positions_summary,
+        "observed_open_orders_summary": open_orders_summary,
+        "observed_crypto_assets_or_orderability_summary": asset_summary,
+        "observed_min_notional_or_increment_basis": min_increment_basis,
+        "network_used": True if network_used is None else network_used,
+    }
+    blocker = _broker_observed_blocker(
+        fixture_decision=fixture_decision,
+        account_status=account_status,
+        trading_blocked=trading_blocked,
+        account_blocked=account_blocked,
+        positions_summary=positions_summary,
+        open_orders_summary=open_orders_summary,
+        asset_summary=asset_summary,
+    )
+    if blocker:
+        return _broker_observed_packet_with_decision(
+            observed_packet,
+            decision="broker_observed_blocked_preview",
+            blocker_code=blocker,
+            next_operator_action="resolve_broker_observed_blocker_before_any_paper_submit",
+        )
+    return _broker_observed_packet_with_decision(
+        observed_packet,
+        decision="broker_observed_ready_preview",
+        blocker_code="",
+        next_operator_action="operator_review_broker_observed_readiness_no_submit",
+    )
+
+
+def _build_alpaca_read_client() -> object:
+    from algotrader.config import AlpacaPaperConfig
+    from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
+
+    env = os.environ
+    config = AlpacaPaperConfig(
+        app_profile=env.get("APP_PROFILE", ""),
+        alpaca_api_key=env.get("ALPACA_API_KEY") or env.get("APCA_API_KEY_ID"),
+        alpaca_secret_key=(
+            env.get("ALPACA_SECRET_KEY")
+            or env.get("ALPACA_API_SECRET_KEY")
+            or env.get("APCA_API_SECRET_KEY")
+        ),
+        alpaca_paper_base_url=env.get("ALPACA_PAPER_BASE_URL", DEFAULT_ALPACA_PAPER_ENDPOINT),
+    )
+    return AlpacaSdkClient(config)
+
+
+def _broker_observed_packet_with_decision(
+    packet: Mapping[str, object],
+    *,
+    decision: str,
+    blocker_code: str,
+    next_operator_action: str,
+) -> dict[str, object]:
+    payload = dict(packet)
+    payload.update(
+        {
+            "broker_observed_readiness_decision": decision,
+            "readiness_decision": decision,
+            "final_readiness_decision": decision,
+            "blocker_code": blocker_code,
+            "next_operator_action": next_operator_action,
+        }
+    )
+    safety = {
+        "simulation_or_paper_only": True,
+        "not_live_authorized": True,
+        "no_real_capital": True,
+        "profit_claim": "none",
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "simulation_mutation_authorized": False,
+        "simulation_mutation_occurred": False,
+        "broker_read_authorized": payload["broker_read_authorized"],
+        "broker_read_occurred": payload["broker_read_occurred"],
+        "broker_state_observed": payload["broker_state_observed"],
+        "broker_endpoint_type": payload["broker_endpoint_type"],
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "live_authorized": False,
+        "network_used": payload["network_used"],
+    }
+    labels = (
+        *REQUIRED_SAFETY_LABELS,
+        "broker_mode=alpaca_paper_read_only",
+        f"broker_read_authorized={_bool_text(payload['broker_read_authorized'])}",
+        f"broker_read_occurred={_bool_text(payload['broker_read_occurred'])}",
+        f"broker_state_observed={_bool_text(payload['broker_state_observed'])}",
+        f"live_endpoint_touched={_bool_text(payload['live_endpoint_touched'])}",
+        f"network_used={_bool_text(payload['network_used'])}",
+        "paper_submit_authorized=false",
+        "paper_submit_occurred=false",
+        "broker_mutation_authorized=false",
+        "broker_mutation_occurred=false",
+        "live_authorized=false",
+    )
+    payload["safety"] = safety
+    payload["safety_labels"] = list(labels)
+    payload["labels"] = list(labels)
+    payload["profit_claim"] = "none"
+    return payload
+
+
+def _broker_endpoint_status(env: Mapping[str, object]) -> dict[str, object]:
+    configured = {
+        name: _text(env.get(name))
+        for name in ("ALPACA_BASE_URL", "ALPACA_PAPER_BASE_URL", "APCA_API_BASE_URL")
+        if _text(env.get(name))
+    }
+    if _text(env.get("APP_PROFILE")).lower() == "live":
+        return {
+            "broker_endpoint_type": "live_or_unproven",
+            "endpoint_proven_paper": False,
+            "configured_endpoint_names": sorted(configured),
+        }
+    for value in configured.values():
+        if not _is_proven_paper_endpoint(value):
+            return {
+                "broker_endpoint_type": "live_or_unproven",
+                "endpoint_proven_paper": False,
+                "configured_endpoint_names": sorted(configured),
+            }
+    paper_endpoint = configured.get("ALPACA_PAPER_BASE_URL", DEFAULT_ALPACA_PAPER_ENDPOINT)
+    return {
+        "broker_endpoint_type": "paper" if _is_proven_paper_endpoint(paper_endpoint) else "unknown",
+        "endpoint_proven_paper": _is_proven_paper_endpoint(paper_endpoint),
+        "configured_endpoint_names": sorted(configured),
+    }
+
+
+def _is_proven_paper_endpoint(value: str) -> bool:
+    normalized = value.strip().lower().rstrip("/")
+    return normalized == DEFAULT_ALPACA_PAPER_ENDPOINT
+
+
+def _call_read_method(client: object, method_name: str) -> object:
+    method = getattr(client, method_name)
+    return method()
+
+
+def _read_open_orders(client: object, symbol: str) -> Sequence[object]:
+    method = getattr(client, "get_orders")
+    try:
+        from algotrader.execution.alpaca_client import AlpacaRecentOrderQuery
+
+        return method(AlpacaRecentOrderQuery(status_filter="open", symbol_filter=symbol))
+    except TypeError:
+        return method()
+
+
+def _observed_positions_summary(
+    positions: Sequence[object],
+    symbol: str,
+) -> dict[str, object]:
+    rows = [
+        {
+            "symbol": _text(_field(position, "symbol")),
+            "quantity": _text(_field(position, "qty") or _field(position, "quantity")),
+            "side": _text(_field(position, "side")),
+        }
+        for position in positions
+    ]
+    unexpected = [
+        row
+        for row in rows
+        if _normalize_broker_symbol(row["symbol"]) == _normalize_broker_symbol(symbol)
+        and _decimal_or_none(row["quantity"]) not in (None, Decimal("0"))
+    ]
+    return {
+        "status": "blocked" if unexpected else "clear",
+        "total_position_count": len(rows),
+        "selected_symbol_position_count": len(unexpected),
+        "unexpected_preexisting_position": bool(unexpected),
+        "positions": rows,
+    }
+
+
+def _observed_open_orders_summary(
+    orders: Sequence[object],
+    symbol: str,
+) -> dict[str, object]:
+    rows = [
+        {
+            "symbol": _text(_field(order, "symbol")),
+            "status": _text(_field(order, "status")),
+            "side": _text(_field(order, "side")),
+            "client_order_id": _text(_field(order, "client_order_id")),
+        }
+        for order in orders
+    ]
+    matching = [
+        row
+        for row in rows
+        if _normalize_broker_symbol(row["symbol"]) == _normalize_broker_symbol(symbol)
+        and _text(row["status"]).lower() not in {"filled", "canceled", "expired", "rejected"}
+    ]
+    return {
+        "status": "blocked" if matching else "clear",
+        "total_open_order_count": len(rows),
+        "selected_symbol_open_order_count": len(matching),
+        "open_order_present": bool(matching),
+        "open_orders": rows,
+    }
+
+
+def _observed_crypto_asset_summary(
+    assets: Sequence[object],
+    symbol: str,
+) -> dict[str, object]:
+    normalized_symbol = _normalize_broker_symbol(symbol)
+    selected = None
+    for asset in assets:
+        if _normalize_broker_symbol(_text(_field(asset, "symbol"))) == normalized_symbol:
+            selected = asset
+            break
+    if selected is None:
+        return {
+            "status": "missing",
+            "symbol": symbol,
+            "asset_found": False,
+            "orderability_verified": False,
+            "min_notional_verified": False,
+            "quantity_increment_verified": False,
+            "min_notional": None,
+            "quantity_increment": None,
+            "broker_observed": True,
+            "basis": "broker_asset_metadata_missing",
+        }
+    asset_class = _text(_field(selected, "asset_class") or _field(selected, "class")).lower()
+    status = _text(_field(selected, "status")).lower()
+    tradable = _optional_bool(_field(selected, "tradable"))
+    orderable = _optional_bool(
+        _field(selected, "orderable")
+        if _field(selected, "orderable") not in (None, "")
+        else _field(selected, "fractionable")
+    )
+    min_notional = _first_decimal(
+        _field(selected, "min_order_value"),
+        _field(selected, "min_notional"),
+        _field(selected, "min_trade_size"),
+    )
+    quantity_increment = _first_decimal(
+        _field(selected, "min_order_size"),
+        _field(selected, "min_trade_increment"),
+        _field(selected, "qty_increment"),
+    )
+    orderability_verified = (
+        asset_class in {"crypto", ""}
+        and status in {"", "active"}
+        and tradable is not False
+        and orderable is not False
+    )
+    return {
+        "status": "verified" if orderability_verified else "blocked",
+        "symbol": symbol,
+        "asset_found": True,
+        "asset_class": asset_class or "unknown",
+        "asset_status": status or "unknown",
+        "tradable": tradable,
+        "orderable": orderable,
+        "orderability_verified": orderability_verified,
+        "min_notional_verified": min_notional is not None and min_notional > Decimal("0"),
+        "quantity_increment_verified": (
+            quantity_increment is not None and quantity_increment > Decimal("0")
+        ),
+        "min_notional": min_notional,
+        "quantity_increment": quantity_increment,
+        "broker_observed": True,
+        "basis": "broker_crypto_asset_metadata",
+    }
+
+
+def _broker_observed_blocker(
+    *,
+    fixture_decision: str,
+    account_status: str,
+    trading_blocked: bool | None,
+    account_blocked: bool | None,
+    positions_summary: Mapping[str, object],
+    open_orders_summary: Mapping[str, object],
+    asset_summary: Mapping[str, object],
+) -> str:
+    if fixture_decision != "fixture_ready_preview":
+        return "fixture_readiness_not_ready"
+    if account_status and account_status.lower() not in {"active", "account_active"}:
+        return "paper_account_not_active"
+    if trading_blocked is True:
+        return "paper_trading_blocked"
+    if account_blocked is True:
+        return "paper_account_blocked"
+    if positions_summary.get("unexpected_preexisting_position") is True:
+        return "unexpected_preexisting_position"
+    if open_orders_summary.get("open_order_present") is True:
+        return "open_order_present"
+    if asset_summary.get("orderability_verified") is not True:
+        return "broker_orderability_not_verified"
+    if asset_summary.get("min_notional_verified") is not True:
+        return "broker_min_notional_not_verified"
+    if asset_summary.get("quantity_increment_verified") is not True:
+        return "broker_quantity_increment_not_verified"
+    return ""
+
+
+def _empty_observed_summary(status: str) -> dict[str, object]:
+    return {"status": status, "broker_observed": False}
+
+
+def _field(obj: object, name: str) -> object:
+    if isinstance(obj, Mapping):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _optional_bool(value: object) -> bool | None:
+    if type(value) is bool:
+        return value
+    text = _text(value).lower()
+    if text in {"true", "1", "yes"}:
+        return True
+    if text in {"false", "0", "no"}:
+        return False
+    return None
+
+
+def _normalize_broker_symbol(value: str) -> str:
+    return "".join(ch for ch in value.upper() if ch.isalnum())
+
+
+def _safe_broker_observed_error(exc: Exception) -> str:
+    text = str(exc)
+    for sentinel in FORBIDDEN_SENTINELS:
+        text = text.replace(sentinel, "<redacted>")
+    return text[:240]
 
 
 def _offline_fixture_bars(
@@ -2091,7 +2959,13 @@ def _plan_events(
     ]
 
 
-def _simbroker_safety(*, simulation_mutation_occurred: bool) -> dict[str, object]:
+def _simbroker_safety(
+    *,
+    simulation_mutation_occurred: bool,
+    broker_read_occurred: bool = False,
+    broker_state_observed: bool = False,
+    network_used: bool = False,
+) -> dict[str, object]:
     return {
         "simulation_or_paper_only": True,
         "not_live_authorized": True,
@@ -2104,12 +2978,16 @@ def _simbroker_safety(*, simulation_mutation_occurred: bool) -> dict[str, object
         "paper_submit_occurred": False,
         "broker_mutation_occurred": False,
         "simulation_mutation_occurred": simulation_mutation_occurred,
-        "broker_read_occurred": False,
-        "broker_state_observed": False,
-        "broker_state_mode": "offline_simulation",
+        "broker_read_occurred": broker_read_occurred,
+        "broker_state_observed": broker_state_observed,
+        "broker_state_mode": (
+            "alpaca_paper_read_only_observed"
+            if broker_state_observed
+            else "offline_simulation"
+        ),
         "market_data_observed": False,
         "orderability_observed": False,
-        "network_used": False,
+        "network_used": network_used,
         "live_endpoint_touched": False,
         "credential_values_exposed": False,
         "live_authorized": False,
@@ -2322,10 +3200,10 @@ def build_no_submit_paper_readiness_packet(
         open_order_present=bool(open_symbol_orders),
         preexisting_position_blocked=preexisting_position_blocked,
     )
-    decision = blocker_code or "paper_ready_preview_only"
+    decision = "fixture_blocked_preview" if blocker_code else "fixture_ready_preview"
     next_operator_action = (
         "operator_review_preview_packet_no_submit"
-        if decision == "paper_ready_preview_only"
+        if decision == "fixture_ready_preview"
         else "resolve_paper_readiness_blocker_before_any_paper_submit"
     )
 
@@ -2340,6 +3218,11 @@ def build_no_submit_paper_readiness_packet(
         "strategy_id": strategy_id,
         "client_order_id": client_order_id,
         "planned_action": planned_action,
+        "readiness_basis": "fixture",
+        "readiness_basis_decision": decision,
+        "fixture_readiness_decision": decision,
+        "fixture_blocker_code": blocker_code,
+        "broker_observed_readiness_decision": "broker_observed_not_attempted",
         "execution_intent_summary": dict(intent),
         "execution_plan_summary": dict(plan),
         "intended_notional": intended_notional,
@@ -3137,9 +4020,25 @@ def _state_artifact_paths(state_root: Path) -> dict[str, str]:
     return {name: str(state_root / name) for name in STATE_ARTIFACTS}
 
 
-def _simbroker_labels(*, simulation_mutation_occurred: bool) -> tuple[str, ...]:
+def _simbroker_labels(
+    *,
+    simulation_mutation_occurred: bool,
+    broker_read_occurred: bool = False,
+    broker_state_observed: bool = False,
+    network_used: bool = False,
+) -> tuple[str, ...]:
     return (
-        *SIMBROKER_SAFETY_LABELS,
+        *REQUIRED_SAFETY_LABELS,
+        "broker_mode=simulation_broker",
+        "simulation_mutation_authorized=true",
+        "paper_submit_occurred=false",
+        "broker_mutation_occurred=false",
+        f"broker_read_occurred={_bool_text(broker_read_occurred)}",
+        f"broker_state_observed={_bool_text(broker_state_observed)}",
+        "broker_state_mode=alpaca_paper_read_only_observed"
+        if broker_state_observed
+        else "broker_state_mode=offline_simulation",
+        f"network_used={_bool_text(network_used)}",
         f"simulation_mutation_occurred={_bool_text(simulation_mutation_occurred)}",
     )
 
@@ -3599,6 +4498,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--state-root", type=Path, default=None)
     parser.add_argument("--mode", choices=("SimBroker", "AlpacaPaper"), default="SimBroker")
     parser.add_argument("--allow-alpaca-paper-mutation", action="store_true")
+    parser.add_argument("--broker-observed-readiness", action="store_true")
+    parser.add_argument("--allow-alpaca-paper-read", action="store_true")
     parser.add_argument("--as-of", default="")
     parser.add_argument(
         "--scenario",
@@ -3623,6 +4524,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_root=args.output_root,
         mode=args.mode,
         allow_alpaca_paper_mutation=args.allow_alpaca_paper_mutation,
+        broker_observed_readiness=args.broker_observed_readiness,
+        allow_alpaca_paper_read=args.allow_alpaca_paper_read,
         as_of=args.as_of or None,
         state_root=args.state_root,
         scenario=args.scenario,
