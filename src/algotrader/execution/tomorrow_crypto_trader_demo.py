@@ -96,6 +96,20 @@ BROKER_OBSERVED_READINESS_DECISIONS = (
     "broker_observed_blocked_ambiguous_response",
 )
 
+BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
+    "broker_min_notional_field_missing",
+    "broker_min_order_size_field_missing",
+    "broker_qty_increment_field_missing",
+    "broker_orderability_metadata_missing",
+    "broker_orderability_metadata_ambiguous",
+    "broker_price_metadata_missing",
+    "broker_price_metadata_stale",
+    "broker_intended_notional_below_min_notional",
+    "broker_estimated_quantity_below_min_order_size",
+    "broker_estimated_quantity_not_increment_aligned",
+    "broker_min_notional_not_verified",
+)
+
 BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "broker_read_authorized",
     "broker_read_attempted",
@@ -111,6 +125,19 @@ BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "credential_values_exposed",
     "paper_submit_occurred",
     "broker_mutation_occurred",
+    "broker_observed_orderability_source",
+    "broker_observed_orderability_check_status",
+    "broker_observed_min_notional_value",
+    "broker_observed_min_notional_source",
+    "broker_observed_min_notional_check_status",
+    "broker_observed_min_order_size_value",
+    "broker_observed_min_order_size_source",
+    "broker_observed_min_order_size_check_status",
+    "broker_observed_quantity_increment_value",
+    "broker_observed_quantity_increment_source",
+    "broker_observed_quantity_increment_check_status",
+    "broker_observed_price_source",
+    "broker_observed_price_check_status",
 )
 
 RUN_SUMMARY_CONSOLE_FIELDS = (
@@ -798,6 +825,36 @@ def run_tomorrow_crypto_trader_demo(
                 "paper_submit_occurred": False,
                 "broker_mutation_occurred": False,
                 "network_used": broker_observed_preview["network_used"],
+                "blocker_codes": list(
+                    _string_sequence(broker_observed_preview.get("blocker_codes"))
+                ),
+                "orderability_check_status": _text(
+                    _mapping(
+                        broker_observed_preview.get("broker_observed_orderability_check")
+                    ).get("status")
+                ),
+                "min_notional_check_status": _text(
+                    _mapping(
+                        broker_observed_preview.get("broker_observed_min_notional_check")
+                    ).get("status")
+                ),
+                "min_order_size_check_status": _text(
+                    _mapping(
+                        broker_observed_preview.get("broker_observed_min_order_size_check")
+                    ).get("status")
+                ),
+                "quantity_increment_check_status": _text(
+                    _mapping(
+                        broker_observed_preview.get(
+                            "broker_observed_quantity_increment_check"
+                        )
+                    ).get("status")
+                ),
+                "price_check_status": _text(
+                    _mapping(
+                        broker_observed_preview.get("broker_observed_price_freshness_check")
+                    ).get("status")
+                ),
             }
         )
     events.append(
@@ -883,6 +940,34 @@ def run_tomorrow_crypto_trader_demo(
         "broker_state_observed": broker_observed_preview["broker_state_observed"],
         "network_used": broker_observed_preview["network_used"],
         "paper_submit_authorized": False,
+        "blocker_codes": list(
+            _string_sequence(broker_observed_preview.get("blocker_codes"))
+        ),
+        "orderability_check_status": _text(
+            _mapping(broker_observed_preview.get("broker_observed_orderability_check")).get(
+                "status"
+            )
+        ),
+        "min_notional_check_status": _text(
+            _mapping(broker_observed_preview.get("broker_observed_min_notional_check")).get(
+                "status"
+            )
+        ),
+        "min_order_size_check_status": _text(
+            _mapping(
+                broker_observed_preview.get("broker_observed_min_order_size_check")
+            ).get("status")
+        ),
+        "quantity_increment_check_status": _text(
+            _mapping(
+                broker_observed_preview.get("broker_observed_quantity_increment_check")
+            ).get("status")
+        ),
+        "price_check_status": _text(
+            _mapping(broker_observed_preview.get("broker_observed_price_freshness_check")).get(
+                "status"
+            )
+        ),
         "next_operator_action": broker_observed_preview["next_operator_action"],
     }
 
@@ -1229,6 +1314,10 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             f"- broker_state_observed: `{_bool_text(broker_observed.get('broker_state_observed'))}`",
             f"- network_used: `{_bool_text(broker_observed.get('network_used'))}`",
             f"- paper_submit_authorized: `{_bool_text(broker_observed.get('paper_submit_authorized'))}`",
+            f"- min_notional_check_status: `{_text(_mapping(broker_observed.get('broker_observed_min_notional_check')).get('status')) or 'none'}`",
+            f"- min_order_size_check_status: `{_text(_mapping(broker_observed.get('broker_observed_min_order_size_check')).get('status')) or 'none'}`",
+            f"- quantity_increment_check_status: `{_text(_mapping(broker_observed.get('broker_observed_quantity_increment_check')).get('status')) or 'none'}`",
+            f"- price_check_status: `{_text(_mapping(broker_observed.get('broker_observed_price_freshness_check')).get('status')) or 'none'}`",
             f"- next_operator_action: `{_text(broker_observed.get('next_operator_action'))}`",
             "",
             "## Simulated Fills",
@@ -1276,7 +1365,121 @@ def render_paper_readiness_packet(packet: Mapping[str, object]) -> str:
     )
 
 
+def _markdown_table_value(value: object) -> str:
+    text = _text(value)
+    return text if text else "none"
+
+
+def _broker_observed_evidence_table_rows(
+    packet: Mapping[str, object],
+) -> list[tuple[str, str, str, str]]:
+    asset_summary = _mapping(
+        packet.get("observed_crypto_assets_or_orderability_summary")
+    )
+    field_sources = _mapping(
+        packet.get("broker_orderability_field_sources")
+        or asset_summary.get("field_sources")
+    )
+    normalized = _mapping(
+        packet.get("broker_orderability_normalized")
+        or asset_summary.get("normalized_orderability_fields")
+    )
+    orderability_check = _mapping(packet.get("broker_observed_orderability_check"))
+    min_notional_check = _mapping(packet.get("broker_observed_min_notional_check"))
+    min_order_size_check = _mapping(packet.get("broker_observed_min_order_size_check"))
+    quantity_increment_check = _mapping(
+        packet.get("broker_observed_quantity_increment_check")
+    )
+    price_check = _mapping(packet.get("broker_observed_price_freshness_check"))
+    if not price_check:
+        price_check = _mapping(packet.get("observed_latest_price_basis"))
+    selected_source = "deterministic_fixture" if _text(packet.get("symbol")) else "unavailable"
+    return [
+        (
+            "selected_symbol",
+            _markdown_table_value(packet.get("symbol")),
+            selected_source,
+            "present" if selected_source != "unavailable" else "missing",
+        ),
+        (
+            "intended_side",
+            _markdown_table_value(packet.get("intended_side") or packet.get("side")),
+            selected_source,
+            "present" if _text(packet.get("intended_side") or packet.get("side")) else "missing",
+        ),
+        (
+            "intended_notional",
+            _markdown_table_value(packet.get("intended_notional")),
+            selected_source,
+            "present" if _text(packet.get("intended_notional")) else "missing",
+        ),
+        (
+            "estimated_quantity",
+            _markdown_table_value(packet.get("estimated_quantity")),
+            selected_source,
+            "present" if _text(packet.get("estimated_quantity")) else "missing",
+        ),
+        (
+            "latest_price",
+            _markdown_table_value(price_check.get("latest_price")),
+            _markdown_table_value(price_check.get("source")),
+            _markdown_table_value(price_check.get("status")),
+        ),
+        (
+            "orderability",
+            _markdown_table_value(asset_summary.get("basis")),
+            _markdown_table_value(orderability_check.get("source")),
+            _markdown_table_value(orderability_check.get("status")),
+        ),
+        (
+            "asset_status",
+            _markdown_table_value(normalized.get("status") or asset_summary.get("asset_status")),
+            _markdown_table_value(field_sources.get("status")),
+            "observed" if field_sources.get("status") == "broker_observed" else "missing",
+        ),
+        (
+            "tradable",
+            _markdown_table_value(normalized.get("tradable")),
+            _markdown_table_value(field_sources.get("tradable")),
+            "observed" if field_sources.get("tradable") == "broker_observed" else "missing",
+        ),
+        (
+            "fractional",
+            _markdown_table_value(normalized.get("fractional")),
+            _markdown_table_value(field_sources.get("fractional")),
+            "observed" if field_sources.get("fractional") == "broker_observed" else "missing",
+        ),
+        (
+            "min_notional",
+            _markdown_table_value(min_notional_check.get("min_notional")),
+            _markdown_table_value(min_notional_check.get("source")),
+            _markdown_table_value(min_notional_check.get("status")),
+        ),
+        (
+            "min_order_size",
+            _markdown_table_value(min_order_size_check.get("min_order_size")),
+            _markdown_table_value(min_order_size_check.get("source")),
+            _markdown_table_value(min_order_size_check.get("status")),
+        ),
+        (
+            "quantity_increment",
+            _markdown_table_value(quantity_increment_check.get("quantity_increment")),
+            _markdown_table_value(quantity_increment_check.get("source")),
+            _markdown_table_value(quantity_increment_check.get("status")),
+        ),
+        (
+            "price_increment",
+            _markdown_table_value(normalized.get("price_increment")),
+            _markdown_table_value(field_sources.get("price_increment")),
+            "observed"
+            if field_sources.get("price_increment") == "broker_observed"
+            else "missing",
+        ),
+    ]
+
+
 def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str:
+    evidence_rows = _broker_observed_evidence_table_rows(packet)
     return "\n".join(
         [
             "# Broker-Observed Readiness Packet",
@@ -1284,8 +1487,12 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- run_id: `{_text(packet.get('run_id'))}`",
             f"- cycle_index: `{_text(packet.get('cycle_index'))}`",
             f"- symbol: `{_text(packet.get('symbol')) or 'none'}`",
+            f"- side: `{_text(packet.get('intended_side') or packet.get('side')) or 'none'}`",
             f"- broker_observed_readiness_decision: `{_text(packet.get('broker_observed_readiness_decision'))}`",
             f"- blocker_code: `{_text(packet.get('blocker_code')) or 'none'}`",
+            f"- blocker_codes: `{','.join(_string_sequence(packet.get('blocker_codes'))) or 'none'}`",
+            f"- intended_notional: `{_text(packet.get('intended_notional')) or 'none'}`",
+            f"- estimated_quantity: `{_text(packet.get('estimated_quantity')) or 'none'}`",
             f"- broker_read_authorized: `{_bool_text(packet.get('broker_read_authorized'))}`",
             f"- broker_read_attempted: `{_bool_text(packet.get('broker_read_attempted'))}`",
             f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
@@ -1306,6 +1513,15 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- open_orders: `{_text(_mapping(packet.get('observed_open_orders_summary')).get('status'))}`",
             f"- crypto_assets: `{_text(_mapping(packet.get('observed_crypto_assets_or_orderability_summary')).get('status'))}`",
             f"- min_notional_or_increment: `{_text(_mapping(packet.get('observed_min_notional_or_increment_basis')).get('status'))}`",
+            "",
+            "## Min-Notional / Orderability Evidence",
+            "",
+            "field | value | source | status",
+            "--- | --- | --- | ---",
+            *[
+                f"{field} | `{value}` | `{source}` | `{status}`"
+                for field, value, source, status in evidence_rows
+            ],
             "",
             "## Safety Labels",
             *[f"- `{label}`" for label in _string_sequence(packet.get("safety_labels"))],
@@ -1781,6 +1997,31 @@ def _validate_broker_observed_readiness_packet(
     ):
         errors.append("broker_read_occurred_in_default_simbroker_mode")
     blocker_code = _text(packet.get("blocker_code"))
+    blocker_codes = tuple(_string_sequence(packet.get("blocker_codes")))
+    if blocker_code and blocker_code not in blocker_codes:
+        errors.append("broker_observed_primary_blocker_missing_from_blocker_list")
+    check_blockers = tuple(
+        blocker
+        for blocker in (
+            _text(_mapping(packet.get("broker_observed_orderability_check")).get("blocker_code")),
+            _text(_mapping(packet.get("broker_observed_price_freshness_check")).get("blocker_code")),
+            _text(_mapping(packet.get("broker_observed_min_notional_check")).get("blocker_code")),
+            _text(_mapping(packet.get("broker_observed_min_order_size_check")).get("blocker_code")),
+            _text(
+                _mapping(packet.get("broker_observed_quantity_increment_check")).get(
+                    "blocker_code"
+                )
+            ),
+        )
+        if blocker
+    )
+    for check_blocker in check_blockers:
+        if check_blocker not in blocker_codes and decision == "broker_observed_blocked_preview":
+            errors.append(f"broker_observed_blocker_list_missing:{check_blocker}")
+    if blocker_code == "broker_min_notional_not_verified" and any(
+        blocker in BROKER_OBSERVED_SPECIFIC_BLOCKERS for blocker in check_blockers
+    ):
+        errors.append("broker_observed_generic_blocker_with_specific_missing_field")
     if (
         packet.get("broker_read_authorized") is True
         and packet.get("broker_read_occurred") is False
@@ -1808,7 +2049,25 @@ def _validate_broker_observed_readiness_packet(
         if packet.get("broker_read_blocked") is not True:
             errors.append("broker_observed_blocked_decision_without_blocked_flag")
 
+    orderability_check = _mapping(packet.get("broker_observed_orderability_check"))
+    min_notional_check = _mapping(packet.get("broker_observed_min_notional_check"))
+    min_order_size_check = _mapping(packet.get("broker_observed_min_order_size_check"))
+    quantity_increment_check = _mapping(
+        packet.get("broker_observed_quantity_increment_check")
+    )
+    price_check = _mapping(packet.get("broker_observed_price_freshness_check"))
+    if not price_check:
+        price_check = _mapping(packet.get("observed_latest_price_basis"))
+
     if decision == "broker_observed_ready_preview":
+        if _text(packet.get("fixture_readiness_decision")) != "fixture_ready_preview":
+            errors.append("broker_observed_ready_without_fixture_ready_preview")
+        if not _text(packet.get("symbol")):
+            errors.append("broker_observed_ready_without_selected_candidate")
+        if _first_decimal(packet.get("intended_notional")) is None:
+            errors.append("broker_observed_ready_without_intended_notional")
+        if _first_decimal(packet.get("estimated_quantity")) is None:
+            errors.append("broker_observed_ready_without_estimated_quantity")
         if packet.get("broker_read_occurred") is not True:
             errors.append("broker_observed_ready_without_broker_read")
         if packet.get("broker_read_authorized") is not True:
@@ -1823,16 +2082,40 @@ def _validate_broker_observed_readiness_packet(
             "orderability_verified"
         ) is not True:
             errors.append("broker_observed_ready_without_orderability_evidence")
+        if orderability_check.get("source") != "broker_observed":
+            errors.append("broker_observed_ready_without_broker_observed_orderability")
+        if orderability_check.get("status") != "passed":
+            errors.append("broker_observed_ready_without_orderability_check")
         min_increment = _mapping(packet.get("observed_min_notional_or_increment_basis"))
         if min_increment.get("min_notional_verified") is not True:
             errors.append("broker_observed_ready_without_min_notional_evidence")
         if min_increment.get("quantity_increment_verified") is not True:
             errors.append("broker_observed_ready_without_increment_evidence")
+        if min_notional_check.get("source") == "deterministic_fixture":
+            errors.append("broker_observed_ready_with_fixture_only_min_notional_evidence")
+        if min_notional_check.get("source") != "broker_observed":
+            errors.append("broker_observed_ready_without_broker_observed_min_notional")
+        if min_notional_check.get("status") != "passed":
+            errors.append("broker_observed_ready_without_min_notional_check")
+        if min_order_size_check.get("source") != "broker_observed":
+            errors.append("broker_observed_ready_without_broker_observed_min_order_size")
+        if min_order_size_check.get("status") != "passed":
+            errors.append("broker_observed_ready_without_min_order_size_check")
+        if quantity_increment_check.get("source") != "broker_observed":
+            errors.append("broker_observed_ready_without_broker_observed_increment")
+        if quantity_increment_check.get("status") != "passed":
+            errors.append("broker_observed_ready_without_quantity_increment_check")
+        if price_check.get("status") != "passed":
+            errors.append("broker_observed_ready_without_valid_price")
+        if price_check.get("accepted_for_broker_observed_readiness") is not True:
+            errors.append("broker_observed_ready_without_accepted_price_basis")
         if packet.get("broker_endpoint_type") != "paper":
             errors.append("broker_observed_ready_without_paper_endpoint")
 
     if markdown and decision and decision not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_decision")
+    if markdown and "field | value | source | status" not in markdown:
+        errors.append("broker_observed_readiness_packet_md_missing_evidence_table")
 
 
 def _validate_broker_observed_artifact_consistency(
@@ -2256,6 +2539,10 @@ def _broker_observed_readiness_preview(
     env = paper_environment or _paper_environment_from_os()
     endpoint = _broker_endpoint_status(env)
     symbol = _text(fixture_readiness.get("symbol"))
+    side = _text(fixture_readiness.get("side"))
+    intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
+    estimated_quantity = _first_decimal(fixture_readiness.get("estimated_quantity"))
+    price_evidence = _broker_observed_price_evidence(fixture_readiness)
     fixture_decision = _text(fixture_readiness.get("readiness_decision"))
     base_packet = {
         "schema_version": SCHEMA_VERSION,
@@ -2264,6 +2551,13 @@ def _broker_observed_readiness_preview(
         "cycle_index": cycle_index,
         "as_of": as_of,
         "symbol": symbol,
+        "selected_symbol": symbol,
+        "side": side,
+        "intended_side": side,
+        "intended_notional": intended_notional,
+        "estimated_quantity": estimated_quantity,
+        "latest_price": price_evidence.get("latest_price"),
+        "latest_price_basis": price_evidence,
         "readiness_basis": "broker_observed",
         "fixture_readiness_decision": fixture_decision,
         "fixture_blocker_code": _text(fixture_readiness.get("blocker_code")),
@@ -2291,13 +2585,55 @@ def _broker_observed_readiness_preview(
         "observed_min_notional_or_increment_basis": {
             "status": "not_observed",
             "min_notional_verified": False,
+            "min_order_size_verified": False,
             "quantity_increment_verified": False,
+            "min_notional": None,
+            "min_order_size": None,
+            "quantity_increment": None,
             "broker_observed": False,
         },
-        "observed_latest_price_basis": {
-            "status": "not_available",
-            "broker_observed": False,
+        "observed_latest_price_basis": price_evidence,
+        "broker_orderability_raw_field_presence": _asset_field_presence(None),
+        "broker_orderability_field_sources": {
+            "orderability": "unavailable",
+            "min_notional": "unavailable",
+            "min_order_size": "unavailable",
+            "quantity_increment": "unavailable",
+            "price_increment": "unavailable",
         },
+        "broker_orderability_normalized": {},
+        "broker_observed_orderability_check": {
+            "status": "blocked",
+            "verified": False,
+            "source": "unavailable",
+            "blocker_code": "broker_orderability_metadata_missing",
+        },
+        "broker_observed_min_notional_check": {
+            "status": "blocked",
+            "verified": False,
+            "source": "unavailable",
+            "intended_notional": intended_notional,
+            "min_notional": None,
+            "blocker_code": "broker_min_notional_field_missing",
+        },
+        "broker_observed_min_order_size_check": {
+            "status": "blocked",
+            "verified": False,
+            "source": "unavailable",
+            "estimated_quantity": estimated_quantity,
+            "min_order_size": None,
+            "blocker_code": "broker_min_order_size_field_missing",
+        },
+        "broker_observed_quantity_increment_check": {
+            "status": "blocked",
+            "verified": False,
+            "source": "unavailable",
+            "estimated_quantity": estimated_quantity,
+            "quantity_increment": None,
+            "remainder": None,
+            "blocker_code": "broker_qty_increment_field_missing",
+        },
+        "broker_observed_price_freshness_check": price_evidence,
         "paper_submit_authorized": False,
         "paper_submit_occurred": False,
         "broker_mutation_authorized": False,
@@ -2420,18 +2756,28 @@ def _broker_observed_readiness_preview(
     positions_summary = _observed_positions_summary(positions, symbol)
     open_orders_summary = _observed_open_orders_summary(open_orders, symbol)
     asset_summary = _observed_crypto_asset_summary(assets, symbol)
+    checks = _broker_observed_feasibility_checks(
+        fixture_readiness=fixture_readiness,
+        asset_summary=asset_summary,
+    )
     min_increment_basis = {
         "status": (
             "verified"
-            if asset_summary["orderability_verified"]
-            and asset_summary["min_notional_verified"]
-            and asset_summary["quantity_increment_verified"]
+            if _mapping(checks["min_notional"]).get("status") == "passed"
+            and _mapping(checks["min_order_size"]).get("status") == "passed"
+            and _mapping(checks["quantity_increment"]).get("status") == "passed"
             else "missing"
         ),
-        "min_notional_verified": asset_summary["min_notional_verified"],
-        "quantity_increment_verified": asset_summary["quantity_increment_verified"],
+        "min_notional_verified": _mapping(checks["min_notional"]).get("verified") is True,
+        "min_order_size_verified": _mapping(checks["min_order_size"]).get("verified") is True,
+        "quantity_increment_verified": _mapping(checks["quantity_increment"]).get("verified")
+        is True,
         "min_notional": asset_summary["min_notional"],
+        "min_order_size": asset_summary["min_order_size"],
         "quantity_increment": asset_summary["quantity_increment"],
+        "min_notional_source": asset_summary.get("min_notional_source"),
+        "min_order_size_source": asset_summary.get("min_order_size_source"),
+        "quantity_increment_source": asset_summary.get("quantity_increment_source"),
         "broker_observed": True,
         "basis": asset_summary["basis"],
     }
@@ -2450,9 +2796,18 @@ def _broker_observed_readiness_preview(
         "observed_open_orders_summary": open_orders_summary,
         "observed_crypto_assets_or_orderability_summary": asset_summary,
         "observed_min_notional_or_increment_basis": min_increment_basis,
+        "observed_latest_price_basis": checks["price"],
+        "broker_orderability_raw_field_presence": asset_summary.get("raw_field_presence"),
+        "broker_orderability_field_sources": asset_summary.get("field_sources"),
+        "broker_orderability_normalized": asset_summary.get("normalized_orderability_fields"),
+        "broker_observed_orderability_check": checks["orderability"],
+        "broker_observed_min_notional_check": checks["min_notional"],
+        "broker_observed_min_order_size_check": checks["min_order_size"],
+        "broker_observed_quantity_increment_check": checks["quantity_increment"],
+        "broker_observed_price_freshness_check": checks["price"],
         "network_used": True if network_used is None else network_used,
     }
-    blocker = _broker_observed_blocker(
+    blockers = _broker_observed_blockers(
         fixture_decision=fixture_decision,
         account_status=account_status,
         trading_blocked=trading_blocked,
@@ -2460,12 +2815,13 @@ def _broker_observed_readiness_preview(
         positions_summary=positions_summary,
         open_orders_summary=open_orders_summary,
         asset_summary=asset_summary,
+        checks=checks,
     )
-    if blocker:
+    if blockers:
         return _broker_observed_packet_with_decision(
-            observed_packet,
+            {**observed_packet, "blocker_codes": list(blockers)},
             decision="broker_observed_blocked_preview",
-            blocker_code=blocker,
+            blocker_code=blockers[0],
             next_operator_action="resolve_broker_observed_blocker_before_any_paper_submit",
         )
     return _broker_observed_packet_with_decision(
@@ -2511,6 +2867,10 @@ def _broker_observed_packet_with_decision(
             "next_operator_action": next_operator_action,
         }
     )
+    blocker_codes = list(_string_sequence(payload.get("blocker_codes")))
+    if blocker_code and blocker_code not in blocker_codes:
+        blocker_codes.insert(0, blocker_code)
+    payload["blocker_codes"] = blocker_codes
     safety = {
         "simulation_or_paper_only": True,
         "not_live_authorized": True,
@@ -2560,6 +2920,89 @@ def _broker_observed_packet_with_decision(
     return payload
 
 
+def _broker_observed_evidence_consistency_fields(
+    broker_observed: Mapping[str, object],
+) -> dict[str, object]:
+    asset_summary = _mapping(
+        broker_observed.get("observed_crypto_assets_or_orderability_summary")
+    )
+    field_sources = _mapping(
+        broker_observed.get("broker_orderability_field_sources")
+        or asset_summary.get("field_sources")
+    )
+    orderability_check = _mapping(broker_observed.get("broker_observed_orderability_check"))
+    min_notional_check = _mapping(
+        broker_observed.get("broker_observed_min_notional_check")
+    )
+    min_order_size_check = _mapping(
+        broker_observed.get("broker_observed_min_order_size_check")
+    )
+    quantity_increment_check = _mapping(
+        broker_observed.get("broker_observed_quantity_increment_check")
+    )
+    price_check = _mapping(broker_observed.get("broker_observed_price_freshness_check"))
+    if not price_check:
+        price_check = _mapping(broker_observed.get("observed_latest_price_basis"))
+    min_notional_value = (
+        min_notional_check.get("min_notional")
+        if "min_notional" in min_notional_check
+        else asset_summary.get("min_notional")
+    )
+    min_order_size_value = (
+        min_order_size_check.get("min_order_size")
+        if "min_order_size" in min_order_size_check
+        else asset_summary.get("min_order_size")
+    )
+    quantity_increment_value = (
+        quantity_increment_check.get("quantity_increment")
+        if "quantity_increment" in quantity_increment_check
+        else asset_summary.get("quantity_increment")
+    )
+    return {
+        "broker_observed_orderability_source": _text(
+            orderability_check.get("source") or field_sources.get("orderability")
+        ),
+        "broker_observed_orderability_check_status": _text(
+            orderability_check.get("status")
+        ),
+        "broker_observed_min_notional_value": _evidence_decimal_text(min_notional_value),
+        "broker_observed_min_notional_source": _text(
+            min_notional_check.get("source") or field_sources.get("min_notional")
+        ),
+        "broker_observed_min_notional_check_status": _text(
+            min_notional_check.get("status")
+        ),
+        "broker_observed_min_order_size_value": _evidence_decimal_text(
+            min_order_size_value
+        ),
+        "broker_observed_min_order_size_source": _text(
+            min_order_size_check.get("source") or field_sources.get("min_order_size")
+        ),
+        "broker_observed_min_order_size_check_status": _text(
+            min_order_size_check.get("status")
+        ),
+        "broker_observed_quantity_increment_value": _evidence_decimal_text(
+            quantity_increment_value
+        ),
+        "broker_observed_quantity_increment_source": _text(
+            quantity_increment_check.get("source")
+            or field_sources.get("quantity_increment")
+        ),
+        "broker_observed_quantity_increment_check_status": _text(
+            quantity_increment_check.get("status")
+        ),
+        "broker_observed_price_source": _text(price_check.get("source")),
+        "broker_observed_price_check_status": _text(price_check.get("status")),
+    }
+
+
+def _evidence_decimal_text(value: object) -> str:
+    parsed = _decimal_or_none(value)
+    if parsed is None:
+        return _text(value)
+    return _decimal_text(parsed)
+
+
 def _broker_observed_consistency_summary(
     *,
     broker_observed: Mapping[str, object],
@@ -2602,6 +3045,7 @@ def _broker_observed_consistency_summary(
             if "broker_mutation_occurred" in broker_observed
             else safety.get("broker_mutation_occurred") is True
         ),
+        **_broker_observed_evidence_consistency_fields(broker_observed),
     }
 
 
@@ -2726,6 +3170,68 @@ def _read_open_orders(client: object, symbol: str) -> Sequence[object]:
         return method()
 
 
+BROKER_ASSET_ORDERABILITY_FIELDS = (
+    "symbol",
+    "asset_class",
+    "class",
+    "status",
+    "tradable",
+    "orderable",
+    "fractionable",
+    "fractional",
+    "min_order_value",
+    "min_notional",
+    "min_order_size",
+    "min_trade_size",
+    "min_trade_increment",
+    "qty_increment",
+    "price_increment",
+    "min_price_increment",
+)
+
+
+def _asset_field_presence(asset: object | None) -> dict[str, bool]:
+    return {
+        field_name: bool(asset is not None and _field(asset, field_name) not in (None, ""))
+        for field_name in BROKER_ASSET_ORDERABILITY_FIELDS
+    }
+
+
+def _first_nonempty_field(asset: object, *field_names: str) -> tuple[object, str]:
+    for field_name in field_names:
+        value = _field(asset, field_name)
+        if value not in (None, ""):
+            return value, field_name
+    return None, ""
+
+
+def _decimal_asset_field(asset: object, *field_names: str) -> tuple[Decimal | None, str, str]:
+    value, field_name = _first_nonempty_field(asset, *field_names)
+    if not field_name:
+        return None, "", "unavailable"
+    parsed = _decimal_or_none(value)
+    if parsed is None:
+        return None, field_name, "ambiguous"
+    return parsed, field_name, "broker_observed"
+
+
+def _bool_asset_field(asset: object, *field_names: str) -> tuple[bool | None, str, str]:
+    value, field_name = _first_nonempty_field(asset, *field_names)
+    if not field_name:
+        return None, "", "unavailable"
+    parsed = _optional_bool(value)
+    if parsed is None:
+        return None, field_name, "ambiguous"
+    return parsed, field_name, "broker_observed"
+
+
+def _text_asset_field(asset: object, *field_names: str) -> tuple[str, str, str]:
+    value, field_name = _first_nonempty_field(asset, *field_names)
+    if not field_name:
+        return "", "", "unavailable"
+    return _text(value), field_name, "broker_observed"
+
+
 def _observed_positions_summary(
     positions: Sequence[object],
     symbol: str,
@@ -2786,69 +3292,451 @@ def _observed_crypto_asset_summary(
     symbol: str,
 ) -> dict[str, object]:
     normalized_symbol = _normalize_broker_symbol(symbol)
-    selected = None
-    for asset in assets:
-        if _normalize_broker_symbol(_text(_field(asset, "symbol"))) == normalized_symbol:
-            selected = asset
-            break
-    if selected is None:
+    matching_assets = tuple(
+        asset
+        for asset in assets
+        if _normalize_broker_symbol(_text(_field(asset, "symbol"))) == normalized_symbol
+    )
+    if not matching_assets:
         return {
             "status": "missing",
             "symbol": symbol,
             "asset_found": False,
+            "matching_asset_count": 0,
             "orderability_verified": False,
+            "min_order_size_verified": False,
             "min_notional_verified": False,
             "quantity_increment_verified": False,
             "min_notional": None,
+            "min_order_size": None,
             "quantity_increment": None,
+            "min_trade_increment": None,
+            "qty_increment": None,
+            "price_increment": None,
             "broker_observed": True,
-            "basis": "broker_asset_metadata_missing",
+            "basis": "broker_orderability_metadata_missing",
+            "raw_field_presence": _asset_field_presence(None),
+            "field_sources": {
+                "orderability": "unavailable",
+                "asset_class": "unavailable",
+                "status": "unavailable",
+                "tradable": "unavailable",
+                "orderable": "unavailable",
+                "fractional": "unavailable",
+                "min_notional": "unavailable",
+                "min_order_size": "unavailable",
+                "quantity_increment": "unavailable",
+                "price_increment": "unavailable",
+            },
+            "normalized_orderability_fields": {},
         }
-    asset_class = _text(_field(selected, "asset_class") or _field(selected, "class")).lower()
-    status = _text(_field(selected, "status")).lower()
-    tradable = _optional_bool(_field(selected, "tradable"))
-    orderable = _optional_bool(
-        _field(selected, "orderable")
-        if _field(selected, "orderable") not in (None, "")
-        else _field(selected, "fractionable")
+    selected = matching_assets[0]
+    raw_presence = _asset_field_presence(selected)
+    asset_class, asset_class_field, asset_class_source = _text_asset_field(
+        selected, "asset_class", "class"
     )
-    min_notional = _first_decimal(
-        _field(selected, "min_order_value"),
-        _field(selected, "min_notional"),
-        _field(selected, "min_trade_size"),
+    status, status_field, status_source = _text_asset_field(selected, "status")
+    tradable, tradable_field, tradable_source = _bool_asset_field(selected, "tradable")
+    orderable, orderable_field, orderable_source = _bool_asset_field(
+        selected, "orderable"
     )
-    quantity_increment = _first_decimal(
-        _field(selected, "min_order_size"),
-        _field(selected, "min_trade_increment"),
-        _field(selected, "qty_increment"),
+    fractional, fractional_field, fractional_source = _bool_asset_field(
+        selected, "fractionable", "fractional"
     )
+    min_notional, min_notional_field, min_notional_source = _decimal_asset_field(
+        selected, "min_order_value", "min_notional"
+    )
+    min_order_size, min_order_size_field, min_order_size_source = _decimal_asset_field(
+        selected, "min_order_size", "min_trade_size"
+    )
+    min_trade_increment, min_trade_increment_field, min_trade_increment_source = (
+        _decimal_asset_field(selected, "min_trade_increment")
+    )
+    qty_increment, qty_increment_field, qty_increment_source = _decimal_asset_field(
+        selected, "qty_increment"
+    )
+    quantity_increment = None
+    quantity_increment_field = ""
+    quantity_increment_source = "unavailable"
+    for value, field_name, source in (
+        (min_trade_increment, min_trade_increment_field, min_trade_increment_source),
+        (qty_increment, qty_increment_field, qty_increment_source),
+    ):
+        if source != "unavailable":
+            quantity_increment = value
+            quantity_increment_field = field_name
+            quantity_increment_source = source
+            break
+    price_increment, price_increment_field, price_increment_source = _decimal_asset_field(
+        selected, "price_increment", "min_price_increment"
+    )
+    normalized_asset_class = asset_class.lower()
+    normalized_status = status.lower()
+    ambiguous = len(matching_assets) > 1
     orderability_verified = (
-        asset_class in {"crypto", ""}
-        and status in {"", "active"}
-        and tradable is not False
+        not ambiguous
+        and normalized_asset_class in {"crypto", ""}
+        and normalized_status in {"active", ""}
+        and tradable is True
         and orderable is not False
     )
+    orderability_status = (
+        "ambiguous"
+        if ambiguous
+        or tradable_source in {"unavailable", "ambiguous"}
+        or status_source == "ambiguous"
+        or orderable_source == "ambiguous"
+        else "verified"
+        if orderability_verified
+        else "blocked"
+    )
+    field_sources = {
+        "orderability": "ambiguous" if orderability_status == "ambiguous" else "broker_observed",
+        "asset_class": asset_class_source,
+        "status": status_source,
+        "tradable": tradable_source,
+        "orderable": orderable_source,
+        "fractional": fractional_source,
+        "min_notional": min_notional_source,
+        "min_order_size": min_order_size_source,
+        "min_trade_increment": min_trade_increment_source,
+        "qty_increment": qty_increment_source,
+        "quantity_increment": quantity_increment_source,
+        "price_increment": price_increment_source,
+    }
     return {
-        "status": "verified" if orderability_verified else "blocked",
+        "status": orderability_status,
         "symbol": symbol,
         "asset_found": True,
-        "asset_class": asset_class or "unknown",
-        "asset_status": status or "unknown",
+        "matching_asset_count": len(matching_assets),
+        "asset_class": normalized_asset_class or "unknown",
+        "asset_class_field": asset_class_field,
+        "asset_status": normalized_status or "unknown",
+        "status_field": status_field,
         "tradable": tradable,
+        "tradable_field": tradable_field,
         "orderable": orderable,
+        "orderable_field": orderable_field,
+        "fractional": fractional,
+        "fractional_field": fractional_field,
         "orderability_verified": orderability_verified,
-        "min_notional_verified": min_notional is not None and min_notional > Decimal("0"),
+        "min_notional_verified": (
+            min_notional_source == "broker_observed"
+            and min_notional is not None
+            and min_notional > Decimal("0")
+        ),
+        "min_order_size_verified": (
+            min_order_size_source == "broker_observed"
+            and min_order_size is not None
+            and min_order_size > Decimal("0")
+        ),
         "quantity_increment_verified": (
-            quantity_increment is not None and quantity_increment > Decimal("0")
+            quantity_increment_source == "broker_observed"
+            and quantity_increment is not None
+            and quantity_increment > Decimal("0")
         ),
         "min_notional": min_notional,
+        "min_notional_field": min_notional_field,
+        "min_notional_source": min_notional_source,
+        "min_order_size": min_order_size,
+        "min_order_size_field": min_order_size_field,
+        "min_order_size_source": min_order_size_source,
+        "min_trade_increment": min_trade_increment,
+        "min_trade_increment_field": min_trade_increment_field,
+        "min_trade_increment_source": min_trade_increment_source,
+        "qty_increment": qty_increment,
+        "qty_increment_field": qty_increment_field,
+        "qty_increment_source": qty_increment_source,
         "quantity_increment": quantity_increment,
+        "quantity_increment_field": quantity_increment_field,
+        "quantity_increment_source": quantity_increment_source,
+        "price_increment": price_increment,
+        "price_increment_field": price_increment_field,
+        "price_increment_source": price_increment_source,
         "broker_observed": True,
         "basis": "broker_crypto_asset_metadata",
+        "raw_field_presence": raw_presence,
+        "field_sources": field_sources,
+        "normalized_orderability_fields": {
+            "asset_class": normalized_asset_class or "",
+            "status": normalized_status or "",
+            "tradable": tradable,
+            "orderable": orderable,
+            "fractional": fractional,
+            "min_notional": min_notional,
+            "min_order_size": min_order_size,
+            "min_trade_increment": min_trade_increment,
+            "qty_increment": qty_increment,
+            "quantity_increment": quantity_increment,
+            "price_increment": price_increment,
+        },
     }
 
 
-def _broker_observed_blocker(
+def _source_for_latest_price_basis(basis_text: str, broker_observed: bool) -> str:
+    if broker_observed:
+        return "broker_observed"
+    normalized = basis_text.lower()
+    if "local_replay" in normalized:
+        return "local_replay"
+    if basis_text:
+        return "deterministic_fixture"
+    return "unavailable"
+
+
+def _broker_observed_price_evidence(
+    fixture_readiness: Mapping[str, object],
+) -> dict[str, object]:
+    basis = _mapping(fixture_readiness.get("latest_price_basis"))
+    latest_check = _mapping(
+        basis.get("latest_price_check")
+        or fixture_readiness.get("stale_missing_price_policy_result")
+    )
+    basis_text = _text(basis.get("basis"))
+    source = _source_for_latest_price_basis(
+        basis_text,
+        basis.get("broker_observed") is True,
+    )
+    latest_price = _first_decimal(
+        fixture_readiness.get("latest_price"),
+        latest_check.get("latest_price"),
+    )
+    missing = latest_check.get("missing") is True or latest_price is None
+    stale = latest_check.get("stale") is True
+    blocker = ""
+    if missing:
+        status = "blocked"
+        blocker = "broker_price_metadata_missing"
+    elif stale:
+        status = "blocked"
+        blocker = "broker_price_metadata_stale"
+    elif _text(latest_check.get("status")) in {"", "passed"}:
+        status = "passed"
+    else:
+        status = "blocked"
+        blocker = "broker_price_metadata_missing"
+    accepted = status == "passed" and source in {
+        "broker_observed",
+        "deterministic_fixture",
+        "local_replay",
+    }
+    return {
+        "status": status,
+        "source": source,
+        "basis": basis_text,
+        "latest_price": latest_price,
+        "latest_price_timestamp": latest_check.get(
+            "latest_price_timestamp",
+            _mapping(fixture_readiness.get("latest_price_basis")).get(
+                "latest_price_timestamp"
+            ),
+        ),
+        "as_of": latest_check.get("as_of", fixture_readiness.get("as_of")),
+        "max_age_seconds": latest_check.get("max_age_seconds"),
+        "stale_after": latest_check.get("stale_after"),
+        "missing": missing,
+        "stale": stale,
+        "broker_observed": source == "broker_observed",
+        "accepted_for_broker_observed_readiness": accepted,
+        "blocker_code": blocker,
+    }
+
+
+def _broker_observed_orderability_check(
+    asset_summary: Mapping[str, object],
+) -> dict[str, object]:
+    if asset_summary.get("asset_found") is not True:
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": "unavailable",
+            "blocker_code": "broker_orderability_metadata_missing",
+        }
+    status = _text(asset_summary.get("status"))
+    if status == "ambiguous":
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": "ambiguous",
+            "blocker_code": "broker_orderability_metadata_ambiguous",
+        }
+    verified = asset_summary.get("orderability_verified") is True
+    return {
+        "status": "passed" if verified else "blocked",
+        "verified": verified,
+        "source": "broker_observed",
+        "blocker_code": "" if verified else "broker_orderability_metadata_ambiguous",
+        "asset_status": asset_summary.get("asset_status"),
+        "tradable": asset_summary.get("tradable"),
+        "orderable": asset_summary.get("orderable"),
+        "fractional": asset_summary.get("fractional"),
+    }
+
+
+def _broker_observed_min_notional_check(
+    *,
+    intended_notional: Decimal | None,
+    asset_summary: Mapping[str, object],
+) -> dict[str, object]:
+    min_notional = _first_decimal(asset_summary.get("min_notional"))
+    source = _text(asset_summary.get("min_notional_source")) or "unavailable"
+    if source != "broker_observed" or min_notional is None or min_notional <= Decimal("0"):
+        blocker = (
+            "broker_min_notional_field_missing"
+            if source in {"", "unavailable"}
+            else "broker_min_notional_not_verified"
+        )
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "intended_notional": intended_notional,
+            "min_notional": min_notional,
+            "blocker_code": blocker,
+        }
+    if intended_notional is None or intended_notional < min_notional:
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "intended_notional": intended_notional,
+            "min_notional": min_notional,
+            "blocker_code": "broker_intended_notional_below_min_notional",
+        }
+    return {
+        "status": "passed",
+        "verified": True,
+        "source": source,
+        "intended_notional": intended_notional,
+        "min_notional": min_notional,
+        "blocker_code": "",
+    }
+
+
+def _broker_observed_min_order_size_check(
+    *,
+    estimated_quantity: Decimal | None,
+    asset_summary: Mapping[str, object],
+) -> dict[str, object]:
+    min_order_size = _first_decimal(asset_summary.get("min_order_size"))
+    source = _text(asset_summary.get("min_order_size_source")) or "unavailable"
+    if source != "broker_observed" or min_order_size is None or min_order_size <= Decimal("0"):
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "estimated_quantity": estimated_quantity,
+            "min_order_size": min_order_size,
+            "blocker_code": "broker_min_order_size_field_missing",
+        }
+    if estimated_quantity is None or estimated_quantity < min_order_size:
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "estimated_quantity": estimated_quantity,
+            "min_order_size": min_order_size,
+            "blocker_code": "broker_estimated_quantity_below_min_order_size",
+        }
+    return {
+        "status": "passed",
+        "verified": True,
+        "source": source,
+        "estimated_quantity": estimated_quantity,
+        "min_order_size": min_order_size,
+        "blocker_code": "",
+    }
+
+
+def _broker_observed_quantity_increment_check(
+    *,
+    estimated_quantity: Decimal | None,
+    asset_summary: Mapping[str, object],
+) -> dict[str, object]:
+    quantity_increment = _first_decimal(asset_summary.get("quantity_increment"))
+    source = _text(asset_summary.get("quantity_increment_source")) or "unavailable"
+    if (
+        source != "broker_observed"
+        or quantity_increment is None
+        or quantity_increment <= Decimal("0")
+    ):
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "estimated_quantity": estimated_quantity,
+            "quantity_increment": quantity_increment,
+            "remainder": None,
+            "blocker_code": "broker_qty_increment_field_missing",
+        }
+    aligned, remainder = _quantity_increment_aligned(
+        estimated_quantity,
+        quantity_increment,
+    )
+    if aligned is not True:
+        return {
+            "status": "blocked",
+            "verified": False,
+            "source": source,
+            "estimated_quantity": estimated_quantity,
+            "quantity_increment": quantity_increment,
+            "remainder": remainder,
+            "blocker_code": "broker_estimated_quantity_not_increment_aligned",
+        }
+    return {
+        "status": "passed",
+        "verified": True,
+        "source": source,
+        "estimated_quantity": estimated_quantity,
+        "quantity_increment": quantity_increment,
+        "remainder": remainder,
+        "blocker_code": "",
+    }
+
+
+def _quantity_increment_aligned(
+    estimated_quantity: Decimal | None,
+    quantity_increment: Decimal | None,
+) -> tuple[bool | None, Decimal | None]:
+    if (
+        estimated_quantity is None
+        or quantity_increment is None
+        or quantity_increment <= Decimal("0")
+    ):
+        return None, None
+    try:
+        remainder = estimated_quantity % quantity_increment
+    except Exception:
+        return None, None
+    return remainder == Decimal("0"), remainder
+
+
+def _broker_observed_feasibility_checks(
+    *,
+    fixture_readiness: Mapping[str, object],
+    asset_summary: Mapping[str, object],
+) -> dict[str, dict[str, object]]:
+    intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
+    estimated_quantity = _first_decimal(fixture_readiness.get("estimated_quantity"))
+    return {
+        "orderability": _broker_observed_orderability_check(asset_summary),
+        "price": _broker_observed_price_evidence(fixture_readiness),
+        "min_notional": _broker_observed_min_notional_check(
+            intended_notional=intended_notional,
+            asset_summary=asset_summary,
+        ),
+        "min_order_size": _broker_observed_min_order_size_check(
+            estimated_quantity=estimated_quantity,
+            asset_summary=asset_summary,
+        ),
+        "quantity_increment": _broker_observed_quantity_increment_check(
+            estimated_quantity=estimated_quantity,
+            asset_summary=asset_summary,
+        ),
+    }
+
+
+def _broker_observed_blockers(
     *,
     fixture_decision: str,
     account_status: str,
@@ -2857,26 +3745,32 @@ def _broker_observed_blocker(
     positions_summary: Mapping[str, object],
     open_orders_summary: Mapping[str, object],
     asset_summary: Mapping[str, object],
-) -> str:
+    checks: Mapping[str, Mapping[str, object]],
+) -> tuple[str, ...]:
+    blockers: list[str] = []
     if fixture_decision != "fixture_ready_preview":
-        return "fixture_readiness_not_ready"
+        blockers.append("fixture_readiness_not_ready")
     if account_status and account_status.lower() not in {"active", "account_active"}:
-        return "paper_account_not_active"
+        blockers.append("paper_account_not_active")
     if trading_blocked is True:
-        return "paper_trading_blocked"
+        blockers.append("paper_trading_blocked")
     if account_blocked is True:
-        return "paper_account_blocked"
+        blockers.append("paper_account_blocked")
     if positions_summary.get("unexpected_preexisting_position") is True:
-        return "unexpected_preexisting_position"
+        blockers.append("unexpected_preexisting_position")
     if open_orders_summary.get("open_order_present") is True:
-        return "open_order_present"
-    if asset_summary.get("orderability_verified") is not True:
-        return "broker_orderability_not_verified"
-    if asset_summary.get("min_notional_verified") is not True:
-        return "broker_min_notional_not_verified"
-    if asset_summary.get("quantity_increment_verified") is not True:
-        return "broker_quantity_increment_not_verified"
-    return ""
+        blockers.append("open_order_present")
+    orderability_blocker = _text(_mapping(checks.get("orderability")).get("blocker_code"))
+    if orderability_blocker:
+        blockers.append(orderability_blocker)
+    price_blocker = _text(_mapping(checks.get("price")).get("blocker_code"))
+    if price_blocker:
+        blockers.append(price_blocker)
+    for check_name in ("min_notional", "min_order_size", "quantity_increment"):
+        blocker = _text(_mapping(checks.get(check_name)).get("blocker_code"))
+        if blocker:
+            blockers.append(blocker)
+    return _dedupe(blockers)
 
 
 def _empty_observed_summary(status: str) -> dict[str, object]:

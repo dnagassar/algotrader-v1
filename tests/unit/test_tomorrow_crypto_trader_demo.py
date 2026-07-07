@@ -57,6 +57,8 @@ class _FakeBrokerReadClient:
                 "orderable": True,
                 "min_order_value": "1",
                 "min_order_size": "0.00000001",
+                "min_trade_increment": "0.00000001",
+                "price_increment": "0.01",
             }
         ]
         self.calls: list[str] = []
@@ -90,6 +92,22 @@ class _FailingBrokerReadClient:
 
     def list_assets(self) -> list[Mapping[str, object]]:
         return []
+
+
+def _broker_asset(**overrides: object) -> dict[str, object]:
+    asset: dict[str, object] = {
+        "symbol": "BTCUSD",
+        "asset_class": "crypto",
+        "status": "active",
+        "tradable": True,
+        "orderable": True,
+        "min_order_value": "1",
+        "min_order_size": "0.00000001",
+        "min_trade_increment": "0.00000001",
+        "price_increment": "0.01",
+    }
+    asset.update(overrides)
+    return asset
 
 
 def test_simbroker_end_to_end_run_writes_valid_artifact_packet(tmp_path: Path) -> None:
@@ -770,6 +788,19 @@ def test_default_simbroker_has_consistent_offline_broker_observed_flags(
         "credential_values_exposed": False,
         "paper_submit_occurred": False,
         "broker_mutation_occurred": False,
+        "broker_observed_orderability_source": "unavailable",
+        "broker_observed_orderability_check_status": "blocked",
+        "broker_observed_min_notional_value": "",
+        "broker_observed_min_notional_source": "unavailable",
+        "broker_observed_min_notional_check_status": "blocked",
+        "broker_observed_min_order_size_value": "",
+        "broker_observed_min_order_size_source": "unavailable",
+        "broker_observed_min_order_size_check_status": "blocked",
+        "broker_observed_quantity_increment_value": "",
+        "broker_observed_quantity_increment_source": "unavailable",
+        "broker_observed_quantity_increment_check_status": "blocked",
+        "broker_observed_price_source": "deterministic_fixture",
+        "broker_observed_price_check_status": "passed",
     }
 
     record, manifest, run_summary, broker = _read_consistency_artifacts(output_root)
@@ -941,8 +972,109 @@ def test_fake_broker_read_adapter_can_produce_broker_observed_ready_preview(
     assert broker["broker_mutation_authorized"] is False
     assert broker["broker_mutation_occurred"] is False
     assert broker["network_used"] is False
+    assert broker["broker_observed_min_notional_check"]["source"] == "broker_observed"
+    assert broker["broker_observed_min_notional_check"]["status"] == "passed"
+    assert broker["broker_observed_min_order_size_check"]["source"] == "broker_observed"
+    assert broker["broker_observed_min_order_size_check"]["status"] == "passed"
+    assert broker["broker_observed_quantity_increment_check"]["source"] == "broker_observed"
+    assert broker["broker_observed_quantity_increment_check"]["status"] == "passed"
+    assert broker["broker_observed_price_freshness_check"]["status"] == "passed"
+    assert broker["broker_orderability_raw_field_presence"]["min_order_value"] is True
+    assert broker["broker_orderability_raw_field_presence"]["min_order_size"] is True
+    assert broker["broker_orderability_raw_field_presence"]["min_trade_increment"] is True
+    assert broker["broker_orderability_field_sources"]["min_notional"] == "broker_observed"
     assert fake.calls == ["get_account", "get_positions", "get_orders", "list_assets"]
+    markdown = (output_root / "broker_observed_readiness_packet.md").read_text(
+        encoding="utf-8"
+    )
+    assert "field | value | source | status" in markdown
+    assert "min_notional | `1` | `broker_observed` | `passed`" in markdown
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    ("assets", "expected_blocker", "check_name"),
+    [
+        (
+            [
+                _broker_asset(
+                    min_order_value=None,
+                    min_notional=None,
+                    min_order_size="0.00000001",
+                    min_trade_increment="0.00000001",
+                )
+            ],
+            "broker_min_notional_field_missing",
+            "broker_observed_min_notional_check",
+        ),
+        (
+            [
+                _broker_asset(
+                    min_order_value="1",
+                    min_order_size=None,
+                    min_trade_size=None,
+                    min_trade_increment="0.00000001",
+                )
+            ],
+            "broker_min_order_size_field_missing",
+            "broker_observed_min_order_size_check",
+        ),
+        (
+            [
+                _broker_asset(
+                    min_order_value="1",
+                    min_order_size="0.00000001",
+                    min_trade_increment=None,
+                    qty_increment=None,
+                )
+            ],
+            "broker_qty_increment_field_missing",
+            "broker_observed_quantity_increment_check",
+        ),
+        (
+            [_broker_asset(min_order_value="10")],
+            "broker_intended_notional_below_min_notional",
+            "broker_observed_min_notional_check",
+        ),
+        (
+            [_broker_asset(min_order_size="1")],
+            "broker_estimated_quantity_below_min_order_size",
+            "broker_observed_min_order_size_check",
+        ),
+        (
+            [_broker_asset(min_trade_increment="0.01")],
+            "broker_estimated_quantity_not_increment_aligned",
+            "broker_observed_quantity_increment_check",
+        ),
+    ],
+)
+def test_broker_observed_packet_reports_specific_feasibility_blockers(
+    assets: list[Mapping[str, object]],
+    expected_blocker: str,
+    check_name: str,
+    tmp_path: Path,
+) -> None:
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=tmp_path / "runs" / "crypto_trader_demo" / "latest",
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(assets=assets),
+        broker_observed_network_used=False,
+        write_artifacts=False,
+    )
+
+    broker = packet["broker_observed_readiness_packet"]
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
+    assert broker["blocker_code"] == expected_blocker
+    assert expected_blocker in broker["blocker_codes"]
+    assert broker[check_name]["status"] == "blocked"
+    assert broker[check_name]["blocker_code"] == expected_blocker
+    assert broker["paper_submit_occurred"] is False
+    assert broker["broker_mutation_occurred"] is False
 
 
 @pytest.mark.parametrize(
@@ -978,7 +1110,7 @@ def test_fake_broker_read_adapter_can_produce_broker_observed_ready_preview(
                     }
                 ]
             ),
-            "broker_min_notional_not_verified",
+            "broker_min_notional_field_missing",
         ),
     ],
 )
@@ -1209,6 +1341,103 @@ def test_validator_catches_false_broker_observed_approval(tmp_path: Path) -> Non
 
     assert validation["validation_status"] == "failed"
     assert "broker_observed_ready_without_broker_read" in validation["errors"]
+
+
+def test_validator_rejects_fixture_only_broker_observed_min_notional_evidence(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["broker_observed_min_notional_check"]["source"] = "deterministic_fixture"
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "broker_observed_ready_with_fixture_only_min_notional_evidence"
+        in validation["errors"]
+    )
+
+
+def test_validator_catches_broker_observed_packet_operating_record_evidence_disagreement(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    record_path = output_root / "operating_record.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["broker_observed_telemetry"][
+        "broker_observed_min_notional_check_status"
+    ] = "blocked"
+    record["broker_observed_min_notional_check_status"] = "blocked"
+    _write_json_fixture(record_path, record)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "inconsistent_operating_record_broker_observed_field:"
+        "broker_observed_min_notional_check_status"
+    ) in validation["errors"]
+
+
+def test_validator_catches_run_summary_evidence_disagreement(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    summary_path = output_root / "run_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["console_fields"]["broker_observed_min_notional_check_status"] = "blocked"
+    summary["console_lines"] = [
+        (
+            "tomorrow_crypto_trader_demo_broker_observed_min_notional_check_status=blocked"
+            if line
+            == "tomorrow_crypto_trader_demo_broker_observed_min_notional_check_status=passed"
+            else line
+        )
+        for line in summary["console_lines"]
+    ]
+    _write_json_fixture(summary_path, summary)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert (
+        "inconsistent_console_artifact_field:"
+        "broker_observed_min_notional_check_status"
+    ) in validation["errors"]
 
 
 def test_validator_fails_on_missing_required_label(tmp_path: Path) -> None:
@@ -1514,7 +1743,7 @@ def _assert_consistent_telemetry(
     for field, value in expected.items():
         assert run_summary["console_fields"][field] == value
     if broker:
-        assert {
+        expected_subset = {
             "broker_read_authorized": broker["broker_read_authorized"],
             "broker_read_attempted": broker["broker_read_attempted"],
             "broker_read_occurred": broker["broker_read_occurred"],
@@ -1531,7 +1760,33 @@ def _assert_consistent_telemetry(
             "credential_values_exposed": broker["credential_values_exposed"],
             "paper_submit_occurred": broker["paper_submit_occurred"],
             "broker_mutation_occurred": broker["broker_mutation_occurred"],
-        } == expected
+            "broker_observed_min_notional_source": broker[
+                "broker_observed_min_notional_check"
+            ]["source"],
+            "broker_observed_min_notional_check_status": broker[
+                "broker_observed_min_notional_check"
+            ]["status"],
+            "broker_observed_min_order_size_source": broker[
+                "broker_observed_min_order_size_check"
+            ]["source"],
+            "broker_observed_min_order_size_check_status": broker[
+                "broker_observed_min_order_size_check"
+            ]["status"],
+            "broker_observed_quantity_increment_source": broker[
+                "broker_observed_quantity_increment_check"
+            ]["source"],
+            "broker_observed_quantity_increment_check_status": broker[
+                "broker_observed_quantity_increment_check"
+            ]["status"],
+            "broker_observed_price_source": broker[
+                "broker_observed_price_freshness_check"
+            ]["source"],
+            "broker_observed_price_check_status": broker[
+                "broker_observed_price_freshness_check"
+            ]["status"],
+        }
+        for field, value in expected_subset.items():
+            assert expected[field] == value
 
 
 def _paper_read_env() -> Mapping[str, object]:
