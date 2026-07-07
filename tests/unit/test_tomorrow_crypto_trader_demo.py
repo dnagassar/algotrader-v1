@@ -35,6 +35,7 @@ VALIDATOR_SCRIPT_PATH = (
 )
 AS_OF = datetime(2026, 7, 6, 14, 30, tzinfo=UTC)
 SENSITIVE_KEY = "SENTINEL_ALPACA_SECRET_DO_NOT_PRINT"
+_PRICE_NOT_CONFIGURED = object()
 
 
 class _FakeBrokerReadClient:
@@ -45,6 +46,10 @@ class _FakeBrokerReadClient:
         positions: list[Mapping[str, object]] | None = None,
         open_orders: list[Mapping[str, object]] | None = None,
         assets: list[Mapping[str, object]] | None = None,
+        latest_quote: object = _PRICE_NOT_CONFIGURED,
+        latest_trade: object = _PRICE_NOT_CONFIGURED,
+        latest_bar: object = _PRICE_NOT_CONFIGURED,
+        latest_price: object = _PRICE_NOT_CONFIGURED,
     ) -> None:
         self.account = account or {"status": "ACTIVE"}
         self.positions = positions or []
@@ -63,6 +68,18 @@ class _FakeBrokerReadClient:
             }
         ]
         self.calls: list[str] = []
+        if latest_quote is not _PRICE_NOT_CONFIGURED:
+            self._latest_quote = latest_quote
+            self.get_latest_quote = self._get_latest_quote
+        if latest_trade is not _PRICE_NOT_CONFIGURED:
+            self._latest_trade = latest_trade
+            self.get_latest_trade = self._get_latest_trade
+        if latest_bar is not _PRICE_NOT_CONFIGURED:
+            self._latest_bar = latest_bar
+            self.get_latest_bar = self._get_latest_bar
+        if latest_price is not _PRICE_NOT_CONFIGURED:
+            self._latest_price = latest_price
+            self.get_latest_price = self._get_latest_price
 
     def get_account(self) -> Mapping[str, object]:
         self.calls.append("get_account")
@@ -79,6 +96,22 @@ class _FakeBrokerReadClient:
     def list_assets(self) -> list[Mapping[str, object]]:
         self.calls.append("list_assets")
         return self.assets
+
+    def _get_latest_quote(self, symbol: str) -> object:
+        self.calls.append(f"get_latest_quote:{symbol}")
+        return self._latest_quote
+
+    def _get_latest_trade(self, symbol: str) -> object:
+        self.calls.append(f"get_latest_trade:{symbol}")
+        return self._latest_trade
+
+    def _get_latest_bar(self, symbol: str) -> object:
+        self.calls.append(f"get_latest_bar:{symbol}")
+        return self._latest_bar
+
+    def _get_latest_price(self, symbol: str) -> object:
+        self.calls.append(f"get_latest_price:{symbol}")
+        return self._latest_price
 
 
 class _FailingBrokerReadClient:
@@ -109,6 +142,43 @@ def _broker_asset(**overrides: object) -> dict[str, object]:
     }
     asset.update(overrides)
     return asset
+
+
+def _latest_quote(**overrides: object) -> dict[str, object]:
+    quote: dict[str, object] = {
+        "symbol": "BTCUSD",
+        "timestamp": AS_OF.isoformat(),
+        "bid": "124.50",
+        "ask": "125.50",
+        "source": "broker_observed",
+        "basis": "broker_observed_latest_quote_mid",
+    }
+    quote.update(overrides)
+    return quote
+
+
+def _latest_trade(**overrides: object) -> dict[str, object]:
+    trade: dict[str, object] = {
+        "symbol": "BTCUSD",
+        "timestamp": AS_OF.isoformat(),
+        "price": "125",
+        "source": "broker_observed",
+        "basis": "broker_observed_latest_trade",
+    }
+    trade.update(overrides)
+    return trade
+
+
+def _latest_bar(**overrides: object) -> dict[str, object]:
+    bar: dict[str, object] = {
+        "symbol": "BTCUSD",
+        "timestamp": AS_OF.isoformat(),
+        "close": "125",
+        "source": "broker_observed",
+        "basis": "broker_observed_latest_bar_close",
+    }
+    bar.update(overrides)
+    return bar
 
 
 def test_simbroker_end_to_end_run_writes_valid_artifact_packet(tmp_path: Path) -> None:
@@ -802,6 +872,28 @@ def test_default_simbroker_has_consistent_offline_broker_observed_flags(
         "broker_observed_quantity_increment_check_status": "blocked",
         "broker_observed_price_source": "deterministic_fixture",
         "broker_observed_price_check_status": "passed",
+        "latest_price_value": packet["broker_observed_readiness_preview"][
+            "latest_price_value"
+        ],
+        "latest_price_source": "deterministic_fixture",
+        "latest_price_observed_at": AS_OF.isoformat(),
+        "latest_price_age_seconds": "0",
+        "latest_price_symbol": "BTCUSD",
+        "latest_price_bid": "",
+        "latest_price_ask": "",
+        "latest_price_mid": "",
+        "latest_price_last": "",
+        "latest_price_basis": "offline_fixture_latest_bar_close",
+        "latest_price_freshness_status": "fresh",
+        "latest_price_source_acceptability": "accepted_readiness_only_preview",
+        "price_used_for_quantity": packet["broker_observed_readiness_preview"][
+            "price_used_for_quantity"
+        ],
+        "price_used_for_min_notional_derivation": packet[
+            "broker_observed_readiness_preview"
+        ]["price_used_for_min_notional_derivation"],
+        "price_evidence_status": "passed",
+        "price_evidence_blocker": "",
         "direct_min_notional_available": False,
         "direct_min_notional_source": "unavailable",
         "derived_min_notional_available": False,
@@ -993,6 +1085,10 @@ def test_fake_broker_read_adapter_uses_distinct_fixture_price_ready_preview(
     assert broker["broker_observed_quantity_increment_check"]["source"] == "broker_observed"
     assert broker["broker_observed_quantity_increment_check"]["status"] == "passed"
     assert broker["broker_observed_price_freshness_check"]["status"] == "passed"
+    assert broker["latest_price_source"] == "deterministic_fixture"
+    assert broker["latest_price_freshness_status"] == "fresh"
+    assert broker["price_evidence_status"] == "passed"
+    assert broker["price_evidence_blocker"] == ""
     assert broker["price_source_for_derivation"] == "deterministic_fixture"
     assert broker["price_source_acceptability"] == "accepted_readiness_only_preview"
     assert broker["direct_min_notional_available"] is True
@@ -1006,8 +1102,8 @@ def test_fake_broker_read_adapter_uses_distinct_fixture_price_ready_preview(
     markdown = (output_root / "broker_observed_readiness_packet.md").read_text(
         encoding="utf-8"
     )
-    assert "field | value | source | status" in markdown
-    assert "min_notional | `1` | `broker_observed` | `passed`" in markdown
+    assert "field | value | source | freshness | status" in markdown
+    assert "min_notional | `1` | `broker_observed` | `not_applicable` | `passed`" in markdown
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
 
 
@@ -1064,15 +1160,18 @@ def test_direct_min_notional_missing_derives_equivalent_from_broker_size_and_inc
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
 
 
-def test_broker_observed_price_with_derived_equivalent_can_use_plain_ready_preview() -> None:
-    fixture_readiness = dict(_paper_readiness_packet())
-    fixture_readiness["latest_price_basis"] = {
-        **dict(fixture_readiness["latest_price_basis"]),
-        "basis": "broker_observed_last_trade",
-        "broker_observed": True,
-        "market_data_observed": True,
-    }
-
+@pytest.mark.parametrize(
+    ("source", "acceptability"),
+    [
+        ("broker_observed", "accepted_broker_observed"),
+        ("provider_observed", "accepted_provider_observed"),
+    ],
+)
+def test_broker_or_provider_observed_price_with_derived_equivalent_can_use_plain_ready_preview(
+    source: str,
+    acceptability: str,
+) -> None:
+    fixture_readiness = dict(_paper_readiness_packet(latest_price="100"))
     broker = _broker_observed_readiness_preview(
         run_id="test_run",
         cycle_index=0,
@@ -1089,18 +1188,116 @@ def test_broker_observed_price_with_derived_equivalent_can_use_plain_ready_previ
                     min_order_size="0.000015656",
                     min_trade_increment="0.000000001",
                 )
-            ]
+            ],
+            latest_trade=_latest_trade(
+                price="125",
+                source=source,
+                basis=f"{source}_latest_trade",
+            ),
         ),
         broker_client_factory=None,
         network_used=False,
     )
 
     assert broker["broker_observed_readiness_decision"] == "broker_observed_ready_preview"
-    assert broker["price_source_for_derivation"] == "broker_observed"
-    assert broker["price_source_acceptability"] == "accepted_broker_observed"
+    assert broker["latest_price_value"] == "125"
+    assert broker["latest_price_source"] == source
+    assert broker["latest_price_freshness_status"] == "fresh"
+    assert broker["estimated_quantity"] == _decimal("0.04")
+    assert broker["price_source_for_derivation"] == source
+    assert broker["price_source_acceptability"] == acceptability
     assert broker["direct_min_notional_available"] is False
     assert broker["derived_min_notional_available"] is True
+    assert broker["derived_min_notional_sources"] == (
+        "min_order_size=broker_observed;"
+        "quantity_increment=broker_observed;"
+        f"price={source}"
+    )
+    assert broker["final_feasibility_basis"] == (
+        "derived_min_notional_equivalent_with_observed_price"
+    )
     assert broker["broker_observed_min_notional_check"]["status"] == "passed"
+
+
+@pytest.mark.parametrize(
+    ("client_kwargs", "expected_blocker", "expected_freshness"),
+    [
+        (
+            {"latest_trade": None},
+            "broker_latest_price_missing",
+            "unavailable",
+        ),
+        (
+            {
+                "latest_trade": [
+                    _latest_trade(price="125"),
+                    _latest_trade(price="126"),
+                ]
+            },
+            "broker_latest_price_ambiguous",
+            "ambiguous",
+        ),
+        (
+            {
+                "latest_trade": _latest_trade(
+                    timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+                )
+            },
+            "broker_latest_price_stale",
+            "stale",
+        ),
+        (
+            {"latest_trade": _latest_trade(timestamp=None)},
+            "broker_latest_price_timestamp_missing",
+            "missing_timestamp",
+        ),
+        (
+            {"latest_trade": _latest_trade(symbol="ETHUSD")},
+            "broker_latest_price_symbol_mismatch",
+            "fresh",
+        ),
+        (
+            {"latest_quote": _latest_quote(bid="0", ask="125.50")},
+            "broker_quote_bid_ask_invalid",
+            "fresh",
+        ),
+        (
+            {"latest_trade": _latest_trade(price="0")},
+            "broker_trade_price_invalid",
+            "fresh",
+        ),
+        (
+            {"latest_bar": _latest_bar(close="0")},
+            "broker_bar_close_invalid",
+            "fresh",
+        ),
+    ],
+)
+def test_broker_observed_latest_price_evidence_blockers(
+    client_kwargs: Mapping[str, object],
+    expected_blocker: str,
+    expected_freshness: str,
+) -> None:
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(),
+        paper_environment=_paper_read_env(),
+        broker_client=_FakeBrokerReadClient(**client_kwargs),
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
+    assert broker["blocker_code"] == expected_blocker
+    assert broker["latest_price_freshness_status"] == expected_freshness
+    assert broker["price_evidence_status"] == "blocked"
+    assert broker["price_evidence_blocker"] == expected_blocker
+    assert broker["paper_submit_occurred"] is False
+    assert broker["broker_mutation_occurred"] is False
 
 
 def test_derived_min_notional_blocks_when_intended_notional_is_too_low() -> None:
@@ -1605,6 +1802,49 @@ def test_validator_rejects_fixture_price_mislabeled_as_plain_broker_observed_rea
     assert "broker_price_not_broker_observed" in validation["errors"]
 
 
+@pytest.mark.parametrize(
+    ("latest_trade", "expected_error"),
+    [
+        (
+            _latest_trade(timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()),
+            "broker_observed_ready_without_fresh_observed_price",
+        ),
+        (
+            _latest_trade(timestamp=None),
+            "broker_price_evidence_not_verified",
+        ),
+    ],
+)
+def test_validator_rejects_invalid_price_mislabeled_as_plain_broker_observed_ready(
+    latest_trade: Mapping[str, object],
+    expected_error: str,
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(latest_trade=latest_trade),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["broker_observed_readiness_decision"] = "broker_observed_ready_preview"
+    broker["readiness_decision"] = "broker_observed_ready_preview"
+    broker["final_readiness_decision"] = "broker_observed_ready_preview"
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert expected_error in validation["errors"]
+
+
 def test_validator_catches_derived_min_notional_sources_disagreement(
     tmp_path: Path,
 ) -> None:
@@ -1718,6 +1958,39 @@ def test_validator_catches_run_summary_evidence_disagreement(tmp_path: Path) -> 
         "inconsistent_console_artifact_field:"
         "broker_observed_min_notional_check_status"
     ) in validation["errors"]
+
+
+def test_validator_catches_run_summary_latest_price_disagreement(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(latest_trade=_latest_trade(price="125")),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    summary_path = output_root / "run_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    original = summary["console_fields"]["latest_price_value"]
+    summary["console_fields"]["latest_price_value"] = "999"
+    summary["console_lines"] = [
+        (
+            "tomorrow_crypto_trader_demo_latest_price_value=999"
+            if line == f"tomorrow_crypto_trader_demo_latest_price_value={original}"
+            else line
+        )
+        for line in summary["console_lines"]
+    ]
+    _write_json_fixture(summary_path, summary)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_console_artifact_field:latest_price_value" in validation["errors"]
 
 
 def test_validator_fails_on_missing_required_label(tmp_path: Path) -> None:
@@ -2064,6 +2337,28 @@ def _assert_consistent_telemetry(
             "broker_observed_price_check_status": broker[
                 "broker_observed_price_freshness_check"
             ]["status"],
+            "latest_price_value": broker["latest_price_value"],
+            "latest_price_source": broker["latest_price_source"],
+            "latest_price_observed_at": broker["latest_price_observed_at"],
+            "latest_price_age_seconds": broker["latest_price_age_seconds"],
+            "latest_price_symbol": broker["latest_price_symbol"],
+            "latest_price_bid": broker["latest_price_bid"],
+            "latest_price_ask": broker["latest_price_ask"],
+            "latest_price_mid": broker["latest_price_mid"],
+            "latest_price_last": broker["latest_price_last"],
+            "latest_price_basis": broker["latest_price_basis"],
+            "latest_price_freshness_status": broker[
+                "latest_price_freshness_status"
+            ],
+            "latest_price_source_acceptability": broker[
+                "latest_price_source_acceptability"
+            ],
+            "price_used_for_quantity": broker["price_used_for_quantity"],
+            "price_used_for_min_notional_derivation": broker[
+                "price_used_for_min_notional_derivation"
+            ],
+            "price_evidence_status": broker["price_evidence_status"],
+            "price_evidence_blocker": broker["price_evidence_blocker"],
             "direct_min_notional_available": broker["direct_min_notional_available"],
             "direct_min_notional_source": broker["direct_min_notional_source"],
             "derived_min_notional_available": broker["derived_min_notional_available"],

@@ -62,6 +62,29 @@ QTY_INCREMENT = Decimal("0.00000001")
 MIN_ORDER_SIZE = Decimal("0.00000001")
 MIN_NOTIONAL = Decimal("1")
 PAPER_READINESS_PRICE_MAX_AGE = timedelta(hours=2)
+BROKER_OBSERVED_PRICE_MAX_AGE = PAPER_READINESS_PRICE_MAX_AGE
+
+OBSERVED_LATEST_PRICE_SOURCES = (
+    "broker_observed",
+    "provider_observed",
+)
+READINESS_ONLY_LATEST_PRICE_SOURCES = (
+    "deterministic_fixture",
+    "local_replay",
+)
+LATEST_PRICE_SOURCES = (
+    *OBSERVED_LATEST_PRICE_SOURCES,
+    *READINESS_ONLY_LATEST_PRICE_SOURCES,
+    "unavailable",
+    "ambiguous",
+)
+LATEST_PRICE_FRESHNESS_STATUSES = (
+    "fresh",
+    "stale",
+    "missing_timestamp",
+    "unavailable",
+    "ambiguous",
+)
 
 PAPER_READINESS_DECISIONS = (
     "fixture_ready_preview",
@@ -107,7 +130,17 @@ BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
     "broker_orderability_metadata_ambiguous",
     "broker_price_metadata_missing",
     "broker_price_metadata_stale",
+    "broker_latest_price_missing",
+    "broker_latest_price_stale",
+    "broker_latest_price_timestamp_missing",
+    "broker_latest_price_ambiguous",
+    "broker_latest_price_symbol_mismatch",
     "broker_price_not_broker_observed",
+    "broker_price_source_not_acceptable_for_full_readiness",
+    "broker_price_evidence_not_verified",
+    "broker_quote_bid_ask_invalid",
+    "broker_trade_price_invalid",
+    "broker_bar_close_invalid",
     "broker_price_source_not_acceptable_for_equivalence",
     "broker_intended_notional_below_min_notional",
     "broker_derived_min_notional_exceeds_intended_notional",
@@ -146,6 +179,22 @@ BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "broker_observed_quantity_increment_check_status",
     "broker_observed_price_source",
     "broker_observed_price_check_status",
+    "latest_price_value",
+    "latest_price_source",
+    "latest_price_observed_at",
+    "latest_price_age_seconds",
+    "latest_price_symbol",
+    "latest_price_bid",
+    "latest_price_ask",
+    "latest_price_mid",
+    "latest_price_last",
+    "latest_price_basis",
+    "latest_price_freshness_status",
+    "latest_price_source_acceptability",
+    "price_used_for_quantity",
+    "price_used_for_min_notional_derivation",
+    "price_evidence_status",
+    "price_evidence_blocker",
     "direct_min_notional_available",
     "direct_min_notional_source",
     "derived_min_notional_available",
@@ -879,6 +928,21 @@ def run_tomorrow_crypto_trader_demo(
                         broker_observed_preview.get("broker_observed_price_freshness_check")
                     ).get("status")
                 ),
+                "latest_price_value": _text(
+                    broker_observed_preview.get("latest_price_value")
+                ),
+                "latest_price_source": _text(
+                    broker_observed_preview.get("latest_price_source")
+                ),
+                "latest_price_freshness_status": _text(
+                    broker_observed_preview.get("latest_price_freshness_status")
+                ),
+                "price_evidence_status": _text(
+                    broker_observed_preview.get("price_evidence_status")
+                ),
+                "price_evidence_blocker": _text(
+                    broker_observed_preview.get("price_evidence_blocker")
+                ),
             }
         )
     events.append(
@@ -991,6 +1055,17 @@ def run_tomorrow_crypto_trader_demo(
             _mapping(broker_observed_preview.get("broker_observed_price_freshness_check")).get(
                 "status"
             )
+        ),
+        "latest_price_value": _text(broker_observed_preview.get("latest_price_value")),
+        "latest_price_source": _text(broker_observed_preview.get("latest_price_source")),
+        "latest_price_freshness_status": _text(
+            broker_observed_preview.get("latest_price_freshness_status")
+        ),
+        "price_evidence_status": _text(
+            broker_observed_preview.get("price_evidence_status")
+        ),
+        "price_evidence_blocker": _text(
+            broker_observed_preview.get("price_evidence_blocker")
         ),
         "next_operator_action": broker_observed_preview["next_operator_action"],
     }
@@ -1342,6 +1417,11 @@ def render_operating_brief(packet: Mapping[str, object]) -> str:
             f"- min_order_size_check_status: `{_text(_mapping(broker_observed.get('broker_observed_min_order_size_check')).get('status')) or 'none'}`",
             f"- quantity_increment_check_status: `{_text(_mapping(broker_observed.get('broker_observed_quantity_increment_check')).get('status')) or 'none'}`",
             f"- price_check_status: `{_text(_mapping(broker_observed.get('broker_observed_price_freshness_check')).get('status')) or 'none'}`",
+            f"- latest_price_value: `{_text(broker_observed.get('latest_price_value')) or 'none'}`",
+            f"- latest_price_source: `{_text(broker_observed.get('latest_price_source')) or 'none'}`",
+            f"- latest_price_freshness_status: `{_text(broker_observed.get('latest_price_freshness_status')) or 'none'}`",
+            f"- price_evidence_status: `{_text(broker_observed.get('price_evidence_status')) or 'none'}`",
+            f"- price_evidence_blocker: `{_text(broker_observed.get('price_evidence_blocker')) or 'none'}`",
             f"- next_operator_action: `{_text(broker_observed.get('next_operator_action'))}`",
             "",
             "## Simulated Fills",
@@ -1396,7 +1476,7 @@ def _markdown_table_value(value: object) -> str:
 
 def _broker_observed_evidence_table_rows(
     packet: Mapping[str, object],
-) -> list[tuple[str, str, str, str]]:
+) -> list[tuple[str, str, str, str, str]]:
     asset_summary = _mapping(
         packet.get("observed_crypto_assets_or_orderability_summary")
     )
@@ -1418,119 +1498,160 @@ def _broker_observed_evidence_table_rows(
     if not price_check:
         price_check = _mapping(packet.get("observed_latest_price_basis"))
     selected_source = "deterministic_fixture" if _text(packet.get("symbol")) else "unavailable"
+    not_applicable = "not_applicable"
     return [
         (
             "selected_symbol",
             _markdown_table_value(packet.get("symbol")),
             selected_source,
+            not_applicable,
             "present" if selected_source != "unavailable" else "missing",
         ),
         (
             "intended_side",
             _markdown_table_value(packet.get("intended_side") or packet.get("side")),
             selected_source,
+            not_applicable,
             "present" if _text(packet.get("intended_side") or packet.get("side")) else "missing",
         ),
         (
             "intended_notional",
             _markdown_table_value(packet.get("intended_notional")),
             selected_source,
+            not_applicable,
             "present" if _text(packet.get("intended_notional")) else "missing",
         ),
         (
             "estimated_quantity",
             _markdown_table_value(packet.get("estimated_quantity")),
             selected_source,
+            not_applicable,
             "present" if _text(packet.get("estimated_quantity")) else "missing",
         ),
         (
-            "latest_price",
-            _markdown_table_value(price_check.get("latest_price")),
-            _markdown_table_value(price_check.get("source")),
-            _markdown_table_value(price_check.get("status")),
+            "latest_price_value",
+            _markdown_table_value(price_check.get("latest_price_value")),
+            _markdown_table_value(price_check.get("latest_price_source")),
+            _markdown_table_value(price_check.get("latest_price_freshness_status")),
+            _markdown_table_value(price_check.get("price_evidence_status")),
+        ),
+        (
+            "latest_price_basis",
+            _markdown_table_value(price_check.get("latest_price_basis")),
+            _markdown_table_value(price_check.get("latest_price_source")),
+            _markdown_table_value(price_check.get("latest_price_freshness_status")),
+            _markdown_table_value(price_check.get("price_evidence_blocker")),
+        ),
+        (
+            "price_used_for_quantity",
+            _markdown_table_value(price_check.get("price_used_for_quantity")),
+            _markdown_table_value(price_check.get("latest_price_source_acceptability")),
+            _markdown_table_value(price_check.get("latest_price_freshness_status")),
+            _markdown_table_value(price_check.get("price_evidence_status")),
+        ),
+        (
+            "price_used_for_min_notional_derivation",
+            _markdown_table_value(price_check.get("price_used_for_min_notional_derivation")),
+            _markdown_table_value(price_check.get("latest_price_source_acceptability")),
+            _markdown_table_value(price_check.get("latest_price_freshness_status")),
+            _markdown_table_value(price_check.get("price_evidence_status")),
         ),
         (
             "orderability",
             _markdown_table_value(asset_summary.get("basis")),
             _markdown_table_value(orderability_check.get("source")),
+            not_applicable,
             _markdown_table_value(orderability_check.get("status")),
         ),
         (
             "asset_status",
             _markdown_table_value(normalized.get("status") or asset_summary.get("asset_status")),
             _markdown_table_value(field_sources.get("status")),
+            not_applicable,
             "observed" if field_sources.get("status") == "broker_observed" else "missing",
         ),
         (
             "tradable",
             _markdown_table_value(normalized.get("tradable")),
             _markdown_table_value(field_sources.get("tradable")),
+            not_applicable,
             "observed" if field_sources.get("tradable") == "broker_observed" else "missing",
         ),
         (
             "fractional",
             _markdown_table_value(normalized.get("fractional")),
             _markdown_table_value(field_sources.get("fractional")),
+            not_applicable,
             "observed" if field_sources.get("fractional") == "broker_observed" else "missing",
         ),
         (
             "min_notional",
             _markdown_table_value(min_notional_check.get("min_notional")),
             _markdown_table_value(min_notional_check.get("source")),
+            not_applicable,
             _markdown_table_value(min_notional_check.get("status")),
         ),
         (
             "direct_min_notional_available",
             _markdown_table_value(packet.get("direct_min_notional_available")),
             _markdown_table_value(packet.get("direct_min_notional_source")),
+            not_applicable,
             "observed" if packet.get("direct_min_notional_available") is True else "missing",
         ),
         (
             "derived_min_notional",
             _markdown_table_value(packet.get("derived_min_notional_value")),
             _markdown_table_value(packet.get("derived_min_notional_sources")),
+            not_applicable,
             _markdown_table_value(packet.get("derived_min_notional_check_status")),
         ),
         (
             "derived_min_notional_formula",
             _markdown_table_value(packet.get("derived_min_notional_formula")),
             "readiness_packet",
+            not_applicable,
             "present" if _text(packet.get("derived_min_notional_formula")) else "missing",
         ),
         (
             "min_notional_equivalence_basis",
             _markdown_table_value(packet.get("min_notional_equivalence_basis")),
             "readiness_packet",
+            not_applicable,
             _markdown_table_value(packet.get("derived_min_notional_check_status")),
         ),
         (
             "price_source_for_derivation",
             _markdown_table_value(packet.get("price_source_for_derivation")),
             _markdown_table_value(packet.get("price_source_acceptability")),
+            _markdown_table_value(price_check.get("latest_price_freshness_status")),
             _markdown_table_value(price_check.get("status")),
         ),
         (
             "final_feasibility_basis",
             _markdown_table_value(packet.get("final_feasibility_basis")),
             "readiness_packet",
+            not_applicable,
             _markdown_table_value(packet.get("broker_observed_readiness_decision")),
         ),
         (
             "min_order_size",
             _markdown_table_value(min_order_size_check.get("min_order_size")),
             _markdown_table_value(min_order_size_check.get("source")),
+            not_applicable,
             _markdown_table_value(min_order_size_check.get("status")),
         ),
         (
             "quantity_increment",
             _markdown_table_value(quantity_increment_check.get("quantity_increment")),
             _markdown_table_value(quantity_increment_check.get("source")),
+            not_applicable,
             _markdown_table_value(quantity_increment_check.get("status")),
         ),
         (
             "price_increment",
             _markdown_table_value(normalized.get("price_increment")),
             _markdown_table_value(field_sources.get("price_increment")),
+            not_applicable,
             "observed"
             if field_sources.get("price_increment") == "broker_observed"
             else "missing",
@@ -1556,6 +1677,11 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- direct_min_notional_available: `{_bool_text(packet.get('direct_min_notional_available'))}`",
             f"- derived_min_notional_available: `{_bool_text(packet.get('derived_min_notional_available'))}`",
             f"- derived_min_notional_value: `{_text(packet.get('derived_min_notional_value')) or 'none'}`",
+            f"- latest_price_value: `{_text(packet.get('latest_price_value')) or 'none'}`",
+            f"- latest_price_source: `{_text(packet.get('latest_price_source')) or 'none'}`",
+            f"- latest_price_freshness_status: `{_text(packet.get('latest_price_freshness_status')) or 'none'}`",
+            f"- price_evidence_status: `{_text(packet.get('price_evidence_status')) or 'none'}`",
+            f"- price_evidence_blocker: `{_text(packet.get('price_evidence_blocker')) or 'none'}`",
             f"- price_source_for_derivation: `{_text(packet.get('price_source_for_derivation')) or 'none'}`",
             f"- price_source_acceptability: `{_text(packet.get('price_source_acceptability')) or 'none'}`",
             f"- final_feasibility_basis: `{_text(packet.get('final_feasibility_basis')) or 'none'}`",
@@ -1582,11 +1708,11 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             "",
             "## Min-Notional / Orderability Evidence",
             "",
-            "field | value | source | status",
-            "--- | --- | --- | ---",
+            "field | value | source | freshness | status",
+            "--- | --- | --- | --- | ---",
             *[
-                f"{field} | `{value}` | `{source}` | `{status}`"
-                for field, value, source, status in evidence_rows
+                f"{field} | `{value}` | `{source}` | `{freshness}` | `{status}`"
+                for field, value, source, freshness, status in evidence_rows
             ],
             "",
             "## Safety Labels",
@@ -2124,6 +2250,12 @@ def _validate_broker_observed_readiness_packet(
     price_check = _mapping(packet.get("broker_observed_price_freshness_check"))
     if not price_check:
         price_check = _mapping(packet.get("observed_latest_price_basis"))
+    _validate_broker_observed_latest_price_evidence(
+        packet=packet,
+        price_check=price_check,
+        decision=decision,
+        errors=errors,
+    )
     equivalence_fields = _broker_observed_min_notional_equivalence_fields(
         min_notional_check
     )
@@ -2163,7 +2295,7 @@ def _validate_broker_observed_readiness_packet(
             errors.append("broker_observed_derived_min_notional_value_missing")
     if (
         decision == "broker_observed_ready_preview"
-        and price_source_for_derivation != "broker_observed"
+        and price_source_for_derivation not in OBSERVED_LATEST_PRICE_SOURCES
     ):
         errors.append("broker_price_not_broker_observed")
 
@@ -2227,6 +2359,14 @@ def _validate_broker_observed_readiness_packet(
             errors.append("broker_observed_ready_without_valid_price")
         if price_check.get("accepted_for_broker_observed_readiness") is not True:
             errors.append("broker_observed_ready_without_accepted_price_basis")
+        if decision == "broker_observed_ready_preview":
+            if price_check.get("accepted_for_full_broker_observed_readiness") is not True:
+                errors.append("broker_price_source_not_acceptable_for_full_readiness")
+            if price_check.get("latest_price_freshness_status") != "fresh":
+                errors.append("broker_observed_ready_without_fresh_observed_price")
+        if decision == "broker_observed_ready_preview_with_fixture_price":
+            if price_check.get("latest_price_source") not in READINESS_ONLY_LATEST_PRICE_SOURCES:
+                errors.append("broker_fixture_price_preview_without_fixture_or_local_price")
         if packet.get("broker_endpoint_type") != "paper":
             errors.append("broker_observed_ready_without_paper_endpoint")
         if _mapping(packet.get("observed_open_orders_summary")).get("open_order_present") is True:
@@ -2261,8 +2401,109 @@ def _validate_broker_observed_readiness_packet(
 
     if markdown and decision and decision not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_decision")
-    if markdown and "field | value | source | status" not in markdown:
+    if markdown and "field | value | source | freshness | status" not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_evidence_table")
+
+
+def _validate_broker_observed_latest_price_evidence(
+    *,
+    packet: Mapping[str, object],
+    price_check: Mapping[str, object],
+    decision: str,
+    errors: list[str],
+) -> None:
+    required_fields = (
+        "latest_price_value",
+        "latest_price_source",
+        "latest_price_observed_at",
+        "latest_price_age_seconds",
+        "latest_price_symbol",
+        "latest_price_bid",
+        "latest_price_ask",
+        "latest_price_mid",
+        "latest_price_last",
+        "latest_price_basis",
+        "latest_price_freshness_status",
+        "latest_price_source_acceptability",
+        "price_used_for_quantity",
+        "price_used_for_min_notional_derivation",
+        "price_evidence_status",
+        "price_evidence_blocker",
+    )
+    for field in required_fields:
+        if field not in packet:
+            errors.append(f"broker_latest_price_field_missing:{field}")
+        if field not in price_check:
+            errors.append(f"broker_latest_price_evidence_field_missing:{field}")
+            continue
+        packet_value = _text(packet.get(field))
+        evidence_value = _text(price_check.get(field))
+        if field in {
+            "latest_price_value",
+            "latest_price_bid",
+            "latest_price_ask",
+            "latest_price_mid",
+            "latest_price_last",
+            "price_used_for_quantity",
+            "price_used_for_min_notional_derivation",
+        }:
+            packet_value = _evidence_decimal_text(packet.get(field))
+            evidence_value = _evidence_decimal_text(price_check.get(field))
+        if packet_value != evidence_value:
+            errors.append(f"broker_latest_price_field_mismatch:{field}")
+
+    source = _text(price_check.get("latest_price_source") or price_check.get("source"))
+    freshness = _text(price_check.get("latest_price_freshness_status"))
+    status = _text(price_check.get("price_evidence_status") or price_check.get("status"))
+    blocker = _text(price_check.get("price_evidence_blocker") or price_check.get("blocker_code"))
+    symbol = _text(price_check.get("latest_price_symbol"))
+    selected_symbol = _text(packet.get("selected_symbol") or packet.get("symbol"))
+
+    if not source:
+        errors.append("broker_latest_price_source_missing")
+    elif source not in LATEST_PRICE_SOURCES:
+        errors.append(f"broker_latest_price_source_invalid:{source}")
+    if not freshness:
+        errors.append("broker_latest_price_freshness_status_missing")
+    elif freshness not in LATEST_PRICE_FRESHNESS_STATUSES:
+        errors.append(f"broker_latest_price_freshness_status_invalid:{freshness}")
+    if selected_symbol and symbol and _normalize_broker_symbol(symbol) != _normalize_broker_symbol(selected_symbol):
+        errors.append("broker_latest_price_symbol_mismatch")
+    if status == "passed" and blocker:
+        errors.append("broker_latest_price_passed_with_blocker")
+    if status == "blocked" and not blocker:
+        errors.append("broker_latest_price_blocked_without_blocker")
+    if status not in {"passed", "blocked"}:
+        errors.append("broker_latest_price_evidence_status_invalid")
+
+    quantity_price = _evidence_decimal_text(price_check.get("price_used_for_quantity"))
+    derivation_price = _evidence_decimal_text(
+        price_check.get("price_used_for_min_notional_derivation")
+    )
+    if (
+        quantity_price
+        and derivation_price
+        and quantity_price != derivation_price
+        and not _text(price_check.get("price_usage_explanation"))
+    ):
+        errors.append("broker_latest_price_quantity_derivation_price_mismatch")
+
+    if decision == "broker_observed_ready_preview":
+        if source not in OBSERVED_LATEST_PRICE_SOURCES:
+            errors.append("broker_price_not_broker_observed")
+        if freshness != "fresh":
+            errors.append("broker_observed_ready_without_fresh_observed_price")
+        if status != "passed":
+            errors.append("broker_price_evidence_not_verified")
+        if price_check.get("accepted_for_full_broker_observed_readiness") is not True:
+            errors.append("broker_price_source_not_acceptable_for_full_readiness")
+    if decision == "broker_observed_ready_preview_with_fixture_price":
+        if source not in READINESS_ONLY_LATEST_PRICE_SOURCES:
+            errors.append("broker_fixture_price_preview_without_fixture_or_local_price")
+        if freshness != "fresh" or status != "passed":
+            errors.append("broker_price_evidence_not_verified")
+    if decision in BROKER_OBSERVED_APPROVED_READINESS_DECISIONS and blocker:
+        errors.append(f"broker_observed_ready_with_price_blocker:{blocker}")
 
 
 def _validate_broker_observed_artifact_consistency(
@@ -2670,6 +2911,29 @@ def _paper_credentials_loaded(env: Mapping[str, object]) -> bool:
     return alpaca_pair or apca_pair
 
 
+def _broker_observed_quantity_inputs(
+    fixture_readiness: Mapping[str, object],
+    price_evidence: Mapping[str, object],
+) -> tuple[Decimal | None, Decimal | None]:
+    side = _text(fixture_readiness.get("side"))
+    price = _first_decimal(price_evidence.get("price_used_for_quantity"))
+    if (
+        side == "buy"
+        and price is not None
+        and price > Decimal("0")
+        and price_evidence.get("price_evidence_status") == "passed"
+    ):
+        quantity = _demo_quantity(price)
+        intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
+        if intended_notional is None:
+            intended_notional = quantity * price
+        return intended_notional, quantity
+    return (
+        _first_decimal(fixture_readiness.get("intended_notional")),
+        _first_decimal(fixture_readiness.get("estimated_quantity")),
+    )
+
+
 def _broker_observed_readiness_preview(
     *,
     run_id: str,
@@ -2687,9 +2951,11 @@ def _broker_observed_readiness_preview(
     endpoint = _broker_endpoint_status(env)
     symbol = _text(fixture_readiness.get("symbol"))
     side = _text(fixture_readiness.get("side"))
-    intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
-    estimated_quantity = _first_decimal(fixture_readiness.get("estimated_quantity"))
     price_evidence = _broker_observed_price_evidence(fixture_readiness)
+    intended_notional, estimated_quantity = _broker_observed_quantity_inputs(
+        fixture_readiness,
+        price_evidence,
+    )
     fixture_decision = _text(fixture_readiness.get("readiness_decision"))
     base_packet = {
         "schema_version": SCHEMA_VERSION,
@@ -2703,8 +2969,10 @@ def _broker_observed_readiness_preview(
         "intended_side": side,
         "intended_notional": intended_notional,
         "estimated_quantity": estimated_quantity,
-        "latest_price": price_evidence.get("latest_price"),
-        "latest_price_basis": price_evidence,
+        "latest_price": price_evidence.get("latest_price_value"),
+        "latest_price_basis": price_evidence.get("latest_price_basis"),
+        "latest_price_evidence": price_evidence,
+        **_latest_price_packet_fields(price_evidence),
         "direct_min_notional_available": False,
         "direct_min_notional_source": "unavailable",
         "derived_min_notional_available": False,
@@ -2713,8 +2981,10 @@ def _broker_observed_readiness_preview(
         "derived_min_notional_sources": "",
         "derived_min_notional_check_status": "not_observed",
         "min_notional_equivalence_basis": "unavailable",
-        "price_source_for_derivation": price_evidence.get("source"),
-        "price_source_acceptability": price_evidence.get("price_source_acceptability"),
+        "price_source_for_derivation": price_evidence.get("latest_price_source"),
+        "price_source_acceptability": price_evidence.get(
+            "latest_price_source_acceptability"
+        ),
         "final_feasibility_basis": "not_evaluated",
         "readiness_basis": "broker_observed",
         "fixture_readiness_decision": fixture_decision,
@@ -2780,8 +3050,10 @@ def _broker_observed_readiness_preview(
             "derived_min_notional_sources": "",
             "derived_min_notional_check_status": "not_observed",
             "min_notional_equivalence_basis": "unavailable",
-            "price_source_for_derivation": price_evidence.get("source"),
-            "price_source_acceptability": price_evidence.get("price_source_acceptability"),
+            "price_source_for_derivation": price_evidence.get("latest_price_source"),
+            "price_source_acceptability": price_evidence.get(
+                "latest_price_source_acceptability"
+            ),
             "final_feasibility_basis": "not_evaluated",
             "blocker_code": "broker_min_notional_field_missing",
         },
@@ -2903,6 +3175,16 @@ def _broker_observed_readiness_preview(
         positions = tuple(_call_read_method(client, "get_positions") or ())
         open_orders = tuple(_read_open_orders(client, symbol))
         assets = tuple(_call_read_method(client, "list_assets") or ())
+        price_evidence = _read_latest_price_evidence(
+            client=client,
+            selected_symbol=symbol,
+            as_of=as_of,
+            fallback_evidence=price_evidence,
+        )
+        intended_notional, estimated_quantity = _broker_observed_quantity_inputs(
+            fixture_readiness,
+            price_evidence,
+        )
     except Exception as exc:
         return _broker_observed_packet_with_decision(
             {
@@ -2928,6 +3210,9 @@ def _broker_observed_readiness_preview(
     checks = _broker_observed_feasibility_checks(
         fixture_readiness=fixture_readiness,
         asset_summary=asset_summary,
+        price_evidence=price_evidence,
+        intended_notional=intended_notional,
+        estimated_quantity=estimated_quantity,
     )
     min_notional_check = _mapping(checks["min_notional"])
     equivalence_fields = _broker_observed_min_notional_equivalence_fields(
@@ -2960,6 +3245,12 @@ def _broker_observed_readiness_preview(
     account_blocked = _optional_bool(_field(account, "account_blocked"))
     observed_packet = {
         **base_packet,
+        "intended_notional": intended_notional,
+        "estimated_quantity": estimated_quantity,
+        "latest_price": price_evidence.get("latest_price_value"),
+        "latest_price_basis": price_evidence.get("latest_price_basis"),
+        "latest_price_evidence": price_evidence,
+        **_latest_price_packet_fields(price_evidence),
         "broker_read_attempted": True,
         "broker_read_occurred": True,
         "broker_state_observed": True,
@@ -2971,6 +3262,8 @@ def _broker_observed_readiness_preview(
         "observed_crypto_assets_or_orderability_summary": asset_summary,
         "observed_min_notional_or_increment_basis": min_increment_basis,
         "observed_latest_price_basis": checks["price"],
+        "broker_observed_price_freshness_check": checks["price"],
+        **_latest_price_packet_fields(checks["price"]),
         **equivalence_fields,
         "broker_orderability_raw_field_presence": asset_summary.get("raw_field_presence"),
         "broker_orderability_field_sources": asset_summary.get("field_sources"),
@@ -2979,7 +3272,6 @@ def _broker_observed_readiness_preview(
         "broker_observed_min_notional_check": checks["min_notional"],
         "broker_observed_min_order_size_check": checks["min_order_size"],
         "broker_observed_quantity_increment_check": checks["quantity_increment"],
-        "broker_observed_price_freshness_check": checks["price"],
         "network_used": True if network_used is None else network_used,
     }
     blockers = _broker_observed_blockers(
@@ -3001,7 +3293,8 @@ def _broker_observed_readiness_preview(
         )
     ready_decision = (
         "broker_observed_ready_preview"
-        if _text(equivalence_fields.get("price_source_for_derivation")) == "broker_observed"
+        if _mapping(checks["price"]).get("accepted_for_full_broker_observed_readiness")
+        is True
         else "broker_observed_ready_preview_with_fixture_price"
     )
     return _broker_observed_packet_with_decision(
@@ -3221,6 +3514,7 @@ def _broker_observed_evidence_consistency_fields(
         ),
         "broker_observed_price_source": _text(price_check.get("source")),
         "broker_observed_price_check_status": _text(price_check.get("status")),
+        **_latest_price_packet_fields(price_check),
         **_broker_observed_min_notional_equivalence_fields(min_notional_check),
     }
 
@@ -3397,6 +3691,198 @@ def _read_open_orders(client: object, symbol: str) -> Sequence[object]:
         return method(AlpacaRecentOrderQuery(status_filter="open", symbol_filter=symbol))
     except TypeError:
         return method()
+
+
+LATEST_PRICE_READ_METHODS = (
+    ("get_latest_quote", "quote"),
+    ("get_crypto_latest_quote", "quote"),
+    ("get_latest_crypto_quote", "quote"),
+    ("get_latest_trade", "trade"),
+    ("get_crypto_latest_trade", "trade"),
+    ("get_latest_crypto_trade", "trade"),
+    ("get_latest_bar", "bar"),
+    ("get_crypto_latest_bar", "bar"),
+    ("get_latest_crypto_bar", "bar"),
+    ("get_latest_price", "latest_price"),
+    ("get_crypto_latest_price", "latest_price"),
+    ("get_latest_crypto_price", "latest_price"),
+)
+
+
+def _read_latest_price_evidence(
+    *,
+    client: object,
+    selected_symbol: str,
+    as_of: datetime,
+    fallback_evidence: Mapping[str, object],
+) -> dict[str, object]:
+    for method_name, basis in LATEST_PRICE_READ_METHODS:
+        method = getattr(client, method_name, None)
+        if not callable(method):
+            continue
+        response = _call_symbol_read_method(method, selected_symbol)
+        return _latest_price_evidence_from_response(
+            response=response,
+            selected_symbol=selected_symbol,
+            as_of=as_of,
+            default_basis=basis,
+        )
+    return dict(fallback_evidence)
+
+
+def _call_symbol_read_method(method: Callable[..., object], symbol: str) -> object:
+    try:
+        return method(symbol)
+    except TypeError:
+        return method()
+
+
+def _latest_price_evidence_from_response(
+    *,
+    response: object,
+    selected_symbol: str,
+    as_of: datetime,
+    default_basis: str,
+) -> dict[str, object]:
+    if response in (None, ""):
+        return _latest_price_evidence(
+            selected_symbol=selected_symbol,
+            source="unavailable",
+            basis=default_basis,
+            as_of=as_of,
+            latest_price=None,
+            observed_at=None,
+            raw_symbol=selected_symbol,
+            blocker_code="broker_latest_price_missing",
+            freshness_status="unavailable",
+        )
+    if isinstance(response, Sequence) and not isinstance(response, (str, bytes, bytearray)):
+        rows = tuple(response)
+        if len(rows) != 1:
+            return _latest_price_evidence(
+                selected_symbol=selected_symbol,
+                source="ambiguous",
+                basis=default_basis,
+                as_of=as_of,
+                latest_price=None,
+                observed_at=None,
+                raw_symbol=selected_symbol,
+                blocker_code="broker_latest_price_ambiguous",
+                freshness_status="ambiguous",
+            )
+        response = rows[0]
+
+    basis = _text(
+        _field(response, "latest_price_basis")
+        or _field(response, "basis")
+        or default_basis
+    )
+    basis_kind = _latest_price_basis_kind(basis or default_basis)
+    source = _text(
+        _field(response, "latest_price_source")
+        or _field(response, "source")
+        or "broker_observed"
+    )
+    raw_symbol = _text(
+        _field(response, "latest_price_symbol")
+        or _field(response, "symbol")
+        or selected_symbol
+    )
+    observed_at = (
+        _field(response, "latest_price_observed_at")
+        or _field(response, "observed_at")
+        or _field(response, "timestamp")
+        or _field(response, "time")
+        or _field(response, "t")
+    )
+    bid = _first_decimal(
+        _field(response, "latest_price_bid"),
+        _field(response, "bid"),
+        _field(response, "bid_price"),
+        _field(response, "bp"),
+    )
+    ask = _first_decimal(
+        _field(response, "latest_price_ask"),
+        _field(response, "ask"),
+        _field(response, "ask_price"),
+        _field(response, "ap"),
+    )
+    explicit_mid = _first_decimal(_field(response, "latest_price_mid"), _field(response, "mid"))
+    mid = explicit_mid
+    if mid is None and bid is not None and ask is not None:
+        mid = (bid + ask) / Decimal("2")
+    last = _first_decimal(
+        _field(response, "latest_price_last"),
+        _field(response, "last"),
+        _field(response, "last_price"),
+        _field(response, "trade_price"),
+        _field(response, "price"),
+        _field(response, "p"),
+    )
+    close = _first_decimal(
+        _field(response, "close"),
+        _field(response, "close_price"),
+        _field(response, "c"),
+    )
+
+    blocker = ""
+    latest_price: Decimal | None
+    if basis_kind == "quote":
+        latest_price = mid
+        if (
+            bid is None
+            or ask is None
+            or bid <= Decimal("0")
+            or ask <= Decimal("0")
+            or bid > ask
+        ):
+            blocker = "broker_quote_bid_ask_invalid"
+    elif basis_kind == "trade":
+        latest_price = last
+        if latest_price is None or latest_price <= Decimal("0"):
+            blocker = "broker_trade_price_invalid"
+    elif basis_kind == "bar":
+        latest_price = close
+        last = last if last is not None else close
+        if latest_price is None or latest_price <= Decimal("0"):
+            blocker = "broker_bar_close_invalid"
+    else:
+        latest_price = _first_decimal(
+            _field(response, "latest_price_value"),
+            _field(response, "latest_price"),
+            _field(response, "price"),
+            mid,
+            last,
+            close,
+        )
+        if latest_price is None or latest_price <= Decimal("0"):
+            blocker = "broker_latest_price_missing"
+
+    return _latest_price_evidence(
+        selected_symbol=selected_symbol,
+        source=source,
+        basis=basis or default_basis,
+        as_of=as_of,
+        latest_price=latest_price,
+        observed_at=observed_at,
+        bid=bid,
+        ask=ask,
+        mid=mid,
+        last=last,
+        raw_symbol=raw_symbol,
+        blocker_code=blocker,
+    )
+
+
+def _latest_price_basis_kind(basis: str) -> str:
+    normalized = basis.lower()
+    if "quote" in normalized:
+        return "quote"
+    if "trade" in normalized:
+        return "trade"
+    if "bar" in normalized:
+        return "bar"
+    return "latest_price"
 
 
 BROKER_ASSET_ORDERABILITY_FIELDS = (
@@ -3706,6 +4192,8 @@ def _source_for_latest_price_basis(basis_text: str, broker_observed: bool) -> st
     if broker_observed:
         return "broker_observed"
     normalized = basis_text.lower()
+    if "provider_observed" in normalized:
+        return "provider_observed"
     if "local_replay" in normalized:
         return "local_replay"
     if basis_text:
@@ -3718,9 +4206,179 @@ def _price_source_acceptability(status: str, source: str) -> str:
         return "blocked_price_check_failed"
     if source == "broker_observed":
         return "accepted_broker_observed"
+    if source == "provider_observed":
+        return "accepted_provider_observed"
     if source in {"deterministic_fixture", "local_replay"}:
         return "accepted_readiness_only_preview"
     return "blocked_unacceptable_source"
+
+
+def _latest_price_packet_fields(price_evidence: Mapping[str, object]) -> dict[str, object]:
+    return {
+        "latest_price_value": _evidence_decimal_text(price_evidence.get("latest_price_value")),
+        "latest_price_source": _text(price_evidence.get("latest_price_source")),
+        "latest_price_observed_at": _text(price_evidence.get("latest_price_observed_at")),
+        "latest_price_age_seconds": _text(price_evidence.get("latest_price_age_seconds")),
+        "latest_price_symbol": _text(price_evidence.get("latest_price_symbol")),
+        "latest_price_bid": _evidence_decimal_text(price_evidence.get("latest_price_bid")),
+        "latest_price_ask": _evidence_decimal_text(price_evidence.get("latest_price_ask")),
+        "latest_price_mid": _evidence_decimal_text(price_evidence.get("latest_price_mid")),
+        "latest_price_last": _evidence_decimal_text(price_evidence.get("latest_price_last")),
+        "latest_price_basis": _text(price_evidence.get("latest_price_basis")),
+        "latest_price_freshness_status": _text(
+            price_evidence.get("latest_price_freshness_status")
+        ),
+        "latest_price_source_acceptability": _text(
+            price_evidence.get("latest_price_source_acceptability")
+        ),
+        "price_used_for_quantity": _evidence_decimal_text(
+            price_evidence.get("price_used_for_quantity")
+        ),
+        "price_used_for_min_notional_derivation": _evidence_decimal_text(
+            price_evidence.get("price_used_for_min_notional_derivation")
+        ),
+        "price_evidence_status": _text(price_evidence.get("price_evidence_status")),
+        "price_evidence_blocker": _text(price_evidence.get("price_evidence_blocker")),
+    }
+
+
+def _age_seconds_text(observed_at: datetime | None, as_of: datetime | None) -> str:
+    if observed_at is None or as_of is None:
+        return ""
+    seconds = (as_of - observed_at).total_seconds()
+    if seconds == int(seconds):
+        return str(int(seconds))
+    return format(Decimal(str(seconds)).quantize(Decimal("0.001")).normalize(), "f")
+
+
+def _latest_price_freshness(
+    *,
+    latest_price: Decimal | None,
+    observed_at: datetime | None,
+    as_of: datetime | None,
+    max_age: timedelta = BROKER_OBSERVED_PRICE_MAX_AGE,
+) -> tuple[str, str, str]:
+    if latest_price is None or latest_price <= Decimal("0"):
+        return "unavailable", "broker_latest_price_missing", ""
+    if observed_at is None:
+        return "missing_timestamp", "broker_latest_price_timestamp_missing", ""
+    if as_of is None:
+        return "missing_timestamp", "broker_latest_price_timestamp_missing", ""
+    age_seconds = (as_of - observed_at).total_seconds()
+    if age_seconds < 0 or age_seconds > max_age.total_seconds():
+        return "stale", "broker_latest_price_stale", _age_seconds_text(observed_at, as_of)
+    return "fresh", "", _age_seconds_text(observed_at, as_of)
+
+
+def _latest_price_evidence(
+    *,
+    selected_symbol: str,
+    source: str,
+    basis: str,
+    as_of: datetime | None,
+    latest_price: Decimal | None,
+    observed_at: object,
+    bid: Decimal | None = None,
+    ask: Decimal | None = None,
+    mid: Decimal | None = None,
+    last: Decimal | None = None,
+    raw_symbol: str = "",
+    blocker_code: str = "",
+    freshness_status: str = "",
+) -> dict[str, object]:
+    normalized_source = source if source in LATEST_PRICE_SOURCES else "ambiguous"
+    observed_at_value = _datetime_or_none(observed_at)
+    symbol = _text(raw_symbol) or selected_symbol
+    normalized_selected = _normalize_broker_symbol(selected_symbol)
+    normalized_symbol = _normalize_broker_symbol(symbol)
+    symbol_mismatch = bool(
+        selected_symbol and symbol and normalized_symbol != normalized_selected
+    )
+    if normalized_source == "ambiguous" and not blocker_code:
+        blocker_code = "broker_latest_price_ambiguous"
+    if symbol_mismatch and not blocker_code:
+        blocker_code = "broker_latest_price_symbol_mismatch"
+
+    computed_freshness, freshness_blocker, age_seconds = _latest_price_freshness(
+        latest_price=latest_price,
+        observed_at=observed_at_value,
+        as_of=as_of,
+    )
+    resolved_freshness = freshness_status or computed_freshness
+    if not blocker_code:
+        blocker_code = freshness_blocker
+    if blocker_code in {
+        "broker_quote_bid_ask_invalid",
+        "broker_trade_price_invalid",
+        "broker_bar_close_invalid",
+    }:
+        timestamp_freshness, _timestamp_blocker, timestamp_age_seconds = (
+            _latest_price_freshness(
+                latest_price=Decimal("1"),
+                observed_at=observed_at_value,
+                as_of=as_of,
+            )
+        )
+        resolved_freshness = timestamp_freshness
+        age_seconds = timestamp_age_seconds
+    if blocker_code == "broker_latest_price_ambiguous":
+        resolved_freshness = "ambiguous"
+    if normalized_source == "unavailable":
+        resolved_freshness = "unavailable"
+    status = "blocked" if blocker_code else "passed"
+    acceptability = _price_source_acceptability(status, normalized_source)
+    observed_at_text = "" if observed_at_value is None else observed_at_value.isoformat()
+    accepted_full_readiness = (
+        normalized_source in OBSERVED_LATEST_PRICE_SOURCES
+        and resolved_freshness == "fresh"
+        and status == "passed"
+    )
+    accepted_readiness_only = (
+        normalized_source in READINESS_ONLY_LATEST_PRICE_SOURCES
+        and resolved_freshness == "fresh"
+        and status == "passed"
+    )
+    price_for_use = latest_price if status == "passed" else None
+    return {
+        "status": status,
+        "source": normalized_source,
+        "price_source_acceptability": acceptability,
+        "basis": basis,
+        "latest_price": latest_price,
+        "latest_price_value": latest_price,
+        "latest_price_source": normalized_source,
+        "latest_price_observed_at": observed_at_text,
+        "latest_price_age_seconds": age_seconds,
+        "latest_price_symbol": symbol,
+        "latest_price_bid": bid,
+        "latest_price_ask": ask,
+        "latest_price_mid": mid,
+        "latest_price_last": last,
+        "latest_price_basis": basis,
+        "latest_price_freshness_status": resolved_freshness,
+        "latest_price_source_acceptability": acceptability,
+        "price_used_for_quantity": price_for_use,
+        "price_used_for_min_notional_derivation": price_for_use,
+        "price_evidence_status": status,
+        "price_evidence_blocker": blocker_code,
+        "latest_price_timestamp": observed_at_text,
+        "as_of": "" if as_of is None else as_of.isoformat(),
+        "max_age_seconds": str(int(BROKER_OBSERVED_PRICE_MAX_AGE.total_seconds())),
+        "stale_after": ""
+        if as_of is None
+        else (as_of - BROKER_OBSERVED_PRICE_MAX_AGE).isoformat(),
+        "missing": latest_price is None or latest_price <= Decimal("0"),
+        "stale": resolved_freshness == "stale",
+        "broker_observed": normalized_source == "broker_observed",
+        "provider_observed": normalized_source == "provider_observed",
+        "accepted_for_broker_observed_readiness": (
+            accepted_full_readiness or accepted_readiness_only
+        ),
+        "accepted_for_full_broker_observed_readiness": accepted_full_readiness,
+        "accepted_for_readiness_only_preview": accepted_readiness_only,
+        "symbol_mismatch": symbol_mismatch,
+        "blocker_code": blocker_code,
+    }
 
 
 def _broker_observed_price_evidence(
@@ -3740,46 +4398,55 @@ def _broker_observed_price_evidence(
         fixture_readiness.get("latest_price"),
         latest_check.get("latest_price"),
     )
-    missing = latest_check.get("missing") is True or latest_price is None
-    stale = latest_check.get("stale") is True
-    blocker = ""
-    if missing:
-        status = "blocked"
-        blocker = "broker_price_metadata_missing"
-    elif stale:
-        status = "blocked"
-        blocker = "broker_price_metadata_stale"
-    elif _text(latest_check.get("status")) in {"", "passed"}:
-        status = "passed"
-    else:
-        status = "blocked"
-        blocker = "broker_price_metadata_missing"
-    acceptability = _price_source_acceptability(status, source)
-    accepted = acceptability in {
-        "accepted_broker_observed",
-        "accepted_readiness_only_preview",
-    }
-    return {
-        "status": status,
-        "source": source,
-        "price_source_acceptability": acceptability,
-        "basis": basis_text,
-        "latest_price": latest_price,
-        "latest_price_timestamp": latest_check.get(
-            "latest_price_timestamp",
-            _mapping(fixture_readiness.get("latest_price_basis")).get(
-                "latest_price_timestamp"
-            ),
+    observed_at = latest_check.get(
+        "latest_price_timestamp",
+        _mapping(fixture_readiness.get("latest_price_basis")).get(
+            "latest_price_timestamp"
         ),
-        "as_of": latest_check.get("as_of", fixture_readiness.get("as_of")),
-        "max_age_seconds": latest_check.get("max_age_seconds"),
-        "stale_after": latest_check.get("stale_after"),
-        "missing": missing,
-        "stale": stale,
-        "broker_observed": source == "broker_observed",
-        "accepted_for_broker_observed_readiness": accepted,
-        "blocker_code": blocker,
-    }
+    )
+    as_of = _datetime_or_none(latest_check.get("as_of", fixture_readiness.get("as_of")))
+    evidence = _latest_price_evidence(
+        selected_symbol=_text(fixture_readiness.get("symbol")),
+        source=source,
+        basis=basis_text or "offline_fixture_latest_bar_close",
+        as_of=as_of,
+        latest_price=latest_price,
+        observed_at=observed_at,
+        raw_symbol=_text(fixture_readiness.get("symbol")),
+    )
+    if latest_check.get("missing") is True:
+        evidence.update(
+            {
+                "status": "blocked",
+                "price_evidence_status": "blocked",
+                "latest_price_freshness_status": "unavailable",
+                "price_evidence_blocker": "broker_latest_price_missing",
+                "blocker_code": "broker_latest_price_missing",
+                "price_source_acceptability": "blocked_price_check_failed",
+                "latest_price_source_acceptability": "blocked_price_check_failed",
+                "accepted_for_broker_observed_readiness": False,
+                "accepted_for_full_broker_observed_readiness": False,
+                "accepted_for_readiness_only_preview": False,
+            }
+        )
+    elif latest_check.get("stale") is True and not _text(evidence.get("blocker_code")):
+        evidence.update(
+            {
+                "status": "blocked",
+                "price_evidence_status": "blocked",
+                "latest_price_freshness_status": "stale",
+                "price_evidence_blocker": "broker_latest_price_stale",
+                "blocker_code": "broker_latest_price_stale",
+                "price_source_acceptability": "blocked_price_check_failed",
+                "latest_price_source_acceptability": "blocked_price_check_failed",
+                "price_used_for_quantity": None,
+                "price_used_for_min_notional_derivation": None,
+                "accepted_for_broker_observed_readiness": False,
+                "accepted_for_full_broker_observed_readiness": False,
+                "accepted_for_readiness_only_preview": False,
+            }
+        )
+    return evidence
 
 
 def _broker_observed_orderability_check(
@@ -3954,6 +4621,7 @@ def _broker_observed_min_notional_check(
         }
     if price_acceptability not in {
         "accepted_broker_observed",
+        "accepted_provider_observed",
         "accepted_readiness_only_preview",
     }:
         return {
@@ -4003,8 +4671,8 @@ def _broker_observed_min_notional_check(
         "derived_min_notional_check_status": "passed",
         "min_notional_equivalence_basis": "derived_from_broker_min_order_size_and_selected_price",
         "final_feasibility_basis": (
-            "derived_min_notional_equivalent_with_broker_observed_price"
-            if price_source == "broker_observed"
+            "derived_min_notional_equivalent_with_observed_price"
+            if price_source in OBSERVED_LATEST_PRICE_SOURCES
             else "derived_min_notional_equivalent_with_readiness_only_price"
         ),
         "blocker_code": "",
@@ -4113,10 +4781,12 @@ def _broker_observed_feasibility_checks(
     *,
     fixture_readiness: Mapping[str, object],
     asset_summary: Mapping[str, object],
+    price_evidence: Mapping[str, object],
+    intended_notional: Decimal | None,
+    estimated_quantity: Decimal | None,
 ) -> dict[str, dict[str, object]]:
-    intended_notional = _first_decimal(fixture_readiness.get("intended_notional"))
-    estimated_quantity = _first_decimal(fixture_readiness.get("estimated_quantity"))
-    price = _broker_observed_price_evidence(fixture_readiness)
+    del fixture_readiness
+    price = dict(price_evidence)
     min_order_size = _broker_observed_min_order_size_check(
         estimated_quantity=estimated_quantity,
         asset_summary=asset_summary,
