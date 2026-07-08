@@ -884,6 +884,11 @@ def test_default_simbroker_has_consistent_offline_broker_observed_flags(
         "latest_price_observed_at": AS_OF.isoformat(),
         "latest_price_age_seconds": "0",
         "latest_price_symbol": "BTCUSD",
+        "latest_price_symbol_internal": "BTCUSD",
+        "latest_price_symbol_provider": "BTC/USD",
+        "latest_price_symbol_normalization": "BTCUSD->BTC/USD",
+        "latest_price_symbol_normalization_status": "normalized",
+        "latest_price_symbol_match_status": "matched_internal",
         "latest_price_bid": "",
         "latest_price_ask": "",
         "latest_price_mid": "",
@@ -1171,6 +1176,42 @@ def test_direct_min_notional_missing_derives_equivalent_from_broker_size_and_inc
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
 
 
+def test_validator_accepts_stale_price_block_when_min_notional_derivation_blocked(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    packet = run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(
+            assets=[
+                _broker_asset(
+                    min_order_value=None,
+                    min_notional=None,
+                    min_order_size="0.000015656",
+                    min_trade_increment="0.000000001",
+                )
+            ],
+            latest_trade=_latest_trade(
+                timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+            ),
+        ),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker = packet["broker_observed_readiness_packet"]
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
+    assert broker["blocker_code"] == "broker_latest_price_stale"
+    assert broker["price_evidence_status"] == "blocked"
+    assert broker["derived_min_notional_available"] is False
+    assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
+
+
 @pytest.mark.parametrize(
     ("source", "acceptability"),
     [
@@ -1295,6 +1336,14 @@ def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
     assert broker["latest_price_source"] == "broker_observed"
     assert broker["latest_price_basis"] == expected_basis
     assert broker["latest_price_freshness_status"] == "fresh"
+    assert broker["latest_price_symbol_internal"] == "BTCUSD"
+    assert broker["latest_price_symbol_provider"] == "BTC/USD"
+    assert broker["latest_price_symbol_normalization"] == "BTCUSD->BTC/USD"
+    assert broker["latest_price_symbol_normalization_status"] == "normalized"
+    assert broker["latest_price_symbol_match_status"] in {
+        "matched_internal",
+        "matched_provider",
+    }
     assert broker["latest_price_source_acceptability"] == "accepted_broker_observed"
     assert broker["price_evidence_status"] == "passed"
     assert broker["price_evidence_blocker"] == ""
@@ -1351,6 +1400,11 @@ def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
             "fresh",
         ),
         (
+            {"latest_trade": _latest_trade(symbol="ETH/USD")},
+            "broker_latest_price_symbol_mismatch",
+            "fresh",
+        ),
+        (
             {"latest_quote": _latest_quote(bid="0", ask="125.50")},
             "broker_quote_bid_ask_invalid",
             "fresh",
@@ -1388,6 +1442,47 @@ def test_broker_observed_latest_price_evidence_blockers(
     assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
     assert broker["blocker_code"] == expected_blocker
     assert broker["latest_price_freshness_status"] == expected_freshness
+    assert broker["price_evidence_status"] == "blocked"
+    assert broker["price_evidence_blocker"] == expected_blocker
+    assert broker["paper_submit_occurred"] is False
+    assert broker["broker_mutation_occurred"] is False
+
+
+@pytest.mark.parametrize(
+    ("symbol", "expected_blocker", "expected_status"),
+    [
+        ("SPY", "broker_price_symbol_normalization_failed", "failed"),
+        ("USDUSD", "broker_price_symbol_ambiguous", "ambiguous"),
+    ],
+)
+def test_broker_observed_latest_price_normalization_blockers(
+    symbol: str,
+    expected_blocker: str,
+    expected_status: str,
+) -> None:
+    fixture_readiness = dict(_paper_readiness_packet())
+    fixture_readiness["symbol"] = symbol
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=fixture_readiness,
+        paper_environment=_paper_read_env(),
+        broker_client=_FakeBrokerReadClient(
+            assets=[_broker_asset(symbol=symbol, asset_class="crypto")],
+            latest_trade=_latest_trade(symbol=symbol),
+        ),
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
+    assert broker["blocker_code"] == expected_blocker
+    assert broker["latest_price_symbol_internal"] == symbol
+    assert broker["latest_price_symbol_provider"] == ""
+    assert broker["latest_price_symbol_normalization_status"] == expected_status
     assert broker["price_evidence_status"] == "blocked"
     assert broker["price_evidence_blocker"] == expected_blocker
     assert broker["paper_submit_occurred"] is False
@@ -1931,6 +2026,48 @@ def test_validator_rejects_invalid_price_mislabeled_as_plain_broker_observed_rea
     broker["broker_observed_readiness_decision"] = "broker_observed_ready_preview"
     broker["readiness_decision"] = "broker_observed_ready_preview"
     broker["final_readiness_decision"] = "broker_observed_ready_preview"
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert expected_error in validation["errors"]
+
+
+@pytest.mark.parametrize(
+    ("provider_symbol", "expected_error"),
+    [
+        ("", "broker_latest_price_provider_symbol_missing"),
+        ("ETH/USD", "broker_latest_price_provider_symbol_mismatch"),
+        ("BTCUSD", "broker_latest_price_provider_symbol_not_slash_normalized"),
+    ],
+)
+def test_validator_catches_provider_internal_symbol_disagreement(
+    provider_symbol: str,
+    expected_error: str,
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(latest_trade=_latest_trade()),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    broker["latest_price_symbol_provider"] = provider_symbol
+    broker["broker_observed_price_freshness_check"][
+        "latest_price_symbol_provider"
+    ] = provider_symbol
+    broker["observed_latest_price_basis"]["latest_price_symbol_provider"] = (
+        provider_symbol
+    )
     _write_json_fixture(broker_path, broker)
 
     validation = validate_tomorrow_crypto_trader_demo(output_root)

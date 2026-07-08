@@ -23,6 +23,9 @@ import subprocess
 from typing import Any, Literal
 
 from algotrader.core.types import Bar, Fill, OrderSide, OrderStatus, OrderType, ProposedOrder, Quote
+from algotrader.execution.alpaca_sdk_client import (
+    crypto_market_data_symbol_normalization,
+)
 from algotrader.execution.simulator import ExecutionResult, simulate_order
 from algotrader.orchestration.execution_planning_flow import (
     ExecutionPlan,
@@ -135,6 +138,8 @@ BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
     "broker_latest_price_timestamp_missing",
     "broker_latest_price_ambiguous",
     "broker_latest_price_symbol_mismatch",
+    "broker_price_symbol_normalization_failed",
+    "broker_price_symbol_ambiguous",
     "broker_price_not_broker_observed",
     "broker_price_source_not_acceptable_for_full_readiness",
     "broker_price_evidence_not_verified",
@@ -190,6 +195,11 @@ BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "latest_price_observed_at",
     "latest_price_age_seconds",
     "latest_price_symbol",
+    "latest_price_symbol_internal",
+    "latest_price_symbol_provider",
+    "latest_price_symbol_normalization",
+    "latest_price_symbol_normalization_status",
+    "latest_price_symbol_match_status",
     "latest_price_bid",
     "latest_price_ask",
     "latest_price_mid",
@@ -2288,6 +2298,7 @@ def _validate_broker_observed_readiness_packet(
             "asset_found"
         )
         is True
+        and price_check.get("status") == "passed"
         and not direct_min_notional_available
         and not derived_min_notional_available
     ):
@@ -2424,6 +2435,11 @@ def _validate_broker_observed_latest_price_evidence(
         "latest_price_observed_at",
         "latest_price_age_seconds",
         "latest_price_symbol",
+        "latest_price_symbol_internal",
+        "latest_price_symbol_provider",
+        "latest_price_symbol_normalization",
+        "latest_price_symbol_normalization_status",
+        "latest_price_symbol_match_status",
         "latest_price_bid",
         "latest_price_ask",
         "latest_price_mid",
@@ -2464,6 +2480,12 @@ def _validate_broker_observed_latest_price_evidence(
     blocker = _text(price_check.get("price_evidence_blocker") or price_check.get("blocker_code"))
     symbol = _text(price_check.get("latest_price_symbol"))
     selected_symbol = _text(packet.get("selected_symbol") or packet.get("symbol"))
+    internal_symbol = _text(price_check.get("latest_price_symbol_internal"))
+    provider_symbol = _text(price_check.get("latest_price_symbol_provider"))
+    normalization_status = _text(
+        price_check.get("latest_price_symbol_normalization_status")
+    )
+    match_status = _text(price_check.get("latest_price_symbol_match_status"))
 
     if not source:
         errors.append("broker_latest_price_source_missing")
@@ -2475,6 +2497,23 @@ def _validate_broker_observed_latest_price_evidence(
         errors.append(f"broker_latest_price_freshness_status_invalid:{freshness}")
     if selected_symbol and symbol and _normalize_broker_symbol(symbol) != _normalize_broker_symbol(selected_symbol):
         errors.append("broker_latest_price_symbol_mismatch")
+    if internal_symbol and selected_symbol and internal_symbol != selected_symbol:
+        errors.append("broker_latest_price_internal_symbol_mismatch")
+    if source in OBSERVED_LATEST_PRICE_SOURCES:
+        if not provider_symbol:
+            errors.append("broker_latest_price_provider_symbol_missing")
+        elif not _is_slash_normalized_crypto_provider_symbol(provider_symbol):
+            errors.append("broker_latest_price_provider_symbol_not_slash_normalized")
+        else:
+            expected_provider = crypto_market_data_symbol_normalization(
+                selected_symbol
+            ).provider_symbol
+            if expected_provider and provider_symbol != expected_provider:
+                errors.append("broker_latest_price_provider_symbol_mismatch")
+        if match_status == "mismatch":
+            errors.append("broker_latest_price_symbol_mismatch")
+        if normalization_status not in {"normalized", "already_normalized"}:
+            errors.append("broker_latest_price_symbol_normalization_failed")
     if status == "passed" and blocker:
         errors.append("broker_latest_price_passed_with_blocker")
     if status == "blocked" and not blocker:
@@ -3726,7 +3765,27 @@ def _read_latest_price_evidence(
         method = getattr(client, method_name, None)
         if not callable(method):
             continue
-        response = _call_symbol_read_method(method, selected_symbol)
+        try:
+            response = _call_symbol_read_method(method, selected_symbol)
+        except Exception as exc:
+            normalization_blocker = _price_symbol_normalization_blocker(exc)
+            if normalization_blocker:
+                return _latest_price_evidence(
+                    selected_symbol=selected_symbol,
+                    source="broker_observed",
+                    basis=basis,
+                    as_of=as_of,
+                    latest_price=None,
+                    observed_at=None,
+                    raw_symbol=selected_symbol,
+                    blocker_code=normalization_blocker,
+                    freshness_status=(
+                        "ambiguous"
+                        if normalization_blocker == "broker_price_symbol_ambiguous"
+                        else "unavailable"
+                    ),
+                )
+            raise
         return _latest_price_evidence_from_response(
             response=response,
             selected_symbol=selected_symbol,
@@ -3741,6 +3800,16 @@ def _call_symbol_read_method(method: Callable[..., object], symbol: str) -> obje
         return method(symbol)
     except TypeError:
         return method()
+
+
+def _price_symbol_normalization_blocker(exc: Exception) -> str:
+    blocker = _text(getattr(exc, "blocker_code", ""))
+    if blocker in {
+        "broker_price_symbol_normalization_failed",
+        "broker_price_symbol_ambiguous",
+    }:
+        return blocker
+    return ""
 
 
 def _latest_price_evidence_from_response(
@@ -3814,6 +3883,11 @@ def _latest_price_evidence_from_response(
         _field(response, "latest_price_symbol")
         or _field(response, "symbol")
         or selected_symbol
+    )
+    raw_provider_symbol = _text(
+        _field(response, "latest_price_symbol_provider")
+        or _field(response, "provider_symbol")
+        or _field(response, "market_data_symbol")
     )
     observed_at = (
         _field(response, "latest_price_observed_at")
@@ -3897,6 +3971,7 @@ def _latest_price_evidence_from_response(
         mid=mid,
         last=last,
         raw_symbol=raw_symbol,
+        raw_provider_symbol=raw_provider_symbol,
         blocker_code=blocker,
     )
 
@@ -3926,6 +4001,13 @@ LATEST_PRICE_DIRECT_RESPONSE_FIELDS = (
     "time",
     "t",
     "symbol",
+    "latest_price_symbol_internal",
+    "latest_price_symbol_provider",
+    "latest_price_symbol_normalization",
+    "latest_price_symbol_normalization_status",
+    "latest_price_symbol_match_status",
+    "provider_symbol",
+    "market_data_symbol",
     "basis",
     "source",
 )
@@ -4283,6 +4365,21 @@ def _latest_price_packet_fields(price_evidence: Mapping[str, object]) -> dict[st
         "latest_price_observed_at": _text(price_evidence.get("latest_price_observed_at")),
         "latest_price_age_seconds": _text(price_evidence.get("latest_price_age_seconds")),
         "latest_price_symbol": _text(price_evidence.get("latest_price_symbol")),
+        "latest_price_symbol_internal": _text(
+            price_evidence.get("latest_price_symbol_internal")
+        ),
+        "latest_price_symbol_provider": _text(
+            price_evidence.get("latest_price_symbol_provider")
+        ),
+        "latest_price_symbol_normalization": _text(
+            price_evidence.get("latest_price_symbol_normalization")
+        ),
+        "latest_price_symbol_normalization_status": _text(
+            price_evidence.get("latest_price_symbol_normalization_status")
+        ),
+        "latest_price_symbol_match_status": _text(
+            price_evidence.get("latest_price_symbol_match_status")
+        ),
         "latest_price_bid": _evidence_decimal_text(price_evidence.get("latest_price_bid")),
         "latest_price_ask": _evidence_decimal_text(price_evidence.get("latest_price_ask")),
         "latest_price_mid": _evidence_decimal_text(price_evidence.get("latest_price_mid")),
@@ -4333,6 +4430,63 @@ def _latest_price_freshness(
     return "fresh", "", _age_seconds_text(observed_at, as_of)
 
 
+def _latest_price_symbol_fields(
+    *,
+    selected_symbol: str,
+    raw_symbol: str,
+    raw_provider_symbol: str,
+    source: str,
+) -> dict[str, object]:
+    internal_symbol = _text(selected_symbol)
+    returned_symbol = _text(raw_symbol) or internal_symbol
+    normalization = crypto_market_data_symbol_normalization(internal_symbol)
+    provider_symbol = _text(raw_provider_symbol) or normalization.provider_symbol
+    normalization_text = (
+        f"{internal_symbol}->{provider_symbol}" if internal_symbol and provider_symbol else ""
+    )
+    match_status = _latest_price_symbol_match_status(
+        internal_symbol=internal_symbol,
+        provider_symbol=provider_symbol,
+        returned_symbol=returned_symbol,
+    )
+    blocker_code = ""
+    if source in OBSERVED_LATEST_PRICE_SOURCES:
+        blocker_code = normalization.blocker_code
+        if not blocker_code and match_status == "mismatch":
+            blocker_code = "broker_latest_price_symbol_mismatch"
+    return {
+        "latest_price_symbol_internal": internal_symbol,
+        "latest_price_symbol_provider": provider_symbol,
+        "latest_price_symbol_normalization": normalization_text,
+        "latest_price_symbol_normalization_status": normalization.status,
+        "latest_price_symbol_match_status": match_status,
+        "symbol_mismatch": match_status == "mismatch",
+        "symbol_blocker_code": blocker_code,
+    }
+
+
+def _latest_price_symbol_match_status(
+    *,
+    internal_symbol: str,
+    provider_symbol: str,
+    returned_symbol: str,
+) -> str:
+    if not internal_symbol or not returned_symbol:
+        return "missing"
+    if returned_symbol == internal_symbol:
+        return "matched_internal"
+    if provider_symbol and returned_symbol == provider_symbol:
+        return "matched_provider"
+    returned_compact = _normalize_broker_symbol(returned_symbol)
+    internal_compact = _normalize_broker_symbol(internal_symbol)
+    provider_compact = _normalize_broker_symbol(provider_symbol)
+    if returned_compact and returned_compact == internal_compact:
+        return "matched_equivalent"
+    if provider_compact and returned_compact == provider_compact:
+        return "matched_equivalent"
+    return "mismatch"
+
+
 def _latest_price_evidence(
     *,
     selected_symbol: str,
@@ -4346,21 +4500,23 @@ def _latest_price_evidence(
     mid: Decimal | None = None,
     last: Decimal | None = None,
     raw_symbol: str = "",
+    raw_provider_symbol: str = "",
     blocker_code: str = "",
     freshness_status: str = "",
 ) -> dict[str, object]:
     normalized_source = source if source in LATEST_PRICE_SOURCES else "ambiguous"
     observed_at_value = _datetime_or_none(observed_at)
     symbol = _text(raw_symbol) or selected_symbol
-    normalized_selected = _normalize_broker_symbol(selected_symbol)
-    normalized_symbol = _normalize_broker_symbol(symbol)
-    symbol_mismatch = bool(
-        selected_symbol and symbol and normalized_symbol != normalized_selected
+    symbol_fields = _latest_price_symbol_fields(
+        selected_symbol=selected_symbol,
+        raw_symbol=symbol,
+        raw_provider_symbol=raw_provider_symbol,
+        source=normalized_source,
     )
     if normalized_source == "ambiguous" and not blocker_code:
         blocker_code = "broker_latest_price_ambiguous"
-    if symbol_mismatch and not blocker_code:
-        blocker_code = "broker_latest_price_symbol_mismatch"
+    if symbol_fields["symbol_blocker_code"] and not blocker_code:
+        blocker_code = _text(symbol_fields["symbol_blocker_code"])
 
     computed_freshness, freshness_blocker, age_seconds = _latest_price_freshness(
         latest_price=latest_price,
@@ -4413,6 +4569,21 @@ def _latest_price_evidence(
         "latest_price_observed_at": observed_at_text,
         "latest_price_age_seconds": age_seconds,
         "latest_price_symbol": symbol,
+        "latest_price_symbol_internal": symbol_fields[
+            "latest_price_symbol_internal"
+        ],
+        "latest_price_symbol_provider": symbol_fields[
+            "latest_price_symbol_provider"
+        ],
+        "latest_price_symbol_normalization": symbol_fields[
+            "latest_price_symbol_normalization"
+        ],
+        "latest_price_symbol_normalization_status": symbol_fields[
+            "latest_price_symbol_normalization_status"
+        ],
+        "latest_price_symbol_match_status": symbol_fields[
+            "latest_price_symbol_match_status"
+        ],
         "latest_price_bid": bid,
         "latest_price_ask": ask,
         "latest_price_mid": mid,
@@ -4439,7 +4610,7 @@ def _latest_price_evidence(
         ),
         "accepted_for_full_broker_observed_readiness": accepted_full_readiness,
         "accepted_for_readiness_only_preview": accepted_readiness_only,
-        "symbol_mismatch": symbol_mismatch,
+        "symbol_mismatch": symbol_fields["symbol_mismatch"],
         "blocker_code": blocker_code,
     }
 
@@ -4932,6 +5103,18 @@ def _optional_bool(value: object) -> bool | None:
 
 def _normalize_broker_symbol(value: str) -> str:
     return "".join(ch for ch in value.upper() if ch.isalnum())
+
+
+def _is_slash_normalized_crypto_provider_symbol(value: str) -> bool:
+    text = _text(value)
+    if "/" not in text:
+        return False
+    normalization = crypto_market_data_symbol_normalization(text)
+    return (
+        normalization.blocker_code == ""
+        and normalization.status == "already_normalized"
+        and normalization.provider_symbol == text.upper()
+    )
 
 
 def _safe_broker_observed_error(exc: Exception) -> str:

@@ -24,9 +24,12 @@ from algotrader.execution.alpaca_client import (
 )
 import algotrader.execution.alpaca_sdk_client as alpaca_sdk_client_module
 from algotrader.execution.alpaca_sdk_client import (
+    AlpacaCryptoSymbolNormalizationError,
     AlpacaSdkClient,
     AlpacaSdkClientError,
     AlpacaSdkClientReadError,
+    crypto_market_data_symbol_normalization,
+    normalize_crypto_market_data_symbol,
 )
 from algotrader.execution.alpaca_sdk_client import (
     _create_crypto_data_client,
@@ -223,6 +226,52 @@ def proposed_order() -> ProposedOrder:
     return ProposedOrder("MSFT", OrderSide.BUY, OrderType.MARKET, "1")
 
 
+@pytest.mark.parametrize(
+    ("symbol", "provider_symbol", "status"),
+    [
+        ("BTCUSD", "BTC/USD", "normalized"),
+        ("ETHUSD", "ETH/USD", "normalized"),
+        ("SOLUSD", "SOL/USD", "normalized"),
+        ("ADAUSD", "ADA/USD", "normalized"),
+        ("BTC/USD", "BTC/USD", "already_normalized"),
+    ],
+)
+def test_crypto_market_data_symbol_normalization_accepts_usd_pairs(
+    symbol: str,
+    provider_symbol: str,
+    status: str,
+) -> None:
+    result = crypto_market_data_symbol_normalization(symbol)
+
+    assert result.compact_symbol == provider_symbol.replace("/", "")
+    assert result.provider_symbol == provider_symbol
+    assert result.status == status
+    assert result.blocker_code == ""
+    assert normalize_crypto_market_data_symbol(symbol) == provider_symbol
+
+
+@pytest.mark.parametrize(
+    ("symbol", "expected_blocker"),
+    [
+        ("", "broker_price_symbol_normalization_failed"),
+        ("SPY", "broker_price_symbol_normalization_failed"),
+        ("BTC-USD", "broker_price_symbol_normalization_failed"),
+        ("USD/USD", "broker_price_symbol_ambiguous"),
+    ],
+)
+def test_crypto_market_data_symbol_normalization_rejects_unsupported_symbols(
+    symbol: str,
+    expected_blocker: str,
+) -> None:
+    result = crypto_market_data_symbol_normalization(symbol)
+
+    assert result.provider_symbol == ""
+    assert result.blocker_code == expected_blocker
+    with pytest.raises(AlpacaCryptoSymbolNormalizationError) as exc_info:
+        normalize_crypto_market_data_symbol(symbol)
+    assert exc_info.value.blocker_code == expected_blocker
+
+
 def test_alpaca_sdk_client_requires_paper_profile_before_factory_creation() -> None:
     factory_calls: list[AlpacaPaperConfig] = []
     config = AlpacaPaperConfig(
@@ -344,7 +393,7 @@ def test_alpaca_sdk_client_constructs_crypto_data_client_lazily_for_latest_reads
     assert fake_crypto_client.calls == ["get_crypto_latest_quote"]
     request = fake_crypto_client.requests[0]
     assert request.__class__.__name__ == "CryptoLatestQuoteRequest"
-    assert request.symbol_or_symbols == "BTCUSD"
+    assert request.symbol_or_symbols == "BTC/USD"
     assert fake_trading_client.calls == []
 
 
@@ -371,7 +420,48 @@ def test_alpaca_sdk_client_delegates_latest_crypto_trade_and_bar_reads() -> None
     ]
     assert [
         request.symbol_or_symbols for request in fake_crypto_client.requests
-    ] == ["BTCUSD", "BTCUSD"]
+    ] == ["BTC/USD", "BTC/USD"]
+
+
+def test_alpaca_sdk_client_latest_quote_preserves_slash_form_for_sdk_call() -> None:
+    fake_crypto_client = FakeSdkCryptoDataClient()
+    client = AlpacaSdkClient(
+        valid_config(),
+        sdk_client=FakeSdkTradingClient(),
+        sdk_crypto_data_client=fake_crypto_client,
+    )
+
+    client.get_crypto_latest_quote("BTC/USD")
+
+    request = fake_crypto_client.requests[0]
+    assert request.symbol_or_symbols == "BTC/USD"
+
+
+@pytest.mark.parametrize(
+    ("method_name", "sdk_call_name"),
+    [
+        ("get_crypto_latest_quote", "get_crypto_latest_quote"),
+        ("get_crypto_latest_trade", "get_crypto_latest_trade"),
+        ("get_crypto_latest_bar", "get_crypto_latest_bar"),
+    ],
+)
+def test_alpaca_sdk_client_latest_crypto_reads_block_unsupported_symbol_before_sdk_call(
+    method_name: str,
+    sdk_call_name: str,
+) -> None:
+    fake_crypto_client = FakeSdkCryptoDataClient()
+    client = AlpacaSdkClient(
+        valid_config(),
+        sdk_client=FakeSdkTradingClient(),
+        sdk_crypto_data_client=fake_crypto_client,
+    )
+
+    method = getattr(client, method_name)
+    with pytest.raises(AlpacaCryptoSymbolNormalizationError) as exc_info:
+        method("SPY")
+
+    assert exc_info.value.blocker_code == "broker_price_symbol_normalization_failed"
+    assert sdk_call_name not in fake_crypto_client.calls
 
 
 def test_alpaca_sdk_client_sanitizes_latest_crypto_read_errors() -> None:
