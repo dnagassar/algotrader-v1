@@ -44,6 +44,7 @@ SCHEMA_VERSION = "v5_13_crypto_no_submit_operating_cycle_v1"
 CRYPTO_READINESS_PACKET_SCHEMA_VERSION = "v5_15_crypto_no_submit_operating_packet_v1"
 COMMAND_NAME = "run_crypto_no_submit_operating_cycle"
 CRYPTO_OBSERVED_LATEST_PRICE_MAX_AGE_SECONDS = 7200
+FRESHNESS_EVALUATION_MODES = ("wall_clock", "deterministic_replay")
 
 DEFAULT_OUTPUT_ROOT = Path("runs/crypto_no_submit_operating_cycle/latest")
 DEFAULT_CRYPTO_REFRESH_OUTPUT_ROOT = Path(
@@ -76,6 +77,7 @@ NextOperatorAction = Literal[
     "blocked",
     "no_trade",
 ]
+FreshnessEvaluationMode = Literal["wall_clock", "deterministic_replay"]
 
 FINAL_STATES: tuple[FinalState, ...] = (
     "selected_candidate_no_submit_packet_ready",
@@ -186,6 +188,8 @@ def run_crypto_no_submit_operating_cycle(
     preview_notional_cap: Decimal | str = CRYPTO_QTY_SIZING_PREVIEW_DEFAULT_NOTIONAL_CAP,
     allow_fixture_backed: bool = False,
     observed_latest_price_artifact_path: Path | str | None = None,
+    freshness_evaluation_mode: FreshnessEvaluationMode | None = None,
+    freshness_evaluated_at: datetime | str | None = None,
     as_of: datetime | str | None = None,
     write_artifacts: bool = True,
 ) -> dict[str, object]:
@@ -301,6 +305,24 @@ def run_crypto_no_submit_operating_cycle(
         observed_latest_price_artifact_path
     )
 
+    cycle_as_of = _cycle_as_of(
+        as_of_value,
+        dry_run_identity_status,
+        handoff_status,
+        sizing_preview_status,
+        router_result,
+        autonomy_cadence_status,
+    )
+    resolved_freshness_evaluation_mode = _resolve_freshness_evaluation_mode(
+        freshness_evaluation_mode,
+        explicit_as_of=bool(as_of_value),
+    )
+    resolved_freshness_evaluated_at = _resolve_freshness_evaluated_at(
+        freshness_evaluated_at,
+        mode=resolved_freshness_evaluation_mode,
+        replay_basis=cycle_as_of,
+    )
+
     packet = build_crypto_no_submit_operating_cycle_packet(
         refresh_packet=refresh_packet,
         router_result=router_result,
@@ -319,14 +341,9 @@ def run_crypto_no_submit_operating_cycle(
             "crypto_paper_oms_dry_run": dry_run_root,
             "crypto_paper_autonomy_cadence": cadence_root,
         },
-        as_of=_cycle_as_of(
-            as_of_value,
-            dry_run_identity_status,
-            handoff_status,
-            sizing_preview_status,
-            router_result,
-            autonomy_cadence_status,
-        ),
+        as_of=cycle_as_of,
+        freshness_evaluation_mode=resolved_freshness_evaluation_mode,
+        freshness_evaluated_at=resolved_freshness_evaluated_at,
     )
     if write_artifacts:
         packet["artifact_paths"] = write_crypto_no_submit_operating_cycle_artifacts(
@@ -349,6 +366,8 @@ def build_crypto_no_submit_operating_cycle_packet(
     output_root: Path | str = DEFAULT_OUTPUT_ROOT,
     stage_artifact_paths: Mapping[str, object] | None = None,
     as_of: str = "",
+    freshness_evaluation_mode: FreshnessEvaluationMode | str | None = None,
+    freshness_evaluated_at: datetime | str | None = None,
 ) -> dict[str, object]:
     """Build the primitive-only cycle packet from stage payloads."""
 
@@ -391,6 +410,8 @@ def build_crypto_no_submit_operating_cycle_packet(
         cycle_blockers=blockers,
         selected_candidate_id=selected_candidate_id,
         as_of=as_of,
+        freshness_evaluation_mode=freshness_evaluation_mode,
+        freshness_evaluated_at=freshness_evaluated_at,
     )
     next_operator_action = _next_operator_action_payload(
         final_state=final_state,
@@ -444,6 +465,14 @@ def build_crypto_no_submit_operating_cycle_packet(
         ],
         "latest_price_freshness_status": crypto_readiness_packet[
             "latest_price_freshness_status"
+        ],
+        "freshness_evaluated_at": crypto_readiness_packet["freshness_evaluated_at"],
+        "freshness_evaluation_mode": crypto_readiness_packet[
+            "freshness_evaluation_mode"
+        ],
+        "latest_price_age_basis": crypto_readiness_packet["latest_price_age_basis"],
+        "operational_freshness_confirmed": crypto_readiness_packet[
+            "operational_freshness_confirmed"
         ],
         "quote_trade_bar_fallback_diagnostics": crypto_readiness_packet[
             "quote_trade_bar_fallback_diagnostics"
@@ -608,6 +637,10 @@ def render_cycle_brief_markdown(packet: Mapping[str, object]) -> str:
             f"- latest price age seconds: `{readiness.get('latest_price_age_seconds', '')}`",
             f"- latest price freshness threshold seconds: `{readiness.get('latest_price_freshness_threshold_seconds', '')}`",
             f"- latest price freshness: `{readiness.get('latest_price_freshness_status', '')}`",
+            f"- freshness evaluated_at: `{readiness.get('freshness_evaluated_at', '')}`",
+            f"- freshness evaluation mode: `{readiness.get('freshness_evaluation_mode', '')}`",
+            f"- latest price age basis: `{readiness.get('latest_price_age_basis', '')}`",
+            f"- operational freshness confirmed: `{_bool_text(readiness.get('operational_freshness_confirmed'))}`",
             f"- broker observed refresh status: `{readiness.get('broker_observed_refresh_status', '')}`",
             "- paper submit currently authorized: `false`",
             "- broker read occurred: `false`",
@@ -650,6 +683,11 @@ def render_cycle_text(packet: Mapping[str, object]) -> str:
         "latest_price_freshness_threshold_seconds="
         + _text(readiness.get("latest_price_freshness_threshold_seconds")),
         f"latest_price_freshness_status={_text(readiness.get('latest_price_freshness_status'))}",
+        f"freshness_evaluated_at={_text(readiness.get('freshness_evaluated_at'))}",
+        f"freshness_evaluation_mode={_text(readiness.get('freshness_evaluation_mode'))}",
+        f"latest_price_age_basis={_text(readiness.get('latest_price_age_basis'))}",
+        "operational_freshness_confirmed="
+        + _bool_text(readiness.get("operational_freshness_confirmed")),
         f"broker_observed_refresh_status={_text(readiness.get('broker_observed_refresh_status'))}",
         "paper_submit_authorized=false",
         "broker_read_occurred=false",
@@ -996,8 +1034,21 @@ def build_crypto_readiness_packet(
     cycle_blockers: Sequence[str],
     selected_candidate_id: str,
     as_of: str,
+    freshness_evaluation_mode: FreshnessEvaluationMode | str | None = None,
+    freshness_evaluated_at: datetime | str | None = None,
 ) -> dict[str, object]:
     """Build the v5.15 local no-submit 24/7 crypto readiness packet."""
+
+    freshness_mode = _resolve_freshness_evaluation_mode(
+        freshness_evaluation_mode,
+        explicit_as_of=True,
+    )
+    freshness_evaluated_at_text = _resolve_freshness_evaluated_at(
+        freshness_evaluated_at,
+        mode=freshness_mode,
+        replay_basis=as_of,
+    )
+    latest_price_age_basis = _latest_price_age_basis(freshness_mode)
 
     summary = _mapping(refresh_packet.get("summary"))
     router_manifest = _mapping(refresh_packet.get("crypto_router_input_manifest"))
@@ -1070,12 +1121,14 @@ def build_crypto_readiness_packet(
     )
     local_latest_price_age = _age_seconds_text(
         local_latest_price_observed_at,
-        as_of,
+        freshness_evaluated_at_text,
     )
     observed_evidence = _observed_latest_price_evidence(
         artifact=observed_latest_price_artifact,
         selected_symbol=selected_symbol,
         as_of=as_of,
+        freshness_evaluation_mode=freshness_mode,
+        freshness_evaluated_at=freshness_evaluated_at_text,
     )
     if _is_true(observed_evidence.get("configured")):
         evidence_classification = _first_text(
@@ -1187,6 +1240,11 @@ def build_crypto_readiness_packet(
         readiness_decision=readiness_decision,
         blocker_taxonomy=blocker_taxonomy,
     )
+    operational_freshness_confirmed = (
+        freshness_mode == "wall_clock"
+        and latest_price_freshness == "fresh"
+        and latest_price_blocker == "none"
+    )
     payload = {
         "schema_version": CRYPTO_READINESS_PACKET_SCHEMA_VERSION,
         "record_type": "v5_15_crypto_no_submit_operating_packet",
@@ -1215,6 +1273,10 @@ def build_crypto_readiness_packet(
             CRYPTO_OBSERVED_LATEST_PRICE_MAX_AGE_SECONDS
         ),
         "latest_price_freshness_status": latest_price_freshness,
+        "freshness_evaluated_at": freshness_evaluated_at_text,
+        "freshness_evaluation_mode": freshness_mode,
+        "latest_price_age_basis": latest_price_age_basis,
+        "operational_freshness_confirmed": operational_freshness_confirmed,
         "latest_price_final_blocker": latest_price_blocker,
         "latest_price_source_acceptability": (
             "accepted_for_no_submit_readiness_packet"
@@ -1256,6 +1318,7 @@ def build_crypto_readiness_packet(
         payload["readiness_decision"] = "blocked_readiness_validation_failed"
         payload["blocker_taxonomy"] = "readiness_packet_validation"
         payload["blocker"] = "readiness_packet_validation_failed"
+        payload["operational_freshness_confirmed"] = False
         payload["next_safe_operator_action"] = (
             "repair inconsistent crypto readiness packet fields before review; "
             "no broker action is authorized."
@@ -1279,12 +1342,75 @@ def validate_crypto_readiness_packet(packet: Mapping[str, object]) -> list[str]:
     freshness = _first_text(packet, "latest_price_freshness_status")
     observed_at = _first_text(packet, "latest_price_observed_at")
     normalized_timestamp = _first_text(packet, "latest_price_normalized_timestamp")
+    age_seconds = _first_text(packet, "latest_price_age_seconds")
+    threshold_seconds = _first_text(packet, "latest_price_freshness_threshold_seconds")
+    freshness_evaluated_at = _first_text(packet, "freshness_evaluated_at")
+    freshness_evaluation_mode = _first_text(packet, "freshness_evaluation_mode")
+    latest_price_age_basis = _first_text(packet, "latest_price_age_basis")
     blocker = _normalized_blocker(_first_text(packet, "blocker"))
     price_blocker = _normalized_blocker(_first_text(packet, "latest_price_final_blocker"))
     decision = _first_text(packet, "readiness_decision")
     classification = _first_text(packet, "evidence_classification")
     source_rows = list(_mapping_sequence(packet.get("latest_price_source_table")))
+    packet_as_of = _first_text(packet, "as_of")
+    expected_age_seconds = _age_seconds_text(observed_at, freshness_evaluated_at)
+    expected_age_basis = _latest_price_age_basis(freshness_evaluation_mode)
+    computed_age = _decimal_or_none(expected_age_seconds)
+    threshold = _decimal_or_none(threshold_seconds)
+    computed_freshness = ""
+    if computed_age is not None and threshold is not None:
+        computed_freshness = "fresh" if Decimal("0") <= computed_age <= threshold else "stale"
+    operational_freshness_confirmed = _is_true(
+        packet.get("operational_freshness_confirmed")
+    )
+    expected_operational_freshness_confirmed = (
+        freshness_evaluation_mode == "wall_clock"
+        and freshness == "fresh"
+        and price_blocker == "none"
+    )
 
+    if not freshness_evaluated_at:
+        errors.append("crypto_freshness_evaluated_at_missing")
+    elif _datetime_or_none(freshness_evaluated_at) is None:
+        errors.append("crypto_freshness_evaluated_at_invalid")
+    if not freshness_evaluation_mode:
+        errors.append("crypto_freshness_evaluation_mode_missing")
+    elif freshness_evaluation_mode not in FRESHNESS_EVALUATION_MODES:
+        errors.append("crypto_freshness_evaluation_mode_invalid")
+    if not latest_price_age_basis:
+        errors.append("crypto_latest_price_age_basis_missing")
+    elif (
+        expected_age_basis != "unknown_freshness_evaluation_mode"
+        and latest_price_age_basis != expected_age_basis
+    ):
+        errors.append("crypto_latest_price_age_basis_mismatch")
+    if "operational_freshness_confirmed" not in packet:
+        errors.append("crypto_operational_freshness_confirmed_missing")
+    if (
+        freshness_evaluation_mode == "deterministic_replay"
+        and operational_freshness_confirmed
+    ):
+        errors.append("crypto_deterministic_replay_operational_freshness_confirmed")
+    if (
+        freshness_evaluation_mode in FRESHNESS_EVALUATION_MODES
+        and "operational_freshness_confirmed" in packet
+        and operational_freshness_confirmed != expected_operational_freshness_confirmed
+    ):
+        errors.append("crypto_operational_freshness_confirmed_mismatch")
+    if (
+        freshness_evaluation_mode == "deterministic_replay"
+        and packet_as_of
+        and freshness_evaluated_at
+        and freshness_evaluated_at != packet_as_of
+    ):
+        errors.append("crypto_deterministic_replay_freshness_evaluated_at_mismatch")
+    if observed_at and freshness_evaluated_at and expected_age_seconds:
+        if not age_seconds:
+            errors.append("crypto_latest_price_age_seconds_missing")
+        elif age_seconds != expected_age_seconds:
+            errors.append("crypto_latest_price_age_seconds_mismatch")
+    if computed_freshness and freshness == "fresh" and computed_freshness != "fresh":
+        errors.append("crypto_latest_price_freshness_status_mismatch")
     if freshness == "fresh" and not observed_at:
         errors.append("crypto_latest_price_timestamp_missing_marked_fresh")
     if observed_at and normalized_timestamp and observed_at != normalized_timestamp:
@@ -1316,6 +1442,9 @@ def validate_crypto_readiness_packet(packet: Mapping[str, object]) -> list[str]:
             _first_text(selected_rows[0], "freshness"),
             selected_freshness,
         )
+        selected_age_seconds = _first_text(selected_rows[0], "age_seconds")
+        if age_seconds and selected_age_seconds and selected_age_seconds != age_seconds:
+            errors.append("crypto_latest_price_source_table_age_seconds_mismatch")
     for row in source_rows:
         row_freshness = _first_text(row, "freshness")
         row_observed_at = _first_text(row, "observed_at")
@@ -1339,6 +1468,17 @@ def validate_crypto_readiness_packet(packet: Mapping[str, object]) -> list[str]:
         "local_observed_artifact"
     ):
         errors.append("crypto_observed_artifact_source_classification_mismatch")
+    if classification == "local_observed_artifact_replay":
+        expected_refresh_status = _local_observed_artifact_refresh_status(
+            freshness_evaluation_mode
+        )
+        actual_refresh_status = _first_text(packet, "broker_observed_refresh_status")
+        if (
+            freshness_evaluation_mode in FRESHNESS_EVALUATION_MODES
+            and actual_refresh_status
+            and actual_refresh_status != expected_refresh_status
+        ):
+            errors.append("crypto_observed_artifact_refresh_status_mode_mismatch")
     observed_artifact = _mapping(packet.get("observed_latest_price_artifact"))
     if (
         decision == "local_observed_artifact_ready_no_submit"
@@ -1351,6 +1491,18 @@ def validate_crypto_readiness_packet(packet: Mapping[str, object]) -> list[str]:
         errors.append("broker_observed_ready_without_broker_read")
     if decision.endswith("_ready_no_submit") and _blocker_present(blocker):
         errors.append("crypto_readiness_ready_with_blocker")
+    if decision == "local_observed_artifact_ready_no_submit":
+        if (
+            freshness_evaluation_mode == "wall_clock"
+            and computed_freshness
+            and computed_freshness != "fresh"
+        ):
+            errors.append("local_observed_artifact_ready_with_stale_wall_clock_freshness")
+        if (
+            freshness_evaluation_mode == "wall_clock"
+            and not operational_freshness_confirmed
+        ):
+            errors.append("local_observed_artifact_ready_without_operational_freshness")
     if decision.startswith("blocked") and not _blocker_present(blocker):
         errors.append("crypto_readiness_blocked_without_blocker")
     if freshness == "fresh" and _blocker_present(price_blocker):
@@ -1576,6 +1728,8 @@ def _observed_latest_price_evidence(
     artifact: Mapping[str, object] | None,
     selected_symbol: str,
     as_of: str,
+    freshness_evaluation_mode: str,
+    freshness_evaluated_at: str,
 ) -> dict[str, object]:
     source_artifact = _mapping(artifact)
     configured = _is_true(source_artifact.get("configured"))
@@ -1586,6 +1740,7 @@ def _observed_latest_price_evidence(
                 source_artifact,
                 status="not_configured",
                 blocker="broker_read_not_configured",
+                freshness_evaluation_mode=freshness_evaluation_mode,
             ),
         }
 
@@ -1600,6 +1755,7 @@ def _observed_latest_price_evidence(
             selected_symbol=selected_symbol,
             as_of=as_of,
             blocker=blocker,
+            freshness_evaluation_mode=freshness_evaluation_mode,
         )
 
     price_payload = _observed_latest_price_payload(payload)
@@ -1646,7 +1802,7 @@ def _observed_latest_price_evidence(
     computed_freshness, freshness_blocker, age_seconds = _observed_price_freshness(
         latest_price_value=value,
         observed_at=observed_at,
-        as_of=as_of,
+        as_of=freshness_evaluated_at,
     )
     price_status = _first_text(price_payload, "price_evidence_status", "status")
     price_blocker = _normalized_blocker(
@@ -1689,6 +1845,7 @@ def _observed_latest_price_evidence(
         blocker=final_blocker,
         payload=payload,
         source_payload=price_payload,
+        freshness_evaluation_mode=freshness_evaluation_mode,
     )
     return {
         "configured": True,
@@ -1713,6 +1870,7 @@ def _blocked_observed_latest_price_evidence(
     selected_symbol: str,
     as_of: str,
     blocker: str,
+    freshness_evaluation_mode: str,
 ) -> dict[str, object]:
     normalized_blocker = _normalized_blocker(blocker)
     if normalized_blocker in {
@@ -1724,6 +1882,7 @@ def _blocked_observed_latest_price_evidence(
         source_artifact,
         status="blocked",
         blocker=normalized_blocker,
+        freshness_evaluation_mode=freshness_evaluation_mode,
     )
     rows = [
         _latest_price_source_row(
@@ -1787,6 +1946,7 @@ def _observed_artifact_summary(
     blocker: str,
     payload: Mapping[str, object] | None = None,
     source_payload: Mapping[str, object] | None = None,
+    freshness_evaluation_mode: str = "",
 ) -> dict[str, object]:
     payload_map = _mapping(payload)
     source_map = _mapping(source_payload)
@@ -1827,7 +1987,7 @@ def _observed_artifact_summary(
         "broker_observed_refresh_status": (
             "broker_read_not_configured"
             if not _is_true(source_artifact.get("configured"))
-            else "local_observed_artifact_replay"
+            else _local_observed_artifact_refresh_status(freshness_evaluation_mode)
         ),
     }
 
@@ -1881,6 +2041,18 @@ def _positive_decimal_or_none(value: object) -> Decimal | None:
     except Exception:
         return None
     if not parsed.is_finite() or parsed <= Decimal("0"):
+        return None
+    return parsed
+
+
+def _decimal_or_none(value: object) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    try:
+        parsed = Decimal(str(value))
+    except Exception:
+        return None
+    if not parsed.is_finite():
         return None
     return parsed
 
@@ -2209,6 +2381,16 @@ def _operating_record(packet: Mapping[str, object]) -> dict[str, object]:
                 "latest_price_freshness_status",
                 "",
             ),
+            "freshness_evaluated_at": readiness.get("freshness_evaluated_at", ""),
+            "freshness_evaluation_mode": readiness.get(
+                "freshness_evaluation_mode",
+                "",
+            ),
+            "latest_price_age_basis": readiness.get("latest_price_age_basis", ""),
+            "operational_freshness_confirmed": readiness.get(
+                "operational_freshness_confirmed",
+                False,
+            ),
         },
         "blockers": status.get("blockers", []),
         "labels": list(REQUIRED_LABELS),
@@ -2224,6 +2406,45 @@ def _cycle_as_of(
     values = [explicit]
     values.extend(_first_text(payload, "as_of") for payload in payloads)
     return _first_nonempty(*values)
+
+
+def _resolve_freshness_evaluation_mode(
+    value: object,
+    *,
+    explicit_as_of: bool,
+) -> str:
+    mode = _text(value)
+    if mode:
+        return mode
+    return "deterministic_replay" if explicit_as_of else "wall_clock"
+
+
+def _resolve_freshness_evaluated_at(
+    value: datetime | str | None,
+    *,
+    mode: str,
+    replay_basis: str,
+) -> str:
+    explicit = _as_of_argument(value)
+    if explicit:
+        return explicit
+    if mode == "wall_clock":
+        return datetime.now(UTC).isoformat()
+    return replay_basis
+
+
+def _latest_price_age_basis(freshness_evaluation_mode: str) -> str:
+    if freshness_evaluation_mode == "wall_clock":
+        return "freshness_evaluated_at_minus_observed_at_wall_clock"
+    if freshness_evaluation_mode == "deterministic_replay":
+        return "freshness_evaluated_at_minus_observed_at_replay_basis"
+    return "unknown_freshness_evaluation_mode"
+
+
+def _local_observed_artifact_refresh_status(freshness_evaluation_mode: str) -> str:
+    if freshness_evaluation_mode == "wall_clock":
+        return "local_observed_artifact_wall_clock_evaluated"
+    return "local_observed_artifact_replay"
 
 
 def _as_of_argument(value: datetime | str | None) -> str:
@@ -2322,6 +2543,10 @@ def _is_true(value: object) -> bool:
     if type(value) is bool:
         return value
     return _text(value).lower() in {"true", "1", "yes"}
+
+
+def _bool_text(value: object) -> str:
+    return "true" if _is_true(value) else "false"
 
 
 def _int_or_none(value: object) -> int | None:

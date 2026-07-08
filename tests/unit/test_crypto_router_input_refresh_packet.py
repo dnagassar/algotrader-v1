@@ -261,12 +261,15 @@ def test_cycle_rerun_threads_local_observed_artifact_to_no_submit_cycle(
     tmp_path: Path,
 ) -> None:
     paths = _write_packet_inputs(tmp_path)
+    freshness_evaluated_at = AS_OF + timedelta(minutes=30)
     artifact_path = tmp_path / "runs" / "observed" / "broker_observed_readiness_packet.json"
     _write_json(artifact_path, _observed_latest_price_artifact())
 
     packet = run_crypto_router_input_refresh_packet(
         **paths,
         observed_latest_price_artifact_path=artifact_path,
+        freshness_evaluation_mode="wall_clock",
+        freshness_evaluated_at=freshness_evaluated_at,
         allow_fixture_repair=False,
         write_artifacts=True,
     )
@@ -279,6 +282,17 @@ def test_cycle_rerun_threads_local_observed_artifact_to_no_submit_cycle(
         "local_observed_artifact_replay"
     )
     assert cycle_status["latest_price_source"] == "local_observed_artifact_latest_quote"
+    assert cycle_status["latest_price_observed_at"] == AS_OF.isoformat()
+    assert cycle_status["latest_price_age_seconds"] == "1800"
+    assert cycle_status["latest_price_freshness_threshold_seconds"] == "7200"
+    assert cycle_status["latest_price_freshness_status"] == "fresh"
+    assert cycle_status["freshness_evaluated_at"] == freshness_evaluated_at.isoformat()
+    assert cycle_status["freshness_evaluation_mode"] == "wall_clock"
+    assert (
+        cycle_status["latest_price_age_basis"]
+        == "freshness_evaluated_at_minus_observed_at_wall_clock"
+    )
+    assert cycle_status["operational_freshness_confirmed"] is True
     assert cycle_status["observed_latest_price_artifact"]["status"] == "accepted"
     assert cycle_status["broker_read_occurred"] is False
     assert cycle_status["broker_mutation_occurred"] is False

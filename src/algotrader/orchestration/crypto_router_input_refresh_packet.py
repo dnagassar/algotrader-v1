@@ -71,6 +71,7 @@ NextOperatorAction = Literal[
     "repair_local_input_schema",
     "blocked",
 ]
+FreshnessEvaluationMode = Literal["wall_clock", "deterministic_replay"]
 
 ComponentClassification = Literal[
     "present_valid",
@@ -232,6 +233,8 @@ def run_crypto_router_input_refresh_packet(
     request_paper_read_repair: bool = False,
     request_market_data_refresh: bool = False,
     observed_latest_price_artifact_path: Path | str | None = None,
+    freshness_evaluation_mode: FreshnessEvaluationMode | None = None,
+    freshness_evaluated_at: datetime | str | None = None,
     as_of: datetime | str | None = None,
     write_artifacts: bool = True,
 ) -> dict[str, object]:
@@ -240,7 +243,13 @@ def run_crypto_router_input_refresh_packet(
     root = Path(output_root)
     if write_artifacts:
         root.mkdir(parents=True, exist_ok=True)
+    explicit_as_of = as_of not in (None, "")
     as_of_value = _utc_datetime(as_of or datetime.now(UTC), "as_of")
+    resolved_freshness_evaluation_mode = freshness_evaluation_mode
+    if resolved_freshness_evaluation_mode is None:
+        resolved_freshness_evaluation_mode = (
+            "deterministic_replay" if explicit_as_of else "wall_clock"
+        )
     refresh_root = Path(crypto_refresh_output_root)
     router_root = Path(router_output_root)
     input_paths = _input_paths(
@@ -304,6 +313,8 @@ def run_crypto_router_input_refresh_packet(
         preview_notional_cap=preview_notional_cap,
         allow_fixture_backed=allow_fixture_repair or repair_mode == "offline_fixture",
         observed_latest_price_artifact_path=observed_latest_price_artifact_path,
+        freshness_evaluation_mode=resolved_freshness_evaluation_mode,
+        freshness_evaluated_at=freshness_evaluated_at,
         as_of=as_of_value,
     )
     input_inventory = build_input_inventory(
@@ -558,6 +569,16 @@ def render_refresh_packet_brief(packet: Mapping[str, object]) -> str:
             f"- router_input_blocker_removed: `{_bool_text(readiness.get('router_input_blocker_removed'))}`",
             f"- cycle_invoked: `{_bool_text(cycle.get('cycle_invoked'))}`",
             f"- cycle_final_state: `{cycle.get('cycle_final_state', '')}`",
+            f"- latest_price_source: `{cycle.get('latest_price_source', '')}`",
+            f"- latest_price_basis: `{cycle.get('latest_price_basis', '')}`",
+            f"- latest_price_observed_at: `{cycle.get('latest_price_observed_at', '')}`",
+            f"- latest_price_age_seconds: `{cycle.get('latest_price_age_seconds', '')}`",
+            f"- latest_price_freshness_threshold_seconds: `{cycle.get('latest_price_freshness_threshold_seconds', '')}`",
+            f"- latest_price_freshness_status: `{cycle.get('latest_price_freshness_status', '')}`",
+            f"- freshness_evaluated_at: `{cycle.get('freshness_evaluated_at', '')}`",
+            f"- freshness_evaluation_mode: `{cycle.get('freshness_evaluation_mode', '')}`",
+            f"- latest_price_age_basis: `{cycle.get('latest_price_age_basis', '')}`",
+            f"- operational_freshness_confirmed: `{_bool_text(cycle.get('operational_freshness_confirmed'))}`",
             f"- next_operator_action: `{next_action.get('action', '')}`",
             f"- router_input_blocker_count: {blockers.get('blocker_count', 0)}",
             f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
@@ -587,6 +608,18 @@ def render_refresh_packet_text(packet: Mapping[str, object]) -> str:
             f"router_input_blocker_count={readiness.get('router_input_blocker_count', 0)}",
             f"cycle_invoked={_bool_text(cycle.get('cycle_invoked'))}",
             f"cycle_final_state={cycle.get('cycle_final_state', '')}",
+            f"latest_price_source={cycle.get('latest_price_source', '')}",
+            f"latest_price_basis={cycle.get('latest_price_basis', '')}",
+            f"latest_price_observed_at={cycle.get('latest_price_observed_at', '')}",
+            f"latest_price_age_seconds={cycle.get('latest_price_age_seconds', '')}",
+            "latest_price_freshness_threshold_seconds="
+            + _text(cycle.get("latest_price_freshness_threshold_seconds")),
+            f"latest_price_freshness_status={cycle.get('latest_price_freshness_status', '')}",
+            f"freshness_evaluated_at={cycle.get('freshness_evaluated_at', '')}",
+            f"freshness_evaluation_mode={cycle.get('freshness_evaluation_mode', '')}",
+            f"latest_price_age_basis={cycle.get('latest_price_age_basis', '')}",
+            "operational_freshness_confirmed="
+            + _bool_text(cycle.get("operational_freshness_confirmed")),
             f"next_operator_action={next_action.get('action', '')}",
             "broker_read_occurred=false",
             "broker_mutation_occurred=false",
@@ -1315,6 +1348,8 @@ def _rerun_cycle(
     preview_notional_cap: Decimal | str,
     allow_fixture_backed: bool,
     observed_latest_price_artifact_path: Path | str | None,
+    freshness_evaluation_mode: FreshnessEvaluationMode | None,
+    freshness_evaluated_at: datetime | str | None,
     as_of: datetime,
 ) -> dict[str, object]:
     cycle_root = output_root / "cycle_rerun"
@@ -1338,6 +1373,8 @@ def _rerun_cycle(
             preview_notional_cap=preview_notional_cap,
             allow_fixture_backed=allow_fixture_backed,
             observed_latest_price_artifact_path=observed_latest_price_artifact_path,
+            freshness_evaluation_mode=freshness_evaluation_mode,
+            freshness_evaluated_at=freshness_evaluated_at,
             as_of=as_of,
             write_artifacts=True,
         )
@@ -1378,9 +1415,22 @@ def _rerun_cycle(
         "latest_price_basis": _first_text(readiness, "latest_price_basis"),
         "latest_price_observed_at": _first_text(readiness, "latest_price_observed_at"),
         "latest_price_age_seconds": _first_text(readiness, "latest_price_age_seconds"),
+        "latest_price_freshness_threshold_seconds": _first_text(
+            readiness,
+            "latest_price_freshness_threshold_seconds",
+        ),
         "latest_price_freshness_status": _first_text(
             readiness,
             "latest_price_freshness_status",
+        ),
+        "freshness_evaluated_at": _first_text(readiness, "freshness_evaluated_at"),
+        "freshness_evaluation_mode": _first_text(
+            readiness,
+            "freshness_evaluation_mode",
+        ),
+        "latest_price_age_basis": _first_text(readiness, "latest_price_age_basis"),
+        "operational_freshness_confirmed": _is_true(
+            readiness.get("operational_freshness_confirmed")
         ),
         "observed_latest_price_artifact": dict(
             _mapping(readiness.get("observed_latest_price_artifact"))
@@ -1639,6 +1689,25 @@ def _operating_record(packet: Mapping[str, object]) -> dict[str, object]:
             _mapping_sequence(readiness.get("router_input_blockers_remaining"))
         ),
         "cycle_final_state": cycle.get("cycle_final_state", ""),
+        "latest_price_source": cycle.get("latest_price_source", ""),
+        "latest_price_basis": cycle.get("latest_price_basis", ""),
+        "latest_price_observed_at": cycle.get("latest_price_observed_at", ""),
+        "latest_price_age_seconds": cycle.get("latest_price_age_seconds", ""),
+        "latest_price_freshness_threshold_seconds": cycle.get(
+            "latest_price_freshness_threshold_seconds",
+            "",
+        ),
+        "latest_price_freshness_status": cycle.get(
+            "latest_price_freshness_status",
+            "",
+        ),
+        "freshness_evaluated_at": cycle.get("freshness_evaluated_at", ""),
+        "freshness_evaluation_mode": cycle.get("freshness_evaluation_mode", ""),
+        "latest_price_age_basis": cycle.get("latest_price_age_basis", ""),
+        "operational_freshness_confirmed": cycle.get(
+            "operational_freshness_confirmed",
+            False,
+        ),
         "next_operator_action": next_action.get("action", ""),
         "fresh_authorization_required_for_order": True,
         "labels": list(REQUIRED_LABELS),
@@ -1891,6 +1960,12 @@ def _field_lookup_key(value: object) -> str:
 
 def _bool_text(value: object) -> str:
     return "true" if value is True else "false"
+
+
+def _is_true(value: object) -> bool:
+    if type(value) is bool:
+        return value
+    return _text(value).lower() in {"true", "1", "yes"}
 
 
 def _false_flags() -> dict[str, bool]:

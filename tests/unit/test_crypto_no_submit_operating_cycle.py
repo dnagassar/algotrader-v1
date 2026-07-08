@@ -62,6 +62,13 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
     assert readiness["latest_price_source"] == "local_replay_latest_bar"
     assert readiness["latest_price_basis"] == "local_replay_latest_history_bar_close"
     assert readiness["latest_price_freshness_status"] == "fresh"
+    assert readiness["freshness_evaluated_at"] == AS_OF.isoformat()
+    assert readiness["freshness_evaluation_mode"] == "deterministic_replay"
+    assert (
+        readiness["latest_price_age_basis"]
+        == "freshness_evaluated_at_minus_observed_at_replay_basis"
+    )
+    assert readiness["operational_freshness_confirmed"] is False
     assert readiness["readiness_decision"] == "local_replay_ready_no_submit"
     assert readiness["blocker_taxonomy"] == "none"
     assert readiness["blocker"] == "none"
@@ -81,6 +88,8 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
     assert readiness["latest_price_source_table"][2]["selected"] is True
     assert status["crypto_readiness_decision"] == "local_replay_ready_no_submit"
     assert status["latest_price_freshness_status"] == "fresh"
+    assert status["freshness_evaluation_mode"] == "deterministic_replay"
+    assert status["operational_freshness_confirmed"] is False
     assert set(REQUIRED_LABELS) <= set(status["labels"])
 
     artifact_paths = packet["artifact_paths"]
@@ -125,6 +134,8 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
     }
     assert "fresh authorization required for any order: `true`" in brief
     assert "readiness decision: `local_replay_ready_no_submit`" in brief
+    assert "freshness evaluation mode: `deterministic_replay`" in brief
+    assert "operational freshness confirmed: `false`" in brief
 
 
 def test_fixture_replay_packet_is_preview_only_not_broker_observed_ready(
@@ -144,6 +155,8 @@ def test_fixture_replay_packet_is_preview_only_not_broker_observed_ready(
         "fixture_replay_requires_real_local_or_broker_observed_refresh"
     )
     assert readiness["latest_price_source"] == "offline_fixture_latest_bar"
+    assert readiness["freshness_evaluation_mode"] == "deterministic_replay"
+    assert readiness["operational_freshness_confirmed"] is False
     assert readiness["validation_status"] == "passed"
     assert packet["cycle_status"]["crypto_readiness_decision"] == (
         "fixture_replay_preview_only"
@@ -196,6 +209,13 @@ def test_local_observed_artifact_satisfies_fixture_readiness_when_fresh(
     assert readiness["latest_price_age_seconds"] == "0"
     assert readiness["latest_price_freshness_threshold_seconds"] == "7200"
     assert readiness["latest_price_freshness_status"] == "fresh"
+    assert readiness["freshness_evaluated_at"] == AS_OF.isoformat()
+    assert readiness["freshness_evaluation_mode"] == "deterministic_replay"
+    assert (
+        readiness["latest_price_age_basis"]
+        == "freshness_evaluated_at_minus_observed_at_replay_basis"
+    )
+    assert readiness["operational_freshness_confirmed"] is False
     assert readiness["latest_price_final_blocker"] == "none"
     assert readiness["observed_latest_price_artifact"]["status"] == "accepted"
     assert readiness["observed_latest_price_artifact"][
@@ -207,10 +227,79 @@ def test_local_observed_artifact_satisfies_fixture_readiness_when_fresh(
     assert readiness["broker_read_occurred"] is False
     assert readiness["broker_mutation_occurred"] is False
     assert readiness["paper_submit_occurred"] is False
+    assert (
+        readiness["broker_observed_refresh_status"]
+        == "local_observed_artifact_replay"
+    )
     assert diagnostics["selected_source"] == "quote"
     assert diagnostics["quote_status"] == "passed"
     assert diagnostics["trade_status"] == "unavailable"
     assert diagnostics["bar_status"] == "unavailable"
+    assert readiness["validation_status"] == "passed"
+
+
+def test_wall_clock_fresh_local_observed_artifact_is_operationally_fresh(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    freshness_evaluated_at = AS_OF + timedelta(minutes=30)
+    artifact_path = tmp_path / "runs" / "observed" / "wall_clock_fresh_price.json"
+    _write_json(artifact_path, _observed_latest_price_artifact(observed_at=AS_OF))
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        freshness_evaluation_mode="wall_clock",
+        freshness_evaluated_at=freshness_evaluated_at,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["readiness_decision"] == "local_observed_artifact_ready_no_submit"
+    assert readiness["blocker_taxonomy"] == "none"
+    assert readiness["blocker"] == "none"
+    assert readiness["latest_price_freshness_status"] == "fresh"
+    assert readiness["latest_price_age_seconds"] == "1800"
+    assert readiness["freshness_evaluated_at"] == freshness_evaluated_at.isoformat()
+    assert readiness["freshness_evaluation_mode"] == "wall_clock"
+    assert (
+        readiness["latest_price_age_basis"]
+        == "freshness_evaluated_at_minus_observed_at_wall_clock"
+    )
+    assert readiness["operational_freshness_confirmed"] is True
+    assert (
+        readiness["broker_observed_refresh_status"]
+        == "local_observed_artifact_wall_clock_evaluated"
+    )
+    assert packet["cycle_status"]["operational_freshness_confirmed"] is True
+    assert readiness["validation_status"] == "passed"
+
+
+def test_wall_clock_stale_local_observed_artifact_blocks(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    freshness_evaluated_at = AS_OF + timedelta(hours=3, minutes=30)
+    artifact_path = tmp_path / "runs" / "observed" / "wall_clock_stale_price.json"
+    _write_json(artifact_path, _observed_latest_price_artifact(observed_at=AS_OF))
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        freshness_evaluation_mode="wall_clock",
+        freshness_evaluated_at=freshness_evaluated_at,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["readiness_decision"] == "blocked_latest_price_not_fresh"
+    assert readiness["blocker_taxonomy"] == "latest_price_missing_or_stale"
+    assert readiness["blocker"] == "crypto_observed_latest_price_stale"
+    assert readiness["latest_price_freshness_status"] == "stale"
+    assert readiness["latest_price_age_seconds"] == "12600"
+    assert readiness["freshness_evaluation_mode"] == "wall_clock"
+    assert readiness["operational_freshness_confirmed"] is False
+    assert readiness["observed_latest_price_artifact"]["status"] == "blocked"
     assert readiness["validation_status"] == "passed"
 
 
@@ -237,6 +326,8 @@ def test_stale_local_observed_artifact_blocks_with_clear_blocker(
     assert readiness["blocker"] == "crypto_observed_latest_price_stale"
     assert readiness["latest_price_freshness_status"] == "stale"
     assert readiness["latest_price_age_seconds"] == "12600"
+    assert readiness["freshness_evaluation_mode"] == "deterministic_replay"
+    assert readiness["operational_freshness_confirmed"] is False
     assert readiness["observed_latest_price_artifact"]["status"] == "blocked"
     assert readiness["validation_status"] == "passed"
 
@@ -442,6 +533,83 @@ def test_readiness_validator_rejects_missing_timestamp_marked_fresh(
 
     assert "crypto_latest_price_timestamp_missing_marked_fresh" in errors
     assert "crypto_latest_price_source_table_fresh_without_timestamp" in errors
+
+
+def test_readiness_validator_rejects_missing_freshness_evaluation_mode(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness.pop("freshness_evaluation_mode")
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_freshness_evaluation_mode_missing" in errors
+
+
+def test_readiness_validator_rejects_missing_freshness_evaluated_at(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness.pop("freshness_evaluated_at")
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_freshness_evaluated_at_missing" in errors
+
+
+def test_readiness_validator_rejects_age_seconds_inconsistent_with_basis(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    evaluated_at = AS_OF + timedelta(minutes=30)
+    readiness["freshness_evaluation_mode"] = "wall_clock"
+    readiness["freshness_evaluated_at"] = evaluated_at.isoformat()
+    readiness["latest_price_age_basis"] = (
+        "freshness_evaluated_at_minus_observed_at_wall_clock"
+    )
+    readiness["operational_freshness_confirmed"] = True
+    readiness["latest_price_age_seconds"] = "0"
+    readiness["latest_price_source_table"][2]["age_seconds"] = "0"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_latest_price_age_seconds_mismatch" in errors
+
+
+def test_readiness_validator_rejects_deterministic_replay_operational_freshness(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness["operational_freshness_confirmed"] = True
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_deterministic_replay_operational_freshness_confirmed" in errors
+
+
+def test_readiness_validator_rejects_wall_clock_ready_when_artifact_is_stale(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    artifact_path = tmp_path / "runs" / "observed" / "fresh_price.json"
+    _write_json(artifact_path, _observed_latest_price_artifact(observed_at=AS_OF))
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        freshness_evaluation_mode="wall_clock",
+        freshness_evaluated_at=AS_OF + timedelta(minutes=30),
+        write_artifacts=True,
+    )
+    readiness = json.loads(json.dumps(packet["crypto_readiness_packet"]))
+    stale_evaluated_at = AS_OF + timedelta(hours=3, minutes=30)
+    readiness["freshness_evaluated_at"] = stale_evaluated_at.isoformat()
+    readiness["latest_price_age_seconds"] = "12600"
+    readiness["latest_price_source_table"][0]["age_seconds"] = "12600"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_latest_price_freshness_status_mismatch" in errors
+    assert "local_observed_artifact_ready_with_stale_wall_clock_freshness" in errors
 
 
 def test_readiness_validator_rejects_stale_selected_when_fresh_fallback_exists(
