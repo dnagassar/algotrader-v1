@@ -3,8 +3,12 @@ from __future__ import annotations
 import ast
 import copy
 import json
+import os
 from pathlib import Path
+import shutil
 import subprocess
+
+import pytest
 
 from algotrader.orchestration.crypto_paper_autonomy_cadence import (
     FALSE_AUTHORIZATION_FIELDS,
@@ -29,6 +33,7 @@ CLIENT_ORDER_ID = "v58-btcusd-paper-cert-bfa9caadd6b57b19"
 ENTRY_CLIENT_ORDER_ID = "v510-btcusd-entry-31147aa0135b0e92"
 EXIT_CLIENT_ORDER_ID = "v510-btcusd-exit-a32677e4399a7c86"
 SELECTED_CANDIDATE_ID = "crypto:BTCUSD:crypto_vol_adjusted_momentum_24h_preview"
+SENSITIVE_KEY = "SENTINEL_ALPACA_SECRET_DO_NOT_PRINT"
 
 
 def test_successful_lifecycle_and_candidate_inputs_produce_operator_review_packet(
@@ -302,6 +307,38 @@ def test_runner_script_contract_is_no_submit_and_offline() -> None:
     assert "replace_order" not in script
     assert "close_position" not in script
     assert "liquidate" not in script
+
+
+def test_runner_script_blocks_loaded_credentials_without_printing_values(
+    tmp_path: Path,
+) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(tmp_path, capture_path)
+    env["ALPACA_API_KEY"] = SENSITIVE_KEY
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT_PATH),
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    combined = result.stdout + result.stderr
+
+    assert result.returncode == 2, combined
+    assert "preflight_credential_variables_loaded=true" in result.stdout
+    assert "crypto_paper_autonomy_cadence_status=blocked_unsafe_environment" in result.stdout
+    assert not capture_path.exists()
+    assert SENSITIVE_KEY not in combined
 
 
 def _write_all_inputs(
@@ -596,6 +633,47 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
         encoding="utf-8",
         newline="\n",
     )
+
+
+def _fake_python_env(tmp_path: Path, capture_path: Path) -> dict[str, str]:
+    fake_python = tmp_path / "python.cmd"
+    fake_python.write_text(
+        "@echo off\r\n"
+        ">> \"%PYTHON_ARG_CAPTURE%\" echo %*\r\n"
+        "echo {\"cadence_status\":\"operator_review_ready\"}\r\n"
+        "exit /B 0\r\n",
+        encoding="utf-8",
+        newline="",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}{os.pathsep}{env.get('PATH', '')}"
+    env["PYTHON_ARG_CAPTURE"] = str(capture_path)
+    env["APP_PROFILE"] = "dev"
+    for name in (
+        "ALPACA_API_KEY",
+        "ALPACA_API_SECRET_KEY",
+        "ALPACA_SECRET_KEY",
+        "APCA_API_KEY_ID",
+        "APCA_API_SECRET_KEY",
+        "PYTEST_NETWORK",
+        "NETWORK_TESTS",
+        "ALLOW_NETWORK_TESTS",
+        "ALGO_TRADER_ALLOW_NETWORK_TESTS",
+        "RUN_ALPACA_PAPER_INTEGRATION_TESTS",
+        "ALPACA_BASE_URL",
+        "ALPACA_PAPER_BASE_URL",
+        "APCA_API_BASE_URL",
+    ):
+        env.pop(name, None)
+    return env
+
+
+def _powershell() -> str:
+    powershell = shutil.which("pwsh") or shutil.which("powershell")
+    if powershell is None:
+        pytest.skip("PowerShell is required to verify run_crypto_paper_autonomy_cadence.ps1")
+    return powershell
 
 
 def _call_name(node: ast.AST) -> str:

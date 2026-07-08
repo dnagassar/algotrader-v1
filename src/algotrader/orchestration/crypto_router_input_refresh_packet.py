@@ -49,6 +49,8 @@ DEFAULT_OUTPUT_ROOT = Path("runs/crypto_router_input_refresh_packet/latest")
 
 FinalState = Literal[
     "router_inputs_ready_cycle_rerun_complete",
+    "local_replay_cycle_rerun_complete",
+    "fixture_backed_cycle_rerun_complete",
     "router_inputs_partially_repaired_cycle_blocked",
     "blocked_missing_local_inputs",
     "blocked_stale_local_inputs",
@@ -61,6 +63,8 @@ FinalState = Literal[
 
 NextOperatorAction = Literal[
     "review_no_submit_packet",
+    "review_local_replay_no_submit_packet",
+    "review_fixture_backed_no_submit_packet",
     "rerun_crypto_no_submit_operating_cycle",
     "provide_or_authorize_market_data_refresh",
     "authorize_scoped_paper_read",
@@ -76,8 +80,19 @@ ComponentClassification = Literal[
     "not_refreshable_without_authorization",
 ]
 
+InputBasis = Literal[
+    "broker_observed",
+    "market_data_observed",
+    "local_replay",
+    "offline_fixture",
+    "stale_local",
+    "mixed",
+]
+
 FINAL_STATES: tuple[FinalState, ...] = (
     "router_inputs_ready_cycle_rerun_complete",
+    "local_replay_cycle_rerun_complete",
+    "fixture_backed_cycle_rerun_complete",
     "router_inputs_partially_repaired_cycle_blocked",
     "blocked_missing_local_inputs",
     "blocked_stale_local_inputs",
@@ -90,6 +105,8 @@ FINAL_STATES: tuple[FinalState, ...] = (
 
 NEXT_OPERATOR_ACTIONS: tuple[NextOperatorAction, ...] = (
     "review_no_submit_packet",
+    "review_local_replay_no_submit_packet",
+    "review_fixture_backed_no_submit_packet",
     "rerun_crypto_no_submit_operating_cycle",
     "provide_or_authorize_market_data_refresh",
     "authorize_scoped_paper_read",
@@ -103,6 +120,15 @@ COMPONENT_CLASSIFICATIONS: tuple[ComponentClassification, ...] = (
     "missing",
     "invalid_schema",
     "not_refreshable_without_authorization",
+)
+
+INPUT_BASES: tuple[InputBasis, ...] = (
+    "broker_observed",
+    "market_data_observed",
+    "local_replay",
+    "offline_fixture",
+    "stale_local",
+    "mixed",
 )
 
 REQUIRED_LABELS = (
@@ -145,11 +171,6 @@ ROUTER_INPUT_COMPONENTS = (
 ROUTER_READY_CYCLE_STATES = {
     "selected_candidate_no_submit_packet_ready",
     "no_trade",
-    "blocked_missing_sizing_preview",
-    "blocked_missing_handoff",
-    "blocked_missing_dry_run",
-    "blocked_missing_lifecycle_evidence",
-    "paper_read_reconciliation_required",
 }
 
 MARKET_DATA_BLOCKERS = {
@@ -227,14 +248,14 @@ def run_crypto_router_input_refresh_packet(
         bars_csv=Path(bars_csv),
         crypto_visibility_status=Path(crypto_visibility_status),
     )
-    input_inventory = build_input_inventory(
+    initial_input_inventory = build_input_inventory(
         input_paths=input_paths,
         as_of=as_of_value,
         request_paper_read_repair=request_paper_read_repair,
         request_market_data_refresh=request_market_data_refresh,
     )
     refresh_actions = _plan_refresh_actions(
-        input_inventory=input_inventory,
+        input_inventory=initial_input_inventory,
         allow_fixture_repair=allow_fixture_repair,
         request_paper_read_repair=request_paper_read_repair,
         request_market_data_refresh=request_market_data_refresh,
@@ -283,6 +304,18 @@ def run_crypto_router_input_refresh_packet(
         allow_fixture_backed=allow_fixture_repair or repair_mode == "offline_fixture",
         as_of=as_of_value,
     )
+    input_inventory = build_input_inventory(
+        input_paths=input_paths,
+        as_of=as_of_value,
+        request_paper_read_repair=request_paper_read_repair,
+        request_market_data_refresh=request_market_data_refresh,
+    )
+    input_basis = _input_basis(
+        input_inventory=input_inventory,
+        refresh_actions=refresh_actions,
+        cycle_rerun_status=cycle_rerun_status,
+        refresh_mode=repair_mode,
+    )
     router_input_blockers = _router_input_blockers(
         input_inventory=input_inventory,
         refresh_actions=refresh_actions,
@@ -293,10 +326,12 @@ def run_crypto_router_input_refresh_packet(
         refresh_actions=refresh_actions,
         router_input_blockers=router_input_blockers,
         cycle_rerun_status=cycle_rerun_status,
+        input_basis=input_basis,
     )
     next_operator_action = _next_operator_action_payload(
         final_state=final_state,
         router_input_blockers=router_input_blockers,
+        input_basis=input_basis,
     )
     input_readiness = _input_readiness(
         final_state=final_state,
@@ -307,6 +342,10 @@ def run_crypto_router_input_refresh_packet(
         next_operator_action=next_operator_action,
         output_root=root,
         as_of=as_of_value,
+        input_basis=input_basis,
+    )
+    router_input_blockers_remaining = list(
+        _mapping_sequence(router_input_blockers.get("blockers"))
     )
     packet = {
         "schema_version": SCHEMA_VERSION,
@@ -314,10 +353,14 @@ def run_crypto_router_input_refresh_packet(
         "operator_command": COMMAND_NAME,
         "as_of": as_of_value.isoformat(),
         "output_root": str(root),
+        "input_basis": input_basis,
+        "data_basis": input_basis,
         "input_inventory": input_inventory,
         "input_readiness": input_readiness,
         "refresh_actions": refresh_actions,
         "router_input_blockers": router_input_blockers,
+        "router_input_blocker_count": router_input_blockers.get("blocker_count", 0),
+        "router_input_blockers_remaining": router_input_blockers_remaining,
         "cycle_rerun_status": cycle_rerun_status,
         "next_operator_action": next_operator_action,
         "final_state": final_state,
@@ -508,11 +551,13 @@ def render_refresh_packet_brief(packet: Mapping[str, object]) -> str:
             "",
             f"- schema_version: `{packet.get('schema_version', '')}`",
             f"- final_state: `{readiness.get('final_state', packet.get('final_state', ''))}`",
+            f"- input_basis: `{readiness.get('input_basis', packet.get('input_basis', ''))}`",
+            f"- data_basis: `{readiness.get('data_basis', packet.get('data_basis', ''))}`",
             f"- router_input_blocker_removed: `{_bool_text(readiness.get('router_input_blocker_removed'))}`",
             f"- cycle_invoked: `{_bool_text(cycle.get('cycle_invoked'))}`",
             f"- cycle_final_state: `{cycle.get('cycle_final_state', '')}`",
             f"- next_operator_action: `{next_action.get('action', '')}`",
-            f"- blocker_count: {blockers.get('blocker_count', 0)}",
+            f"- router_input_blocker_count: {blockers.get('blocker_count', 0)}",
             f"- broker_read_occurred: `{_bool_text(packet.get('broker_read_occurred'))}`",
             f"- broker_mutation_occurred: `{_bool_text(packet.get('broker_mutation_occurred'))}`",
             f"- paper_submit_occurred: `{_bool_text(packet.get('paper_submit_occurred'))}`",
@@ -534,7 +579,10 @@ def render_refresh_packet_text(packet: Mapping[str, object]) -> str:
         [
             "crypto_router_input_refresh_packet_status=complete",
             f"final_state={readiness.get('final_state', packet.get('final_state', ''))}",
+            f"input_basis={readiness.get('input_basis', packet.get('input_basis', ''))}",
+            f"data_basis={readiness.get('data_basis', packet.get('data_basis', ''))}",
             f"router_input_blocker_removed={_bool_text(readiness.get('router_input_blocker_removed'))}",
+            f"router_input_blocker_count={readiness.get('router_input_blocker_count', 0)}",
             f"cycle_invoked={_bool_text(cycle.get('cycle_invoked'))}",
             f"cycle_final_state={cycle.get('cycle_final_state', '')}",
             f"next_operator_action={next_action.get('action', '')}",
@@ -1297,6 +1345,8 @@ def _rerun_cycle(
             "cycle_completed": False,
             "cycle_final_state": "blocked",
             "cycle_error": f"{exc.__class__.__name__}: {exc}",
+            "input_basis": refresh_mode,
+            "data_basis": refresh_mode,
             "router_input_blocker_removed": False,
             "labels": list(REQUIRED_LABELS),
             "profit_claim": "none",
@@ -1313,7 +1363,9 @@ def _rerun_cycle(
         "cycle_final_state": final_state,
         "cycle_next_operator_action": _first_text(cycle_status, "next_operator_action"),
         "cycle_blockers": list(_string_sequence(cycle_status.get("blockers"))),
-        "router_input_blocker_removed": final_state != "blocked_missing_router_inputs",
+        "input_basis": refresh_mode,
+        "data_basis": refresh_mode,
+        "router_input_blocker_removed": final_state in ROUTER_READY_CYCLE_STATES,
         "cycle_artifact_paths": dict(_mapping(packet.get("artifact_paths"))),
         "labels": list(REQUIRED_LABELS),
         "profit_claim": "none",
@@ -1352,8 +1404,10 @@ def _router_input_blockers(
                     "operator_request": action.get("operator_request", ""),
                 }
             )
-    if _text(cycle_rerun_status.get("cycle_final_state")) == "blocked_missing_router_inputs":
-        for blocker in _string_sequence(cycle_rerun_status.get("cycle_blockers")):
+    cycle_final_state = _text(cycle_rerun_status.get("cycle_final_state"))
+    if cycle_final_state and cycle_final_state not in ROUTER_READY_CYCLE_STATES:
+        cycle_blockers = _string_sequence(cycle_rerun_status.get("cycle_blockers"))
+        for blocker in cycle_blockers or (cycle_final_state,):
             blockers.append(
                 {
                     "component": "cycle_rerun",
@@ -1374,12 +1428,44 @@ def _router_input_blockers(
     }
 
 
+def _input_basis(
+    *,
+    input_inventory: Mapping[str, object],
+    refresh_actions: Mapping[str, object],
+    cycle_rerun_status: Mapping[str, object],
+    refresh_mode: str,
+) -> InputBasis:
+    action_modes = {
+        _text(action.get("refresh_mode"))
+        for action in _mapping_sequence(refresh_actions.get("actions"))
+        if action.get("performed") is True
+    }
+    cycle_basis = _text(cycle_rerun_status.get("input_basis"))
+    bases = {
+        basis
+        for basis in (*action_modes, cycle_basis, _text(refresh_mode))
+        if basis in INPUT_BASES
+    }
+    if "offline_fixture" in bases:
+        return "offline_fixture"
+    classifications = {
+        _text(component.get("classification"))
+        for component in _mapping_sequence(input_inventory.get("components"))
+    }
+    if "present_stale" in classifications:
+        return "stale_local"
+    if "local_replay" in bases:
+        return "local_replay"
+    return "local_replay"
+
+
 def _final_state(
     *,
     input_inventory: Mapping[str, object],
     refresh_actions: Mapping[str, object],
     router_input_blockers: Mapping[str, object],
     cycle_rerun_status: Mapping[str, object],
+    input_basis: InputBasis,
 ) -> FinalState:
     components = _mapping_sequence(input_inventory.get("components"))
     actions = _mapping_sequence(refresh_actions.get("actions"))
@@ -1405,17 +1491,23 @@ def _final_state(
 
     cycle_final_state = _text(cycle_rerun_status.get("cycle_final_state"))
     repair_performed = any(action.get("performed") is True for action in actions)
-    router_blocker_removed = cycle_rerun_status.get("router_input_blocker_removed") is True
-    if router_blocker_removed and cycle_final_state in ROUTER_READY_CYCLE_STATES:
-        return "router_inputs_ready_cycle_rerun_complete"
-    if repair_performed:
+    router_input_blocker_count = _int_or_none(router_input_blockers.get("blocker_count")) or 0
+    if repair_performed and router_input_blocker_count:
         return "router_inputs_partially_repaired_cycle_blocked"
     if "present_stale" in classifications:
         return "blocked_stale_local_inputs"
     if "missing" in classifications:
         return "blocked_missing_local_inputs"
-    if _int_or_none(router_input_blockers.get("blocker_count")):
+    if router_input_blocker_count:
         return "blocked"
+    if cycle_final_state in ROUTER_READY_CYCLE_STATES:
+        if input_basis == "offline_fixture":
+            return "fixture_backed_cycle_rerun_complete"
+        if input_basis == "local_replay" and repair_performed:
+            return "local_replay_cycle_rerun_complete"
+        return "router_inputs_ready_cycle_rerun_complete"
+    if repair_performed:
+        return "router_inputs_partially_repaired_cycle_blocked"
     return "blocked"
 
 
@@ -1423,9 +1515,12 @@ def _next_operator_action_payload(
     *,
     final_state: FinalState,
     router_input_blockers: Mapping[str, object],
+    input_basis: InputBasis,
 ) -> dict[str, object]:
     action: NextOperatorAction = {
         "router_inputs_ready_cycle_rerun_complete": "review_no_submit_packet",
+        "local_replay_cycle_rerun_complete": "review_local_replay_no_submit_packet",
+        "fixture_backed_cycle_rerun_complete": "review_fixture_backed_no_submit_packet",
         "router_inputs_partially_repaired_cycle_blocked": "rerun_crypto_no_submit_operating_cycle",
         "blocked_missing_local_inputs": "provide_or_authorize_market_data_refresh",
         "blocked_stale_local_inputs": "provide_or_authorize_market_data_refresh",
@@ -1440,7 +1535,13 @@ def _next_operator_action_payload(
         "record_type": "crypto_router_input_next_operator_action",
         "action": action,
         "final_state": final_state,
+        "input_basis": input_basis,
+        "data_basis": input_basis,
         "operator_request": _operator_request_for_final_state(final_state),
+        "router_input_blocker_count": router_input_blockers.get("blocker_count", 0),
+        "router_input_blockers_remaining": list(
+            _mapping_sequence(router_input_blockers.get("blockers"))
+        ),
         "blockers": list(_mapping_sequence(router_input_blockers.get("blockers"))),
         "fresh_authorization_required_for_order": True,
         "paper_submit_currently_authorized": False,
@@ -1462,26 +1563,36 @@ def _input_readiness(
     next_operator_action: Mapping[str, object],
     output_root: Path,
     as_of: datetime,
+    input_basis: InputBasis,
 ) -> dict[str, object]:
+    router_input_blocker_count = router_input_blockers.get("blocker_count", 0)
+    router_input_blockers_remaining = list(
+        _mapping_sequence(router_input_blockers.get("blockers"))
+    )
+    router_input_blocker_removed = _int_or_none(router_input_blocker_count) == 0
     return {
         "schema_version": SCHEMA_VERSION,
         "record_type": "crypto_router_input_readiness",
         "as_of": as_of.isoformat(),
         "output_root": str(output_root),
         "final_state": final_state,
-        "router_input_blocker_removed": (
-            final_state == "router_inputs_ready_cycle_rerun_complete"
+        "input_basis": input_basis,
+        "data_basis": input_basis,
+        "router_input_blocker_removed": router_input_blocker_removed,
+        "router_input_blocker_removed_semantics": (
+            "true_only_when_router_input_blocker_count_is_zero_not_cycle_readiness"
         ),
         "router_input_blocker_status": (
             "removed"
-            if final_state == "router_inputs_ready_cycle_rerun_complete"
+            if router_input_blocker_removed
             else "still_blocked"
         ),
         "cycle_rerun_status": cycle_rerun_status.get("cycle_final_state", ""),
         "next_operator_action": next_operator_action.get("action", ""),
         "classification_counts": _mapping(input_inventory.get("classification_counts")),
         "refresh_action_count": len(_mapping_sequence(refresh_actions.get("actions"))),
-        "router_input_blocker_count": router_input_blockers.get("blocker_count", 0),
+        "router_input_blocker_count": router_input_blocker_count,
+        "router_input_blockers_remaining": router_input_blockers_remaining,
         "fresh_authorization_required_for_order": True,
         "labels": list(REQUIRED_LABELS),
         "profit_claim": "none",
@@ -1498,7 +1609,13 @@ def _operating_record(packet: Mapping[str, object]) -> dict[str, object]:
         "record_type": "crypto_router_input_refresh_packet",
         "as_of": packet.get("as_of", ""),
         "final_state": readiness.get("final_state", packet.get("final_state", "")),
+        "input_basis": readiness.get("input_basis", packet.get("input_basis", "")),
+        "data_basis": readiness.get("data_basis", packet.get("data_basis", "")),
         "router_input_blocker_removed": readiness.get("router_input_blocker_removed", False),
+        "router_input_blocker_count": readiness.get("router_input_blocker_count", 0),
+        "router_input_blockers_remaining": list(
+            _mapping_sequence(readiness.get("router_input_blockers_remaining"))
+        ),
         "cycle_final_state": cycle.get("cycle_final_state", ""),
         "next_operator_action": next_action.get("action", ""),
         "fresh_authorization_required_for_order": True,
@@ -1521,6 +1638,16 @@ def _operator_request_for_final_state(final_state: FinalState) -> str:
         return "repair local crypto router input schema, then rerun the refresh packet; no broker action is authorized."
     if final_state == "router_inputs_ready_cycle_rerun_complete":
         return "review the no-submit packet; any future order still requires fresh explicit authorization."
+    if final_state == "local_replay_cycle_rerun_complete":
+        return (
+            "review the local-replay no-submit packet only; this is not fresh broker "
+            "or market-data authorization for any order."
+        )
+    if final_state == "fixture_backed_cycle_rerun_complete":
+        return (
+            "review the fixture-backed no-submit packet only; fixture-backed readiness "
+            "must not be treated as fresh/current broker or market-data readiness."
+        )
     if final_state == "router_inputs_partially_repaired_cycle_blocked":
         return "review cycle blockers and rerun the no-submit operating cycle after local inputs are corrected."
     return "blocked; review router input blockers before any paper action."
@@ -1855,7 +1982,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         print(render_refresh_packet_text(packet))
     final_state = _text(packet.get("final_state"))
-    return 0 if final_state == "router_inputs_ready_cycle_rerun_complete" else 2
+    return (
+        0
+        if final_state
+        in {
+            "router_inputs_ready_cycle_rerun_complete",
+            "local_replay_cycle_rerun_complete",
+            "fixture_backed_cycle_rerun_complete",
+        }
+        else 2
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover

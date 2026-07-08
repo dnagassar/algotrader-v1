@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -32,6 +33,7 @@ AS_OF = datetime(2026, 7, 4, 0, 30, tzinfo=UTC)
 CLIENT_ORDER_ID = "v58-btcusd-paper-cert-bfa9caadd6b57b19"
 ENTRY_CLIENT_ORDER_ID = "v510-btcusd-entry-31147aa0135b0e92"
 EXIT_CLIENT_ORDER_ID = "v510-btcusd-exit-a32677e4399a7c86"
+SENSITIVE_KEY = "SENTINEL_ALPACA_SECRET_DO_NOT_PRINT"
 
 
 def test_inventory_detects_valid_local_crypto_router_inputs(tmp_path: Path) -> None:
@@ -47,7 +49,10 @@ def test_inventory_detects_valid_local_crypto_router_inputs(tmp_path: Path) -> N
     actions = packet["refresh_actions"]["actions"]
 
     assert packet["schema_version"] == SCHEMA_VERSION
-    assert packet["final_state"] == "router_inputs_ready_cycle_rerun_complete"
+    assert packet["final_state"] == "local_replay_cycle_rerun_complete"
+    assert packet["input_basis"] == "local_replay"
+    assert packet["router_input_blocker_removed"] is True
+    assert packet["router_input_blocker_count"] == 0
     assert components["crypto_universe_metadata"]["classification"] == "present_valid"
     assert components["symbol_orderability_metadata"]["classification"] == "present_valid"
     assert components["history_or_feature_data"]["classification"] == "present_valid"
@@ -75,6 +80,9 @@ def test_inventory_detects_missing_router_inputs_and_blocks(
     components = _components(packet)
 
     assert packet["final_state"] == "blocked_missing_local_inputs"
+    assert packet["final_state"] != "router_inputs_ready_cycle_rerun_complete"
+    assert packet["router_input_blocker_removed"] is False
+    assert packet["router_input_blocker_count"] > 0
     assert packet["next_operator_action"]["action"] == (
         "provide_or_authorize_market_data_refresh"
     )
@@ -95,6 +103,9 @@ def test_stale_local_inputs_emit_blocked_stale_local_inputs(tmp_path: Path) -> N
     history = _components(packet)["history_or_feature_data"]
 
     assert packet["final_state"] == "blocked_stale_local_inputs"
+    assert packet["final_state"] != "router_inputs_ready_cycle_rerun_complete"
+    assert packet["router_input_blocker_removed"] is False
+    assert packet["router_input_blocker_count"] > 0
     assert history["classification"] == "present_stale"
     assert "stale_data" in history["blockers"]
     assert packet["next_operator_action"]["action"] == (
@@ -184,8 +195,13 @@ def test_fixture_repair_produces_refreshed_deterministic_artifacts(
     actions = packet["refresh_actions"]["actions"]
     refresh_root = Path(paths["crypto_refresh_output_root"])
 
-    assert packet["final_state"] == "router_inputs_ready_cycle_rerun_complete"
+    assert packet["final_state"] == "fixture_backed_cycle_rerun_complete"
+    assert packet["input_basis"] == "offline_fixture"
+    assert packet["next_operator_action"]["action"] == (
+        "review_fixture_backed_no_submit_packet"
+    )
     assert packet["router_input_blocker_removed"] is True
+    assert packet["router_input_blocker_count"] == 0
     assert any(
         action["action"] == "generate_fixture_backed_refresh_packet"
         and action["performed"] is True
@@ -229,7 +245,9 @@ def test_cycle_rerun_integration_invokes_no_submit_cycle(
         write_artifacts=True,
     )
 
-    assert packet["final_state"] == "router_inputs_ready_cycle_rerun_complete"
+    assert packet["final_state"] == "router_inputs_partially_repaired_cycle_blocked"
+    assert packet["router_input_blocker_removed"] is False
+    assert packet["router_input_blocker_count"] > 0
     assert captured["refresh_mode"] == "local_replay"
     assert captured["write_artifacts"] is True
     assert captured["allow_fixture_backed"] is False
@@ -257,6 +275,86 @@ def test_no_submit_no_broker_no_live_flags_remain_false(tmp_path: Path) -> None:
             assert payload[field_name] is False
         assert payload["profit_claim"] == "none"
         assert set(REQUIRED_LABELS) <= set(payload["labels"])
+
+
+@pytest.mark.parametrize(
+    "cycle_final_state",
+    (
+        "blocked_missing_dry_run",
+        "blocked_missing_sizing_preview",
+        "blocked_missing_handoff",
+        "blocked_missing_lifecycle_evidence",
+    ),
+)
+def test_blocked_inner_cycle_states_do_not_produce_ready_final_state(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    cycle_final_state: str,
+) -> None:
+    paths = _write_packet_inputs(tmp_path)
+    blocker = f"{cycle_final_state}_blocker"
+
+    def fake_cycle(**kwargs: object) -> dict[str, object]:
+        return {
+            "cycle_status": {
+                "final_state": cycle_final_state,
+                "next_operator_action": "blocked",
+                "blockers": [blocker],
+            },
+            "artifact_paths": {},
+        }
+
+    monkeypatch.setattr(packet_module, "run_crypto_no_submit_operating_cycle", fake_cycle)
+
+    packet = run_crypto_router_input_refresh_packet(
+        **paths,
+        allow_fixture_repair=False,
+        write_artifacts=True,
+    )
+
+    assert packet["final_state"] == "router_inputs_partially_repaired_cycle_blocked"
+    assert packet["final_state"] != "router_inputs_ready_cycle_rerun_complete"
+    assert packet["router_input_blocker_removed"] is False
+    assert packet["router_input_blocker_count"] > 0
+    assert packet["next_operator_action"]["action"] == (
+        "rerun_crypto_no_submit_operating_cycle"
+    )
+    assert any(
+        record["component"] == "cycle_rerun" and record["blocker"] == blocker
+        for record in packet["router_input_blockers_remaining"]
+    )
+
+
+def test_emitted_artifacts_do_not_contain_credential_sentinel_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = _write_packet_inputs(tmp_path)
+    sentinels = {
+        "ALPACA_API_KEY": SENSITIVE_KEY,
+        "ALPACA_API_SECRET_KEY": f"{SENSITIVE_KEY}_SECRET",
+        "ALPACA_SECRET_KEY": f"{SENSITIVE_KEY}_LEGACY",
+        "APCA_API_KEY_ID": f"{SENSITIVE_KEY}_APCA_ID",
+        "APCA_API_SECRET_KEY": f"{SENSITIVE_KEY}_APCA_SECRET",
+    }
+    for name, value in sentinels.items():
+        monkeypatch.setenv(name, value)
+
+    packet = run_crypto_router_input_refresh_packet(
+        **paths,
+        allow_fixture_repair=False,
+        write_artifacts=True,
+    )
+    output_root = Path(paths["output_root"])
+    emitted_text = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in sorted(output_root.rglob("*"))
+        if path.is_file()
+    )
+
+    assert packet["credential_values_exposed"] is False
+    for value in sentinels.values():
+        assert value not in emitted_text
 
 
 def test_generated_runs_artifacts_remain_untracked(tmp_path: Path) -> None:
@@ -292,6 +390,8 @@ def test_dependency_direction_guard_includes_refresh_packet_module() -> None:
 def test_decision_and_next_action_enums_are_exact() -> None:
     assert FINAL_STATES == (
         "router_inputs_ready_cycle_rerun_complete",
+        "local_replay_cycle_rerun_complete",
+        "fixture_backed_cycle_rerun_complete",
         "router_inputs_partially_repaired_cycle_blocked",
         "blocked_missing_local_inputs",
         "blocked_stale_local_inputs",
@@ -303,6 +403,8 @@ def test_decision_and_next_action_enums_are_exact() -> None:
     )
     assert NEXT_OPERATOR_ACTIONS == (
         "review_no_submit_packet",
+        "review_local_replay_no_submit_packet",
+        "review_fixture_backed_no_submit_packet",
         "rerun_crypto_no_submit_operating_cycle",
         "provide_or_authorize_market_data_refresh",
         "authorize_scoped_paper_read",
@@ -401,6 +503,36 @@ def test_script_contract_is_no_submit_offline_and_invokes_module() -> None:
     assert "replace_order" not in script
     assert "close_position" not in script
     assert "liquidate" not in script
+
+
+def test_script_blocks_loaded_credentials_without_printing_values(tmp_path: Path) -> None:
+    capture_path = tmp_path / "python_args.txt"
+    env = _fake_python_env(tmp_path, capture_path)
+    env["ALPACA_API_KEY"] = SENSITIVE_KEY
+
+    result = subprocess.run(
+        [
+            _powershell(),
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(SCRIPT_PATH),
+        ],
+        cwd=PROJECT_ROOT,
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+    )
+    combined = result.stdout + result.stderr
+
+    assert result.returncode == 2, combined
+    assert "preflight_credential_variables_loaded=true" in result.stdout
+    assert "crypto_router_input_refresh_packet_status=blocked_unsafe_environment" in result.stdout
+    assert not capture_path.exists()
+    assert SENSITIVE_KEY not in combined
 
 
 def _packet_paths(tmp_path: Path) -> dict[str, object]:
@@ -656,6 +788,40 @@ def _call_name(node: ast.AST) -> str:
         parent = _call_name(node.value)
         return f"{parent}.{node.attr}" if parent else node.attr
     return ""
+
+
+def _fake_python_env(tmp_path: Path, capture_path: Path) -> dict[str, str]:
+    fake_python = tmp_path / "python.cmd"
+    fake_python.write_text(
+        "@echo off\r\n"
+        ">> \"%PYTHON_ARG_CAPTURE%\" echo %*\r\n"
+        "echo {\"final_state\":\"router_inputs_ready_cycle_rerun_complete\"}\r\n"
+        "exit /B 0\r\n",
+        encoding="utf-8",
+        newline="",
+    )
+
+    env = os.environ.copy()
+    env["PATH"] = f"{tmp_path}{os.pathsep}{env.get('PATH', '')}"
+    env["PYTHON_ARG_CAPTURE"] = str(capture_path)
+    env["APP_PROFILE"] = "dev"
+    for name in (
+        "ALPACA_API_KEY",
+        "ALPACA_API_SECRET_KEY",
+        "ALPACA_SECRET_KEY",
+        "APCA_API_KEY_ID",
+        "APCA_API_SECRET_KEY",
+        "PYTEST_NETWORK",
+        "NETWORK_TESTS",
+        "ALLOW_NETWORK_TESTS",
+        "ALGO_TRADER_ALLOW_NETWORK_TESTS",
+        "RUN_ALPACA_PAPER_INTEGRATION_TESTS",
+        "ALPACA_BASE_URL",
+        "ALPACA_PAPER_BASE_URL",
+        "APCA_API_BASE_URL",
+    ):
+        env.pop(name, None)
+    return env
 
 
 def _powershell() -> str:
