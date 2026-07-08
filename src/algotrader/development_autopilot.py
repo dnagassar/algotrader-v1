@@ -179,6 +179,30 @@ GPT_REVIEW_FIELD_NAMES = (
     "gpt_review_hard_gate_reason",
     "gpt_review_next_operator_action",
 )
+FINALIZATION_COMMAND_PACKET_VERSION = "1.0"
+FINALIZATION_COMMAND_FIELD_NAMES = (
+    "finalization_command_packet_version",
+    "finalization_command_status",
+    "finalization_command_blocker",
+    "finalization_command_ready",
+    "finalization_command_requires_gpt_acceptance",
+    "finalization_command_expected_baseline",
+    "finalization_command_expected_origin_main",
+    "finalization_command_expected_branch",
+    "finalization_command_expected_changed_files",
+    "finalization_command_expected_staged_files",
+    "finalization_command_commit_message",
+    "finalization_command_would_push",
+    "finalization_command_push_remote_name",
+    "finalization_command_push_remote_url_sanitized",
+    "finalization_command_push_remote_url_kind",
+    "finalization_command_nonlocal_push_authorized",
+    "finalization_command_push_authorization_status",
+    "finalization_command_hard_gate_required",
+    "finalization_command_hard_gate_reason",
+    "finalization_command_powershell",
+    "finalization_command_summary",
+)
 
 
 @dataclass(frozen=True)
@@ -340,6 +364,7 @@ def run_development_autopilot(
         "git_mode": resolved_options.git_mode,
         **_empty_git_mutation_record(),
         **_empty_gpt_review_record(),
+        **_empty_finalization_command_record(),
         "final_classification": "blocked",
         "exact_next_action": "",
         "required_labels": sorted(SAFE_REQUIRED_LABELS),
@@ -1044,6 +1069,9 @@ def _artifact_paths(output_root: Path) -> dict[str, Path]:
         "work_order_packet": output_root / "work_order_packet.json",
         "verification_results": output_root / "verification_results.json",
         "next_action_packet": output_root / "next_action_packet.json",
+        "finalization_command_packet": (
+            output_root / "finalization_command_packet.json"
+        ),
     }
 
 
@@ -2062,9 +2090,49 @@ def _empty_gpt_review_record() -> dict[str, object]:
     }
 
 
+def _empty_finalization_command_record() -> dict[str, object]:
+    return {
+        "finalization_command_packet_version": (
+            FINALIZATION_COMMAND_PACKET_VERSION
+        ),
+        "finalization_command_status": "not_applicable",
+        "finalization_command_blocker": None,
+        "finalization_command_ready": False,
+        "finalization_command_requires_gpt_acceptance": False,
+        "finalization_command_expected_baseline": "",
+        "finalization_command_expected_origin_main": "",
+        "finalization_command_expected_branch": "",
+        "finalization_command_expected_changed_files": [],
+        "finalization_command_expected_staged_files": [],
+        "finalization_command_commit_message": "",
+        "finalization_command_would_push": False,
+        "finalization_command_push_remote_name": "",
+        "finalization_command_push_remote_url_sanitized": "",
+        "finalization_command_push_remote_url_kind": "unknown",
+        "finalization_command_nonlocal_push_authorized": False,
+        "finalization_command_push_authorization_status": "not_applicable",
+        "finalization_command_hard_gate_required": False,
+        "finalization_command_hard_gate_reason": None,
+        "finalization_command_powershell": "",
+        "finalization_command_summary": (
+            "Finalization command packet is not applicable."
+        ),
+    }
+
+
 def _gpt_review_fields(record: Mapping[str, object]) -> dict[str, object]:
     defaults = _empty_gpt_review_record()
     return {field: record.get(field, defaults[field]) for field in GPT_REVIEW_FIELD_NAMES}
+
+
+def _finalization_command_fields(
+    record: Mapping[str, object],
+) -> dict[str, object]:
+    defaults = _empty_finalization_command_record()
+    return {
+        field: record.get(field, defaults[field])
+        for field in FINALIZATION_COMMAND_FIELD_NAMES
+    }
 
 
 def _build_gpt_review_record(
@@ -2397,6 +2465,529 @@ def _gpt_review_next_operator_action(status: str) -> str:
     return "No GPT review packet action is required."
 
 
+def _build_finalization_command_record(
+    record: Mapping[str, object],
+    *,
+    repo_root: Path,
+) -> dict[str, object]:
+    packet = _empty_finalization_command_record()
+    git_mutation_mode = str(
+        record.get("git_mutation_mode", GIT_MUTATION_MODE_NONE)
+    )
+    expected_baseline = str(
+        record.get("expected_head") or record.get("starting_head") or ""
+    )
+    expected_origin_main = str(
+        record.get("origin_main_before") or record.get("expected_head") or ""
+    )
+    expected_branch = str(record.get("branch") or "main")
+    stage_files = _string_list(record.get("gpt_review_proposed_stage_files", []))
+    commit_message = str(record.get("gpt_review_proposed_commit_message", ""))
+    would_push = bool(record.get("gpt_review_would_push", False))
+    remote_name = str(record.get("gpt_review_push_remote_name", ""))
+    remote_url_sanitized = str(
+        record.get("gpt_review_push_remote_url_sanitized", "")
+    )
+    remote_url_kind = str(
+        record.get("gpt_review_push_remote_url_kind", "unknown")
+    )
+    nonlocal_push_authorized = bool(
+        record.get("gpt_review_nonlocal_push_authorized", False)
+    )
+    push_authorization_status = str(
+        record.get("gpt_review_push_authorization_status", "not_applicable")
+    )
+
+    packet.update(
+        {
+            "finalization_command_expected_baseline": expected_baseline,
+            "finalization_command_expected_origin_main": expected_origin_main,
+            "finalization_command_expected_branch": expected_branch,
+            "finalization_command_would_push": would_push,
+            "finalization_command_push_remote_name": remote_name,
+            "finalization_command_push_remote_url_sanitized": remote_url_sanitized,
+            "finalization_command_push_remote_url_kind": remote_url_kind,
+            "finalization_command_nonlocal_push_authorized": (
+                nonlocal_push_authorized
+            ),
+            "finalization_command_push_authorization_status": (
+                push_authorization_status
+            ),
+            "finalization_command_hard_gate_required": bool(
+                record.get("gpt_review_hard_gate_required", False)
+            ),
+            "finalization_command_hard_gate_reason": record.get(
+                "gpt_review_hard_gate_reason"
+            ),
+        }
+    )
+
+    if git_mutation_mode != GIT_MUTATION_MODE_PLAN_ONLY:
+        packet["finalization_command_summary"] = (
+            "Finalization command packet is not applicable for git mutation "
+            f"mode {git_mutation_mode}; no command is emitted."
+        )
+        packet["finalization_command_would_push"] = False
+        return packet
+
+    gpt_status = str(record.get("gpt_review_status", "not_applicable"))
+    if gpt_status == "no_changes":
+        packet["finalization_command_status"] = "no_changes"
+        packet["finalization_command_would_push"] = False
+        packet["finalization_command_summary"] = (
+            "No commit is required; no finalization command is emitted."
+        )
+        return packet
+
+    if gpt_status == "blocked_network_push_not_authorized":
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_network_push_not_authorized",
+            blocker="network_push_not_authorized",
+            hard_gate_reason="network_push_not_authorized",
+            summary=(
+                "Finalization command generation is blocked because a network "
+                "push is not authorized."
+            ),
+        )
+
+    if gpt_status == "blocked_unknown_remote":
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_unknown_remote",
+            blocker="push_remote_unknown",
+            hard_gate_reason="push_remote_unknown",
+            summary=(
+                "Finalization command generation is blocked because push "
+                "remote provenance is unknown."
+            ),
+        )
+
+    if gpt_status == "blocked_safety_invariant":
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_safety_invariant",
+            blocker="safety_invariant_failed",
+            hard_gate_reason="safety_invariant_failed",
+            summary=(
+                "Finalization command generation is blocked by a safety "
+                "invariant."
+            ),
+        )
+
+    if gpt_status != "ready_for_gpt_review":
+        packet["finalization_command_status"] = "blocked_gpt_review_not_ready"
+        packet["finalization_command_blocker"] = "gpt_review_not_ready"
+        packet["finalization_command_ready"] = False
+        packet["finalization_command_requires_gpt_acceptance"] = False
+        packet["finalization_command_would_push"] = False
+        packet["finalization_command_hard_gate_required"] = False
+        packet["finalization_command_hard_gate_reason"] = None
+        packet["finalization_command_summary"] = (
+            "Finalization command generation is blocked because the GPT "
+            f"review packet status is {gpt_status}."
+        )
+        return packet
+
+    if not stage_files:
+        packet["finalization_command_status"] = "blocked_no_stage_files"
+        packet["finalization_command_blocker"] = "no_stage_files"
+        packet["finalization_command_ready"] = False
+        packet["finalization_command_requires_gpt_acceptance"] = False
+        packet["finalization_command_would_push"] = False
+        packet["finalization_command_hard_gate_required"] = False
+        packet["finalization_command_hard_gate_reason"] = None
+        packet["finalization_command_summary"] = (
+            "Finalization command generation is blocked because GPT review "
+            "did not propose any exact stage files."
+        )
+        return packet
+
+    if not commit_message:
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_safety_invariant",
+            blocker="safety_invariant_failed",
+            hard_gate_reason="safety_invariant_failed",
+            summary=(
+                "Finalization command generation is blocked because the "
+                "reviewed commit message is empty."
+            ),
+        )
+
+    if would_push and remote_url_kind == "unknown":
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_unknown_remote",
+            blocker="push_remote_unknown",
+            hard_gate_reason="push_remote_unknown",
+            summary=(
+                "Finalization command generation is blocked because push "
+                "remote provenance is unknown."
+            ),
+        )
+
+    if would_push and remote_url_kind == "network" and not nonlocal_push_authorized:
+        return _blocked_finalization_command_record(
+            packet,
+            status="blocked_network_push_not_authorized",
+            blocker="network_push_not_authorized",
+            hard_gate_reason="network_push_not_authorized",
+            summary=(
+                "Finalization command generation is blocked because a network "
+                "push is not authorized."
+            ),
+        )
+
+    packet.update(
+        {
+            "finalization_command_status": "ready",
+            "finalization_command_blocker": None,
+            "finalization_command_ready": True,
+            "finalization_command_requires_gpt_acceptance": True,
+            "finalization_command_expected_changed_files": stage_files,
+            "finalization_command_expected_staged_files": stage_files,
+            "finalization_command_commit_message": commit_message,
+            "finalization_command_hard_gate_required": False,
+            "finalization_command_hard_gate_reason": None,
+            "finalization_command_powershell": _build_finalization_powershell(
+                repo_root=repo_root,
+                expected_baseline=expected_baseline,
+                expected_origin_main=expected_origin_main,
+                expected_branch=expected_branch,
+                expected_files=tuple(stage_files),
+                commit_message=commit_message,
+                would_push=would_push,
+                push_remote_name=remote_name or "origin",
+            ),
+            "finalization_command_summary": (
+                "Paste-ready finalization commands are available for GPT and "
+                "operator review only; they are not approved or executed by "
+                "the local autopilot."
+            ),
+        }
+    )
+    return packet
+
+
+def _blocked_finalization_command_record(
+    packet: dict[str, object],
+    *,
+    status: str,
+    blocker: str,
+    hard_gate_reason: str,
+    summary: str,
+) -> dict[str, object]:
+    packet["finalization_command_status"] = status
+    packet["finalization_command_blocker"] = blocker
+    packet["finalization_command_ready"] = False
+    packet["finalization_command_requires_gpt_acceptance"] = False
+    packet["finalization_command_expected_changed_files"] = []
+    packet["finalization_command_expected_staged_files"] = []
+    packet["finalization_command_commit_message"] = ""
+    packet["finalization_command_would_push"] = False
+    packet["finalization_command_hard_gate_required"] = True
+    packet["finalization_command_hard_gate_reason"] = hard_gate_reason
+    packet["finalization_command_powershell"] = ""
+    packet["finalization_command_summary"] = summary
+    return packet
+
+
+def _build_finalization_powershell(
+    *,
+    repo_root: Path,
+    expected_baseline: str,
+    expected_origin_main: str,
+    expected_branch: str,
+    expected_files: tuple[str, ...],
+    commit_message: str,
+    would_push: bool,
+    push_remote_name: str,
+) -> str:
+    expected_files_array = _powershell_array_literal(expected_files)
+    git_add_args = " ".join(_powershell_command_arg(path) for path in expected_files)
+    commit_message_arg = _powershell_double_quoted(commit_message)
+    repo_root_arg = _powershell_command_arg(str(repo_root))
+    push_line = (
+        "    git push origin main"
+        if push_remote_name == "origin" and expected_branch == "main"
+        else (
+            "    git push "
+            f"{_powershell_command_arg(push_remote_name)} "
+            f"{_powershell_command_arg(expected_branch)}"
+        )
+    )
+    checks_origin_main_after_push = (
+        would_push and push_remote_name == "origin" and expected_branch == "main"
+    )
+    post_push_check_lines = (
+        [
+            "    $OriginAfter = (git rev-parse origin/main).Trim()",
+            (
+                "    if ($NewHead -ne $OriginAfter) { "
+                "throw 'HEAD does not match origin/main after push.' }"
+            ),
+        ]
+        if checks_origin_main_after_push
+        else [
+            (
+                "    Write-Host "
+                '"finalization_command_origin_main_check=skipped_non_main_push"'
+            )
+        ]
+    )
+    final_origin_log_lines = (
+        [
+            "if ($WouldPush) {",
+            "    git rev-parse origin/main",
+            "}",
+        ]
+        if checks_origin_main_after_push
+        else []
+    )
+    lines = [
+        f"cd {repo_root_arg}",
+        '$ErrorActionPreference = "Stop"',
+        f'$ExpectedBaseline = "{_powershell_double_quoted_text(expected_baseline)}"',
+        (
+            '$ExpectedOriginMain = '
+            f'"{_powershell_double_quoted_text(expected_origin_main)}"'
+        ),
+        f'$ExpectedBranch = "{_powershell_double_quoted_text(expected_branch)}"',
+        f"$ExpectedFiles = {expected_files_array}",
+        f"$WouldPush = {_powershell_bool(would_push)}",
+        "",
+        "function Test-SafePreflight {",
+        "    $checks = [ordered]@{",
+        "        APP_PROFILE_is_paper = ($env:APP_PROFILE -eq 'paper')",
+        "        ALPACA_API_KEY_loaded = [bool]$env:ALPACA_API_KEY",
+        (
+            "        ALPACA_API_SECRET_KEY_loaded = "
+            "[bool]$env:ALPACA_API_SECRET_KEY"
+        ),
+        "        ALPACA_SECRET_KEY_loaded = [bool]$env:ALPACA_SECRET_KEY",
+        "        APCA_API_KEY_ID_loaded = [bool]$env:APCA_API_KEY_ID",
+        (
+            "        APCA_API_SECRET_KEY_loaded = "
+            "[bool]$env:APCA_API_SECRET_KEY"
+        ),
+        "    }",
+        "    foreach ($entry in $checks.GetEnumerator()) {",
+        (
+            "        Write-Host (\"{0}={1}\" -f $entry.Key, "
+            "$entry.Value.ToString().ToLowerInvariant())"
+        ),
+        "    }",
+        (
+            "    if ($checks['APP_PROFILE_is_paper'] -or "
+            "$checks['ALPACA_API_KEY_loaded'] -or "
+            "$checks['ALPACA_API_SECRET_KEY_loaded'] -or "
+            "$checks['ALPACA_SECRET_KEY_loaded'] -or "
+            "$checks['APCA_API_KEY_ID_loaded'] -or "
+            "$checks['APCA_API_SECRET_KEY_loaded']) {"
+        ),
+        "        throw 'Safety preflight failed: paper profile or credentials loaded.'",
+        "    }",
+        "}",
+        "",
+        "function Get-PorcelainPath {",
+        "    param([string]$Line)",
+        "    if ($Line.Length -le 3) { return '' }",
+        "    return $Line.Substring(3).Replace('\\', '/')",
+        "}",
+        "",
+        "function Test-IsExpectedDocsReviewsResidue {",
+        "    param([string]$Path)",
+        (
+            "    return ($Path -eq 'docs/reviews/' -or "
+            "$Path.StartsWith('docs/reviews/'))"
+        ),
+        "}",
+        "",
+        "function Get-RelevantChangedFiles {",
+        "    $files = @()",
+        "    foreach ($line in git status --porcelain --untracked-files=all) {",
+        "        $path = Get-PorcelainPath $line",
+        "        if (-not (Test-IsExpectedDocsReviewsResidue $path)) {",
+        "            $files += $path",
+        "        }",
+        "    }",
+        "    return @($files | Sort-Object)",
+        "}",
+        "",
+        "function Get-PreStagedFiles {",
+        "    $files = @()",
+        "    foreach ($line in git status --porcelain --untracked-files=all) {",
+        "        $path = Get-PorcelainPath $line",
+        "        if (Test-IsExpectedDocsReviewsResidue $path) { continue }",
+        "        $code = $line.Substring(0, 2)",
+        "        if ($code -ne '??' -and $code.Substring(0, 1) -ne ' ') {",
+        "            $files += $path",
+        "        }",
+        "    }",
+        "    return @($files | Sort-Object)",
+        "}",
+        "",
+        "function Assert-ExactSet {",
+        "    param(",
+        "        [string]$Name,",
+        "        [string[]]$Actual,",
+        "        [string[]]$Expected",
+        "    )",
+        "    $actualSorted = @($Actual | Sort-Object)",
+        "    $expectedSorted = @($Expected | Sort-Object)",
+        "    if ($actualSorted.Count -ne $expectedSorted.Count) {",
+        (
+            "        throw (\"Unexpected {0}: actual=[{1}] expected=[{2}]\" -f "
+            "$Name, ($actualSorted -join ', '), ($expectedSorted -join ', '))"
+        ),
+        "    }",
+        "    for ($index = 0; $index -lt $expectedSorted.Count; $index++) {",
+        "        if ($actualSorted[$index] -ne $expectedSorted[$index]) {",
+        (
+            "            throw (\"Unexpected {0}: actual=[{1}] expected=[{2}]\" "
+            "-f $Name, ($actualSorted -join ', '), "
+            "($expectedSorted -join ', '))"
+        ),
+        "        }",
+        "    }",
+        "}",
+        "",
+        "function Assert-NoForbiddenStageFiles {",
+        "    foreach ($file in $ExpectedFiles) {",
+        "        $normalized = $file.Replace('\\', '/')",
+        (
+            "        if ($normalized.StartsWith('docs/reviews/') -or "
+            "$normalized.StartsWith('runs/') -or "
+            "$normalized.StartsWith('.agent_inbox/') -or "
+            "$normalized.StartsWith('.data/') -or "
+            "$normalized.EndsWith('.csv') -or "
+            "$normalized.StartsWith('accepted_market_data/') -or "
+            "$normalized.StartsWith('market_data/accepted/')) {"
+        ),
+        (
+            "            throw (\"Forbidden file in expected stage set: {0}\" "
+            "-f $normalized)"
+        ),
+        "        }",
+        "    }",
+        "}",
+        "",
+        "$HeadBefore = (git rev-parse HEAD).Trim()",
+        (
+            "if ($HeadBefore -ne $ExpectedBaseline) { "
+            "throw \"HEAD mismatch before finalization.\" }"
+        ),
+        "$OriginBefore = (git rev-parse origin/main).Trim()",
+        (
+            "if ($OriginBefore -ne $ExpectedOriginMain) { "
+            "throw \"origin/main mismatch before finalization.\" }"
+        ),
+        "$BranchBefore = (git branch --show-current).Trim()",
+        (
+            "if ($BranchBefore -ne $ExpectedBranch) { "
+            "throw \"Unexpected branch before finalization.\" }"
+        ),
+        "Test-SafePreflight",
+        "python -B -m compileall src tests",
+        (
+            "python -m pytest tests/unit/test_development_autopilot.py "
+            "tests/unit/test_run_development_autopilot_script.py"
+        ),
+        (
+            "python -m pytest tests/unit/test_import_safety.py "
+            "tests/unit/test_dependency_direction.py "
+            "tests/unit/test_broker_mutation_surface_invariant.py "
+            "tests/unit/test_default_pytest_network_guard.py"
+        ),
+        (
+            "powershell -NoProfile -ExecutionPolicy Bypass -File "
+            "scripts\\verify_offline.ps1"
+        ),
+        "Test-SafePreflight",
+        "python -m pytest",
+        "git diff --check",
+        "$ChangedFiles = @(Get-RelevantChangedFiles)",
+        (
+            "Assert-ExactSet -Name 'changed files' -Actual $ChangedFiles "
+            "-Expected $ExpectedFiles"
+        ),
+        "$PreStagedFiles = @(Get-PreStagedFiles)",
+        "if ($PreStagedFiles.Count -ne 0) { throw 'Pre-staged files exist.' }",
+        "$TrackedRuns = @(git ls-files runs)",
+        "if ($TrackedRuns.Count -ne 0) { throw 'Tracked runs/ files exist.' }",
+        "$TrackedAgentInbox = @(git ls-files .agent_inbox)",
+        (
+            "if ($TrackedAgentInbox.Count -ne 0) { "
+            "throw 'Tracked .agent_inbox/ files exist.' }"
+        ),
+        "$UntrackedSourceTests = @(git ls-files --others --exclude-standard src tests)",
+        (
+            "if ($UntrackedSourceTests.Count -ne 0) { "
+            "throw 'Untracked src/ or tests/ files exist.' }"
+        ),
+        "Assert-NoForbiddenStageFiles",
+        f"git add -- {git_add_args}",
+        (
+            "$StagedFiles = @(git diff --cached --name-only -- | "
+            "ForEach-Object { $_.Replace('\\', '/') } | Sort-Object)"
+        ),
+        (
+            "Assert-ExactSet -Name 'staged files' -Actual $StagedFiles "
+            "-Expected $ExpectedFiles"
+        ),
+        "git diff --cached --check",
+        f"git commit -m {commit_message_arg}",
+        "$NewHead = (git rev-parse HEAD).Trim()",
+        (
+            "if ($NewHead -eq $ExpectedBaseline) { "
+            "throw 'HEAD did not advance after commit.' }"
+        ),
+        "if ($WouldPush) {",
+        push_line,
+        *post_push_check_lines,
+        "}",
+        "git log --oneline -5",
+        "git rev-parse HEAD",
+        *final_origin_log_lines,
+        "git status --short",
+        'Write-Host ("finalization_command_success new_baseline={0}" -f $NewHead)',
+    ]
+    return "\n".join(lines)
+
+
+def _powershell_bool(value: bool) -> str:
+    return "$true" if value else "$false"
+
+
+def _powershell_array_literal(values: tuple[str, ...]) -> str:
+    if not values:
+        return "@()"
+    rendered = ",\n    ".join(
+        _powershell_double_quoted(value) for value in values
+    )
+    return "@(\n    " + rendered + "\n)"
+
+
+def _powershell_command_arg(value: str) -> str:
+    safe_characters = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/\\._:-")
+    if value and all(character in safe_characters for character in value):
+        return value
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _powershell_double_quoted(value: str) -> str:
+    return f'"{_powershell_double_quoted_text(value)}"'
+
+
+def _powershell_double_quoted_text(value: str) -> str:
+    return (
+        value.replace("`", "``")
+        .replace("$", "`$")
+        .replace('"', '`"')
+    )
+
+
 def _string_list(value: object) -> list[str]:
     if not isinstance(value, Sequence) or isinstance(value, (str, bytes, bytearray)):
         return []
@@ -2600,6 +3191,7 @@ def _finish(
             next_action=next_action,
         )
     )
+    record.update(_build_finalization_command_record(record, repo_root=repo_root))
 
     next_action_packet = {
         "schema_version": SCHEMA_VERSION,
@@ -2614,15 +3206,28 @@ def _finish(
         "full_pytest_status": record.get("full_pytest_status"),
         "no_change_fast_path_used": record.get("no_change_fast_path_used"),
         **_gpt_review_fields(record),
+        **_finalization_command_fields(record),
     }
     latest = dict(record)
     latest["next_action_packet"] = next_action_packet
     latest["artifact_paths"] = {name: str(path) for name, path in artifacts.items()}
+    finalization_command_packet = {
+        "schema_version": SCHEMA_VERSION,
+        "run_id": record["run_id"],
+        "outcome": outcome,
+        "reason": reason,
+        "work_order_id": record.get("work_order_id", ""),
+        **_finalization_command_fields(record),
+    }
 
     _write_json_file(artifacts["verification_results"], _verification_results_payload(record))
     _write_json_file(artifacts["latest"], latest)
     _append_jsonl(artifacts["ledger"], record)
     _write_json_file(artifacts["next_action_packet"], next_action_packet)
+    _write_json_file(
+        artifacts["finalization_command_packet"],
+        finalization_command_packet,
+    )
     _write_report(artifacts["report"], latest)
     return {
         "exit_code": exit_code,
@@ -2718,6 +3323,7 @@ def _verification_results_payload(record: Mapping[str, object]) -> dict[str, obj
         "push_authorization_blocker": record.get("push_authorization_blocker"),
     }
     payload.update(_gpt_review_fields(record))
+    payload.update(_finalization_command_fields(record))
     return payload
 
 
@@ -2777,6 +3383,50 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         "gpt_review_summary: "
         f"{latest.get('gpt_review_summary', '')}",
         "",
+        "Finalization Command Packet:",
+        "finalization_command_packet_version: "
+        f"{latest.get('finalization_command_packet_version', '')}",
+        "finalization_command_status: "
+        f"{latest.get('finalization_command_status', '')}",
+        "finalization_command_blocker: "
+        f"{latest.get('finalization_command_blocker', '')}",
+        "finalization_command_ready: "
+        f"{latest.get('finalization_command_ready', '')}",
+        "finalization_command_requires_gpt_acceptance: "
+        f"{latest.get('finalization_command_requires_gpt_acceptance', '')}",
+        "finalization_command_expected_baseline: "
+        f"{latest.get('finalization_command_expected_baseline', '')}",
+        "finalization_command_expected_origin_main: "
+        f"{latest.get('finalization_command_expected_origin_main', '')}",
+        "finalization_command_expected_branch: "
+        f"{latest.get('finalization_command_expected_branch', '')}",
+        "finalization_command_expected_changed_files: "
+        f"{json.dumps(latest.get('finalization_command_expected_changed_files', []), sort_keys=True)}",
+        "finalization_command_expected_staged_files: "
+        f"{json.dumps(latest.get('finalization_command_expected_staged_files', []), sort_keys=True)}",
+        "finalization_command_commit_message: "
+        f"{latest.get('finalization_command_commit_message', '')}",
+        "finalization_command_would_push: "
+        f"{latest.get('finalization_command_would_push', '')}",
+        "finalization_command_push_remote_name: "
+        f"{latest.get('finalization_command_push_remote_name', '')}",
+        "finalization_command_push_remote_url_sanitized: "
+        f"{latest.get('finalization_command_push_remote_url_sanitized', '')}",
+        "finalization_command_push_remote_url_kind: "
+        f"{latest.get('finalization_command_push_remote_url_kind', '')}",
+        "finalization_command_nonlocal_push_authorized: "
+        f"{latest.get('finalization_command_nonlocal_push_authorized', '')}",
+        "finalization_command_push_authorization_status: "
+        f"{latest.get('finalization_command_push_authorization_status', '')}",
+        "finalization_command_hard_gate_required: "
+        f"{latest.get('finalization_command_hard_gate_required', '')}",
+        "finalization_command_hard_gate_reason: "
+        f"{latest.get('finalization_command_hard_gate_reason', '')}",
+        "finalization_command_powershell: "
+        f"{_report_command_availability(latest.get('finalization_command_powershell', ''))}",
+        "finalization_command_summary: "
+        f"{latest.get('finalization_command_summary', '')}",
+        "",
         f"git_mutation_plan_status: {latest.get('git_mutation_plan_status', '')}",
         f"git_mutation_plan_blocker: {latest.get('git_mutation_plan_blocker', '')}",
         "git_mutation_plan_would_stage_files: "
@@ -2835,6 +3485,10 @@ def _write_report(path: Path, latest: Mapping[str, object]) -> None:
         "credential_access_attempted: false",
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _report_command_availability(value: object) -> str:
+    return "<available in JSON artifact>" if value else "<not_available>"
 
 
 def _sanitized_work_order_packet(work_order: WorkOrder) -> dict[str, object]:

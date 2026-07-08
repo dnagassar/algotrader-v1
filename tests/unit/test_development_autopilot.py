@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 import json
 import os
 from pathlib import Path
@@ -50,7 +51,273 @@ PLAN_FIELD_NAMES = (
     "git_mutation_plan_push_authorization_status",
 )
 GPT_REVIEW_FIELD_NAMES = development_autopilot.GPT_REVIEW_FIELD_NAMES
+FINALIZATION_COMMAND_FIELD_NAMES = (
+    development_autopilot.FINALIZATION_COMMAND_FIELD_NAMES
+)
 GPT_REVIEW_COMMIT_MESSAGE = "Test development autopilot work order"
+DETERMINISTIC_TIMESTAMP = "2026-01-01T00:00:00Z"
+FAKE_AGENT_BEHAVIORS: dict[Path, dict[str, object]] = {}
+FAKE_VERIFICATION_COMMANDS: dict[tuple[str, ...], dict[str, object]] = {}
+
+
+@pytest.fixture(autouse=True)
+def _fast_deterministic_helper_subprocesses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_run_command = development_autopilot._run_command
+    original_invoke_agent = development_autopilot._invoke_agent
+    original_run_verification_commands = development_autopilot._run_verification_commands
+
+    def fast_run_command(
+        command: tuple[str, ...],
+        *,
+        cwd: Path,
+        env: Mapping[str, str],
+    ) -> development_autopilot.CommandResult:
+        result = _fast_git_read_command(command, cwd)
+        if result is not None:
+            return result
+        return original_run_command(command, cwd=cwd, env=env)
+
+    def fast_invoke_agent(
+        repo_root: Path,
+        command: tuple[str, ...],
+        prompt: str,
+        stdout_path: Path,
+        stderr_path: Path,
+        env: Mapping[str, str],
+        *,
+        timeout_seconds: int,
+    ) -> development_autopilot.CommandResult:
+        behavior = _fake_agent_behavior(command)
+        if behavior is None:
+            return original_invoke_agent(
+                repo_root,
+                command,
+                prompt,
+                stdout_path,
+                stderr_path,
+                env,
+                timeout_seconds=timeout_seconds,
+            )
+
+        stdout_path.write_text("agent stdout\n", encoding="utf-8")
+        stderr_path.write_text("agent stderr\n", encoding="utf-8")
+        timed_out = int(behavior["sleep_seconds"]) > timeout_seconds
+        if not timed_out and behavior["write_path"] is not None:
+            path = repo_root / str(behavior["write_path"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("build-output\n", encoding="utf-8")
+
+        return development_autopilot.CommandResult(
+            command=command,
+            exit_code=-1 if timed_out else int(behavior["exit_code"]),
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            started_at=DETERMINISTIC_TIMESTAMP,
+            ended_at=DETERMINISTIC_TIMESTAMP,
+            elapsed_seconds=0.0,
+            timed_out=timed_out,
+            timeout_seconds=timeout_seconds,
+            reason="agent_command_timeout" if timed_out else "",
+            command_kind="agent",
+        )
+
+    def fast_run_verification_commands(
+        repo_root: Path,
+        output_root: Path,
+        commands: tuple[tuple[str, ...], ...],
+        env: Mapping[str, str],
+        *,
+        timeout_seconds: int,
+        command_kind: str,
+        timeout_reason: str,
+        start_index: int = 1,
+    ) -> tuple[development_autopilot.CommandResult, ...]:
+        results: list[development_autopilot.CommandResult] = []
+        for index, command in enumerate(commands, start=start_index):
+            normalized = tuple(command)
+            behavior = _fake_verification_behavior(normalized)
+            if behavior is None:
+                real_results = original_run_verification_commands(
+                    repo_root,
+                    output_root,
+                    (normalized,),
+                    env,
+                    timeout_seconds=timeout_seconds,
+                    command_kind=command_kind,
+                    timeout_reason=timeout_reason,
+                    start_index=index,
+                )
+                results.extend(real_results)
+                if real_results and real_results[-1].timed_out:
+                    break
+                continue
+
+            result = _fake_verification_result(
+                output_root,
+                normalized,
+                behavior,
+                index=index,
+                timeout_seconds=timeout_seconds,
+                command_kind=command_kind,
+                timeout_reason=timeout_reason,
+            )
+            results.append(result)
+            if result.timed_out:
+                break
+        return tuple(results)
+
+    monkeypatch.setattr(development_autopilot, "_invoke_agent", fast_invoke_agent)
+    monkeypatch.setattr(development_autopilot, "_run_command", fast_run_command)
+    monkeypatch.setattr(
+        development_autopilot,
+        "_run_verification_commands",
+        fast_run_verification_commands,
+    )
+
+
+def _fast_git_read_command(
+    command: tuple[str, ...],
+    cwd: Path,
+) -> development_autopilot.CommandResult | None:
+    if command == ("git", "branch", "--show-current"):
+        branch = _read_git_branch(cwd)
+        if branch is not None:
+            return _fast_command_result(command, stdout=f"{branch}\n")
+    if command == ("git", "rev-parse", "HEAD"):
+        head = _read_git_head(cwd)
+        if head is not None:
+            return _fast_command_result(command, stdout=f"{head}\n")
+    if command == ("git", "rev-parse", "origin/main"):
+        origin_main = _read_git_ref(cwd, "refs/remotes/origin/main")
+        if origin_main is None:
+            return _fast_command_result(command, exit_code=128, stderr="missing ref\n")
+        return _fast_command_result(command, stdout=f"{origin_main}\n")
+    return None
+
+
+def _fast_command_result(
+    command: tuple[str, ...],
+    *,
+    exit_code: int = 0,
+    stdout: str = "",
+    stderr: str = "",
+) -> development_autopilot.CommandResult:
+    return development_autopilot.CommandResult(
+        command=command,
+        exit_code=exit_code,
+        stdout=stdout,
+        stderr=stderr,
+        started_at=DETERMINISTIC_TIMESTAMP,
+        ended_at=DETERMINISTIC_TIMESTAMP,
+        elapsed_seconds=0.0,
+    )
+
+
+def _read_git_branch(repo: Path) -> str | None:
+    head_path = repo / ".git" / "HEAD"
+    if not head_path.exists():
+        return None
+    head_text = head_path.read_text(encoding="utf-8").strip()
+    prefix = "ref: refs/heads/"
+    if not head_text.startswith(prefix):
+        return ""
+    return head_text.removeprefix(prefix)
+
+
+def _read_git_head(repo: Path) -> str | None:
+    head_path = repo / ".git" / "HEAD"
+    if not head_path.exists():
+        return None
+    head_text = head_path.read_text(encoding="utf-8").strip()
+    if not head_text.startswith("ref: "):
+        return head_text
+    return _read_git_ref(repo, head_text.removeprefix("ref: "))
+
+
+def _read_git_ref(repo: Path, ref: str) -> str | None:
+    ref_path = repo / ".git" / Path(ref)
+    if ref_path.exists():
+        return ref_path.read_text(encoding="utf-8").strip()
+    packed_refs = repo / ".git" / "packed-refs"
+    if not packed_refs.exists():
+        return None
+    for line in packed_refs.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith(("#", "^")):
+            continue
+        sha, _, name = line.partition(" ")
+        if name == ref:
+            return sha
+    return None
+
+
+def _fake_agent_behavior(command: tuple[str, ...]) -> dict[str, object] | None:
+    if len(command) < 2:
+        return None
+    try:
+        return FAKE_AGENT_BEHAVIORS.get(Path(command[1]).resolve())
+    except OSError:
+        return None
+
+
+def _fake_verification_behavior(
+    command: tuple[str, ...],
+) -> dict[str, object] | None:
+    behavior = FAKE_VERIFICATION_COMMANDS.get(command)
+    if behavior is not None:
+        return behavior
+    if len(command) >= 3 and command[0] == sys.executable and command[1] == "-c":
+        code = command[2]
+        if code == "print('verification ok')":
+            return {"kind": "stdout", "stdout": "verification ok\n", "exit_code": 0}
+        if code == "import sys; sys.exit(3)":
+            return {"kind": "stdout", "stdout": "", "exit_code": 3}
+    return None
+
+
+def _fake_verification_result(
+    output_root: Path,
+    command: tuple[str, ...],
+    behavior: dict[str, object],
+    *,
+    index: int,
+    timeout_seconds: int,
+    command_kind: str,
+    timeout_reason: str,
+) -> development_autopilot.CommandResult:
+    stdout_path = output_root / f"verification_{index:02d}_stdout.txt"
+    stderr_path = output_root / f"verification_{index:02d}_stderr.txt"
+    stdout_path.parent.mkdir(parents=True, exist_ok=True)
+    timed_out = (
+        behavior.get("kind") == "sleep"
+        and int(behavior["seconds"]) > timeout_seconds
+    )
+    stdout = str(behavior.get("stdout", ""))
+    stderr = str(behavior.get("stderr", ""))
+    exit_code = -1 if timed_out else int(behavior.get("exit_code", 0))
+    if behavior.get("kind") == "marker" and not timed_out:
+        marker_path = Path(str(behavior["path"]))
+        marker_path.parent.mkdir(parents=True, exist_ok=True)
+        marker_path.write_text(str(behavior["text"]), encoding="utf-8")
+    if behavior.get("kind") == "sleep":
+        stdout = "sleeping\n"
+
+    stdout_path.write_text(stdout, encoding="utf-8")
+    stderr_path.write_text(stderr, encoding="utf-8")
+    return development_autopilot.CommandResult(
+        command=command,
+        exit_code=exit_code,
+        stdout_path=str(stdout_path),
+        stderr_path=str(stderr_path),
+        started_at=DETERMINISTIC_TIMESTAMP,
+        ended_at=DETERMINISTIC_TIMESTAMP,
+        elapsed_seconds=0.0,
+        timed_out=timed_out,
+        timeout_seconds=timeout_seconds,
+        reason=timeout_reason if timed_out else "",
+        command_kind=command_kind,
+    )
 
 
 def test_cli_parser_registers_development_autopilot_command() -> None:
@@ -1051,6 +1318,58 @@ def test_plan_only_local_remote_with_allowlisted_change_records_plan_without_mut
         gpt_review_hard_gate_required=False,
         gpt_review_hard_gate_reason=None,
     )
+    _assert_finalization_command_payloads(
+        output_root,
+        finalization_command_status="ready",
+        finalization_command_blocker=None,
+        finalization_command_ready=True,
+        finalization_command_requires_gpt_acceptance=True,
+        finalization_command_expected_baseline=head,
+        finalization_command_expected_origin_main=head,
+        finalization_command_expected_branch="main",
+        finalization_command_expected_changed_files=[allowed_file],
+        finalization_command_expected_staged_files=[allowed_file],
+        finalization_command_commit_message=GPT_REVIEW_COMMIT_MESSAGE,
+        finalization_command_would_push=True,
+        finalization_command_push_remote_name="origin",
+        finalization_command_push_remote_url_kind="local_path",
+        finalization_command_nonlocal_push_authorized=False,
+        finalization_command_push_authorization_status="local_remote_allowed",
+        finalization_command_hard_gate_required=False,
+        finalization_command_hard_gate_reason=None,
+    )
+    finalization_packet = _read_json(
+        output_root / "finalization_command_packet.json"
+    )
+    powershell = finalization_packet["finalization_command_powershell"]
+    assert isinstance(powershell, str)
+    for required_text in (
+        "Test-SafePreflight",
+        "APP_PROFILE_is_paper",
+        "ALPACA_API_KEY_loaded",
+        "python -m pytest tests/unit/test_development_autopilot.py",
+        "scripts\\verify_offline.ps1",
+        "python -m pytest",
+        "git diff --check",
+        "git ls-files runs",
+        f"git add -- {allowed_file}",
+        f"git commit -m \"{GPT_REVIEW_COMMIT_MESSAGE}\"",
+        "git push origin main",
+    ):
+        assert required_text in powershell
+    forbidden_text = powershell.lower()
+    for blocked_text in (
+        "submit_order",
+        "cancel_order",
+        "replace_order",
+        "close_all",
+        "liquidate",
+        "alpaca_api_key=",
+        "alpaca_api_secret_key=",
+        "apca_api_key_id=",
+        "apca_api_secret_key=",
+    ):
+        assert blocked_text not in forbidden_text
 
 
 def test_plan_only_authorized_network_remote_records_sanitized_plan_without_mutation(
@@ -2031,6 +2350,7 @@ def test_runtime_artifacts_and_ledger_are_written_under_output_root(tmp_path: Pa
         "work_order_packet.json",
         "verification_results.json",
         "next_action_packet.json",
+        "finalization_command_packet.json",
     }
     assert expected_artifacts.issubset({path.name for path in output_root.iterdir()})
     assert _read_json(output_root / "next_action_packet.json")["next_action"] == (
@@ -2114,6 +2434,15 @@ def _gpt_review_artifact_payloads(output_root: Path) -> tuple[dict[str, object],
     )
 
 
+def _finalization_command_artifact_payloads(
+    output_root: Path,
+) -> tuple[dict[str, object], ...]:
+    return _artifact_payloads(output_root) + (
+        _read_json(output_root / "next_action_packet.json"),
+        _read_json(output_root / "finalization_command_packet.json"),
+    )
+
+
 def _assert_gpt_review_payload(
     payload: dict[str, object],
     **expected: object,
@@ -2143,6 +2472,35 @@ def _assert_gpt_review_payloads(output_root: Path, **expected: object) -> None:
         assert f"{field}: {rendered}" in report
 
 
+def _assert_finalization_command_payload(
+    payload: dict[str, object],
+    **expected: object,
+) -> None:
+    for field in FINALIZATION_COMMAND_FIELD_NAMES:
+        assert field in payload
+    assert payload["finalization_command_packet_version"] == "1.0"
+    for field, value in expected.items():
+        assert payload[field] == value
+
+
+def _assert_finalization_command_payloads(
+    output_root: Path,
+    **expected: object,
+) -> None:
+    for payload in _finalization_command_artifact_payloads(output_root):
+        _assert_finalization_command_payload(payload, **expected)
+
+    latest = _read_json(output_root / "development_autopilot_latest.json")
+    _assert_finalization_command_payload(latest["next_action_packet"], **expected)
+
+    report = (output_root / "development_autopilot_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Finalization Command Packet:" in report
+    for field in FINALIZATION_COMMAND_FIELD_NAMES:
+        assert f"{field}:" in report
+
+
 def _assert_plan_payloads(output_root: Path, **expected: object) -> None:
     for payload in _artifact_payloads(output_root):
         for field in PLAN_FIELD_NAMES:
@@ -2169,6 +2527,7 @@ def _combined_artifact_text(output_root: Path) -> str:
         "development_autopilot_ledger.jsonl",
         "verification_results.json",
         "next_action_packet.json",
+        "finalization_command_packet.json",
         "development_autopilot_report.md",
     )
     return "\n".join(
@@ -2209,16 +2568,29 @@ def _make_repo(tmp_path: Path) -> tuple[Path, str]:
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init", "-b", "main")
-    _git(repo, "config", "user.email", "tests@example.invalid")
-    _git(repo, "config", "user.name", "Tests")
+    _write_git_user_config(repo)
     (repo / "src").mkdir()
     (repo / "tests").mkdir()
     (repo / "scripts").mkdir()
     (repo / "README.md").write_text("baseline\n", encoding="utf-8")
     _git(repo, "add", "README.md")
     _git(repo, "commit", "-m", "baseline")
-    _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-    return repo, _git(repo, "rev-parse", "HEAD")
+    head = _read_git_head(repo)
+    assert head is not None
+    origin_main = repo / ".git" / "refs" / "remotes" / "origin" / "main"
+    origin_main.parent.mkdir(parents=True, exist_ok=True)
+    origin_main.write_text(f"{head}\n", encoding="utf-8")
+    return repo, head
+
+
+def _write_git_user_config(repo: Path) -> None:
+    config_path = repo / ".git" / "config"
+    with config_path.open("a", encoding="utf-8") as config_file:
+        config_file.write(
+            "\n[user]\n"
+            "\temail = tests@example.invalid\n"
+            "\tname = Tests\n"
+        )
 
 
 def _write_work_order(
@@ -2293,6 +2665,11 @@ def _fake_agent(
         + "\n",
         encoding="utf-8",
     )
+    FAKE_AGENT_BEHAVIORS[script.resolve()] = {
+        "write_path": write_path,
+        "exit_code": exit_code,
+        "sleep_seconds": sleep_seconds,
+    }
     return script
 
 
@@ -2309,12 +2686,25 @@ def _marker_command(
         f"path.write_text({text!r}, encoding='utf-8'); "
         f"raise SystemExit({exit_code})"
     )
-    return (sys.executable, "-c", code)
+    command = (sys.executable, "-c", code)
+    FAKE_VERIFICATION_COMMANDS[command] = {
+        "kind": "marker",
+        "path": str(marker_path),
+        "text": text,
+        "exit_code": exit_code,
+    }
+    return command
 
 
 def _sleep_command(*, seconds: int) -> tuple[str, ...]:
     code = f"import time; print('sleeping', flush=True); time.sleep({seconds})"
-    return (sys.executable, "-c", code)
+    command = (sys.executable, "-c", code)
+    FAKE_VERIFICATION_COMMANDS[command] = {
+        "kind": "sleep",
+        "seconds": seconds,
+        "exit_code": 0,
+    }
+    return command
 
 
 def _repo_verification_commands(
@@ -2339,6 +2729,10 @@ def _safe_env(**overrides: str) -> dict[str, str]:
 
 
 def _git(repo: Path, *args: str) -> str:
+    fast_result = _fast_git_read_command(("git",) + args, repo)
+    if fast_result is not None:
+        assert fast_result.exit_code == 0, fast_result.stderr
+        return fast_result.stdout.strip()
     return _run_subprocess(["git", *args], cwd=repo).stdout.strip()
 
 
