@@ -28,6 +28,7 @@ param(
     [string]$FillExitResultPath = "runs\crypto_paper_fill_exit_certification\latest\fill_exit_certification_result.json",
     [string]$FillExitIngestionPath = "runs\crypto_paper_fill_exit_ingestion\latest\fill_exit_ingestion.json",
     [string]$PreviewNotionalCap = "25",
+    [string]$ObservedLatestPriceArtifact = "",
     [string]$AsOfTimestamp = "",
     [bool]$AllowFixtureRepair = $true,
     [switch]$RequestPaperReadRepair,
@@ -143,6 +144,9 @@ if (-not [string]::IsNullOrWhiteSpace($SpyBarsCsv)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
     $Args += @("--as-of", $AsOfTimestamp)
+}
+if (-not [string]::IsNullOrWhiteSpace($ObservedLatestPriceArtifact)) {
+    $Args += @("--observed-latest-price-artifact", $ObservedLatestPriceArtifact)
 }
 if ($AllowFixtureRepair) {
     $Args += @("--allow-fixture-repair")

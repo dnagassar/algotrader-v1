@@ -150,6 +150,172 @@ def test_fixture_replay_packet_is_preview_only_not_broker_observed_ready(
     )
 
 
+def test_default_observed_refresh_is_not_configured_and_does_not_read_broker(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+
+    packet = run_crypto_no_submit_operating_cycle(**paths, write_artifacts=True)
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["observed_latest_price_artifact"]["status"] == "not_configured"
+    assert readiness["broker_observed_refresh_status"] == "broker_read_not_configured"
+    assert readiness["observed_latest_price_artifact"]["blocker"] == (
+        "broker_read_not_configured"
+    )
+    assert readiness["broker_read_occurred"] is False
+    assert readiness["broker_mutation_occurred"] is False
+    assert readiness["paper_submit_occurred"] is False
+
+
+def test_local_observed_artifact_satisfies_fixture_readiness_when_fresh(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    paths["refresh_mode"] = "offline_fixture"
+    paths["allow_fixture_backed"] = True
+    artifact_path = tmp_path / "runs" / "observed" / "broker_observed_readiness_packet.json"
+    _write_json(artifact_path, _observed_latest_price_artifact())
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+    diagnostics = readiness["quote_trade_bar_fallback_diagnostics"]
+
+    assert readiness["evidence_classification"] == "local_observed_artifact_replay"
+    assert readiness["readiness_decision"] == "local_observed_artifact_ready_no_submit"
+    assert readiness["blocker_taxonomy"] == "none"
+    assert readiness["blocker"] == "none"
+    assert readiness["latest_price_source"] == "local_observed_artifact_latest_quote"
+    assert readiness["latest_price_source_selected"] == "quote"
+    assert readiness["latest_price_basis"] == "broker_observed_latest_quote_mid"
+    assert readiness["latest_price_observed_at"] == AS_OF.isoformat()
+    assert readiness["latest_price_age_seconds"] == "0"
+    assert readiness["latest_price_freshness_threshold_seconds"] == "7200"
+    assert readiness["latest_price_freshness_status"] == "fresh"
+    assert readiness["latest_price_final_blocker"] == "none"
+    assert readiness["observed_latest_price_artifact"]["status"] == "accepted"
+    assert readiness["observed_latest_price_artifact"][
+        "source_artifact_broker_read_occurred"
+    ] is True
+    assert readiness["observed_latest_price_artifact"][
+        "current_cycle_broker_read_occurred"
+    ] is False
+    assert readiness["broker_read_occurred"] is False
+    assert readiness["broker_mutation_occurred"] is False
+    assert readiness["paper_submit_occurred"] is False
+    assert diagnostics["selected_source"] == "quote"
+    assert diagnostics["quote_status"] == "passed"
+    assert diagnostics["trade_status"] == "unavailable"
+    assert diagnostics["bar_status"] == "unavailable"
+    assert readiness["validation_status"] == "passed"
+
+
+def test_stale_local_observed_artifact_blocks_with_clear_blocker(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    stale_at = AS_OF - timedelta(hours=3, minutes=30)
+    artifact_path = tmp_path / "runs" / "observed" / "stale_price.json"
+    _write_json(
+        artifact_path,
+        _observed_latest_price_artifact(observed_at=stale_at),
+    )
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["readiness_decision"] == "blocked_latest_price_not_fresh"
+    assert readiness["blocker_taxonomy"] == "latest_price_missing_or_stale"
+    assert readiness["blocker"] == "crypto_observed_latest_price_stale"
+    assert readiness["latest_price_freshness_status"] == "stale"
+    assert readiness["latest_price_age_seconds"] == "12600"
+    assert readiness["observed_latest_price_artifact"]["status"] == "blocked"
+    assert readiness["validation_status"] == "passed"
+
+
+def test_missing_timestamp_local_observed_artifact_blocks_as_timestamp_missing(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    artifact_path = tmp_path / "runs" / "observed" / "missing_timestamp.json"
+    _write_json(
+        artifact_path,
+        _observed_latest_price_artifact(observed_at=None),
+    )
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["readiness_decision"] == "blocked_latest_price_not_fresh"
+    assert readiness["blocker_taxonomy"] == "latest_price_timestamp_missing"
+    assert readiness["blocker"] == "crypto_observed_latest_price_timestamp_missing"
+    assert readiness["latest_price_freshness_status"] == "missing_timestamp"
+    assert readiness["latest_price_age_seconds"] == ""
+    assert readiness["validation_status"] == "passed"
+
+
+def test_observed_artifact_source_basis_and_blocker_consistency_is_validated(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    artifact_path = tmp_path / "runs" / "observed" / "fresh_price.json"
+    _write_json(artifact_path, _observed_latest_price_artifact())
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        write_artifacts=True,
+    )
+    readiness = json.loads(json.dumps(packet["crypto_readiness_packet"]))
+
+    assert cycle.validate_crypto_readiness_packet(readiness) == []
+
+    readiness["latest_price_source"] = "broker_observed_latest_quote"
+    readiness["latest_price_final_blocker"] = "crypto_observed_latest_price_stale"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_observed_artifact_source_classification_mismatch" in errors
+    assert "crypto_latest_price_final_blocker_mismatch" in errors
+
+
+def test_generated_operator_instructions_do_not_add_mutation_verbs(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    artifact_path = tmp_path / "runs" / "observed" / "fresh_price.json"
+    _write_json(artifact_path, _observed_latest_price_artifact())
+
+    packet = run_crypto_no_submit_operating_cycle(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        write_artifacts=True,
+    )
+    readiness = packet["crypto_readiness_packet"]
+    render_text = cycle.render_cycle_brief_markdown(packet)
+    instruction_text = "\n".join(
+        (
+            readiness["next_safe_operator_action"],
+            packet["next_operator_action"]["reason"],
+            render_text,
+        )
+    ).lower()
+
+    for verb in ("cancel", "replace", "close", "liquidate", "retry"):
+        assert verb not in instruction_text
+
+
 def test_router_no_selected_candidate_becomes_no_trade(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -742,6 +908,111 @@ def _fill_exit_ingestion() -> dict[str, object]:
             "not_live_authorized",
             "profit_claim=none",
         ],
+    }
+
+
+def _observed_latest_price_artifact(
+    *,
+    observed_at: datetime | None = AS_OF,
+) -> dict[str, object]:
+    observed_text = "" if observed_at is None else observed_at.isoformat()
+    latest_price_row = {
+        "source": "quote",
+        "method_name": "get_latest_quote",
+        "attempted": True,
+        "value": "125",
+        "observed_at": observed_text,
+        "age_seconds": "0" if observed_text else "",
+        "freshness": "fresh" if observed_text else "missing_timestamp",
+        "status": "passed" if observed_text else "blocked",
+        "blocker": "" if observed_text else "broker_latest_quote_timestamp_missing",
+        "basis": "broker_observed_latest_quote_mid",
+        "raw_timestamp_field_names_present": "timestamp" if observed_text else "",
+    }
+    return {
+        "schema_version": "test_broker_observed_readiness_packet",
+        "record_type": "broker_observed_readiness_packet",
+        "run_id": "test_observed_run",
+        "as_of": AS_OF.isoformat(),
+        "symbol": "BTCUSD",
+        "selected_symbol": "BTCUSD",
+        "broker_observed_readiness_decision": "broker_observed_ready_preview",
+        "blocker_code": "",
+        "broker_read_authorized": True,
+        "broker_read_attempted": True,
+        "broker_read_occurred": True,
+        "broker_read_blocked": False,
+        "broker_state_observed": True,
+        "network_used": False,
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "latest_price_value": "125",
+        "latest_price_source": "broker_observed",
+        "latest_price_source_selected": "quote",
+        "latest_price_basis": "broker_observed_latest_quote_mid",
+        "latest_price_final_selected_basis": "broker_observed_latest_quote_mid",
+        "latest_price_observed_at": observed_text,
+        "latest_price_normalized_timestamp": observed_text,
+        "latest_price_age_seconds": "0" if observed_text else "",
+        "latest_price_freshness_status": "fresh" if observed_text else "missing_timestamp",
+        "latest_price_freshness_threshold_seconds": "7200",
+        "latest_price_final_blocker": "",
+        "latest_price_source_acceptability": "accepted_broker_observed",
+        "price_evidence_status": "passed" if observed_text else "blocked",
+        "price_evidence_blocker": "" if observed_text else "broker_latest_quote_timestamp_missing",
+        "broker_observed_price_freshness_check": {
+            "latest_price_value": "125",
+            "latest_price_source": "broker_observed",
+            "latest_price_source_selected": "quote",
+            "latest_price_basis": "broker_observed_latest_quote_mid",
+            "latest_price_final_selected_basis": "broker_observed_latest_quote_mid",
+            "latest_price_observed_at": observed_text,
+            "latest_price_normalized_timestamp": observed_text,
+            "latest_price_age_seconds": "0" if observed_text else "",
+            "latest_price_freshness_status": (
+                "fresh" if observed_text else "missing_timestamp"
+            ),
+            "latest_price_freshness_threshold_seconds": "7200",
+            "latest_price_final_blocker": "",
+            "latest_price_fallback_source_result": "not_needed",
+            "price_evidence_status": "passed" if observed_text else "blocked",
+            "price_evidence_blocker": (
+                "" if observed_text else "broker_latest_quote_timestamp_missing"
+            ),
+            "latest_price_source_table": [
+                latest_price_row,
+                {
+                    "source": "trade",
+                    "method_name": "",
+                    "attempted": False,
+                    "value": "",
+                    "observed_at": "",
+                    "age_seconds": "",
+                    "freshness": "unavailable",
+                    "status": "unavailable",
+                    "blocker": "",
+                    "basis": "broker_observed_latest_trade",
+                    "raw_timestamp_field_names_present": "",
+                },
+                {
+                    "source": "bar",
+                    "method_name": "",
+                    "attempted": False,
+                    "value": "",
+                    "observed_at": "",
+                    "age_seconds": "",
+                    "freshness": "unavailable",
+                    "status": "unavailable",
+                    "blocker": "",
+                    "basis": "broker_observed_latest_bar_close",
+                    "raw_timestamp_field_names_present": "",
+                },
+            ],
+        },
     }
 
 

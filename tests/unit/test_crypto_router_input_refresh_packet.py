@@ -158,6 +158,9 @@ def test_broker_read_required_path_does_not_read_broker(tmp_path: Path) -> None:
     assert orderability["authorization_required"] == "broker_read"
     assert packet["broker_read_occurred"] is False
     assert packet["next_operator_action"]["action"] == "authorize_scoped_paper_read"
+    request = str(packet["next_operator_action"]["operator_request"]).lower()
+    for mutation_verb in ("submit", "cancel", "replace", "close", "liquidate", "retry"):
+        assert mutation_verb not in request
 
 
 def test_market_data_required_path_does_not_use_network(tmp_path: Path) -> None:
@@ -252,6 +255,34 @@ def test_cycle_rerun_integration_invokes_no_submit_cycle(
     assert captured["write_artifacts"] is True
     assert captured["allow_fixture_backed"] is False
     assert captured["as_of"] == AS_OF
+
+
+def test_cycle_rerun_threads_local_observed_artifact_to_no_submit_cycle(
+    tmp_path: Path,
+) -> None:
+    paths = _write_packet_inputs(tmp_path)
+    artifact_path = tmp_path / "runs" / "observed" / "broker_observed_readiness_packet.json"
+    _write_json(artifact_path, _observed_latest_price_artifact())
+
+    packet = run_crypto_router_input_refresh_packet(
+        **paths,
+        observed_latest_price_artifact_path=artifact_path,
+        allow_fixture_repair=False,
+        write_artifacts=True,
+    )
+    cycle_status = packet["cycle_rerun_status"]
+
+    assert cycle_status["crypto_readiness_decision"] == (
+        "local_observed_artifact_ready_no_submit"
+    )
+    assert cycle_status["crypto_readiness_evidence_classification"] == (
+        "local_observed_artifact_replay"
+    )
+    assert cycle_status["latest_price_source"] == "local_observed_artifact_latest_quote"
+    assert cycle_status["observed_latest_price_artifact"]["status"] == "accepted"
+    assert cycle_status["broker_read_occurred"] is False
+    assert cycle_status["broker_mutation_occurred"] is False
+    assert cycle_status["paper_submit_occurred"] is False
 
 
 def test_no_submit_no_broker_no_live_flags_remain_false(tmp_path: Path) -> None:
@@ -744,6 +775,77 @@ def _fill_exit_ingestion() -> dict[str, object]:
             "not_live_authorized",
             "profit_claim=none",
         ],
+    }
+
+
+def _observed_latest_price_artifact() -> dict[str, object]:
+    observed_text = AS_OF.isoformat()
+    return {
+        "schema_version": "test_broker_observed_readiness_packet",
+        "record_type": "broker_observed_readiness_packet",
+        "run_id": "test_observed_run",
+        "as_of": observed_text,
+        "symbol": "BTCUSD",
+        "selected_symbol": "BTCUSD",
+        "broker_observed_readiness_decision": "broker_observed_ready_preview",
+        "blocker_code": "",
+        "broker_read_authorized": True,
+        "broker_read_attempted": True,
+        "broker_read_occurred": True,
+        "broker_read_blocked": False,
+        "broker_state_observed": True,
+        "network_used": False,
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "paper_submit_authorized": False,
+        "paper_submit_occurred": False,
+        "broker_mutation_authorized": False,
+        "broker_mutation_occurred": False,
+        "latest_price_value": "125",
+        "latest_price_source": "broker_observed",
+        "latest_price_source_selected": "quote",
+        "latest_price_basis": "broker_observed_latest_quote_mid",
+        "latest_price_final_selected_basis": "broker_observed_latest_quote_mid",
+        "latest_price_observed_at": observed_text,
+        "latest_price_normalized_timestamp": observed_text,
+        "latest_price_age_seconds": "0",
+        "latest_price_freshness_status": "fresh",
+        "latest_price_freshness_threshold_seconds": "7200",
+        "latest_price_final_blocker": "",
+        "latest_price_source_acceptability": "accepted_broker_observed",
+        "price_evidence_status": "passed",
+        "price_evidence_blocker": "",
+        "broker_observed_price_freshness_check": {
+            "latest_price_value": "125",
+            "latest_price_source": "broker_observed",
+            "latest_price_source_selected": "quote",
+            "latest_price_basis": "broker_observed_latest_quote_mid",
+            "latest_price_final_selected_basis": "broker_observed_latest_quote_mid",
+            "latest_price_observed_at": observed_text,
+            "latest_price_normalized_timestamp": observed_text,
+            "latest_price_age_seconds": "0",
+            "latest_price_freshness_status": "fresh",
+            "latest_price_freshness_threshold_seconds": "7200",
+            "latest_price_final_blocker": "",
+            "latest_price_fallback_source_result": "not_needed",
+            "price_evidence_status": "passed",
+            "price_evidence_blocker": "",
+            "latest_price_source_table": [
+                {
+                    "source": "quote",
+                    "method_name": "get_latest_quote",
+                    "attempted": True,
+                    "value": "125",
+                    "observed_at": observed_text,
+                    "age_seconds": "0",
+                    "freshness": "fresh",
+                    "status": "passed",
+                    "blocker": "",
+                    "basis": "broker_observed_latest_quote_mid",
+                    "raw_timestamp_field_names_present": "timestamp",
+                }
+            ],
+        },
     }
 
 

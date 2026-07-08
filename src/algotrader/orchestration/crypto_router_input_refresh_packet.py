@@ -231,6 +231,7 @@ def run_crypto_router_input_refresh_packet(
     allow_fixture_repair: bool = True,
     request_paper_read_repair: bool = False,
     request_market_data_refresh: bool = False,
+    observed_latest_price_artifact_path: Path | str | None = None,
     as_of: datetime | str | None = None,
     write_artifacts: bool = True,
 ) -> dict[str, object]:
@@ -302,6 +303,7 @@ def run_crypto_router_input_refresh_packet(
         fill_exit_ingestion_path=fill_exit_ingestion_path,
         preview_notional_cap=preview_notional_cap,
         allow_fixture_backed=allow_fixture_repair or repair_mode == "offline_fixture",
+        observed_latest_price_artifact_path=observed_latest_price_artifact_path,
         as_of=as_of_value,
     )
     input_inventory = build_input_inventory(
@@ -1312,6 +1314,7 @@ def _rerun_cycle(
     fill_exit_ingestion_path: Path | str,
     preview_notional_cap: Decimal | str,
     allow_fixture_backed: bool,
+    observed_latest_price_artifact_path: Path | str | None,
     as_of: datetime,
 ) -> dict[str, object]:
     cycle_root = output_root / "cycle_rerun"
@@ -1334,6 +1337,7 @@ def _rerun_cycle(
             fill_exit_ingestion_path=fill_exit_ingestion_path,
             preview_notional_cap=preview_notional_cap,
             allow_fixture_backed=allow_fixture_backed,
+            observed_latest_price_artifact_path=observed_latest_price_artifact_path,
             as_of=as_of,
             write_artifacts=True,
         )
@@ -1353,6 +1357,7 @@ def _rerun_cycle(
             **_false_flags(),
         }
     cycle_status = _mapping(packet.get("cycle_status"))
+    readiness = _mapping(packet.get("crypto_readiness_packet"))
     final_state = _first_text(cycle_status, "final_state")
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1363,6 +1368,23 @@ def _rerun_cycle(
         "cycle_final_state": final_state,
         "cycle_next_operator_action": _first_text(cycle_status, "next_operator_action"),
         "cycle_blockers": list(_string_sequence(cycle_status.get("blockers"))),
+        "crypto_readiness_decision": _first_text(readiness, "readiness_decision"),
+        "crypto_readiness_blocker": _first_text(readiness, "blocker"),
+        "crypto_readiness_evidence_classification": _first_text(
+            readiness,
+            "evidence_classification",
+        ),
+        "latest_price_source": _first_text(readiness, "latest_price_source"),
+        "latest_price_basis": _first_text(readiness, "latest_price_basis"),
+        "latest_price_observed_at": _first_text(readiness, "latest_price_observed_at"),
+        "latest_price_age_seconds": _first_text(readiness, "latest_price_age_seconds"),
+        "latest_price_freshness_status": _first_text(
+            readiness,
+            "latest_price_freshness_status",
+        ),
+        "observed_latest_price_artifact": dict(
+            _mapping(readiness.get("observed_latest_price_artifact"))
+        ),
         "input_basis": refresh_mode,
         "data_basis": refresh_mode,
         "router_input_blocker_removed": final_state in ROUTER_READY_CYCLE_STATES,
@@ -1657,7 +1679,7 @@ def _operator_request(required: str) -> str:
     if required == "broker_read":
         return (
             "authorize one scoped read-only paper crypto visibility/orderability refresh; "
-            "no submit, cancel, replace, close, liquidate, or live endpoint is authorized."
+            "no broker mutation, order action, or live endpoint is authorized."
         )
     if required == "market_data":
         return (
@@ -1947,6 +1969,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--preview-notional-cap",
         default=str(CRYPTO_QTY_SIZING_PREVIEW_DEFAULT_NOTIONAL_CAP),
     )
+    parser.add_argument("--observed-latest-price-artifact", type=Path, default=None)
     parser.add_argument("--allow-fixture-repair", action="store_true")
     parser.add_argument("--request-paper-read-repair", action="store_true")
     parser.add_argument("--request-market-data-refresh", action="store_true")
@@ -1974,6 +1997,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         allow_fixture_repair=args.allow_fixture_repair,
         request_paper_read_repair=args.request_paper_read_repair,
         request_market_data_refresh=args.request_market_data_refresh,
+        observed_latest_price_artifact_path=args.observed_latest_price_artifact,
         as_of=args.as_of or None,
         write_artifacts=True,
     )
