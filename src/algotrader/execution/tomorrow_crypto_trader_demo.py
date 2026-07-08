@@ -65,7 +65,12 @@ QTY_INCREMENT = Decimal("0.00000001")
 MIN_ORDER_SIZE = Decimal("0.00000001")
 MIN_NOTIONAL = Decimal("1")
 PAPER_READINESS_PRICE_MAX_AGE = timedelta(hours=2)
-BROKER_OBSERVED_PRICE_MAX_AGE = PAPER_READINESS_PRICE_MAX_AGE
+BROKER_OBSERVED_PRICE_MAX_AGE_SECONDS = int(
+    PAPER_READINESS_PRICE_MAX_AGE.total_seconds()
+)
+BROKER_OBSERVED_PRICE_MAX_AGE = timedelta(
+    seconds=BROKER_OBSERVED_PRICE_MAX_AGE_SECONDS
+)
 
 OBSERVED_LATEST_PRICE_SOURCES = (
     "broker_observed",
@@ -137,6 +142,15 @@ BROKER_OBSERVED_SPECIFIC_BLOCKERS = (
     "broker_latest_price_stale",
     "broker_latest_price_timestamp_missing",
     "broker_latest_price_ambiguous",
+    "broker_latest_price_all_sources_stale",
+    "broker_latest_price_all_sources_unavailable",
+    "broker_latest_price_fallback_selected",
+    "broker_latest_quote_stale",
+    "broker_latest_trade_stale",
+    "broker_latest_bar_stale",
+    "broker_latest_quote_timestamp_missing",
+    "broker_latest_trade_timestamp_missing",
+    "broker_latest_bar_timestamp_missing",
     "broker_latest_price_symbol_mismatch",
     "broker_price_symbol_normalization_failed",
     "broker_price_symbol_ambiguous",
@@ -206,6 +220,17 @@ BROKER_OBSERVED_CONSISTENCY_FIELDS = (
     "latest_price_last",
     "latest_price_basis",
     "latest_price_freshness_status",
+    "latest_price_freshness_threshold_seconds",
+    "latest_price_source_selected",
+    "latest_price_sources_attempted",
+    "latest_price_raw_timestamp_field_names_present",
+    "latest_price_normalized_timestamp",
+    "latest_price_current_evaluation_timestamp",
+    "latest_price_stale_reason",
+    "latest_price_fallback_sources_attempted",
+    "latest_price_fallback_source_result",
+    "latest_price_final_selected_basis",
+    "latest_price_final_blocker",
     "latest_price_source_acceptability",
     "price_used_for_quantity",
     "price_used_for_min_notional_derivation",
@@ -1675,8 +1700,43 @@ def _broker_observed_evidence_table_rows(
     ]
 
 
+def _broker_observed_latest_price_source_table_rows(
+    packet: Mapping[str, object],
+) -> list[tuple[str, str, str, str, str, str, str]]:
+    price_check = _mapping(packet.get("broker_observed_price_freshness_check"))
+    if not price_check:
+        price_check = _mapping(packet.get("observed_latest_price_basis"))
+    rows = _mapping_sequence(price_check.get("latest_price_source_table"))
+    if not rows:
+        rows = (
+            _latest_price_source_row_from_evidence(
+                source_kind=_text(price_check.get("latest_price_source_selected"))
+                or _text(price_check.get("latest_price_source"))
+                or "unavailable",
+                method_name=_text(price_check.get("latest_price_read_method")),
+                evidence=price_check,
+                attempted=bool(_text(price_check.get("latest_price_source"))),
+            ),
+        )
+    rendered: list[tuple[str, str, str, str, str, str, str]] = []
+    for row in rows:
+        rendered.append(
+            (
+                _markdown_table_value(row.get("source")),
+                _markdown_table_value(row.get("value")),
+                _markdown_table_value(row.get("observed_at")),
+                _markdown_table_value(row.get("age_seconds")),
+                _markdown_table_value(row.get("freshness")),
+                _markdown_table_value(row.get("status")),
+                _markdown_table_value(row.get("blocker")),
+            )
+        )
+    return rendered
+
+
 def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str:
     evidence_rows = _broker_observed_evidence_table_rows(packet)
+    latest_price_rows = _broker_observed_latest_price_source_table_rows(packet)
     return "\n".join(
         [
             "# Broker-Observed Readiness Packet",
@@ -1695,7 +1755,10 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- derived_min_notional_value: `{_text(packet.get('derived_min_notional_value')) or 'none'}`",
             f"- latest_price_value: `{_text(packet.get('latest_price_value')) or 'none'}`",
             f"- latest_price_source: `{_text(packet.get('latest_price_source')) or 'none'}`",
+            f"- latest_price_source_selected: `{_text(packet.get('latest_price_source_selected')) or 'none'}`",
             f"- latest_price_freshness_status: `{_text(packet.get('latest_price_freshness_status')) or 'none'}`",
+            f"- latest_price_age_seconds: `{_text(packet.get('latest_price_age_seconds')) or 'none'}`",
+            f"- latest_price_freshness_threshold_seconds: `{_text(packet.get('latest_price_freshness_threshold_seconds')) or 'none'}`",
             f"- price_evidence_status: `{_text(packet.get('price_evidence_status')) or 'none'}`",
             f"- price_evidence_blocker: `{_text(packet.get('price_evidence_blocker')) or 'none'}`",
             f"- price_source_for_derivation: `{_text(packet.get('price_source_for_derivation')) or 'none'}`",
@@ -1721,6 +1784,15 @@ def render_broker_observed_readiness_packet(packet: Mapping[str, object]) -> str
             f"- open_orders: `{_text(_mapping(packet.get('observed_open_orders_summary')).get('status'))}`",
             f"- crypto_assets: `{_text(_mapping(packet.get('observed_crypto_assets_or_orderability_summary')).get('status'))}`",
             f"- min_notional_or_increment: `{_text(_mapping(packet.get('observed_min_notional_or_increment_basis')).get('status'))}`",
+            "",
+            "## Latest-Price Source Evidence",
+            "",
+            "source | value | observed_at | age_seconds | freshness | status | blocker",
+            "--- | --- | --- | --- | --- | --- | ---",
+            *[
+                f"{source} | `{value}` | `{observed_at}` | `{age_seconds}` | `{freshness}` | `{status}` | `{blocker}`"
+                for source, value, observed_at, age_seconds, freshness, status, blocker in latest_price_rows
+            ],
             "",
             "## Min-Notional / Orderability Evidence",
             "",
@@ -2420,6 +2492,12 @@ def _validate_broker_observed_readiness_packet(
         errors.append("broker_observed_readiness_packet_md_missing_decision")
     if markdown and "field | value | source | freshness | status" not in markdown:
         errors.append("broker_observed_readiness_packet_md_missing_evidence_table")
+    if (
+        markdown
+        and "source | value | observed_at | age_seconds | freshness | status | blocker"
+        not in markdown
+    ):
+        errors.append("broker_observed_readiness_packet_md_missing_latest_price_table")
 
 
 def _validate_broker_observed_latest_price_evidence(
@@ -2446,6 +2524,17 @@ def _validate_broker_observed_latest_price_evidence(
         "latest_price_last",
         "latest_price_basis",
         "latest_price_freshness_status",
+        "latest_price_freshness_threshold_seconds",
+        "latest_price_source_selected",
+        "latest_price_sources_attempted",
+        "latest_price_raw_timestamp_field_names_present",
+        "latest_price_normalized_timestamp",
+        "latest_price_current_evaluation_timestamp",
+        "latest_price_stale_reason",
+        "latest_price_fallback_sources_attempted",
+        "latest_price_fallback_source_result",
+        "latest_price_final_selected_basis",
+        "latest_price_final_blocker",
         "latest_price_source_acceptability",
         "price_used_for_quantity",
         "price_used_for_min_notional_derivation",
@@ -2480,6 +2569,16 @@ def _validate_broker_observed_latest_price_evidence(
     blocker = _text(price_check.get("price_evidence_blocker") or price_check.get("blocker_code"))
     symbol = _text(price_check.get("latest_price_symbol"))
     selected_symbol = _text(packet.get("selected_symbol") or packet.get("symbol"))
+    selected_source_kind = _text(price_check.get("latest_price_source_selected"))
+    age_seconds = _text(price_check.get("latest_price_age_seconds"))
+    threshold_seconds = _text(
+        price_check.get("latest_price_freshness_threshold_seconds")
+        or price_check.get("max_age_seconds")
+    )
+    observed_at = _text(price_check.get("latest_price_observed_at"))
+    raw_timestamp_fields = _text(
+        price_check.get("latest_price_raw_timestamp_field_names_present")
+    )
     internal_symbol = _text(price_check.get("latest_price_symbol_internal"))
     provider_symbol = _text(price_check.get("latest_price_symbol_provider"))
     normalization_status = _text(
@@ -2520,6 +2619,36 @@ def _validate_broker_observed_latest_price_evidence(
         errors.append("broker_latest_price_blocked_without_blocker")
     if status not in {"passed", "blocked"}:
         errors.append("broker_latest_price_evidence_status_invalid")
+    if source in OBSERVED_LATEST_PRICE_SOURCES:
+        if not age_seconds:
+            errors.append("broker_latest_price_age_seconds_missing")
+        if not threshold_seconds:
+            errors.append("broker_latest_price_freshness_threshold_seconds_missing")
+        if freshness == "fresh" and (not observed_at or not raw_timestamp_fields):
+            errors.append("broker_latest_price_timestamp_missing_marked_fresh")
+        if freshness == "fresh" and _text(
+            price_check.get("latest_price_normalized_timestamp")
+        ) != observed_at:
+            errors.append("broker_latest_price_normalized_timestamp_mismatch")
+        if not _text(price_check.get("latest_price_current_evaluation_timestamp")):
+            errors.append("broker_latest_price_current_evaluation_timestamp_missing")
+    if selected_source_kind and selected_source_kind not in LATEST_PRICE_SOURCE_PRIORITY:
+        errors.append(f"broker_latest_price_selected_source_invalid:{selected_source_kind}")
+    if _text(price_check.get("latest_price_final_selected_basis")) and _text(
+        price_check.get("latest_price_final_selected_basis")
+    ) != _text(price_check.get("latest_price_basis")):
+        errors.append("broker_latest_price_final_basis_mismatch")
+    if _text(price_check.get("latest_price_final_blocker")) != blocker:
+        errors.append("broker_latest_price_final_blocker_mismatch")
+
+    _validate_broker_observed_latest_price_source_table(
+        price_check=price_check,
+        selected_source_kind=selected_source_kind,
+        selected_freshness=freshness,
+        selected_status=status,
+        decision=decision,
+        errors=errors,
+    )
 
     quantity_price = _evidence_decimal_text(price_check.get("price_used_for_quantity"))
     derivation_price = _evidence_decimal_text(
@@ -2549,6 +2678,80 @@ def _validate_broker_observed_latest_price_evidence(
             errors.append("broker_price_evidence_not_verified")
     if decision in BROKER_OBSERVED_APPROVED_READINESS_DECISIONS and blocker:
         errors.append(f"broker_observed_ready_with_price_blocker:{blocker}")
+
+
+def _validate_broker_observed_latest_price_source_table(
+    *,
+    price_check: Mapping[str, object],
+    selected_source_kind: str,
+    selected_freshness: str,
+    selected_status: str,
+    decision: str,
+    errors: list[str],
+) -> None:
+    rows = _mapping_sequence(price_check.get("latest_price_source_table"))
+    if not rows:
+        errors.append("broker_latest_price_source_table_missing")
+        return
+    selected_priority = LATEST_PRICE_SOURCE_PRIORITY.get(selected_source_kind, 999)
+    fresh_rows: list[Mapping[str, object]] = []
+    observed_attempted_rows: list[Mapping[str, object]] = []
+    for row in rows:
+        row_source = _text(row.get("source"))
+        row_freshness = _text(row.get("freshness"))
+        row_status = _text(row.get("status"))
+        row_blocker = _text(row.get("blocker"))
+        if row_source not in LATEST_PRICE_SOURCE_PRIORITY:
+            errors.append(f"broker_latest_price_source_table_source_invalid:{row_source}")
+        if row_freshness and row_freshness not in LATEST_PRICE_FRESHNESS_STATUSES:
+            errors.append(
+                f"broker_latest_price_source_table_freshness_invalid:{row_freshness}"
+            )
+        if row_status not in {"passed", "blocked", "unavailable"}:
+            errors.append(f"broker_latest_price_source_table_status_invalid:{row_status}")
+        if row_status == "blocked" and not row_blocker:
+            errors.append(f"broker_latest_price_source_table_blocked_without_blocker:{row_source}")
+        if row_status == "passed" and row_blocker:
+            errors.append(f"broker_latest_price_source_table_passed_with_blocker:{row_source}")
+        if row_freshness == "fresh" and row_status == "passed":
+            fresh_rows.append(row)
+        if row_source in {"quote", "trade", "bar"} and row.get("attempted") is True:
+            observed_attempted_rows.append(row)
+        if (
+            row_source in {"quote", "trade", "bar"}
+            and row_freshness == "fresh"
+            and not _text(row.get("raw_timestamp_field_names_present"))
+        ):
+            errors.append(
+                f"broker_latest_price_source_table_fresh_without_timestamp:{row_source}"
+            )
+
+    better_fresh_rows = [
+        row
+        for row in fresh_rows
+        if LATEST_PRICE_SOURCE_PRIORITY.get(_text(row.get("source")), 999)
+        < selected_priority
+    ]
+    any_fresh_observed_row = any(
+        _text(row.get("source")) in {"quote", "trade", "bar"} for row in fresh_rows
+    )
+    if better_fresh_rows:
+        errors.append("broker_latest_price_fresher_priority_source_not_selected")
+    if selected_freshness != "fresh" and any_fresh_observed_row:
+        errors.append("broker_latest_price_fresher_fallback_exists")
+    if (
+        selected_source_kind in READINESS_ONLY_LATEST_PRICE_SOURCES
+        and observed_attempted_rows
+        and decision == "broker_observed_ready_preview_with_fixture_price"
+    ):
+        errors.append("broker_latest_price_fixture_selected_after_observed_attempt")
+    if (
+        decision == "broker_observed_ready_preview"
+        and selected_status == "passed"
+        and selected_freshness == "fresh"
+        and not any(_text(row.get("source")) == selected_source_kind for row in fresh_rows)
+    ):
+        errors.append("broker_latest_price_selected_source_missing_from_table")
 
 
 def _validate_broker_observed_artifact_consistency(
@@ -3220,10 +3423,13 @@ def _broker_observed_readiness_preview(
         positions = tuple(_call_read_method(client, "get_positions") or ())
         open_orders = tuple(_read_open_orders(client, symbol))
         assets = tuple(_call_read_method(client, "list_assets") or ())
+        price_evaluation_as_of = (
+            datetime.now(UTC) if broker_client is None else as_of
+        )
         price_evidence = _read_latest_price_evidence(
             client=client,
             selected_symbol=symbol,
-            as_of=as_of,
+            as_of=price_evaluation_as_of,
             fallback_evidence=price_evidence,
         )
         intended_notional, estimated_quantity = _broker_observed_quantity_inputs(
@@ -3738,19 +3944,37 @@ def _read_open_orders(client: object, symbol: str) -> Sequence[object]:
         return method()
 
 
-LATEST_PRICE_READ_METHODS = (
-    ("get_latest_quote", "quote"),
-    ("get_crypto_latest_quote", "quote"),
-    ("get_latest_crypto_quote", "quote"),
-    ("get_latest_trade", "trade"),
-    ("get_crypto_latest_trade", "trade"),
-    ("get_latest_crypto_trade", "trade"),
-    ("get_latest_bar", "bar"),
-    ("get_crypto_latest_bar", "bar"),
-    ("get_latest_crypto_bar", "bar"),
-    ("get_latest_price", "latest_price"),
-    ("get_crypto_latest_price", "latest_price"),
-    ("get_latest_crypto_price", "latest_price"),
+LATEST_PRICE_READ_METHOD_GROUPS = (
+    ("quote", ("get_latest_quote", "get_crypto_latest_quote", "get_latest_crypto_quote")),
+    ("trade", ("get_latest_trade", "get_crypto_latest_trade", "get_latest_crypto_trade")),
+    ("bar", ("get_latest_bar", "get_crypto_latest_bar", "get_latest_crypto_bar")),
+)
+LATEST_PRICE_TIMESTAMP_FIELDS = (
+    "latest_price_observed_at",
+    "observed_at",
+    "timestamp",
+    "time",
+    "t",
+)
+LATEST_PRICE_SOURCE_PRIORITY = {
+    "quote": 0,
+    "trade": 1,
+    "bar": 2,
+    "deterministic_fixture": 3,
+    "local_replay": 3,
+}
+LATEST_PRICE_STALE_BLOCKERS = {
+    "quote": "broker_latest_quote_stale",
+    "trade": "broker_latest_trade_stale",
+    "bar": "broker_latest_bar_stale",
+}
+LATEST_PRICE_TIMESTAMP_MISSING_BLOCKERS = {
+    "quote": "broker_latest_quote_timestamp_missing",
+    "trade": "broker_latest_trade_timestamp_missing",
+    "bar": "broker_latest_bar_timestamp_missing",
+}
+LATEST_PRICE_FALLBACK_SOURCES = (
+    *READINESS_ONLY_LATEST_PRICE_SOURCES,
 )
 
 
@@ -3761,38 +3985,128 @@ def _read_latest_price_evidence(
     as_of: datetime,
     fallback_evidence: Mapping[str, object],
 ) -> dict[str, object]:
-    for method_name, basis in LATEST_PRICE_READ_METHODS:
-        method = getattr(client, method_name, None)
-        if not callable(method):
+    attempt_evidence: list[dict[str, object]] = []
+    source_rows: list[dict[str, object]] = []
+    attempted_sources: list[str] = []
+
+    for source_kind, method_names in LATEST_PRICE_READ_METHOD_GROUPS:
+        method_name, method = _first_callable_method(client, method_names)
+        if method is None:
+            source_rows.append(
+                _latest_price_source_table_row(
+                    source=source_kind,
+                    method_name="",
+                    attempted=False,
+                    value="",
+                    observed_at="",
+                    age_seconds="",
+                    freshness="unavailable",
+                    status="unavailable",
+                    blocker="",
+                    basis=source_kind,
+                    raw_timestamp_field_names_present="",
+                )
+            )
             continue
+
+        attempted_sources.append(source_kind)
         try:
             response = _call_symbol_read_method(method, selected_symbol)
         except Exception as exc:
             normalization_blocker = _price_symbol_normalization_blocker(exc)
-            if normalization_blocker:
-                return _latest_price_evidence(
-                    selected_symbol=selected_symbol,
-                    source="broker_observed",
-                    basis=basis,
-                    as_of=as_of,
-                    latest_price=None,
-                    observed_at=None,
-                    raw_symbol=selected_symbol,
-                    blocker_code=normalization_blocker,
-                    freshness_status=(
-                        "ambiguous"
-                        if normalization_blocker == "broker_price_symbol_ambiguous"
-                        else "unavailable"
-                    ),
-                )
-            raise
-        return _latest_price_evidence_from_response(
-            response=response,
-            selected_symbol=selected_symbol,
-            as_of=as_of,
-            default_basis=basis,
+            if not normalization_blocker:
+                raise
+            evidence = _latest_price_evidence(
+                selected_symbol=selected_symbol,
+                source="broker_observed",
+                basis=_latest_price_default_basis(source_kind),
+                as_of=as_of,
+                latest_price=None,
+                observed_at=None,
+                raw_symbol=selected_symbol,
+                blocker_code=normalization_blocker,
+                freshness_status=(
+                    "ambiguous"
+                    if normalization_blocker == "broker_price_symbol_ambiguous"
+                    else "unavailable"
+                ),
+                price_source_kind=source_kind,
+            )
+        else:
+            evidence = _latest_price_evidence_from_response(
+                response=response,
+                selected_symbol=selected_symbol,
+                as_of=as_of,
+                default_basis=_latest_price_default_basis(source_kind),
+                method_name=method_name,
+                price_source_kind=source_kind,
+            )
+        evidence["latest_price_read_method"] = method_name
+        attempt_evidence.append(evidence)
+        source_rows.append(
+            _latest_price_source_row_from_evidence(
+                source_kind=source_kind,
+                method_name=method_name,
+                evidence=evidence,
+                attempted=True,
+            )
         )
-    return dict(fallback_evidence)
+        if _latest_price_evidence_is_fresh_observed(evidence):
+            return _with_latest_price_fallback_diagnostics(
+                evidence,
+                source_rows=source_rows,
+                attempted_sources=attempted_sources,
+                selected_source=source_kind,
+                fallback_sources_attempted=attempted_sources[1:],
+                fallback_source_result=_latest_price_fallback_result(
+                    selected_source=source_kind,
+                    attempted_sources=attempted_sources,
+                ),
+            )
+
+    if not attempt_evidence:
+        fallback = dict(fallback_evidence)
+        source_rows.append(
+            _latest_price_source_row_from_evidence(
+                source_kind=_text(fallback.get("latest_price_source")) or "deterministic_fixture",
+                method_name="fixture_or_local_replay",
+                evidence=fallback,
+                attempted=True,
+            )
+        )
+        return _with_latest_price_fallback_diagnostics(
+            fallback,
+            source_rows=source_rows,
+            attempted_sources=(),
+            selected_source=_text(fallback.get("latest_price_source")) or "deterministic_fixture",
+            fallback_sources_attempted=LATEST_PRICE_FALLBACK_SOURCES,
+            fallback_source_result="deterministic_fixture_selected",
+        )
+
+    blocked = _blocked_latest_price_evidence_from_attempts(
+        selected_symbol=selected_symbol,
+        as_of=as_of,
+        attempt_evidence=attempt_evidence,
+    )
+    return _with_latest_price_fallback_diagnostics(
+        blocked,
+        source_rows=source_rows,
+        attempted_sources=attempted_sources,
+        selected_source=_latest_price_source_kind(blocked),
+        fallback_sources_attempted=attempted_sources[1:],
+        fallback_source_result=_blocked_latest_price_fallback_result(blocked),
+    )
+
+
+def _first_callable_method(
+    client: object,
+    method_names: Sequence[str],
+) -> tuple[str, Callable[..., object] | None]:
+    for method_name in method_names:
+        method = getattr(client, method_name, None)
+        if callable(method):
+            return method_name, method
+    return "", None
 
 
 def _call_symbol_read_method(method: Callable[..., object], symbol: str) -> object:
@@ -3818,6 +4132,8 @@ def _latest_price_evidence_from_response(
     selected_symbol: str,
     as_of: datetime,
     default_basis: str,
+    method_name: str = "",
+    price_source_kind: str = "",
 ) -> dict[str, object]:
     if response in (None, ""):
         return _latest_price_evidence(
@@ -3830,6 +4146,7 @@ def _latest_price_evidence_from_response(
             raw_symbol=selected_symbol,
             blocker_code="broker_latest_price_missing",
             freshness_status="unavailable",
+            price_source_kind=price_source_kind or default_basis,
         )
     if isinstance(response, Mapping) and _looks_like_latest_price_symbol_map(response):
         rows = tuple(response.items())
@@ -3844,6 +4161,7 @@ def _latest_price_evidence_from_response(
                 raw_symbol=selected_symbol,
                 blocker_code="broker_latest_price_ambiguous",
                 freshness_status="ambiguous",
+                price_source_kind=price_source_kind or default_basis,
             )
         response_symbol, response_value = rows[0]
         if isinstance(response_value, Mapping):
@@ -3865,6 +4183,7 @@ def _latest_price_evidence_from_response(
                 raw_symbol=selected_symbol,
                 blocker_code="broker_latest_price_ambiguous",
                 freshness_status="ambiguous",
+                price_source_kind=price_source_kind or default_basis,
             )
         response = rows[0]
 
@@ -3896,6 +4215,7 @@ def _latest_price_evidence_from_response(
         or _field(response, "time")
         or _field(response, "t")
     )
+    raw_timestamp_field_names = _raw_timestamp_field_names_present(response)
     bid = _first_decimal(
         _field(response, "latest_price_bid"),
         _field(response, "bid"),
@@ -3973,6 +4293,9 @@ def _latest_price_evidence_from_response(
         raw_symbol=raw_symbol,
         raw_provider_symbol=raw_provider_symbol,
         blocker_code=blocker,
+        raw_timestamp_field_names_present=raw_timestamp_field_names,
+        price_source_kind=price_source_kind or basis_kind,
+        read_method=method_name,
     )
 
 
@@ -4028,6 +4351,307 @@ def _latest_price_basis_kind(basis: str) -> str:
     if "bar" in normalized:
         return "bar"
     return "latest_price"
+
+
+def _latest_price_default_basis(source_kind: str) -> str:
+    if source_kind == "quote":
+        return "broker_observed_latest_quote_mid"
+    if source_kind == "trade":
+        return "broker_observed_latest_trade"
+    if source_kind == "bar":
+        return "broker_observed_latest_bar_close"
+    return source_kind
+
+
+def _raw_timestamp_field_names_present(response: object) -> tuple[str, ...]:
+    names: list[str] = []
+    for name in LATEST_PRICE_TIMESTAMP_FIELDS:
+        present = False
+        if isinstance(response, Mapping):
+            present = name in response and response.get(name) not in (None, "")
+        else:
+            present = hasattr(response, name) and _field(response, name) not in (None, "")
+        if present:
+            names.append(name)
+    return _dedupe(names)
+
+
+def _latest_price_source_kind_from_parts(
+    *,
+    source: str,
+    basis: str,
+    explicit_source_kind: str,
+) -> str:
+    if explicit_source_kind:
+        return explicit_source_kind
+    if source in READINESS_ONLY_LATEST_PRICE_SOURCES:
+        return source
+    basis_kind = _latest_price_basis_kind(basis)
+    return basis_kind if basis_kind in LATEST_PRICE_SOURCE_PRIORITY else source
+
+
+def _latest_price_source_kind(evidence: Mapping[str, object]) -> str:
+    source_kind = _text(evidence.get("latest_price_source_selected"))
+    if source_kind:
+        return source_kind
+    return _latest_price_source_kind_from_parts(
+        source=_text(evidence.get("latest_price_source") or evidence.get("source")),
+        basis=_text(evidence.get("latest_price_basis") or evidence.get("basis")),
+        explicit_source_kind="",
+    )
+
+
+def _source_specific_latest_price_blocker(source_kind: str, blocker: str) -> str:
+    if blocker == "broker_latest_price_stale":
+        return LATEST_PRICE_STALE_BLOCKERS.get(source_kind, blocker)
+    if blocker == "broker_latest_price_timestamp_missing":
+        return LATEST_PRICE_TIMESTAMP_MISSING_BLOCKERS.get(source_kind, blocker)
+    return blocker
+
+
+def _latest_price_stale_reason(*, freshness: str, blocker: str) -> str:
+    if blocker in {
+        "broker_latest_price_all_sources_stale",
+        "broker_latest_quote_stale",
+        "broker_latest_trade_stale",
+        "broker_latest_bar_stale",
+        "broker_latest_price_stale",
+    }:
+        return "age_exceeds_threshold"
+    if freshness == "missing_timestamp" or blocker in {
+        "broker_latest_quote_timestamp_missing",
+        "broker_latest_trade_timestamp_missing",
+        "broker_latest_bar_timestamp_missing",
+        "broker_latest_price_timestamp_missing",
+    }:
+        return "timestamp_missing"
+    if freshness == "unavailable" or blocker in {
+        "broker_latest_price_missing",
+        "broker_latest_price_all_sources_unavailable",
+    }:
+        return "price_unavailable"
+    if freshness == "ambiguous" or blocker == "broker_latest_price_ambiguous":
+        return "ambiguous"
+    return blocker if freshness != "fresh" else ""
+
+
+def _latest_price_evidence_is_fresh_observed(
+    evidence: Mapping[str, object],
+) -> bool:
+    return (
+        _text(evidence.get("status") or evidence.get("price_evidence_status"))
+        == "passed"
+        and _text(evidence.get("latest_price_freshness_status")) == "fresh"
+        and _text(evidence.get("latest_price_source") or evidence.get("source"))
+        in OBSERVED_LATEST_PRICE_SOURCES
+    )
+
+
+def _latest_price_fallback_result(
+    *,
+    selected_source: str,
+    attempted_sources: Sequence[str],
+) -> str:
+    if not attempted_sources or (
+        len(attempted_sources) == 1 and attempted_sources[0] == selected_source
+    ):
+        return "not_needed"
+    prior_sources = ",".join(source for source in attempted_sources if source != selected_source)
+    return f"{selected_source}_selected_after_{prior_sources}_blocked"
+
+
+def _latest_price_source_table_row(
+    *,
+    source: str,
+    method_name: str,
+    attempted: bool,
+    value: object,
+    observed_at: object,
+    age_seconds: object,
+    freshness: str,
+    status: str,
+    blocker: str,
+    basis: str,
+    raw_timestamp_field_names_present: object,
+) -> dict[str, object]:
+    return {
+        "source": source,
+        "method_name": method_name,
+        "attempted": attempted,
+        "value": _evidence_decimal_text(value),
+        "observed_at": _text(observed_at),
+        "age_seconds": _text(age_seconds),
+        "freshness": _text(freshness),
+        "status": _text(status),
+        "blocker": _text(blocker),
+        "basis": _text(basis),
+        "raw_timestamp_field_names_present": _text(raw_timestamp_field_names_present),
+    }
+
+
+def _latest_price_source_row_from_evidence(
+    *,
+    source_kind: str,
+    method_name: str,
+    evidence: Mapping[str, object],
+    attempted: bool,
+) -> dict[str, object]:
+    return _latest_price_source_table_row(
+        source=source_kind,
+        method_name=method_name,
+        attempted=attempted,
+        value=evidence.get("latest_price_value"),
+        observed_at=evidence.get("latest_price_observed_at"),
+        age_seconds=evidence.get("latest_price_age_seconds"),
+        freshness=_text(evidence.get("latest_price_freshness_status")),
+        status=_text(evidence.get("price_evidence_status") or evidence.get("status")),
+        blocker=_text(evidence.get("price_evidence_blocker") or evidence.get("blocker_code")),
+        basis=_text(evidence.get("latest_price_basis") or evidence.get("basis")),
+        raw_timestamp_field_names_present=evidence.get(
+            "latest_price_raw_timestamp_field_names_present"
+        ),
+    )
+
+
+def _with_latest_price_fallback_diagnostics(
+    evidence: Mapping[str, object],
+    *,
+    source_rows: Sequence[Mapping[str, object]],
+    attempted_sources: Sequence[str],
+    selected_source: str,
+    fallback_sources_attempted: Sequence[str],
+    fallback_source_result: str,
+) -> dict[str, object]:
+    payload = dict(evidence)
+    blocker = _text(payload.get("price_evidence_blocker") or payload.get("blocker_code"))
+    basis = _text(payload.get("latest_price_basis") or payload.get("basis"))
+    payload.update(
+        {
+            "latest_price_source_selected": selected_source,
+            "latest_price_sources_attempted": ",".join(_string_sequence(attempted_sources)),
+            "latest_price_fallback_sources_attempted": ",".join(
+                _string_sequence(fallback_sources_attempted)
+            ),
+            "latest_price_fallback_source_result": fallback_source_result,
+            "latest_price_final_selected_basis": basis,
+            "latest_price_final_blocker": blocker,
+            "latest_price_source_table": [dict(row) for row in source_rows],
+        }
+    )
+    return payload
+
+
+def _blocked_latest_price_evidence_from_attempts(
+    *,
+    selected_symbol: str,
+    as_of: datetime,
+    attempt_evidence: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    base = dict(_best_blocked_latest_price_evidence(attempt_evidence))
+    if not base:
+        base = _latest_price_evidence(
+            selected_symbol=selected_symbol,
+            source="unavailable",
+            basis="unavailable",
+            as_of=as_of,
+            latest_price=None,
+            observed_at=None,
+            raw_symbol=selected_symbol,
+            blocker_code="broker_latest_price_all_sources_unavailable",
+            freshness_status="unavailable",
+        )
+    blocker = _aggregate_latest_price_blocker(attempt_evidence)
+    freshness = _aggregate_latest_price_freshness(blocker, base)
+    base.update(
+        {
+            "status": "blocked",
+            "price_evidence_status": "blocked",
+            "price_evidence_blocker": blocker,
+            "blocker_code": blocker,
+            "latest_price_freshness_status": freshness,
+            "latest_price_stale_reason": _latest_price_stale_reason(
+                freshness=freshness,
+                blocker=blocker,
+            ),
+            "price_source_acceptability": "blocked_price_check_failed",
+            "latest_price_source_acceptability": "blocked_price_check_failed",
+            "price_used_for_quantity": None,
+            "price_used_for_min_notional_derivation": None,
+            "accepted_for_broker_observed_readiness": False,
+            "accepted_for_full_broker_observed_readiness": False,
+            "accepted_for_readiness_only_preview": False,
+        }
+    )
+    return base
+
+
+def _best_blocked_latest_price_evidence(
+    attempt_evidence: Sequence[Mapping[str, object]],
+) -> Mapping[str, object]:
+    with_price = [
+        evidence
+        for evidence in attempt_evidence
+        if _first_decimal(evidence.get("latest_price_value")) is not None
+    ]
+    if with_price:
+        return with_price[0]
+    return attempt_evidence[0] if attempt_evidence else {}
+
+
+def _aggregate_latest_price_blocker(
+    attempt_evidence: Sequence[Mapping[str, object]],
+) -> str:
+    blockers = tuple(
+        _text(evidence.get("price_evidence_blocker") or evidence.get("blocker_code"))
+        for evidence in attempt_evidence
+        if _text(evidence.get("price_evidence_blocker") or evidence.get("blocker_code"))
+    )
+    freshnesses = tuple(
+        _text(evidence.get("latest_price_freshness_status"))
+        for evidence in attempt_evidence
+        if _text(evidence.get("latest_price_freshness_status"))
+    )
+    if not attempt_evidence:
+        return "broker_latest_price_all_sources_unavailable"
+    if any(blocker == "broker_latest_price_ambiguous" for blocker in blockers):
+        return "broker_latest_price_ambiguous"
+    if freshnesses and all(freshness == "stale" for freshness in freshnesses):
+        return "broker_latest_price_all_sources_stale"
+    if any(freshness == "missing_timestamp" for freshness in freshnesses):
+        return "broker_latest_price_timestamp_missing"
+    if freshnesses and all(freshness == "unavailable" for freshness in freshnesses):
+        return "broker_latest_price_all_sources_unavailable"
+    return blockers[0] if blockers else "broker_latest_price_missing"
+
+
+def _aggregate_latest_price_freshness(
+    blocker: str,
+    base: Mapping[str, object],
+) -> str:
+    if blocker == "broker_latest_price_all_sources_stale":
+        return "stale"
+    if blocker == "broker_latest_price_timestamp_missing":
+        return "missing_timestamp"
+    if blocker == "broker_latest_price_all_sources_unavailable":
+        return "unavailable"
+    if blocker == "broker_latest_price_ambiguous":
+        return "ambiguous"
+    return _text(base.get("latest_price_freshness_status")) or "unavailable"
+
+
+def _blocked_latest_price_fallback_result(
+    evidence: Mapping[str, object],
+) -> str:
+    blocker = _text(evidence.get("price_evidence_blocker") or evidence.get("blocker_code"))
+    if blocker == "broker_latest_price_all_sources_stale":
+        return "all_observed_sources_stale"
+    if blocker == "broker_latest_price_all_sources_unavailable":
+        return "all_observed_sources_unavailable"
+    if blocker == "broker_latest_price_timestamp_missing":
+        return "observed_source_timestamp_missing"
+    if blocker == "broker_latest_price_ambiguous":
+        return "observed_source_ambiguous"
+    return "no_fresh_observed_source_selected"
 
 
 BROKER_ASSET_ORDERABILITY_FIELDS = (
@@ -4388,6 +5012,39 @@ def _latest_price_packet_fields(price_evidence: Mapping[str, object]) -> dict[st
         "latest_price_freshness_status": _text(
             price_evidence.get("latest_price_freshness_status")
         ),
+        "latest_price_freshness_threshold_seconds": _text(
+            price_evidence.get("latest_price_freshness_threshold_seconds")
+        ),
+        "latest_price_source_selected": _text(
+            price_evidence.get("latest_price_source_selected")
+        ),
+        "latest_price_sources_attempted": _text(
+            price_evidence.get("latest_price_sources_attempted")
+        ),
+        "latest_price_raw_timestamp_field_names_present": _text(
+            price_evidence.get("latest_price_raw_timestamp_field_names_present")
+        ),
+        "latest_price_normalized_timestamp": _text(
+            price_evidence.get("latest_price_normalized_timestamp")
+        ),
+        "latest_price_current_evaluation_timestamp": _text(
+            price_evidence.get("latest_price_current_evaluation_timestamp")
+        ),
+        "latest_price_stale_reason": _text(
+            price_evidence.get("latest_price_stale_reason")
+        ),
+        "latest_price_fallback_sources_attempted": _text(
+            price_evidence.get("latest_price_fallback_sources_attempted")
+        ),
+        "latest_price_fallback_source_result": _text(
+            price_evidence.get("latest_price_fallback_source_result")
+        ),
+        "latest_price_final_selected_basis": _text(
+            price_evidence.get("latest_price_final_selected_basis")
+        ),
+        "latest_price_final_blocker": _text(
+            price_evidence.get("latest_price_final_blocker")
+        ),
         "latest_price_source_acceptability": _text(
             price_evidence.get("latest_price_source_acceptability")
         ),
@@ -4419,11 +5076,19 @@ def _latest_price_freshness(
     max_age: timedelta = BROKER_OBSERVED_PRICE_MAX_AGE,
 ) -> tuple[str, str, str]:
     if latest_price is None or latest_price <= Decimal("0"):
-        return "unavailable", "broker_latest_price_missing", ""
+        return "unavailable", "broker_latest_price_missing", "unavailable"
     if observed_at is None:
-        return "missing_timestamp", "broker_latest_price_timestamp_missing", ""
+        return (
+            "missing_timestamp",
+            "broker_latest_price_timestamp_missing",
+            "missing_timestamp",
+        )
     if as_of is None:
-        return "missing_timestamp", "broker_latest_price_timestamp_missing", ""
+        return (
+            "missing_timestamp",
+            "broker_latest_price_timestamp_missing",
+            "missing_timestamp",
+        )
     age_seconds = (as_of - observed_at).total_seconds()
     if age_seconds < 0 or age_seconds > max_age.total_seconds():
         return "stale", "broker_latest_price_stale", _age_seconds_text(observed_at, as_of)
@@ -4503,10 +5168,22 @@ def _latest_price_evidence(
     raw_provider_symbol: str = "",
     blocker_code: str = "",
     freshness_status: str = "",
+    raw_timestamp_field_names_present: Sequence[str] = (),
+    price_source_kind: str = "",
+    read_method: str = "",
+    price_sources_attempted: Sequence[str] = (),
+    fallback_sources_attempted: Sequence[str] = (),
+    fallback_source_result: str = "",
+    source_table: Sequence[Mapping[str, object]] = (),
 ) -> dict[str, object]:
     normalized_source = source if source in LATEST_PRICE_SOURCES else "ambiguous"
     observed_at_value = _datetime_or_none(observed_at)
     symbol = _text(raw_symbol) or selected_symbol
+    resolved_source_kind = _latest_price_source_kind_from_parts(
+        source=normalized_source,
+        basis=basis,
+        explicit_source_kind=price_source_kind,
+    )
     symbol_fields = _latest_price_symbol_fields(
         selected_symbol=selected_symbol,
         raw_symbol=symbol,
@@ -4522,6 +5199,10 @@ def _latest_price_evidence(
         latest_price=latest_price,
         observed_at=observed_at_value,
         as_of=as_of,
+    )
+    freshness_blocker = _source_specific_latest_price_blocker(
+        resolved_source_kind,
+        freshness_blocker,
     )
     resolved_freshness = freshness_status or computed_freshness
     if not blocker_code:
@@ -4547,6 +5228,15 @@ def _latest_price_evidence(
     status = "blocked" if blocker_code else "passed"
     acceptability = _price_source_acceptability(status, normalized_source)
     observed_at_text = "" if observed_at_value is None else observed_at_value.isoformat()
+    as_of_text = "" if as_of is None else as_of.isoformat()
+    raw_timestamp_fields_text = ",".join(
+        _dedupe(_text(field) for field in raw_timestamp_field_names_present)
+    )
+    threshold_seconds = str(BROKER_OBSERVED_PRICE_MAX_AGE_SECONDS)
+    stale_reason = _latest_price_stale_reason(
+        freshness=resolved_freshness,
+        blocker=blocker_code,
+    )
     accepted_full_readiness = (
         normalized_source in OBSERVED_LATEST_PRICE_SOURCES
         and resolved_freshness == "fresh"
@@ -4558,7 +5248,7 @@ def _latest_price_evidence(
         and status == "passed"
     )
     price_for_use = latest_price if status == "passed" else None
-    return {
+    payload = {
         "status": status,
         "source": normalized_source,
         "price_source_acceptability": acceptability,
@@ -4590,14 +5280,28 @@ def _latest_price_evidence(
         "latest_price_last": last,
         "latest_price_basis": basis,
         "latest_price_freshness_status": resolved_freshness,
+        "latest_price_freshness_threshold_seconds": threshold_seconds,
+        "latest_price_source_selected": resolved_source_kind,
+        "latest_price_sources_attempted": ",".join(_string_sequence(price_sources_attempted)),
+        "latest_price_raw_timestamp_field_names_present": raw_timestamp_fields_text,
+        "latest_price_normalized_timestamp": observed_at_text,
+        "latest_price_current_evaluation_timestamp": as_of_text,
+        "latest_price_stale_reason": stale_reason,
+        "latest_price_fallback_sources_attempted": ",".join(
+            _string_sequence(fallback_sources_attempted)
+        ),
+        "latest_price_fallback_source_result": _text(fallback_source_result),
+        "latest_price_final_selected_basis": basis,
+        "latest_price_final_blocker": blocker_code,
+        "latest_price_read_method": _text(read_method),
         "latest_price_source_acceptability": acceptability,
         "price_used_for_quantity": price_for_use,
         "price_used_for_min_notional_derivation": price_for_use,
         "price_evidence_status": status,
         "price_evidence_blocker": blocker_code,
         "latest_price_timestamp": observed_at_text,
-        "as_of": "" if as_of is None else as_of.isoformat(),
-        "max_age_seconds": str(int(BROKER_OBSERVED_PRICE_MAX_AGE.total_seconds())),
+        "as_of": as_of_text,
+        "max_age_seconds": threshold_seconds,
         "stale_after": ""
         if as_of is None
         else (as_of - BROKER_OBSERVED_PRICE_MAX_AGE).isoformat(),
@@ -4613,6 +5317,19 @@ def _latest_price_evidence(
         "symbol_mismatch": symbol_fields["symbol_mismatch"],
         "blocker_code": blocker_code,
     }
+    payload["latest_price_source_table"] = (
+        [dict(row) for row in source_table]
+        if source_table
+        else [
+            _latest_price_source_row_from_evidence(
+                source_kind=resolved_source_kind,
+                method_name=_text(read_method),
+                evidence=payload,
+                attempted=True,
+            )
+        ]
+    )
+    return payload
 
 
 def _broker_observed_price_evidence(
@@ -4647,6 +5364,17 @@ def _broker_observed_price_evidence(
         latest_price=latest_price,
         observed_at=observed_at,
         raw_symbol=_text(fixture_readiness.get("symbol")),
+        raw_timestamp_field_names_present=(
+            ("latest_price_timestamp",) if observed_at not in (None, "") else ()
+        ),
+        price_source_kind=source,
+        fallback_source_result=(
+            "deterministic_fixture_selected"
+            if source == "deterministic_fixture"
+            else "local_replay_selected"
+            if source == "local_replay"
+            else ""
+        ),
     )
     if latest_check.get("missing") is True:
         evidence.update(

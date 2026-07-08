@@ -895,6 +895,17 @@ def test_default_simbroker_has_consistent_offline_broker_observed_flags(
         "latest_price_last": "",
         "latest_price_basis": "offline_fixture_latest_bar_close",
         "latest_price_freshness_status": "fresh",
+        "latest_price_freshness_threshold_seconds": "7200",
+        "latest_price_source_selected": "deterministic_fixture",
+        "latest_price_sources_attempted": "",
+        "latest_price_raw_timestamp_field_names_present": "latest_price_timestamp",
+        "latest_price_normalized_timestamp": AS_OF.isoformat(),
+        "latest_price_current_evaluation_timestamp": AS_OF.isoformat(),
+        "latest_price_stale_reason": "",
+        "latest_price_fallback_sources_attempted": "",
+        "latest_price_fallback_source_result": "deterministic_fixture_selected",
+        "latest_price_final_selected_basis": "offline_fixture_latest_bar_close",
+        "latest_price_final_blocker": "",
         "latest_price_source_acceptability": "accepted_readiness_only_preview",
         "price_used_for_quantity": packet["broker_observed_readiness_preview"][
             "price_used_for_quantity"
@@ -1119,6 +1130,8 @@ def test_fake_broker_read_adapter_uses_distinct_fixture_price_ready_preview(
         encoding="utf-8"
     )
     assert "field | value | source | freshness | status" in markdown
+    assert "source | value | observed_at | age_seconds | freshness | status | blocker" in markdown
+    assert "deterministic_fixture" in markdown
     assert "min_notional | `1` | `broker_observed` | `not_applicable` | `passed`" in markdown
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
 
@@ -1206,7 +1219,7 @@ def test_validator_accepts_stale_price_block_when_min_notional_derivation_blocke
     broker = packet["broker_observed_readiness_packet"]
 
     assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
-    assert broker["blocker_code"] == "broker_latest_price_stale"
+    assert broker["blocker_code"] == "broker_latest_price_all_sources_stale"
     assert broker["price_evidence_status"] == "blocked"
     assert broker["derived_min_notional_available"] is False
     assert validate_tomorrow_crypto_trader_demo(output_root)["validation_status"] == "passed"
@@ -1350,6 +1363,146 @@ def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
     assert broker["paper_submit_occurred"] is False
     assert broker["broker_mutation_occurred"] is False
     assert expected_call in fake.calls
+    assert broker["latest_price_age_seconds"] == "0"
+    assert broker["latest_price_freshness_threshold_seconds"] == "7200"
+    assert broker["latest_price_current_evaluation_timestamp"] == AS_OF.isoformat()
+    assert broker["latest_price_final_selected_basis"] == expected_basis
+    assert broker["latest_price_final_blocker"] == ""
+
+
+def test_broker_observed_fresh_quote_is_selected_over_trade_and_bar() -> None:
+    fake = _FakeBrokerReadClient(
+        latest_quote=_latest_quote(bid="124", ask="126"),
+        latest_trade=_latest_trade(price="127"),
+        latest_bar=_latest_bar(close="128"),
+    )
+
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(latest_price="100"),
+        paper_environment=_paper_read_env(),
+        broker_client=fake,
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_ready_preview"
+    assert broker["latest_price_value"] == "125"
+    assert broker["latest_price_source_selected"] == "quote"
+    assert broker["latest_price_fallback_source_result"] == "not_needed"
+    assert "get_latest_quote:BTCUSD" in fake.calls
+    assert "get_latest_trade:BTCUSD" not in fake.calls
+    assert "get_latest_bar:BTCUSD" not in fake.calls
+
+
+def test_broker_observed_stale_quote_falls_back_to_fresh_trade() -> None:
+    fake = _FakeBrokerReadClient(
+        latest_quote=_latest_quote(
+            timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+        ),
+        latest_trade=_latest_trade(price="127"),
+        latest_bar=_latest_bar(close="128"),
+    )
+
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(latest_price="100"),
+        paper_environment=_paper_read_env(),
+        broker_client=fake,
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_ready_preview"
+    assert broker["latest_price_value"] == "127"
+    assert broker["latest_price_source_selected"] == "trade"
+    assert broker["latest_price_basis"] == "broker_observed_latest_trade"
+    assert broker["latest_price_fallback_sources_attempted"] == "trade"
+    assert broker["latest_price_fallback_source_result"] == "trade_selected_after_quote_blocked"
+    rows = broker["broker_observed_price_freshness_check"]["latest_price_source_table"]
+    assert rows[0]["source"] == "quote"
+    assert rows[0]["freshness"] == "stale"
+    assert rows[0]["blocker"] == "broker_latest_quote_stale"
+    assert rows[1]["source"] == "trade"
+    assert rows[1]["freshness"] == "fresh"
+    assert "get_latest_bar:BTCUSD" not in fake.calls
+
+
+def test_broker_observed_stale_quote_and_trade_fall_back_to_fresh_bar() -> None:
+    stale_at = datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+    fake = _FakeBrokerReadClient(
+        latest_quote=_latest_quote(timestamp=stale_at),
+        latest_trade=_latest_trade(timestamp=stale_at),
+        latest_bar=_latest_bar(close="129"),
+    )
+
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(latest_price="100"),
+        paper_environment=_paper_read_env(),
+        broker_client=fake,
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_ready_preview"
+    assert broker["latest_price_value"] == "129"
+    assert broker["latest_price_source_selected"] == "bar"
+    assert broker["latest_price_basis"] == "broker_observed_latest_bar_close"
+    assert broker["latest_price_fallback_sources_attempted"] == "trade,bar"
+    assert broker["latest_price_fallback_source_result"] == (
+        "bar_selected_after_quote,trade_blocked"
+    )
+    rows = broker["broker_observed_price_freshness_check"]["latest_price_source_table"]
+    assert [row["source"] for row in rows] == ["quote", "trade", "bar"]
+    assert rows[0]["blocker"] == "broker_latest_quote_stale"
+    assert rows[1]["blocker"] == "broker_latest_trade_stale"
+    assert rows[2]["freshness"] == "fresh"
+
+
+def test_broker_observed_all_observed_sources_stale_blocks_with_ages() -> None:
+    stale_at = datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+    broker = _broker_observed_readiness_preview(
+        run_id="test_run",
+        cycle_index=0,
+        as_of=AS_OF,
+        requested=True,
+        broker_read_authorized=True,
+        fixture_readiness=_paper_readiness_packet(latest_price="100"),
+        paper_environment=_paper_read_env(),
+        broker_client=_FakeBrokerReadClient(
+            latest_quote=_latest_quote(timestamp=stale_at),
+            latest_trade=_latest_trade(timestamp=stale_at),
+            latest_bar=_latest_bar(timestamp=stale_at),
+        ),
+        broker_client_factory=None,
+        network_used=False,
+    )
+
+    assert broker["broker_observed_readiness_decision"] == "broker_observed_blocked_preview"
+    assert broker["blocker_code"] == "broker_latest_price_all_sources_stale"
+    assert broker["latest_price_freshness_status"] == "stale"
+    assert broker["latest_price_age_seconds"] == "12600"
+    assert broker["latest_price_stale_reason"] == "age_exceeds_threshold"
+    rows = broker["broker_observed_price_freshness_check"]["latest_price_source_table"]
+    assert [row["age_seconds"] for row in rows] == ["12600", "12600", "12600"]
+    assert [row["blocker"] for row in rows] == [
+        "broker_latest_quote_stale",
+        "broker_latest_trade_stale",
+        "broker_latest_bar_stale",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -1357,7 +1510,7 @@ def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
     [
         (
             {"latest_trade": None},
-            "broker_latest_price_missing",
+            "broker_latest_price_all_sources_unavailable",
             "unavailable",
         ),
         (
@@ -1386,7 +1539,7 @@ def test_broker_observed_fresh_latest_price_produces_plain_ready_preview(
                     timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
                 )
             },
-            "broker_latest_price_stale",
+            "broker_latest_price_all_sources_stale",
             "stale",
         ),
         (
@@ -2034,6 +2187,80 @@ def test_validator_rejects_invalid_price_mislabeled_as_plain_broker_observed_rea
     assert expected_error in validation["errors"]
 
 
+def test_validator_catches_missing_timestamp_marked_fresh(tmp_path: Path) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(latest_trade=_latest_trade(timestamp=None)),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    for container in (
+        broker,
+        broker["broker_observed_price_freshness_check"],
+        broker["observed_latest_price_basis"],
+    ):
+        container["latest_price_freshness_status"] = "fresh"
+        container["latest_price_observed_at"] = ""
+        container["latest_price_normalized_timestamp"] = ""
+        container["latest_price_raw_timestamp_field_names_present"] = ""
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "broker_latest_price_timestamp_missing_marked_fresh" in validation["errors"]
+
+
+def test_validator_catches_stale_selected_when_fresh_fallback_exists(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(
+            latest_quote=_latest_quote(
+                timestamp=datetime(2026, 7, 6, 11, 0, tzinfo=UTC).isoformat()
+            ),
+            latest_trade=_latest_trade(price="127"),
+        ),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    broker_path = output_root / "broker_observed_readiness_packet.json"
+    broker = json.loads(broker_path.read_text(encoding="utf-8"))
+    for container in (
+        broker,
+        broker["broker_observed_price_freshness_check"],
+        broker["observed_latest_price_basis"],
+    ):
+        container["latest_price_source_selected"] = "quote"
+        container["latest_price_freshness_status"] = "stale"
+        container["latest_price_final_blocker"] = "broker_latest_quote_stale"
+        container["price_evidence_blocker"] = "broker_latest_quote_stale"
+        container["blocker_code"] = "broker_latest_quote_stale"
+        container["price_evidence_status"] = "blocked"
+        container["status"] = "blocked"
+    _write_json_fixture(broker_path, broker)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "broker_latest_price_fresher_fallback_exists" in validation["errors"]
+
+
 @pytest.mark.parametrize(
     ("provider_symbol", "expected_error"),
     [
@@ -2222,6 +2449,41 @@ def test_validator_catches_run_summary_latest_price_disagreement(tmp_path: Path)
 
     assert validation["validation_status"] == "failed"
     assert "inconsistent_console_artifact_field:latest_price_value" in validation["errors"]
+
+
+def test_validator_catches_price_basis_disagreement_across_artifacts(
+    tmp_path: Path,
+) -> None:
+    output_root = tmp_path / "runs" / "crypto_trader_demo" / "latest"
+    run_tomorrow_crypto_trader_demo(
+        output_root=output_root,
+        mode="SimBroker",
+        as_of=AS_OF,
+        broker_observed_readiness=True,
+        allow_alpaca_paper_read=True,
+        paper_environment=_paper_read_env(),
+        broker_observed_client=_FakeBrokerReadClient(latest_trade=_latest_trade(price="125")),
+        broker_observed_network_used=False,
+        write_artifacts=True,
+    )
+    summary_path = output_root / "run_summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    original = summary["console_fields"]["latest_price_basis"]
+    summary["console_fields"]["latest_price_basis"] = "tampered_price_basis"
+    summary["console_lines"] = [
+        (
+            "tomorrow_crypto_trader_demo_latest_price_basis=tampered_price_basis"
+            if line == f"tomorrow_crypto_trader_demo_latest_price_basis={original}"
+            else line
+        )
+        for line in summary["console_lines"]
+    ]
+    _write_json_fixture(summary_path, summary)
+
+    validation = validate_tomorrow_crypto_trader_demo(output_root)
+
+    assert validation["validation_status"] == "failed"
+    assert "inconsistent_console_artifact_field:latest_price_basis" in validation["errors"]
 
 
 def test_validator_fails_on_missing_required_label(tmp_path: Path) -> None:
