@@ -15,6 +15,7 @@ import pytest
 
 import algotrader.orchestration.crypto_no_submit_operating_cycle as cycle
 from algotrader.orchestration.crypto_no_submit_operating_cycle import (
+    CRYPTO_READINESS_PACKET_SCHEMA_VERSION,
     FINAL_STATES,
     NEXT_OPERATOR_ACTIONS,
     REQUIRED_LABELS,
@@ -53,6 +54,33 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
     assert packet["autonomy_cadence_status"]["cadence_status"] == (
         "ready_for_supervised_operator_review"
     )
+    readiness = packet["crypto_readiness_packet"]
+    assert readiness["schema_version"] == CRYPTO_READINESS_PACKET_SCHEMA_VERSION
+    assert readiness["selected_crypto_symbol"] == "BTCUSD"
+    assert readiness["candidate_symbols"] == ["BTCUSD"]
+    assert readiness["evidence_classification"] == "local_replay"
+    assert readiness["latest_price_source"] == "local_replay_latest_bar"
+    assert readiness["latest_price_basis"] == "local_replay_latest_history_bar_close"
+    assert readiness["latest_price_freshness_status"] == "fresh"
+    assert readiness["readiness_decision"] == "local_replay_ready_no_submit"
+    assert readiness["blocker_taxonomy"] == "none"
+    assert readiness["blocker"] == "none"
+    assert readiness["validation_status"] == "passed"
+    assert readiness["validation_errors"] == []
+    assert readiness["quote_trade_bar_fallback_diagnostics"] == {
+        "selected_source": "bar",
+        "sources_attempted": ["bar"],
+        "quote_status": "not_attempted_no_broker_read",
+        "trade_status": "not_attempted_no_broker_read",
+        "bar_status": "passed",
+        "fallback_result": "local_replay_bar_selected",
+    }
+    assert [
+        row["source_kind"] for row in readiness["latest_price_source_table"]
+    ] == ["quote", "trade", "bar"]
+    assert readiness["latest_price_source_table"][2]["selected"] is True
+    assert status["crypto_readiness_decision"] == "local_replay_ready_no_submit"
+    assert status["latest_price_freshness_status"] == "fresh"
     assert set(REQUIRED_LABELS) <= set(status["labels"])
 
     artifact_paths = packet["artifact_paths"]
@@ -64,6 +92,7 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
         "paper_oms_handoff_status.json",
         "dry_run_identity_status.json",
         "autonomy_cadence_status.json",
+        "crypto_readiness_packet.json",
         "next_operator_action.json",
         "operating_record.jsonl",
         "manifest.json",
@@ -86,6 +115,7 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
         "autonomy_cadence_status",
         "cycle_brief",
         "cycle_status",
+        "crypto_readiness_packet",
         "dry_run_identity_status",
         "next_operator_action",
         "operating_record",
@@ -94,6 +124,30 @@ def test_happy_path_selected_candidate_flows_into_no_submit_packet(tmp_path: Pat
         "sizing_preview_status",
     }
     assert "fresh authorization required for any order: `true`" in brief
+    assert "readiness decision: `local_replay_ready_no_submit`" in brief
+
+
+def test_fixture_replay_packet_is_preview_only_not_broker_observed_ready(
+    tmp_path: Path,
+) -> None:
+    paths = _write_cycle_inputs(tmp_path)
+    paths["refresh_mode"] = "offline_fixture"
+    paths["allow_fixture_backed"] = True
+
+    packet = run_crypto_no_submit_operating_cycle(**paths, write_artifacts=True)
+    readiness = packet["crypto_readiness_packet"]
+
+    assert readiness["evidence_classification"] == "fixture_replay"
+    assert readiness["readiness_decision"] == "fixture_replay_preview_only"
+    assert readiness["blocker_taxonomy"] == "fixture_replay_not_broker_observed"
+    assert readiness["blocker"] == (
+        "fixture_replay_requires_real_local_or_broker_observed_refresh"
+    )
+    assert readiness["latest_price_source"] == "offline_fixture_latest_bar"
+    assert readiness["validation_status"] == "passed"
+    assert packet["cycle_status"]["crypto_readiness_decision"] == (
+        "fixture_replay_preview_only"
+    )
 
 
 def test_router_no_selected_candidate_becomes_no_trade(
@@ -205,6 +259,81 @@ def test_prior_v5_8_and_v5_10_authorizations_are_not_reusable(
     assert status["fresh_authorization_required_for_order"] is True
     assert next_action["prior_authorizations_reusable"] is False
     assert next_action["fresh_authorization_required_for_order"] is True
+
+
+def test_readiness_validator_rejects_missing_timestamp_marked_fresh(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness["latest_price_observed_at"] = ""
+    readiness["latest_price_normalized_timestamp"] = ""
+    readiness["latest_price_freshness_status"] = "fresh"
+    readiness["latest_price_final_blocker"] = "none"
+    readiness["latest_price_source_table"][2]["observed_at"] = ""
+    readiness["latest_price_source_table"][2]["freshness"] = "fresh"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_latest_price_timestamp_missing_marked_fresh" in errors
+    assert "crypto_latest_price_source_table_fresh_without_timestamp" in errors
+
+
+def test_readiness_validator_rejects_stale_selected_when_fresh_fallback_exists(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness["latest_price_freshness_status"] = "stale"
+    readiness["latest_price_final_blocker"] = "crypto_latest_price_stale"
+    readiness["blocker"] = "crypto_latest_price_stale"
+    readiness["latest_price_source_table"][0].update(
+        {
+            "value": "100001",
+            "observed_at": AS_OF.isoformat(),
+            "freshness": "fresh",
+            "status": "passed",
+            "blocker": "none",
+        }
+    )
+    readiness["latest_price_source_table"][2].update(
+        {
+            "freshness": "stale",
+            "status": "blocked",
+            "blocker": "crypto_latest_price_stale",
+        }
+    )
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_latest_price_fresher_fallback_exists" in errors
+
+
+def test_readiness_validator_rejects_fixture_mislabeled_broker_observed_ready(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path, refresh_mode="offline_fixture")
+    readiness["readiness_decision"] = "broker_observed_ready_no_submit"
+    readiness["latest_price_source"] = "broker_observed_latest_bar"
+    readiness["latest_price_basis"] = "broker_observed_latest_bar_close"
+    readiness["latest_price_final_selected_basis"] = "broker_observed_latest_bar_close"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "fixture_replay_mislabeled_broker_observed_ready" in errors
+
+
+def test_readiness_validator_rejects_inconsistent_basis_blocker_source_fields(
+    tmp_path: Path,
+) -> None:
+    readiness = _readiness_packet(tmp_path)
+    readiness["latest_price_basis"] = "broker_observed_latest_quote_mid"
+    readiness["latest_price_final_selected_basis"] = "different_basis"
+    readiness["latest_price_final_blocker"] = "crypto_latest_price_stale"
+
+    errors = cycle.validate_crypto_readiness_packet(readiness)
+
+    assert "crypto_latest_price_basis_source_mismatch" in errors
+    assert "crypto_latest_price_final_basis_mismatch" in errors
+    assert "crypto_latest_price_final_blocker_mismatch" in errors
 
 
 def test_no_broker_sdk_import_network_dependency_is_introduced() -> None:
@@ -429,6 +558,19 @@ def _write_cycle_inputs(
         _write_json(Path(paths["fill_exit_result_path"]), _fill_exit_result())
         _write_json(Path(paths["fill_exit_ingestion_path"]), _fill_exit_ingestion())
     return paths
+
+
+def _readiness_packet(
+    tmp_path: Path,
+    *,
+    refresh_mode: str = "local_replay",
+) -> dict[str, object]:
+    paths = _write_cycle_inputs(tmp_path)
+    paths["refresh_mode"] = refresh_mode
+    if refresh_mode == "offline_fixture":
+        paths["allow_fixture_backed"] = True
+    packet = run_crypto_no_submit_operating_cycle(**paths, write_artifacts=True)
+    return json.loads(json.dumps(packet["crypto_readiness_packet"]))
 
 
 def _router_packet(*, decision: str) -> dict[str, object]:

@@ -41,6 +41,7 @@ from algotrader.orchestration.crypto_universe_refresh import (
 from algotrader.orchestration.opportunity_router import run_opportunity_router
 
 SCHEMA_VERSION = "v5_13_crypto_no_submit_operating_cycle_v1"
+CRYPTO_READINESS_PACKET_SCHEMA_VERSION = "v5_15_crypto_no_submit_operating_packet_v1"
 COMMAND_NAME = "run_crypto_no_submit_operating_cycle"
 
 DEFAULT_OUTPUT_ROOT = Path("runs/crypto_no_submit_operating_cycle/latest")
@@ -139,6 +140,7 @@ ROUTER_INPUT_BLOCKERS = {
 
 __all__ = [
     "COMMAND_NAME",
+    "CRYPTO_READINESS_PACKET_SCHEMA_VERSION",
     "DEFAULT_AUTONOMY_CADENCE_OUTPUT_ROOT",
     "DEFAULT_CRYPTO_REFRESH_OUTPUT_ROOT",
     "DEFAULT_DRY_RUN_OUTPUT_ROOT",
@@ -151,11 +153,13 @@ __all__ = [
     "NEXT_OPERATOR_ACTIONS",
     "REQUIRED_LABELS",
     "SCHEMA_VERSION",
+    "build_crypto_readiness_packet",
     "build_crypto_no_submit_operating_cycle_packet",
     "main",
     "render_cycle_brief_markdown",
     "render_cycle_text",
     "run_crypto_no_submit_operating_cycle",
+    "validate_crypto_readiness_packet",
     "write_crypto_no_submit_operating_cycle_artifacts",
 ]
 
@@ -367,6 +371,18 @@ def build_crypto_no_submit_operating_cycle_packet(
         _first_text(dry_run_identity_status, "selected_candidate_id"),
         _first_text(autonomy_cadence_status, "selected_candidate_id"),
     )
+    crypto_readiness_packet = build_crypto_readiness_packet(
+        refresh_packet=refresh_packet,
+        router_result=router_result,
+        sizing_preview_status=sizing_preview_status,
+        paper_oms_handoff_status=paper_oms_handoff_status,
+        dry_run_identity_status=dry_run_identity_status,
+        autonomy_cadence_status=autonomy_cadence_status,
+        final_state=final_state,
+        cycle_blockers=blockers,
+        selected_candidate_id=selected_candidate_id,
+        as_of=as_of,
+    )
     next_operator_action = _next_operator_action_payload(
         final_state=final_state,
         next_action=next_action,
@@ -398,6 +414,19 @@ def build_crypto_no_submit_operating_cycle_packet(
         "fresh_authorization_required_for_order": True,
         "paper_submit_currently_authorized": False,
         "broker_action_permitted": False,
+        "crypto_readiness_decision": crypto_readiness_packet["readiness_decision"],
+        "crypto_readiness_blocker_taxonomy": crypto_readiness_packet[
+            "blocker_taxonomy"
+        ],
+        "crypto_readiness_blocker": crypto_readiness_packet["blocker"],
+        "crypto_readiness_evidence_classification": crypto_readiness_packet[
+            "evidence_classification"
+        ],
+        "latest_price_source": crypto_readiness_packet["latest_price_source"],
+        "latest_price_basis": crypto_readiness_packet["latest_price_basis"],
+        "latest_price_freshness_status": crypto_readiness_packet[
+            "latest_price_freshness_status"
+        ],
         "blockers": blockers,
         "labels": list(REQUIRED_LABELS),
         "profit_claim": "none",
@@ -415,6 +444,7 @@ def build_crypto_no_submit_operating_cycle_packet(
         "paper_oms_handoff_status": dict(paper_oms_handoff_status),
         "dry_run_identity_status": dict(dry_run_identity_status),
         "autonomy_cadence_status": dict(autonomy_cadence_status),
+        "crypto_readiness_packet": crypto_readiness_packet,
         "next_operator_action": next_operator_action,
         "stage_errors": [dict(error) for error in stage_errors],
         "labels": list(REQUIRED_LABELS),
@@ -439,6 +469,7 @@ def write_crypto_no_submit_operating_cycle_artifacts(
         "paper_oms_handoff_status": root / "paper_oms_handoff_status.json",
         "dry_run_identity_status": root / "dry_run_identity_status.json",
         "autonomy_cadence_status": root / "autonomy_cadence_status.json",
+        "crypto_readiness_packet": root / "crypto_readiness_packet.json",
         "next_operator_action": root / "next_operator_action.json",
         "operating_record": root / "operating_record.jsonl",
     }
@@ -472,6 +503,10 @@ def write_crypto_no_submit_operating_cycle_artifacts(
     _write_json(
         paths["autonomy_cadence_status"],
         _mapping(packet.get("autonomy_cadence_status")),
+    )
+    _write_json(
+        paths["crypto_readiness_packet"],
+        _mapping(packet.get("crypto_readiness_packet")),
     )
     _write_json(paths["next_operator_action"], next_operator_action)
     paths["operating_record"].write_text(
@@ -521,6 +556,7 @@ def render_cycle_brief_markdown(packet: Mapping[str, object]) -> str:
     handoff = _mapping(packet.get("paper_oms_handoff_status"))
     dry_run = _mapping(packet.get("dry_run_identity_status"))
     cadence = _mapping(packet.get("autonomy_cadence_status"))
+    readiness = _mapping(packet.get("crypto_readiness_packet"))
     action = _mapping(packet.get("next_operator_action"))
     blockers = list(_string_sequence(status.get("blockers")))
     return "\n".join(
@@ -535,6 +571,13 @@ def render_cycle_brief_markdown(packet: Mapping[str, object]) -> str:
             f"- handoff status: `{handoff.get('handoff_status', '')}`",
             f"- dry-run status: `{dry_run.get('dry_run_status', '')}`",
             f"- cadence status: `{cadence.get('cadence_status', '')}`",
+            f"- readiness decision: `{readiness.get('readiness_decision', '')}`",
+            f"- readiness blocker taxonomy: `{readiness.get('blocker_taxonomy', '')}`",
+            f"- readiness blocker: `{readiness.get('blocker', '')}`",
+            f"- evidence classification: `{readiness.get('evidence_classification', '')}`",
+            f"- latest price source: `{readiness.get('latest_price_source', '')}`",
+            f"- latest price basis: `{readiness.get('latest_price_basis', '')}`",
+            f"- latest price freshness: `{readiness.get('latest_price_freshness_status', '')}`",
             "- paper submit currently authorized: `false`",
             "- broker read occurred: `false`",
             "- broker mutation occurred: `false`",
@@ -558,12 +601,20 @@ def render_cycle_text(packet: Mapping[str, object]) -> str:
     """Render compact key-value output for the PowerShell wrapper."""
 
     status = _mapping(packet.get("cycle_status"))
+    readiness = _mapping(packet.get("crypto_readiness_packet"))
     artifacts = _mapping(packet.get("artifact_paths"))
     lines = [
         f"crypto_no_submit_operating_cycle_command={COMMAND_NAME}",
         f"final_state={_text(status.get('final_state'))}",
         f"next_operator_action={_text(status.get('next_operator_action'))}",
         f"selected_candidate_id={_text(status.get('selected_candidate_id'))}",
+        f"crypto_readiness_decision={_text(readiness.get('readiness_decision'))}",
+        f"crypto_readiness_blocker_taxonomy={_text(readiness.get('blocker_taxonomy'))}",
+        f"crypto_readiness_blocker={_text(readiness.get('blocker'))}",
+        f"crypto_evidence_classification={_text(readiness.get('evidence_classification'))}",
+        f"latest_price_source={_text(readiness.get('latest_price_source'))}",
+        f"latest_price_basis={_text(readiness.get('latest_price_basis'))}",
+        f"latest_price_freshness_status={_text(readiness.get('latest_price_freshness_status'))}",
         "paper_submit_authorized=false",
         "broker_read_occurred=false",
         "broker_mutation_occurred=false",
@@ -582,6 +633,7 @@ def render_cycle_text(packet: Mapping[str, object]) -> str:
         "paper_oms_handoff_status",
         "dry_run_identity_status",
         "autonomy_cadence_status",
+        "crypto_readiness_packet",
         "next_operator_action",
         "operating_record",
         "manifest",
@@ -895,8 +947,573 @@ def _cycle_blockers(
     return list(_dedupe(blockers))
 
 
+def build_crypto_readiness_packet(
+    *,
+    refresh_packet: Mapping[str, object],
+    router_result: Mapping[str, object],
+    sizing_preview_status: Mapping[str, object],
+    paper_oms_handoff_status: Mapping[str, object],
+    dry_run_identity_status: Mapping[str, object],
+    autonomy_cadence_status: Mapping[str, object],
+    final_state: str,
+    cycle_blockers: Sequence[str],
+    selected_candidate_id: str,
+    as_of: str,
+) -> dict[str, object]:
+    """Build the v5.15 local no-submit 24/7 crypto readiness packet."""
+
+    summary = _mapping(refresh_packet.get("summary"))
+    router_manifest = _mapping(refresh_packet.get("crypto_router_input_manifest"))
+    history_manifest = _mapping(refresh_packet.get("crypto_history_manifest"))
+    selected_candidate = _mapping(router_result.get("selected_candidate"))
+    selected_symbol = _first_nonempty(
+        _first_text(router_result, "selected_symbol"),
+        _first_text(sizing_preview_status, "selected_symbol"),
+        _first_text(paper_oms_handoff_status, "selected_symbol"),
+        _first_text(selected_candidate, "symbol"),
+        _candidate_symbol_from_id(selected_candidate_id),
+    )
+    candidate_symbols = _candidate_symbols(
+        refresh_packet=refresh_packet,
+        router_result=router_result,
+        selected_symbol=selected_symbol,
+    )
+    source_mode = _first_nonempty(
+        _first_text(summary, "source_mode"),
+        _first_text(router_manifest, "source_mode"),
+        _first_text(sizing_preview_status, "selected_backing"),
+        "unknown",
+    )
+    broker_state_mode = _first_nonempty(
+        _first_text(summary, "broker_state_mode"),
+        _first_text(router_manifest, "broker_state_mode"),
+        _first_text(selected_candidate, "broker_state_mode"),
+    )
+    broker_read_observed = _is_true(summary.get("broker_read_observed")) or _is_true(
+        router_manifest.get("broker_read_observed")
+    )
+    evidence_classification = _crypto_evidence_classification(
+        source_mode=source_mode,
+        broker_state_mode=broker_state_mode,
+        broker_read_observed=broker_read_observed,
+    )
+    history_record = _matching_symbol_record(
+        history_manifest.get("records"),
+        selected_symbol,
+    )
+    router_record = _matching_symbol_record(router_manifest.get("records"), selected_symbol)
+    latest_price_value = _first_nonempty(
+        _first_text(sizing_preview_status, "latest_price"),
+        _first_text(paper_oms_handoff_status, "latest_price"),
+        _first_text(dry_run_identity_status, "latest_price"),
+        _latest_bar_close_text(refresh_packet, selected_symbol, as_of),
+    )
+    latest_price_observed_at = _first_nonempty(
+        _first_text(history_record, "latest_timestamp"),
+        _first_text(router_record, "latest_timestamp"),
+        _latest_bar_timestamp_text(refresh_packet, selected_symbol, as_of),
+    )
+    latest_price_freshness = _first_nonempty(
+        _first_text(history_record, "freshness_status"),
+        _first_text(router_record, "freshness_status"),
+        _first_text(selected_candidate, "freshness_status"),
+        "unavailable",
+    )
+    latest_price_source = _latest_price_source_for_classification(evidence_classification)
+    latest_price_basis = _latest_price_basis_for_source(source_mode, latest_price_source)
+    latest_price_blocker = _latest_price_blocker(
+        latest_price_value=latest_price_value,
+        latest_price_observed_at=latest_price_observed_at,
+        latest_price_freshness=latest_price_freshness,
+    )
+    bar_status = "passed" if latest_price_blocker == "none" else "blocked"
+    source_table = [
+        _latest_price_source_row(
+            source_kind="quote",
+            source="broker_observed_latest_quote",
+            basis="broker_observed_latest_quote_mid",
+            value="",
+            observed_at="",
+            freshness="unavailable",
+            status="not_attempted",
+            blocker="broker_read_not_authorized_for_no_submit_packet",
+            selected=False,
+        ),
+        _latest_price_source_row(
+            source_kind="trade",
+            source="broker_observed_latest_trade",
+            basis="broker_observed_latest_trade",
+            value="",
+            observed_at="",
+            freshness="unavailable",
+            status="not_attempted",
+            blocker="broker_read_not_authorized_for_no_submit_packet",
+            selected=False,
+        ),
+        _latest_price_source_row(
+            source_kind="bar",
+            source=latest_price_source,
+            basis=latest_price_basis,
+            value=latest_price_value,
+            observed_at=latest_price_observed_at,
+            freshness=latest_price_freshness,
+            status=bar_status,
+            blocker=latest_price_blocker,
+            selected=True,
+        ),
+    ]
+    readiness_decision, blocker_taxonomy, blocker = _crypto_readiness_decision(
+        final_state=final_state,
+        evidence_classification=evidence_classification,
+        latest_price_blocker=latest_price_blocker,
+        cycle_blockers=cycle_blockers,
+    )
+    next_safe_operator_action = _crypto_next_safe_operator_action(
+        readiness_decision=readiness_decision,
+        blocker_taxonomy=blocker_taxonomy,
+    )
+    payload = {
+        "schema_version": CRYPTO_READINESS_PACKET_SCHEMA_VERSION,
+        "record_type": "v5_15_crypto_no_submit_operating_packet",
+        "operator_command": COMMAND_NAME,
+        "as_of": as_of,
+        "selected_candidate_id": selected_candidate_id,
+        "selected_crypto_symbol": selected_symbol,
+        "candidate_symbols": list(candidate_symbols),
+        "source_mode": source_mode,
+        "broker_state_mode": broker_state_mode,
+        "broker_read_observed": broker_read_observed,
+        "evidence_classification": evidence_classification,
+        "fixture_or_local_replay_classification": evidence_classification,
+        "latest_price_source": latest_price_source,
+        "latest_price_source_selected": "bar",
+        "latest_price_basis": latest_price_basis,
+        "latest_price_final_selected_basis": latest_price_basis,
+        "latest_price_value": latest_price_value,
+        "latest_price_observed_at": latest_price_observed_at,
+        "latest_price_normalized_timestamp": latest_price_observed_at,
+        "latest_price_freshness_status": latest_price_freshness,
+        "latest_price_final_blocker": latest_price_blocker,
+        "latest_price_source_acceptability": (
+            "accepted_for_no_submit_readiness_packet"
+            if latest_price_blocker == "none"
+            else "blocked_price_check_failed"
+        ),
+        "latest_price_source_table": source_table,
+        "quote_trade_bar_fallback_diagnostics": {
+            "selected_source": "bar",
+            "sources_attempted": ["bar"],
+            "quote_status": "not_attempted_no_broker_read",
+            "trade_status": "not_attempted_no_broker_read",
+            "bar_status": bar_status,
+            "fallback_result": (
+                f"{evidence_classification}_bar_selected"
+                if latest_price_blocker == "none"
+                else "bar_blocked"
+            ),
+        },
+        "readiness_decision": readiness_decision,
+        "blocker_taxonomy": blocker_taxonomy,
+        "blocker": blocker,
+        "cycle_final_state": final_state,
+        "cycle_blockers": list(cycle_blockers),
+        "stage_status": {
+            "router_decision": _first_text(router_result, "router_decision", "decision"),
+            "sizing_status": _first_text(sizing_preview_status, "sizing_status"),
+            "handoff_status": _first_text(paper_oms_handoff_status, "handoff_status"),
+            "dry_run_status": _first_text(dry_run_identity_status, "dry_run_status"),
+            "cadence_status": _first_text(autonomy_cadence_status, "cadence_status"),
+        },
+        "paper_submit_authorized": False,
+        "broker_mutation_authorized": False,
+        "live_authorized": False,
+        "paper_submit_currently_authorized": False,
+        "broker_action_permitted": False,
+        "fresh_authorization_required_for_order": True,
+        "next_safe_operator_action": next_safe_operator_action,
+        "labels": list(REQUIRED_LABELS),
+        "profit_claim": "none",
+        **_false_flags(),
+    }
+    validation_errors = validate_crypto_readiness_packet(payload)
+    if validation_errors:
+        payload["readiness_decision"] = "blocked_readiness_validation_failed"
+        payload["blocker_taxonomy"] = "readiness_packet_validation"
+        payload["blocker"] = "readiness_packet_validation_failed"
+        payload["next_safe_operator_action"] = (
+            "repair inconsistent crypto readiness packet fields before review; "
+            "no broker action is authorized."
+        )
+    payload["validation_status"] = "failed" if validation_errors else "passed"
+    payload["validation_errors"] = validation_errors
+    return payload
+
+
+def validate_crypto_readiness_packet(packet: Mapping[str, object]) -> list[str]:
+    """Return deterministic v5.15 crypto readiness packet validation errors."""
+
+    errors: list[str] = []
+    source = _first_text(packet, "latest_price_source")
+    basis = _first_text(packet, "latest_price_basis")
+    final_basis = _first_text(packet, "latest_price_final_selected_basis")
+    selected_source = _first_nonempty(
+        _first_text(packet, "latest_price_source_selected"),
+        _latest_price_source_kind(source),
+    )
+    freshness = _first_text(packet, "latest_price_freshness_status")
+    observed_at = _first_text(packet, "latest_price_observed_at")
+    normalized_timestamp = _first_text(packet, "latest_price_normalized_timestamp")
+    blocker = _normalized_blocker(_first_text(packet, "blocker"))
+    price_blocker = _normalized_blocker(_first_text(packet, "latest_price_final_blocker"))
+    decision = _first_text(packet, "readiness_decision")
+    classification = _first_text(packet, "evidence_classification")
+    source_rows = list(_mapping_sequence(packet.get("latest_price_source_table")))
+
+    if freshness == "fresh" and not observed_at:
+        errors.append("crypto_latest_price_timestamp_missing_marked_fresh")
+    if observed_at and normalized_timestamp and observed_at != normalized_timestamp:
+        errors.append("crypto_latest_price_normalized_timestamp_mismatch")
+    if final_basis and basis and final_basis != basis:
+        errors.append("crypto_latest_price_final_basis_mismatch")
+    if price_blocker != _expected_price_blocker(freshness, observed_at, packet):
+        errors.append("crypto_latest_price_final_blocker_mismatch")
+    if _blocker_present(price_blocker) and _blocker_present(blocker) and price_blocker != blocker:
+        errors.append("crypto_readiness_blocker_price_blocker_mismatch")
+    if selected_source == "bar" and "bar" not in basis:
+        errors.append("crypto_latest_price_basis_source_mismatch")
+    if selected_source == "quote" and "quote" not in basis:
+        errors.append("crypto_latest_price_basis_source_mismatch")
+    if selected_source == "trade" and "trade" not in basis:
+        errors.append("crypto_latest_price_basis_source_mismatch")
+
+    selected_rows = [
+        row
+        for row in source_rows
+        if _is_true(row.get("selected"))
+        or _first_text(row, "source_kind", "source") == selected_source
+    ]
+    if source_rows and not selected_rows:
+        errors.append("crypto_latest_price_selected_source_missing_from_table")
+    selected_freshness = freshness
+    if selected_rows:
+        selected_freshness = _first_nonempty(
+            _first_text(selected_rows[0], "freshness"),
+            selected_freshness,
+        )
+    for row in source_rows:
+        row_freshness = _first_text(row, "freshness")
+        row_observed_at = _first_text(row, "observed_at")
+        if row_freshness == "fresh" and not row_observed_at:
+            errors.append("crypto_latest_price_source_table_fresh_without_timestamp")
+    any_fresher_fallback = any(
+        not _is_true(row.get("selected"))
+        and _first_text(row, "freshness") == "fresh"
+        and _first_text(row, "status") == "passed"
+        for row in source_rows
+    )
+    if selected_freshness != "fresh" and any_fresher_fallback:
+        errors.append("crypto_latest_price_fresher_fallback_exists")
+    if classification in {"fixture_replay", "offline_fixture"} and (
+        "broker_observed_ready" in decision or source.startswith("broker_observed")
+    ):
+        errors.append("fixture_replay_mislabeled_broker_observed_ready")
+    if classification != "broker_observed" and source.startswith("broker_observed"):
+        errors.append("crypto_latest_price_source_classification_mismatch")
+    if decision.startswith("broker_observed_ready") and not _is_true(
+        packet.get("broker_read_observed")
+    ):
+        errors.append("broker_observed_ready_without_broker_read")
+    if decision.endswith("_ready_no_submit") and _blocker_present(blocker):
+        errors.append("crypto_readiness_ready_with_blocker")
+    if decision.startswith("blocked") and not _blocker_present(blocker):
+        errors.append("crypto_readiness_blocked_without_blocker")
+    if freshness == "fresh" and _blocker_present(price_blocker):
+        errors.append("crypto_latest_price_fresh_with_blocker")
+    if freshness != "fresh" and not _blocker_present(price_blocker):
+        errors.append("crypto_latest_price_not_fresh_without_blocker")
+    return list(_dedupe(errors))
+
+
+def _candidate_symbols(
+    *,
+    refresh_packet: Mapping[str, object],
+    router_result: Mapping[str, object],
+    selected_symbol: str,
+) -> tuple[str, ...]:
+    summary = _mapping(refresh_packet.get("summary"))
+    manifest = _mapping(refresh_packet.get("crypto_router_input_manifest"))
+    symbols: list[str] = []
+    symbols.extend(_string_sequence(summary.get("eligible_input_symbols")))
+    symbols.extend(_string_sequence(manifest.get("router_ready_symbols")))
+    symbols.extend(_string_sequence(summary.get("symbols")))
+    symbols.extend(_string_sequence(manifest.get("symbols")))
+    symbols.append(_first_text(router_result, "selected_symbol"))
+    symbols.append(selected_symbol)
+    return _dedupe(_normalize_crypto_symbol_text(symbol) for symbol in symbols if symbol)
+
+
+def _candidate_symbol_from_id(candidate_id: str) -> str:
+    parts = candidate_id.split(":")
+    if len(parts) >= 2 and parts[0] == "crypto":
+        return parts[1]
+    return ""
+
+
+def _crypto_evidence_classification(
+    *,
+    source_mode: str,
+    broker_state_mode: str,
+    broker_read_observed: bool,
+) -> str:
+    if source_mode == "offline_fixture":
+        return "fixture_replay"
+    if source_mode == "local_replay":
+        return "local_replay"
+    if source_mode == "paper_read_only" and broker_read_observed:
+        return "broker_observed"
+    if "observed" in broker_state_mode and broker_read_observed:
+        return "broker_observed"
+    return "local_replay"
+
+
+def _latest_price_source_for_classification(classification: str) -> str:
+    return {
+        "broker_observed": "broker_observed_latest_bar",
+        "fixture_replay": "offline_fixture_latest_bar",
+        "local_replay": "local_replay_latest_bar",
+    }.get(classification, "local_replay_latest_bar")
+
+
+def _latest_price_basis_for_source(source_mode: str, latest_price_source: str) -> str:
+    if latest_price_source.startswith("broker_observed"):
+        return "broker_observed_latest_bar_close"
+    if source_mode == "offline_fixture":
+        return "offline_fixture_latest_history_bar_close"
+    if source_mode == "local_replay":
+        return "local_replay_latest_history_bar_close"
+    return f"{source_mode or 'unknown'}_latest_history_bar_close"
+
+
+def _latest_price_blocker(
+    *,
+    latest_price_value: str,
+    latest_price_observed_at: str,
+    latest_price_freshness: str,
+) -> str:
+    if not latest_price_value:
+        return "crypto_latest_price_missing"
+    if not latest_price_observed_at:
+        return "crypto_latest_price_timestamp_missing"
+    if latest_price_freshness != "fresh":
+        return "crypto_latest_price_stale"
+    return "none"
+
+
+def _crypto_readiness_decision(
+    *,
+    final_state: str,
+    evidence_classification: str,
+    latest_price_blocker: str,
+    cycle_blockers: Sequence[str],
+) -> tuple[str, str, str]:
+    if final_state != "selected_candidate_no_submit_packet_ready":
+        blocker = _first_nonempty(*_string_sequence(cycle_blockers), final_state)
+        return "blocked_cycle_not_ready", "cycle_not_ready", blocker
+    if latest_price_blocker != "none":
+        taxonomy = (
+            "latest_price_timestamp_missing"
+            if latest_price_blocker == "crypto_latest_price_timestamp_missing"
+            else "latest_price_missing_or_stale"
+        )
+        return "blocked_latest_price_not_fresh", taxonomy, latest_price_blocker
+    if evidence_classification == "fixture_replay":
+        return (
+            "fixture_replay_preview_only",
+            "fixture_replay_not_broker_observed",
+            "fixture_replay_requires_real_local_or_broker_observed_refresh",
+        )
+    if evidence_classification == "broker_observed":
+        return "broker_observed_ready_no_submit", "none", "none"
+    return "local_replay_ready_no_submit", "none", "none"
+
+
+def _crypto_next_safe_operator_action(
+    *,
+    readiness_decision: str,
+    blocker_taxonomy: str,
+) -> str:
+    if readiness_decision == "local_replay_ready_no_submit":
+        return (
+            "review the local-replay no-submit packet; any order still requires "
+            "fresh explicit operator authorization."
+        )
+    if readiness_decision == "broker_observed_ready_no_submit":
+        return (
+            "review the broker-observed no-submit packet; any order still requires "
+            "fresh explicit operator authorization."
+        )
+    if readiness_decision == "fixture_replay_preview_only":
+        return (
+            "review fixture-only mechanics, then provide current local inputs or "
+            "authorize a scoped read-only observation before treating readiness as current."
+        )
+    if blocker_taxonomy in {"latest_price_missing_or_stale", "latest_price_timestamp_missing"}:
+        return (
+            "provide fresher local crypto bars or authorize one scoped read-only "
+            "market-data observation; no broker mutation or paper submit is authorized."
+        )
+    return "repair local no-submit inputs and rerun; no broker action is authorized."
+
+
+def _latest_price_source_row(
+    *,
+    source_kind: str,
+    source: str,
+    basis: str,
+    value: str,
+    observed_at: str,
+    freshness: str,
+    status: str,
+    blocker: str,
+    selected: bool,
+) -> dict[str, object]:
+    return {
+        "source_kind": source_kind,
+        "source": source,
+        "basis": basis,
+        "value": value,
+        "observed_at": observed_at,
+        "freshness": freshness,
+        "status": status,
+        "blocker": blocker,
+        "selected": selected,
+    }
+
+
+def _matching_symbol_record(value: object, symbol: str) -> Mapping[str, object]:
+    normalized = _normalize_crypto_symbol_text(symbol)
+    for record in _mapping_sequence(value):
+        record_symbol = _first_text(record, "symbol", "selected_symbol")
+        if record_symbol and _normalize_crypto_symbol_text(record_symbol) == normalized:
+            return record
+    return {}
+
+
+def _latest_bar_close_text(
+    refresh_packet: Mapping[str, object],
+    symbol: str,
+    as_of: str,
+) -> str:
+    bar = _latest_bar(refresh_packet, symbol, as_of)
+    if bar is None:
+        return ""
+    close = getattr(bar, "close", None)
+    if close is None and isinstance(bar, Mapping):
+        close = _first_text(bar, "close", "c")
+    return _text(close)
+
+
+def _latest_bar_timestamp_text(
+    refresh_packet: Mapping[str, object],
+    symbol: str,
+    as_of: str,
+) -> str:
+    bar = _latest_bar(refresh_packet, symbol, as_of)
+    if bar is None:
+        return ""
+    timestamp = getattr(bar, "timestamp", None)
+    if timestamp is None and isinstance(bar, Mapping):
+        timestamp = _first_text(bar, "timestamp", "t", "datetime")
+    parsed = _datetime_or_none(timestamp)
+    return "" if parsed is None else parsed.isoformat()
+
+
+def _latest_bar(
+    refresh_packet: Mapping[str, object],
+    symbol: str,
+    as_of: str,
+) -> object | None:
+    normalized = _normalize_crypto_symbol_text(symbol)
+    bars_by_symbol = refresh_packet.get("bars_by_symbol")
+    if not isinstance(bars_by_symbol, Mapping):
+        return None
+    bars: object = ()
+    for key, value in bars_by_symbol.items():
+        if _normalize_crypto_symbol_text(key) == normalized:
+            bars = value
+            break
+    if not isinstance(bars, Sequence) or isinstance(bars, (str, bytes)):
+        return None
+    as_of_dt = _datetime_or_none(as_of)
+    usable: list[tuple[datetime, object]] = []
+    for bar in bars:
+        timestamp = getattr(bar, "timestamp", None)
+        if timestamp is None and isinstance(bar, Mapping):
+            timestamp = _first_text(bar, "timestamp", "t", "datetime")
+        parsed = _datetime_or_none(timestamp)
+        if parsed is None:
+            continue
+        if as_of_dt is not None and parsed > as_of_dt:
+            continue
+        usable.append((parsed, bar))
+    if not usable:
+        return None
+    return max(usable, key=lambda item: item[0])[1]
+
+
+def _expected_price_blocker(
+    freshness: str,
+    observed_at: str,
+    packet: Mapping[str, object],
+) -> str:
+    if not _first_text(packet, "latest_price_value"):
+        return "crypto_latest_price_missing"
+    if not observed_at:
+        return "crypto_latest_price_timestamp_missing"
+    if freshness != "fresh":
+        return "crypto_latest_price_stale"
+    return "none"
+
+
+def _latest_price_source_kind(source: str) -> str:
+    if "quote" in source:
+        return "quote"
+    if "trade" in source:
+        return "trade"
+    if "bar" in source:
+        return "bar"
+    return ""
+
+
+def _normalized_blocker(value: str) -> str:
+    text = _text(value)
+    return "none" if text in {"", "none"} else text
+
+
+def _blocker_present(value: str) -> bool:
+    return _normalized_blocker(value) != "none"
+
+
+def _datetime_or_none(value: object) -> datetime | None:
+    text = _text(value)
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _normalize_crypto_symbol_text(value: object) -> str:
+    return "".join(ch for ch in _text(value).upper() if ch.isalnum())
+
+
 def _operating_record(packet: Mapping[str, object]) -> dict[str, object]:
     status = _mapping(packet.get("cycle_status"))
+    readiness = _mapping(packet.get("crypto_readiness_packet"))
     return {
         "schema_version": SCHEMA_VERSION,
         "record_type": "crypto_no_submit_operating_cycle",
@@ -909,6 +1526,18 @@ def _operating_record(packet: Mapping[str, object]) -> dict[str, object]:
         "prior_v5_10_authorization_status": "consumed_not_reusable",
         "prior_authorizations_reusable": False,
         "fresh_authorization_required_for_order": True,
+        "crypto_readiness": {
+            "readiness_decision": readiness.get("readiness_decision", ""),
+            "blocker_taxonomy": readiness.get("blocker_taxonomy", ""),
+            "blocker": readiness.get("blocker", ""),
+            "evidence_classification": readiness.get("evidence_classification", ""),
+            "latest_price_source": readiness.get("latest_price_source", ""),
+            "latest_price_basis": readiness.get("latest_price_basis", ""),
+            "latest_price_freshness_status": readiness.get(
+                "latest_price_freshness_status",
+                "",
+            ),
+        },
         "blockers": status.get("blockers", []),
         "labels": list(REQUIRED_LABELS),
         "profit_claim": "none",
