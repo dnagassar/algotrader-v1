@@ -21,7 +21,7 @@ from pathlib import Path
 from algotrader.errors import ValidationError
 
 CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION = (
-    "v5_19_crypto_strategy_evidence_battery_v1"
+    "v5_20_crypto_strategy_evidence_battery_v1"
 )
 DEFAULT_CRYPTO_EVIDENCE_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
 LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS = (
@@ -91,6 +91,8 @@ REQUIRED_NO_SUBMIT_LABELS = (
     "not_live_authorized",
     "profit_claim=none",
 )
+
+DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER = "fresh_oos_required_for_repair_promotion"
 
 __all__ = [
     "CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION",
@@ -335,12 +337,34 @@ def run_crypto_strategy_evidence_battery(
             )
 
     ranked_evaluations = _ranked_evaluations(evaluations)
+    repair_evaluations = _diagnostic_repair_evaluations(
+        bars_by_symbol=bars_by_symbol,
+        assumptions=checked_assumptions,
+        buy_hold_by_symbol=buy_hold_by_symbol,
+        basket_record=basket_record,
+        base_rank_count=len(ranked_evaluations),
+    )
     selected_candidate = _selected_candidate(ranked_evaluations)
     no_submit_decision = _packet_decision(ranked_evaluations, selected_candidate)
     rejection_reasons = _packet_rejection_reasons(
         ranked_evaluations,
         selected_candidate,
     )
+    diagnostics = _strategy_failure_diagnostics(
+        data_source=data_source_text,
+        symbol_summaries=symbol_summaries,
+        benchmark_records=benchmark_records,
+        ranked_evaluations=ranked_evaluations,
+        repair_evaluations=repair_evaluations,
+        walk_forward_windows=_walk_forward_windows(
+            bars_by_symbol,
+            checked_assumptions,
+        ),
+    )
+    strategy_evidence_table_after_repairs = [
+        *_evidence_table(ranked_evaluations),
+        *_evidence_table(repair_evaluations),
+    ]
 
     packet: dict[str, object] = {
         "schema_version": CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION,
@@ -352,18 +376,41 @@ def run_crypto_strategy_evidence_battery(
         ],
         "data_source": data_source_text,
         "data_freshness": data_freshness_text,
+        "input_history_path": "",
         "data_summary": symbol_summaries,
-        "walk_forward_windows": _walk_forward_windows(
-            bars_by_symbol,
-            checked_assumptions,
-        ),
+        "walk_forward_windows": diagnostics["train_test_windows"],
         "benchmark_comparison": {
             "benchmarks": benchmark_records,
             "cash_no_trade_return": "0",
             "equal_weight_crypto_basket_available": bool(basket_record),
         },
+        "benchmark_returns": diagnostics["benchmark_returns"],
         "evidence_table": _evidence_table(ranked_evaluations),
+        "strategy_evidence_table_after_repairs": strategy_evidence_table_after_repairs,
         "candidate_evaluations": ranked_evaluations,
+        "diagnostic_repair_candidate_evaluations": repair_evaluations,
+        "diagnostics": diagnostics,
+        "candidate_failure_summary": diagnostics["candidate_failure_summary"],
+        "candidate_failure_summary_by_symbol": diagnostics[
+            "candidate_failure_summary_by_symbol"
+        ],
+        "candidate_failure_summary_by_strategy_type": diagnostics[
+            "candidate_failure_summary_by_strategy_type"
+        ],
+        "rejection_reasons_by_candidate": diagnostics[
+            "rejection_reasons_by_candidate"
+        ],
+        "trade_count_by_candidate": diagnostics["trade_count_by_candidate"],
+        "max_drawdown_by_candidate": diagnostics["max_drawdown_by_candidate"],
+        "cash_and_buy_hold_underperformance_by_candidate": diagnostics[
+            "cash_and_buy_hold_underperformance_by_candidate"
+        ],
+        "train_test_windows": diagnostics["train_test_windows"],
+        "market_regime_summary": diagnostics["market_regime_summary"],
+        "drawdown_summary": diagnostics["drawdown_summary"],
+        "repair_added": diagnostics["repair_added"],
+        "repaired_candidates": diagnostics["repaired_candidates"],
+        "repair_candidate_summary": diagnostics["repair_candidate_summary"],
         "selected_candidate": selected_candidate,
         "rejection_reasons": rejection_reasons,
         "no_submit_decision": no_submit_decision,
@@ -376,6 +423,7 @@ def run_crypto_strategy_evidence_battery(
                 checked_assumptions.max_test_drawdown
             ),
             "must_outperform_symbol_buy_hold_oos": True,
+            "must_outperform_equal_weight_crypto_basket_oos": True,
             "must_outperform_cash_oos": True,
             "paper_only": True,
             "fresh_operator_approval_required_for_any_broker_facing_step": True,
@@ -935,6 +983,8 @@ def _real_data_probe_packet(
     probe["battery_no_submit_decision"] = raw_decision
     probe["data_path"] = str(csv_paths[0]) if len(csv_paths) == 1 else ""
     probe["data_paths"] = [str(path) for path in csv_paths]
+    probe["input_history_path"] = str(csv_paths[0]) if len(csv_paths) == 1 else ""
+    probe["input_history_paths"] = [str(path) for path in csv_paths]
     probe["input_paths"] = list(data_inventory["input_paths"])
     probe["normalized_output_path"] = str(
         data_inventory.get("normalized_output_path", "")
@@ -1170,8 +1220,8 @@ def _classification_reason(
         return "fixture-only or synthetic data cannot support real-data promotion."
     if classification == "promote_to_no_submit_plan":
         return (
-            "selected candidate passed the drawdown, cash, and buy-and-hold gates "
-            "on local historical crypto data."
+            "selected candidate passed the drawdown, cash, buy-and-hold, and "
+            "equal-weight basket gates on local historical crypto data."
         )
     if classification == "reject_candidate":
         reasons = ", ".join(_string_sequence(packet.get("rejection_reasons")))
@@ -1608,7 +1658,7 @@ def _paper_planning_eligibility(
 def _required_lookback_window(
     assumptions: CryptoEvidenceAssumptions,
 ) -> dict[str, object]:
-    specs = _strategy_specs()
+    specs = (*_strategy_specs(), *_diagnostic_repair_strategy_specs())
     max_lookback = max(max(spec.lookback, spec.fast_window, spec.slow_window) for spec in specs)
     return {
         "min_bars_per_symbol": assumptions.min_bars_per_symbol,
@@ -1635,6 +1685,7 @@ def _risk_limits_considered(
         "min_test_excess_return_vs_buy_hold": _decimal_text(
             assumptions.min_test_excess_return_vs_buy_hold
         ),
+        "min_test_excess_return_vs_equal_weight_basket": "0",
         "min_test_total_return": _decimal_text(assumptions.min_test_total_return),
         "paper_max_notional": _decimal_text(assumptions.paper_max_notional),
         "max_paper_allocation_fraction": _decimal_text(
@@ -1708,9 +1759,15 @@ def _candidate_evaluation(
     test_excess_return = (
         _decimal_from_text(test_metrics["total_return"]) - buy_hold_test_return
     )
+    test_excess_return_vs_basket = (
+        _decimal_from_text(test_metrics["total_return"]) - basket_test_return
+        if basket_test_return is not None
+        else None
+    )
     decision, reasons = _candidate_decision(
         test_metrics=test_metrics,
         test_excess_return=test_excess_return,
+        test_excess_return_vs_basket=test_excess_return_vs_basket,
         assumptions=assumptions,
     )
 
@@ -1736,6 +1793,11 @@ def _candidate_evaluation(
             if basket_test_return is not None
             else "",
             "test_excess_return_vs_buy_hold": _decimal_text(test_excess_return),
+            "test_excess_return_vs_equal_weight_basket": _decimal_text(
+                test_excess_return_vs_basket
+            )
+            if test_excess_return_vs_basket is not None
+            else "",
         },
     }
 
@@ -1744,6 +1806,7 @@ def _candidate_decision(
     *,
     test_metrics: Mapping[str, object],
     test_excess_return: Decimal,
+    test_excess_return_vs_basket: Decimal | None,
     assumptions: CryptoEvidenceAssumptions,
 ) -> tuple[str, tuple[str, ...]]:
     test_total_return = _decimal_from_text(test_metrics.get("total_return", "0"))
@@ -1754,6 +1817,11 @@ def _candidate_decision(
         reasons.append("high_drawdown")
     if test_excess_return <= assumptions.min_test_excess_return_vs_buy_hold:
         reasons.append("benchmark_underperformance")
+    if (
+        test_excess_return_vs_basket is not None
+        and test_excess_return_vs_basket <= _ZERO
+    ):
+        reasons.append("basket_underperformance")
     if test_total_return <= assumptions.min_test_total_return:
         reasons.append("cash_underperformance")
 
@@ -2142,7 +2210,13 @@ def _evidence_table(
                 "candidate_id": evaluation.get("candidate_id", ""),
                 "symbol": evaluation.get("symbol", ""),
                 "strategy_id": evaluation.get("strategy_id", ""),
+                "strategy_family": evaluation.get("strategy_family", ""),
+                "candidate_origin": evaluation.get("candidate_origin", "current"),
                 "candidate_decision": evaluation.get("candidate_decision", ""),
+                "gate_decision_before_repair_guard": evaluation.get(
+                    "gate_decision_before_repair_guard",
+                    "",
+                ),
                 "test_total_return": test_metrics.get("total_return", ""),
                 "test_max_drawdown": test_metrics.get("max_drawdown", ""),
                 "test_volatility": test_metrics.get("volatility", ""),
@@ -2161,10 +2235,474 @@ def _evidence_table(
                     "test_excess_return_vs_buy_hold",
                     "",
                 ),
+                "test_excess_return_vs_equal_weight_basket": comparison.get(
+                    "test_excess_return_vs_equal_weight_basket",
+                    "",
+                ),
                 "rejection_reasons": evaluation.get("rejection_reasons", []),
+                "promotion_blockers": evaluation.get("promotion_blockers", []),
             }
         )
     return rows
+
+
+def _diagnostic_repair_evaluations(
+    *,
+    bars_by_symbol: Mapping[str, tuple[CryptoEvidenceBar, ...]],
+    assumptions: CryptoEvidenceAssumptions,
+    buy_hold_by_symbol: Mapping[str, Mapping[str, object]],
+    basket_record: Mapping[str, object],
+    base_rank_count: int,
+) -> list[dict[str, object]]:
+    evaluations: list[dict[str, object]] = []
+    for symbol in assumptions.candidate_symbols:
+        symbol_bars = bars_by_symbol.get(symbol, ())
+        for spec in _diagnostic_repair_strategy_specs():
+            evaluation = _candidate_evaluation(
+                symbol=symbol,
+                spec=spec,
+                bars=symbol_bars,
+                assumptions=assumptions,
+                buy_hold_record=buy_hold_by_symbol.get(symbol, {}),
+                basket_record=basket_record,
+            )
+            evaluations.append(_repair_guarded_evaluation(evaluation))
+
+    ranked = _ranked_evaluations(evaluations)
+    for repair_rank, evaluation in enumerate(ranked, start=1):
+        evaluation["repair_rank"] = repair_rank
+        evaluation["rank"] = base_rank_count + repair_rank
+    return ranked
+
+
+def _repair_guarded_evaluation(
+    evaluation: Mapping[str, object],
+) -> dict[str, object]:
+    item = dict(evaluation)
+    gate_decision = str(item.get("candidate_decision", ""))
+    gate_reasons = _string_list(item.get("rejection_reasons"))
+    item["candidate_origin"] = "diagnostic_repair"
+    item["repair_added"] = True
+    item["repair_rationale"] = (
+        "Existing one-hour and four-hour rules overtraded the positive test "
+        "window; this one-day trend repair probes lower-turnover risk-on "
+        "exposure without authorizing promotion on the same dataset."
+    )
+    item["gate_decision_before_repair_guard"] = gate_decision
+    item["gate_rejection_reasons_before_repair_guard"] = gate_reasons
+    item["promotion_blockers"] = [DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER]
+    if gate_decision == "promote_to_no_submit_plan":
+        item["candidate_decision"] = "reject_candidate"
+        item["rejection_reasons"] = [DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER]
+    return item
+
+
+def _diagnostic_repair_strategy_specs() -> tuple[_StrategySpec, ...]:
+    return (
+        _StrategySpec(
+            strategy_id="trend_momentum_24h_repair",
+            strategy_family="trend_momentum",
+            lookback=24,
+        ),
+    )
+
+
+def _diagnostic_repair_candidates_payload() -> list[dict[str, object]]:
+    candidates: list[dict[str, object]] = []
+    for spec in _diagnostic_repair_strategy_specs():
+        payload = _strategy_spec_payload(spec)
+        payload.update(
+            {
+                "candidate_origin": "diagnostic_repair",
+                "repair_type": "one_day_trend_momentum_low_turnover",
+                "repair_rationale": (
+                    "Probe a 24-hour lookback after diagnostics showed short "
+                    "lookbacks overtrading during a broad positive test regime."
+                ),
+                "promotion_scope": "diagnostic_only_until_fresh_oos",
+                "promotion_blocker": DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER,
+            }
+        )
+        candidates.append(payload)
+    return candidates
+
+
+def _strategy_failure_diagnostics(
+    *,
+    data_source: str,
+    symbol_summaries: Sequence[Mapping[str, object]],
+    benchmark_records: Sequence[Mapping[str, object]],
+    ranked_evaluations: Sequence[Mapping[str, object]],
+    repair_evaluations: Sequence[Mapping[str, object]],
+    walk_forward_windows: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    repaired_candidates = _diagnostic_repair_candidates_payload()
+    return {
+        "data_source": data_source,
+        "symbols_evaluated": [
+            str(item.get("symbol", ""))
+            for item in symbol_summaries
+            if str(item.get("symbol", "")).strip()
+        ],
+        "rows_per_symbol": {
+            str(item.get("symbol", "")): int(item.get("bar_count", 0))
+            for item in symbol_summaries
+            if str(item.get("symbol", "")).strip()
+        },
+        "date_range": _date_range_from_symbol_summaries(symbol_summaries),
+        "benchmark_returns": _benchmark_returns(benchmark_records),
+        "candidate_failure_summary": _candidate_diagnostic_summary(
+            ranked_evaluations
+        ),
+        "candidate_failure_summary_by_symbol": _diagnostic_group_summaries(
+            ranked_evaluations,
+            "symbol",
+        ),
+        "candidate_failure_summary_by_strategy_type": _diagnostic_group_summaries(
+            ranked_evaluations,
+            "strategy_family",
+        ),
+        "rejection_reasons_by_candidate": _rejection_reasons_by_candidate(
+            ranked_evaluations
+        ),
+        "trade_count_by_candidate": _trade_count_by_candidate(ranked_evaluations),
+        "max_drawdown_by_candidate": _max_drawdown_by_candidate(ranked_evaluations),
+        "cash_and_buy_hold_underperformance_by_candidate": (
+            _underperformance_by_candidate(ranked_evaluations)
+        ),
+        "train_test_windows": [dict(window) for window in walk_forward_windows],
+        "market_regime_summary": _market_regime_summary(benchmark_records),
+        "drawdown_summary": _drawdown_summary(ranked_evaluations),
+        "repair_added": bool(repaired_candidates),
+        "repaired_candidates": repaired_candidates,
+        "repair_candidate_summary": _candidate_diagnostic_summary(
+            repair_evaluations
+        ),
+        "repair_rejection_reasons_by_candidate": _rejection_reasons_by_candidate(
+            repair_evaluations
+        ),
+    }
+
+
+def _date_range_from_symbol_summaries(
+    symbol_summaries: Sequence[Mapping[str, object]],
+) -> dict[str, dict[str, object]]:
+    ranges: dict[str, dict[str, object]] = {}
+    for item in symbol_summaries:
+        symbol = str(item.get("symbol", "")).strip()
+        if not symbol:
+            continue
+        ranges[symbol] = {
+            "start": item.get("first_bar_at", ""),
+            "end": item.get("latest_bar_at", ""),
+            "bar_count": item.get("bar_count", 0),
+        }
+    return ranges
+
+
+def _benchmark_returns(
+    benchmark_records: Sequence[Mapping[str, object]],
+) -> dict[str, dict[str, object]]:
+    returns: dict[str, dict[str, object]] = {}
+    for record in benchmark_records:
+        benchmark_id = str(record.get("benchmark_id", "")).strip()
+        symbol = str(record.get("symbol", "")).strip()
+        if not benchmark_id:
+            continue
+        key = benchmark_id if benchmark_id == "cash_no_trade" else f"{benchmark_id}:{symbol}"
+        windows = _mapping(record.get("windows"))
+        train = _mapping(windows.get("train"))
+        test = _mapping(windows.get("test"))
+        returns[key] = {
+            "benchmark_id": benchmark_id,
+            "symbol": symbol,
+            "status": record.get("status", ""),
+            "train_total_return": train.get("total_return", ""),
+            "test_total_return": test.get("total_return", ""),
+            "test_max_drawdown": test.get("max_drawdown", ""),
+        }
+    return returns
+
+
+def _candidate_diagnostic_summary(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    decision_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    for item in evaluations:
+        _increment_count(decision_counts, str(item.get("candidate_decision", "")))
+        for reason in _string_sequence(item.get("rejection_reasons")):
+            _increment_count(reason_counts, reason)
+
+    top = evaluations[0] if evaluations else {}
+    top_test_metrics = _mapping(_mapping(top.get("windows")).get("test"))
+    top_comparison = _mapping(top.get("benchmark_comparison"))
+    return {
+        "candidate_count": len(evaluations),
+        "decision_counts": decision_counts,
+        "rejection_reason_counts": reason_counts,
+        "all_candidates_rejected": bool(evaluations)
+        and all(
+            str(item.get("candidate_decision", "")) != "promote_to_no_submit_plan"
+            for item in evaluations
+        ),
+        "top_candidate_id": top.get("candidate_id", ""),
+        "top_candidate_symbol": top.get("symbol", ""),
+        "top_candidate_strategy_id": top.get("strategy_id", ""),
+        "top_candidate_test_total_return": top_test_metrics.get("total_return", ""),
+        "top_candidate_test_max_drawdown": top_test_metrics.get("max_drawdown", ""),
+        "top_candidate_test_trade_count": top_test_metrics.get("trade_count", ""),
+        "top_candidate_test_excess_return_vs_buy_hold": top_comparison.get(
+            "test_excess_return_vs_buy_hold",
+            "",
+        ),
+        "top_candidate_test_excess_return_vs_equal_weight_basket": top_comparison.get(
+            "test_excess_return_vs_equal_weight_basket",
+            "",
+        ),
+        "top_candidate_rejection_reasons": list(
+            _string_sequence(top.get("rejection_reasons"))
+        ),
+    }
+
+
+def _diagnostic_group_summaries(
+    evaluations: Sequence[Mapping[str, object]],
+    group_key: str,
+) -> dict[str, dict[str, object]]:
+    grouped: dict[str, list[Mapping[str, object]]] = {}
+    for item in evaluations:
+        key = str(item.get(group_key, "")).strip()
+        if not key:
+            key = "unknown"
+        grouped.setdefault(key, []).append(item)
+
+    summaries: dict[str, dict[str, object]] = {}
+    for key, items in grouped.items():
+        reason_counts: dict[str, int] = {}
+        total_trade_count = 0
+        max_drawdown = _ZERO
+        for item in items:
+            metrics = _mapping(_mapping(item.get("windows")).get("test"))
+            total_trade_count += int(metrics.get("trade_count", 0))
+            drawdown = _decimal_from_text(metrics.get("max_drawdown", "0"))
+            if drawdown > max_drawdown:
+                max_drawdown = drawdown
+            for reason in _string_sequence(item.get("rejection_reasons")):
+                _increment_count(reason_counts, reason)
+        best = items[0]
+        best_metrics = _mapping(_mapping(best.get("windows")).get("test"))
+        best_comparison = _mapping(best.get("benchmark_comparison"))
+        summaries[key] = {
+            "candidate_count": len(items),
+            "rejection_reason_counts": reason_counts,
+            "total_test_trade_count": total_trade_count,
+            "average_test_trade_count": _decimal_text(
+                Decimal(total_trade_count) / Decimal(len(items))
+            ),
+            "max_test_drawdown": _decimal_text(max_drawdown),
+            "best_candidate_id": best.get("candidate_id", ""),
+            "best_candidate_test_total_return": best_metrics.get(
+                "total_return",
+                "",
+            ),
+            "best_candidate_test_excess_return_vs_buy_hold": best_comparison.get(
+                "test_excess_return_vs_buy_hold",
+                "",
+            ),
+        }
+    return summaries
+
+
+def _rejection_reasons_by_candidate(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, list[str]]:
+    return {
+        str(item.get("candidate_id", "")): list(
+            _string_sequence(item.get("rejection_reasons"))
+        )
+        for item in evaluations
+        if str(item.get("candidate_id", "")).strip()
+    }
+
+
+def _trade_count_by_candidate(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, int]:
+    return {
+        str(item.get("candidate_id", "")): int(
+            _mapping(_mapping(item.get("windows")).get("test")).get("trade_count", 0)
+        )
+        for item in evaluations
+        if str(item.get("candidate_id", "")).strip()
+    }
+
+
+def _max_drawdown_by_candidate(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, str]:
+    return {
+        str(item.get("candidate_id", "")): str(
+            _mapping(_mapping(item.get("windows")).get("test")).get(
+                "max_drawdown",
+                "",
+            )
+        )
+        for item in evaluations
+        if str(item.get("candidate_id", "")).strip()
+    }
+
+
+def _underperformance_by_candidate(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, dict[str, object]]:
+    results: dict[str, dict[str, object]] = {}
+    for item in evaluations:
+        candidate_id = str(item.get("candidate_id", "")).strip()
+        if not candidate_id:
+            continue
+        metrics = _mapping(_mapping(item.get("windows")).get("test"))
+        comparison = _mapping(item.get("benchmark_comparison"))
+        test_return = _decimal_from_text(metrics.get("total_return", "0"))
+        results[candidate_id] = {
+            "test_total_return": metrics.get("total_return", ""),
+            "cash_no_trade_test_total_return": comparison.get(
+                "cash_no_trade_test_total_return",
+                "0",
+            ),
+            "cash_underperformance": test_return <= _ZERO,
+            "buy_hold_test_total_return": comparison.get(
+                "buy_and_hold_test_total_return",
+                "",
+            ),
+            "test_excess_return_vs_buy_hold": comparison.get(
+                "test_excess_return_vs_buy_hold",
+                "",
+            ),
+            "buy_hold_underperformance": _decimal_from_text(
+                comparison.get("test_excess_return_vs_buy_hold", "0")
+            )
+            <= _ZERO,
+            "equal_weight_basket_test_total_return": comparison.get(
+                "equal_weight_basket_test_total_return",
+                "",
+            ),
+            "test_excess_return_vs_equal_weight_basket": comparison.get(
+                "test_excess_return_vs_equal_weight_basket",
+                "",
+            ),
+            "equal_weight_basket_underperformance": (
+                bool(
+                    str(
+                        comparison.get(
+                            "test_excess_return_vs_equal_weight_basket",
+                            "",
+                        )
+                    ).strip()
+                )
+                and _decimal_from_text(
+                    comparison.get(
+                        "test_excess_return_vs_equal_weight_basket",
+                        "0",
+                    )
+                )
+                <= _ZERO
+            ),
+        }
+    return results
+
+
+def _market_regime_summary(
+    benchmark_records: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    buy_hold_items: list[dict[str, object]] = []
+    test_returns: list[Decimal] = []
+    train_returns: list[Decimal] = []
+    for record in benchmark_records:
+        if record.get("benchmark_id") != "buy_and_hold":
+            continue
+        windows = _mapping(record.get("windows"))
+        train = _mapping(windows.get("train"))
+        test = _mapping(windows.get("test"))
+        train_return = _decimal_from_text(train.get("total_return", "0"))
+        test_return = _decimal_from_text(test.get("total_return", "0"))
+        train_returns.append(train_return)
+        test_returns.append(test_return)
+        buy_hold_items.append(
+            {
+                "symbol": record.get("symbol", ""),
+                "train_total_return": train.get("total_return", ""),
+                "test_total_return": test.get("total_return", ""),
+                "train_regime": _return_regime(train_return),
+                "test_regime": _return_regime(test_return),
+                "test_max_drawdown": test.get("max_drawdown", ""),
+            }
+        )
+
+    return {
+        "by_symbol": buy_hold_items,
+        "train_regime": _aggregate_return_regime(train_returns),
+        "test_regime": _aggregate_return_regime(test_returns),
+        "regime_transition": (
+            f"{_aggregate_return_regime(train_returns)}_to_"
+            f"{_aggregate_return_regime(test_returns)}"
+        ),
+    }
+
+
+def _drawdown_summary(
+    evaluations: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    high_drawdown_candidates = [
+        str(item.get("candidate_id", ""))
+        for item in evaluations
+        if "high_drawdown" in _string_sequence(item.get("rejection_reasons"))
+    ]
+    worst_candidate = ""
+    worst_drawdown = _ZERO
+    for item in evaluations:
+        drawdown = _decimal_from_text(
+            _mapping(_mapping(item.get("windows")).get("test")).get(
+                "max_drawdown",
+                "0",
+            )
+        )
+        if drawdown > worst_drawdown:
+            worst_drawdown = drawdown
+            worst_candidate = str(item.get("candidate_id", ""))
+    return {
+        "high_drawdown_candidate_count": len(high_drawdown_candidates),
+        "high_drawdown_candidates": high_drawdown_candidates,
+        "worst_drawdown_candidate_id": worst_candidate,
+        "worst_test_max_drawdown": _decimal_text(worst_drawdown),
+    }
+
+
+def _return_regime(value: Decimal) -> str:
+    if value > _ZERO:
+        return "positive"
+    if value < _ZERO:
+        return "negative"
+    return "flat"
+
+
+def _aggregate_return_regime(values: Sequence[Decimal]) -> str:
+    if not values:
+        return "unavailable"
+    positive = sum(1 for value in values if value > _ZERO)
+    negative = sum(1 for value in values if value < _ZERO)
+    if positive == len(values):
+        return "broad_positive"
+    if negative == len(values):
+        return "broad_negative"
+    if positive and negative:
+        return "mixed"
+    return "flat"
+
+
+def _increment_count(counts: dict[str, int], key: str) -> None:
+    clean_key = key.strip() if key.strip() else "unknown"
+    counts[clean_key] = counts.get(clean_key, 0) + 1
 
 
 def _walk_forward_windows(
@@ -2254,6 +2792,7 @@ def _insufficient_candidate_record(
             "cash_no_trade_test_total_return": "0",
             "equal_weight_basket_test_total_return": "",
             "test_excess_return_vs_buy_hold": "",
+            "test_excess_return_vs_equal_weight_basket": "",
         },
     }
 

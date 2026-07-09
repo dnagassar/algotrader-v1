@@ -54,6 +54,15 @@ def test_deterministic_fixture_ranks_promotable_candidate_first() -> None:
         "buy_and_hold",
         "equal_weight_crypto_basket",
     }
+    assert packet["diagnostics"]["candidate_failure_summary"]["candidate_count"] == 16
+    assert packet["repair_added"] is True
+    assert [item["strategy_id"] for item in packet["repaired_candidates"]] == [
+        "trend_momentum_24h_repair"
+    ]
+    assert all(
+        item["candidate_decision"] != "promote_to_no_submit_plan"
+        for item in packet["diagnostic_repair_candidate_evaluations"]
+    )
     assert packet["validation_status"] == "passed"
 
 
@@ -97,6 +106,7 @@ def test_benchmark_underperformance_blocks_promotion() -> None:
     assert packet["no_submit_decision"] == "reject_candidate"
     assert packet["selected_candidate"] is None
     assert "benchmark_underperformance" in packet["rejection_reasons"]
+    assert "basket_underperformance" in packet["rejection_reasons"]
     assert all(
         row["candidate_decision"] != "promote_to_no_submit_plan"
         for row in packet["evidence_table"]
@@ -155,6 +165,19 @@ def test_valid_multi_symbol_local_csv_passes_sufficiency(tmp_path: Path) -> None
         "moving_average_regime_3_6",
         "volatility_filter_4",
     ]
+    assert packet["input_history_path"] == str(csv_path)
+    assert packet["benchmark_returns"]["cash_no_trade"]["test_total_return"] == "0"
+    assert packet["candidate_failure_summary"]["candidate_count"] == 16
+    assert packet["diagnostics"]["market_regime_summary"]["test_regime"] in {
+        "broad_positive",
+        "broad_negative",
+        "flat",
+        "mixed",
+    }
+    assert packet["strategy_evidence_table_after_repairs"]
+    assert packet["repaired_candidates"][0]["promotion_scope"] == (
+        "diagnostic_only_until_fresh_oos"
+    )
     assert packet["no_submit_classification"] in {
         "promote_to_no_submit_plan",
         "reject_candidate",
@@ -365,6 +388,10 @@ def test_fixture_only_result_cannot_be_mislabeled_as_real_data_promotion(
     assert real_probe_packet["selected_candidate"] is None
     assert real_probe_packet["paper_planning_eligibility"] == "not_eligible"
     assert "fixture" in real_probe_packet["reason_for_classification"]
+    assert all(
+        item["candidate_decision"] != "promote_to_no_submit_plan"
+        for item in real_probe_packet["diagnostic_repair_candidate_evaluations"]
+    )
 
 
 def test_no_submit_packet_cannot_contain_broker_mutation_or_submit_instructions(
@@ -401,6 +428,21 @@ def test_no_submit_packet_cannot_contain_broker_mutation_or_submit_instructions(
         "liquidate",
     ):
         assert all(forbidden not in action for action in actions)
+    packet_text = " ".join(_packet_string_values(packet)).lower()
+    blocker_text = " ".join(_packet_string_values(blocker_packet)).lower()
+    for forbidden in (
+        "submit order",
+        "place order",
+        "send order",
+        "cancel order",
+        "replace order",
+        "close position",
+        "liquidate",
+        "mutate broker",
+        "broker mutation is authorized",
+    ):
+        assert forbidden not in packet_text
+        assert forbidden not in blocker_text
 
 
 def test_module_has_no_broker_network_runtime_or_llm_imports() -> None:
@@ -448,6 +490,20 @@ def _packet(bars: tuple[CryptoEvidenceBar, ...]) -> dict[str, object]:
         data_freshness="fixture_as_of_2026-07-09",
         assumptions=CryptoEvidenceAssumptions(),
     )
+
+
+def _packet_string_values(value: object) -> tuple[str, ...]:
+    if isinstance(value, dict):
+        return tuple(
+            item
+            for child in value.values()
+            for item in _packet_string_values(child)
+        )
+    if isinstance(value, (list, tuple)):
+        return tuple(item for child in value for item in _packet_string_values(child))
+    if isinstance(value, str):
+        return (value,)
+    return ()
 
 
 def _mixed_fixture_bars() -> tuple[CryptoEvidenceBar, ...]:
