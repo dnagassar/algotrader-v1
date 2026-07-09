@@ -13,7 +13,7 @@ import csv
 import json
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -23,22 +23,39 @@ CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION = (
     "v5_19_crypto_strategy_evidence_battery_v1"
 )
 DEFAULT_CRYPTO_EVIDENCE_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
-LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS = ("timestamp", "symbol", "close")
+LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS = (
+    "timestamp",
+    "symbol",
+    "open",
+    "high",
+    "low",
+    "close",
+)
+LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS = ("volume",)
 LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES: Mapping[str, tuple[str, ...]] = {
     "timestamp": ("timestamp", "datetime", "date", "t"),
     "symbol": ("symbol", "S"),
+    "open": ("open", "o"),
+    "high": ("high", "h"),
+    "low": ("low", "l"),
     "close": ("close", "c"),
+    "volume": ("volume", "v"),
 }
 ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS = (
-    "single CSV with timestamp/symbol/close columns or aliases "
-    "(datetime/date/t, S, c)",
-    "single CSV with OHLCV columns where close/c is present; open/high/low/volume "
-    "are accepted but not required by this evidence battery",
-    "per-symbol CSV files with the same required timestamp, symbol, and close fields",
+    "single CSV with timestamp, symbol, open, high, low, and close columns or "
+    "aliases (datetime/date/t, S, o, h, l, c)",
+    "single CSV with OHLCV columns; volume/v is recorded when present but is not "
+    "required because this evidence battery uses close-only strategies",
+    "per-symbol CSV files with the same required timestamp, symbol, open, high, "
+    "low, and close fields",
 )
 DEFAULT_LOCAL_CRYPTO_HISTORY_PATHS = (
     Path("runs/operator_input/crypto_paper_bars.csv"),
     Path("runs/crypto_paper_read_only_refresh/latest/crypto_paper_bars.csv"),
+)
+DEFAULT_LOCAL_CRYPTO_HISTORY_GLOB_PATHS = (
+    Path("runs/crypto_universe_refresh/latest/history"),
+    Path("runs/crypto_universe_refresh/v5_17_observed_artifact_smoke_packet/history"),
 )
 REAL_DATA_PROMOTION_BLOCKING_SOURCE_MARKERS = (
     "deterministic_unit_fixture",
@@ -79,6 +96,8 @@ __all__ = [
     "ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS",
     "DEFAULT_CRYPTO_EVIDENCE_SYMBOLS",
     "DEFAULT_LOCAL_CRYPTO_HISTORY_PATHS",
+    "DEFAULT_LOCAL_CRYPTO_HISTORY_GLOB_PATHS",
+    "LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS",
     "LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS",
     "NO_SUBMIT_SAFETY_FIELDS",
     "REQUIRED_NO_SUBMIT_LABELS",
@@ -125,6 +144,8 @@ class CryptoEvidenceAssumptions:
     fee_bps: Decimal = Decimal("10")
     slippage_bps: Decimal = Decimal("15")
     min_bars_per_symbol: int = 16
+    min_history_rows_per_symbol: int = 80
+    min_history_span_hours: int = 72
     train_fraction_numerator: int = 3
     train_fraction_denominator: int = 5
     max_test_drawdown: Decimal = Decimal("0.25")
@@ -150,6 +171,19 @@ class CryptoEvidenceAssumptions:
             self,
             "min_bars_per_symbol",
             _positive_int(self.min_bars_per_symbol, "min_bars_per_symbol"),
+        )
+        object.__setattr__(
+            self,
+            "min_history_rows_per_symbol",
+            _positive_int(
+                self.min_history_rows_per_symbol,
+                "min_history_rows_per_symbol",
+            ),
+        )
+        object.__setattr__(
+            self,
+            "min_history_span_hours",
+            _positive_int(self.min_history_span_hours, "min_history_span_hours"),
         )
         object.__setattr__(
             self,
@@ -360,6 +394,9 @@ def load_crypto_evidence_bars_from_csv(
         missing = ", ".join(_string_sequence(inventory.get("missing_columns")))
         raise ValidationError(f"crypto evidence CSV missing required columns: {missing}")
     if inventory.get("read_error"):
+        detail = str(inventory.get("read_error_detail", "")).strip()
+        if detail:
+            raise ValidationError(f"{inventory['read_error']}: {detail}")
         raise ValidationError(str(inventory["read_error"]))
     if not bars:
         raise ValidationError("crypto evidence CSV did not include usable crypto rows.")
@@ -397,6 +434,17 @@ def build_crypto_strategy_real_data_evidence_packet(
             blocking_reasons.append(str(inventory["read_error"]))
         if not inventory.get("missing_columns") and not inventory.get("read_error"):
             bars.extend(path_bars)
+
+    if _has_duplicate_symbol_timestamps(tuple(bars)):
+        blocking_reasons.append("duplicate_symbol_timestamp_rows")
+
+    preliminary_inventory = _data_inventory_payload(
+        csv_paths=checked_paths,
+        inventories=tuple(inventories),
+        assumptions=checked_assumptions,
+        blocking_reasons=tuple(blocking_reasons),
+    )
+    blocking_reasons = _string_list(preliminary_inventory.get("blocking_reasons"))
 
     if blocking_reasons:
         evidence_bars: tuple[CryptoEvidenceBar, ...] = ()
@@ -449,7 +497,13 @@ def classify_crypto_strategy_no_submit_packet(packet: Mapping[str, object]) -> s
 def default_existing_local_crypto_history_paths() -> tuple[Path, ...]:
     """Return known ignored local crypto CSV artifacts that exist in this workspace."""
 
-    return tuple(path for path in DEFAULT_LOCAL_CRYPTO_HISTORY_PATHS if path.is_file())
+    paths: list[Path] = [
+        path for path in DEFAULT_LOCAL_CRYPTO_HISTORY_PATHS if path.is_file()
+    ]
+    for directory in DEFAULT_LOCAL_CRYPTO_HISTORY_GLOB_PATHS:
+        if directory.is_dir():
+            paths.extend(sorted(directory.glob("*.csv")))
+    return tuple(dict.fromkeys(paths))
 
 
 def write_crypto_strategy_evidence_packet(
@@ -568,7 +622,13 @@ def _load_crypto_evidence_csv(
     inventory["observed_columns"] = list(fieldnames)
     missing_columns = _missing_csv_required_columns(fieldnames)
     inventory["missing_columns"] = list(missing_columns)
+    inventory["volume_status"] = _volume_status_from_fieldnames(fieldnames)
     if missing_columns:
+        inventory["duplicate_timestamp_status"] = "not_checked"
+        inventory["missing_close_status"] = (
+            "failed" if "close" in missing_columns else "not_checked"
+        )
+        inventory["monotonic_timestamp_status"] = "not_checked"
         return inventory, ()
 
     bars: list[CryptoEvidenceBar] = []
@@ -576,6 +636,10 @@ def _load_crypto_evidence_csv(
     skipped_non_crypto_rows = 0
     skipped_symbol_rows = 0
     rows_read = 0
+    missing_close_count = 0
+    duplicate_timestamp_rows = 0
+    timestamps_by_symbol: dict[str, set[datetime]] = {}
+    previous_timestamp_by_symbol: dict[str, datetime] = {}
     try:
         for row in reader:
             if None in row:
@@ -602,28 +666,49 @@ def _load_crypto_evidence_csv(
                 skipped_symbol_rows += 1
                 continue
 
+            timestamp = _csv_datetime(
+                _csv_first_text(
+                    row,
+                    LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES["timestamp"],
+                )
+            )
+            close_text = _csv_first_text(
+                row,
+                LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES["close"],
+            )
+            if not close_text:
+                missing_close_count += 1
+                raise ValidationError("missing close price.")
+            seen_timestamps = timestamps_by_symbol.setdefault(symbol, set())
+            if timestamp in seen_timestamps:
+                duplicate_timestamp_rows += 1
+                raise ValidationError("duplicate symbol timestamp rows.")
+            previous_timestamp = previous_timestamp_by_symbol.get(symbol)
+            if previous_timestamp is not None and timestamp <= previous_timestamp:
+                raise ValidationError("non-monotonic symbol timestamps.")
+            seen_timestamps.add(timestamp)
+            previous_timestamp_by_symbol[symbol] = timestamp
+
             bars.append(
                 CryptoEvidenceBar(
                     symbol=symbol,
-                    timestamp=_csv_datetime(
-                        _csv_first_text(
-                            row,
-                            LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES["timestamp"],
-                        )
-                    ),
-                    close=_csv_decimal(
-                        _csv_first_text(
-                            row,
-                            LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES["close"],
-                        ),
-                        "close",
-                    ),
+                    timestamp=timestamp,
+                    close=_csv_decimal(close_text, "close"),
                 )
             )
     except (ArithmeticError, ValidationError, ValueError) as exc:
         inventory["read_error"] = "csv_validation_error"
         inventory["read_error_detail"] = str(exc)
         inventory["rows_read"] = rows_read
+        inventory["missing_close_count"] = missing_close_count
+        inventory["missing_close_status"] = "failed" if missing_close_count else "passed"
+        inventory["duplicate_timestamp_rows"] = duplicate_timestamp_rows
+        inventory["duplicate_timestamp_status"] = (
+            "failed" if duplicate_timestamp_rows else "passed"
+        )
+        inventory["monotonic_timestamp_status"] = (
+            "failed" if "non-monotonic" in str(exc) else "passed"
+        )
         return inventory, ()
 
     try:
@@ -632,6 +717,12 @@ def _load_crypto_evidence_csv(
         inventory["read_error"] = "csv_validation_error"
         inventory["read_error_detail"] = str(exc)
         inventory["rows_read"] = rows_read
+        inventory["duplicate_timestamp_status"] = (
+            "failed" if "duplicate" in str(exc) else "passed"
+        )
+        inventory["monotonic_timestamp_status"] = (
+            "failed" if "increasing" in str(exc) else "passed"
+        )
         return inventory, ()
 
     ordered_bars = tuple(
@@ -646,6 +737,13 @@ def _load_crypto_evidence_csv(
     inventory["date_range_per_symbol"] = _date_range_per_symbol_from_bars(bars_by_symbol)
     inventory["source_values"] = sorted(source_values)
     inventory["fixture_source_detected"] = _object_contains_source_marker(inventory)
+    inventory["missing_close_count"] = missing_close_count
+    inventory["missing_close_status"] = "failed" if missing_close_count else "passed"
+    inventory["duplicate_timestamp_rows"] = duplicate_timestamp_rows
+    inventory["duplicate_timestamp_status"] = (
+        "failed" if duplicate_timestamp_rows else "passed"
+    )
+    inventory["monotonic_timestamp_status"] = "passed"
     return inventory, ordered_bars
 
 
@@ -671,23 +769,41 @@ def _real_data_probe_packet(
     probe["data_path"] = str(csv_paths[0]) if len(csv_paths) == 1 else ""
     probe["data_paths"] = [str(path) for path in csv_paths]
     probe["data_inventory"] = data_inventory
+    probe["symbols_required"] = list(data_inventory["symbols_required"])
+    probe["required_symbols"] = list(data_inventory["symbols_required"])
+    probe["symbols_found"] = list(data_inventory["symbols_found"])
+    probe["symbols_missing"] = list(data_inventory["symbols_missing"])
     probe["symbols_evaluated"] = list(assumptions.candidate_symbols)
-    probe["rows_per_symbol"] = _rows_per_symbol_from_data_summary(
-        probe.get("data_summary")
-    )
-    probe["date_range_per_symbol"] = _date_range_per_symbol_from_data_summary(
-        probe.get("data_summary")
-    )
+    probe["rows_per_symbol"] = dict(data_inventory["rows_per_symbol"])
+    probe["date_range_per_symbol"] = dict(data_inventory["date_range_per_symbol"])
     probe["missing_columns"] = _inventory_missing_columns(inventories)
-    probe["required_symbols"] = list(assumptions.candidate_symbols)
     probe["required_columns"] = list(LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS)
+    probe["optional_columns"] = list(LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS)
+    probe["required_minimum_rows"] = data_inventory["required_minimum_rows"]
+    probe["required_minimum_span"] = data_inventory["required_minimum_span"]
+    probe["schema_validation_status"] = data_inventory["schema_validation_status"]
+    probe["duplicate_timestamp_status"] = data_inventory[
+        "duplicate_timestamp_status"
+    ]
+    probe["missing_close_status"] = data_inventory["missing_close_status"]
+    probe["monotonic_timestamp_status"] = data_inventory[
+        "monotonic_timestamp_status"
+    ]
+    probe["volume_status"] = data_inventory["volume_status"]
     probe["required_lookback_window"] = _required_lookback_window(assumptions)
     probe["acceptable_local_input_formats"] = list(
         ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS
     )
-    probe["strategy_candidates_evaluated"] = [
-        item["strategy_id"] for item in probe.get("strategy_candidates", [])
-    ]
+    coverage_classification = _history_coverage_classification(data_inventory)
+    if coverage_classification == "sufficient_real_crypto_history":
+        strategies_evaluated = _strategies_evaluated(probe)
+    else:
+        strategies_evaluated = []
+        probe["benchmark_comparison"] = {}
+        probe["evidence_table"] = []
+        probe["candidate_evaluations"] = []
+    probe["strategies_evaluated"] = strategies_evaluated
+    probe["strategy_candidates_evaluated"] = strategies_evaluated
     probe["risk_limits_considered"] = _risk_limits_considered(assumptions)
     probe["drawdown_threshold"] = _decimal_text(assumptions.max_test_drawdown)
     probe["benchmark_underperformance_threshold"] = _decimal_text(
@@ -695,20 +811,35 @@ def _real_data_probe_packet(
     )
 
     classification = classify_crypto_strategy_no_submit_packet(probe)
-    if blocking_reasons and classification == "promote_to_no_submit_plan":
+    if (
+        coverage_classification == "insufficient_real_crypto_history"
+        or blocking_reasons
+    ):
         classification = "insufficient_real_crypto_history"
+    probe["classification"] = coverage_classification
     probe["no_submit_classification"] = classification
     probe["no_submit_decision"] = classification
-    probe["reason_for_classification"] = _classification_reason(
-        probe,
-        classification=classification,
-        blocking_reasons=blocking_reasons,
+    probe["paper_planning_eligibility"] = _paper_planning_eligibility(
+        coverage_classification=coverage_classification,
+        strategy_classification=classification,
+        selected_candidate=probe.get("selected_candidate"),
     )
-    if classification == "insufficient_real_crypto_history":
+    reason = _classification_reason(
+        probe,
+        coverage_classification=coverage_classification,
+        classification=classification,
+        blocking_reasons=tuple(_string_sequence(data_inventory.get("blocking_reasons"))),
+    )
+    probe["reason"] = reason
+    probe["reason_for_classification"] = reason
+    if coverage_classification == "insufficient_real_crypto_history":
         probe["selected_candidate"] = None
     probe["selected_candidate_if_any"] = probe.get("selected_candidate")
-    probe["next_safe_ingestion_action"] = _next_safe_ingestion_action(classification)
-    if classification == "insufficient_real_crypto_history":
+    probe["next_safe_ingestion_action"] = _next_safe_ingestion_action(
+        coverage_classification
+    )
+    probe["next_safe_data_refresh_action"] = probe["next_safe_ingestion_action"]
+    if coverage_classification == "insufficient_real_crypto_history":
         probe["next_safe_operator_action"] = probe["next_safe_ingestion_action"]
 
     validation_errors = validate_crypto_strategy_no_submit_packet(probe)
@@ -724,14 +855,89 @@ def _data_inventory_payload(
     assumptions: CryptoEvidenceAssumptions,
     blocking_reasons: tuple[str, ...],
 ) -> dict[str, object]:
+    required_symbols = list(assumptions.candidate_symbols)
+    rows_per_symbol = _aggregate_rows_per_symbol(inventories)
+    date_range_per_symbol = _aggregate_date_range_per_symbol(inventories)
+    required_set = set(required_symbols)
+    symbols_found = [
+        symbol for symbol in required_symbols if rows_per_symbol.get(symbol, 0) > 0
+    ]
+    symbols_found.extend(
+        symbol
+        for symbol in sorted(rows_per_symbol)
+        if symbol not in required_set and rows_per_symbol[symbol] > 0
+    )
+    symbols_missing = [
+        symbol for symbol in required_symbols if symbol not in set(symbols_found)
+    ]
+    required_minimum_rows = assumptions.min_history_rows_per_symbol
+    required_minimum_span = _required_minimum_span(assumptions)
+    missing_columns = _inventory_missing_columns(inventories)
+    computed_blocking_reasons: list[str] = list(blocking_reasons)
+    if symbols_missing:
+        computed_blocking_reasons.append("missing_required_symbols")
+    if any(
+        rows_per_symbol.get(symbol, 0) < required_minimum_rows
+        for symbol in required_symbols
+    ):
+        computed_blocking_reasons.append("insufficient_rows")
+    if any(
+        not _symbol_span_is_sufficient(
+            date_range_per_symbol.get(symbol),
+            assumptions,
+        )
+        for symbol in required_symbols
+    ):
+        computed_blocking_reasons.append("insufficient_date_span")
+    if missing_columns:
+        computed_blocking_reasons.append("missing_required_columns")
+    if _any_inventory_status(inventories, "duplicate_timestamp_status", "failed"):
+        computed_blocking_reasons.append("duplicate_symbol_timestamp_rows")
+    if _any_inventory_status(inventories, "missing_close_status", "failed"):
+        computed_blocking_reasons.append("missing_close_values")
+    if _any_inventory_status(inventories, "monotonic_timestamp_status", "failed"):
+        computed_blocking_reasons.append("non_monotonic_timestamps")
+    if _object_contains_source_marker(inventories):
+        computed_blocking_reasons.append("fixture_only_history")
+
+    blocking = list(dict.fromkeys(computed_blocking_reasons))
+    schema_status = "failed" if missing_columns or _inventory_read_errors(inventories) else "passed"
+    duplicate_timestamp_status = _combined_status(
+        inventories,
+        "duplicate_timestamp_status",
+    )
+    if "duplicate_symbol_timestamp_rows" in blocking:
+        duplicate_timestamp_status = "failed"
+    missing_close_status = _combined_status(inventories, "missing_close_status")
+    if "missing_close_values" in blocking:
+        missing_close_status = "failed"
+    monotonic_timestamp_status = _combined_status(
+        inventories,
+        "monotonic_timestamp_status",
+    )
+    if "non_monotonic_timestamps" in blocking:
+        monotonic_timestamp_status = "failed"
     return {
         "input_paths": [str(path) for path in csv_paths],
         "records": [dict(inventory) for inventory in inventories],
-        "required_symbols": list(assumptions.candidate_symbols),
+        "symbols_required": required_symbols,
+        "required_symbols": required_symbols,
+        "symbols_found": symbols_found,
+        "symbols_missing": symbols_missing,
+        "rows_per_symbol": rows_per_symbol,
+        "date_range_per_symbol": date_range_per_symbol,
+        "required_minimum_rows": required_minimum_rows,
+        "required_minimum_span": required_minimum_span,
         "required_columns": list(LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS),
+        "optional_columns": list(LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS),
         "required_lookback_window": _required_lookback_window(assumptions),
         "acceptable_local_input_formats": list(ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS),
-        "blocking_reasons": list(blocking_reasons),
+        "schema_validation_status": schema_status,
+        "duplicate_timestamp_status": duplicate_timestamp_status,
+        "missing_close_status": missing_close_status,
+        "monotonic_timestamp_status": monotonic_timestamp_status,
+        "volume_status": _combined_volume_status(inventories),
+        "blocking_reasons": blocking,
         "fixture_source_detected": _object_contains_source_marker(inventories),
     }
 
@@ -739,14 +945,18 @@ def _data_inventory_payload(
 def _classification_reason(
     packet: Mapping[str, object],
     *,
+    coverage_classification: str,
     classification: str,
     blocking_reasons: tuple[str, ...],
 ) -> str:
     if blocking_reasons:
         return (
-            "local historical crypto CSV input is blocked: "
+            "local historical crypto coverage is blocked: "
             + ", ".join(blocking_reasons)
         )
+    if coverage_classification == "sufficient_real_crypto_history" and classification == "reject_candidate":
+        reasons = ", ".join(_string_sequence(packet.get("rejection_reasons")))
+        return f"local history is sufficient, but all evaluated candidates failed promotion gates: {reasons}"
     if _object_contains_source_marker(packet.get("data_inventory")) or _object_contains_source_marker(
         packet.get("data_source")
     ):
@@ -767,9 +977,13 @@ def _classification_reason(
 def _next_safe_ingestion_action(classification: str) -> str:
     if classification == "insufficient_real_crypto_history":
         return (
-            "Provide a local CSV of read-only historical crypto bars under runs/ "
-            "with timestamp, symbol, and close columns, then rerun this probe."
+            "Add or refresh local read-only crypto OHLC CSV history for BTCUSD, "
+            "ETHUSD, SOLUSD, and ADAUSD under runs/operator_input/ or a "
+            "runs/crypto_universe_refresh/<label>/history/ directory, then rerun "
+            "this probe; no broker read or mutation is authorized by this packet."
         )
+    if classification == "sufficient_real_crypto_history":
+        return "Review the local evidence packet offline before any separate planning milestone."
     if classification == "promote_to_no_submit_plan":
         return "Open a separate no-submit planning milestone using this packet."
     if classification == "reject_candidate":
@@ -794,6 +1008,14 @@ def _empty_csv_inventory(path: Path) -> dict[str, object]:
         "date_range_per_symbol": {},
         "source_values": [],
         "fixture_source_detected": False,
+        "duplicate_timestamp_rows": 0,
+        "duplicate_timestamp_status": "not_checked",
+        "missing_close_count": 0,
+        "missing_close_status": "not_checked",
+        "monotonic_timestamp_status": "not_checked",
+        "volume_status": "not_checked",
+        "volume_required_for_strategy": False,
+        "strategies_can_run_without_volume": True,
         "read_error": "",
     }
 
@@ -802,9 +1024,22 @@ def _missing_csv_required_columns(fieldnames: Sequence[str]) -> tuple[str, ...]:
     lookup = {field.strip().lower() for field in fieldnames if field.strip()}
     missing: list[str] = []
     for canonical, aliases in LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES.items():
+        if canonical in LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS:
+            continue
         if not any(alias.lower() in lookup for alias in aliases):
             missing.append(canonical)
     return tuple(missing)
+
+
+def _volume_status_from_fieldnames(fieldnames: Sequence[str]) -> str:
+    lookup = {field.strip().lower() for field in fieldnames if field.strip()}
+    has_volume = any(
+        alias.lower() in lookup
+        for alias in LOCAL_HISTORICAL_CRYPTO_COLUMN_ALIASES["volume"]
+    )
+    if has_volume:
+        return "available"
+    return "absent_strategy_compatible"
 
 
 def _csv_first_text(row: Mapping[str, object], aliases: Sequence[str]) -> str:
@@ -873,6 +1108,16 @@ def _date_range_per_symbol_from_bars(
     }
 
 
+def _has_duplicate_symbol_timestamps(bars: Sequence[CryptoEvidenceBar]) -> bool:
+    seen: set[tuple[str, datetime]] = set()
+    for bar in bars:
+        key = (bar.symbol, bar.timestamp)
+        if key in seen:
+            return True
+        seen.add(key)
+    return False
+
+
 def _rows_per_symbol_from_data_summary(value: object) -> dict[str, int]:
     rows: dict[str, int] = {}
     for item in _mapping_sequence(value):
@@ -907,6 +1152,175 @@ def _inventory_missing_columns(
     return [
         column for column in LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS if column in missing
     ]
+
+
+def _aggregate_rows_per_symbol(
+    inventories: Sequence[Mapping[str, object]],
+) -> dict[str, int]:
+    rows: dict[str, int] = {}
+    for inventory in inventories:
+        for symbol, count in _mapping(inventory.get("rows_per_symbol")).items():
+            symbol_text = str(symbol).strip()
+            if symbol_text:
+                rows[symbol_text] = rows.get(symbol_text, 0) + int(count or 0)
+    return {symbol: rows[symbol] for symbol in sorted(rows)}
+
+
+def _aggregate_date_range_per_symbol(
+    inventories: Sequence[Mapping[str, object]],
+) -> dict[str, dict[str, str]]:
+    ranges: dict[str, dict[str, str]] = {}
+    for inventory in inventories:
+        for symbol, raw_range in _mapping(inventory.get("date_range_per_symbol")).items():
+            symbol_text = str(symbol).strip()
+            if not symbol_text:
+                continue
+            range_map = _mapping(raw_range)
+            start = str(range_map.get("start", "")).strip()
+            end = str(range_map.get("end", "")).strip()
+            if not start or not end:
+                continue
+            existing = ranges.setdefault(
+                symbol_text,
+                {"start": start, "end": end, "span_hours": "0"},
+            )
+            if start < existing["start"]:
+                existing["start"] = start
+            if end > existing["end"]:
+                existing["end"] = end
+    for item in ranges.values():
+        item["span_hours"] = _span_hours_text(item["start"], item["end"])
+    return {symbol: ranges[symbol] for symbol in sorted(ranges)}
+
+
+def _required_minimum_span(
+    assumptions: CryptoEvidenceAssumptions,
+) -> dict[str, object]:
+    return {
+        "hours": assumptions.min_history_span_hours,
+        "iso8601": f"PT{assumptions.min_history_span_hours}H",
+    }
+
+
+def _symbol_span_is_sufficient(
+    raw_range: object,
+    assumptions: CryptoEvidenceAssumptions,
+) -> bool:
+    range_map = _mapping(raw_range)
+    start = str(range_map.get("start", "")).strip()
+    end = str(range_map.get("end", "")).strip()
+    if not start or not end:
+        return False
+    return _datetime_span(start, end) >= timedelta(
+        hours=assumptions.min_history_span_hours
+    )
+
+
+def _span_hours_text(start: str, end: str) -> str:
+    span = _datetime_span(start, end)
+    hours = Decimal(str(span.total_seconds())) / Decimal("3600")
+    return _decimal_text(hours)
+
+
+def _datetime_span(start: str, end: str) -> timedelta:
+    try:
+        start_dt = _csv_datetime(start)
+        end_dt = _csv_datetime(end)
+    except ValidationError:
+        return timedelta(0)
+    return max(end_dt - start_dt, timedelta(0))
+
+
+def _inventory_read_errors(
+    inventories: Sequence[Mapping[str, object]],
+) -> tuple[str, ...]:
+    return tuple(
+        str(inventory.get("read_error"))
+        for inventory in inventories
+        if str(inventory.get("read_error", "")).strip()
+    )
+
+
+def _any_inventory_status(
+    inventories: Sequence[Mapping[str, object]],
+    field_name: str,
+    expected: str,
+) -> bool:
+    return any(str(inventory.get(field_name, "")) == expected for inventory in inventories)
+
+
+def _combined_status(
+    inventories: Sequence[Mapping[str, object]],
+    field_name: str,
+) -> str:
+    statuses = {
+        str(inventory.get(field_name, "")).strip()
+        for inventory in inventories
+        if str(inventory.get(field_name, "")).strip()
+    }
+    if "failed" in statuses:
+        return "failed"
+    if "passed" in statuses:
+        return "passed"
+    return "not_checked"
+
+
+def _combined_volume_status(
+    inventories: Sequence[Mapping[str, object]],
+) -> str:
+    statuses = {
+        str(inventory.get("volume_status", "")).strip()
+        for inventory in inventories
+        if str(inventory.get("volume_status", "")).strip()
+    }
+    if not statuses:
+        return "not_checked"
+    if statuses == {"available"}:
+        return "available"
+    if statuses == {"absent_strategy_compatible"}:
+        return "absent_strategy_compatible"
+    if "available" in statuses and "absent_strategy_compatible" in statuses:
+        return "mixed_strategy_compatible"
+    if "not_checked" in statuses:
+        return "not_checked"
+    return sorted(statuses)[0]
+
+
+def _history_coverage_classification(data_inventory: Mapping[str, object]) -> str:
+    if _string_sequence(data_inventory.get("blocking_reasons")):
+        return "insufficient_real_crypto_history"
+    if str(data_inventory.get("schema_validation_status", "")) != "passed":
+        return "insufficient_real_crypto_history"
+    if str(data_inventory.get("duplicate_timestamp_status", "")) != "passed":
+        return "insufficient_real_crypto_history"
+    if str(data_inventory.get("missing_close_status", "")) != "passed":
+        return "insufficient_real_crypto_history"
+    if str(data_inventory.get("monotonic_timestamp_status", "")) != "passed":
+        return "insufficient_real_crypto_history"
+    return "sufficient_real_crypto_history"
+
+
+def _strategies_evaluated(packet: Mapping[str, object]) -> list[str]:
+    return [
+        str(item.get("strategy_id"))
+        for item in _mapping_sequence(packet.get("strategy_candidates"))
+        if str(item.get("strategy_id", "")).strip()
+    ]
+
+
+def _paper_planning_eligibility(
+    *,
+    coverage_classification: str,
+    strategy_classification: str,
+    selected_candidate: object,
+) -> str:
+    if (
+        coverage_classification == "sufficient_real_crypto_history"
+        and strategy_classification == "promote_to_no_submit_plan"
+        and isinstance(selected_candidate, Mapping)
+    ):
+        return "eligible"
+    return "not_eligible"
 
 
 def _required_lookback_window(
@@ -1810,6 +2224,10 @@ def _string_sequence(value: object) -> tuple[str, ...]:
     if value in (None, ""):
         return ()
     return (str(value),)
+
+
+def _string_list(value: object) -> list[str]:
+    return list(dict.fromkeys(_string_sequence(value)))
 
 
 def _false_safety_flags() -> dict[str, bool]:
