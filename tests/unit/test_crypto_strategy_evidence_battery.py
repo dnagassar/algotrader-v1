@@ -118,6 +118,8 @@ def test_valid_multi_symbol_local_csv_passes_sufficiency(tmp_path: Path) -> None
 
     assert len(loaded_bars) == 320
     assert packet["data_path"] == str(csv_path)
+    assert packet["input_paths"] == [str(csv_path)]
+    assert packet["normalized_output_path"] == ""
     assert packet["classification"] == "sufficient_real_crypto_history"
     assert packet["symbols_required"] == list(DEFAULT_CRYPTO_EVIDENCE_SYMBOLS)
     assert packet["symbols_found"] == list(DEFAULT_CRYPTO_EVIDENCE_SYMBOLS)
@@ -125,10 +127,20 @@ def test_valid_multi_symbol_local_csv_passes_sufficiency(tmp_path: Path) -> None
     assert packet["rows_per_symbol"] == {
         symbol: 80 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
     }
+    assert packet["rows_per_symbol_before_normalization"] == {
+        symbol: 80 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+    }
+    assert packet["rows_per_symbol_after_normalization"] == {
+        symbol: 80 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+    }
+    assert packet["duplicate_rows_removed_per_symbol"] == {
+        symbol: 0 for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+    }
     assert packet["required_minimum_rows"] == 80
     assert packet["required_minimum_span"] == {"hours": 72, "iso8601": "PT72H"}
     assert packet["schema_validation_status"] == "passed"
     assert packet["duplicate_timestamp_status"] == "passed"
+    assert packet["duplicate_timestamp_status_after_normalization"] == "passed"
     assert packet["missing_close_status"] == "passed"
     assert packet["monotonic_timestamp_status"] == "passed"
     assert packet["volume_status"] == "available"
@@ -215,8 +227,11 @@ def test_insufficient_real_data_rows_block_probe_promotion(tmp_path: Path) -> No
     assert packet["selected_candidate"] is None
 
 
-def test_duplicate_symbol_timestamp_rows_block_sufficiency(tmp_path: Path) -> None:
+def test_duplicate_symbol_timestamp_rows_normalize_deterministically(
+    tmp_path: Path,
+) -> None:
     csv_path = tmp_path / "duplicate_history.csv"
+    normalized_path = tmp_path / "normalized_history.csv"
     clean_bars = _multi_symbol_bars(row_count=80)
     duplicate_btc_bar = CryptoEvidenceBar(
         symbol="BTCUSD",
@@ -225,11 +240,47 @@ def test_duplicate_symbol_timestamp_rows_block_sufficiency(tmp_path: Path) -> No
     )
     _write_crypto_csv(csv_path, (*clean_bars, duplicate_btc_bar))
 
+    packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        normalized_output_path=normalized_path,
+    )
+
+    assert packet["classification"] == "sufficient_real_crypto_history"
+    assert packet["duplicate_timestamp_status"] == "passed"
+    assert packet["duplicate_timestamp_status_after_normalization"] == "passed"
+    assert packet["rows_per_symbol_before_normalization"]["BTCUSD"] == 81
+    assert packet["rows_per_symbol_after_normalization"]["BTCUSD"] == 80
+    assert packet["duplicate_rows_removed_per_symbol"]["BTCUSD"] == 1
+    assert packet["data_inventory"]["blocking_reasons"] == []
+    assert packet["normalized_output_path"] == str(normalized_path)
+    assert normalized_path.is_file()
+
+    normalized_bars = load_crypto_evidence_bars_from_csv(normalized_path)
+    assert len(normalized_bars) == 320
+    assert normalized_bars[0].symbol == "ADAUSD"
+    first_btc = next(bar for bar in normalized_bars if bar.symbol == "BTCUSD")
+    assert first_btc.close == Decimal("101")
+
+
+def test_insufficient_ada_rows_and_span_block_sufficiency(tmp_path: Path) -> None:
+    csv_path = tmp_path / "ada_short_history.csv"
+    bars = (
+        *_bars("BTCUSD", _linear_prices("100", "1", 80)),
+        *_bars("ETHUSD", _linear_prices("200", "1", 80)),
+        *_bars("SOLUSD", _linear_prices("300", "1", 80)),
+        *_bars("ADAUSD", _linear_prices("1", "0.01", 10)),
+    )
+    _write_crypto_csv(csv_path, bars)
+
     packet = build_crypto_strategy_real_data_evidence_packet(csv_path, as_of=AS_OF)
 
     assert packet["classification"] == "insufficient_real_crypto_history"
-    assert packet["duplicate_timestamp_status"] == "failed"
-    assert "duplicate_symbol_timestamp_rows" in packet["data_inventory"]["blocking_reasons"]
+    assert packet["symbols_missing"] == []
+    assert packet["rows_per_symbol_after_normalization"]["ADAUSD"] == 10
+    assert packet["date_range_per_symbol"]["ADAUSD"]["span_hours"] == "9"
+    assert "insufficient_rows" in packet["data_inventory"]["blocking_reasons"]
+    assert "insufficient_date_span" in packet["data_inventory"]["blocking_reasons"]
     assert packet["paper_planning_eligibility"] == "not_eligible"
 
 
@@ -250,6 +301,37 @@ def test_missing_close_values_block_sufficiency(tmp_path: Path) -> None:
     assert packet["missing_close_status"] == "failed"
     assert "missing_close_values" in packet["data_inventory"]["blocking_reasons"]
     assert packet["selected_candidate"] is None
+
+
+def test_non_monotonic_timestamps_are_sorted_by_normalization(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "non_monotonic_history.csv"
+    normalized_path = tmp_path / "normalized_non_monotonic.csv"
+    reversed_bars = tuple(reversed(_multi_symbol_bars(row_count=80)))
+    _write_crypto_csv(csv_path, reversed_bars)
+
+    packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        normalized_output_path=normalized_path,
+    )
+
+    assert packet["classification"] == "sufficient_real_crypto_history"
+    assert packet["monotonic_timestamp_status"] == "passed"
+    assert packet["data_inventory"]["records"][0][
+        "monotonic_timestamp_status_before_normalization"
+    ] == "failed"
+    assert packet["data_inventory"]["blocking_reasons"] == []
+
+    normalized_bars = load_crypto_evidence_bars_from_csv(normalized_path)
+    timestamps_by_symbol: dict[str, list[datetime]] = {}
+    for bar in normalized_bars:
+        timestamps_by_symbol.setdefault(bar.symbol, []).append(bar.timestamp)
+    assert all(
+        timestamps == sorted(timestamps)
+        for timestamps in timestamps_by_symbol.values()
+    )
 
 
 def test_fixture_only_result_cannot_be_mislabeled_as_real_data_promotion(
