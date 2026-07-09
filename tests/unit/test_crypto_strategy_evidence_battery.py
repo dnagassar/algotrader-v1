@@ -5,12 +5,18 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
+from algotrader.errors import ValidationError
 from algotrader.research.crypto_strategy_evidence_battery import (
     CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION,
     DEFAULT_CRYPTO_EVIDENCE_SYMBOLS,
     REQUIRED_NO_SUBMIT_LABELS,
     CryptoEvidenceAssumptions,
     CryptoEvidenceBar,
+    build_crypto_strategy_real_data_evidence_packet,
+    classify_crypto_strategy_no_submit_packet,
+    load_crypto_evidence_bars_from_csv,
     run_crypto_strategy_evidence_battery,
     validate_crypto_strategy_no_submit_packet,
 )
@@ -95,6 +101,107 @@ def test_benchmark_underperformance_blocks_promotion() -> None:
         row["candidate_decision"] != "promote_to_no_submit_plan"
         for row in packet["evidence_table"]
     )
+
+
+def test_local_historical_csv_ingestion_succeeds_for_valid_schema(tmp_path: Path) -> None:
+    csv_path = tmp_path / "crypto_history.csv"
+    _write_crypto_csv(csv_path, _bars("BTCUSD", _linear_prices("100", "1", 20)))
+
+    bars = load_crypto_evidence_bars_from_csv(csv_path, symbols=("BTC/USD",))
+    packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        data_source="local_historical_crypto_csv",
+        data_freshness="unit_test_local_snapshot",
+        assumptions=CryptoEvidenceAssumptions(candidate_symbols=("BTCUSD",)),
+    )
+
+    assert len(bars) == 20
+    assert bars[0].symbol == "BTCUSD"
+    assert packet["data_path"] == str(csv_path)
+    assert packet["rows_per_symbol"] == {"BTCUSD": 20}
+    assert packet["date_range_per_symbol"]["BTCUSD"]["start"] == bars[0].timestamp.isoformat()
+    assert packet["missing_columns"] == []
+    assert packet["no_submit_classification"] in {
+        "promote_to_no_submit_plan",
+        "reject_candidate",
+        "keep_researching",
+    }
+    assert packet["battery_no_submit_decision"] in {
+        "promote_to_no_submit_plan",
+        "reject_candidate",
+        "keep_researching",
+    }
+    assert packet["validation_status"] == "passed"
+
+
+def test_missing_required_columns_block_real_data_probe(tmp_path: Path) -> None:
+    csv_path = tmp_path / "missing_close.csv"
+    csv_path.write_text(
+        "timestamp,symbol,asset_class,open\n"
+        f"{AS_OF.isoformat()},BTCUSD,crypto,100\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="missing required columns: close"):
+        load_crypto_evidence_bars_from_csv(csv_path)
+
+    packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        assumptions=CryptoEvidenceAssumptions(candidate_symbols=("BTCUSD",)),
+    )
+
+    assert packet["no_submit_classification"] == "insufficient_real_crypto_history"
+    assert packet["missing_columns"] == ["close"]
+    assert packet["selected_candidate"] is None
+    assert "missing_required_columns" in packet["data_inventory"]["blocking_reasons"]
+
+
+def test_insufficient_real_data_rows_block_probe_promotion(tmp_path: Path) -> None:
+    csv_path = tmp_path / "short_history.csv"
+    _write_crypto_csv(csv_path, _bars("BTCUSD", _linear_prices("100", "1", 8)))
+
+    packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        assumptions=CryptoEvidenceAssumptions(candidate_symbols=("BTCUSD",)),
+    )
+
+    assert packet["battery_no_submit_decision"] == "insufficient_data"
+    assert packet["no_submit_classification"] == "insufficient_real_crypto_history"
+    assert packet["rows_per_symbol"] == {"BTCUSD": 8}
+    assert packet["selected_candidate"] is None
+
+
+def test_fixture_only_result_cannot_be_mislabeled_as_real_data_promotion(
+    tmp_path: Path,
+) -> None:
+    fixture_packet = _packet(_mixed_fixture_bars())
+    assert fixture_packet["no_submit_decision"] == "promote_to_no_submit_plan"
+    assert (
+        classify_crypto_strategy_no_submit_packet(fixture_packet)
+        == "insufficient_real_crypto_history"
+    )
+
+    csv_path = tmp_path / "fixture_history.csv"
+    _write_crypto_csv(
+        csv_path,
+        _bars("BTCUSD", _linear_prices("100", "1", 20)),
+        source="deterministic_unit_fixture",
+    )
+    real_probe_packet = build_crypto_strategy_real_data_evidence_packet(
+        csv_path,
+        as_of=AS_OF,
+        data_source="deterministic_unit_fixture",
+        assumptions=CryptoEvidenceAssumptions(candidate_symbols=("BTCUSD",)),
+    )
+
+    assert real_probe_packet["no_submit_classification"] == (
+        "insufficient_real_crypto_history"
+    )
+    assert real_probe_packet["selected_candidate"] is None
+    assert "fixture" in real_probe_packet["reason_for_classification"]
 
 
 def test_no_submit_packet_cannot_contain_broker_mutation_or_submit_instructions() -> None:
@@ -308,3 +415,31 @@ def _linear_prices(start: str, step: str, count: int) -> tuple[str, ...]:
     start_value = Decimal(start)
     step_value = Decimal(step)
     return tuple(str(start_value + (step_value * Decimal(index))) for index in range(count))
+
+
+def _write_crypto_csv(
+    path: Path,
+    bars: tuple[CryptoEvidenceBar, ...],
+    *,
+    source: str = "unit_test_local_history",
+) -> None:
+    lines = ["timestamp,symbol,asset_class,open,high,low,close,volume,basis,source"]
+    for bar in bars:
+        close = str(bar.close)
+        lines.append(
+            ",".join(
+                (
+                    bar.timestamp.isoformat(),
+                    bar.symbol,
+                    "crypto",
+                    close,
+                    close,
+                    close,
+                    close,
+                    "1",
+                    "unit_test_ohlcv",
+                    source,
+                )
+            )
+        )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
