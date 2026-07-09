@@ -29,6 +29,8 @@ def test_refresh_multi_symbol_crypto_history_script_contract() -> None:
         "ALPACA_SECRET_KEY_loaded",
         "APCA_API_KEY_ID_loaded",
         "APCA_API_SECRET_KEY_loaded",
+        "APCA_API_BASE_URL_is_live",
+        "APCA_API_BASE_URL_is_paper",
         "preflight_live_endpoint_indicator",
         "crypto_history_refresh_paper_submit_occurred=false",
         "crypto_history_refresh_broker_mutation_occurred=false",
@@ -81,6 +83,8 @@ def test_refresh_multi_symbol_crypto_history_invokes_dry_run_module(
     assert "crypto_history_refresh_command=refresh_multi_symbol_crypto_history" in result.stdout
     assert "APP_PROFILE_is_paper=false" in result.stdout
     assert "APCA_API_KEY_ID_loaded=false" in result.stdout
+    assert "APCA_API_BASE_URL_is_live=false" in result.stdout
+    assert "APCA_API_BASE_URL_is_paper=false" in result.stdout
     args = capture_path.read_text(encoding="utf-8")
     assert "-m algotrader.execution.crypto_history_refresh_adapter" in args
     assert "--mode dry_run" in args
@@ -100,6 +104,7 @@ def test_refresh_multi_symbol_crypto_history_adds_fetch_flags_only_when_authoriz
     env["APP_PROFILE"] = "paper"
     env["APCA_API_KEY_ID"] = SENSITIVE_KEY
     env["APCA_API_SECRET_KEY"] = SENSITIVE_SECRET
+    env["APCA_API_BASE_URL"] = "https://paper-api.alpaca.markets"
     env["ALPACA_PAPER_BASE_URL"] = "https://paper-api.alpaca.markets"
 
     result = subprocess.run(
@@ -128,6 +133,8 @@ def test_refresh_multi_symbol_crypto_history_adds_fetch_flags_only_when_authoriz
     assert result.returncode == 0, combined
     assert "APP_PROFILE_is_paper=true" in result.stdout
     assert "APCA_API_KEY_ID_loaded=true" in result.stdout
+    assert "APCA_API_BASE_URL_is_live=false" in result.stdout
+    assert "APCA_API_BASE_URL_is_paper=true" in result.stdout
     assert SENSITIVE_KEY not in combined
     assert SENSITIVE_SECRET not in combined
     args = capture_path.read_text(encoding="utf-8")

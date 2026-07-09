@@ -81,6 +81,8 @@ _REQUIRED_BOOLEAN_PREFLIGHT_FIELDS = (
     "ALPACA_SECRET_KEY_loaded",
     "APCA_API_KEY_ID_loaded",
     "APCA_API_SECRET_KEY_loaded",
+    "APCA_API_BASE_URL_is_live",
+    "APCA_API_BASE_URL_is_paper",
 )
 _PUBLIC_ENDPOINT_NAMES = (
     "APP_PROFILE",
@@ -250,6 +252,7 @@ def crypto_history_refresh_preflight(
 
     source = os.environ if env is None else env
     app_profile = source.get("APP_PROFILE", "").strip().lower()
+    apca_api_base_url = source.get("APCA_API_BASE_URL", "").strip().lower()
     result = {
         "APP_PROFILE_is_paper": app_profile == "paper",
         "APP_PROFILE_is_live": app_profile == "live",
@@ -259,6 +262,15 @@ def crypto_history_refresh_preflight(
         "ALPACA_SECRET_KEY_loaded": _env_loaded(source, "ALPACA_SECRET_KEY"),
         "APCA_API_KEY_ID_loaded": _env_loaded(source, "APCA_API_KEY_ID"),
         "APCA_API_SECRET_KEY_loaded": _env_loaded(source, "APCA_API_SECRET_KEY"),
+        "APCA_API_BASE_URL_is_live": bool(
+            apca_api_base_url
+            and "api.alpaca.markets" in apca_api_base_url
+            and "paper" not in apca_api_base_url
+        ),
+        "APCA_API_BASE_URL_is_paper": bool(
+            apca_api_base_url
+            and "paper-api.alpaca.markets" in apca_api_base_url
+        ),
     }
     result["paper_credentials_present"] = _first_nonempty(source, _KEY_ID_CANDIDATES) != (
         ""
@@ -776,6 +788,10 @@ def _market_data_readiness_errors(
         errors.append("paper_profile_required")
     if not preflight.get("paper_credentials_present", False):
         errors.append("paper_credentials_required")
+    if preflight.get("APCA_API_BASE_URL_is_live", False):
+        errors.append("apca_live_base_url_rejected")
+    if not preflight.get("APCA_API_BASE_URL_is_paper", False):
+        errors.append("apca_paper_base_url_required")
     if not config.market_data_fetch_authorized:
         errors.append("authorization_flag_required")
     if not config.allow_network:
@@ -887,6 +903,8 @@ def _generated_market_data_command(config: CryptoHistoryRefreshConfig) -> str:
         parts.extend(("-Start", _datetime_arg(config.start)))
     if config.end is not None:
         parts.extend(("-End", _datetime_arg(config.end)))
+    if config.hours != _DEFAULT_HOURS:
+        parts.extend(("-Hours", str(config.hours)))
     return " ".join(_powershell_quote(part) for part in parts)
 
 

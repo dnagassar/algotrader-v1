@@ -24,6 +24,7 @@ VALID_ENV = {
     "APP_PROFILE": "paper",
     "APCA_API_KEY_ID": SENSITIVE_KEY,
     "APCA_API_SECRET_KEY": SENSITIVE_SECRET,
+    "APCA_API_BASE_URL": "https://paper-api.alpaca.markets",
     "ALPACA_PAPER_BASE_URL": "https://paper-api.alpaca.markets",
 }
 
@@ -73,6 +74,24 @@ def test_dry_run_builds_command_packet_without_writing_history(
     assert "-marketdatafetchauthorized" in command_text
     for forbidden in ("submit", "cancel", "replace", "close", "liquidate"):
         assert forbidden not in command_text
+
+
+def test_dry_run_generated_command_preserves_non_default_hours(
+    tmp_path: Path,
+) -> None:
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="dry_run",
+            output_path=tmp_path / "crypto_history.csv",
+            packet_path=None,
+            as_of=AS_OF,
+            hours=720,
+        ),
+        env={},
+    )
+
+    command_text = str(packet["generated_command_text"])
+    assert "-Hours 720" in command_text
 
 
 def test_offline_fixture_writes_multi_symbol_output_and_stays_fixture_blocked(
@@ -197,6 +216,39 @@ def test_market_data_fetch_requires_authorization_flag_before_opener(
 
     assert packet["classification"] == "market_data_refresh_not_configured"
     assert "authorization_flag_required" in packet["authorization_status"]
+    assert packet["market_data_fetch_occurred"] is False
+    assert called is False
+
+
+def test_market_data_fetch_requires_explicit_apca_paper_base_url_before_opener(
+    tmp_path: Path,
+) -> None:
+    called = False
+
+    def opener(request: object, *, timeout: int) -> FakeResponse:
+        nonlocal called
+        called = True
+        return FakeResponse({})
+
+    env = dict(VALID_ENV)
+    env.pop("APCA_API_BASE_URL")
+    packet = run_crypto_history_refresh(
+        CryptoHistoryRefreshConfig(
+            mode="market_data_fetch",
+            output_path=tmp_path / "history.csv",
+            packet_path=None,
+            as_of=AS_OF,
+            allow_network=True,
+            market_data_fetch_authorized=True,
+        ),
+        env=env,
+        opener=opener,
+    )
+
+    assert packet["classification"] == "market_data_refresh_not_configured"
+    assert "apca_paper_base_url_required" in packet["authorization_status"]
+    assert packet["operator_preflight"]["APCA_API_BASE_URL_is_live"] is False
+    assert packet["operator_preflight"]["APCA_API_BASE_URL_is_paper"] is False
     assert packet["market_data_fetch_occurred"] is False
     assert called is False
 

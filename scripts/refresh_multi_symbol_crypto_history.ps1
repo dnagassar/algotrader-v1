@@ -59,6 +59,20 @@ function Get-PythonCommand {
 $AppProfile = [Environment]::GetEnvironmentVariable("APP_PROFILE")
 $AppProfileIsPaper = ($AppProfile -eq "paper")
 $AppProfileIsLive = ($AppProfile -eq "live")
+$ApcaApiBaseUrl = [Environment]::GetEnvironmentVariable("APCA_API_BASE_URL")
+$ApcaApiBaseUrlLower = ""
+if (-not [string]::IsNullOrWhiteSpace($ApcaApiBaseUrl)) {
+    $ApcaApiBaseUrlLower = $ApcaApiBaseUrl.ToLowerInvariant()
+}
+$ApcaApiBaseUrlIsLive = (
+    -not [string]::IsNullOrWhiteSpace($ApcaApiBaseUrlLower) -and
+    $ApcaApiBaseUrlLower.Contains("api.alpaca.markets") -and
+    -not $ApcaApiBaseUrlLower.Contains("paper")
+)
+$ApcaApiBaseUrlIsPaper = (
+    -not [string]::IsNullOrWhiteSpace($ApcaApiBaseUrlLower) -and
+    $ApcaApiBaseUrlLower.Contains("paper-api.alpaca.markets")
+)
 $LiveEndpointIndicator = $AppProfileIsLive
 foreach ($EndpointName in @("ALPACA_BASE_URL", "ALPACA_PAPER_BASE_URL", "APCA_API_BASE_URL")) {
     $EndpointValue = [Environment]::GetEnvironmentVariable($EndpointName)
@@ -80,6 +94,8 @@ Write-Host "ALPACA_API_SECRET_KEY_loaded=$(Format-Bool (Test-EnvLoaded -Name "AL
 Write-Host "ALPACA_SECRET_KEY_loaded=$(Format-Bool (Test-EnvLoaded -Name "ALPACA_SECRET_KEY"))"
 Write-Host "APCA_API_KEY_ID_loaded=$(Format-Bool (Test-EnvLoaded -Name "APCA_API_KEY_ID"))"
 Write-Host "APCA_API_SECRET_KEY_loaded=$(Format-Bool (Test-EnvLoaded -Name "APCA_API_SECRET_KEY"))"
+Write-Host "APCA_API_BASE_URL_is_live=$(Format-Bool $ApcaApiBaseUrlIsLive)"
+Write-Host "APCA_API_BASE_URL_is_paper=$(Format-Bool $ApcaApiBaseUrlIsPaper)"
 Write-Host "preflight_APP_PROFILE_is_live=$(Format-Bool $AppProfileIsLive)"
 Write-Host "preflight_live_endpoint_indicator=$(Format-Bool $LiveEndpointIndicator)"
 Write-Host "Credential values are never printed"
