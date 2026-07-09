@@ -24,6 +24,9 @@ CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION = (
     "v5_20_crypto_strategy_evidence_battery_v1"
 )
 CRYPTO_REPAIR_FRESH_OOS_SCHEMA_VERSION = "v5_20_1_crypto_repair_fresh_oos_gate_v1"
+CRYPTO_STRATEGY_CANDIDATE_FACTORY_VERSION = (
+    "v5_21_crypto_fixed_candidate_factory_v1"
+)
 DEFAULT_CRYPTO_EVIDENCE_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
 DEFAULT_REPAIR_DISCOVERY_CUTOFF = datetime(2026, 7, 9, 16, 0, tzinfo=UTC)
 DEFAULT_FRESH_OOS_REPAIR_CANDIDATE = "crypto:ADAUSD:trend_momentum_24h_repair"
@@ -100,6 +103,7 @@ DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER = "fresh_oos_required_for_repair_promotion"
 __all__ = [
     "CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION",
     "CRYPTO_REPAIR_FRESH_OOS_SCHEMA_VERSION",
+    "CRYPTO_STRATEGY_CANDIDATE_FACTORY_VERSION",
     "ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS",
     "DEFAULT_CRYPTO_EVIDENCE_SYMBOLS",
     "DEFAULT_FRESH_OOS_REPAIR_CANDIDATE",
@@ -112,6 +116,7 @@ __all__ = [
     "REQUIRED_NO_SUBMIT_LABELS",
     "CryptoEvidenceAssumptions",
     "CryptoEvidenceBar",
+    "build_crypto_strategy_candidate_factory",
     "build_crypto_repair_fresh_oos_validation_packet",
     "build_crypto_strategy_real_data_evidence_packet",
     "classify_crypto_strategy_no_submit_packet",
@@ -292,6 +297,38 @@ class _CryptoHistoryRow:
             timestamp=self.timestamp,
             close=self.close,
         )
+
+
+def build_crypto_strategy_candidate_factory() -> dict[str, object]:
+    """Describe the battery's small, versioned, immutable candidate set.
+
+    This is an integration descriptor over the same private strategy specs the
+    evidence battery executes.  It intentionally exposes no parameter search,
+    optimization, or post-hoc mutation surface.
+    """
+
+    base_candidates: list[dict[str, object]] = []
+    for spec in _strategy_specs():
+        candidate = _strategy_spec_payload(spec)
+        candidate.update(
+            {
+                "candidate_origin": "current",
+                "promotion_scope": "existing_evidence_battery_gates",
+            }
+        )
+        base_candidates.append(candidate)
+    repair_candidates = _diagnostic_repair_candidates_payload()
+    return {
+        "factory_version": CRYPTO_STRATEGY_CANDIDATE_FACTORY_VERSION,
+        "evidence_policy_version": CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION,
+        "base_candidates": base_candidates,
+        "diagnostic_repair_candidates": repair_candidates,
+        "fixed_candidate_count_per_symbol": len(base_candidates)
+        + len(repair_candidates),
+        "dynamic_parameter_optimization": False,
+        "post_hoc_retuning": False,
+        "candidate_set_mutation_allowed": False,
+    }
 
 
 def run_crypto_strategy_evidence_battery(
