@@ -23,7 +23,10 @@ from algotrader.errors import ValidationError
 CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION = (
     "v5_20_crypto_strategy_evidence_battery_v1"
 )
+CRYPTO_REPAIR_FRESH_OOS_SCHEMA_VERSION = "v5_20_1_crypto_repair_fresh_oos_gate_v1"
 DEFAULT_CRYPTO_EVIDENCE_SYMBOLS = ("BTCUSD", "ETHUSD", "SOLUSD", "ADAUSD")
+DEFAULT_REPAIR_DISCOVERY_CUTOFF = datetime(2026, 7, 9, 16, 0, tzinfo=UTC)
+DEFAULT_FRESH_OOS_REPAIR_CANDIDATE = "crypto:ADAUSD:trend_momentum_24h_repair"
 LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS = (
     "timestamp",
     "symbol",
@@ -96,16 +99,20 @@ DIAGNOSTIC_REPAIR_PROMOTION_BLOCKER = "fresh_oos_required_for_repair_promotion"
 
 __all__ = [
     "CRYPTO_STRATEGY_EVIDENCE_BATTERY_SCHEMA_VERSION",
+    "CRYPTO_REPAIR_FRESH_OOS_SCHEMA_VERSION",
     "ACCEPTABLE_LOCAL_CRYPTO_HISTORY_FORMATS",
     "DEFAULT_CRYPTO_EVIDENCE_SYMBOLS",
+    "DEFAULT_FRESH_OOS_REPAIR_CANDIDATE",
     "DEFAULT_LOCAL_CRYPTO_HISTORY_PATHS",
     "DEFAULT_LOCAL_CRYPTO_HISTORY_GLOB_PATHS",
+    "DEFAULT_REPAIR_DISCOVERY_CUTOFF",
     "LOCAL_HISTORICAL_CRYPTO_OPTIONAL_COLUMNS",
     "LOCAL_HISTORICAL_CRYPTO_REQUIRED_COLUMNS",
     "NO_SUBMIT_SAFETY_FIELDS",
     "REQUIRED_NO_SUBMIT_LABELS",
     "CryptoEvidenceAssumptions",
     "CryptoEvidenceBar",
+    "build_crypto_repair_fresh_oos_validation_packet",
     "build_crypto_strategy_real_data_evidence_packet",
     "classify_crypto_strategy_no_submit_packet",
     "default_existing_local_crypto_history_paths",
@@ -472,6 +479,216 @@ def load_crypto_evidence_bars_from_csv(
     return bars
 
 
+def build_crypto_repair_fresh_oos_validation_packet(
+    csv_paths: Iterable[Path | str] | Path | str,
+    *,
+    as_of: datetime | str,
+    discovery_cutoff: datetime | str = DEFAULT_REPAIR_DISCOVERY_CUTOFF,
+    repair_candidate: str = DEFAULT_FRESH_OOS_REPAIR_CANDIDATE,
+    oos_data_source: str = "local_historical_crypto_csv",
+    assumptions: CryptoEvidenceAssumptions | None = None,
+    required_min_oos_rows: int | None = None,
+) -> dict[str, object]:
+    """Validate the ADA diagnostic repair only on bars after the discovery cutoff."""
+
+    checked_assumptions = assumptions or CryptoEvidenceAssumptions()
+    checked_paths = _path_tuple(csv_paths)
+    cutoff = (
+        _aware_utc_datetime(discovery_cutoff, "discovery_cutoff")
+        if isinstance(discovery_cutoff, datetime)
+        else _csv_datetime(str(discovery_cutoff))
+    )
+    required_rows = _fresh_oos_required_rows(
+        checked_assumptions,
+        required_min_oos_rows,
+    )
+    if repair_candidate != DEFAULT_FRESH_OOS_REPAIR_CANDIDATE:
+        raise ValidationError(
+            "fresh-OOS repair validation is scoped to "
+            f"{DEFAULT_FRESH_OOS_REPAIR_CANDIDATE}."
+        )
+
+    inventories: list[dict[str, object]] = []
+    history_rows: list[_CryptoHistoryRow] = []
+    blocking_reasons: list[str] = []
+    if not checked_paths:
+        blocking_reasons.append("missing_input_path")
+
+    for input_path_index, path in enumerate(checked_paths):
+        inventory, path_rows = _load_crypto_history_rows_from_csv(
+            path,
+            symbols=set(DEFAULT_CRYPTO_EVIDENCE_SYMBOLS),
+            input_path_index=input_path_index,
+        )
+        inventories.append(inventory)
+        if inventory.get("missing_columns"):
+            blocking_reasons.append("missing_required_columns")
+        if inventory.get("read_error"):
+            blocking_reasons.append(str(inventory["read_error"]))
+        if not inventory.get("missing_columns") and not inventory.get("read_error"):
+            history_rows.extend(path_rows)
+
+    normalized_rows = _normalize_crypto_history_rows(tuple(history_rows))
+    strict_oos_rows = tuple(row for row in normalized_rows if row.timestamp > cutoff)
+    oos_bars = tuple(row.evidence_bar() for row in strict_oos_rows)
+    oos_bars_by_symbol = _bars_by_symbol(oos_bars)
+    ada_bars = oos_bars_by_symbol.get("ADAUSD", ())
+    oos_rows_by_symbol = _rows_per_symbol_from_bars(oos_bars_by_symbol)
+    oos_range_by_symbol = _date_range_per_symbol_from_bars(oos_bars_by_symbol)
+
+    rejection_reasons = list(dict.fromkeys(blocking_reasons))
+    if not ada_bars:
+        rejection_reasons.append("no_oos_rows_after_discovery_cutoff")
+    elif len(ada_bars) < required_rows:
+        rejection_reasons.append("insufficient_oos_rows")
+
+    metrics: Mapping[str, object] = _zero_metrics()
+    buy_hold_metrics: Mapping[str, object] = {}
+    basket_metrics: Mapping[str, object] = {}
+    oos_test_return = ""
+    buy_hold_return = ""
+    basket_return = ""
+    excess_vs_cash = ""
+    excess_vs_buy_hold = ""
+    excess_vs_basket = ""
+    max_drawdown = ""
+    trade_count: int | str = ""
+
+    if not rejection_reasons:
+        spec = _diagnostic_repair_strategy_specs()[0]
+        metrics = _fresh_oos_strategy_metrics(
+            bars=ada_bars,
+            spec=spec,
+            assumptions=checked_assumptions,
+        )
+        buy_hold_metrics = _fresh_oos_buy_hold_metrics(
+            bars=ada_bars,
+            assumptions=checked_assumptions,
+        )
+        basket_metrics = _fresh_oos_equal_weight_basket_metrics(
+            bars_by_symbol=oos_bars_by_symbol,
+            assumptions=checked_assumptions,
+            required_min_oos_rows=required_rows,
+        )
+
+        candidate_return = _decimal_from_text(metrics.get("total_return", "0"))
+        ada_buy_hold_return = _decimal_from_text(
+            buy_hold_metrics.get("total_return", "0")
+        )
+        basket_total_return = (
+            _decimal_from_text(basket_metrics.get("total_return", "0"))
+            if basket_metrics
+            else None
+        )
+        candidate_max_drawdown = _decimal_from_text(metrics.get("max_drawdown", "0"))
+
+        if candidate_return <= checked_assumptions.min_test_total_return:
+            rejection_reasons.append("cash_underperformance")
+        if (
+            candidate_return - ada_buy_hold_return
+            <= checked_assumptions.min_test_excess_return_vs_buy_hold
+        ):
+            rejection_reasons.append("buy_and_hold_underperformance")
+        if basket_total_return is not None and candidate_return <= basket_total_return:
+            rejection_reasons.append("basket_underperformance")
+        if candidate_max_drawdown > checked_assumptions.max_test_drawdown:
+            rejection_reasons.append("high_drawdown")
+
+        oos_test_return = _decimal_text(candidate_return)
+        buy_hold_return = _decimal_text(ada_buy_hold_return)
+        basket_return = (
+            _decimal_text(basket_total_return)
+            if basket_total_return is not None
+            else ""
+        )
+        excess_vs_cash = _decimal_text(candidate_return)
+        excess_vs_buy_hold = _decimal_text(candidate_return - ada_buy_hold_return)
+        excess_vs_basket = (
+            _decimal_text(candidate_return - basket_total_return)
+            if basket_total_return is not None
+            else ""
+        )
+        max_drawdown = str(metrics.get("max_drawdown", ""))
+        trade_count = int(metrics.get("trade_count", 0))
+
+    if not checked_paths:
+        classification = "market_data_refresh_not_configured"
+    elif "no_oos_rows_after_discovery_cutoff" in rejection_reasons:
+        classification = "fresh_oos_data_not_available"
+    elif "insufficient_oos_rows" in rejection_reasons:
+        classification = "fresh_oos_data_not_available"
+    elif rejection_reasons:
+        classification = "fresh_oos_rejected"
+    else:
+        classification = "fresh_oos_validated"
+
+    eligible = classification == "fresh_oos_validated"
+    packet: dict[str, object] = {
+        "schema_version": CRYPTO_REPAIR_FRESH_OOS_SCHEMA_VERSION,
+        "record_type": "crypto_repair_fresh_oos_validation_packet",
+        "as_of": _as_of_text(as_of),
+        "classification": classification,
+        "repair_candidate": repair_candidate,
+        "discovery_cutoff": cutoff.isoformat(),
+        "oos_data_source": _required_text(oos_data_source, "oos_data_source"),
+        "oos_rows": len(ada_bars),
+        "available_oos_rows": len(ada_bars),
+        "oos_rows_by_symbol": _rows_with_required_symbol_zeros(
+            oos_rows_by_symbol,
+            DEFAULT_CRYPTO_EVIDENCE_SYMBOLS,
+        ),
+        "oos_date_range": _oos_date_range(ada_bars),
+        "oos_date_range_by_symbol": oos_range_by_symbol,
+        "required_min_oos_rows": required_rows,
+        "oos_test_return": oos_test_return,
+        "cash_return": "0",
+        "ADA_buy_and_hold_return": buy_hold_return,
+        "equal_weight_basket_return": basket_return,
+        "excess_vs_cash": excess_vs_cash,
+        "excess_vs_buy_hold": excess_vs_buy_hold,
+        "excess_vs_basket": excess_vs_basket,
+        "max_drawdown": max_drawdown,
+        "trade_count": trade_count,
+        "rejection_reasons": rejection_reasons,
+        "repair_promotion_eligibility": (
+            "eligible_for_no_submit_plan" if eligible else "not_eligible"
+        ),
+        "paper_planning_eligibility": (
+            "eligible_for_no_submit_plan" if eligible else "not_eligible"
+        ),
+        "next_safe_operator_action": _fresh_oos_next_safe_operator_action(
+            classification
+        ),
+        "input_paths": [str(path) for path in checked_paths],
+        "data_inventory": _data_inventory_payload(
+            csv_paths=checked_paths,
+            inventories=tuple(inventories),
+            assumptions=checked_assumptions,
+            blocking_reasons=tuple(dict.fromkeys(blocking_reasons)),
+            normalized_rows=normalized_rows,
+        ),
+        "candidate_metrics": dict(metrics),
+        "ADA_buy_and_hold_metrics": dict(buy_hold_metrics),
+        "equal_weight_basket_metrics": dict(basket_metrics),
+        "benchmark_gate_summary": {
+            "must_outperform_cash": True,
+            "must_outperform_ADA_buy_and_hold": True,
+            "must_outperform_equal_weight_basket_when_available": True,
+            "max_drawdown_allowed": _decimal_text(
+                checked_assumptions.max_test_drawdown
+            ),
+        },
+        "labels": list(REQUIRED_NO_SUBMIT_LABELS),
+        "profit_claim": "none",
+        "market_data_fetch_occurred": False,
+        "runs_tracked": False,
+        **_false_safety_flags(),
+    }
+    validation_errors = validate_crypto_strategy_no_submit_packet(packet)
+    packet["validation_status"] = "passed" if not validation_errors else "failed"
+    packet["validation_errors"] = validation_errors
+    return packet
+
 def build_crypto_strategy_real_data_evidence_packet(
     csv_paths: Iterable[Path | str] | Path | str,
     *,
@@ -700,6 +917,125 @@ def validate_crypto_strategy_no_submit_packet(
         errors.append("next_safe_operator_action_contains_broker_mutation_instruction")
     return errors
 
+
+def _fresh_oos_required_rows(
+    assumptions: CryptoEvidenceAssumptions,
+    required_min_oos_rows: int | None,
+) -> int:
+    repair_spec = _diagnostic_repair_strategy_specs()[0]
+    minimum = max(assumptions.min_bars_per_symbol, repair_spec.lookback + 2)
+    if required_min_oos_rows is not None:
+        minimum = max(minimum, _positive_int(required_min_oos_rows, "required_min_oos_rows"))
+    return minimum
+
+
+def _fresh_oos_strategy_metrics(
+    *,
+    bars: tuple[CryptoEvidenceBar, ...],
+    spec: _StrategySpec,
+    assumptions: CryptoEvidenceAssumptions,
+) -> dict[str, object]:
+    points = _evidence_points(
+        bars=bars,
+        asset_returns=_asset_returns_from_bars(bars),
+        target_exposures=_strategy_exposures(bars, spec),
+        assumptions=assumptions,
+    )
+    return _metrics(points, assumptions.initial_equity)
+
+
+def _fresh_oos_buy_hold_metrics(
+    *,
+    bars: tuple[CryptoEvidenceBar, ...],
+    assumptions: CryptoEvidenceAssumptions,
+) -> dict[str, object]:
+    points = _evidence_points(
+        bars=bars,
+        asset_returns=_asset_returns_from_bars(bars),
+        target_exposures=tuple(_ONE for _ in bars),
+        assumptions=assumptions,
+    )
+    return _metrics(points, assumptions.initial_equity)
+
+
+def _fresh_oos_equal_weight_basket_metrics(
+    *,
+    bars_by_symbol: Mapping[str, tuple[CryptoEvidenceBar, ...]],
+    assumptions: CryptoEvidenceAssumptions,
+    required_min_oos_rows: int,
+) -> dict[str, object]:
+    available_symbols = tuple(
+        symbol
+        for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS
+        if len(bars_by_symbol.get(symbol, ())) >= required_min_oos_rows
+    )
+    if len(available_symbols) < 2:
+        return {}
+
+    close_by_symbol = {
+        symbol: {bar.timestamp: bar.close for bar in bars_by_symbol[symbol]}
+        for symbol in available_symbols
+    }
+    common_timestamps = tuple(
+        sorted(set.intersection(*(set(values) for values in close_by_symbol.values())))
+    )
+    if len(common_timestamps) < required_min_oos_rows:
+        return {}
+
+    asset_returns: list[Decimal] = []
+    previous_closes: dict[str, Decimal] = {}
+    for timestamp in common_timestamps:
+        if not previous_closes:
+            asset_returns.append(_ZERO)
+        else:
+            returns = tuple(
+                (close_by_symbol[symbol][timestamp] / previous_closes[symbol]) - _ONE
+                for symbol in available_symbols
+            )
+            asset_returns.append(_average(returns))
+        previous_closes = {
+            symbol: close_by_symbol[symbol][timestamp]
+            for symbol in available_symbols
+        }
+
+    points = _points_from_returns(
+        timestamps=common_timestamps,
+        asset_returns=tuple(asset_returns),
+        target_exposures=tuple(_ONE for _ in asset_returns),
+        assumptions=assumptions,
+    )
+    metrics = _metrics(points, assumptions.initial_equity)
+    metrics["symbols"] = list(available_symbols)
+    metrics["common_oos_rows"] = len(common_timestamps)
+    return metrics
+
+
+def _oos_date_range(bars: Sequence[CryptoEvidenceBar]) -> dict[str, str]:
+    if not bars:
+        return {"start": "", "end": ""}
+    timestamps = tuple(bar.timestamp for bar in bars)
+    return {
+        "start": min(timestamps).isoformat(),
+        "end": max(timestamps).isoformat(),
+    }
+
+
+def _fresh_oos_next_safe_operator_action(classification: str) -> str:
+    if classification == "fresh_oos_validated":
+        return (
+            "review the fresh-OOS packet and only then consider a separate "
+            "no-submit planning packet; no broker submit or mutation is authorized"
+        )
+    if classification == "market_data_refresh_not_configured":
+        return (
+            "configure an explicitly authorized guarded read-only market-data "
+            "refresh before collecting fresh OOS data"
+        )
+    return (
+        "wait for fresh local OOS bars after the discovery cutoff or explicitly "
+        "authorize the guarded read-only market-data refresh wrapper; no broker "
+        "action is authorized"
+    )
 
 def _load_crypto_evidence_csv(
     path: Path,

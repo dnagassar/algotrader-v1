@@ -14,6 +14,7 @@ from algotrader.research.crypto_strategy_evidence_battery import (
     REQUIRED_NO_SUBMIT_LABELS,
     CryptoEvidenceAssumptions,
     CryptoEvidenceBar,
+    build_crypto_repair_fresh_oos_validation_packet,
     build_crypto_strategy_real_data_evidence_packet,
     classify_crypto_strategy_no_submit_packet,
     load_crypto_evidence_bars_from_csv,
@@ -24,6 +25,7 @@ from algotrader.research.crypto_strategy_evidence_battery import (
 
 MODULE_PATH = Path("src/algotrader/research/crypto_strategy_evidence_battery.py")
 AS_OF = datetime(2026, 7, 9, 0, 0, tzinfo=UTC)
+FRESH_OOS_CUTOFF = datetime(2026, 7, 9, 16, 0, tzinfo=UTC)
 
 
 def test_deterministic_fixture_ranks_promotable_candidate_first() -> None:
@@ -112,6 +114,175 @@ def test_benchmark_underperformance_blocks_promotion() -> None:
         for row in packet["evidence_table"]
     )
 
+
+def test_fresh_oos_repair_gate_rejects_cutoff_and_earlier_data(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "cutoff_only.csv"
+    _write_crypto_csv(
+        csv_path,
+        _fresh_oos_bars(
+            "ADAUSD",
+            _linear_prices("100", "1", 30),
+            start=FRESH_OOS_CUTOFF - timedelta(hours=29),
+        ),
+    )
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+    )
+
+    assert packet["classification"] == "fresh_oos_data_not_available"
+    assert packet["oos_rows"] == 0
+    assert packet["available_oos_rows"] == 0
+    assert packet["oos_date_range"] == {"start": "", "end": ""}
+    assert packet["repair_promotion_eligibility"] == "not_eligible"
+    assert packet["paper_planning_eligibility"] == "not_eligible"
+    assert "no_oos_rows_after_discovery_cutoff" in packet["rejection_reasons"]
+    assert packet["paper_submit_occurred"] is False
+    assert packet["broker_mutation_occurred"] is False
+    assert packet["broker_read_occurred"] is False
+    assert packet["market_data_fetch_occurred"] is False
+
+
+def test_fresh_oos_repair_gate_blocks_insufficient_oos_rows(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "too_short_oos.csv"
+    _write_crypto_csv(
+        csv_path,
+        _fresh_oos_bars("ADAUSD", _linear_prices("100", "1", 25)),
+    )
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+    )
+
+    assert packet["classification"] == "fresh_oos_data_not_available"
+    assert packet["available_oos_rows"] == 25
+    assert packet["required_min_oos_rows"] == 26
+    assert packet["repair_promotion_eligibility"] == "not_eligible"
+    assert "insufficient_oos_rows" in packet["rejection_reasons"]
+
+
+def test_fresh_oos_repair_gate_blocks_cash_underperformance(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "cash_underperformance.csv"
+    prices = (*_linear_prices("100", "1", 25), "100", "100", "100", "100", "100")
+    _write_crypto_csv(csv_path, _fresh_oos_bars("ADAUSD", prices))
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+    )
+
+    assert packet["classification"] == "fresh_oos_rejected"
+    assert Decimal(packet["oos_test_return"]) < Decimal("0")
+    assert packet["repair_promotion_eligibility"] == "not_eligible"
+    assert "cash_underperformance" in packet["rejection_reasons"]
+
+
+def test_fresh_oos_repair_gate_blocks_buy_and_hold_underperformance(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "buy_hold_underperformance.csv"
+    prices = (*("100" for _ in range(24)), "101", "102", "103", "104", "105", "106")
+    _write_crypto_csv(csv_path, _fresh_oos_bars("ADAUSD", prices))
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+    )
+
+    assert packet["classification"] == "fresh_oos_rejected"
+    assert Decimal(packet["oos_test_return"]) > Decimal("0")
+    assert Decimal(packet["excess_vs_buy_hold"]) < Decimal("0")
+    assert "buy_and_hold_underperformance" in packet["rejection_reasons"]
+
+
+def test_fresh_oos_repair_gate_blocks_equal_weight_basket_underperformance(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "basket_underperformance.csv"
+    bars = [
+        *_fresh_oos_bars(
+            "ADAUSD",
+            (*("100" for _ in range(24)), "101", "102", "103", "104", "105", "106"),
+        ),
+        *_fresh_oos_bars("BTCUSD", _linear_prices("100", "10", 30)),
+        *_fresh_oos_bars("ETHUSD", _linear_prices("100", "10", 30)),
+        *_fresh_oos_bars("SOLUSD", _linear_prices("100", "10", 30)),
+    ]
+    _write_crypto_csv(csv_path, tuple(bars))
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+        assumptions=CryptoEvidenceAssumptions(
+            min_test_excess_return_vs_buy_hold=Decimal("-1"),
+        ),
+    )
+
+    assert packet["classification"] == "fresh_oos_rejected"
+    assert packet["equal_weight_basket_return"] != ""
+    assert Decimal(packet["excess_vs_basket"]) < Decimal("0")
+    assert "basket_underperformance" in packet["rejection_reasons"]
+
+
+def test_fresh_oos_repair_gate_can_mark_no_submit_eligible_without_broker_instructions(
+    tmp_path: Path,
+) -> None:
+    csv_path = tmp_path / "passing_oos.csv"
+    ada_prices = (
+        "200",
+        *("60" for _ in range(24)),
+        "61",
+        "90",
+        "100",
+        "100",
+        "100",
+    )
+    bars = [*_fresh_oos_bars("ADAUSD", ada_prices)]
+    for symbol in ("BTCUSD", "ETHUSD", "SOLUSD"):
+        bars.extend(_fresh_oos_bars(symbol, tuple("100" for _ in range(30))))
+    _write_crypto_csv(csv_path, tuple(bars))
+
+    packet = build_crypto_repair_fresh_oos_validation_packet(
+        csv_path,
+        as_of=AS_OF,
+        discovery_cutoff=FRESH_OOS_CUTOFF,
+    )
+
+    assert packet["classification"] == "fresh_oos_validated"
+    assert packet["repair_promotion_eligibility"] == "eligible_for_no_submit_plan"
+    assert packet["paper_planning_eligibility"] == "eligible_for_no_submit_plan"
+    assert Decimal(packet["excess_vs_cash"]) > Decimal("0")
+    assert Decimal(packet["excess_vs_buy_hold"]) > Decimal("0")
+    assert Decimal(packet["excess_vs_basket"]) > Decimal("0")
+    assert packet["rejection_reasons"] == []
+    assert packet["paper_submit_occurred"] is False
+    assert packet["broker_mutation_occurred"] is False
+    assert packet["broker_read_occurred"] is False
+    assert packet["live_endpoint_touched"] is False
+    assert packet["credential_values_exposed"] is False
+    assert packet["market_data_fetch_occurred"] is False
+    packet_text = " ".join(_packet_string_values(packet)).lower()
+    for forbidden in (
+        "submit order",
+        "cancel order",
+        "replace order",
+        "close position",
+        "liquidate",
+    ):
+        assert forbidden not in packet_text
 
 def test_valid_multi_symbol_local_csv_passes_sufficiency(tmp_path: Path) -> None:
     csv_path = tmp_path / "crypto_history.csv"
@@ -655,6 +826,22 @@ def _linear_prices(start: str, step: str, count: int) -> tuple[str, ...]:
     step_value = Decimal(step)
     return tuple(str(start_value + (step_value * Decimal(index))) for index in range(count))
 
+
+def _fresh_oos_bars(
+    symbol: str,
+    prices: tuple[str, ...],
+    *,
+    start: datetime | None = None,
+) -> tuple[CryptoEvidenceBar, ...]:
+    first = start or (FRESH_OOS_CUTOFF + timedelta(hours=1))
+    return tuple(
+        CryptoEvidenceBar(
+            symbol=symbol,
+            timestamp=first + timedelta(hours=index),
+            close=Decimal(price),
+        )
+        for index, price in enumerate(prices)
+    )
 
 def _write_crypto_csv(
     path: Path,
