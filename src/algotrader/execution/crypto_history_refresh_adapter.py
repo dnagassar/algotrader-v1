@@ -750,6 +750,12 @@ def _base_packet(
         "write_packet": config.write_packet,
         "data_source": "none",
         "as_of": as_of.isoformat(),
+        "requested_start": (
+            "" if config.start is None else _datetime_arg(config.start)
+        ),
+        "requested_end": (
+            "" if config.end is None else _datetime_arg(config.end)
+        ),
         "authorization_status": "",
         "endpoint_safety_status": "",
         "operator_preflight": {

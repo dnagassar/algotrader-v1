@@ -12,17 +12,17 @@ from __future__ import annotations
 import argparse
 import csv
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from datetime import UTC, datetime
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
 import json
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
 from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import (
-    CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH,
     CryptoHistoryRefreshConfig,
     run_crypto_history_refresh,
 )
@@ -42,8 +42,11 @@ CRYPTO_REPAIR_FORWARD_OOS_ACCRUAL_SCHEMA_VERSION = (
 CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT = Path(
     "runs/crypto_repair_forward_oos_accrual/latest"
 )
-CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH = (
-    CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH
+CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH = Path(
+    "runs/crypto_repair_forward_oos_accrual/latest/frozen_discovery_history.csv"
+)
+CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_REFRESH_OUTPUT_PATH = Path(
+    "runs/crypto_repair_forward_oos_accrual/latest/refresh/forward_oos_delta.csv"
 )
 CRYPTO_REPAIR_FORWARD_OOS_TIMEFRAME = "1Hour"
 CRYPTO_REPAIR_FORWARD_OOS_REQUIRED_MIN_ROWS = 26
@@ -72,6 +75,7 @@ __all__ = [
     "CRYPTO_REPAIR_FORWARD_OOS_ACCRUAL_SCHEMA_VERSION",
     "CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH",
     "CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT",
+    "CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_REFRESH_OUTPUT_PATH",
     "CRYPTO_REPAIR_FORWARD_OOS_EVALUATION_POLICY_VERSION",
     "CRYPTO_REPAIR_FORWARD_OOS_REQUIRED_MIN_ROWS",
     "CRYPTO_REPAIR_FORWARD_OOS_TIMEFRAME",
@@ -123,13 +127,25 @@ class _RowsLoad:
         return not self.errors and not self.duplicate_timestamp_rows and not self.out_of_order_rows
 
 
+@dataclass(frozen=True, slots=True)
+class _DiscoveryResolution:
+    load: _RowsLoad
+    rows: tuple[_NormalizedRow, ...]
+    discovery_hash: str
+    recovery_source_path: Path | None
+    snapshot_needs_write: bool
+    existing_manifest: bool
+    blockers: tuple[str, ...]
+    blocked_classification: str
+
+
 RefreshRunner = Callable[[CryptoHistoryRefreshConfig], Mapping[str, object]]
 
 
 def run_crypto_repair_forward_oos_accrual(
     *,
     output_root: Path | str = CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT,
-    discovery_history_path: Path | str = CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH,
+    discovery_history_path: Path | str | None = None,
     refresh_config: CryptoHistoryRefreshConfig | None = None,
     refresh_runner: RefreshRunner = run_crypto_history_refresh,
     as_of: datetime | str | None = None,
@@ -143,26 +159,40 @@ def run_crypto_repair_forward_oos_accrual(
 ) -> dict[str, object]:
     """Accrue strict future bars and run the existing frozen ADA OOS gate.
 
-    ``discovery_history_path`` is the immutable discovery-period reference.
-    When ``refresh_config`` is supplied, its adapter output is treated as a
-    delta feed: every row must be strictly after the frozen cutoff.  With no
-    refresh configuration, the discovery path is used as a local full-history
-    replay and only its strictly post-cutoff rows are accrued.
+    The discovery-history path is an explicit recovery source only. Once the
+    frozen snapshot exists under the output root, mutable recovery inputs are
+    ignored and the snapshot is the sole discovery authority. A refresh
+    adapter output is always treated as a delta feed: every returned row must
+    be strictly after the frozen cutoff.
     """
 
     root = Path(output_root)
     cutoff = _utc_datetime(discovery_cutoff, "discovery_cutoff")
     evaluated_at = _utc_datetime(as_of or datetime.now(UTC), "as_of")
+    explicit_as_of = as_of is not None
     checked_assumptions = assumptions or CryptoEvidenceAssumptions()
     checked_timeframe = _timeframe(timeframe)
     required_rows = _required_rows(required_min_oos_rows, checked_assumptions)
     policy_version = _required_text(evaluation_policy_version, "evaluation_policy_version")
-    discovery_path = Path(discovery_history_path)
+    recovery_source_path = (
+        None
+        if discovery_history_path in (None, "")
+        else Path(discovery_history_path)
+    )
     state_paths = _state_paths(root)
-
-    discovery_load = _load_normalized_rows(discovery_path)
-    discovery_rows = tuple(row for row in discovery_load.rows if row.timestamp <= cutoff)
-    discovery_hash = _rows_hash(discovery_rows)
+    frozen_manifest = _read_json_mapping(state_paths["frozen_candidate"])
+    discovery = _resolve_discovery_snapshot(
+        snapshot_path=state_paths["frozen_discovery_history"],
+        recovery_source_path=recovery_source_path,
+        cutoff=cutoff,
+        frozen_manifest=frozen_manifest,
+    )
+    manifest_hash = str(
+        frozen_manifest.get("relevant_discovery_evidence_input_hash", "")
+    ).strip()
+    descriptor_hash = (
+        manifest_hash if _is_sha256_hex(manifest_hash) else discovery.discovery_hash
+    )
     descriptor = build_frozen_candidate_descriptor(
         discovery_cutoff=cutoff,
         candidate_id=candidate_id,
@@ -170,7 +200,7 @@ def run_crypto_repair_forward_oos_accrual(
         assumptions=checked_assumptions,
         required_min_oos_rows=required_rows,
         evaluation_policy_version=policy_version,
-        relevant_discovery_evidence_input_hash=discovery_hash,
+        relevant_discovery_evidence_input_hash=descriptor_hash,
     )
 
     packet = _base_packet(
@@ -178,12 +208,29 @@ def run_crypto_repair_forward_oos_accrual(
         cutoff=cutoff,
         evaluated_at=evaluated_at,
         output_root=root,
-        discovery_path=discovery_path,
+        discovery_path=state_paths["frozen_discovery_history"],
+        recovery_source_path=recovery_source_path,
         refresh_config=refresh_config,
     )
-    blockers: list[str] = []
+    packet["discovery_snapshot"] = {
+        "path": str(state_paths["frozen_discovery_history"]),
+        "recovery_source_path": (
+            "" if recovery_source_path is None else str(recovery_source_path)
+        ),
+        "fingerprint": discovery.discovery_hash,
+        "row_count": len(discovery.rows),
+        "status": (
+            "unrecoverable"
+            if discovery.blockers
+            else "pending_write"
+            if discovery.snapshot_needs_write
+            else "validated"
+        ),
+    }
+    blockers: list[str] = list(discovery.blockers)
     integrity = _integrity_checks(
-        discovery_load=discovery_load,
+        discovery_load=discovery.load,
+        discovery_rows=discovery.rows,
         cutoff=cutoff,
         refresh_config=refresh_config,
     )
@@ -195,20 +242,14 @@ def run_crypto_repair_forward_oos_accrual(
         blockers.append("unsupported_timeframe")
     if policy_version != CRYPTO_REPAIR_FORWARD_OOS_EVALUATION_POLICY_VERSION:
         blockers.append("unsupported_evaluation_policy_version")
-    if discovery_load.errors:
-        blockers.extend(discovery_load.errors)
-    if discovery_load.duplicate_timestamp_rows:
-        blockers.append("duplicate_discovery_timestamp")
-    if discovery_load.out_of_order_rows:
-        blockers.append("out_of_order_discovery_bars")
-    if discovery_load.fixture_source_detected:
-        blockers.append("fixture_or_synthetic_discovery_history")
-
-    frozen_manifest = _read_json_mapping(state_paths["frozen_candidate"])
     if frozen_manifest:
         expected_hash = str(frozen_manifest.get("relevant_discovery_evidence_input_hash", ""))
-        if expected_hash and expected_hash != discovery_hash:
-            blockers.append("rewritten_discovery_period_data")
+        if not _is_sha256_hex(expected_hash):
+            blockers.append("invalid_frozen_discovery_hash")
+            integrity["discovery_period_hash"] = "failed"
+        elif expected_hash != discovery.discovery_hash:
+            if "discovery_snapshot_hash_mismatch" not in blockers:
+                blockers.append("rewritten_discovery_period_data")
             integrity["discovery_period_hash"] = "failed"
         else:
             integrity["discovery_period_hash"] = "passed"
@@ -220,34 +261,99 @@ def run_crypto_repair_forward_oos_accrual(
             integrity["candidate_fingerprint"] = "failed"
         else:
             integrity["candidate_fingerprint"] = "passed"
+        if (
+            str(frozen_manifest.get("frozen_candidate_fingerprint", ""))
+            != descriptor["frozen_candidate_fingerprint"]
+        ):
+            blockers.append("frozen_candidate_fingerprint_mismatch")
+            integrity["candidate_fingerprint"] = "failed"
         packet["frozen_candidate"] = dict(frozen_manifest)
     else:
         integrity["discovery_period_hash"] = (
-            "passed" if not discovery_load.errors else "failed"
+            "passed" if not discovery.blockers else "failed"
         )
         integrity["candidate_fingerprint"] = "not_yet_persisted"
+        packet["frozen_candidate"] = descriptor
         if not blockers:
-            if write_artifacts:
-                root.mkdir(parents=True, exist_ok=True)
-                _write_json(state_paths["frozen_candidate"], descriptor)
-            packet["frozen_candidate"] = descriptor
             integrity["candidate_fingerprint"] = "passed"
 
+    prepared_refresh = refresh_config
+    if refresh_config is not None:
+        prepared_refresh, window_blockers = _prepare_refresh_config(
+            refresh_config,
+            cutoff=cutoff,
+            evaluated_at=evaluated_at,
+            explicit_as_of=explicit_as_of,
+            state_paths=state_paths,
+        )
+        path_blockers = _refresh_path_blockers(
+            prepared_refresh,
+            state_paths=state_paths,
+            recovery_source_path=recovery_source_path,
+        )
+        blockers.extend(window_blockers)
+        blockers.extend(path_blockers)
+        if path_blockers:
+            packet["refresh"] = {
+                "status": "blocked_before_execution",
+                "mode": refresh_config.mode,
+                "market_data_fetch_occurred": False,
+                "network_access_attempted": False,
+            }
+        elif window_blockers:
+            packet["refresh"] = {
+                "status": "blocked_unsafe_window",
+                "mode": refresh_config.mode,
+                "market_data_fetch_occurred": False,
+                "network_access_attempted": False,
+            }
+        elif prepared_refresh is not None:
+            packet["refresh"] = {
+                "status": "pending",
+                "mode": prepared_refresh.mode,
+                **_refresh_window_payload(prepared_refresh),
+                "market_data_fetch_occurred": False,
+                "network_access_attempted": False,
+            }
+
     if blockers:
+        blocked_classification = (
+            discovery.blocked_classification
+            if discovery.blockers
+            else "blocked_integrity"
+        )
         return _finalize_packet(
             packet,
             blockers=blockers,
-            classification="blocked_integrity",
+            classification=blocked_classification,
             root=root,
             state_paths=state_paths,
             write_artifacts=write_artifacts,
         )
 
+    if not frozen_manifest and write_artifacts:
+        root.mkdir(parents=True, exist_ok=True)
+        _write_json(state_paths["frozen_candidate"], descriptor)
+
+    if discovery.snapshot_needs_write and write_artifacts:
+        root.mkdir(parents=True, exist_ok=True)
+        _write_rows_csv(state_paths["frozen_discovery_history"], discovery.rows)
+        snapshot_packet = dict(_mapping(packet.get("discovery_snapshot")))
+        snapshot_packet["status"] = (
+            "recovered" if discovery.existing_manifest else "created"
+        )
+        packet["discovery_snapshot"] = snapshot_packet
+    elif discovery.snapshot_needs_write:
+        snapshot_packet = dict(_mapping(packet.get("discovery_snapshot")))
+        snapshot_packet["status"] = "validated_in_memory"
+        packet["discovery_snapshot"] = snapshot_packet
+
+
     refresh_packet: Mapping[str, object] = {}
-    source_path = discovery_path
+    source_load = _empty_rows_load(state_paths["frozen_discovery_history"])
     delta_is_refresh_output = False
-    if refresh_config is not None:
-        if refresh_config.timeframe != checked_timeframe:
+    if prepared_refresh is not None:
+        if prepared_refresh.timeframe != checked_timeframe:
             return _finalize_packet(
                 packet,
                 blockers=["refresh_timeframe_mismatch"],
@@ -257,7 +363,7 @@ def run_crypto_repair_forward_oos_accrual(
                 write_artifacts=write_artifacts,
             )
         try:
-            refresh_packet = dict(refresh_runner(refresh_config))
+            refresh_packet = dict(refresh_runner(prepared_refresh))
         except Exception as exc:  # adapter failure must remain a safe block
             packet["refresh"] = {
                 "status": "failed",
@@ -274,7 +380,8 @@ def run_crypto_repair_forward_oos_accrual(
                 write_artifacts=write_artifacts,
             )
         packet["refresh"] = _refresh_summary(refresh_packet)
-        source_path = refresh_config.output_path
+        packet["refresh"].update(_refresh_window_payload(prepared_refresh))
+        source_path = prepared_refresh.output_path
         delta_is_refresh_output = True
         if not Path(source_path).is_file():
             return _finalize_packet(
@@ -285,8 +392,10 @@ def run_crypto_repair_forward_oos_accrual(
                 state_paths=state_paths,
                 write_artifacts=write_artifacts,
             )
+        source_load = _load_normalized_rows(Path(source_path))
+    elif not discovery.existing_manifest and recovery_source_path is not None:
+        source_load = _load_normalized_rows(recovery_source_path)
 
-    source_load = _load_normalized_rows(Path(source_path))
     integrity["source_normalization"] = "passed" if source_load.valid else "failed"
     integrity["duplicate_timestamp_check"] = (
         "failed" if source_load.duplicate_timestamp_rows else "passed"
@@ -376,18 +485,29 @@ def run_crypto_repair_forward_oos_accrual(
             write_artifacts=write_artifacts,
         )
 
-    gate_path = state_paths["accrued_oos"]
-    if not write_artifacts:
-        _write_rows_csv(gate_path, merged_rows)
-    evidence_packet = build_crypto_repair_fresh_oos_validation_packet(
-        gate_path,
-        as_of=evaluated_at,
-        discovery_cutoff=cutoff,
-        repair_candidate=DEFAULT_FRESH_OOS_REPAIR_CANDIDATE,
-        oos_data_source="frozen_candidate_forward_oos_accrual",
-        assumptions=checked_assumptions,
-        required_min_oos_rows=required_rows,
-    )
+    if write_artifacts:
+        evidence_packet = build_crypto_repair_fresh_oos_validation_packet(
+            state_paths["accrued_oos"],
+            as_of=evaluated_at,
+            discovery_cutoff=cutoff,
+            repair_candidate=DEFAULT_FRESH_OOS_REPAIR_CANDIDATE,
+            oos_data_source="frozen_candidate_forward_oos_accrual",
+            assumptions=checked_assumptions,
+            required_min_oos_rows=required_rows,
+        )
+    else:
+        with TemporaryDirectory(prefix="algotrader-forward-oos-") as temporary_root:
+            gate_path = Path(temporary_root) / "accrued_oos_bars.csv"
+            _write_rows_csv(gate_path, merged_rows)
+            evidence_packet = build_crypto_repair_fresh_oos_validation_packet(
+                gate_path,
+                as_of=evaluated_at,
+                discovery_cutoff=cutoff,
+                repair_candidate=DEFAULT_FRESH_OOS_REPAIR_CANDIDATE,
+                oos_data_source="frozen_candidate_forward_oos_accrual",
+                assumptions=checked_assumptions,
+                required_min_oos_rows=required_rows,
+            )
     packet["evidence_gate"] = evidence_packet
     if evidence_packet["classification"] == "fresh_oos_validated":
         return _finalize_packet(
@@ -493,6 +613,7 @@ def _base_packet(
     evaluated_at: datetime,
     output_root: Path,
     discovery_path: Path,
+    recovery_source_path: Path | None,
     refresh_config: CryptoHistoryRefreshConfig | None,
 ) -> dict[str, object]:
     return {
@@ -503,8 +624,14 @@ def _base_packet(
         "frozen_candidate": dict(descriptor),
         "discovery_cutoff": cutoff.isoformat(),
         "discovery_history_path": str(discovery_path),
+        "discovery_recovery_source_path": (
+            "" if recovery_source_path is None else str(recovery_source_path)
+        ),
         "refresh_requested": refresh_config is not None,
-        "refresh": {"status": "not_requested"},
+        "refresh": {
+            "status": "not_requested" if refresh_config is None else "not_run",
+            "mode": "" if refresh_config is None else refresh_config.mode,
+        },
         "latest_normalized_bar": {},
         "oos_row_count": 0,
         "oos_normalized_row_count": 0,
@@ -518,9 +645,21 @@ def _base_packet(
         "artifact_paths": {
             "output_root": str(output_root),
             "frozen_candidate": str(output_root / "frozen_candidate.json"),
+            "frozen_discovery_history": str(
+                output_root / "frozen_discovery_history.csv"
+            ),
             "accrued_oos": str(output_root / "accrued_oos_bars.csv"),
             "operating_packet_json": str(output_root / "operating_packet.json"),
             "operating_packet_markdown": str(output_root / "operating_packet.md"),
+            "refresh_output": str(
+                output_root / "refresh" / "forward_oos_delta.csv"
+            ),
+            "refresh_packet": str(
+                output_root / "refresh" / "refresh_packet.json"
+            ),
+            "refresh_raw_response": str(
+                output_root / "refresh" / "raw_crypto_bars.json"
+            ),
         },
         "labels": [
             "crypto_repair_forward_oos_accrual",
@@ -579,12 +718,14 @@ def _finalize_packet(
 def _integrity_checks(
     *,
     discovery_load: _RowsLoad,
+    discovery_rows: Sequence[_NormalizedRow],
     cutoff: datetime,
     refresh_config: CryptoHistoryRefreshConfig | None,
 ) -> dict[str, object]:
     return {
         "candidate_fingerprint": "not_checked",
         "discovery_period_hash": "not_checked",
+        "discovery_snapshot": "passed" if discovery_load.valid else "failed",
         "discovery_normalization": "passed" if discovery_load.valid else "failed",
         "source_normalization": "not_checked",
         "duplicate_timestamp_check": "not_checked",
@@ -593,23 +734,268 @@ def _integrity_checks(
         "pre_cutoff_leakage_check": "not_checked",
         "accrued_state": "not_checked",
         "accrual_merge": "not_checked",
-        "discovery_rows_at_or_before_cutoff": sum(
-            row.timestamp <= cutoff for row in discovery_load.rows
-        ),
+        "discovery_rows_at_or_before_cutoff": len(discovery_rows),
         "refresh_mode": "not_requested" if refresh_config is None else refresh_config.mode,
     }
+
+
+def _resolve_discovery_snapshot(
+    *,
+    snapshot_path: Path,
+    recovery_source_path: Path | None,
+    cutoff: datetime,
+    frozen_manifest: Mapping[str, object],
+) -> _DiscoveryResolution:
+    existing_manifest = bool(frozen_manifest)
+    if snapshot_path.is_file():
+        snapshot_load = _load_normalized_rows(snapshot_path)
+        snapshot_rows = snapshot_load.rows
+        blockers = _discovery_load_blockers(snapshot_load)
+        if any(row.timestamp > cutoff for row in snapshot_rows):
+            blockers.append("discovery_snapshot_contains_post_cutoff_rows")
+        discovery_hash = _rows_hash(snapshot_rows)
+        expected_hash = str(
+            frozen_manifest.get("relevant_discovery_evidence_input_hash", "")
+        ).strip()
+        if not existing_manifest:
+            blockers.append("discovery_snapshot_without_frozen_manifest")
+        elif not _is_sha256_hex(expected_hash):
+            blockers.append("invalid_frozen_discovery_hash")
+        elif discovery_hash != expected_hash:
+            blockers.append("rewritten_discovery_period_data")
+        return _DiscoveryResolution(
+            load=snapshot_load,
+            rows=snapshot_rows,
+            discovery_hash=discovery_hash,
+            recovery_source_path=recovery_source_path,
+            snapshot_needs_write=False,
+            existing_manifest=existing_manifest,
+            blockers=tuple(dict.fromkeys(blockers)),
+            blocked_classification="blocked_integrity",
+        )
+
+    if recovery_source_path is None:
+        return _DiscoveryResolution(
+            load=_empty_rows_load(snapshot_path),
+            rows=(),
+            discovery_hash="",
+            recovery_source_path=None,
+            snapshot_needs_write=False,
+            existing_manifest=existing_manifest,
+            blockers=("discovery_snapshot_recovery_source_required",),
+            blocked_classification="blocked_discovery_snapshot_unrecoverable",
+        )
+
+    recovery_load = _load_normalized_rows(
+        recovery_source_path,
+        at_or_before=cutoff,
+    )
+    recovery_rows = recovery_load.rows
+    blockers = _discovery_load_blockers(recovery_load)
+    discovery_hash = _rows_hash(recovery_rows)
+    if existing_manifest:
+        expected_hash = str(
+            frozen_manifest.get("relevant_discovery_evidence_input_hash", "")
+        ).strip()
+        if not _is_sha256_hex(expected_hash):
+            blockers.append("invalid_frozen_discovery_hash")
+        elif discovery_hash != expected_hash:
+            blockers.append("discovery_snapshot_hash_mismatch")
+    if blockers:
+        return _DiscoveryResolution(
+            load=recovery_load,
+            rows=recovery_rows,
+            discovery_hash=discovery_hash,
+            recovery_source_path=recovery_source_path,
+            snapshot_needs_write=False,
+            existing_manifest=existing_manifest,
+            blockers=tuple(dict.fromkeys(blockers)),
+            blocked_classification=(
+                "blocked_discovery_snapshot_unrecoverable"
+                if existing_manifest
+                else "blocked_integrity"
+            ),
+        )
+    return _DiscoveryResolution(
+        load=recovery_load,
+        rows=recovery_rows,
+        discovery_hash=discovery_hash,
+        recovery_source_path=recovery_source_path,
+        snapshot_needs_write=True,
+        existing_manifest=existing_manifest,
+        blockers=(),
+        blocked_classification="",
+    )
+
+
+def _discovery_load_blockers(load: _RowsLoad) -> list[str]:
+    blockers = list(load.errors)
+    if load.duplicate_timestamp_rows:
+        blockers.append("duplicate_discovery_timestamp")
+    if load.out_of_order_rows:
+        blockers.append("out_of_order_discovery_bars")
+    if load.fixture_source_detected:
+        blockers.append("fixture_or_synthetic_discovery_history")
+    return blockers
+
+
+def _prepare_refresh_config(
+    config: CryptoHistoryRefreshConfig,
+    *,
+    cutoff: datetime,
+    evaluated_at: datetime,
+    explicit_as_of: bool,
+    state_paths: Mapping[str, Path],
+) -> tuple[CryptoHistoryRefreshConfig, list[str]]:
+    prepared = replace(
+        config,
+        packet_path=config.packet_path or state_paths["refresh_packet"],
+        raw_response_path=(
+            config.raw_response_path or state_paths["refresh_raw_response"]
+        ),
+    )
+    if prepared.mode != "market_data_fetch":
+        return prepared, []
+    if not explicit_as_of:
+        return prepared, ["refresh_as_of_required"]
+    try:
+        start = (
+            cutoff + timedelta(hours=1)
+            if prepared.start is None
+            else _utc_datetime(prepared.start, "refresh_start")
+        )
+        end = (
+            evaluated_at
+            if prepared.end is None
+            else _utc_datetime(prepared.end, "refresh_end")
+        )
+    except ValidationError:
+        return prepared, ["unsafe_refresh_window"]
+    blockers: list[str] = []
+    if start <= cutoff:
+        blockers.append("refresh_start_not_strictly_post_cutoff")
+    if end <= start:
+        blockers.append("refresh_window_inverted")
+    if end > evaluated_at:
+        blockers.append("refresh_end_after_as_of")
+    if blockers:
+        return prepared, blockers
+    return (
+        replace(
+            prepared,
+            as_of=evaluated_at,
+            start=start,
+            end=end,
+        ),
+        [],
+    )
+
+
+def _refresh_window_payload(
+    config: CryptoHistoryRefreshConfig,
+) -> dict[str, str]:
+    return {
+        "requested_start": (
+            "" if config.start is None else _utc_datetime(config.start, "start").isoformat()
+        ),
+        "requested_end": (
+            "" if config.end is None else _utc_datetime(config.end, "end").isoformat()
+        ),
+        "output_path": str(config.output_path),
+        "packet_path": "" if config.packet_path is None else str(config.packet_path),
+        "raw_response_path": (
+            "" if config.raw_response_path is None else str(config.raw_response_path)
+        ),
+    }
+
+
+def _refresh_path_blockers(
+    config: CryptoHistoryRefreshConfig,
+    *,
+    state_paths: Mapping[str, Path],
+    recovery_source_path: Path | None,
+) -> list[str]:
+    destinations = {
+        "output": Path(config.output_path),
+        **(
+            {}
+            if config.packet_path is None
+            else {"packet": Path(config.packet_path)}
+        ),
+        **(
+            {}
+            if config.raw_response_path is None
+            else {"raw_response": Path(config.raw_response_path)}
+        ),
+    }
+    blockers: list[str] = []
+    protected_state = {
+        key: state_paths[key]
+        for key in (
+            "frozen_candidate",
+            "frozen_discovery_history",
+            "accrued_oos",
+            "operating_packet_json",
+            "operating_packet_markdown",
+        )
+    }
+    for destination in destinations.values():
+        if recovery_source_path is not None and _paths_alias(
+            destination,
+            recovery_source_path,
+        ):
+            blockers.append("discovery_refresh_path_alias")
+        for state_name, state_path in protected_state.items():
+            if not _paths_alias(destination, state_path):
+                continue
+            blockers.append(
+                "discovery_refresh_path_alias"
+                if state_name == "frozen_discovery_history"
+                else "refresh_state_path_alias"
+            )
+    destination_paths = tuple(destinations.values())
+    if any(
+        _paths_alias(left, right)
+        for index, left in enumerate(destination_paths)
+        for right in destination_paths[index + 1 :]
+    ):
+        blockers.append("refresh_artifact_path_alias")
+    return list(dict.fromkeys(blockers))
+
+
+def _paths_alias(left: Path | str, right: Path | str) -> bool:
+    return Path(left).resolve(strict=False) == Path(right).resolve(strict=False)
+
+
+def _is_sha256_hex(value: str) -> bool:
+    return (
+        len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def _empty_rows_load(path: Path) -> _RowsLoad:
+    return _RowsLoad(path, (), (), 0, 0, False)
 
 
 def _state_paths(root: Path) -> dict[str, Path]:
     return {
         "frozen_candidate": root / "frozen_candidate.json",
+        "frozen_discovery_history": root / "frozen_discovery_history.csv",
         "accrued_oos": root / "accrued_oos_bars.csv",
         "operating_packet_json": root / "operating_packet.json",
         "operating_packet_markdown": root / "operating_packet.md",
+        "refresh_output": root / "refresh" / "forward_oos_delta.csv",
+        "refresh_packet": root / "refresh" / "refresh_packet.json",
+        "refresh_raw_response": root / "refresh" / "raw_crypto_bars.json",
     }
 
 
-def _load_normalized_rows(path: Path) -> _RowsLoad:
+def _load_normalized_rows(
+    path: Path,
+    *,
+    at_or_before: datetime | None = None,
+) -> _RowsLoad:
     if not path.is_file():
         return _RowsLoad(path, (), ("input_history_missing",), 0, 0, False)
     try:
@@ -633,6 +1019,17 @@ def _load_normalized_rows(path: Path) -> _RowsLoad:
         if None in raw:
             errors.append("malformed_csv_row")
             break
+        if at_or_before is not None:
+            try:
+                raw_timestamp = _utc_datetime(
+                    str(raw.get("timestamp") or "").strip(),
+                    "timestamp",
+                )
+            except ValidationError:
+                errors.append("malformed_timestamp")
+                break
+            if raw_timestamp > at_or_before:
+                continue
         try:
             row = _normalized_row(raw)
         except _RowError as exc:
@@ -882,10 +1279,19 @@ def build_parser() -> argparse.ArgumentParser:
         description="Accrue frozen ADA repair forward-OOS evidence without submitting orders."
     )
     parser.add_argument("--output-root", default=str(CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT))
-    parser.add_argument("--discovery-history-path", default=str(CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH))
+    parser.add_argument(
+        "--discovery-recovery-source-path",
+        "--discovery-history-path",
+        dest="discovery_recovery_source_path",
+        default="",
+        help=(
+            "Explicit source used only to recover a missing immutable discovery "
+            "snapshot; ignored after the snapshot exists."
+        ),
+    )
     parser.add_argument("--as-of", default=None)
     parser.add_argument("--refresh-mode", choices=("none", "dry_run", "offline_fixture", "market_data_fetch"), default="none")
-    parser.add_argument("--refresh-output-path", default=str(CRYPTO_HISTORY_REFRESH_DEFAULT_OUTPUT_PATH))
+    parser.add_argument("--refresh-output-path", default="")
     parser.add_argument("--refresh-packet-path", default="")
     parser.add_argument("--refresh-raw-response-path", default="")
     parser.add_argument("--refresh-hours", type=int, default=240)
@@ -898,13 +1304,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    root = Path(args.output_root)
+    state_paths = _state_paths(root)
     refresh_config = None
     if args.refresh_mode != "none":
         refresh_config = CryptoHistoryRefreshConfig(
             mode=args.refresh_mode,
-            output_path=args.refresh_output_path,
-            packet_path=args.refresh_packet_path or None,
-            raw_response_path=args.refresh_raw_response_path or None,
+            output_path=args.refresh_output_path or state_paths["refresh_output"],
+            packet_path=args.refresh_packet_path or state_paths["refresh_packet"],
+            raw_response_path=(
+                args.refresh_raw_response_path
+                or state_paths["refresh_raw_response"]
+            ),
             as_of=args.as_of,
             start=args.refresh_start,
             end=args.refresh_end,
@@ -914,8 +1325,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             allow_network=args.allow_network,
         )
     packet = run_crypto_repair_forward_oos_accrual(
-        output_root=args.output_root,
-        discovery_history_path=args.discovery_history_path,
+        output_root=root,
+        discovery_history_path=args.discovery_recovery_source_path or None,
         refresh_config=refresh_config,
         as_of=args.as_of,
     )

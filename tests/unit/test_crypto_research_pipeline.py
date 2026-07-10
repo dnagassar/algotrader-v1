@@ -6,6 +6,12 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
+from algotrader.execution.crypto_history_refresh_adapter import (
+    CryptoHistoryRefreshConfig,
+)
+from algotrader.orchestration.crypto_repair_forward_oos_accrual import (
+    run_crypto_repair_forward_oos_accrual,
+)
 from algotrader.orchestration.crypto_research_pipeline import (
     CRYPTO_RESEARCH_PIPELINE_SCHEMA_VERSION,
     run_crypto_research_pipeline,
@@ -208,6 +214,78 @@ def test_pipeline_side_effect_contract_is_offline_and_no_submit(tmp_path: Path) 
     assert packet["profit_claim"] == "none"
 
 
+def test_pipeline_consumes_forward_oos_without_overwriting_refresh_state(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    delta = tmp_path / "forward_oos_delta.csv"
+    state_root = tmp_path / "forward_oos"
+    runtime_as_of = CUTOFF + timedelta(hours=9)
+    _write_history(history, _history_rows())
+    run_crypto_repair_forward_oos_accrual(
+        output_root=state_root,
+        discovery_history_path=history,
+        as_of=CUTOFF,
+    )
+    _write_history(delta, _future_ada_rows(8))
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=delta,
+        packet_path=state_root / "refresh" / "refresh_packet.json",
+        raw_response_path=state_root / "refresh" / "raw_crypto_bars.json",
+        as_of=runtime_as_of,
+        market_data_fetch_authorized=True,
+        allow_network=True,
+    )
+
+    def _refresh(_: CryptoHistoryRefreshConfig) -> dict[str, object]:
+        return {
+            "classification": "insufficient_real_crypto_history",
+            "mode": "market_data_fetch",
+            "output_path": str(delta),
+            "packet_path": str(config.packet_path),
+            "raw_response_path": str(config.raw_response_path),
+            "market_data_fetch_occurred": True,
+            "network_access_attempted": True,
+        }
+
+    refresh_packet = run_crypto_repair_forward_oos_accrual(
+        output_root=state_root,
+        discovery_history_path=history,
+        refresh_config=config,
+        refresh_runner=_refresh,
+        as_of=runtime_as_of,
+    )
+    operating_path = Path(refresh_packet["artifact_paths"]["operating_packet_json"])
+    accrued_path = Path(refresh_packet["artifact_paths"]["accrued_oos"])
+    operating_before = operating_path.read_bytes()
+    accrued_before = accrued_path.read_bytes()
+
+    packet = run_crypto_research_pipeline(
+        history,
+        as_of=runtime_as_of,
+        output_root=tmp_path / "pipeline",
+        forward_oos_state_root=state_root,
+    )
+
+    assert operating_path.read_bytes() == operating_before
+    assert accrued_path.read_bytes() == accrued_before
+    assert packet["classification"] == "research_only_awaiting_fresh_oos"
+    assert packet["forward_oos"]["oos_rows"] == 8
+    assert packet["forward_oos"]["rows_still_required"] == 18
+    assert packet["forward_oos"]["paper_planning_eligibility"] == "not_eligible"
+    ada = next(
+        item
+        for item in packet["ranked_candidate_registry"]
+        if item["candidate_id"] == DEFAULT_FRESH_OOS_REPAIR_CANDIDATE
+    )
+    assert ada["no_submit_planning_eligibility"] == "not_eligible"
+    preserved = json.loads(operating_path.read_text(encoding="utf-8"))
+    assert preserved["refresh"]["mode"] == "market_data_fetch"
+    assert preserved["refresh"]["status"] == "insufficient_real_crypto_history"
+    assert preserved["market_data_fetch_occurred"] is True
+
+
 def test_factory_descriptor_reuses_exact_fixed_evidence_specs() -> None:
     factory = build_crypto_strategy_candidate_factory()
 
@@ -234,7 +312,8 @@ def test_powershell_runner_exposes_only_offline_local_replay() -> None:
     assert "--allow-network" not in script
     assert "market_data_fetch" not in script
     assert "submit" in script.lower()
-    assert "runs\\operator_input\\crypto_paper_bars.csv" in script
+    assert "ForwardOosRecoverySourcePath" in script
+    assert "runs\\operator_input\\crypto_paper_bars.csv" not in script
 
 
 def _run(
@@ -244,14 +323,20 @@ def _run(
     availability: Path | None = None,
     discovery_cutoff: datetime = CUTOFF,
 ) -> dict[str, object]:
+    state_root = root / "forward_oos"
+    run_crypto_repair_forward_oos_accrual(
+        output_root=state_root,
+        discovery_history_path=history,
+        as_of=CUTOFF,
+        discovery_cutoff=discovery_cutoff,
+    )
     return run_crypto_research_pipeline(
         history,
         as_of=CUTOFF,
         output_root=root / "pipeline",
         availability_json_path=availability,
         discovery_cutoff=discovery_cutoff,
-        forward_oos_state_root=root / "forward_oos",
-        forward_oos_discovery_history_path=history,
+        forward_oos_state_root=state_root,
     )
 
 
@@ -299,6 +384,27 @@ def _history_rows(
                     "source": "recorded_local_history",
                 }
             )
+    return tuple(rows)
+
+
+def _future_ada_rows(count: int) -> tuple[dict[str, str], ...]:
+    rows: list[dict[str, str]] = []
+    for index in range(count):
+        close = Decimal("200") + Decimal(index)
+        rows.append(
+            {
+                "timestamp": (
+                    CUTOFF + timedelta(hours=index + 1)
+                ).isoformat(),
+                "symbol": "ADAUSD",
+                "open": str(close),
+                "high": str(close + Decimal("1")),
+                "low": str(close - Decimal("1")),
+                "close": str(close),
+                "volume": "10",
+                "source": "alpaca_market_data_crypto_bars_v1beta3",
+            }
+        )
     return tuple(rows)
 
 

@@ -17,7 +17,8 @@ param(
     [string]$AvailabilityJson = "",
     [string]$DiscoveryCutoff = "2026-07-09T16:00:00Z",
     [string]$ForwardOosStateRoot = "runs\crypto_repair_forward_oos_accrual\latest",
-    [string]$ForwardOosDiscoveryHistoryPath = "runs\operator_input\crypto_paper_bars.csv"
+    [Alias("ForwardOosDiscoveryHistoryPath")]
+    [string]$ForwardOosRecoverySourcePath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -40,10 +41,10 @@ foreach ($Path in $InputCsv) {
 if (-not [string]::IsNullOrWhiteSpace($AvailabilityJson)) {
     $Args += @("--availability-json", $AvailabilityJson)
 }
-if (-not [string]::IsNullOrWhiteSpace($ForwardOosDiscoveryHistoryPath)) {
+if (-not [string]::IsNullOrWhiteSpace($ForwardOosRecoverySourcePath)) {
     $Args += @(
-        "--forward-oos-discovery-history-path",
-        $ForwardOosDiscoveryHistoryPath
+        "--forward-oos-recovery-source-path",
+        $ForwardOosRecoverySourcePath
     )
 }
 
