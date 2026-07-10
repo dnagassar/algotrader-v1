@@ -7,11 +7,16 @@ history refresh adapter without authorizing broker reads, mutations, or submits.
 [CmdletBinding()]
 param(
     [string]$OutputRoot = "runs\crypto_repair_forward_oos_accrual\latest",
-    [string]$DiscoveryHistoryPath = "runs\operator_input\crypto_paper_bars.csv",
+    [Alias("DiscoveryHistoryPath")]
+    [string]$DiscoveryRecoverySourcePath = "",
     [string]$AsOfTimestamp = "",
     [ValidateSet("none", "dry_run", "offline_fixture", "market_data_fetch")]
     [string]$RefreshMode = "none",
-    [string]$RefreshOutputPath = "runs\operator_input\crypto_paper_bars.csv",
+    [string]$RefreshOutputPath = "",
+    [string]$RefreshPacketPath = "",
+    [string]$RefreshRawResponsePath = "",
+    [string]$RefreshStart = "",
+    [string]$RefreshEnd = "",
     [switch]$MarketDataFetchAuthorized
 )
 
@@ -19,15 +24,40 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $RepoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")).Path
 $Python = (Get-Command python -ErrorAction Stop).Source
+$ResolvedRefreshOutputPath = $RefreshOutputPath
+if ([string]::IsNullOrWhiteSpace($ResolvedRefreshOutputPath)) {
+    $ResolvedRefreshOutputPath = Join-Path $OutputRoot "refresh\forward_oos_delta.csv"
+}
+$ResolvedRefreshPacketPath = $RefreshPacketPath
+if ([string]::IsNullOrWhiteSpace($ResolvedRefreshPacketPath)) {
+    $ResolvedRefreshPacketPath = Join-Path $OutputRoot "refresh\refresh_packet.json"
+}
+$ResolvedRefreshRawResponsePath = $RefreshRawResponsePath
+if ([string]::IsNullOrWhiteSpace($ResolvedRefreshRawResponsePath)) {
+    $ResolvedRefreshRawResponsePath = Join-Path $OutputRoot "refresh\raw_crypto_bars.json"
+}
 $Args = @(
     "-m", "algotrader.orchestration.crypto_repair_forward_oos_accrual",
     "--output-root", $OutputRoot,
-    "--discovery-history-path", $DiscoveryHistoryPath,
     "--refresh-mode", $RefreshMode,
-    "--refresh-output-path", $RefreshOutputPath
+    "--refresh-output-path", $ResolvedRefreshOutputPath,
+    "--refresh-packet-path", $ResolvedRefreshPacketPath,
+    "--refresh-raw-response-path", $ResolvedRefreshRawResponsePath
 )
+if (-not [string]::IsNullOrWhiteSpace($DiscoveryRecoverySourcePath)) {
+    $Args += @(
+        "--discovery-recovery-source-path",
+        $DiscoveryRecoverySourcePath
+    )
+}
 if (-not [string]::IsNullOrWhiteSpace($AsOfTimestamp)) {
     $Args += @("--as-of", $AsOfTimestamp)
+}
+if (-not [string]::IsNullOrWhiteSpace($RefreshStart)) {
+    $Args += @("--refresh-start", $RefreshStart)
+}
+if (-not [string]::IsNullOrWhiteSpace($RefreshEnd)) {
+    $Args += @("--refresh-end", $RefreshEnd)
 }
 if ($RefreshMode -eq "market_data_fetch" -and $MarketDataFetchAuthorized.IsPresent) {
     $Args += @("--market-data-fetch-authorized", "--allow-network")

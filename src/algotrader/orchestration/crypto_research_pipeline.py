@@ -22,6 +22,7 @@ from algotrader.core.types import Bar
 from algotrader.errors import ValidationError
 from algotrader.orchestration.crypto_repair_forward_oos_accrual import (
     CRYPTO_REPAIR_FORWARD_OOS_ACCRUAL_SCHEMA_VERSION,
+    CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH,
     CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT,
     run_crypto_repair_forward_oos_accrual,
 )
@@ -50,8 +51,8 @@ CRYPTO_RESEARCH_SCANNER_POLICY_VERSION = "v5_21_crypto_opportunity_scanner_v1"
 CRYPTO_RESEARCH_PIPELINE_DEFAULT_OUTPUT_ROOT = Path(
     "runs/crypto_research_pipeline/latest"
 )
-CRYPTO_RESEARCH_PIPELINE_DEFAULT_DISCOVERY_HISTORY_PATH = Path(
-    "runs/operator_input/crypto_paper_bars.csv"
+CRYPTO_RESEARCH_PIPELINE_DEFAULT_DISCOVERY_HISTORY_PATH = (
+    CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_HISTORY_PATH
 )
 CRYPTO_RESEARCH_PIPELINE_PREFERRED_LOCAL_HISTORY_PATHS = (
     Path(
@@ -157,20 +158,18 @@ def run_crypto_research_pipeline(
     )
     candidate_factory = build_crypto_strategy_candidate_factory()
 
-    oos_discovery_path = (
+    oos_recovery_source_path = (
         Path(forward_oos_discovery_history_path)
         if forward_oos_discovery_history_path not in (None, "")
-        else input_paths[0]
-        if input_paths
-        else CRYPTO_RESEARCH_PIPELINE_DEFAULT_DISCOVERY_HISTORY_PATH
+        else None
     )
     forward_oos_packet = run_crypto_repair_forward_oos_accrual(
         output_root=forward_oos_state_root,
-        discovery_history_path=oos_discovery_path,
+        discovery_history_path=oos_recovery_source_path,
         as_of=evaluated_at,
         discovery_cutoff=cutoff,
         assumptions=checked_assumptions,
-        write_artifacts=True,
+        write_artifacts=False,
     )
     registry = _build_candidate_registry(
         symbols=symbols,
@@ -1293,9 +1292,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT),
     )
     parser.add_argument(
+        "--forward-oos-recovery-source-path",
         "--forward-oos-discovery-history-path",
-        default=str(CRYPTO_RESEARCH_PIPELINE_DEFAULT_DISCOVERY_HISTORY_PATH),
-        help="Frozen discovery reference; defaults to the existing ADA reference.",
+        dest="forward_oos_recovery_source_path",
+        default="",
+        help=(
+            "Optional explicit recovery source for a missing frozen snapshot; "
+            "normal pipeline consumption uses the existing state snapshot."
+        ),
     )
     return parser
 
@@ -1316,7 +1320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         discovery_cutoff=args.discovery_cutoff,
         forward_oos_state_root=args.forward_oos_state_root,
         forward_oos_discovery_history_path=(
-            args.forward_oos_discovery_history_path or None
+            args.forward_oos_recovery_source_path or None
         ),
     )
     print(json.dumps(packet, indent=2, sort_keys=True))

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
@@ -106,7 +107,9 @@ def test_candidate_drift_cannot_inherit_accrued_evidence(tmp_path: Path) -> None
     assert packet["paper_planning_eligibility"] == "not_eligible"
 
 
-def test_rewritten_discovery_period_data_blocks_accrual(tmp_path: Path) -> None:
+def test_future_runs_use_frozen_snapshot_when_mutable_history_changes(
+    tmp_path: Path,
+) -> None:
     history = tmp_path / "history.csv"
     initial_rows = (*_discovery_rows(), *_future_rows("ADAUSD", 3))
     _write_rows(history, initial_rows)
@@ -117,26 +120,27 @@ def test_rewritten_discovery_period_data_blocks_accrual(tmp_path: Path) -> None:
     _write_rows(history, tuple(rewritten))
     packet = _run(tmp_path, history)
 
-    assert packet["classification"] == "blocked_integrity"
-    assert "rewritten_discovery_period_data" in packet["blocker_rejection_reasons"]
-    assert packet["integrity_checks"]["discovery_period_hash"] == "failed"
+    assert packet["classification"] == "awaiting_fresh_oos"
+    assert packet["oos_row_count"] == 3
+    assert "rewritten_discovery_period_data" not in packet["blocker_rejection_reasons"]
+    assert packet["integrity_checks"]["discovery_period_hash"] == "passed"
 
 
 @pytest.mark.parametrize(
     ("rows", "reason"),
-    (
         (
-            lambda: (*_discovery_rows(), *_future_rows("ADAUSD", 1), _future_rows("ADAUSD", 1)[0]),
-            "duplicate_discovery_timestamp",
-        ),
-        (
-            lambda: (
-                *_discovery_rows(),
-                _row("ADAUSD", CUTOFF + timedelta(hours=2), "102"),
-                _row("ADAUSD", CUTOFF + timedelta(hours=1), "101"),
+            (
+                lambda: (*_discovery_rows(), _discovery_rows()[0]),
+                "duplicate_discovery_timestamp",
             ),
-            "out_of_order_discovery_bars",
-        ),
+            (
+                lambda: (
+                    *_discovery_rows(),
+                    _row("ADAUSD", CUTOFF - timedelta(minutes=15), "102"),
+                    _row("ADAUSD", CUTOFF - timedelta(minutes=30), "101"),
+                ),
+                "out_of_order_discovery_bars",
+            ),
     ),
 )
 def test_duplicate_and_out_of_order_input_are_safely_blocked(
@@ -233,6 +237,218 @@ def test_refresh_output_with_pre_cutoff_rows_is_not_accepted_as_delta(tmp_path: 
 
     assert packet["classification"] == "blocked_integrity"
     assert "attempted_pre_cutoff_leakage" in packet["blocker_rejection_reasons"]
+
+
+@pytest.mark.parametrize(
+    "aliased_field",
+    ("output_path", "packet_path", "raw_response_path"),
+)
+def test_discovery_refresh_alias_blocks_before_runner_and_preserves_snapshot(
+    tmp_path: Path,
+    aliased_field: str,
+) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, _discovery_rows())
+    first = _run(tmp_path, history)
+    snapshot = Path(first["artifact_paths"]["frozen_discovery_history"])
+    before = snapshot.read_bytes()
+    calls = 0
+    config_values: dict[str, object] = {
+        "mode": "market_data_fetch",
+        "output_path": tmp_path / "refresh.csv",
+        "packet_path": tmp_path / "refresh_packet.json",
+        "raw_response_path": tmp_path / "raw_crypto_bars.json",
+        "as_of": AS_OF,
+        "start": CUTOFF + timedelta(hours=1),
+        "end": AS_OF,
+        "market_data_fetch_authorized": True,
+        "allow_network": True,
+    }
+    config_values[aliased_field] = snapshot
+    config = CryptoHistoryRefreshConfig(
+        **config_values,
+    )
+
+    def _runner(_: CryptoHistoryRefreshConfig) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    packet = _run(
+        tmp_path,
+        history,
+        refresh_config=config,
+        refresh_runner=_runner,
+    )
+
+    assert packet["classification"] == "blocked_integrity"
+    assert packet["blocker_rejection_reasons"] == ["discovery_refresh_path_alias"]
+    assert packet["network_access_attempted"] is False
+    assert calls == 0
+    assert snapshot.read_bytes() == before
+
+
+def test_market_data_refresh_requires_strictly_post_cutoff_start(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    refresh_output = tmp_path / "refresh.csv"
+    _write_rows(history, _discovery_rows())
+    _run(tmp_path, history)
+    calls = 0
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=refresh_output,
+        packet_path=None,
+        raw_response_path=None,
+        as_of=AS_OF,
+        start=CUTOFF,
+        end=AS_OF,
+        market_data_fetch_authorized=True,
+        allow_network=True,
+    )
+
+    def _runner(_: CryptoHistoryRefreshConfig) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        return {}
+
+    packet = _run(
+        tmp_path,
+        history,
+        refresh_config=config,
+        refresh_runner=_runner,
+    )
+
+    assert packet["classification"] == "blocked_integrity"
+    assert (
+        "refresh_start_not_strictly_post_cutoff"
+        in packet["blocker_rejection_reasons"]
+    )
+    assert packet["network_access_attempted"] is False
+    assert calls == 0
+
+
+def test_eight_post_cutoff_delta_rows_are_accrued_and_remain_ineligible(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    refresh_output = tmp_path / "refresh.csv"
+    _write_rows(history, _discovery_rows())
+    _run(tmp_path, history)
+    _write_rows(refresh_output, _future_rows("ADAUSD", 8))
+    config = CryptoHistoryRefreshConfig(
+        mode="market_data_fetch",
+        output_path=refresh_output,
+        packet_path=None,
+        raw_response_path=None,
+        as_of=AS_OF,
+        market_data_fetch_authorized=True,
+        allow_network=True,
+    )
+    captured: list[CryptoHistoryRefreshConfig] = []
+
+    def _runner(value: CryptoHistoryRefreshConfig) -> dict[str, object]:
+        captured.append(value)
+        return {
+            "classification": "insufficient_real_crypto_history",
+            "mode": "market_data_fetch",
+            "output_path": str(refresh_output),
+            "market_data_fetch_occurred": True,
+            "network_access_attempted": True,
+        }
+
+    packet = _run(
+        tmp_path,
+        history,
+        refresh_config=config,
+        refresh_runner=_runner,
+    )
+
+    assert packet["classification"] == "awaiting_fresh_oos"
+    assert packet["oos_row_count"] == 8
+    assert packet["rows_still_required"] == 18
+    assert packet["paper_planning_eligibility"] == "not_eligible"
+    assert packet["refresh"]["mode"] == "market_data_fetch"
+    assert packet["market_data_fetch_occurred"] is True
+    assert captured[0].start == CUTOFF + timedelta(hours=1)
+    assert captured[0].end == AS_OF
+
+
+def test_existing_manifest_snapshot_recovery_requires_exact_hash(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, _discovery_rows())
+    first = _run(tmp_path, history)
+    manifest_path = Path(first["artifact_paths"]["frozen_candidate"])
+    snapshot_path = Path(first["artifact_paths"]["frozen_discovery_history"])
+    expected_hash = json.loads(manifest_path.read_text(encoding="utf-8"))[
+        "relevant_discovery_evidence_input_hash"
+    ]
+    snapshot_path.unlink()
+
+    recovered = _run(tmp_path, history)
+
+    assert recovered["classification"] == "awaiting_fresh_oos"
+    assert recovered["discovery_snapshot"]["status"] == "recovered"
+    assert recovered["discovery_snapshot"]["fingerprint"] == expected_hash
+    assert snapshot_path.is_file()
+
+
+def test_mismatched_recovery_source_cannot_rewrite_manifest_or_snapshot(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    _write_rows(history, _discovery_rows())
+    first = _run(tmp_path, history)
+    manifest_path = Path(first["artifact_paths"]["frozen_candidate"])
+    snapshot_path = Path(first["artifact_paths"]["frozen_discovery_history"])
+    manifest_before = manifest_path.read_bytes()
+    snapshot_path.unlink()
+    rows = list(_discovery_rows())
+    rows[0] = {**rows[0], "close": "999", "high": "999"}
+    _write_rows(history, tuple(rows))
+
+    packet = _run(tmp_path, history)
+
+    assert packet["classification"] == "blocked_discovery_snapshot_unrecoverable"
+    assert "discovery_snapshot_hash_mismatch" in packet["blocker_rejection_reasons"]
+    assert manifest_path.read_bytes() == manifest_before
+    assert not snapshot_path.exists()
+
+
+def test_write_artifacts_false_is_side_effect_free_with_26_rows(
+    tmp_path: Path,
+) -> None:
+    history = tmp_path / "history.csv"
+    output_root = tmp_path / "state"
+    _write_rows(history, (*_discovery_rows(), *_future_rows("ADAUSD", 26)))
+
+    packet = run_crypto_repair_forward_oos_accrual(
+        output_root=output_root,
+        discovery_history_path=history,
+        as_of=AS_OF,
+        write_artifacts=False,
+    )
+
+    assert packet["oos_row_count"] == 26
+    assert packet["classification"] == "fresh_oos_rejected"
+    assert not output_root.exists()
+
+
+def test_powershell_runner_exposes_isolated_paths_and_refresh_window() -> None:
+    script = Path("scripts/run_crypto_repair_forward_oos_accrual.ps1").read_text(
+        encoding="utf-8"
+    )
+
+    assert "DiscoveryRecoverySourcePath" in script
+    assert "RefreshStart" in script
+    assert "RefreshEnd" in script
+    assert "refresh\\forward_oos_delta.csv" in script
+    assert "refresh\\refresh_packet.json" in script
+    assert "refresh\\raw_crypto_bars.json" in script
+    assert '[string]$RefreshOutputPath = "runs\\operator_input' not in script
 
 
 def test_identical_rerun_is_idempotent(tmp_path: Path) -> None:
