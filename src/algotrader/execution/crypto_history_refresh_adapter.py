@@ -13,13 +13,11 @@ import csv
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+import http.client
 import json
 import os
 from pathlib import Path
 from typing import Any, Protocol
-import urllib.error
-import urllib.parse
-import urllib.request
 
 from algotrader.errors import ValidationError
 from algotrader.research.crypto_strategy_evidence_battery import (
@@ -107,8 +105,39 @@ _FORBIDDEN_COMMAND_WORDS = (
 
 
 class UrlOpen(Protocol):
-    def __call__(self, request: urllib.request.Request, *, timeout: int) -> Any:
+    def __call__(self, request: _ReadOnlyHttpRequest, *, timeout: int) -> Any:
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class _ReadOnlyHttpRequest:
+    full_url: str
+    headers: Mapping[str, str]
+    method: str = "GET"
+    data: None = None
+
+    def get_method(self) -> str:
+        return self.method
+
+
+class _HttpClientResponse:
+    def __init__(
+        self,
+        connection: http.client.HTTPSConnection,
+        response: http.client.HTTPResponse,
+    ) -> None:
+        self._connection = connection
+        self._response = response
+
+    def __enter__(self) -> _HttpClientResponse:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self._response.close()
+        self._connection.close()
+
+    def read(self) -> bytes:
+        return self._response.read()
 
 
 class CryptoHistoryRefreshError(ValueError):
@@ -306,7 +335,7 @@ def build_crypto_history_refresh_url(
     if page_token:
         query_items.append(("page_token", _required_text(page_token, "page_token")))
     path = f"/v1beta3/crypto/{_loc_value(loc)}/bars"
-    return f"{base_url.rstrip('/')}{path}?{urllib.parse.urlencode(query_items)}"
+    return f"{base_url.rstrip('/')}{path}?{_urlencode(query_items)}"
 
 
 def fetch_crypto_history_from_alpaca_market_data(
@@ -336,7 +365,7 @@ def fetch_crypto_history_from_alpaca_market_data(
     if checked_start >= checked_end:
         raise CryptoHistoryRefreshError("start must be before end.")
 
-    urlopen = urllib.request.urlopen if opener is None else opener
+    urlopen = _open_read_only_https_request if opener is None else opener
     bars_by_api_symbol: dict[str, list[object]] = {}
     for symbol in checked_symbols:
         api_symbol = _api_symbol(symbol)
@@ -352,8 +381,8 @@ def fetch_crypto_history_from_alpaca_market_data(
                 loc=loc,
                 page_token=page_token,
             )
-            request = urllib.request.Request(
-                url,
+            request = _ReadOnlyHttpRequest(
+                full_url=url,
                 headers={
                     "APCA-API-KEY-ID": credentials.api_key_id,
                     "APCA-API-SECRET-KEY": credentials.api_secret_key,
@@ -367,8 +396,7 @@ def fetch_crypto_history_from_alpaca_market_data(
             except (
                 OSError,
                 RuntimeError,
-                urllib.error.HTTPError,
-                urllib.error.URLError,
+                http.client.HTTPException,
             ) as exc:
                 raise CryptoHistoryRefreshError(
                     _sanitized_exception_message(exc, credentials)
@@ -401,6 +429,64 @@ def fetch_crypto_history_from_alpaca_market_data(
         "timeframe": timeframe,
         "sort": "asc",
     }
+
+
+def _open_read_only_https_request(
+    request: _ReadOnlyHttpRequest,
+    *,
+    timeout: int,
+) -> _HttpClientResponse:
+    expected_prefix = f"{_DEFAULT_DATA_BASE_URL}/"
+    if not request.full_url.startswith(expected_prefix):
+        raise CryptoHistoryRefreshError("market-data URL scope violation.")
+    request_target = request.full_url[len(_DEFAULT_DATA_BASE_URL) :]
+    connection = http.client.HTTPSConnection("data.alpaca.markets", timeout=timeout)
+    try:
+        connection.request(
+            request.get_method(),
+            request_target,
+            body=request.data,
+            headers=dict(request.headers),
+        )
+        response = connection.getresponse()
+        status = int(response.status)
+        if status < 200 or status >= 300:
+            response.read()
+            raise OSError(
+                f"Alpaca market-data HTTP status failure: {status}."
+            )
+        return _HttpClientResponse(connection, response)
+    except (
+        OSError,
+        RuntimeError,
+        http.client.HTTPException,
+    ):
+        connection.close()
+        raise
+
+
+def _urlencode(items: Sequence[tuple[str, str]]) -> str:
+    return "&".join(
+        f"{_quote_plus(key)}={_quote_plus(value)}"
+        for key, value in items
+    )
+
+
+def _quote_plus(value: str) -> str:
+    encoded: list[str] = []
+    for byte in value.encode("utf-8"):
+        if (
+            65 <= byte <= 90
+            or 97 <= byte <= 122
+            or 48 <= byte <= 57
+            or byte in b"-._~"
+        ):
+            encoded.append(chr(byte))
+        elif byte == 32:
+            encoded.append("+")
+        else:
+            encoded.append(f"%{byte:02X}")
+    return "".join(encoded)
 
 
 def read_market_data_credentials_from_env(
