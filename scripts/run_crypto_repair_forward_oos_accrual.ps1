@@ -17,7 +17,10 @@ param(
     [string]$RefreshRawResponsePath = "",
     [string]$RefreshStart = "",
     [string]$RefreshEnd = "",
-    [switch]$MarketDataFetchAuthorized
+    [switch]$MarketDataFetchAuthorized,
+    [switch]$InvalidateFrozenCandidateState,
+    [string]$InvalidationReason = "",
+    [string]$InvalidationArchivePath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -61,6 +64,15 @@ if (-not [string]::IsNullOrWhiteSpace($RefreshEnd)) {
 }
 if ($RefreshMode -eq "market_data_fetch" -and $MarketDataFetchAuthorized.IsPresent) {
     $Args += @("--market-data-fetch-authorized", "--allow-network")
+}
+if ($InvalidateFrozenCandidateState.IsPresent) {
+    $Args += @("--invalidate-frozen-candidate-state")
+    if (-not [string]::IsNullOrWhiteSpace($InvalidationReason)) {
+        $Args += @("--invalidation-reason", $InvalidationReason)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($InvalidationArchivePath)) {
+        $Args += @("--invalidation-archive-path", $InvalidationArchivePath)
+    }
 }
 
 Push-Location -LiteralPath $RepoRoot

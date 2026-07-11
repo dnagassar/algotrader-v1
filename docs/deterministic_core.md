@@ -226,6 +226,31 @@ The strategy does not imply:
 - crypto support for this path
 - market-data fetch approval
 
+## Crypto Research Forward-OOS State
+
+The ADA repair diagnostic is a separate research-only path. Its frozen
+candidate state uses an immutable discovery snapshot, a manifest-pinned
+discovery hash, strict post-cutoff OOS accrual, and no-submit eligibility only
+after the existing fresh-OOS evidence gate passes.
+
+An unrecoverable frozen candidate may be invalidated only through the explicit
+operator reset workflow. That workflow:
+
+- requires the invalidation switch, a non-empty reason, an explicit recovery
+  source, and an explicit sibling archive path
+- validates the complete replacement source before moving current state
+- rejects an unchanged discovery hash, archive collisions, state-contained
+  recovery sources, refresh modes, and network authorization
+- moves the old state intact to the archive and never deletes it
+- writes the invalidation record to both the archive and replacement state
+- reinitializes through the same manifest-first frozen-snapshot path
+- preserves all no-submit, no-broker-mutation, no-live, and `profit_claim=none`
+  constraints
+
+State invalidation does not validate the candidate, change evidence thresholds,
+authorize a market-data fetch, or authorize paper/live trading. A read-only
+market-data refresh remains a separate explicitly gated operation.
+
 ## Command Surface Distinction
 
 The repository distinguishes offline/reporting commands from broker-facing
