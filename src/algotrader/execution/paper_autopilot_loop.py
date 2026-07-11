@@ -305,6 +305,9 @@ def run_paper_autopilot_loop(
     candidate_strategy_signals: Iterable[StrategySignal] | None = None,
     strategy_adapter_registry: StrategyAdapterRegistryInput | None = None,
     update_history: bool = True,
+    lease_token: str | None = None,
+    fencing_generation: int | None = None,
+    lease_owner_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Run one bounded paper-autopilot cycle and write operating artifacts."""
 
@@ -322,11 +325,20 @@ def run_paper_autopilot_loop(
         config=resolved,
         run_id=run_id,
         occurred_at=journal_timestamp,
+        lease_token=lease_token,
+        lease_owner_run_id=lease_owner_run_id,
     )
     if runtime_lease.get("acquired") is not True:
         raise ValidationError(
             _text(runtime_lease.get("blocker")) or "runtime_lease_unavailable"
         )
+    resolved_lease_token = lease_token or runtime_lease.get("lease_token") or ""
+    resolved_fencing_generation = (
+        fencing_generation
+        if fencing_generation is not None
+        else int(runtime_lease.get("fencing_generation") or 0)
+    )
+    resolved_lease_owner_run_id = lease_owner_run_id or run_id
     process_env = _normalized_env(env)
     secret_values = _secret_values(process_env)
     paper_mutation_readiness = _load_paper_mutation_readiness_packet(
@@ -483,6 +495,10 @@ def run_paper_autopilot_loop(
         secret_values=secret_values,
         order_journal=order_journal,
         occurred_at=journal_timestamp,
+        lease_token=resolved_lease_token,
+        fencing_generation=resolved_fencing_generation,
+        lease_owner_run_id=resolved_lease_owner_run_id,
+        reservation_run_id=run_id,
     )
     reconciliation = _reconcile_after_action(
         plan=plan,
@@ -528,7 +544,8 @@ def run_paper_autopilot_loop(
                 history_root=output_root.parent / "history",
             )
         )
-    _release_runtime_lease(config=resolved, run_id=run_id)
+    if lease_token is None:
+        _release_runtime_lease(config=resolved, run_id=run_id, lease_token=resolved_lease_token)
     return record
 
 
@@ -1710,14 +1727,19 @@ def _runtime_lease_state(
     config: PaperAutopilotLoopConfig,
     run_id: str,
     occurred_at: datetime,
+    lease_token: str | None = None,
+    lease_owner_run_id: str | None = None,
 ) -> dict[str, Any]:
     path = _order_journal_path(config)
     try:
+        if lease_token is not None and not _text(lease_owner_run_id):
+            raise ValidationError("lease_owner_run_id is required with lease_token.")
         lease = SqliteOrderJournal(path).acquire_runtime_lease(
             lease_name="paper-autopilot",
-            owner_run_id=run_id,
+            owner_run_id=lease_owner_run_id or run_id,
             occurred_at=occurred_at,
             ttl_seconds=config.runtime_lease_seconds,
+            lease_token=lease_token,
         )
     except Exception as exc:
         return {
@@ -1731,11 +1753,12 @@ def _runtime_lease_state(
     return {**lease.to_dict(), "error": ""}
 
 
-def _release_runtime_lease(*, config: PaperAutopilotLoopConfig, run_id: str) -> None:
+def _release_runtime_lease(*, config: PaperAutopilotLoopConfig, run_id: str, lease_token: str) -> None:
     try:
         SqliteOrderJournal(_order_journal_path(config)).release_runtime_lease(
             lease_name="paper-autopilot",
             owner_run_id=run_id,
+            lease_token=lease_token,
         )
     except Exception:
         return
@@ -1800,6 +1823,10 @@ def _execute_plan(
     secret_values: Sequence[str],
     order_journal: SqliteOrderJournal | None,
     occurred_at: datetime,
+    lease_token: str | None = None,
+    fencing_generation: int | None = None,
+    lease_owner_run_id: str | None = None,
+    reservation_run_id: str | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "action_decision": plan.action,
@@ -1829,16 +1856,6 @@ def _execute_plan(
         result["mutation_status"] = "blocked_order_journal_unavailable"
         result["order_journal_error"] = "journal_not_initialized"
         return result
-    try:
-        control = order_journal.get_runtime_control()
-        if not control.trading_enabled:
-            result["mutation_status"] = "blocked_before_submit"
-            result["broker_error"] = f"operator_paused: {control.reason}"
-            return result
-    except Exception as exc:
-        result["mutation_status"] = "blocked_order_journal_unavailable"
-        result["order_journal_error"] = exc.__class__.__name__
-        return result
     request = AlpacaOrderRequest(
         client_order_id=plan.client_order_id,
         symbol=plan.symbol,
@@ -1850,12 +1867,26 @@ def _execute_plan(
         time_in_force=_TIME_IN_FORCE,
     )
     try:
-        journal_record = order_journal.mark_submit_attempted(
-            plan.client_order_id,
-            occurred_at,
+        journal_record = order_journal.claim_pre_mutation_submit(
+            client_order_id=plan.client_order_id,
+            execution_plan_id=plan.execution_plan_id,
+            reservation_run_id=reservation_run_id or "",
+            lease_name="paper-autopilot",
+            lease_owner_run_id=lease_owner_run_id or "",
+            lease_token=lease_token or "",
+            fencing_generation=fencing_generation or 0,
+            canonical_risk_allowed=plan.canonical_runtime_plan.risk_allowed,
+            snapshot_fresh=(
+                plan.paper_mutation_readiness_gate.get("gate_status") == "authorized"
+            ),
+            occurred_at=occurred_at,
         )
+    except ValidationError as exc:
+        result["mutation_status"] = "blocked_before_submit"
+        result["broker_error"] = str(exc)
+        return result
     except Exception as exc:
-        result["mutation_status"] = "blocked_order_journal_transition_failed"
+        result["mutation_status"] = "blocked_order_journal_unavailable"
         result["order_journal_error"] = exc.__class__.__name__
         return result
     result.update(

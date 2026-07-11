@@ -2702,6 +2702,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output format.",
     )
 
+    paper_autopilot_supervisor_parser = subparsers.add_parser(
+        "paper-autopilot-supervisor",
+        help="Run the persistent paper-autopilot supervisor loop.",
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--order-journal-path",
+        default="runs/paper_autopilot/state/order_journal.sqlite3",
+        dest="journal_path",
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--loop-interval-seconds",
+        type=int,
+        default=15,
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--lease-ttl-seconds",
+        type=int,
+        default=60,
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--symbol",
+        default="SPY",
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--output-root",
+        default="runs/paper_autopilot/latest",
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--bars-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+    )
+    paper_autopilot_supervisor_parser.add_argument(
+        "--max-notional",
+        default="25.00",
+    )
+
     paper_autopilot_control_parser = subparsers.add_parser(
         "paper-autopilot-control",
         help="Read or update the durable paper-autopilot kill switch and manage operations.",
@@ -2767,6 +2803,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--runtime-lease-seconds",
         type=int,
         default=900,
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--broker-snapshot-path",
+        default=None,
+        help="Path to the broker snapshot JSON file for offline reconciliation.",
     )
     paper_autopilot_control_parser.add_argument(
         "--format",
@@ -4013,6 +4054,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_autopilot_history(args)
     if command == "paper-autopilot-operator":
         return _run_paper_autopilot_operator(args)
+    if command == "paper-autopilot-supervisor":
+        return _run_paper_autopilot_supervisor(args)
     if command == "paper-autopilot-control":
         return _run_paper_autopilot_control(args)
 
@@ -6388,6 +6431,35 @@ def _run_paper_autopilot_operator(args: argparse.Namespace) -> int:
         return 2
 
 
+def _run_paper_autopilot_supervisor(args: argparse.Namespace) -> int:
+    import sys
+    from .errors import ValidationError
+    from .execution.paper_autopilot_supervisor import (
+        PaperAutopilotSupervisorConfig,
+        PaperAutopilotSupervisor,
+    )
+
+    try:
+        config = PaperAutopilotSupervisorConfig(
+            journal_path=args.journal_path,
+            loop_interval_seconds=args.loop_interval_seconds,
+            lease_ttl_seconds=args.lease_ttl_seconds,
+            symbol=args.symbol,
+            output_root=args.output_root,
+            bars_csv=args.bars_csv,
+            max_notional=args.max_notional,
+        )
+        supervisor = PaperAutopilotSupervisor(config)
+        supervisor.run()
+        return 0
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
 def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
     import json
     import sys
@@ -6406,6 +6478,7 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
         }
         for name in (
             "backup_path",
+            "broker_snapshot_path",
             "output_root",
             "bars_csv",
             "history_root",

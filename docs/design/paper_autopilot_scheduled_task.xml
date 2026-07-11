@@ -3,7 +3,7 @@
   <RegistrationInfo>
     <Date>2026-07-11T15:00:00</Date>
     <Author>Operator</Author>
-    <Description>Durable daily offline SPY ETF/SMA paper-autopilot loop runner.</Description>
+    <Description>Durable daily offline SPY ETF/SMA paper-autopilot supervisor daemon.</Description>
     <URI>\paper-autopilot-daily</URI>
   </RegistrationInfo>
   <Triggers>

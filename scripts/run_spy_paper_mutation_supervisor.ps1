@@ -23,7 +23,9 @@ param(
     [int]$SmaSlowWindow = 200,
     [string]$MaxNotional = "25.00",
     [string]$ReadinessPacketPath,
+    [string]$OrderJournalPath = "runs\paper_mutation_supervisor\state\order_journal.sqlite3",
     [switch]$NoSubmit,
+    [switch]$OperatorPaused,
     [ValidateSet("text", "json")]
     [string]$Format = "text"
 )
@@ -82,32 +84,13 @@ Write-Host "preflight_live_authorized=false"
 
 $CliArgs = @(
     "-m", "algotrader.cli",
-    "paper-autopilot-operator",
-    "--output-root", $OutputRoot,
-    "--history-root", $HistoryRoot,
+    "paper-autopilot-supervisor",
+    "--order-journal-path", $OrderJournalPath,
     "--bars-csv", $BarsCsv,
     "--symbol", $Symbol,
-    "--sma-fast-window", $SmaFastWindow.ToString(),
-    "--sma-slow-window", $SmaSlowWindow.ToString(),
     "--max-notional", $MaxNotional,
-    "--format", $Format
+    "--output-root", $OutputRoot
 )
-
-if (-not [string]::IsNullOrEmpty($AsOfDate)) {
-    $CliArgs += @("--as-of-date", $AsOfDate)
-}
-
-if (-not [string]::IsNullOrEmpty($RunDate)) {
-    $CliArgs += @("--run-date", $RunDate)
-}
-
-if (-not [string]::IsNullOrEmpty($ReadinessPacketPath)) {
-    $CliArgs += @("--readiness-packet", $ReadinessPacketPath)
-}
-
-if ($NoSubmit.IsPresent) {
-    $CliArgs += @("--no-submit")
-}
 
 Push-Location -LiteralPath $RepoRoot
 try {

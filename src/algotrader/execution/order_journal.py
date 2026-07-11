@@ -15,16 +15,19 @@ from algotrader.core.validation import decimal_value, symbol_value
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "CycleClaimResult",
+    "LeaseDetails",
     "OrderJournalRecord",
     "OrderJournalState",
     "OrderReservation",
+    "SupervisorCycle",
     "ReservationResult",
     "RuntimeControl",
     "RuntimeLeaseResult",
     "SqliteOrderJournal",
 ]
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 3
 
 
 class OrderJournalState(StrEnum):
@@ -146,10 +149,53 @@ class ReservationResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LeaseDetails:
+    lease_name: str
+    owner_run_id: str
+    acquired_at: datetime
+    expires_at: datetime
+    lease_token: str
+    fencing_generation: int
+
+
+@dataclass(frozen=True, slots=True)
+class SupervisorCycle:
+    """Durable outcome for one deterministic completed exchange session."""
+
+    session_id: str
+    attempt_count: int
+    last_attempt_at: datetime
+    last_success_at: datetime | None
+    outcome: str
+    last_error: str
+
+    @property
+    def succeeded(self) -> bool:
+        return self.last_success_at is not None
+
+
+@dataclass(frozen=True, slots=True)
+class CycleClaimResult:
+    status: str
+    cycle: SupervisorCycle
+
+    @property
+    def acquired(self) -> bool:
+        return self.status == "claimed"
+
+
+@dataclass(frozen=True, slots=True)
 class RuntimeControl:
     trading_enabled: bool
     reason: str
     updated_at: datetime
+    stop_requested: bool = False
+    control_generation: int = 0
+    last_attempt_at: str = ""
+    last_success_at: str = ""
+    last_blocked_reason: str = ""
+    heartbeat_at: str = ""
+    supervisor_pid: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -157,6 +203,13 @@ class RuntimeControl:
             "operator_paused": not self.trading_enabled,
             "reason": self.reason,
             "updated_at": self.updated_at.isoformat(),
+            "stop_requested": self.stop_requested,
+            "control_generation": self.control_generation,
+            "last_attempt_at": self.last_attempt_at,
+            "last_success_at": self.last_success_at,
+            "last_blocked_reason": self.last_blocked_reason,
+            "heartbeat_at": self.heartbeat_at,
+            "supervisor_pid": self.supervisor_pid,
         }
 
 
@@ -167,6 +220,8 @@ class RuntimeLeaseResult:
     owner_run_id: str
     expires_at: datetime
     blocker: str
+    lease_token: str = ""
+    fencing_generation: int = 0
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -175,6 +230,8 @@ class RuntimeLeaseResult:
             "owner_run_id": self.owner_run_id,
             "expires_at": self.expires_at.isoformat(),
             "blocker": self.blocker,
+            "lease_token": self.lease_token,
+            "fencing_generation": self.fencing_generation,
         }
 
 
@@ -187,82 +244,254 @@ class SqliteOrderJournal:
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as connection:
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS journal_metadata (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS orders (
-                    client_order_id TEXT PRIMARY KEY,
-                    execution_plan_id TEXT NOT NULL,
-                    run_id TEXT NOT NULL,
-                    symbol TEXT NOT NULL,
-                    side TEXT NOT NULL,
-                    quantity TEXT,
-                    notional TEXT,
-                    state TEXT NOT NULL,
-                    broker_order_id TEXT NOT NULL DEFAULT '',
-                    broker_status TEXT NOT NULL DEFAULT '',
-                    filled_quantity TEXT,
-                    filled_average_price TEXT,
-                    ambiguity_reason TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS order_events (
-                    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    client_order_id TEXT NOT NULL,
-                    event_type TEXT NOT NULL,
-                    state TEXT NOT NULL,
-                    occurred_at TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    FOREIGN KEY(client_order_id) REFERENCES orders(client_order_id)
-                );
-                CREATE INDEX IF NOT EXISTS order_events_client_id_idx
-                    ON order_events(client_order_id, event_id);
-                CREATE TABLE IF NOT EXISTS runtime_control (
-                    singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
-                    trading_enabled INTEGER NOT NULL CHECK(trading_enabled IN (0, 1)),
-                    reason TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS runtime_leases (
-                    lease_name TEXT PRIMARY KEY,
-                    owner_run_id TEXT NOT NULL,
-                    acquired_at TEXT NOT NULL,
-                    expires_at TEXT NOT NULL
-                );
-                """
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS journal_metadata "
+                "(key TEXT PRIMARY KEY, value TEXT NOT NULL)"
             )
             existing = connection.execute(
                 "SELECT value FROM journal_metadata WHERE key = 'schema_version'"
             ).fetchone()
             if existing is None:
+                has_existing_orders = connection.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'orders'"
+                ).fetchone()
+                if has_existing_orders is not None:
+                    raise ValidationError("order journal metadata is corrupt.")
+                self._create_schema_v3(connection)
                 connection.execute(
                     "INSERT INTO journal_metadata(key, value) VALUES('schema_version', ?)",
                     (str(_SCHEMA_VERSION),),
                 )
-            elif existing[0] != str(_SCHEMA_VERSION):
+                return
+            try:
+                version = int(existing[0])
+            except (TypeError, ValueError) as exc:
+                raise ValidationError("order journal schema version is corrupt.") from exc
+            if version > _SCHEMA_VERSION:
                 raise ValidationError("order journal schema version is unsupported.")
+            if version < 1:
+                raise ValidationError("order journal schema version is unsupported.")
+            if version == _SCHEMA_VERSION:
+                self._require_schema_v3(connection)
+                return
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if version == 1:
+                    self._migrate_v1_to_v2(connection)
+                    version = 2
+                if version == 2:
+                    self._migrate_v2_to_v3(connection)
+                    version = 3
+                if version != _SCHEMA_VERSION:
+                    raise ValidationError("order journal schema version is unsupported.")
+                connection.commit()
+            except Exception as exc:
+                connection.rollback()
+                if isinstance(exc, ValidationError):
+                    raise
+                raise ValidationError(
+                    f"order journal schema migration failed: {exc}"
+                ) from exc
+
+    @staticmethod
+    def _create_schema_v3(connection: sqlite3.Connection) -> None:
+        statements = (
+            """
+            CREATE TABLE IF NOT EXISTS orders (
+                client_order_id TEXT PRIMARY KEY,
+                execution_plan_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                quantity TEXT,
+                notional TEXT,
+                state TEXT NOT NULL,
+                broker_order_id TEXT NOT NULL DEFAULT '',
+                broker_status TEXT NOT NULL DEFAULT '',
+                filled_quantity TEXT,
+                filled_average_price TEXT,
+                ambiguity_reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS order_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                client_order_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                state TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                FOREIGN KEY(client_order_id) REFERENCES orders(client_order_id)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS order_events_client_id_idx ON order_events(client_order_id, event_id)",
+            """
+            CREATE TABLE IF NOT EXISTS runtime_control (
+                singleton_id INTEGER PRIMARY KEY CHECK(singleton_id = 1),
+                trading_enabled INTEGER NOT NULL CHECK(trading_enabled IN (0, 1)),
+                reason TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                stop_requested INTEGER NOT NULL DEFAULT 0 CHECK(stop_requested IN (0, 1)),
+                control_generation INTEGER NOT NULL DEFAULT 0,
+                last_attempt_at TEXT NOT NULL DEFAULT '',
+                last_success_at TEXT NOT NULL DEFAULT '',
+                last_blocked_reason TEXT NOT NULL DEFAULT '',
+                heartbeat_at TEXT NOT NULL DEFAULT '',
+                supervisor_pid INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS runtime_leases (
+                lease_name TEXT PRIMARY KEY,
+                owner_run_id TEXT NOT NULL,
+                acquired_at TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                lease_token TEXT NOT NULL DEFAULT '',
+                fencing_generation INTEGER NOT NULL DEFAULT 0
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS supervisor_cycles (
+                session_id TEXT PRIMARY KEY,
+                attempt_count INTEGER NOT NULL,
+                last_attempt_at TEXT NOT NULL,
+                last_success_at TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL,
+                last_error TEXT NOT NULL DEFAULT ''
+            )
+            """,
+        )
+        for statement in statements:
+            connection.execute(statement)
+
+    @staticmethod
+    def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+        return {
+            str(row["name"])
+            for row in connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+
+    @classmethod
+    def _require_columns(
+        cls,
+        connection: sqlite3.Connection,
+        table_name: str,
+        required: set[str],
+    ) -> None:
+        missing = required - cls._table_columns(connection, table_name)
+        if missing:
+            raise ValidationError(
+                f"order journal {table_name} schema is corrupt: missing {sorted(missing)[0]}."
+            )
+
+    @classmethod
+    def _require_schema_v3(cls, connection: sqlite3.Connection) -> None:
+        cls._require_columns(
+            connection,
+            "orders",
+            {"client_order_id", "execution_plan_id", "run_id", "symbol", "state"},
+        )
+        cls._require_columns(
+            connection,
+            "runtime_control",
+            {
+                "trading_enabled", "reason", "updated_at", "stop_requested",
+                "control_generation", "last_attempt_at", "last_success_at",
+                "last_blocked_reason", "heartbeat_at", "supervisor_pid",
+            },
+        )
+        cls._require_columns(
+            connection,
+            "runtime_leases",
+            {"lease_name", "owner_run_id", "expires_at", "lease_token", "fencing_generation"},
+        )
+        cls._require_columns(
+            connection,
+            "supervisor_cycles",
+            {"session_id", "attempt_count", "last_attempt_at", "last_success_at", "outcome", "last_error"},
+        )
+
+    @classmethod
+    def _migrate_v1_to_v2(cls, connection: sqlite3.Connection) -> None:
+        cls._require_columns(
+            connection,
+            "runtime_control",
+            {"singleton_id", "trading_enabled", "reason", "updated_at"},
+        )
+        cls._require_columns(
+            connection,
+            "runtime_leases",
+            {"lease_name", "owner_run_id", "acquired_at", "expires_at"},
+        )
+        statements = (
+            "ALTER TABLE runtime_leases ADD COLUMN lease_token TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE runtime_leases ADD COLUMN fencing_generation INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE runtime_control ADD COLUMN stop_requested INTEGER NOT NULL DEFAULT 0 CHECK(stop_requested IN (0, 1))",
+            "ALTER TABLE runtime_control ADD COLUMN control_generation INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE runtime_control ADD COLUMN last_attempt_at TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE runtime_control ADD COLUMN last_success_at TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE runtime_control ADD COLUMN last_blocked_reason TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE runtime_control ADD COLUMN heartbeat_at TEXT NOT NULL DEFAULT ''",
+            "ALTER TABLE runtime_control ADD COLUMN supervisor_pid INTEGER NOT NULL DEFAULT 0",
+        )
+        for statement in statements:
+            connection.execute(statement)
+        connection.execute(
+            "UPDATE journal_metadata SET value = '2' WHERE key = 'schema_version'"
+        )
+
+    @staticmethod
+    def _migrate_v2_to_v3(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE TABLE supervisor_cycles (
+                session_id TEXT PRIMARY KEY,
+                attempt_count INTEGER NOT NULL,
+                last_attempt_at TEXT NOT NULL,
+                last_success_at TEXT NOT NULL DEFAULT '',
+                outcome TEXT NOT NULL,
+                last_error TEXT NOT NULL DEFAULT ''
+            )
+            """
+        )
+        connection.execute(
+            "UPDATE journal_metadata SET value = '3' WHERE key = 'schema_version'"
+        )
 
     def get_runtime_control(self) -> RuntimeControl:
         self.initialize()
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT trading_enabled, reason, updated_at FROM runtime_control "
-                "WHERE singleton_id = 1"
+                "SELECT trading_enabled, reason, updated_at, stop_requested, control_generation, "
+                "last_attempt_at, last_success_at, last_blocked_reason, heartbeat_at, supervisor_pid "
+                "FROM runtime_control WHERE singleton_id = 1"
             ).fetchone()
         if row is None:
             return RuntimeControl(
                 trading_enabled=True,
                 reason="",
                 updated_at=datetime.fromisoformat("1970-01-01T00:00:00+00:00"),
+                stop_requested=False,
+                control_generation=0,
+                last_attempt_at="",
+                last_success_at="",
+                last_blocked_reason="",
+                heartbeat_at="",
+                supervisor_pid=0,
             )
         return RuntimeControl(
             trading_enabled=bool(row["trading_enabled"]),
             reason=row["reason"],
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            stop_requested=bool(row["stop_requested"]),
+            control_generation=int(row["control_generation"]),
+            last_attempt_at=row["last_attempt_at"],
+            last_success_at=row["last_success_at"],
+            last_blocked_reason=row["last_blocked_reason"],
+            heartbeat_at=row["heartbeat_at"],
+            supervisor_pid=int(row["supervisor_pid"]),
         )
 
     def set_runtime_control(
@@ -271,6 +500,7 @@ class SqliteOrderJournal:
         trading_enabled: bool,
         reason: str,
         occurred_at: datetime,
+        stop_requested: bool | None = None,
     ) -> RuntimeControl:
         if type(trading_enabled) is not bool:
             raise ValidationError("trading_enabled must be a boolean.")
@@ -281,20 +511,270 @@ class SqliteOrderJournal:
         self.initialize()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT trading_enabled, stop_requested, control_generation, last_attempt_at, last_success_at, "
+                "last_blocked_reason, heartbeat_at, supervisor_pid FROM runtime_control WHERE singleton_id = 1"
+            ).fetchone()
+            if row is not None:
+                current_stop = bool(row["stop_requested"])
+                current_gen = int(row["control_generation"])
+                last_attempt = row["last_attempt_at"]
+                last_success = row["last_success_at"]
+                last_blocked = row["last_blocked_reason"]
+                heartbeat = row["heartbeat_at"]
+                pid = int(row["supervisor_pid"])
+            else:
+                current_stop = False
+                current_gen = 0
+                last_attempt = ""
+                last_success = ""
+                last_blocked = ""
+                heartbeat = ""
+                pid = 0
+
+            new_stop = current_stop if stop_requested is None else stop_requested
+            if new_stop != current_stop or trading_enabled != (row is not None and bool(row["trading_enabled"])):
+                new_gen = current_gen + 1
+            else:
+                new_gen = current_gen
+
             connection.execute(
                 """
                 INSERT INTO runtime_control(
-                    singleton_id, trading_enabled, reason, updated_at
-                ) VALUES(1, ?, ?, ?)
+                    singleton_id, trading_enabled, reason, updated_at, stop_requested, control_generation,
+                    last_attempt_at, last_success_at, last_blocked_reason, heartbeat_at, supervisor_pid
+                ) VALUES(1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(singleton_id) DO UPDATE SET
                     trading_enabled = excluded.trading_enabled,
                     reason = excluded.reason,
-                    updated_at = excluded.updated_at
+                    updated_at = excluded.updated_at,
+                    stop_requested = excluded.stop_requested,
+                    control_generation = excluded.control_generation
                 """,
-                (int(trading_enabled), normalized_reason, timestamp.isoformat()),
+                (
+                    int(trading_enabled),
+                    normalized_reason,
+                    timestamp.isoformat(),
+                    int(new_stop),
+                    new_gen,
+                    last_attempt,
+                    last_success,
+                    last_blocked,
+                    heartbeat,
+                    pid,
+                ),
             )
             connection.commit()
         return self.get_runtime_control()
+
+    def update_supervisor_state(self, *, supervisor_pid: int, stop_requested: bool, occurred_at: datetime) -> None:
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT trading_enabled, reason, control_generation FROM runtime_control WHERE singleton_id = 1"
+            ).fetchone()
+            if row is not None:
+                trading_enabled = int(row["trading_enabled"])
+                reason = row["reason"]
+                gen = int(row["control_generation"])
+            else:
+                trading_enabled = 1
+                reason = ""
+                gen = 0
+            connection.execute(
+                """
+                INSERT INTO runtime_control(
+                    singleton_id, trading_enabled, reason, updated_at, stop_requested, control_generation, supervisor_pid
+                ) VALUES(1, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    stop_requested = excluded.stop_requested,
+                    supervisor_pid = excluded.supervisor_pid,
+                    updated_at = excluded.updated_at
+                """,
+                (trading_enabled, reason, timestamp.isoformat(), int(stop_requested), gen, supervisor_pid),
+            )
+            connection.commit()
+
+    def request_supervisor_start(self, occurred_at: datetime) -> RuntimeControl:
+        """Clear stale acknowledgement state without changing the trading pause."""
+
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT trading_enabled, reason, control_generation FROM runtime_control WHERE singleton_id = 1"
+            ).fetchone()
+            trading_enabled = int(row["trading_enabled"]) if row is not None else 1
+            reason = row["reason"] if row is not None else ""
+            generation = int(row["control_generation"]) if row is not None else 0
+            active_lease = connection.execute(
+                "SELECT 1 FROM runtime_leases WHERE lease_name = ? AND expires_at > ?",
+                ("paper-autopilot", timestamp.isoformat()),
+            ).fetchone()
+            if active_lease is not None:
+                connection.commit()
+                raise ValidationError("Supervisor start failed: active runtime lease exists.")
+            connection.execute(
+                """
+                INSERT INTO runtime_control(
+                    singleton_id, trading_enabled, reason, updated_at, stop_requested,
+                    control_generation, heartbeat_at, supervisor_pid
+                ) VALUES(1, ?, ?, ?, 0, ?, '', 0)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    stop_requested = 0,
+                    heartbeat_at = '',
+                    supervisor_pid = 0,
+                    updated_at = excluded.updated_at
+                """,
+                (trading_enabled, reason, timestamp.isoformat(), generation),
+            )
+            connection.commit()
+        return self.get_runtime_control()
+
+    def acknowledge_supervisor_start(
+        self,
+        *,
+        lease_name: str,
+        owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        supervisor_pid: int,
+        occurred_at: datetime,
+    ) -> bool:
+        """Record startup only while the caller still owns the fenced lease."""
+
+        if type(supervisor_pid) is not int or supervisor_pid <= 0:
+            raise ValidationError("supervisor_pid must be a positive integer.")
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if not self._lease_matches(
+                connection,
+                lease_name=lease_name,
+                owner_run_id=owner_run_id,
+                lease_token=lease_token,
+                fencing_generation=fencing_generation,
+                occurred_at=timestamp,
+            ):
+                connection.commit()
+                return False
+            connection.execute(
+                """
+                INSERT INTO runtime_control(
+                    singleton_id, trading_enabled, reason, updated_at,
+                    stop_requested, control_generation, heartbeat_at, supervisor_pid
+                ) VALUES(1, 1, '', ?, 0, 0, ?, ?)
+                ON CONFLICT(singleton_id) DO UPDATE SET
+                    heartbeat_at = excluded.heartbeat_at,
+                    supervisor_pid = excluded.supervisor_pid,
+                    updated_at = excluded.updated_at
+                """,
+                (timestamp.isoformat(), timestamp.isoformat(), supervisor_pid),
+            )
+            connection.commit()
+        return True
+
+    def update_heartbeat(
+        self,
+        *,
+        lease_name: str,
+        owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        occurred_at: datetime,
+    ) -> bool:
+        """Refresh the heartbeat only for the current, unexpired lease owner."""
+
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if not self._lease_matches(
+                connection,
+                lease_name=lease_name,
+                owner_run_id=owner_run_id,
+                lease_token=lease_token,
+                fencing_generation=fencing_generation,
+                occurred_at=timestamp,
+            ):
+                connection.commit()
+                return False
+            connection.execute(
+                "UPDATE runtime_control SET heartbeat_at = ?, updated_at = ? WHERE singleton_id = 1",
+                (timestamp.isoformat(), timestamp.isoformat()),
+            )
+            connection.commit()
+        return True
+
+    def clear_supervisor_acknowledgment(
+        self,
+        *,
+        lease_name: str,
+        owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        occurred_at: datetime,
+    ) -> bool:
+        """Clear the PID acknowledgement without allowing a stale owner to erase a replacement."""
+
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            lease = connection.execute(
+                "SELECT owner_run_id, lease_token, fencing_generation FROM runtime_leases WHERE lease_name = ?",
+                (lease_name.strip(),),
+            ).fetchone()
+            if lease is not None and (
+                lease["owner_run_id"] != owner_run_id.strip()
+                or lease["lease_token"] != lease_token.strip()
+                or int(lease["fencing_generation"]) != fencing_generation
+            ):
+                connection.commit()
+                return False
+            connection.execute(
+                "UPDATE runtime_control SET supervisor_pid = 0, updated_at = ? WHERE singleton_id = 1",
+                (timestamp.isoformat(),),
+            )
+            connection.commit()
+        return True
+
+    def update_last_attempt(self, occurred_at: datetime) -> None:
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE runtime_control SET last_attempt_at = ?, updated_at = ? WHERE singleton_id = 1",
+                (timestamp.isoformat(), timestamp.isoformat()),
+            )
+            connection.commit()
+
+    def update_last_success(self, occurred_at: datetime) -> None:
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE runtime_control SET last_success_at = ?, last_blocked_reason = '', updated_at = ? WHERE singleton_id = 1",
+                (timestamp.isoformat(), timestamp.isoformat()),
+            )
+            connection.commit()
+
+    def update_last_blocked(self, occurred_at: datetime, reason: str) -> None:
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                "UPDATE runtime_control SET last_blocked_reason = ?, updated_at = ? WHERE singleton_id = 1",
+                (reason.strip(), timestamp.isoformat()),
+            )
+            connection.commit()
 
     def acquire_runtime_lease(
         self,
@@ -303,6 +783,7 @@ class SqliteOrderJournal:
         owner_run_id: str,
         occurred_at: datetime,
         ttl_seconds: int,
+        lease_token: str | None = None,
     ) -> RuntimeLeaseResult:
         name = lease_name.strip()
         owner = owner_run_id.strip()
@@ -316,32 +797,54 @@ class SqliteOrderJournal:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT owner_run_id, expires_at FROM runtime_leases "
+                "SELECT owner_run_id, expires_at, lease_token, fencing_generation FROM runtime_leases "
                 "WHERE lease_name = ?",
                 (name,),
             ).fetchone()
             if row is not None:
                 existing_expiry = datetime.fromisoformat(row["expires_at"])
-                if existing_expiry > timestamp and row["owner_run_id"] != owner:
-                    connection.commit()
-                    return RuntimeLeaseResult(
-                        acquired=False,
-                        lease_name=name,
-                        owner_run_id=row["owner_run_id"],
-                        expires_at=existing_expiry,
-                        blocker="runtime_instance_already_active",
-                    )
+                existing_token = row["lease_token"]
+                existing_gen = int(row["fencing_generation"])
+                if existing_expiry > timestamp:
+                    if (
+                        lease_token is not None
+                        and row["owner_run_id"] == owner
+                        and existing_token == lease_token
+                    ):
+                        new_token = existing_token
+                        new_gen = existing_gen
+                    else:
+                        connection.commit()
+                        return RuntimeLeaseResult(
+                            acquired=False,
+                            lease_name=name,
+                            owner_run_id=row["owner_run_id"],
+                            expires_at=existing_expiry,
+                            blocker="runtime_instance_already_active",
+                            lease_token=existing_token,
+                            fencing_generation=existing_gen,
+                        )
+                else:
+                    import uuid
+                    new_token = str(uuid.uuid4())
+                    new_gen = existing_gen + 1
+            else:
+                import uuid
+                new_token = str(uuid.uuid4())
+                new_gen = 1
             connection.execute(
                 """
                 INSERT INTO runtime_leases(
-                    lease_name, owner_run_id, acquired_at, expires_at
-                ) VALUES(?, ?, ?, ?)
+                    lease_name, owner_run_id, acquired_at, expires_at, lease_token, fencing_generation
+                ) VALUES(?, ?, ?, ?, ?, ?)
                 ON CONFLICT(lease_name) DO UPDATE SET
                     owner_run_id = excluded.owner_run_id,
                     acquired_at = excluded.acquired_at,
-                    expires_at = excluded.expires_at
+                    expires_at = excluded.expires_at,
+                    lease_token = excluded.lease_token,
+                    fencing_generation = excluded.fencing_generation
                 """,
-                (name, owner, timestamp.isoformat(), expires_at.isoformat()),
+                (name, owner, timestamp.isoformat(), expires_at.isoformat(), new_token, new_gen),
             )
             connection.commit()
         return RuntimeLeaseResult(
@@ -350,29 +853,287 @@ class SqliteOrderJournal:
             owner_run_id=owner,
             expires_at=expires_at,
             blocker="",
+            lease_token=new_token,
+            fencing_generation=new_gen,
         )
 
-    def release_runtime_lease(self, *, lease_name: str, owner_run_id: str) -> bool:
+    def release_runtime_lease(self, *, lease_name: str, owner_run_id: str, lease_token: str) -> bool:
         self.initialize()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT lease_token, acquired_at FROM runtime_leases WHERE lease_name = ?",
+                (lease_name.strip(),),
+            ).fetchone()
+            if row is None or row["lease_token"] != lease_token:
+                connection.commit()
+                return False
             cursor = connection.execute(
-                "DELETE FROM runtime_leases WHERE lease_name = ? AND owner_run_id = ?",
-                (lease_name.strip(), owner_run_id.strip()),
+                """
+                UPDATE runtime_leases SET expires_at = acquired_at
+                WHERE lease_name = ? AND owner_run_id = ? AND lease_token = ?
+                """,
+                (lease_name.strip(), owner_run_id.strip(), lease_token.strip()),
             )
             connection.commit()
             return cursor.rowcount == 1
 
-    def force_release_runtime_lease(self, *, lease_name: str) -> bool:
+    def get_lease_details(self, lease_name: str) -> LeaseDetails | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT owner_run_id, acquired_at, expires_at, lease_token, fencing_generation "
+                "FROM runtime_leases WHERE lease_name = ?",
+                (lease_name.strip(),),
+            ).fetchone()
+        if row is None:
+            return None
+        return LeaseDetails(
+            lease_name=lease_name.strip(),
+            owner_run_id=row["owner_run_id"],
+            acquired_at=datetime.fromisoformat(row["acquired_at"]),
+            expires_at=datetime.fromisoformat(row["expires_at"]),
+            lease_token=row["lease_token"],
+            fencing_generation=int(row["fencing_generation"]),
+        )
+
+    def claim_supervisor_cycle(
+        self,
+        *,
+        session_id: str,
+        occurred_at: datetime,
+        max_attempts: int,
+    ) -> CycleClaimResult:
+        """Claim one durable session cycle, retrying only unfinished local failures."""
+
+        identity = _nonempty_text(session_id, "session_id")
+        if type(max_attempts) is not int or max_attempts <= 0:
+            raise ValidationError("max_attempts must be a positive integer.")
+        timestamp = _utc_datetime(occurred_at)
         self.initialize()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            cursor = connection.execute(
-                "DELETE FROM runtime_leases WHERE lease_name = ?",
-                (lease_name.strip(),),
+            row = connection.execute(
+                "SELECT * FROM supervisor_cycles WHERE session_id = ?", (identity,)
+            ).fetchone()
+            if row is None:
+                cycle = SupervisorCycle(
+                    session_id=identity,
+                    attempt_count=1,
+                    last_attempt_at=timestamp,
+                    last_success_at=None,
+                    outcome="in_progress",
+                    last_error="",
+                )
+                connection.execute(
+                    """
+                    INSERT INTO supervisor_cycles(
+                        session_id, attempt_count, last_attempt_at, last_success_at, outcome, last_error
+                    ) VALUES(?, ?, ?, '', ?, '')
+                    """,
+                    (identity, cycle.attempt_count, timestamp.isoformat(), cycle.outcome),
+                )
+                connection.commit()
+                return CycleClaimResult("claimed", cycle)
+            cycle = _supervisor_cycle_from_row(row)
+            if cycle.succeeded:
+                connection.commit()
+                return CycleClaimResult("already_successful", cycle)
+            if cycle.outcome in {"safety_failure", "permanent_failure"}:
+                connection.commit()
+                return CycleClaimResult("nonretryable_failure", cycle)
+            if cycle.attempt_count >= max_attempts:
+                connection.commit()
+                return CycleClaimResult("retry_exhausted", cycle)
+            updated = SupervisorCycle(
+                session_id=cycle.session_id,
+                attempt_count=cycle.attempt_count + 1,
+                last_attempt_at=timestamp,
+                last_success_at=None,
+                outcome="in_progress",
+                last_error="",
+            )
+            connection.execute(
+                """
+                UPDATE supervisor_cycles
+                SET attempt_count = ?, last_attempt_at = ?, outcome = ?, last_error = ''
+                WHERE session_id = ?
+                """,
+                (
+                    updated.attempt_count,
+                    timestamp.isoformat(),
+                    updated.outcome,
+                    identity,
+                ),
             )
             connection.commit()
-            return cursor.rowcount == 1
+            return CycleClaimResult("claimed", updated)
+
+    def complete_supervisor_cycle(
+        self,
+        *,
+        session_id: str,
+        occurred_at: datetime,
+        outcome: str,
+        error: str = "",
+    ) -> SupervisorCycle:
+        """Persist a terminal or retryable deterministic cycle outcome."""
+
+        identity = _nonempty_text(session_id, "session_id")
+        normalized_outcome = _nonempty_text(outcome, "outcome")
+        if normalized_outcome not in {
+            "successful",
+            "retryable_failure",
+            "safety_failure",
+            "permanent_failure",
+        }:
+            raise ValidationError("supervisor cycle outcome is invalid.")
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT * FROM supervisor_cycles WHERE session_id = ?", (identity,)
+            ).fetchone()
+            if row is None:
+                connection.rollback()
+                raise ValidationError("supervisor cycle must be claimed before completion.")
+            existing = _supervisor_cycle_from_row(row)
+            if existing.succeeded and normalized_outcome != "successful":
+                connection.rollback()
+                raise ValidationError("successful supervisor cycle cannot be changed.")
+            success_at = timestamp.isoformat() if normalized_outcome == "successful" else ""
+            safe_error = error.strip()[:240]
+            connection.execute(
+                """
+                UPDATE supervisor_cycles
+                SET last_success_at = ?, outcome = ?, last_error = ?
+                WHERE session_id = ?
+                """,
+                (success_at, normalized_outcome, safe_error, identity),
+            )
+            connection.commit()
+        cycle = self.get_supervisor_cycle(identity)
+        if cycle is None:
+            raise ValidationError("supervisor cycle completion was not persisted.")
+        return cycle
+
+    def get_supervisor_cycle(self, session_id: str) -> SupervisorCycle | None:
+        identity = _nonempty_text(session_id, "session_id")
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM supervisor_cycles WHERE session_id = ?", (identity,)
+            ).fetchone()
+        return _supervisor_cycle_from_row(row) if row is not None else None
+
+    def claim_pre_mutation_submit(
+        self,
+        *,
+        client_order_id: str,
+        execution_plan_id: str,
+        reservation_run_id: str,
+        lease_name: str,
+        lease_owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        canonical_risk_allowed: bool,
+        snapshot_fresh: bool,
+        occurred_at: datetime,
+    ) -> OrderJournalRecord:
+        """Atomically fence and journal the final pre-broker submit transition.
+
+        This is intentionally the one durable mutation gate.  Once it returns a
+        ``SUBMIT_ATTEMPTED`` record, a caller may invoke its injected broker
+        boundary exactly once; every failed predicate leaves that boundary
+        untouched.
+        """
+
+        order_id = _nonempty_text(client_order_id, "client_order_id")
+        plan_id = _nonempty_text(execution_plan_id, "execution_plan_id")
+        run_id = _nonempty_text(reservation_run_id, "reservation_run_id")
+        if type(canonical_risk_allowed) is not bool or not canonical_risk_allowed:
+            raise ValidationError("canonical_risk_not_allowed")
+        if type(snapshot_fresh) is not bool or not snapshot_fresh:
+            raise ValidationError("required_snapshot_not_fresh")
+        if type(fencing_generation) is not int or fencing_generation <= 0:
+            raise ValidationError("fencing_generation_invalid")
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            control = connection.execute(
+                "SELECT trading_enabled, stop_requested FROM runtime_control WHERE singleton_id = 1"
+            ).fetchone()
+            if control is not None and not bool(control["trading_enabled"]):
+                connection.rollback()
+                raise ValidationError("trading_disabled")
+            if control is not None and bool(control["stop_requested"]):
+                connection.rollback()
+                raise ValidationError("stop_requested")
+            if not self._lease_matches(
+                connection,
+                lease_name=lease_name,
+                owner_run_id=lease_owner_run_id,
+                lease_token=lease_token,
+                fencing_generation=fencing_generation,
+                occurred_at=timestamp,
+            ):
+                connection.rollback()
+                raise ValidationError("runtime_lease_fencing_mismatch")
+            record = self._select(connection, order_id)
+            if record is None:
+                connection.rollback()
+                raise ValidationError("idempotency_reservation_missing")
+            if record.execution_plan_id != plan_id:
+                connection.rollback()
+                raise ValidationError("immutable_execution_plan_identity_mismatch")
+            if record.run_id != run_id:
+                connection.rollback()
+                raise ValidationError("idempotency_reservation_owner_mismatch")
+            if record.state is not OrderJournalState.RESERVED:
+                connection.rollback()
+                raise ValidationError("idempotency_reservation_not_submit_ready")
+            terminal_values = tuple(state.value for state in _TERMINAL_STATES)
+            placeholders = ", ".join("?" for _ in terminal_values)
+            conflicts = connection.execute(
+                f"""
+                SELECT client_order_id, state FROM orders
+                WHERE client_order_id != ?
+                  AND state NOT IN ({placeholders})
+                ORDER BY created_at, client_order_id
+                """,
+                (order_id, *terminal_values),
+            ).fetchall()
+            if conflicts:
+                connection.rollback()
+                if any(row["state"] == OrderJournalState.UNKNOWN.value for row in conflicts):
+                    raise ValidationError("unknown_order_state_present")
+                raise ValidationError("conflicting_nonterminal_order_state_present")
+            connection.execute(
+                "UPDATE orders SET state = ?, updated_at = ? WHERE client_order_id = ?",
+                (
+                    OrderJournalState.SUBMIT_ATTEMPTED.value,
+                    timestamp.isoformat(),
+                    order_id,
+                ),
+            )
+            self._append_event(
+                connection,
+                order_id,
+                "submit_attempted",
+                OrderJournalState.SUBMIT_ATTEMPTED,
+                timestamp,
+                {
+                    "execution_plan_id": plan_id,
+                    "fencing_generation": fencing_generation,
+                },
+            )
+            connection.commit()
+            updated = self._select(connection, order_id)
+        if updated is None:
+            raise ValidationError("pre-mutation journal claim was not persisted.")
+        return updated
 
     def reserve(
         self,
@@ -514,6 +1275,59 @@ class SqliteOrderJournal:
             rows = connection.execute(query, parameters).fetchall()
             return tuple(_record_from_row(row) for row in rows)
 
+    def records(self, symbol: str | None = None) -> tuple[OrderJournalRecord, ...]:
+        """Return durable records for offline reconciliation only."""
+
+        self.initialize()
+        query = "SELECT * FROM orders"
+        parameters: tuple[str, ...] = ()
+        if symbol is not None:
+            query += " WHERE symbol = ?"
+            parameters = (symbol_value(symbol),)
+        query += " ORDER BY created_at, client_order_id"
+        with self._connect() as connection:
+            return tuple(
+                _record_from_row(row)
+                for row in connection.execute(query, parameters).fetchall()
+            )
+
+    def record_reconciliation_result(self, result: dict[str, object]) -> None:
+        """Persist the most recent deterministic offline reconciliation receipt."""
+
+        if not isinstance(result, dict):
+            raise ValidationError("reconciliation result must be a dictionary.")
+        try:
+            payload = json.dumps(result, sort_keys=True, separators=(",", ":"))
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("reconciliation result is not JSON-safe.") from exc
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.execute(
+                """
+                INSERT INTO journal_metadata(key, value) VALUES('last_reconciliation_result', ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value
+                """,
+                (payload,),
+            )
+            connection.commit()
+
+    def last_reconciliation_result(self) -> dict[str, object] | None:
+        self.initialize()
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT value FROM journal_metadata WHERE key = 'last_reconciliation_result'"
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            parsed = json.loads(row["value"])
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValidationError("stored reconciliation result is corrupt.") from exc
+        if not isinstance(parsed, dict):
+            raise ValidationError("stored reconciliation result is corrupt.")
+        return parsed
+
     def backup(self, dest_path: str | Path) -> None:
         self.initialize()
         dest = Path(dest_path)
@@ -593,6 +1407,32 @@ class SqliteOrderJournal:
         return connection
 
     @staticmethod
+    def _lease_matches(
+        connection: sqlite3.Connection,
+        *,
+        lease_name: str,
+        owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        occurred_at: datetime,
+    ) -> bool:
+        row = connection.execute(
+            """
+            SELECT owner_run_id, expires_at, lease_token, fencing_generation
+            FROM runtime_leases WHERE lease_name = ?
+            """,
+            (_nonempty_text(lease_name, "lease_name"),),
+        ).fetchone()
+        if row is None:
+            return False
+        return (
+            row["owner_run_id"] == _nonempty_text(owner_run_id, "lease_owner_run_id")
+            and row["lease_token"] == _nonempty_text(lease_token, "lease_token")
+            and int(row["fencing_generation"]) == fencing_generation
+            and datetime.fromisoformat(row["expires_at"]) > occurred_at
+        )
+
+    @staticmethod
     def _select(
         connection: sqlite3.Connection,
         client_order_id: str,
@@ -646,6 +1486,25 @@ def _record_from_row(row: sqlite3.Row) -> OrderJournalRecord:
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
     )
+
+
+def _supervisor_cycle_from_row(row: sqlite3.Row) -> SupervisorCycle:
+    success_text = str(row["last_success_at"] or "")
+    return SupervisorCycle(
+        session_id=row["session_id"],
+        attempt_count=int(row["attempt_count"]),
+        last_attempt_at=datetime.fromisoformat(row["last_attempt_at"]),
+        last_success_at=(datetime.fromisoformat(success_text) if success_text else None),
+        outcome=row["outcome"],
+        last_error=row["last_error"],
+    )
+
+
+def _nonempty_text(value: object, field_name: str) -> str:
+    text = str(value).strip()
+    if not text:
+        raise ValidationError(f"{field_name} is required.")
+    return text
 
 
 def _same_request(record: OrderJournalRecord, reservation: OrderReservation) -> bool:

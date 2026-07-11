@@ -5,8 +5,10 @@ from decimal import Decimal
 import hashlib
 import json
 from pathlib import Path
+import pytest
 
 from algotrader.config import DEFAULT_ALPACA_PAPER_BASE_URL
+from algotrader.errors import ValidationError
 from algotrader.execution.paper_autopilot_loop import (
     PaperAutopilotLoopConfig,
     paper_autopilot_client_order_id,
@@ -1296,6 +1298,147 @@ def test_paper_autopilot_database_kill_switch_blocks_submit(
     assert record["blocker_status"] == "blocked/operator_paused"
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_lease_fencing_mismatch_blocks_submit(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+
+    journal_path = tmp_path / "order_journal.sqlite3"
+    from algotrader.execution.order_journal import SqliteOrderJournal
+    journal = SqliteOrderJournal(journal_path)
+
+    res = journal.acquire_runtime_lease(
+        lease_name="paper-autopilot",
+        owner_run_id="supervisor-pid-9999",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+        ttl_seconds=60,
+    )
+
+    with pytest.raises(ValidationError, match="runtime_instance_already_active"):
+        run_paper_autopilot_loop(
+            PaperAutopilotLoopConfig(
+                output_root=tmp_path / "out",
+                bars_csv=bars_csv,
+                readiness_packet_path=readiness_packet_path,
+                order_journal_path=journal_path,
+            ),
+            env=_paper_env(),
+            broker_client_factory=_factory(broker),
+            daily_lab_runner=_fake_daily_lab,
+            timestamp=GENERATED_AT,
+            lease_token="mismatched-token-value",
+            fencing_generation=res.fencing_generation,
+            lease_owner_run_id="supervisor-pid-9999",
+        )
+
+    assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_fencing_generation_mismatch_blocks_submit(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+
+    journal_path = tmp_path / "order_journal.sqlite3"
+    from algotrader.execution.order_journal import SqliteOrderJournal
+    journal = SqliteOrderJournal(journal_path)
+
+    res = journal.acquire_runtime_lease(
+        lease_name="paper-autopilot",
+        owner_run_id="supervisor-pid-9999",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+        ttl_seconds=60,
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            readiness_packet_path=readiness_packet_path,
+            order_journal_path=journal_path,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+        lease_token=res.lease_token,
+        fencing_generation=res.fencing_generation + 42,
+        lease_owner_run_id="supervisor-pid-9999",
+    )
+
+    assert record["paper_submit_performed"] is False
+    assert record["action_result"]["mutation_status"] == "blocked_before_submit"
+    assert record["action_result"]["broker_error"] == "runtime_lease_fencing_mismatch"
+    assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_stop_requested_blocks_submit(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+
+    journal_path = tmp_path / "order_journal.sqlite3"
+    from algotrader.execution.order_journal import SqliteOrderJournal
+    journal = SqliteOrderJournal(journal_path)
+    journal.set_runtime_control(
+        trading_enabled=True,
+        reason="running",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+        stop_requested=True,
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            readiness_packet_path=readiness_packet_path,
+            order_journal_path=journal_path,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["paper_submit_performed"] is False
+    assert record["action_result"]["mutation_status"] == "blocked_before_submit"
+    assert record["action_result"]["broker_error"] == "stop_requested"
     assert broker.submitted_requests == []
 
 

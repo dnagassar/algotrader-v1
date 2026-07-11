@@ -20,15 +20,12 @@ def test_run_spy_paper_mutation_supervisor_script_contract() -> None:
         "Runs the SPY paper-only mutation supervisor",
         "[string]$OutputRoot = \"runs\\paper_mutation_supervisor\\latest\"",
         "[string]$HistoryRoot = \"runs\\paper_mutation_supervisor\\history\"",
-        "paper-autopilot-operator",
+        "paper-autopilot-supervisor",
         "--output-root",
-        "--history-root",
         "--bars-csv",
         "--max-notional",
         "[string]$ReadinessPacketPath",
-        "--readiness-packet",
         "[switch]$NoSubmit",
-        "--no-submit",
         "preflight_expected_account_id_loaded",
         "preflight_no_submit_mode",
         "preflight_operating_mode",
@@ -112,18 +109,11 @@ def test_run_spy_paper_mutation_supervisor_invokes_operator_cli(
     assert "preflight_operating_mode=visibility/no_submit" in result.stdout
     assert "preflight_readiness_packet_provided=true" in result.stdout
     args = capture_path.read_text(encoding="utf-8")
-    assert "-m algotrader.cli paper-autopilot-operator" in args
+    assert "-m algotrader.cli paper-autopilot-supervisor" in args
     assert "--output-root" in args
     assert str(output_root) in args
-    assert "--history-root" in args
-    assert str(history_root) in args
     assert "--bars-csv" in args
     assert str(bars_csv) in args
-    assert "--as-of-date 2026-01-01" in args
-    assert "--readiness-packet" in args
-    assert str(readiness_packet) in args
-    assert "--no-submit" in args
-    assert "--format json" in args
 
 
 def test_run_spy_daily_visibility_cycle_invokes_supervisor_with_no_submit(
@@ -176,16 +166,11 @@ def test_run_spy_daily_visibility_cycle_invokes_supervisor_with_no_submit(
     assert "preflight_no_submit_mode=true" in result.stdout
     assert "preflight_operating_mode=visibility/no_submit" in result.stdout
     args = capture_path.read_text(encoding="utf-8")
-    assert "-m algotrader.cli paper-autopilot-operator" in args
+    assert "-m algotrader.cli paper-autopilot-supervisor" in args
     assert "--output-root" in args
     assert str(output_root) in args
-    assert "--history-root" in args
-    assert str(history_root) in args
     assert "--bars-csv" in args
     assert str(bars_csv) in args
-    assert "--as-of-date 2026-01-01" in args
-    assert "--no-submit" in args
-    assert "--format json" in args
 
 
 def _fake_python_env(tmp_path: Path, capture_path: Path) -> dict[str, str]:

@@ -86,7 +86,7 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
     tmp_path: Path,
 ) -> None:
     bars_csv = _write_bars(tmp_path, posture="risk_on")
-    broker = FakeAutopilotBroker()
+    broker = FakeAutopilotBroker(submitted_order_status="filled")
     readiness_packet_path = _write_readiness_packet(
         tmp_path,
         bars_csv,
@@ -117,7 +117,7 @@ def test_operator_healthy_paper_action_reconciled_returns_zero(
     assert summary["paper_mutation_readiness_status"] == "readiness_blocked_no_submit_mode"
     assert summary["paper_submit_performed"] is True
     assert summary["broker_mutation_performed"] is True
-    assert summary["reconciliation_status"] == "reconciled_submit_observed"
+    assert summary["reconciliation_status"] == "reconciled_terminal_filled"
     assert paper_autopilot_operator_exit_status(result) == 0
 
 
@@ -526,6 +526,7 @@ class FakeAutopilotBroker:
         open_orders: tuple[dict[str, object], ...] = (),
         recent_orders: tuple[dict[str, object], ...] = (),
         hide_submitted_order_from_reconciliation: bool = False,
+        submitted_order_status: str = "accepted",
     ) -> None:
         self.positions = positions
         self.open_orders = list(open_orders)
@@ -533,6 +534,7 @@ class FakeAutopilotBroker:
         self.hide_submitted_order_from_reconciliation = (
             hide_submitted_order_from_reconciliation
         )
+        self.submitted_order_status = submitted_order_status
         self.submitted_requests = []
         self.calls: list[str] = []
 
@@ -572,12 +574,19 @@ class FakeAutopilotBroker:
             "client_order_id": request.client_order_id,
             "symbol": request.symbol,
             "side": request.side,
-            "status": "accepted",
+            "status": self.submitted_order_status,
             "type": request.order_type,
             "time_in_force": request.time_in_force,
             "notional": request.notional,
             "qty": request.qty,
-            "filled_qty": Decimal("0"),
+            "filled_qty": (
+                Decimal("0.25")
+                if self.submitted_order_status == "filled"
+                else Decimal("0")
+            ),
+            "filled_avg_price": (
+                Decimal("100") if self.submitted_order_status == "filled" else None
+            ),
         }
         if not self.hide_submitted_order_from_reconciliation:
             self.recent_orders.append(order)
