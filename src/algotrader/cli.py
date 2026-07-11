@@ -2601,6 +2601,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run visibility-only mode and hard-block paper broker mutation.",
     )
     paper_autopilot_loop_parser.add_argument(
+        "--operator-paused",
+        action="store_true",
+        help="Activate the fail-closed operator kill switch for this run.",
+    )
+    paper_autopilot_loop_parser.add_argument(
+        "--order-journal-path",
+        default=None,
+        help="Path to the durable SQLite order journal.",
+    )
+    paper_autopilot_loop_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
@@ -2675,11 +2685,94 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run visibility-only mode and hard-block paper broker mutation.",
     )
     paper_autopilot_operator_parser.add_argument(
+        "--operator-paused",
+        action="store_true",
+        help="Activate the fail-closed operator kill switch for this run.",
+    )
+    paper_autopilot_operator_parser.add_argument(
+        "--order-journal-path",
+        default=None,
+        help="Path to the durable SQLite order journal.",
+    )
+    paper_autopilot_operator_parser.add_argument(
         "--format",
         choices=_PREVIEW_FORMATS,
         default="text",
         dest="output_format",
         help="Output format.",
+    )
+
+    paper_autopilot_control_parser = subparsers.add_parser(
+        "paper-autopilot-control",
+        help="Read or update the durable paper-autopilot kill switch and manage operations.",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "action",
+        choices=(
+            "status",
+            "pause",
+            "resume",
+            "backup",
+            "restore",
+            "reconcile",
+            "one-cycle",
+            "start",
+            "stop",
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--order-journal-path",
+        default="runs/paper_autopilot/state/order_journal.sqlite3",
+        dest="journal_path",
+    )
+    paper_autopilot_control_parser.add_argument("--reason", default="")
+    paper_autopilot_control_parser.add_argument(
+        "--backup-path",
+        default=None,
+        help="Path for journal backup/restore operations.",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--output-root",
+        default="runs/paper_autopilot/latest",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--bars-csv",
+        default="runs/operator_input/m446_spy_daily_tiingo_adjusted_canonical.csv",
+    )
+    paper_autopilot_control_parser.add_argument("--history-root", default=None)
+    paper_autopilot_control_parser.add_argument("--as-of-date", default=None)
+    paper_autopilot_control_parser.add_argument("--run-date", default=None)
+    paper_autopilot_control_parser.add_argument("--symbol", default="SPY")
+    paper_autopilot_control_parser.add_argument(
+        "--sma-fast-window",
+        type=int,
+        default=50,
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--sma-slow-window",
+        type=int,
+        default=200,
+    )
+    paper_autopilot_control_parser.add_argument("--max-notional", default="25.00")
+    paper_autopilot_control_parser.add_argument(
+        "--readiness-packet",
+        default=None,
+        dest="readiness_packet_path",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--no-submit",
+        action="store_true",
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--runtime-lease-seconds",
+        type=int,
+        default=900,
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--format",
+        choices=_PREVIEW_FORMATS,
+        default="text",
+        dest="output_format",
     )
 
 
@@ -3920,6 +4013,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_paper_autopilot_history(args)
     if command == "paper-autopilot-operator":
         return _run_paper_autopilot_operator(args)
+    if command == "paper-autopilot-control":
+        return _run_paper_autopilot_control(args)
 
     if command == "etf-sma-daily-status":
         return _run_etf_sma_daily_status(args)
@@ -6200,6 +6295,8 @@ def _run_paper_autopilot_loop(args: argparse.Namespace) -> int:
                 max_notional=args.max_notional,
                 no_submit=args.no_submit,
                 readiness_packet_path=args.readiness_packet_path,
+                order_journal_path=args.order_journal_path,
+                operator_paused=args.operator_paused,
             )
         )
         if args.output_format == "json":
@@ -6270,6 +6367,9 @@ def _run_paper_autopilot_operator(args: argparse.Namespace) -> int:
                 sma_slow_window=args.sma_slow_window,
                 max_notional=args.max_notional,
                 no_submit=args.no_submit,
+                readiness_packet_path=args.readiness_packet_path,
+                order_journal_path=args.order_journal_path,
+                operator_paused=args.operator_paused,
             )
         )
         if args.output_format == "json":
@@ -6280,6 +6380,57 @@ def _run_paper_autopilot_operator(args: argparse.Namespace) -> int:
                 end="",
             )
         return paper_autopilot_operator_exit_status(result)
+    except ValidationError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(f"Operational error: {exc}", file=sys.stderr)
+        return 2
+
+
+def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
+    import json
+    import sys
+    from .errors import ValidationError
+    from .execution.paper_autopilot_control import (
+        PaperAutopilotControlConfig,
+        run_paper_autopilot_control,
+    )
+
+    try:
+        import os
+        config_args = {
+            "journal_path": args.journal_path,
+            "action": args.action,
+            "reason": args.reason,
+        }
+        for name in (
+            "backup_path",
+            "output_root",
+            "bars_csv",
+            "history_root",
+            "as_of_date",
+            "run_date",
+            "symbol",
+            "sma_fast_window",
+            "sma_slow_window",
+            "max_notional",
+            "readiness_packet_path",
+            "no_submit",
+            "runtime_lease_seconds",
+        ):
+            if hasattr(args, name) and getattr(args, name) is not None:
+                config_args[name] = getattr(args, name)
+
+        result = run_paper_autopilot_control(
+            PaperAutopilotControlConfig(**config_args),
+            env=os.environ,
+        )
+        if args.output_format == "json":
+            print(json.dumps(result, sort_keys=True, separators=(",", ":")))
+        else:
+            print(json.dumps(result, sort_keys=True, indent=2))
+        return 0
     except ValidationError as exc:
         print(str(exc), file=sys.stderr)
         return 2

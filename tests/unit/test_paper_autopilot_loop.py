@@ -158,7 +158,7 @@ def test_paper_autopilot_buy_when_risk_on_without_position_or_order(
     )
 
     assert record["preview_action_decision"] == "paper_buy_allowed"
-    assert record["blocker_status"] == "action/submitted"
+    assert record["blocker_status"] == "blocked/reconciliation_required"
     assert record["paper_mutation_readiness_gate_status"] == "authorized"
     assert record["paper_mutation_readiness_packet_consumed"] is True
     assert record["paper_mutation_readiness_status"] == "readiness_blocked_no_submit_mode"
@@ -169,9 +169,17 @@ def test_paper_autopilot_buy_when_risk_on_without_position_or_order(
     assert record["paper_submit_authorized"] is True
     assert record["paper_submit_performed"] is True
     assert record["broker_mutation_performed"] is True
+    assert record["canonical_risk_allowed"] is True
+    assert record["canonical_policy_accepted"] is True
+    assert record["canonical_runtime_plan"]["decision_status"] == "accepted"
     assert record["live_mutation_performed"] is False
-    assert record["reconciliation_status"] == "reconciled_submit_observed"
-    assert record["final_classification"] == "paper_submit_reconciled"
+    assert record["reconciliation_status"] == (
+        "reconciled_nonterminal_order_observed"
+    )
+    assert record["reconciliation"]["terminal_order_observed"] is False
+    assert record["final_classification"] == (
+        "paper_submit_nonterminal_reconciliation_required"
+    )
     assert record["order_id"] == "paper-order-1"
     assert record["client_order_id"].startswith("pa-v207-spy-buy-")
     mutation_receipt = json.loads(
@@ -185,7 +193,9 @@ def test_paper_autopilot_buy_when_risk_on_without_position_or_order(
     assert mutation_receipt["paper_mutation_readiness_packet_consumed"] is True
     assert mutation_receipt["order_id"] == "paper-order-1"
     assert mutation_receipt["order_status"] == "accepted"
-    assert mutation_receipt["reconciliation_status"] == "reconciled_submit_observed"
+    assert mutation_receipt["reconciliation_status"] == (
+        "reconciled_nonterminal_order_observed"
+    )
     assert mutation_receipt["ambiguity_status"] == "not_ambiguous"
     request = broker.submitted_requests[0]
     assert request.symbol == "SPY"
@@ -764,11 +774,58 @@ def test_paper_autopilot_no_submit_does_not_mask_stale_data(
     assert record["mutation_would_be_required_without_no_submit"] is False
     assert record["blocker_status"] == "blocked/stale_data_preview_only"
     assert record["final_classification"] == "blocked_stale_data_preview_only"
-    assert record["blockers"] == ["stale_data_preview_only"]
-    assert record["action_result"]["mutation_status"] == "blocked_before_submit"
+    assert record["blockers"] == [
+        "stale_data_preview_only",
+        "canonical_risk_rejected_market_data_stale",
+    ]
+    assert record["action_result"]["mutation_status"] == (
+        "blocked_canonical_plan_not_accepted"
+    )
     assert record["paper_submit_performed"] is False
     assert record["broker_mutation_performed"] is False
     assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_operator_pause_blocks_canonical_plan(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            readiness_packet_path=readiness_packet_path,
+            operator_paused=True,
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["operator_paused"] is True
+    assert record["canonical_risk_allowed"] is False
+    assert record["canonical_policy_accepted"] is False
+    assert record["canonical_runtime_plan"]["decision_status"] == (
+        "blocked_before_risk"
+    )
+    assert record["blocker_status"] == "blocked/operator_paused"
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
+    assert broker.calls == []
 
 
 def test_paper_autopilot_blocks_when_open_spy_order_present(tmp_path: Path) -> None:
@@ -904,6 +961,47 @@ def test_paper_autopilot_blocks_duplicate_client_order_id(tmp_path: Path) -> Non
     assert record["paper_submit_authorized"] is False
     assert record["paper_submit_performed"] is False
     assert broker.submitted_requests == []
+
+
+def test_paper_autopilot_restart_blocks_when_broker_forgets_accepted_order(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+    first_broker = FakeAutopilotBroker()
+
+    first = _run(
+        tmp_path,
+        bars_csv,
+        first_broker,
+        readiness_packet_path=readiness_packet_path,
+    )
+    restarted_broker = FakeAutopilotBroker()
+    restarted = _run(
+        tmp_path,
+        bars_csv,
+        restarted_broker,
+        readiness_packet_path=readiness_packet_path,
+    )
+
+    assert first["order_journal_reservation_acquired"] is True
+    assert first["paper_submit_performed"] is True
+    assert restarted["blocker_status"] == (
+        "blocked/durable_spy_order_state_unresolved"
+    )
+    assert restarted["order_journal_unresolved_order_count"] == 1
+    assert restarted["paper_submit_authorized"] is False
+    assert restarted["paper_submit_performed"] is False
+    assert restarted_broker.submitted_requests == []
 
 
 def test_paper_autopilot_conflicting_strategy_route_skips_broker_factory(
@@ -1150,6 +1248,55 @@ def test_paper_autopilot_ambiguous_submit_blocks_and_does_not_retry(
     assert broker.calls.count("submit_order") == 1
     assert broker.submitted_requests != []
     _assert_no_sensitive_values(record)
+
+
+def test_paper_autopilot_database_kill_switch_blocks_submit(
+    tmp_path: Path,
+) -> None:
+    bars_csv = _write_bars(tmp_path, posture="risk_on")
+    broker = FakeAutopilotBroker()
+    readiness_packet_path = _write_readiness_packet(
+        tmp_path,
+        bars_csv,
+        action="buy",
+        side="buy",
+        notional="25.00",
+        quantity="",
+        spy_position_observed=False,
+        spy_position_quantity="0",
+    )
+
+    # Write pause state directly to SQLite order journal
+    journal_path = tmp_path / "order_journal.sqlite3"
+    from algotrader.execution.order_journal import SqliteOrderJournal
+    journal = SqliteOrderJournal(journal_path)
+    journal.set_runtime_control(
+        trading_enabled=False,
+        reason="operator manual stop",
+        occurred_at=datetime.fromisoformat(GENERATED_AT),
+    )
+
+    record = run_paper_autopilot_loop(
+        PaperAutopilotLoopConfig(
+            output_root=tmp_path / "out",
+            bars_csv=bars_csv,
+            readiness_packet_path=readiness_packet_path,
+            order_journal_path=journal_path,
+            operator_paused=False, # do not override pause in config, let it load from DB
+        ),
+        env=_paper_env(),
+        broker_client_factory=_factory(broker),
+        daily_lab_runner=_fake_daily_lab,
+        timestamp=GENERATED_AT,
+    )
+
+    assert record["operator_paused"] is True
+    assert record["canonical_risk_allowed"] is False
+    assert record["canonical_policy_accepted"] is False
+    assert record["blocker_status"] == "blocked/operator_paused"
+    assert record["paper_submit_authorized"] is False
+    assert record["paper_submit_performed"] is False
+    assert broker.submitted_requests == []
 
 
 def test_runs_artifacts_remain_gitignored() -> None:

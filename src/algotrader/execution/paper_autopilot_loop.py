@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import csv
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import dataclass, fields, is_dataclass
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal, InvalidOperation
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -32,6 +33,20 @@ from algotrader.execution.paper_autopilot_history import (
     PaperAutopilotHistoryConfig,
     update_paper_autopilot_operating_history,
 )
+from algotrader.execution.paper_autopilot_health import paper_autopilot_health
+from algotrader.execution.order_journal import (
+    OrderReservation,
+    SqliteOrderJournal,
+)
+from algotrader.execution.paper_runtime_planning import (
+    CanonicalPaperRuntimePlan,
+    PaperRuntimePlanningInput,
+    build_canonical_paper_runtime_plan,
+)
+from algotrader.execution.stable_file_snapshot import (
+    StableFileSnapshot,
+    capture_stable_file,
+)
 from algotrader.orchestration.strategy_router import (
     SMA_TRAINING_WHEEL_STRATEGY_ID,
     STRATEGY_ROUTER_LABEL,
@@ -50,6 +65,8 @@ from algotrader.orchestration.strategy_adapter_registry import (
     resolve_strategy_adapter,
     resolve_strategy_route_adapter,
 )
+from algotrader.portfolio.state import Position
+from algotrader.risk.context import RiskContext
 from algotrader.signals.etf_sma_evaluator import (
     EtfSmaSignalConfig,
     evaluate_etf_sma_signal,
@@ -116,6 +133,9 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
 _BEARER_TOKEN_PATTERN = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 _URL_PATTERN = re.compile(r"https?://[^\s)>\]\"']+")
 _SAFE_MESSAGE_LIMIT = 240
+_TERMINAL_ORDER_STATUSES = frozenset(
+    {"filled", "rejected", "canceled", "cancelled", "expired"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +153,10 @@ class PaperAutopilotLoopConfig:
     policy: str = PAPER_AUTOPILOT_POLICY
     no_submit: bool = False
     readiness_packet_path: Path | str | None = None
+    order_journal_path: Path | str | None = None
+    operator_paused: bool = False
+    operator_pause_reason: str = "operator_pause_flag"
+    runtime_lease_seconds: int = 900
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "output_root", _path(self.output_root, "output_root"))
@@ -162,6 +186,14 @@ class PaperAutopilotLoopConfig:
             raise ValidationError("paper autopilot policy is not authorized.")
         if type(self.no_submit) is not bool:
             raise ValidationError("no_submit must be a boolean.")
+        if type(self.operator_paused) is not bool:
+            raise ValidationError("operator_paused must be a boolean.")
+        pause_reason = str(self.operator_pause_reason).strip()
+        if self.operator_paused and not pause_reason:
+            raise ValidationError("operator_pause_reason is required when paused.")
+        object.__setattr__(self, "operator_pause_reason", pause_reason)
+        if type(self.runtime_lease_seconds) is not int or self.runtime_lease_seconds <= 0:
+            raise ValidationError("runtime_lease_seconds must be a positive integer.")
         if self.as_of_date is not None:
             _parse_date_text(self.as_of_date, "as_of_date")
         if self.run_date is not None:
@@ -171,6 +203,12 @@ class PaperAutopilotLoopConfig:
                 self,
                 "readiness_packet_path",
                 _path(self.readiness_packet_path, "readiness_packet_path"),
+            )
+        if self.order_journal_path is not None:
+            object.__setattr__(
+                self,
+                "order_journal_path",
+                _path(self.order_journal_path, "order_journal_path"),
             )
 
 
@@ -215,6 +253,7 @@ class PaperAutopilotExecutionPlan:
     paper_submit_authorized: bool
     submit_allowed: bool
     no_submit_mode: bool
+    canonical_runtime_plan: CanonicalPaperRuntimePlan
     paper_mutation_readiness_gate: Mapping[str, object]
     mutation_would_be_required_without_no_submit: bool
     intended_mutation_action: str
@@ -239,6 +278,11 @@ class PaperAutopilotExecutionPlan:
             "paper_submit_authorized": self.paper_submit_authorized,
             "submit_allowed": self.submit_allowed,
             "no_submit_mode": self.no_submit_mode,
+            "canonical_runtime_plan": self.canonical_runtime_plan.to_dict(),
+            "canonical_risk_allowed": self.canonical_runtime_plan.risk_allowed,
+            "canonical_policy_accepted": (
+                self.canonical_runtime_plan.policy_accepted
+            ),
             "paper_mutation_readiness_gate": dict(
                 self.paper_mutation_readiness_gate
             ),
@@ -269,6 +313,20 @@ def run_paper_autopilot_loop(
     output_root.mkdir(parents=True, exist_ok=True)
     generated_at = timestamp or _utc_now_text()
     run_id = f"paper_autopilot_{generated_at.replace(':', '').replace('-', '')}"
+    journal_timestamp = datetime.fromisoformat(generated_at)
+    runtime_control = _runtime_control_state(
+        config=resolved,
+        occurred_at=journal_timestamp,
+    )
+    runtime_lease = _runtime_lease_state(
+        config=resolved,
+        run_id=run_id,
+        occurred_at=journal_timestamp,
+    )
+    if runtime_lease.get("acquired") is not True:
+        raise ValidationError(
+            _text(runtime_lease.get("blocker")) or "runtime_lease_unavailable"
+        )
     process_env = _normalized_env(env)
     secret_values = _secret_values(process_env)
     paper_mutation_readiness = _load_paper_mutation_readiness_packet(
@@ -277,8 +335,9 @@ def run_paper_autopilot_loop(
     )
 
     bars_path = Path(resolved.bars_csv)
-    bars = _load_bars(bars_path, resolved.symbol)
-    data_sha256 = _file_sha256(bars_path)
+    bars_snapshot = capture_stable_file(bars_path)
+    bars = _load_bars_snapshot(bars_snapshot, resolved.symbol)
+    data_sha256 = bars_snapshot.sha256
     as_of_dt = _as_of_datetime(resolved, bars)
     as_of_date = as_of_dt.date().isoformat()
     signal = evaluate_etf_sma_signal(
@@ -345,8 +404,15 @@ def run_paper_autopilot_loop(
         output_root=output_root,
         daily_lab_runner=daily_lab_runner,
     )
-    if route_blocker:
-        broker_state = _unobserved_broker_state(route_blocker)
+    runtime_control_blocker = (
+        "operator_paused"
+        if runtime_control.get("operator_paused") is True
+        else ""
+    )
+    if route_blocker or runtime_control_blocker:
+        broker_state = _unobserved_broker_state(
+            route_blocker or runtime_control_blocker
+        )
     else:
         broker_state = _observe_broker_state(
             preflight=preflight,
@@ -370,6 +436,21 @@ def run_paper_autopilot_loop(
         as_of_date=as_of_date,
         data_sha256=data_sha256,
     )
+    canonical_runtime_plan = build_canonical_paper_runtime_plan(
+        _paper_runtime_planning_input(
+            intent=intent,
+            broker_state=broker_state,
+            latest_bar=max(
+                (bar for bar in bars if bar.timestamp <= as_of_dt),
+                key=lambda bar: bar.timestamp,
+                default=None,
+            ),
+            max_notional=resolved.max_notional,
+            client_order_id=client_order_id,
+            daily_cycle=daily_cycle,
+            operator_paused=runtime_control.get("operator_paused") is True,
+        )
+    )
     plan = _build_plan(
         config=resolved,
         intent=intent,
@@ -382,16 +463,34 @@ def run_paper_autopilot_loop(
         daily_cycle=daily_cycle,
         client_order_id=client_order_id,
         safety_labels=safety_labels,
+        canonical_runtime_plan=canonical_runtime_plan,
         paper_mutation_readiness=paper_mutation_readiness,
-        broker_observation_required=route_blocker == "",
+        broker_observation_required=(
+            route_blocker == "" and runtime_control_blocker == ""
+        ),
+    )
+    plan, order_journal, order_journal_status = _prepare_order_journal(
+        config=resolved,
+        plan=plan,
+        broker_state=broker_state,
+        run_id=run_id,
+        occurred_at=journal_timestamp,
     )
     broker = broker_state.pop("_broker", None)
-    action_result = _execute_plan(plan, broker=broker, secret_values=secret_values)
+    action_result = _execute_plan(
+        plan,
+        broker=broker,
+        secret_values=secret_values,
+        order_journal=order_journal,
+        occurred_at=journal_timestamp,
+    )
     reconciliation = _reconcile_after_action(
         plan=plan,
         action_result=action_result,
         broker=broker,
         secret_values=secret_values,
+        order_journal=order_journal,
+        occurred_at=journal_timestamp,
     )
     blocker_status = _final_blocker_status(plan, action_result, reconciliation)
     record = _build_record(
@@ -414,6 +513,9 @@ def run_paper_autopilot_loop(
         reconciliation=reconciliation,
         daily_cycle=daily_cycle,
         paper_mutation_readiness=paper_mutation_readiness,
+        order_journal_status=order_journal_status,
+        runtime_control=runtime_control,
+        runtime_lease=runtime_lease,
         blocker_status=blocker_status,
         safety_labels=safety_labels,
         output_root=output_root,
@@ -426,6 +528,7 @@ def run_paper_autopilot_loop(
                 history_root=output_root.parent / "history",
             )
         )
+    _release_runtime_lease(config=resolved, run_id=run_id)
     return record
 
 
@@ -859,6 +962,107 @@ def _build_intent(
     )
 
 
+def _paper_runtime_planning_input(
+    *,
+    intent: PaperAutopilotExecutionIntent,
+    broker_state: Mapping[str, Any],
+    latest_bar: Bar | None,
+    max_notional: Decimal,
+    client_order_id: str,
+    daily_cycle: Mapping[str, Any],
+    operator_paused: bool,
+) -> PaperRuntimePlanningInput:
+    account = _mapping(broker_state.get("account"))
+    positions: list[Position] = []
+    fallback_price = latest_bar.close if latest_bar is not None else Decimal("0")
+    for payload in _mapping_items(broker_state.get("positions")):
+        symbol = _text(payload.get("symbol")).upper()
+        quantity = _optional_decimal(payload.get("quantity")) or Decimal("0")
+        if not symbol or quantity == 0:
+            continue
+        market_value = _optional_decimal(payload.get("market_value"))
+        average_price = fallback_price
+        if market_value is not None and quantity != 0:
+            average_price = abs(market_value) / abs(quantity)
+        positions.append(
+            Position(
+                symbol=symbol,
+                quantity=quantity,
+                average_price=average_price,
+            )
+        )
+
+    gross_exposure = sum(
+        (
+            abs(_optional_decimal(payload.get("market_value")) or Decimal("0"))
+            for payload in _mapping_items(broker_state.get("positions"))
+        ),
+        Decimal("0"),
+    )
+    symbol_exposure = sum(
+        (
+            abs(_optional_decimal(payload.get("market_value")) or Decimal("0"))
+            for payload in _mapping_items(broker_state.get("positions"))
+            if _text(payload.get("symbol")).upper() == intent.symbol
+        ),
+        Decimal("0"),
+    )
+    open_order_notional = sum(
+        (
+            _optional_decimal(order.get("notional"))
+            or (
+                (_optional_decimal(order.get("quantity")) or Decimal("0"))
+                * fallback_price
+            )
+            for order in _mapping_items(broker_state.get("open_orders"))
+        ),
+        Decimal("0"),
+    )
+
+    trading_disabled_reason = ""
+    if broker_state.get("broker_state_observed") is not True:
+        trading_disabled_reason = "broker_state_not_observed"
+    elif not _account_status_active(account):
+        trading_disabled_reason = "account_status_not_active"
+    elif account.get("tradable") is not True:
+        trading_disabled_reason = "account_not_tradable"
+    elif account.get("trading_blocked") is True:
+        trading_disabled_reason = "account_trading_blocked"
+
+    return PaperRuntimePlanningInput(
+        symbol=intent.symbol,
+        action=intent.action,
+        reason=intent.reason,
+        latest_bar=latest_bar,
+        account_cash=_optional_decimal(account.get("cash")),
+        positions=tuple(positions),
+        trading_enabled=not trading_disabled_reason,
+        trading_disabled_reason=trading_disabled_reason,
+        max_notional=max_notional,
+        client_order_id=client_order_id,
+        quantity=intent.quantity,
+        currency=_text(account.get("currency")) or "USD",
+        risk_context=(
+            RiskContext(
+                as_of=latest_bar.timestamp,
+                account_tradable=account.get("tradable") is True,
+                account_trading_blocked=account.get("trading_blocked") is True,
+                operator_paused=operator_paused,
+                data_current=not bool(_daily_cycle_blockers(daily_cycle)),
+                market_session_open=True,
+                buying_power=_optional_decimal(account.get("buying_power")),
+                open_order_notional=open_order_notional,
+                gross_exposure=gross_exposure,
+                symbol_exposure=symbol_exposure,
+                equity=_optional_decimal(account.get("equity")),
+                start_of_day_equity=_optional_decimal(account.get("last_equity")),
+            )
+            if latest_bar is not None
+            else None
+        ),
+    )
+
+
 def _build_plan(
     *,
     config: PaperAutopilotLoopConfig,
@@ -872,6 +1076,7 @@ def _build_plan(
     daily_cycle: Mapping[str, Any],
     client_order_id: str,
     safety_labels: Sequence[str],
+    canonical_runtime_plan: CanonicalPaperRuntimePlan,
     paper_mutation_readiness: Mapping[str, Any],
     broker_observation_required: bool = True,
 ) -> PaperAutopilotExecutionPlan:
@@ -885,6 +1090,7 @@ def _build_plan(
             broker_observation_required=broker_observation_required,
         )
     )
+    blockers.extend(canonical_runtime_plan.blockers)
     mutation_action = intent.action if intent.action in {"buy", "sell_close"} else ""
     mutation_would_be_required_without_no_submit = bool(
         config.no_submit and mutation_action and not blockers
@@ -905,7 +1111,13 @@ def _build_plan(
         paper_mutation_readiness=paper_mutation_readiness,
     )
     blockers.extend(_string_list(readiness_gate.get("blockers")))
-    submit_allowed = bool(mutation_action and not blockers)
+    submit_allowed = bool(
+        mutation_action
+        and not blockers
+        and canonical_runtime_plan.policy_accepted
+    )
+    if mutation_action and not canonical_runtime_plan.policy_accepted and not blockers:
+        blockers.append("canonical_planning_policy_not_accepted")
     if mutation_would_be_required_without_no_submit:
         blockers.append("mutation_would_be_required_no_submit_mode")
         submit_allowed = False
@@ -960,6 +1172,7 @@ def _build_plan(
         paper_submit_authorized=paper_authorized,
         submit_allowed=submit_allowed and paper_authorized,
         no_submit_mode=config.no_submit,
+        canonical_runtime_plan=canonical_runtime_plan,
         paper_mutation_readiness_gate=readiness_gate,
         mutation_would_be_required_without_no_submit=(
             mutation_would_be_required_without_no_submit
@@ -1345,11 +1558,248 @@ def _readiness_status_authorizes_paper_mutation(packet: Mapping[str, Any]) -> bo
     return False
 
 
+def _prepare_order_journal(
+    *,
+    config: PaperAutopilotLoopConfig,
+    plan: PaperAutopilotExecutionPlan,
+    broker_state: Mapping[str, Any],
+    run_id: str,
+    occurred_at: datetime,
+) -> tuple[PaperAutopilotExecutionPlan, SqliteOrderJournal | None, dict[str, Any]]:
+    path = _order_journal_path(config)
+    status: dict[str, Any] = {
+        "path": str(path),
+        "initialized": False,
+        "reservation_status": "not_required",
+        "reservation_acquired": False,
+        "unresolved_order_count": 0,
+        "unresolved_orders": [],
+        "startup_reconciled_count": 0,
+        "error": "",
+    }
+    journal = SqliteOrderJournal(path)
+    try:
+        journal.initialize()
+        unresolved = journal.unresolved(plan.symbol)
+        status["startup_reconciled_count"] = _reconcile_journal_from_broker_snapshot(
+            journal=journal,
+            unresolved=unresolved,
+            broker_state=broker_state,
+            occurred_at=occurred_at,
+        )
+        unresolved = journal.unresolved(plan.symbol)
+    except Exception as exc:
+        status["error"] = exc.__class__.__name__
+        blocked = replace(
+            plan,
+            paper_submit_authorized=False,
+            submit_allowed=False,
+            blockers=tuple(_dedupe((*plan.blockers, "order_journal_unavailable"))),
+        )
+        return blocked, None, status
+
+    status["initialized"] = True
+    status["unresolved_order_count"] = len(unresolved)
+    status["unresolved_orders"] = [
+        {
+            "client_order_id": record.client_order_id,
+            "execution_plan_id": record.execution_plan_id,
+            "symbol": record.symbol,
+            "side": record.side,
+            "state": record.state.value,
+            "broker_order_id_present": bool(record.broker_order_id),
+            "terminal": record.terminal,
+            "safe_to_resubmit": record.safe_to_resubmit,
+        }
+        for record in unresolved
+    ]
+    if unresolved:
+        blocked = replace(
+            plan,
+            paper_submit_authorized=False,
+            submit_allowed=False,
+            blockers=tuple(
+                _dedupe((*plan.blockers, "durable_spy_order_state_unresolved"))
+            ),
+        )
+        status["reservation_status"] = "blocked_unresolved_order_state"
+        return blocked, journal, status
+
+    if not plan.submit_allowed or plan.action not in {"buy", "sell_close"}:
+        return plan, journal, status
+
+    try:
+        reservation = journal.reserve(
+            OrderReservation(
+                client_order_id=plan.client_order_id,
+                execution_plan_id=plan.execution_plan_id,
+                run_id=run_id,
+                symbol=plan.symbol,
+                side=plan.side,
+                quantity=plan.quantity,
+                notional=plan.notional,
+            ),
+            occurred_at,
+        )
+    except Exception as exc:
+        status["error"] = exc.__class__.__name__
+        blocked = replace(
+            plan,
+            paper_submit_authorized=False,
+            submit_allowed=False,
+            blockers=tuple(_dedupe((*plan.blockers, "order_journal_unavailable"))),
+        )
+        return blocked, journal, status
+
+    status["reservation_status"] = reservation.status
+    status["reservation_acquired"] = reservation.acquired
+    status["reservation"] = reservation.record.to_dict()
+    if reservation.acquired:
+        return plan, journal, status
+
+    blocker = (
+        "durable_client_order_id_conflict"
+        if reservation.status == "client_order_id_conflict"
+        else "durable_idempotency_reservation_exists"
+    )
+    blocked = replace(
+        plan,
+        paper_submit_authorized=False,
+        submit_allowed=False,
+        blockers=tuple(_dedupe((*plan.blockers, blocker))),
+    )
+    return blocked, journal, status
+
+
+def _runtime_control_state(
+    *,
+    config: PaperAutopilotLoopConfig,
+    occurred_at: datetime,
+) -> dict[str, Any]:
+    path = _order_journal_path(config)
+    journal = SqliteOrderJournal(path)
+    try:
+        if config.operator_paused:
+            control = journal.set_runtime_control(
+                trading_enabled=False,
+                reason=config.operator_pause_reason,
+                occurred_at=occurred_at,
+            )
+        else:
+            control = journal.get_runtime_control()
+    except Exception as exc:
+        return {
+            "path": str(path),
+            "available": False,
+            "trading_enabled": False,
+            "operator_paused": True,
+            "reason": "runtime_control_unavailable",
+            "updated_at": "",
+            "error": exc.__class__.__name__,
+        }
+    return {
+        "path": str(path),
+        "available": True,
+        **control.to_dict(),
+        "error": "",
+    }
+
+
+def _runtime_lease_state(
+    *,
+    config: PaperAutopilotLoopConfig,
+    run_id: str,
+    occurred_at: datetime,
+) -> dict[str, Any]:
+    path = _order_journal_path(config)
+    try:
+        lease = SqliteOrderJournal(path).acquire_runtime_lease(
+            lease_name="paper-autopilot",
+            owner_run_id=run_id,
+            occurred_at=occurred_at,
+            ttl_seconds=config.runtime_lease_seconds,
+        )
+    except Exception as exc:
+        return {
+            "acquired": False,
+            "lease_name": "paper-autopilot",
+            "owner_run_id": "",
+            "expires_at": "",
+            "blocker": "runtime_lease_unavailable",
+            "error": exc.__class__.__name__,
+        }
+    return {**lease.to_dict(), "error": ""}
+
+
+def _release_runtime_lease(*, config: PaperAutopilotLoopConfig, run_id: str) -> None:
+    try:
+        SqliteOrderJournal(_order_journal_path(config)).release_runtime_lease(
+            lease_name="paper-autopilot",
+            owner_run_id=run_id,
+        )
+    except Exception:
+        return
+
+
+def _order_journal_path(config: PaperAutopilotLoopConfig) -> Path:
+    if config.order_journal_path is not None:
+        return Path(config.order_journal_path)
+    return Path(config.output_root).parent / "state" / "order_journal.sqlite3"
+
+
+def _reconcile_journal_from_broker_snapshot(
+    *,
+    journal: SqliteOrderJournal,
+    unresolved: Sequence[Any],
+    broker_state: Mapping[str, Any],
+    occurred_at: datetime,
+) -> int:
+    observed_orders = [
+        *_mapping_items(broker_state.get("open_orders")),
+        *_mapping_items(broker_state.get("recent_orders")),
+    ]
+    reconciled = 0
+    for record in unresolved:
+        matches = [
+            order
+            for order in observed_orders
+            if _text(order.get("client_order_id")) == record.client_order_id
+        ]
+        unique = {
+            (
+                _text(order.get("order_id")),
+                _text(order.get("status")),
+                _text(order.get("filled_quantity")),
+            ): order
+            for order in matches
+        }
+        if len(unique) != 1:
+            continue
+        order = next(iter(unique.values()))
+        try:
+            journal.record_broker_observation(
+                record.client_order_id,
+                occurred_at,
+                broker_order_id=_text(order.get("order_id")),
+                broker_status=_text(order.get("status")) or "unknown",
+                filled_quantity=_text(order.get("filled_quantity")) or None,
+                filled_average_price=(
+                    _text(order.get("filled_average_price")) or None
+                ),
+            )
+        except Exception:
+            continue
+        reconciled += 1
+    return reconciled
+
+
 def _execute_plan(
     plan: PaperAutopilotExecutionPlan,
     *,
     broker: Any,
     secret_values: Sequence[str],
+    order_journal: SqliteOrderJournal | None,
+    occurred_at: datetime,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "action_decision": plan.action,
@@ -1366,8 +1816,28 @@ def _execute_plan(
     if plan.no_submit_mode and plan.mutation_would_be_required_without_no_submit:
         result["mutation_status"] = "blocked_no_submit_mode"
         return result
+    if (
+        plan.action in {"buy", "sell_close"}
+        and not plan.canonical_runtime_plan.policy_accepted
+    ):
+        result["mutation_status"] = "blocked_canonical_plan_not_accepted"
+        return result
     if not plan.submit_allowed:
         result["mutation_status"] = "blocked_before_submit" if plan.blockers else "noop"
+        return result
+    if order_journal is None:
+        result["mutation_status"] = "blocked_order_journal_unavailable"
+        result["order_journal_error"] = "journal_not_initialized"
+        return result
+    try:
+        control = order_journal.get_runtime_control()
+        if not control.trading_enabled:
+            result["mutation_status"] = "blocked_before_submit"
+            result["broker_error"] = f"operator_paused: {control.reason}"
+            return result
+    except Exception as exc:
+        result["mutation_status"] = "blocked_order_journal_unavailable"
+        result["order_journal_error"] = exc.__class__.__name__
         return result
     request = AlpacaOrderRequest(
         client_order_id=plan.client_order_id,
@@ -1379,29 +1849,75 @@ def _execute_plan(
         order_type=_ORDER_TYPE,
         time_in_force=_TIME_IN_FORCE,
     )
+    try:
+        journal_record = order_journal.mark_submit_attempted(
+            plan.client_order_id,
+            occurred_at,
+        )
+    except Exception as exc:
+        result["mutation_status"] = "blocked_order_journal_transition_failed"
+        result["order_journal_error"] = exc.__class__.__name__
+        return result
     result.update(
         {
             "submit_attempted": True,
             "paper_submit_performed": True,
             "broker_mutation_performed": True,
             "request": _request_payload(request),
+            "order_journal_state": journal_record.state.value,
         }
     )
     try:
         response = broker.submit_order(request)
     except Exception as exc:
+        journal_error = ""
+        try:
+            journal_record = order_journal.mark_submit_ambiguous(
+                plan.client_order_id,
+                occurred_at,
+                reason=exc.__class__.__name__,
+            )
+        except Exception as journal_exc:
+            journal_error = journal_exc.__class__.__name__
         result.update(
             {
                 "broker_error": _safe_exception_message(exc, secret_values),
                 "mutation_status": "ambiguous_submit_reconciliation_required",
                 "submit_response_ambiguous": True,
+                "order_journal_state": (
+                    journal_record.state.value if not journal_error else "submit_attempted"
+                ),
+                "order_journal_error": journal_error,
             }
         )
         return result
+    response_payload = _order_payload(response)
+    journal_error = ""
+    try:
+        journal_record = order_journal.record_broker_observation(
+            plan.client_order_id,
+            occurred_at,
+            broker_order_id=_text(response_payload.get("order_id")),
+            broker_status=_text(response_payload.get("status")) or "unknown",
+            filled_quantity=_text(response_payload.get("filled_quantity")) or None,
+            filled_average_price=(
+                _text(response_payload.get("filled_average_price")) or None
+            ),
+        )
+    except Exception as journal_exc:
+        journal_error = journal_exc.__class__.__name__
     result.update(
         {
-            "broker_response": _order_payload(response),
-            "mutation_status": "submit_response_observed",
+            "broker_response": response_payload,
+            "mutation_status": (
+                "submit_response_observed"
+                if not journal_error
+                else "submit_response_observed_journal_update_failed"
+            ),
+            "order_journal_state": (
+                journal_record.state.value if not journal_error else "submit_attempted"
+            ),
+            "order_journal_error": journal_error,
         }
     )
     return result
@@ -1413,6 +1929,8 @@ def _reconcile_after_action(
     action_result: Mapping[str, Any],
     broker: Any,
     secret_values: Sequence[str],
+    order_journal: SqliteOrderJournal | None,
+    occurred_at: datetime,
 ) -> dict[str, Any]:
     if action_result.get("broker_mutation_performed") is not True:
         return {
@@ -1436,14 +1954,51 @@ def _reconcile_after_action(
     matching = [
         order for order in order_payloads if order.get("client_order_id") == plan.client_order_id
     ]
+    order_journal_error = ""
+    order_journal_state = _text(action_result.get("order_journal_state"))
+    if matching and order_journal is not None:
+        observed = matching[0]
+        try:
+            journal_record = order_journal.record_broker_observation(
+                plan.client_order_id,
+                occurred_at,
+                broker_order_id=_text(observed.get("order_id")),
+                broker_status=_text(observed.get("status")) or "unknown",
+                filled_quantity=_text(observed.get("filled_quantity")) or None,
+                filled_average_price=(
+                    _text(observed.get("filled_average_price")) or None
+                ),
+            )
+            order_journal_state = journal_record.state.value
+        except Exception as exc:
+            order_journal_error = exc.__class__.__name__
     submit_response_ambiguous = action_result.get("submit_response_ambiguous") is True
+    observed = matching[0] if len(matching) == 1 else {}
+    observed_status = _normalized_status(observed.get("status"))
+    observed_filled_quantity = _optional_decimal(observed.get("filled_quantity"))
+    terminal = observed_status in _TERMINAL_ORDER_STATUSES
+    reconciliation_status = _post_submit_reconciliation_status(
+        matching_count=len(matching),
+        submit_response_ambiguous=submit_response_ambiguous,
+        observed_status=observed_status,
+        observed_filled_quantity=observed_filled_quantity,
+    )
+    reconciliation_required = bool(
+        len(matching) != 1
+        or not terminal
+        or order_journal_error
+    )
     return {
-        "reconciliation_status": _post_submit_reconciliation_status(
-            matching=bool(matching),
-            submit_response_ambiguous=submit_response_ambiguous,
-        ),
-        "reconciliation_required": submit_response_ambiguous or not bool(matching),
+        "reconciliation_status": reconciliation_status,
+        "reconciliation_required": reconciliation_required,
         "submit_response_ambiguous": submit_response_ambiguous,
+        "matching_order_count": len(matching),
+        "observed_order_status": observed_status,
+        "observed_filled_quantity": _decimal_text(observed_filled_quantity) or "",
+        "terminal_order_observed": terminal,
+        "terminal_order_status": observed_status if terminal else "",
+        "order_journal_state": order_journal_state,
+        "order_journal_error": order_journal_error,
         "post_submit_observation": {
             "recent_order_count": len(order_payloads),
             "matching_client_order_id_found": bool(matching),
@@ -1454,16 +2009,28 @@ def _reconcile_after_action(
 
 def _post_submit_reconciliation_status(
     *,
-    matching: bool,
+    matching_count: int,
     submit_response_ambiguous: bool,
+    observed_status: str,
+    observed_filled_quantity: Decimal | None,
 ) -> str:
-    if submit_response_ambiguous and matching:
-        return "ambiguous_submit_response_order_observed"
-    if submit_response_ambiguous:
+    if matching_count > 1:
+        return "ambiguous_multiple_matching_orders"
+    if matching_count == 0 and submit_response_ambiguous:
         return "ambiguous_submit_response_reconciliation_required"
-    if matching:
-        return "reconciled_submit_observed"
-    return "reconciliation_required"
+    if matching_count == 0:
+        return "reconciliation_required"
+    if observed_status in _TERMINAL_ORDER_STATUSES:
+        prefix = "ambiguous_submit_response_" if submit_response_ambiguous else ""
+        normalized = "canceled" if observed_status == "cancelled" else observed_status
+        return f"{prefix}reconciled_terminal_{normalized}"
+    if (
+        observed_status == "partially_filled"
+        or observed_filled_quantity is not None
+        and observed_filled_quantity > 0
+    ):
+        return "reconciled_nonterminal_partially_filled"
+    return "reconciled_nonterminal_order_observed"
 
 
 def _build_record(
@@ -1487,6 +2054,9 @@ def _build_record(
     reconciliation: Mapping[str, Any],
     daily_cycle: Mapping[str, Any],
     paper_mutation_readiness: Mapping[str, Any],
+    order_journal_status: Mapping[str, Any],
+    runtime_control: Mapping[str, Any],
+    runtime_lease: Mapping[str, Any],
     blocker_status: str,
     safety_labels: Sequence[str],
     output_root: Path,
@@ -1496,6 +2066,7 @@ def _build_record(
         "operating_record": str(output_root / "operating_record.jsonl"),
         "manifest": str(output_root / "manifest.json"),
         "latest_status": str(output_root / "latest_status.json"),
+        "health": str(output_root / "health.json"),
         "supervisor_brief": str(output_root / "supervisor_brief.md"),
         "supervisor_receipt": str(output_root / "supervisor_receipt.jsonl"),
         "broker_snapshot": str(output_root / "broker_snapshot.json"),
@@ -1566,6 +2137,9 @@ def _build_record(
         "generated_at": generated_at,
         "run_timestamp": generated_at,
         "policy": config.policy,
+        "operator_paused": runtime_control.get("operator_paused") is True,
+        "runtime_control": dict(runtime_control),
+        "runtime_lease": dict(runtime_lease),
         "command": "paper-autopilot-loop",
         "supervisor_command": PAPER_MUTATION_SUPERVISOR_COMMAND,
         "no_submit_mode": plan.no_submit_mode,
@@ -1636,6 +2210,25 @@ def _build_record(
         "preflight": dict(preflight),
         "execution_intent": intent.to_dict(),
         "execution_plan": plan.to_dict(),
+        "canonical_runtime_plan": plan.canonical_runtime_plan.to_dict(),
+        "canonical_risk_allowed": plan.canonical_runtime_plan.risk_allowed,
+        "canonical_policy_accepted": (
+            plan.canonical_runtime_plan.policy_accepted
+        ),
+        "order_journal": dict(order_journal_status),
+        "order_journal_path": _text(order_journal_status.get("path")),
+        "order_journal_initialized": (
+            order_journal_status.get("initialized") is True
+        ),
+        "order_journal_reservation_status": _text(
+            order_journal_status.get("reservation_status")
+        ),
+        "order_journal_reservation_acquired": (
+            order_journal_status.get("reservation_acquired") is True
+        ),
+        "order_journal_unresolved_order_count": _int_value(
+            order_journal_status.get("unresolved_order_count")
+        ),
         "execution_plan_summary": {
             "execution_plan_id": plan.execution_plan_id,
             "action": plan.action,
@@ -1644,6 +2237,10 @@ def _build_record(
             "paper_submit_authorized": plan.paper_submit_authorized,
             "submit_allowed": plan.submit_allowed,
             "no_submit_mode": plan.no_submit_mode,
+            "canonical_risk_allowed": plan.canonical_runtime_plan.risk_allowed,
+            "canonical_policy_accepted": (
+                plan.canonical_runtime_plan.policy_accepted
+            ),
             "paper_mutation_readiness_gate_status": _text(
                 readiness_gate.get("gate_status")
             ),
@@ -1825,6 +2422,7 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
     brief_path = output_root / "operating_brief.md"
     record_path = output_root / "operating_record.jsonl"
     latest_path = output_root / "latest_status.json"
+    health_path = output_root / "health.json"
     manifest_path = output_root / "manifest.json"
     supervisor_brief_path = output_root / "supervisor_brief.md"
     supervisor_receipt_path = output_root / "supervisor_receipt.jsonl"
@@ -1849,6 +2447,11 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
         )
     latest_path.write_text(
         json.dumps(_json_safe(record), sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    health_path.write_text(
+        json.dumps(paper_autopilot_health(record), sort_keys=True, indent=2) + "\n",
         encoding="utf-8",
         newline="\n",
     )
@@ -1930,6 +2533,7 @@ def _write_operating_artifacts(output_root: Path, record: Mapping[str, Any]) -> 
             "operating_brief": _artifact_metadata(brief_path),
             "operating_record": _artifact_metadata(record_path),
             "latest_status": _artifact_metadata(latest_path),
+            "health": _artifact_metadata(health_path),
             "supervisor_brief": _artifact_metadata(supervisor_brief_path),
             "supervisor_receipt": _artifact_metadata(supervisor_receipt_path),
             "broker_snapshot": _artifact_metadata(broker_snapshot_path),
@@ -2128,11 +2732,22 @@ def _final_classification(
     reconciliation: Mapping[str, Any],
 ) -> str:
     if action_result.get("submit_response_ambiguous") is True:
+        if reconciliation.get("terminal_order_observed") is True:
+            return "ambiguous_submit_response_resolved_terminal"
         return "ambiguous_submit_response_reconciliation_required"
+    if (
+        action_result.get("paper_submit_performed") is True
+        and reconciliation.get("reconciliation_required") is True
+    ):
+        if (
+            reconciliation.get("reconciliation_status")
+            == "reconciled_nonterminal_partially_filled"
+        ):
+            return "paper_submit_partial_fill_reconciliation_required"
+        return "paper_submit_nonterminal_reconciliation_required"
     if blocker_status == "action/submitted":
-        if reconciliation.get("reconciliation_required") is True:
-            return "paper_submit_reconciliation_required"
-        return "paper_submit_reconciled"
+        terminal_status = _text(reconciliation.get("terminal_order_status"))
+        return f"paper_submit_terminal_{terminal_status or 'observed'}"
     if blocker_status == "none" and plan.action == "hold":
         return "no_action_required_no_mutation"
     if blocker_status == "blocked/no_new_completed_bar_noop":
@@ -2307,11 +2922,9 @@ def _next_operator_action(blocker_status: str, plan: PaperAutopilotExecutionPlan
     return f"review_blocker_before_{plan.action}"
 
 
-def _load_bars(path: Path, symbol: str) -> list[Bar]:
-    if not path.is_file():
-        raise ValidationError(f"Bars CSV not found: {path}")
+def _load_bars_snapshot(snapshot: StableFileSnapshot, symbol: str) -> list[Bar]:
     bars: list[Bar] = []
-    with path.open("r", encoding="utf-8", newline="") as stream:
+    with io.StringIO(snapshot.text(), newline="") as stream:
         for row in csv.DictReader(stream):
             bars.append(_parse_bar_row(row, symbol))
     if not bars:
@@ -2569,6 +3182,10 @@ def _account_payload(account: Any) -> dict[str, object]:
         "buying_power": _decimal_text(
             _optional_decimal(_first_present(data, "buying_power"))
         ),
+        "equity": _decimal_text(_optional_decimal(_first_present(data, "equity"))),
+        "last_equity": _decimal_text(
+            _optional_decimal(_first_present(data, "last_equity"))
+        ),
     }
 
 
@@ -2602,6 +3219,12 @@ def _order_payload(order: Any) -> dict[str, object]:
         or "",
         "filled_quantity": _decimal_text(
             _optional_decimal(_first_present(data, "filled_quantity", "filled_qty"))
+        )
+        or "",
+        "filled_average_price": _decimal_text(
+            _optional_decimal(
+                _first_present(data, "filled_average_price", "filled_avg_price")
+            )
         )
         or "",
         "submitted_at": _text(_first_present(data, "submitted_at", "created_at")),
@@ -2649,7 +3272,11 @@ def _object_data(value: Any) -> dict[str, Any]:
         "filled_at",
         "filled_qty",
         "filled_quantity",
+        "filled_avg_price",
+        "filled_average_price",
         "id",
+        "equity",
+        "last_equity",
         "market_value",
         "normalized_status",
         "notional",
@@ -2733,10 +3360,6 @@ def _artifact_metadata(path: Path) -> dict[str, object]:
         "sha256": hashlib.sha256(content).hexdigest(),
         "size_bytes": len(content),
     }
-
-
-def _file_sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def _row_value(row: Mapping[str, object], field_name: str) -> object:
