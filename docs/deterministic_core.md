@@ -251,6 +251,21 @@ State invalidation does not validate the candidate, change evidence thresholds,
 authorize a market-data fetch, or authorize paper/live trading. A read-only
 market-data refresh remains a separate explicitly gated operation.
 
+The forward-OOS refresh-readiness packet is an offline preflight only. It:
+
+- validates the manifest, frozen discovery hash, accrued OOS state, and strict
+  next refresh window
+- recomputes the frozen candidate identity and fails closed on manifest drift,
+  post-`as_of` lookahead, duplicate bars, or overlapping accrued bars
+- reuses the refresh adapter's boolean-only paper-profile, credential-presence,
+  paper-endpoint, and live-endpoint checks
+- never includes credential values
+- may report `ready_for_explicit_read_only_market_data_fetch`, but still keeps
+  market-data authorization false and requires the separate explicit fetch
+  operation
+- performs no network access, market-data fetch, broker read, broker mutation,
+  paper submit, or live action
+
 ## Command Surface Distinction
 
 The repository distinguishes offline/reporting commands from broker-facing

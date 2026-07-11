@@ -24,6 +24,7 @@ from typing import Any
 from algotrader.errors import ValidationError
 from algotrader.execution.crypto_history_refresh_adapter import (
     CryptoHistoryRefreshConfig,
+    crypto_history_refresh_preflight,
     run_crypto_history_refresh,
 )
 from algotrader.research.crypto_strategy_evidence_battery import (
@@ -56,6 +57,9 @@ CRYPTO_REPAIR_FORWARD_OOS_EVALUATION_POLICY_VERSION = (
 CRYPTO_REPAIR_FROZEN_STATE_INVALIDATION_SCHEMA_VERSION = (
     "v5_20_3_crypto_repair_frozen_state_invalidation_v1"
 )
+CRYPTO_REPAIR_FORWARD_OOS_REFRESH_READINESS_SCHEMA_VERSION = (
+    "v5_20_4_crypto_repair_forward_oos_refresh_readiness_v1"
+)
 
 _REQUIRED_CSV_COLUMNS = ("timestamp", "symbol", "open", "high", "low", "close")
 _FALSE_SAFETY_FIELDS = (
@@ -82,6 +86,7 @@ __all__ = [
     "CRYPTO_REPAIR_FORWARD_OOS_EVALUATION_POLICY_VERSION",
     "CRYPTO_REPAIR_FORWARD_OOS_REQUIRED_MIN_ROWS",
     "CRYPTO_REPAIR_FORWARD_OOS_TIMEFRAME",
+    "build_crypto_repair_forward_oos_refresh_readiness",
     "build_frozen_candidate_descriptor",
     "invalidate_crypto_repair_frozen_candidate_state",
     "main",
@@ -144,6 +149,180 @@ class _DiscoveryResolution:
 
 
 RefreshRunner = Callable[[CryptoHistoryRefreshConfig], Mapping[str, object]]
+
+
+def build_crypto_repair_forward_oos_refresh_readiness(
+    *,
+    output_root: Path | str = CRYPTO_REPAIR_FORWARD_OOS_DEFAULT_OUTPUT_ROOT,
+    as_of: datetime | str,
+    env: Mapping[str, str] | None = None,
+    output_path: Path | str | None = None,
+    write_artifact: bool = False,
+) -> dict[str, object]:
+    """Build a side-effect-free readiness packet for the next OOS refresh.
+
+    Environment inspection is delegated to the refresh adapter's boolean-only
+    preflight. Credential values are never read into this packet, and this
+    function has no network or refresh-runner path.
+    """
+
+    root = Path(output_root)
+    evaluated_at = _utc_datetime(as_of, "as_of")
+    state_paths = _state_paths(root)
+    manifest = _read_json_mapping(state_paths["frozen_candidate"])
+    preflight = crypto_history_refresh_preflight(env)
+    blockers: list[str] = []
+
+    expected_hash = str(
+        manifest.get("relevant_discovery_evidence_input_hash", "")
+    ).strip()
+    if not manifest:
+        blockers.append("frozen_candidate_manifest_missing")
+    elif not _is_sha256_hex(expected_hash):
+        blockers.append("invalid_frozen_discovery_hash")
+
+    try:
+        cutoff = _utc_datetime(
+            manifest.get("discovery_cutoff", DEFAULT_REPAIR_DISCOVERY_CUTOFF),
+            "discovery_cutoff",
+        )
+    except ValidationError:
+        cutoff = _utc_datetime(DEFAULT_REPAIR_DISCOVERY_CUTOFF, "discovery_cutoff")
+        blockers.append("invalid_frozen_discovery_cutoff")
+
+    if manifest and _is_sha256_hex(expected_hash):
+        expected_manifest = build_frozen_candidate_descriptor(
+            discovery_cutoff=cutoff,
+            relevant_discovery_evidence_input_hash=expected_hash,
+        )
+        if dict(manifest) != expected_manifest:
+            blockers.append("frozen_candidate_manifest_drift")
+
+    snapshot = _load_normalized_rows(state_paths["frozen_discovery_history"])
+    blockers.extend(_discovery_load_blockers(snapshot))
+    if any(row.timestamp > cutoff for row in snapshot.rows):
+        blockers.append("discovery_snapshot_contains_post_cutoff_rows")
+    snapshot_hash = _rows_hash(snapshot.rows)
+    if _is_sha256_hex(expected_hash) and snapshot_hash != expected_hash:
+        blockers.append("rewritten_discovery_period_data")
+
+    accrued = _load_normalized_rows(state_paths["accrued_oos"])
+    if accrued.errors:
+        blockers.extend(accrued.errors)
+    if accrued.duplicate_timestamp_rows:
+        blockers.append("duplicate_accrued_oos_bar")
+    if accrued.out_of_order_rows:
+        blockers.append("out_of_order_accrued_oos_bars")
+    if accrued.fixture_source_detected:
+        blockers.append("fixture_or_synthetic_oos_history")
+    if any(row.timestamp <= cutoff for row in accrued.rows):
+        blockers.append("attempted_pre_cutoff_leakage")
+    if any(row.timestamp >= evaluated_at for row in accrued.rows):
+        blockers.append("attempted_post_as_of_lookahead")
+
+    next_timestamp_by_symbol: dict[str, datetime] = {}
+    for symbol in DEFAULT_CRYPTO_EVIDENCE_SYMBOLS:
+        latest_symbol_timestamp = max(
+            (row.timestamp for row in accrued.rows if row.symbol == symbol),
+            default=None,
+        )
+        next_timestamp_by_symbol[symbol] = max(
+            cutoff + timedelta(hours=1),
+            (
+                cutoff + timedelta(hours=1)
+                if latest_symbol_timestamp is None
+                else latest_symbol_timestamp + timedelta(hours=1)
+            ),
+        )
+    recommended_start = max(next_timestamp_by_symbol.values())
+    if evaluated_at <= recommended_start:
+        blockers.append("refresh_window_not_yet_open")
+
+    if preflight.get("live_endpoint_indicator", False):
+        blockers.append("live_endpoint_indicator")
+    if not preflight.get("APP_PROFILE_is_paper", False):
+        blockers.append("app_profile_paper_required")
+    if not preflight.get("paper_credentials_present", False):
+        blockers.append("paper_credentials_required")
+    if not preflight.get("APCA_API_BASE_URL_is_paper", False):
+        blockers.append("apca_paper_base_url_required")
+
+    ada_rows = tuple(row for row in accrued.rows if row.symbol == "ADAUSD")
+    blockers = list(dict.fromkeys(blockers))
+    ready = not blockers
+    artifact_path = (
+        state_paths["refresh_readiness"]
+        if output_path in (None, "")
+        else Path(output_path)
+    )
+    packet = {
+        "schema_version": CRYPTO_REPAIR_FORWARD_OOS_REFRESH_READINESS_SCHEMA_VERSION,
+        "record_type": "crypto_repair_forward_oos_refresh_readiness",
+        "as_of": evaluated_at.isoformat(),
+        "classification": (
+            "ready_for_explicit_read_only_market_data_fetch"
+            if ready
+            else "blocked_market_data_refresh_prerequisites"
+        ),
+        "readiness_blockers": blockers,
+        "output_root": str(root),
+        "readiness_artifact_path": str(artifact_path),
+        "frozen_candidate_fingerprint": str(
+            manifest.get("frozen_candidate_fingerprint", "")
+        ),
+        "discovery_cutoff": cutoff.isoformat(),
+        "discovery_snapshot_hash": snapshot_hash,
+        "discovery_snapshot_row_count": len(snapshot.rows),
+        "oos_row_count": len(ada_rows),
+        "oos_normalized_row_count": len(accrued.rows),
+        "rows_still_required": max(
+            0,
+            CRYPTO_REPAIR_FORWARD_OOS_REQUIRED_MIN_ROWS - len(ada_rows),
+        ),
+        "latest_normalized_bar": _latest_bar_payload(accrued.rows),
+        "recommended_refresh_window": {
+            "start": recommended_start.isoformat(),
+            "end": evaluated_at.isoformat(),
+            "timeframe": CRYPTO_REPAIR_FORWARD_OOS_TIMEFRAME,
+            "strictly_post_cutoff": recommended_start > cutoff,
+            "next_required_timestamp_by_symbol": {
+                symbol: timestamp.isoformat()
+                for symbol, timestamp in next_timestamp_by_symbol.items()
+            },
+        },
+        "operator_preflight": {
+            key: bool(value) for key, value in sorted(preflight.items())
+        },
+        "operator_authorization_required": True,
+        "market_data_fetch_authorized": False,
+        "paper_submit_authorized": False,
+        "broker_mutation_authorized": False,
+        "live_authorized": False,
+        "market_data_fetch_occurred": False,
+        "network_access_attempted": False,
+        "broker_read_occurred": False,
+        "broker_mutation_occurred": False,
+        "paper_submit_occurred": False,
+        "live_endpoint_touched": False,
+        "credential_values_exposed": False,
+        "profit_claim": "none",
+    }
+    if write_artifact:
+        protected_paths = tuple(
+            state_paths[name]
+            for name in (
+                "frozen_candidate",
+                "frozen_discovery_history",
+                "accrued_oos",
+                "operating_packet_json",
+                "operating_packet_markdown",
+            )
+        )
+        if any(_paths_alias(artifact_path, path) for path in protected_paths):
+            raise ValidationError("refresh readiness path aliases protected state.")
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        _write_json(artifact_path, packet)
+    return packet
 
 
 def invalidate_crypto_repair_frozen_candidate_state(
@@ -573,6 +752,8 @@ def run_crypto_repair_forward_oos_accrual(
         integrity["pre_cutoff_leakage_check"] = "failed"
     else:
         integrity["pre_cutoff_leakage_check"] = "passed"
+    if any(row.timestamp >= evaluated_at for row in source_load.rows):
+        blockers.append("attempted_post_as_of_lookahead")
     if blockers:
         return _finalize_packet(
             packet,
@@ -593,6 +774,8 @@ def run_crypto_repair_forward_oos_accrual(
             blockers.append("out_of_order_accrued_oos_bars")
         if any(row.timestamp <= cutoff for row in accrued_load.rows):
             blockers.append("attempted_pre_cutoff_leakage")
+        if any(row.timestamp >= evaluated_at for row in accrued_load.rows):
+            blockers.append("attempted_post_as_of_lookahead")
     integrity["accrued_state"] = "passed" if not blockers else "failed"
     if blockers:
         return _finalize_packet(
@@ -1150,6 +1333,7 @@ def _state_paths(root: Path) -> dict[str, Path]:
         "refresh_output": root / "refresh" / "forward_oos_delta.csv",
         "refresh_packet": root / "refresh" / "refresh_packet.json",
         "refresh_raw_response": root / "refresh" / "raw_crypto_bars.json",
+        "refresh_readiness": root / "refresh" / "refresh_readiness.json",
     }
 
 
@@ -1269,8 +1453,10 @@ def _merge_accrued_rows(
     selected = {row.key(): row for row in accrued_rows}
     for row in incoming_rows:
         prior = selected.get(row.key())
-        if prior is not None and prior.canonical() != row.canonical():
-            return (), ["rewritten_accrued_oos_data"]
+        if prior is not None:
+            if prior.canonical() != row.canonical():
+                return (), ["rewritten_accrued_oos_data"]
+            return (), ["overlapping_accrued_oos_bar"]
         selected[row.key()] = row
     return tuple(sorted(selected.values(), key=lambda row: row.key())), []
 
@@ -1464,6 +1650,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--invalidate-frozen-candidate-state", action="store_true")
     parser.add_argument("--invalidation-reason", default="")
     parser.add_argument("--invalidation-archive-path", default="")
+    parser.add_argument("--refresh-readiness-only", action="store_true")
+    parser.add_argument("--refresh-readiness-output-path", default="")
     return parser
 
 
@@ -1472,6 +1660,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     root = Path(args.output_root)
     state_paths = _state_paths(root)
+    if args.refresh_readiness_only:
+        if args.invalidate_frozen_candidate_state or args.refresh_mode != "none":
+            parser.error("refresh readiness cannot run with invalidation or refresh.")
+        if args.allow_network or args.market_data_fetch_authorized:
+            parser.error("refresh readiness cannot authorize network access.")
+        if args.as_of is None:
+            parser.error("refresh readiness requires an explicit --as-of timestamp.")
+        packet = build_crypto_repair_forward_oos_refresh_readiness(
+            output_root=root,
+            as_of=args.as_of,
+            output_path=args.refresh_readiness_output_path or None,
+            write_artifact=True,
+        )
+        print(json.dumps(packet, indent=2, sort_keys=True))
+        return 0
+    if args.refresh_readiness_output_path:
+        parser.error("readiness output path requires --refresh-readiness-only.")
     if args.invalidate_frozen_candidate_state:
         if args.refresh_mode != "none":
             parser.error("frozen-state invalidation cannot run with a refresh mode.")

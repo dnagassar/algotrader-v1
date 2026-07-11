@@ -20,7 +20,9 @@ param(
     [switch]$MarketDataFetchAuthorized,
     [switch]$InvalidateFrozenCandidateState,
     [string]$InvalidationReason = "",
-    [string]$InvalidationArchivePath = ""
+    [string]$InvalidationArchivePath = "",
+    [switch]$RefreshReadinessOnly,
+    [string]$RefreshReadinessOutputPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -72,6 +74,15 @@ if ($InvalidateFrozenCandidateState.IsPresent) {
     }
     if (-not [string]::IsNullOrWhiteSpace($InvalidationArchivePath)) {
         $Args += @("--invalidation-archive-path", $InvalidationArchivePath)
+    }
+}
+if ($RefreshReadinessOnly.IsPresent) {
+    $Args += @("--refresh-readiness-only")
+    if (-not [string]::IsNullOrWhiteSpace($RefreshReadinessOutputPath)) {
+        $Args += @(
+            "--refresh-readiness-output-path",
+            $RefreshReadinessOutputPath
+        )
     }
 }
 
