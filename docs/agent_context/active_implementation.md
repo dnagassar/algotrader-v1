@@ -1,0 +1,28 @@
+# Active Implementation Handoff
+
+- mission: Stabilize and production-harden the offline, no-submit paper-autopilot supervisor/journal/reconciliation path; then continue the deterministic planning-to-OMS hardening mission.
+- status: in progress - supervisor hardening is locally committed; relay commit and final verification remain.
+- current implementation owner: Codex
+- prior implementation owner: Antigravity
+- repository path: C:\Users\danie\Desktop\algo_trader
+- branch: codex/crypto-frozen-state-reset-workflow
+- starting HEAD: efcb9c5d680da03a189ea4bf323bacd5c6b82baa
+- current HEAD: 4c3846e7644fc89162319513037697a58c1bb7b8
+- last accepted commit: 4c3846e7644fc89162319513037697a58c1bb7b8
+- local commits not pushed: 4c3846e7644fc89162319513037697a58c1bb7b8 Harden fenced autopilot supervisor and reconciliation
+- completed executable capabilities: UUID token/fencing leases; v1-to-v2-to-v3 journal migration; deterministic NYSE completed-session identity; supervisor retry/safety outcome persistence; owner-controlled stop; startup acknowledgement; atomic no-submit pre-mutation claim; immutable local snapshot reconciliation.
+- changed files: Antigravity-owned repaired files are `src/algotrader/execution/order_journal.py`, `paper_autopilot_supervisor.py`, `paper_autopilot_control.py`, `paper_autopilot_loop.py`, `paper_autopilot_operator.py`, `src/algotrader/cli.py`, related launch/docs files, and their focused tests. Codex-inherited dirty slices remain the crypto reset/forward-OOS and risk/runtime-planning files shown by Git status.
+- staged files: none at this update.
+- unstaged files: AGENTS.md plus the protected crypto reset/forward-OOS docs, script, source, and test files.
+- untracked source/test/script/doc files: active_implementation.md, show_agent_takeover_state.ps1, its unit test, and the protected crypto reset baseline document; no `runs/` artifact may be added.
+- protected pre-existing files: crypto reset/forward-OOS docs, scripts, source, and tests; risk context/config/engine; paper runtime planning, stable snapshot, health, history, loop/operator launch wrappers, and their tests.
+- exact focused verification completed: supervisor/journal/control/loop/operator/launcher/relay focused suite - 79 passed; planning/risk/dependency/mutation-surface/default-network/import guard suite - 185 passed.
+- full-suite result: not yet run after final edits.
+- known failing or incomplete tests: none known; full suite and offline verifier remain after relay commit.
+- safety booleans: APP_PROFILE_is_paper=false; APP_PROFILE_is_live=false; credential_variables_loaded=false; network_test_flags_enabled=false; paper_integration_flags_enabled=false; live_endpoint_indicator_present=false.
+- unresolved code gaps: audit all remaining supported mutation entrypoints against the shared final claim; verify the protected crypto reset/forward-OOS slice separately; retain no-submit operator gate.
+- external operator gates: broker credentials, paper profile, paper mutation, broker access, network, and any live-capital action remain unauthorized.
+- single highest-impact next action: commit the bounded relay protocol, then run the offline verifier and post-final-edit full suite.
+- exact first takeover command: `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\show_agent_takeover_state.ps1`
+- updated timestamp: 2026-07-11T19:38:31.5763563Z
+- handoff reason: active takeover state is durable so Codex, Antigravity, or Claude can resume without chat-memory reliance.
