@@ -12,6 +12,7 @@ from algotrader.execution.alpaca_mapper import (
     AlpacaOrderReceiptExecution,
 )
 from algotrader.execution.broker_base import BrokerOrderResult
+from algotrader.execution.order_journal import OrderJournalState, SqliteOrderJournal
 import algotrader.execution.etf_sma_m435_paper_buy_submit as m435
 
 
@@ -188,6 +189,9 @@ def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> N
     assert payload["broker_order_id"] == "broker-m435-order-1"
     assert payload["broker_status"] == "accepted"
     assert payload["client_order_id"] == m435.M435_CLIENT_ORDER_ID
+    assert payload["order_journal_claimed"] is True
+    assert payload["order_journal_state"] == OrderJournalState.ACCEPTED.value
+    assert payload["order_journal_lease_released"] is True
     assert payload["evaluated_at"] == AS_OF
     assert payload["pre_submit_reconciliation"]["observed_at"] == (
         RECONCILIATION_OBSERVED_AT
@@ -241,10 +245,38 @@ def test_ambiguous_submit_exception_sets_submitted_mutated_and_no_retry(
     assert payload["submit_call_count"] == 1
     assert payload["error"] == "m435_submit_ambiguous_after_single_call"
     assert payload["state"] == "ambiguous_after_single_submit_stop_no_retry"
+    assert payload["order_journal_state"] == OrderJournalState.UNKNOWN.value
     assert payload["redacted_exception_message"] == "ambiguous <redacted>"
     assert payload["post_submit_reconciliation"]["read_only_broker_observation"] is True
     assert broker.submit_count == 1
     assert broker.calls.count("submit_order") == 1
+
+
+def test_durable_claim_blocks_crash_rerun_before_second_submit(tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m434_record())
+    first_broker = FakeM435Broker()
+    first = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: first_broker,
+    )
+    second_broker = FakeM435Broker()
+
+    second = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: second_broker,
+    )
+
+    assert first["submit_call_count"] == 1
+    assert second["submitted"] is False
+    assert second["submit_call_count"] == 0
+    assert "durable_submit_already_reserved" in second["blockers"]
+    assert second_broker.submit_count == 0
+    journal = SqliteOrderJournal(first["order_journal_path"])
+    record = journal.get(m435.M435_CLIENT_ORDER_ID)
+    assert record is not None
+    assert record.safe_to_resubmit is False
 
 
 def test_does_not_call_submit_order_when_prior_m435_submit_exists(tmp_path) -> None:

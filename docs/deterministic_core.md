@@ -117,6 +117,11 @@ This flow is a contract boundary, not permission to trade.
   injected broker boundary. Older certification and drill entrypoints remain
   separately operator-gated; adding any unclassified mutation call fails the
   default offline invariant suite.
+- The operator-only M435 tiny SPY entry path is the first legacy submit migrated
+  onto that shared durable contract: a dedicated local journal must acquire a
+  fenced lease, reserve the immutable request identity, and persist the final
+  pre-mutation claim before its single broker call. Broker exceptions become
+  durable unknown state, and crash reruns cannot resubmit.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
   autonomous correction.

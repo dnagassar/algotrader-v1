@@ -84,6 +84,12 @@ AUTONOMOUS_MUTATION_CALLS = frozenset(
     }
 )
 
+SHARED_CLAIM_OPERATOR_MUTATION_CALLS = frozenset(
+    {
+        ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
+    }
+)
+
 BROKER_BOUNDARY_MUTATION_CALLS = frozenset(
     {
         ("src/algotrader/execution/alpaca_adapter.py", "submit_order", "submit_order_request"),
@@ -103,6 +109,7 @@ OFFLINE_SIMULATION_MUTATION_CALLS = frozenset(
 
 OPERATOR_GATED_MUTATION_CALLS = EXPECTED_DIRECT_MUTATION_CALLS - (
     AUTONOMOUS_MUTATION_CALLS
+    | SHARED_CLAIM_OPERATOR_MUTATION_CALLS
     | BROKER_BOUNDARY_MUTATION_CALLS
     | OFFLINE_SIMULATION_MUTATION_CALLS
 )
@@ -185,6 +192,7 @@ def test_every_production_mutation_call_is_explicitly_classified() -> None:
     ]
     classified = (
         AUTONOMOUS_MUTATION_CALLS
+        | SHARED_CLAIM_OPERATOR_MUTATION_CALLS
         | BROKER_BOUNDARY_MUTATION_CALLS
         | OFFLINE_SIMULATION_MUTATION_CALLS
         | OPERATOR_GATED_MUTATION_CALLS
@@ -227,6 +235,33 @@ def test_autonomous_submit_requires_atomic_final_claim_before_broker_call() -> N
     assert len(claim_lines) == 1
     assert len(submit_lines) == 1
     assert claim_lines[0] < submit_lines[0]
+
+
+def test_m435_operator_submit_requires_shared_durable_claim_first() -> None:
+    path = Path("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    run_calls = [
+        (_call_target_name(node.func), node.lineno)
+        for node in ast.walk(functions["run_m435_tiny_spy_paper_buy_submit"])
+        if isinstance(node, ast.Call)
+    ]
+    claim_lines = [line for name, line in run_calls if name == "_claim_durable_submit"]
+    submit_lines = [line for name, line in run_calls if name == "_submit_once"]
+    claim_method_calls = [
+        _call_target_name(node.func)
+        for node in ast.walk(functions["_claim_durable_submit"])
+        if isinstance(node, ast.Call)
+    ]
+
+    assert len(claim_lines) == 1
+    assert len(submit_lines) == 1
+    assert claim_lines[0] < submit_lines[0]
+    assert claim_method_calls.count("claim_pre_mutation_submit") == 1
 
 
 def _ast_name_observations(path: Path, tree: ast.AST) -> list[NameObservation]:
@@ -339,6 +374,14 @@ def _decorator_name(node: ast.AST) -> str:
     if isinstance(node, ast.Attribute):
         parent = _decorator_name(node.value)
         return f"{parent}.{node.attr}" if parent else node.attr
+    return ""
+
+
+def _call_target_name(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
     return ""
 
 
