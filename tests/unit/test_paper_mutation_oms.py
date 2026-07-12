@@ -21,6 +21,10 @@ from algotrader.execution.paper_mutation_oms import (
     paper_config_from_env_aliases,
     run_paper_certification_drill,
 )
+from algotrader.execution.order_journal import (
+    CancelJournalState,
+    SqliteOrderJournal,
+)
 
 
 NOW = datetime(2026, 6, 24, 15, 30, tzinfo=UTC)
@@ -510,12 +514,38 @@ def test_filled_before_cancel_reconciliation(tmp_path: Path) -> None:
     assert client.submitted_requests[0].side == "sell"
 
 
+def test_terminal_cancel_observation_does_not_issue_cancel(tmp_path: Path) -> None:
+    canceled_order = _order(status="canceled")
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(lookup_sequence=[canceled_order]),
+    )
+
+    assert latest["outcome_classification"] == "submitted_cancel_confirmed"
+    assert client.calls.count("submit_order") == 1
+    assert client.cancelled_order_ids == []
+    durable = latest["reconciliation"]["durable_cancel"]
+    assert durable["status"] == "not_required"
+    assert durable["broker_called"] is False
+
+
 def test_confirmed_cancellation_reconciliation(tmp_path: Path) -> None:
     latest, _root, client = _run_drill(tmp_path, client=FakePaperClient())
 
     assert latest["outcome_classification"] == "submitted_cancel_confirmed"
     assert client.cancelled_order_ids == ["paper-order-1"]
     assert latest["reconciliation"]["final_order_status"] == "canceled"
+    durable = latest["reconciliation"]["durable_cancel"]
+    assert durable["status"] == "observed"
+    assert durable["reservation_status"] == "reserved"
+    assert durable["broker_called"] is True
+    assert durable["lease_acquired"] is True
+    assert durable["lease_released"] is True
+    assert durable["reconciliation_persisted"] is True
+    assert durable["record"]["state"] == "canceled"
+    assert durable["record"]["safe_to_recancel"] is False
+    journal = SqliteOrderJournal(durable["journal_path"])
+    assert journal.cancel_intents()[0].state is CancelJournalState.CANCELED
 
 
 def test_cancel_ambiguity_resolves_by_lookup_when_terminal(tmp_path: Path) -> None:
@@ -542,6 +572,67 @@ def test_cancel_ambiguity_without_terminal_lookup_is_unresolved(tmp_path: Path) 
     assert latest["outcome_classification"] == "unresolved_order_outcome"
     assert client.cancelled_order_ids == ["paper-order-1"]
     assert client.calls.count("cancel_order_by_id:paper-order-1") == 1
+    durable = latest["reconciliation"]["durable_cancel"]
+    assert durable["status"] == "ambiguous"
+    assert durable["record"]["state"] == "unknown"
+    journal = SqliteOrderJournal(durable["journal_path"])
+    record = journal.cancel_intents()[0]
+    assert record.state is CancelJournalState.UNKNOWN
+    assert record.safe_to_recancel is False
+
+
+def test_fresh_same_order_snapshot_is_required_before_cancel(tmp_path: Path) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        client=FakePaperClient(lookup_sequence=[None]),
+    )
+
+    assert latest["outcome_classification"] == "unresolved_order_outcome"
+    assert client.calls.count("submit_order") == 1
+    assert client.cancelled_order_ids == []
+    durable = latest["reconciliation"]["durable_cancel"]
+    assert durable["status"] == "blocked"
+    assert durable["blocker"] == "required_snapshot_not_fresh"
+    assert durable["snapshot_fresh"] is False
+    assert durable["broker_called"] is False
+    assert durable["record"]["state"] == "reserved"
+
+
+def test_durable_unknown_restart_recovery_cannot_recancel(tmp_path: Path) -> None:
+    first_client = FakePaperClient(cancel_exception_message="cancel response lost")
+    first, root, first_client = _run_drill(tmp_path, client=first_client)
+    assert first["outcome_classification"] == "unresolved_order_outcome"
+    assert first_client.calls.count("cancel_order_by_id:paper-order-1") == 1
+
+    (root / "latest_run.json").unlink()
+    _write_crash_lifecycle(root)
+    broker_order = _order(status="accepted")
+    restart_client = FakePaperClient(
+        open_orders=[broker_order],
+        all_orders=[broker_order],
+    )
+
+    restarted, _root, restart_client = _run_drill(
+        tmp_path,
+        root=root,
+        client=restart_client,
+    )
+
+    assert restarted["outcome_classification"] == "unresolved_order_outcome"
+    assert restarted["restart_recovery_performed"] is True
+    assert restarted["paper_submit_performed"] is False
+    assert restarted["broker_mutation_performed"] is False
+    assert restart_client.calls.count("submit_order") == 0
+    assert restart_client.cancelled_order_ids == []
+    durable = restarted["reconciliation"]["durable_cancel"]
+    assert durable["status"] == "blocked"
+    assert durable["blocker"] == "cancel_intent_not_cancel_ready"
+    assert durable["record"]["state"] == "unknown"
+    journal = SqliteOrderJournal(durable["journal_path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.UNKNOWN
+    assert records[0].safe_to_recancel is False
 
 
 def test_cancel_ambiguity_open_order_blocks_next_mutation(tmp_path: Path) -> None:
@@ -618,6 +709,43 @@ def test_process_lock_contention_blocks_second_runner(tmp_path: Path) -> None:
     assert (root / ".mutation.lock").is_file()
 
 
+def test_networked_paper_flag_false_blocks_before_broker_calls(
+    tmp_path: Path,
+) -> None:
+    latest, _root, client = _run_drill(
+        tmp_path,
+        paper_submit_authorized=False,
+    )
+
+    assert latest["outcome_classification"] == "blocked_paper_submit_not_authorized"
+    assert latest["paper_submit_authorized"] is False
+    assert client.calls == []
+    assert client.submitted_requests == []
+    assert client.cancelled_order_ids == []
+
+
+def test_unavailable_durable_cancel_journal_blocks_before_broker_calls(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "certification"
+    state_root = root / ".state"
+    state_root.mkdir(parents=True)
+    (state_root / "durable_cancel_journal.sqlite3").write_bytes(
+        b"not-a-sqlite-database"
+    )
+
+    latest, _root, client = _run_drill(tmp_path, root=root)
+
+    assert latest["outcome_classification"] == (
+        "blocked_durable_cancel_journal_unavailable"
+    )
+    assert latest["preflight"]["durable_cancel_journal_initialized"] is False
+    assert latest["preflight"]["durable_cancel_journal_error_type"]
+    assert client.calls == []
+    assert client.submitted_requests == []
+    assert client.cancelled_order_ids == []
+
+
 def test_artifact_values_contain_no_credential_material(tmp_path: Path) -> None:
     client = FakePaperClient(
         submit_exception_message=f"submit failed with {SENSITIVE_SECRET}",
@@ -679,6 +807,7 @@ def _run_drill(
     env: dict[str, str] | None = None,
     expected_account_id: str = "paper-account-1",
     drill_side: str = "auto",
+    paper_submit_authorized: bool = True,
 ) -> tuple[dict[str, object], Path, FakePaperClient]:
     output_root = root or tmp_path / "certification"
     fake_client = client or FakePaperClient()
@@ -693,6 +822,7 @@ def _run_drill(
             timeout_seconds=0,
             poll_interval_seconds=0,
             drill_side=drill_side,
+            paper_submit_authorized=paper_submit_authorized,
         ),
         env=source_env,
     )

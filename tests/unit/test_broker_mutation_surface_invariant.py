@@ -286,7 +286,7 @@ def test_durable_cancel_owns_atomic_claim_before_cancel_callback() -> None:
     assert claim_lines[0] < cancel_callback_lines[0]
 
 
-def test_durable_cancel_has_exactly_one_operator_gated_production_consumer() -> None:
+def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> None:
     consumers: set[str] = set()
     for path in Path("src/algotrader").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -300,7 +300,8 @@ def test_durable_cancel_has_exactly_one_operator_gated_production_consumer() -> 
     certification_path = (
         "src/algotrader/execution/crypto_paper_submit_cancel_certification.py"
     )
-    assert consumers == {certification_path}
+    oms_path = "src/algotrader/execution/paper_mutation_oms.py"
+    assert consumers == {certification_path, oms_path}
 
     path = Path(certification_path)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -332,6 +333,41 @@ def test_durable_cancel_has_exactly_one_operator_gated_production_consumer() -> 
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
         and node.func.id == "_request_order_cancellation"
+    ]
+    assert len(injected_calls) == 1
+
+    path = Path(oms_path)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    lifecycle = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_cancel_and_reconcile"
+    )
+    coordinator_calls = [
+        node
+        for node in ast.walk(lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "cancel_coordinator"
+        and node.func.attr == "execute"
+    ]
+    assert len(coordinator_calls) == 1
+    cancel_keyword = next(
+        keyword
+        for keyword in coordinator_calls[0].keywords
+        if keyword.arg == "cancel"
+    )
+    assert isinstance(cancel_keyword.value, ast.Lambda)
+    injected_calls = [
+        node
+        for node in ast.walk(cancel_keyword.value)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "gateway"
+        and node.func.attr == "request_order_cancellation"
     ]
     assert len(injected_calls) == 1
 

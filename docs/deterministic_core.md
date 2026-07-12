@@ -136,11 +136,15 @@ This flow is a contract boundary, not permission to trade.
   coordinator requires a unique broker-order target, fenced lease, explicit
   cancel permission, and a fresh snapshot before its injected callback.
   Callback or observation ambiguity becomes durable unknown state and cannot
-  be retried after restart. The exactly authorized v5.8 BTCUSD paper
-  submit/cancel certification is its sole production consumer and initializes
-  its dedicated local journal before submit; the coordinator adds no authority,
-  remains behind the certification's operator and paper-only gates, and has only
-  been exercised here with offline fakes. The other three dynamic cancellation
+  be retried after restart. Its production consumers are limited by executable
+  allowlist to the exactly authorized v5.8 BTCUSD paper submit/cancel
+  certification and the v1.89 paper-mutation OMS cancellation/restart-recovery
+  boundary. Both initialize dedicated local journals before submit and remain
+  behind their existing operator, paper-only, process-lock, same-order, and
+  reconciliation gates. The OMS fake-only rehearsal may exercise the same
+  contract while keeping paper authorization and every real-broker activity
+  flag false. The coordinator adds no authority and has only been exercised in
+  these migrations with offline fakes. The other two dynamic cancellation
   dispatchers remain unchanged and separately operator-gated.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
