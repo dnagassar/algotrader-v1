@@ -131,13 +131,17 @@ This flow is a contract boundary, not permission to trade.
   alone owns the atomic claim/callback/observation sequence; failed predicates
   leave the callback untouched, and callback or observation ambiguity is
   persisted as durable unknown state.
-- `DurableCancelCoordinator` is an offline-proven, broker-unconnected cancel
-  contract. Schema-v4 cancel intents and events are separate from order-submit
-  state; the coordinator requires a unique broker-order target, fenced lease,
-  explicit cancel permission, and a fresh snapshot before its injected callback.
-  Callback or observation ambiguity becomes durable unknown state and cannot be
-  retried after restart. No production cancellation caller imports this contract
-  until a separate operator-authorized migration milestone.
+- `DurableCancelCoordinator` is an offline-proven cancel contract. Schema-v4
+  cancel intents and events are separate from order-submit state; the
+  coordinator requires a unique broker-order target, fenced lease, explicit
+  cancel permission, and a fresh snapshot before its injected callback.
+  Callback or observation ambiguity becomes durable unknown state and cannot
+  be retried after restart. The exactly authorized v5.8 BTCUSD paper
+  submit/cancel certification is its sole production consumer and initializes
+  its dedicated local journal before submit; the coordinator adds no authority,
+  remains behind the certification's operator and paper-only gates, and has only
+  been exercised here with offline fakes. The other three dynamic cancellation
+  dispatchers remain unchanged and separately operator-gated.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
   autonomous correction.
