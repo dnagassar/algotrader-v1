@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -113,6 +113,7 @@ class DurableSubmitOutcome:
     error_type: str = ""
     safe_error_message: str = ""
     journal_error_type: str = ""
+    exception: Exception | None = field(default=None, repr=False, compare=False)
 
     @property
     def observed(self) -> bool:
@@ -248,6 +249,7 @@ class DurableSubmitCoordinator:
                 error_type=exc.__class__.__name__,
                 safe_error_message=_safe_exception_message(exc, sanitize_exception),
                 journal_error_type=journal_error,
+                exception=exc,
             )
 
         try:
@@ -279,6 +281,7 @@ class DurableSubmitCoordinator:
                 error_type=exc.__class__.__name__,
                 safe_error_message=_safe_exception_message(exc, sanitize_exception),
                 journal_error_type=journal_error,
+                exception=exc,
             )
 
         return DurableSubmitOutcome(

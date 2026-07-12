@@ -87,6 +87,11 @@ AUTONOMOUS_MUTATION_CALLS = frozenset(
 SHARED_CLAIM_OPERATOR_MUTATION_CALLS = frozenset(
     {
         (
+            "src/algotrader/cli.py",
+            "_submit_paper_lab_spy_close_submit",
+            "submit_order_request",
+        ),
+        (
             "src/algotrader/execution/etf_sma_m370_paper_submit.py",
             "_submit_once",
             "submit_order_request",
@@ -320,6 +325,34 @@ def test_m370_operator_submit_requires_shared_durable_claim_first() -> None:
     coordinator_calls = [
         node
         for node in ast.walk(submit_once)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+    ]
+    assert len(coordinator_calls) == 1
+    broker_calls_inside = [
+        node
+        for node in ast.walk(coordinator_calls[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "submit_order_request"
+    ]
+
+    assert len(broker_calls_inside) == 1
+
+
+def test_m376_operator_close_requires_shared_durable_claim_first() -> None:
+    path = Path("src/algotrader/cli.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    submit_close = functions["_submit_paper_lab_spy_close_submit"]
+    coordinator_calls = [
+        node
+        for node in ast.walk(submit_close)
         if isinstance(node, ast.Call)
         and isinstance(node.func, ast.Attribute)
         and node.func.attr == "execute"

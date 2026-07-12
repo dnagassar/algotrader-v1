@@ -117,14 +117,16 @@ This flow is a contract boundary, not permission to trade.
   injected broker boundary. Older certification and drill entrypoints remain
   separately operator-gated; adding any unclassified mutation call fails the
   default offline invariant suite.
-- The operator-only M370 and M435 tiny SPY entry paths are legacy submits
-  migrated onto the shared durable contract: each dedicated local journal must acquire a
+- The operator-only M370/M435 tiny SPY entry paths and M376 quantity-based SPY
+  close path are legacy submits migrated onto the shared durable contract. Each
+  dedicated local journal must acquire a
   fenced lease, reserve the immutable request identity, and persist the final
   pre-mutation claim before its single broker call. Broker exceptions become
   durable unknown state, and crash reruns cannot resubmit.
 - `DurableSubmitCoordinator` is the shared final-submit hot-path contract used
-  by paper autopilot, M370, and M435. Callers provide typed immutable identity,
-  fenced lease evidence, explicit canonical-risk and snapshot-freshness booleans, an
+  by paper autopilot, M370, M376, and M435. Callers provide typed immutable
+  identity, fenced lease evidence, explicit canonical-risk and
+  snapshot-freshness booleans, an
   injected submit callback, and a broker-observation mapper. The coordinator
   alone owns the atomic claim/callback/observation sequence; failed predicates
   leave the callback untouched, and callback or observation ambiguity is

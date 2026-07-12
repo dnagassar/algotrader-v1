@@ -146,9 +146,10 @@ def test_stale_fencing_token_leaves_submit_callback_untouched(tmp_path) -> None:
 
 def test_submit_exception_is_redacted_and_persisted_unknown(tmp_path) -> None:
     coordinator, identity, lease = _prepared(tmp_path)
+    error = RuntimeError("secret-value")
 
     def _raise() -> None:
-        raise RuntimeError("secret-value")
+        raise error
 
     outcome = coordinator.execute(
         identity=identity,
@@ -161,6 +162,7 @@ def test_submit_exception_is_redacted_and_persisted_unknown(tmp_path) -> None:
     )
 
     assert outcome.ambiguous is True
+    assert outcome.exception is error
     assert outcome.safe_error_message == "<redacted>"
     assert outcome.record is not None
     assert outcome.record.state is OrderJournalState.UNKNOWN

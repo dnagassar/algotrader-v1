@@ -60,6 +60,12 @@ _PAPER_SPY_CLOSE_SUBMIT_DEFAULT_SOURCE_RUN_LOG = (
 _PAPER_SPY_CLOSE_SUBMIT_CLIENT_ORDER_ID = (
     "paper-order-close-m376_spy_paper_close_submit"
 )
+_PAPER_SPY_CLOSE_SUBMIT_EXECUTION_PLAN_ID = "m376_spy_close_submit_plan_v1"
+_PAPER_SPY_CLOSE_SUBMIT_DEFAULT_JOURNAL_PATH = (
+    "runs/paper_lab/m376_spy_position_close_submit_order_journal.sqlite3"
+)
+_PAPER_SPY_CLOSE_SUBMIT_LEASE_NAME = "m376-spy-close-submit"
+_PAPER_SPY_CLOSE_SUBMIT_LEASE_TTL_SECONDS = 300
 _PAPER_SPY_CLOSE_PREVIEW_FRESH_RUN_ID_PREFIXES = ("m375", "m376")
 _PAPER_SAFETY_GATE_ORDER = (
     "profile_gate",
@@ -7394,6 +7400,23 @@ def _paper_lab_order_values(
     return tuple(values)
 
 
+def _paper_lab_spy_close_submit_order_journal_path(
+    run_log_path: str | None,
+    *,
+    close_preview_run_log: str,
+) -> Path:
+    output_path = Path(
+        run_log_path
+        or close_preview_run_log
+        or _PAPER_SPY_CLOSE_SUBMIT_DEFAULT_JOURNAL_PATH
+    )
+    if not run_log_path:
+        return output_path.with_name(
+            "m376_spy_position_close_submit_order_journal.sqlite3"
+        )
+    return output_path.with_name(f"{output_path.stem}_order_journal.sqlite3")
+
+
 def _build_paper_lab_spy_close_submit_payload(
     config,
     args: argparse.Namespace,
@@ -7411,6 +7434,10 @@ def _build_paper_lab_spy_close_submit_payload(
             args.run_id or _PAPER_SPY_CLOSE_SUBMIT_DEFAULT_RUN_ID
         ),
         close_preview_run_log=args.close_preview_run_log,
+        order_journal_path=_paper_lab_spy_close_submit_order_journal_path(
+            args.run_log,
+            close_preview_run_log=args.close_preview_run_log,
+        ),
         submit_flag=bool(args.submit),
         i_mean_it_flag=bool(args.i_mean_it),
     )
@@ -7432,6 +7459,7 @@ def _paper_lab_spy_close_submit_base_payload(
     *,
     run_id: str,
     close_preview_run_log: str,
+    order_journal_path: Path,
     submit_flag: bool,
     i_mean_it_flag: bool,
 ) -> dict[str, object]:
@@ -7498,6 +7526,13 @@ def _paper_lab_spy_close_submit_base_payload(
         "normalized_status": "",
         "order_type": "market",
         "orders_observation_available": False,
+        "order_journal_claimed": False,
+        "order_journal_error": "",
+        "order_journal_lease_acquired": False,
+        "order_journal_lease_released": False,
+        "order_journal_path": str(order_journal_path),
+        "order_journal_reservation_status": "not_attempted",
+        "order_journal_state": "",
         "paper_lab_only": True,
         "paper_only": True,
         "paper_profile_gate_result": profile_gate,
@@ -8124,6 +8159,138 @@ def _first_failed_spy_close_submit_gate(
     return ""
 
 
+def _paper_lab_spy_close_submit_identity(
+    payload: Mapping[str, object],
+):
+    from .execution.durable_submit import DurableSubmitIdentity
+
+    return DurableSubmitIdentity(
+        client_order_id=str(payload.get("client_order_id", "")),
+        execution_plan_id=_PAPER_SPY_CLOSE_SUBMIT_EXECUTION_PLAN_ID,
+        reservation_run_id=str(payload.get("run_id", "")),
+        symbol="SPY",
+        side="sell",
+        quantity=Decimal(str(payload.get("requested_close_quantity", ""))),
+        notional=None,
+    )
+
+
+def _paper_lab_spy_close_submit_utc_now():
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc)
+
+
+def _paper_lab_spy_close_submit_risk_allowed(
+    payload: Mapping[str, object],
+) -> bool:
+    gates = _payload_mapping(payload.get("gates"))
+    return (
+        payload.get("ok") is True
+        and payload.get("submit_requested") is True
+        and payload.get("requested_submit") is True
+        and payload.get("requested_i_mean_it") is True
+        and payload.get("live_authorized") is False
+        and all(
+            _payload_mapping(gate).get("passed") is True
+            for gate in gates.values()
+        )
+    )
+
+
+def _paper_lab_spy_close_submit_snapshot_fresh(
+    payload: Mapping[str, object],
+) -> bool:
+    return (
+        payload.get("account_observation_available") is True
+        and payload.get("positions_observation_available") is True
+        and payload.get("orders_observation_available") is True
+        and payload.get("pre_submit_recent_order_query_metadata_complete") is True
+        and payload.get("spy_position_observed") is True
+        and payload.get("duplicate_client_order_id_found") is False
+        and _int_payload_value(payload.get("pre_submit_recent_open_order_count")) == 0
+        and not _payload_string_tuple(payload.get("unavailable_observations"))
+        and str(payload.get("observed_spy_quantity", ""))
+        == str(payload.get("requested_close_quantity", ""))
+    )
+
+
+def _paper_lab_spy_close_submit_broker_observation(result):  # noqa: ANN001
+    from .execution.durable_submit import DurableBrokerObservation
+
+    broker_result = _paper_order_broker_result_payload(result)
+    receipt = _paper_order_broker_receipt_metadata_payload(result)
+    accepted = bool(getattr(result, "accepted", False))
+    return DurableBrokerObservation(
+        broker_order_id=receipt["order_id"],
+        broker_status=(
+            broker_result["normalized_status"]
+            or ("accepted" if accepted else "rejected")
+        ),
+        filled_quantity=receipt["filled_quantity"] or None,
+        filled_average_price=receipt["filled_average_price"] or None,
+    )
+
+
+def _prepare_paper_lab_spy_close_durable_submit(
+    payload: Mapping[str, object],
+    *,
+    occurred_at,
+):
+    from .execution.durable_submit import DurableSubmitCoordinator
+    from .execution.order_journal import SqliteOrderJournal
+
+    status: dict[str, object] = {
+        "order_journal_claimed": False,
+        "order_journal_error": "",
+        "order_journal_lease_acquired": False,
+        "order_journal_lease_released": False,
+        "order_journal_reservation_status": "not_attempted",
+        "order_journal_state": "",
+    }
+    try:
+        journal_path = Path(str(payload.get("order_journal_path", "")))
+        coordinator = DurableSubmitCoordinator(SqliteOrderJournal(journal_path))
+        lease = coordinator.acquire_lease(
+            lease_name=_PAPER_SPY_CLOSE_SUBMIT_LEASE_NAME,
+            owner_run_id=str(payload.get("run_id", "")),
+            occurred_at=occurred_at,
+            ttl_seconds=_PAPER_SPY_CLOSE_SUBMIT_LEASE_TTL_SECONDS,
+        )
+    except Exception as exc:
+        status["order_journal_error"] = exc.__class__.__name__
+        return None, None, status, ("durable_submit_journal_unavailable",)
+
+    status["order_journal_lease_acquired"] = lease.acquired
+    if not lease.acquired:
+        return coordinator, lease, status, ("durable_submit_lease_unavailable",)
+
+    try:
+        reservation = coordinator.reserve(
+            _paper_lab_spy_close_submit_identity(payload),
+            occurred_at,
+        )
+        status["order_journal_reservation_status"] = reservation.status
+        status["order_journal_state"] = reservation.record.state.value
+        if not reservation.acquired:
+            blocker = (
+                "durable_submit_identity_conflict"
+                if reservation.status == "client_order_id_conflict"
+                else "durable_submit_already_reserved"
+            )
+            status["order_journal_lease_released"] = coordinator.release_lease(lease)
+            return coordinator, lease, status, (blocker,)
+    except Exception as exc:
+        status["order_journal_error"] = exc.__class__.__name__
+        try:
+            status["order_journal_lease_released"] = coordinator.release_lease(lease)
+        except Exception:
+            pass
+        return coordinator, lease, status, ("durable_submit_reservation_failed",)
+
+    return coordinator, lease, status, ()
+
+
 def _submit_paper_lab_spy_close_submit(
     config,
     payload: dict[str, object],
@@ -8169,6 +8336,91 @@ def _submit_paper_lab_spy_close_submit(
             "submit_attempted": False,
         }
 
+    occurred_at = _paper_lab_spy_close_submit_utc_now()
+    coordinator, lease, journal_status, journal_blockers = (
+        _prepare_paper_lab_spy_close_durable_submit(
+            payload,
+            occurred_at=occurred_at,
+        )
+    )
+    payload = {
+        **payload,
+        **journal_status,
+        "blockers": [*payload.get("blockers", []), *journal_blockers],
+    }
+    if journal_blockers or coordinator is None or lease is None:
+        return {
+            **payload,
+            "broker_action_performed": False,
+            "broker_error": False,
+            "broker_result_classification": "not_submitted",
+            "close_order_submitted": False,
+            "error": journal_blockers[0],
+            "mutated": False,
+            "ok": False,
+            "preview_only": False,
+            "state": _PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE,
+            "submitted": False,
+            "submit_attempt_count": 0,
+            "submit_attempted": False,
+        }
+
+    from .execution.durable_submit import DurableSubmitEvidence
+
+    identity = _paper_lab_spy_close_submit_identity(payload)
+    evidence = DurableSubmitEvidence(
+        canonical_risk_allowed=_paper_lab_spy_close_submit_risk_allowed(payload),
+        snapshot_fresh=_paper_lab_spy_close_submit_snapshot_fresh(payload),
+    )
+    try:
+        outcome = coordinator.execute(
+            identity=identity,
+            lease=lease,
+            evidence=evidence,
+            occurred_at=occurred_at,
+            submit=lambda: broker.submit_order_request(
+                request,
+                risk_verdict=RiskVerdict(
+                    allowed=True,
+                    reason="explicit_spy_paper_close_submit_m376",
+                    detail="quantity_close",
+                ),
+            ),
+            observe=_paper_lab_spy_close_submit_broker_observation,
+            sanitize_exception=lambda exc: _redact_config_secrets(str(exc), config),
+        )
+    finally:
+        try:
+            lease_released = coordinator.release_lease(lease)
+        except Exception:
+            lease_released = False
+
+    journal_state = "" if outcome.record is None else outcome.record.state.value
+    payload = {
+        **payload,
+        "order_journal_lease_released": lease_released,
+        "order_journal_state": journal_state,
+    }
+    if not outcome.broker_called:
+        return {
+            **payload,
+            "blockers": [*payload.get("blockers", []), outcome.blocker],
+            "broker_action_performed": False,
+            "broker_error": False,
+            "broker_result_classification": "not_submitted",
+            "close_order_submitted": False,
+            "error": outcome.blocker,
+            "mutated": False,
+            "ok": False,
+            "order_journal_claimed": False,
+            "order_journal_error": outcome.error_type,
+            "preview_only": False,
+            "state": _PAPER_SPY_CLOSE_SUBMIT_BLOCKED_STATE,
+            "submitted": False,
+            "submit_attempt_count": 0,
+            "submit_attempted": False,
+        }
+
     submit_attempt_fields = {
         "broker_action_performed": True,
         "close_order_submitted": True,
@@ -8178,19 +8430,10 @@ def _submit_paper_lab_spy_close_submit(
         "submit_attempt_count": 1,
         "submit_attempted": True,
     }
-    try:
-        result = broker.submit_order_request(
-            request,
-            risk_verdict=RiskVerdict(
-                allowed=True,
-                reason="explicit_spy_paper_close_submit_m376",
-                detail="quantity_close",
-            ),
-        )
-    except Exception as exc:
-        redacted_message = _redact_config_secrets(str(exc), config)
+    if outcome.response is None:
         from .execution.alpaca_translator import AlpacaTranslationError
 
+        exc = outcome.exception
         response_received = isinstance(exc, AlpacaTranslationError)
         ambiguous_payload = {
             **payload,
@@ -8205,13 +8448,15 @@ def _submit_paper_lab_spy_close_submit(
                 if response_received
                 else "paper_lab_spy_close_submit_failed"
             ),
-            "error_type": exc.__class__.__name__,
+            "error_type": outcome.error_type,
             "filled": None,
-            "message": redacted_message,
+            "message": outcome.safe_error_message,
             "ok": False,
-            "redacted_exception_message": redacted_message,
+            "order_journal_claimed": True,
+            "order_journal_error": outcome.journal_error_type,
+            "redacted_exception_message": outcome.safe_error_message,
             "state": "ambiguous_after_single_submit_stop_no_retry",
-            **_paper_submit_error_diagnostic_fields(exc),
+            **(_paper_submit_error_diagnostic_fields(exc) if exc else {}),
         }
         return (
             _attach_paper_lab_spy_close_submit_post_submit_observation(
@@ -8223,14 +8468,16 @@ def _submit_paper_lab_spy_close_submit(
             else ambiguous_payload
         )
 
+    result = outcome.response
     broker_result = _paper_order_broker_result_payload(result)
     receipt_metadata = _paper_order_broker_receipt_metadata_payload(result)
-    accepted = bool(result.accepted)
+    accepted = bool(result.accepted) and outcome.observed
+    journal_ambiguous = outcome.ambiguous
     submitted_payload = {
         **payload,
         **submit_attempt_fields,
         "accepted": accepted,
-        "broker_error": False,
+        "broker_error": journal_ambiguous,
         "broker_normalized_status": broker_result["normalized_status"],
         "broker_order_id": receipt_metadata["order_id"],
         "broker_order_id_available": bool(receipt_metadata["order_id"]),
@@ -8239,17 +8486,35 @@ def _submit_paper_lab_spy_close_submit(
         "broker_response_parsed": True,
         "broker_response_received": True,
         "broker_result": broker_result,
-        "broker_result_classification": "accepted" if accepted else "rejected",
+        "broker_result_classification": (
+            "ambiguous"
+            if journal_ambiguous
+            else "accepted"
+            if accepted
+            else "rejected"
+        ),
         "client_order_id": (
             receipt_metadata["client_order_id"]
             or str(payload.get("client_order_id", ""))
         ),
-        "error": "" if accepted else "paper_lab_spy_close_submit_rejected",
+        "error": (
+            "m376_journal_observation_failed"
+            if journal_ambiguous
+            else ""
+            if accepted
+            else "paper_lab_spy_close_submit_rejected"
+        ),
         "filled": result.filled,
         "filled_average_price": receipt_metadata["filled_average_price"],
         "filled_quantity": receipt_metadata["filled_quantity"],
         "normalized_status": broker_result["normalized_status"],
         "ok": accepted,
+        "order_journal_claimed": True,
+        "order_journal_error": (
+            outcome.error_type or outcome.journal_error_type
+            if journal_ambiguous
+            else ""
+        ),
         "raw_reason": broker_result["raw_reason"],
         "raw_status": broker_result["raw_status"],
         "state": (
