@@ -42,6 +42,80 @@ FORBIDDEN_MUTATION_TERMS = (
     "delete",
 )
 
+MUTATION_CALL_NAMES = frozenset(
+    {
+        "submit_order",
+        "submit_order_request",
+        "cancel_order",
+        "cancel_order_by_id",
+        "replace_order",
+        "close_position",
+        "close_all_positions",
+        "liquidate",
+    }
+)
+
+EXPECTED_DIRECT_MUTATION_CALLS = frozenset(
+    {
+        ("src/algotrader/cli.py", "_submit_paper_lab_spy_close_submit", "submit_order_request"),
+        ("src/algotrader/cli.py", "_submit_paper_close_probe", "submit_order_request"),
+        ("src/algotrader/cli.py", "_submit_paper_order_probe", "submit_order_request"),
+        ("src/algotrader/execution/alpaca_adapter.py", "submit_order", "submit_order_request"),
+        ("src/algotrader/execution/alpaca_broker.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/alpaca_broker.py", "submit_order_request", "submit_order_request"),
+        ("src/algotrader/execution/alpaca_sdk_client.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/crypto_paper_fill_exit_certification.py", "_submit_and_reconcile_once", "submit_order"),
+        ("src/algotrader/execution/crypto_paper_mutation_drill.py", "_submit_cancel_reconcile", "submit_order"),
+        ("src/algotrader/execution/crypto_paper_submit_cancel_certification.py", "_submit_cancel_reconcile", "submit_order"),
+        ("src/algotrader/execution/etf_sma_daily_oms_rehearsal.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/etf_sma_m370_paper_submit.py", "_submit_once", "submit_order_request"),
+        ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
+        ("src/algotrader/execution/etf_sma_v199_authorized_bounded_spy_paper_drill.py", "_submit_cancel_reconcile", "submit_order"),
+        ("src/algotrader/execution/paper_autopilot_loop.py", "_execute_plan", "submit_order"),
+        ("src/algotrader/execution/paper_mutation_oms.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/paper_mutation_oms.py", "run_paper_certification_drill", "submit_order"),
+        ("src/algotrader/orchestration/scenarios.py", "_run_broker_flow", "submit_order"),
+    }
+)
+
+AUTONOMOUS_MUTATION_CALLS = frozenset(
+    {
+        ("src/algotrader/execution/paper_autopilot_loop.py", "_execute_plan", "submit_order"),
+    }
+)
+
+BROKER_BOUNDARY_MUTATION_CALLS = frozenset(
+    {
+        ("src/algotrader/execution/alpaca_adapter.py", "submit_order", "submit_order_request"),
+        ("src/algotrader/execution/alpaca_broker.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/alpaca_broker.py", "submit_order_request", "submit_order_request"),
+        ("src/algotrader/execution/alpaca_sdk_client.py", "submit_order", "submit_order"),
+        ("src/algotrader/execution/paper_mutation_oms.py", "submit_order", "submit_order"),
+    }
+)
+
+OFFLINE_SIMULATION_MUTATION_CALLS = frozenset(
+    {
+        ("src/algotrader/execution/etf_sma_daily_oms_rehearsal.py", "submit_order", "submit_order"),
+        ("src/algotrader/orchestration/scenarios.py", "_run_broker_flow", "submit_order"),
+    }
+)
+
+OPERATOR_GATED_MUTATION_CALLS = EXPECTED_DIRECT_MUTATION_CALLS - (
+    AUTONOMOUS_MUTATION_CALLS
+    | BROKER_BOUNDARY_MUTATION_CALLS
+    | OFFLINE_SIMULATION_MUTATION_CALLS
+)
+
+EXPECTED_DYNAMIC_CANCEL_DISPATCHERS = frozenset(
+    {
+        ("src/algotrader/execution/crypto_paper_mutation_drill.py", "_request_order_cancellation"),
+        ("src/algotrader/execution/crypto_paper_submit_cancel_certification.py", "_request_order_cancellation"),
+        ("src/algotrader/execution/etf_sma_v199_authorized_bounded_spy_paper_drill.py", "_request_order_cancellation"),
+        ("src/algotrader/execution/paper_mutation_oms.py", "request_order_cancellation"),
+    }
+)
+
 
 @dataclass(frozen=True)
 class NameObservation:
@@ -103,6 +177,58 @@ def test_alpaca_paper_broker_mutation_surface_is_submit_only() -> None:
     )
 
 
+def test_every_production_mutation_call_is_explicitly_classified() -> None:
+    observed = [
+        call
+        for path in sorted(Path("src/algotrader").rglob("*.py"))
+        for call in _direct_mutation_calls(path)
+    ]
+    classified = (
+        AUTONOMOUS_MUTATION_CALLS
+        | BROKER_BOUNDARY_MUTATION_CALLS
+        | OFFLINE_SIMULATION_MUTATION_CALLS
+        | OPERATOR_GATED_MUTATION_CALLS
+    )
+
+    assert frozenset(observed) == EXPECTED_DIRECT_MUTATION_CALLS
+    assert len(observed) == len(EXPECTED_DIRECT_MUTATION_CALLS)
+    assert classified == EXPECTED_DIRECT_MUTATION_CALLS
+    assert AUTONOMOUS_MUTATION_CALLS == {
+        ("src/algotrader/execution/paper_autopilot_loop.py", "_execute_plan", "submit_order")
+    }
+
+
+def test_dynamic_cancel_dispatchers_remain_operator_gated_and_allowlisted() -> None:
+    observed = frozenset(
+        dispatcher
+        for path in sorted(Path("src/algotrader").rglob("*.py"))
+        for dispatcher in _dynamic_cancel_dispatchers(path)
+    )
+
+    assert observed == EXPECTED_DYNAMIC_CANCEL_DISPATCHERS
+
+
+def test_autonomous_submit_requires_atomic_final_claim_before_broker_call() -> None:
+    path = Path("src/algotrader/execution/paper_autopilot_loop.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    execute_plan = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_execute_plan"
+    )
+    calls = [
+        (node.func.attr, node.lineno)
+        for node in ast.walk(execute_plan)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    ]
+    claim_lines = [line for name, line in calls if name == "claim_pre_mutation_submit"]
+    submit_lines = [line for name, line in calls if name == "submit_order"]
+
+    assert len(claim_lines) == 1
+    assert len(submit_lines) == 1
+    assert claim_lines[0] < submit_lines[0]
+
+
 def _ast_name_observations(path: Path, tree: ast.AST) -> list[NameObservation]:
     observations: list[NameObservation] = []
 
@@ -143,6 +269,62 @@ def _ast_name_observations(path: Path, tree: ast.AST) -> list[NameObservation]:
             )
 
     return observations
+
+
+def _direct_mutation_calls(path: Path) -> list[tuple[str, str, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    visitor = _MutationCallVisitor(path)
+    visitor.visit(tree)
+    return visitor.calls
+
+
+def _dynamic_cancel_dispatchers(path: Path) -> set[tuple[str, str]]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    dispatchers: set[tuple[str, str]] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        constants = {
+            child.value
+            for child in ast.walk(node)
+            if isinstance(child, ast.Constant) and isinstance(child.value, str)
+        }
+        if not {"cancel_order", "cancel_order_by_id"}.issubset(constants):
+            continue
+        has_dynamic_getattr = any(
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Name)
+            and child.func.id == "getattr"
+            and len(child.args) >= 2
+            and isinstance(child.args[1], ast.Name)
+            for child in ast.walk(node)
+        )
+        if has_dynamic_getattr:
+            dispatchers.add((path.as_posix(), node.name))
+    return dispatchers
+
+
+class _MutationCallVisitor(ast.NodeVisitor):
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.function_stack: list[str] = []
+        self.calls: list[tuple[str, str, str]] = []
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> None:
+        self.function_stack.append(node.name)
+        self.generic_visit(node)
+        self.function_stack.pop()
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:
+        self.function_stack.append(node.name)
+        self.generic_visit(node)
+        self.function_stack.pop()
+
+    def visit_Call(self, node: ast.Call) -> None:
+        if isinstance(node.func, ast.Attribute) and node.func.attr in MUTATION_CALL_NAMES:
+            function_name = self.function_stack[-1] if self.function_stack else "<module>"
+            self.calls.append((self.path.as_posix(), function_name, node.func.attr))
+        self.generic_visit(node)
 
 
 def _function_kind(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:

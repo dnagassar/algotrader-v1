@@ -111,6 +111,12 @@ This flow is a contract boundary, not permission to trade.
 - `PlanningPolicy` makes deterministic pre-broker batch eligibility decisions.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
+- Direct production submit and cancel call sites are a closed, executable
+  inventory. The paper autopilot is the only autonomous mutation caller and
+  must atomically persist its final fenced journal claim before invoking the
+  injected broker boundary. Older certification and drill entrypoints remain
+  separately operator-gated; adding any unclassified mutation call fails the
+  default offline invariant suite.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
   autonomous correction.
