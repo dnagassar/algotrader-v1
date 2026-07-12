@@ -12,12 +12,18 @@ from algotrader.execution.etf_sma_v195_bounded_paper_drill_approval_packet impor
 from algotrader.execution.etf_sma_v199_authorized_bounded_spy_paper_drill import (
     PAPER_DRILL_BLOCKED_DUPLICATE_CLIENT_ORDER_ID,
     PAPER_DRILL_BLOCKED_LIVE_ENDPOINT_OR_PROFILE,
+    PAPER_DRILL_BLOCKED_OPEN_SPY_ORDER_PRESENT,
     PAPER_DRILL_BLOCKED_PRE_SUBMIT_GATE,
     PAPER_DRILL_SUBMITTED_CANCEL_CONFIRMED,
     PAPER_DRILL_SUBMITTED_FILLED_BEFORE_CANCEL,
     PAPER_DRILL_SUBMITTED_PARTIAL_FILL_THEN_CANCELLED,
+    PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME,
     V199_AUTHORIZATION_PHRASE,
     run_v199_authorized_bounded_spy_paper_drill,
+)
+from algotrader.execution.order_journal import (
+    CancelJournalState,
+    SqliteOrderJournal,
 )
 
 
@@ -98,6 +104,139 @@ def test_submit_then_cancel_confirmed_writes_required_artifacts(tmp_path: Path) 
     ]
     _assert_artifacts(output_root, packet)
     _assert_no_sensitive_values(packet)
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_reservation_status"] == "reserved"
+    assert cancel_result["durable_cancel_status"] == "observed"
+    assert cancel_result["durable_cancel_record"]["state"] == "canceled"
+    assert cancel_result["durable_cancel_record"]["safe_to_recancel"] is False
+    assert cancel_result["durable_cancel_lease_acquired"] is True
+    assert cancel_result["durable_cancel_lease_released"] is True
+    journal = SqliteOrderJournal(packet["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.CANCELED
+
+
+def test_cancel_ambiguity_is_durable_unknown_and_redacted(tmp_path: Path) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV199Client(cancel_raises=True)
+    output_root = tmp_path / "runs" / "paper_lab" / "v199"
+
+    packet = run_v199_authorized_bounded_spy_paper_drill(
+        approval_packet_path=approval_path,
+        output_root=output_root,
+        timestamp=GENERATED_AT,
+        authorization_phrase=V199_AUTHORIZATION_PHRASE,
+        env=_paper_env(),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+        broker_client_factory=_factory(fake_client),
+        reconciliation_poll_attempts=1,
+        reconciliation_poll_interval_seconds=0,
+    )
+
+    assert packet["outcome_classification"] == PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME
+    assert packet["cancel_attempted"] is True
+    assert packet["cancel_ambiguous"] is True
+    assert fake_client.calls.count("submit_order") == 1
+    assert fake_client.calls.count("cancel_order_by_id:paper-order-1") == 1
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_status"] == "ambiguous"
+    assert cancel_result["durable_cancel_record"]["state"] == "unknown"
+    serialized = json.dumps(packet, sort_keys=True)
+    assert PAPER_SECRET not in serialized
+    assert "https://paper.example.test" not in serialized
+    journal = SqliteOrderJournal(packet["durable_cancel_journal"]["path"])
+    record = journal.cancel_intents()[0]
+    assert record.state is CancelJournalState.UNKNOWN
+    assert record.safe_to_recancel is False
+
+
+def test_cancel_ambiguity_rerun_cannot_submit_or_cancel_again(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV199Client(cancel_raises=True)
+    output_root = tmp_path / "runs" / "paper_lab" / "v199"
+    kwargs = {
+        "approval_packet_path": approval_path,
+        "output_root": output_root,
+        "timestamp": GENERATED_AT,
+        "authorization_phrase": V199_AUTHORIZATION_PHRASE,
+        "env": _paper_env(),
+        "expected_paper_account_id": EXPECTED_ACCOUNT_ID,
+        "broker_client_factory": _factory(fake_client),
+        "reconciliation_poll_attempts": 1,
+        "reconciliation_poll_interval_seconds": 0,
+    }
+
+    first = run_v199_authorized_bounded_spy_paper_drill(**kwargs)
+    second = run_v199_authorized_bounded_spy_paper_drill(**kwargs)
+
+    assert first["outcome_classification"] == PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME
+    assert second["outcome_classification"] == PAPER_DRILL_BLOCKED_OPEN_SPY_ORDER_PRESENT
+    assert fake_client.calls.count("submit_order") == 1
+    assert fake_client.calls.count("cancel_order_by_id:paper-order-1") == 1
+    journal = SqliteOrderJournal(first["durable_cancel_journal"]["path"])
+    records = journal.cancel_intents()
+    assert len(records) == 1
+    assert records[0].state is CancelJournalState.UNKNOWN
+    assert records[0].safe_to_recancel is False
+
+
+def test_cancel_requires_fresh_same_order_snapshot(tmp_path: Path) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    fake_client = FakeV199Client(hide_current_order_from_reads=True)
+
+    packet = run_v199_authorized_bounded_spy_paper_drill(
+        approval_packet_path=approval_path,
+        output_root=tmp_path / "runs" / "paper_lab" / "v199",
+        timestamp=GENERATED_AT,
+        authorization_phrase=V199_AUTHORIZATION_PHRASE,
+        env=_paper_env(),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+        broker_client_factory=_factory(fake_client),
+        reconciliation_poll_attempts=1,
+        reconciliation_poll_interval_seconds=0,
+    )
+
+    assert packet["outcome_classification"] == PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME
+    assert packet["blocker"] == "required_snapshot_not_fresh"
+    assert packet["submit_attempted"] is True
+    assert packet["cancel_attempted"] is False
+    assert "cancel_order_by_id:paper-order-1" not in fake_client.calls
+    cancel_result = packet["cancel_result"]
+    assert cancel_result["durable_cancel_status"] == "blocked"
+    assert cancel_result["durable_cancel_blocker"] == "required_snapshot_not_fresh"
+    assert cancel_result["durable_cancel_record"]["state"] == "reserved"
+
+
+def test_unavailable_cancel_journal_blocks_before_broker_access(
+    tmp_path: Path,
+) -> None:
+    approval_path = _write_approval_packet(tmp_path)
+    output_root = tmp_path / "runs" / "paper_lab" / "v199"
+    state_root = output_root / ".state"
+    state_root.mkdir(parents=True)
+    (state_root / "durable_cancel_journal.sqlite3").write_bytes(
+        b"not-a-sqlite-database"
+    )
+
+    packet = run_v199_authorized_bounded_spy_paper_drill(
+        approval_packet_path=approval_path,
+        output_root=output_root,
+        timestamp=GENERATED_AT,
+        authorization_phrase=V199_AUTHORIZATION_PHRASE,
+        env=_paper_env(),
+        expected_paper_account_id=EXPECTED_ACCOUNT_ID,
+        broker_client_factory=_forbidden_factory,
+    )
+
+    assert packet["outcome_classification"] == PAPER_DRILL_BLOCKED_PRE_SUBMIT_GATE
+    assert packet["blocker"] == "durable_cancel_journal_unavailable_before_submit"
+    assert packet["durable_cancel_journal"]["initialized"] is False
+    assert packet["broker_read_performed"] is False
+    assert packet["submit_attempted"] is False
+    assert packet["cancel_attempted"] is False
 
 
 def test_filled_before_cancel_does_not_attempt_cancel(tmp_path: Path) -> None:
@@ -251,6 +390,8 @@ class FakeV199Client:
         positions: tuple[dict[str, object], ...] = (),
         open_orders: tuple[dict[str, object], ...] = (),
         recent_orders: tuple[dict[str, object], ...] = (),
+        cancel_raises: bool = False,
+        hide_current_order_from_reads: bool = False,
     ) -> None:
         self.account = {
             "account_id": EXPECTED_ACCOUNT_ID,
@@ -267,6 +408,8 @@ class FakeV199Client:
         self.submit_status = submit_status
         self.cancel_status = cancel_status
         self.filled_quantity = filled_quantity
+        self.cancel_raises = cancel_raises
+        self.hide_current_order_from_reads = hide_current_order_from_reads
         self.current_order: dict[str, object] | None = None
         self.calls: list[str] = []
 
@@ -283,15 +426,19 @@ class FakeV199Client:
         rows = list(self.recent_orders)
         if query.status_filter == "open":
             rows = list(self.open_orders)
-            if self.current_order and self.current_order["status"] not in {
-                "canceled",
-                "cancelled",
-                "expired",
-                "filled",
-                "rejected",
-            }:
+            if (
+                self.current_order
+                and not self.hide_current_order_from_reads
+                and self.current_order["status"] not in {
+                    "canceled",
+                    "cancelled",
+                    "expired",
+                    "filled",
+                    "rejected",
+                }
+            ):
                 rows.append(self.current_order)
-        elif self.current_order is not None:
+        elif self.current_order is not None and not self.hide_current_order_from_reads:
             rows.append(self.current_order)
         if query.symbol_filter:
             rows = [
@@ -326,6 +473,10 @@ class FakeV199Client:
 
     def cancel_order_by_id(self, order_id: str) -> dict[str, object]:
         self.calls.append(f"cancel_order_by_id:{order_id}")
+        if self.cancel_raises:
+            raise RuntimeError(
+                f"cancel failed token={PAPER_SECRET} at https://paper.example.test"
+            )
         assert self.current_order is not None
         assert self.current_order["id"] == order_id
         self.current_order = {

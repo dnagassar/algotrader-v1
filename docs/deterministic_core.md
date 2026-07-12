@@ -145,9 +145,10 @@ This flow is a contract boundary, not permission to trade.
   additionally retains its process lock. The OMS fake-only rehearsal may
   exercise the same contract while keeping paper authorization and every
   real-broker activity flag false. The coordinator adds no authority and has
-  only been exercised in these migrations with offline fakes. The remaining
-  v1.99 dynamic cancellation dispatcher is unchanged and separately
-  operator-gated.
+  only been exercised in these migrations with offline fakes. The executable
+  allowlist now covers all four known dynamic production cancellation
+  dispatchers, each still separately operator-gated; it authorizes no new
+  caller and no autonomous cancellation.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
   autonomous correction.

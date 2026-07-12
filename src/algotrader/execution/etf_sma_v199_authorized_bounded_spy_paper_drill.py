@@ -27,6 +27,13 @@ from algotrader.config import (
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import AlpacaOrderRequest, AlpacaRecentOrderQuery
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
+from algotrader.execution.durable_cancel import (
+    DurableCancelCoordinator,
+    DurableCancelEvidence,
+    DurableCancelIdentity,
+    DurableCancelObservation,
+)
+from algotrader.execution.order_journal import SqliteOrderJournal
 from algotrader.execution.etf_sma_v195_bounded_paper_drill_approval_packet import (
     APPROVAL_PACKET_READY_NO_MUTATION,
     V195_REQUIRED_FUTURE_AUTHORIZATION_PHRASE,
@@ -49,6 +56,9 @@ from algotrader.execution.etf_sma_v196_read_only_broker_observation import (
 
 V199_RUN_ID = "v199_authorized_bounded_spy_paper_drill"
 V199_DEFAULT_OUTPUT_ROOT = "runs/paper_lab/v199_authorized_bounded_spy_paper_drill"
+V199_DURABLE_CANCEL_JOURNAL_RELATIVE_PATH = Path(
+    ".state/durable_cancel_journal.sqlite3"
+)
 V199_DEFAULT_APPROVAL_PACKET_PATH = (
     "runs/paper_lab/v195_bounded_paper_drill_approval_packet_final_verify/"
     "approval_packet.json"
@@ -62,6 +72,9 @@ V199_ORDER_TYPE = "market"
 V199_TIME_IN_FORCE = "day"
 V199_MAX_NOTIONAL = Decimal("25.00")
 _EXPECTED_ACCOUNT_ENV = "ALPACA_EXPECTED_PAPER_ACCOUNT_ID"
+_DURABLE_CANCEL_LEASE_NAME = "v199_bounded_spy_paper_cancel"
+_DURABLE_CANCEL_LEASE_TTL_SECONDS = 300
+_DURABLE_CANCEL_REASON = "v199_same_order_cleanup"
 
 PAPER_DRILL_SUBMITTED_CANCEL_CONFIRMED = (
     "paper_drill_submitted_cancel_confirmed"
@@ -197,6 +210,7 @@ def run_v199_authorized_bounded_spy_paper_drill(
         else normalized_env.get(_EXPECTED_ACCOUNT_ENV, "")
     )
     pre_submit_observation: dict[str, object] = {}
+    durable_cancel_journal: dict[str, object] = {}
 
     gate_classification, gate_blocker = _pre_observation_gate_blocker(
         source_path=source_path,
@@ -214,6 +228,7 @@ def run_v199_authorized_bounded_spy_paper_drill(
             source_classification=source_classification,
             authorization_observed=authorization_observed,
             projected=projected,
+            durable_cancel_journal=durable_cancel_journal,
             pre_submit_observation=pre_submit_observation,
             actual_request={},
             submit_result={},
@@ -227,6 +242,45 @@ def run_v199_authorized_bounded_spy_paper_drill(
         _write_artifacts(root, packet, pre_submit_observation, approval_packet, projected)
         _validate_no_exposure(packet, normalized_env, expected_account)
         return packet
+
+    cancel_journal_path = root / V199_DURABLE_CANCEL_JOURNAL_RELATIVE_PATH
+    cancel_coordinator = DurableCancelCoordinator(
+        SqliteOrderJournal(cancel_journal_path)
+    )
+    try:
+        cancel_coordinator.journal.initialize()
+    except Exception as exc:  # noqa: BLE001 - fail closed before broker access.
+        durable_cancel_journal = {
+            "path": str(cancel_journal_path),
+            "initialized": False,
+            "error_type": exc.__class__.__name__,
+        }
+        packet = _build_packet(
+            run_id=run_id,
+            timestamp=generated_at,
+            output_root=root,
+            source_path=source_path,
+            source_classification=source_classification,
+            authorization_observed=authorization_observed,
+            projected=projected,
+            durable_cancel_journal=durable_cancel_journal,
+            pre_submit_observation=pre_submit_observation,
+            actual_request={},
+            submit_result={},
+            cancel_result={},
+            final_order={},
+            outcome_classification=PAPER_DRILL_BLOCKED_PRE_SUBMIT_GATE,
+            blocker="durable_cancel_journal_unavailable_before_submit",
+            next_operator_action="repair_durable_cancel_journal_before_v199_drill",
+            broker_read_performed=False,
+        )
+        _write_artifacts(root, packet, pre_submit_observation, approval_packet, projected)
+        _validate_no_exposure(packet, normalized_env, expected_account)
+        return packet
+    durable_cancel_journal = {
+        "path": str(cancel_journal_path),
+        "initialized": True,
+    }
 
     pre_submit_observation = run_v196_read_only_broker_observation(
         approval_packet_path=source_path,
@@ -249,6 +303,7 @@ def run_v199_authorized_bounded_spy_paper_drill(
             source_classification=source_classification,
             authorization_observed=authorization_observed,
             projected=projected,
+            durable_cancel_journal=durable_cancel_journal,
             pre_submit_observation=pre_submit_observation,
             actual_request={},
             submit_result={},
@@ -278,6 +333,7 @@ def run_v199_authorized_bounded_spy_paper_drill(
             source_classification=source_classification,
             authorization_observed=authorization_observed,
             projected=projected,
+            durable_cancel_journal=durable_cancel_journal,
             pre_submit_observation=pre_submit_observation,
             actual_request=actual_request,
             submit_result={},
@@ -295,6 +351,10 @@ def run_v199_authorized_bounded_spy_paper_drill(
     lifecycle = _submit_cancel_reconcile(
         client=client_result["client"],
         request=request,
+        cancel_coordinator=cancel_coordinator,
+        cancel_allowed=authorization_observed,
+        occurred_at=datetime.now(UTC),
+        reservation_run_id=run_id,
         poll_attempts=reconciliation_poll_attempts,
         poll_interval_seconds=reconciliation_poll_interval_seconds,
     )
@@ -306,6 +366,7 @@ def run_v199_authorized_bounded_spy_paper_drill(
         source_classification=source_classification,
         authorization_observed=authorization_observed,
         projected=projected,
+        durable_cancel_journal=durable_cancel_journal,
         pre_submit_observation=pre_submit_observation,
         actual_request=actual_request,
         submit_result=_mapping(lifecycle.get("submit_result")),
@@ -453,6 +514,10 @@ def _submit_cancel_reconcile(
     *,
     client: Any,
     request: AlpacaOrderRequest,
+    cancel_coordinator: DurableCancelCoordinator,
+    cancel_allowed: bool,
+    occurred_at: datetime,
+    reservation_run_id: str,
     poll_attempts: int,
     poll_interval_seconds: float,
 ) -> dict[str, object]:
@@ -486,13 +551,12 @@ def _submit_cancel_reconcile(
             "submitted_order": {},
         }
 
-    latest = _lookup_by_client_order_id(
+    latest_snapshot = _lookup_by_client_order_id(
         client,
         client_order_id=request.client_order_id,
         symbol=request.symbol,
     )
-    if not latest:
-        latest = _mapping(submit_result.get("submitted_order"))
+    latest = latest_snapshot or _mapping(submit_result.get("submitted_order"))
 
     if not latest:
         return {
@@ -548,24 +612,93 @@ def _submit_cancel_reconcile(
             next_action="operator_reconcile_missing_broker_order_id_before_any_future_drill",
         )
 
-    cancel_ambiguous = False
-    cancel_response_payload: dict[str, object] = {}
+    identity = DurableCancelIdentity(
+        cancel_intent_id=_durable_cancel_intent_id(
+            client_order_id=request.client_order_id,
+            broker_order_id=order_id,
+        ),
+        client_order_id=request.client_order_id,
+        broker_order_id=order_id,
+        reservation_run_id=reservation_run_id,
+        reason=_DURABLE_CANCEL_REASON,
+    )
     try:
-        cancel_response_payload = _generic_payload(
-            _request_order_cancellation(client, order_id)
+        reservation = cancel_coordinator.reserve(identity, occurred_at)
+        lease = cancel_coordinator.acquire_lease(
+            lease_name=_DURABLE_CANCEL_LEASE_NAME,
+            owner_run_id=reservation_run_id,
+            occurred_at=occurred_at,
+            ttl_seconds=_DURABLE_CANCEL_LEASE_TTL_SECONDS,
         )
-    except Exception as exc:
-        cancel_ambiguous = True
+    except Exception as exc:  # noqa: BLE001 - never cancel without durable state.
+        cancel_result = {
+            **cancel_result,
+            "cancel_target_order_id": order_id,
+            "cancel_target_client_order_id": request.client_order_id,
+            "durable_cancel_intent_id": identity.cancel_intent_id,
+            "durable_cancel_status": "blocked",
+            "durable_cancel_blocker": "durable_cancel_preparation_failed",
+            "durable_cancel_error_type": exc.__class__.__name__,
+        }
+        return _lifecycle_result(
+            submit_result=submit_result,
+            cancel_result=cancel_result,
+            final_order=latest,
+            outcome=PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME,
+            blocker="durable_cancel_preparation_failed",
+            next_action="operator_reconcile_unresolved_order_before_any_future_drill",
+        )
+
+    lease_released = False
+    lease_release_error_type = ""
+    try:
+        cancel_outcome = cancel_coordinator.execute(
+            identity=identity,
+            lease=lease,
+            evidence=DurableCancelEvidence(
+                cancel_allowed=cancel_allowed,
+                snapshot_fresh=bool(latest_snapshot),
+            ),
+            occurred_at=occurred_at,
+            cancel=lambda: _request_order_cancellation(client, order_id),
+            observe=_durable_cancel_observation,
+            sanitize_exception=_safe_exception_message,
+        )
+    finally:
+        try:
+            lease_released = cancel_coordinator.release_lease(lease)
+        except Exception as exc:  # noqa: BLE001 - preserve the broker outcome.
+            lease_release_error_type = exc.__class__.__name__
+
+    cancel_ambiguous = cancel_outcome.ambiguous
+    cancel_response_payload = _generic_payload(cancel_outcome.response)
+    if cancel_outcome.safe_error_message:
         cancel_response_payload = {
-            "error_type": exc.__class__.__name__,
-            "message": _safe_exception_message(exc),
+            **cancel_response_payload,
+            "error_type": cancel_outcome.error_type,
+            "message": cancel_outcome.safe_error_message,
         }
 
     cancel_result = {
-        "cancel_attempted": True,
+        "cancel_attempted": cancel_outcome.broker_called,
         "cancel_confirmed": False,
         "cancel_ambiguous": cancel_ambiguous,
         "cancel_response": cancel_response_payload,
+        "cancel_target_order_id": order_id,
+        "cancel_target_client_order_id": request.client_order_id,
+        "durable_cancel_intent_id": identity.cancel_intent_id,
+        "durable_cancel_reservation_status": reservation.status,
+        "durable_cancel_status": cancel_outcome.status,
+        "durable_cancel_blocker": cancel_outcome.blocker,
+        "durable_cancel_record": (
+            cancel_outcome.record.to_dict()
+            if cancel_outcome.record is not None
+            else reservation.record.to_dict()
+        ),
+        "durable_cancel_lease_acquired": lease.acquired,
+        "durable_cancel_lease_released": lease_released,
+        "durable_cancel_lease_release_error_type": lease_release_error_type,
+        "durable_cancel_journal_error_type": cancel_outcome.journal_error_type,
     }
     final_order = _poll_lookup_by_client_order_id(
         client,
@@ -576,6 +709,15 @@ def _submit_cancel_reconcile(
     )
     if not final_order:
         final_order = latest
+    if cancel_outcome.status == "blocked":
+        return _lifecycle_result(
+            submit_result=submit_result,
+            cancel_result=cancel_result,
+            final_order=final_order,
+            outcome=PAPER_DRILL_UNRESOLVED_ORDER_OUTCOME,
+            blocker=cancel_outcome.blocker or "durable_cancel_blocked",
+            next_action="operator_reconcile_unresolved_order_before_any_future_drill",
+        )
 
     final_outcome = _classify_final_order(
         final_order,
@@ -605,6 +747,21 @@ def _submit_cancel_reconcile(
             else "operator_reconcile_unresolved_order_before_any_future_drill"
         ),
     )
+
+
+def _durable_cancel_intent_id(
+    *,
+    client_order_id: str,
+    broker_order_id: str,
+) -> str:
+    basis = f"{client_order_id.strip()}:{broker_order_id.strip()}".encode("utf-8")
+    return f"v199_cancel_{hashlib.sha256(basis).hexdigest()[:24]}"
+
+
+def _durable_cancel_observation(response: Any) -> DurableCancelObservation:
+    payload = _generic_payload(response)
+    status = _normalize_status(payload.get("status")) or "pending_cancel"
+    return DurableCancelObservation(status)
 
 
 def _lifecycle_result(
@@ -748,6 +905,7 @@ def _build_packet(
     source_classification: str,
     authorization_observed: bool,
     projected: Mapping[str, object],
+    durable_cancel_journal: Mapping[str, object],
     pre_submit_observation: Mapping[str, object],
     actual_request: Mapping[str, object],
     submit_result: Mapping[str, object],
@@ -772,6 +930,8 @@ def _build_packet(
         "source_approval_classification": source_classification,
         "explicit_authorization_phrase_observed": authorization_observed,
         "projected_request_fields": projected_summary,
+        "durable_cancel_journal": dict(durable_cancel_journal),
+        "cancel_result": dict(cancel_result),
         "actual_submitted_request_fields": dict(actual_request),
         "symbol": _text(projected.get("symbol")).upper(),
         "side": _text(projected.get("side")).lower(),
