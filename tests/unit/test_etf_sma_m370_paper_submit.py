@@ -12,6 +12,7 @@ from algotrader.execution.alpaca_mapper import (
     AlpacaOrderReceiptExecution,
 )
 from algotrader.execution.broker_base import BrokerOrderResult
+from algotrader.execution.order_journal import OrderJournalState, SqliteOrderJournal
 import algotrader.execution.etf_sma_m370_paper_submit as m370
 
 
@@ -490,6 +491,9 @@ def test_succeeds_with_fake_broker_by_calling_submit_exactly_once(tmp_path) -> N
     assert payload["broker_order_id"] == "broker-m370-order-1"
     assert payload["broker_status"] == "accepted"
     assert payload["client_order_id"] == m370.M370_CLIENT_ORDER_ID
+    assert payload["order_journal_claimed"] is True
+    assert payload["order_journal_state"] == OrderJournalState.ACCEPTED.value
+    assert payload["order_journal_lease_released"] is True
     assert payload["evaluated_at"] == AS_OF
     assert payload["pre_submit_snapshot"]["observed_at"] == SNAPSHOT_OBSERVED_AT
     assert broker.calls == [
@@ -548,9 +552,61 @@ def test_ambiguous_submit_exception_sets_submitted_mutated_and_no_retry(
     assert payload["submit_call_count"] == 1
     assert payload["error"] == "m370_submit_ambiguous_after_single_call"
     assert payload["state"] == "ambiguous_after_single_submit_stop_no_retry"
+    assert payload["order_journal_state"] == OrderJournalState.UNKNOWN.value
     assert payload["redacted_exception_message"] == "ambiguous <redacted>"
     assert broker.submit_count == 1
     assert broker.calls.count("submit_order") == 1
+
+
+def test_durable_claim_blocks_crash_rerun_before_second_submit(tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    first_broker = FakeM370Broker()
+    first = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: first_broker,
+    )
+    second_broker = FakeM370Broker()
+
+    second = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: second_broker,
+    )
+
+    assert first["submit_call_count"] == 1
+    assert second["submitted"] is False
+    assert second["submit_call_count"] == 0
+    assert "durable_submit_already_reserved" in second["blockers"]
+    assert second_broker.submit_count == 0
+    journal = SqliteOrderJournal(first["order_journal_path"])
+    record = journal.get(m370.M370_CLIENT_ORDER_ID)
+    assert record is not None
+    assert record.safe_to_resubmit is False
+
+
+def test_journal_construction_failure_blocks_submit(monkeypatch, tmp_path) -> None:
+    source_path = _write_source(tmp_path, _ready_m369_record())
+    broker = FakeM370Broker()
+
+    class UnavailableJournal:
+        def __init__(self, path) -> None:  # noqa: ANN001, ARG002
+            raise OSError("journal unavailable")
+
+    monkeypatch.setattr(m370, "SqliteOrderJournal", UnavailableJournal)
+
+    payload = _run(
+        tmp_path,
+        source_path=source_path,
+        broker_factory=lambda: broker,
+    )
+
+    assert payload["submitted"] is False
+    assert payload["mutated"] is False
+    assert payload["submit_call_count"] == 0
+    assert payload["order_journal_error"] == "OSError"
+    assert "durable_submit_journal_unavailable" in payload["blockers"]
+    assert broker.submit_count == 0
 
 
 def test_does_not_call_submit_order_when_prior_m370_submit_exists(tmp_path) -> None:

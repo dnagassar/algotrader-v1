@@ -86,7 +86,16 @@ AUTONOMOUS_MUTATION_CALLS = frozenset(
 
 SHARED_CLAIM_OPERATOR_MUTATION_CALLS = frozenset(
     {
-        ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
+        (
+            "src/algotrader/execution/etf_sma_m370_paper_submit.py",
+            "_submit_once",
+            "submit_order_request",
+        ),
+        (
+            "src/algotrader/execution/etf_sma_m435_paper_buy_submit.py",
+            "_submit_once",
+            "submit_order_request",
+        ),
     }
 )
 
@@ -273,6 +282,34 @@ def test_autonomous_submit_routes_broker_call_through_shared_coordinator() -> No
 
 def test_m435_operator_submit_requires_shared_durable_claim_first() -> None:
     path = Path("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    functions = {
+        node.name: node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+    }
+    submit_once = functions["_submit_once"]
+    coordinator_calls = [
+        node
+        for node in ast.walk(submit_once)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
+    ]
+    assert len(coordinator_calls) == 1
+    broker_calls_inside = [
+        node
+        for node in ast.walk(coordinator_calls[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "submit_order_request"
+    ]
+
+    assert len(broker_calls_inside) == 1
+
+
+def test_m370_operator_submit_requires_shared_durable_claim_first() -> None:
+    path = Path("src/algotrader/execution/etf_sma_m370_paper_submit.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     functions = {
         node.name: node
