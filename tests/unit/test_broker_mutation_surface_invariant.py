@@ -300,10 +300,46 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
     certification_path = (
         "src/algotrader/execution/crypto_paper_submit_cancel_certification.py"
     )
+    crypto_drill_path = (
+        "src/algotrader/execution/crypto_paper_mutation_drill.py"
+    )
     oms_path = "src/algotrader/execution/paper_mutation_oms.py"
-    assert consumers == {certification_path, oms_path}
+    assert consumers == {certification_path, crypto_drill_path, oms_path}
 
     path = Path(certification_path)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    lifecycle = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "_submit_cancel_reconcile"
+    )
+    coordinator_calls = [
+        node
+        for node in ast.walk(lifecycle)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "cancel_coordinator"
+        and node.func.attr == "execute"
+    ]
+    assert len(coordinator_calls) == 1
+    cancel_keyword = next(
+        keyword
+        for keyword in coordinator_calls[0].keywords
+        if keyword.arg == "cancel"
+    )
+    assert isinstance(cancel_keyword.value, ast.Lambda)
+    injected_calls = [
+        node
+        for node in ast.walk(cancel_keyword.value)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "_request_order_cancellation"
+    ]
+    assert len(injected_calls) == 1
+
+    path = Path(crypto_drill_path)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     lifecycle = next(
         node
