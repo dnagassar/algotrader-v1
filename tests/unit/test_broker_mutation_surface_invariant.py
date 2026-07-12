@@ -216,7 +216,35 @@ def test_dynamic_cancel_dispatchers_remain_operator_gated_and_allowlisted() -> N
     assert observed == EXPECTED_DYNAMIC_CANCEL_DISPATCHERS
 
 
-def test_autonomous_submit_requires_atomic_final_claim_before_broker_call() -> None:
+def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
+    path = Path("src/algotrader/execution/durable_submit.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    execute = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "execute"
+    )
+    claim_lines = [
+        node.lineno
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "claim_pre_mutation_submit"
+    ]
+    submit_callback_lines = [
+        node.lineno
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "submit"
+    ]
+
+    assert len(claim_lines) == 1
+    assert len(submit_callback_lines) == 1
+    assert claim_lines[0] < submit_callback_lines[0]
+
+
+def test_autonomous_submit_routes_broker_call_through_shared_coordinator() -> None:
     path = Path("src/algotrader/execution/paper_autopilot_loop.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     execute_plan = next(
@@ -224,17 +252,23 @@ def test_autonomous_submit_requires_atomic_final_claim_before_broker_call() -> N
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef) and node.name == "_execute_plan"
     )
-    calls = [
-        (node.func.attr, node.lineno)
+    coordinator_calls = [
+        node
         for node in ast.walk(execute_plan)
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
     ]
-    claim_lines = [line for name, line in calls if name == "claim_pre_mutation_submit"]
-    submit_lines = [line for name, line in calls if name == "submit_order"]
+    assert len(coordinator_calls) == 1
+    broker_calls_inside = [
+        node
+        for node in ast.walk(coordinator_calls[0])
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "submit_order"
+    ]
 
-    assert len(claim_lines) == 1
-    assert len(submit_lines) == 1
-    assert claim_lines[0] < submit_lines[0]
+    assert len(broker_calls_inside) == 1
 
 
 def test_m435_operator_submit_requires_shared_durable_claim_first() -> None:
@@ -245,23 +279,24 @@ def test_m435_operator_submit_requires_shared_durable_claim_first() -> None:
         for node in ast.walk(tree)
         if isinstance(node, ast.FunctionDef)
     }
-    run_calls = [
-        (_call_target_name(node.func), node.lineno)
-        for node in ast.walk(functions["run_m435_tiny_spy_paper_buy_submit"])
+    submit_once = functions["_submit_once"]
+    coordinator_calls = [
+        node
+        for node in ast.walk(submit_once)
         if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "execute"
     ]
-    claim_lines = [line for name, line in run_calls if name == "_claim_durable_submit"]
-    submit_lines = [line for name, line in run_calls if name == "_submit_once"]
-    claim_method_calls = [
-        _call_target_name(node.func)
-        for node in ast.walk(functions["_claim_durable_submit"])
+    assert len(coordinator_calls) == 1
+    broker_calls_inside = [
+        node
+        for node in ast.walk(coordinator_calls[0])
         if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "submit_order_request"
     ]
 
-    assert len(claim_lines) == 1
-    assert len(submit_lines) == 1
-    assert claim_lines[0] < submit_lines[0]
-    assert claim_method_calls.count("claim_pre_mutation_submit") == 1
+    assert len(broker_calls_inside) == 1
 
 
 def _ast_name_observations(path: Path, tree: ast.AST) -> list[NameObservation]:

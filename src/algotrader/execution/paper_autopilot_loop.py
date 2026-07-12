@@ -25,6 +25,13 @@ from algotrader.core.types import Bar
 from algotrader.errors import ValidationError
 from algotrader.execution.alpaca_client import AlpacaOrderRequest, AlpacaRecentOrderQuery
 from algotrader.execution.alpaca_sdk_client import AlpacaSdkClient
+from algotrader.execution.durable_submit import (
+    DurableBrokerObservation,
+    DurableSubmitCoordinator,
+    DurableSubmitEvidence,
+    DurableSubmitIdentity,
+    DurableSubmitLease,
+)
 from algotrader.execution.etf_sma_daily_paper_lab import (
     EtfSmaDailyPaperLabConfig,
     run_etf_sma_daily_paper_lab,
@@ -34,10 +41,7 @@ from algotrader.execution.paper_autopilot_history import (
     update_paper_autopilot_operating_history,
 )
 from algotrader.execution.paper_autopilot_health import paper_autopilot_health
-from algotrader.execution.order_journal import (
-    OrderReservation,
-    SqliteOrderJournal,
-)
+from algotrader.execution.order_journal import SqliteOrderJournal
 from algotrader.execution.paper_runtime_planning import (
     CanonicalPaperRuntimePlan,
     PaperRuntimePlanningInput,
@@ -1646,16 +1650,8 @@ def _prepare_order_journal(
         return plan, journal, status
 
     try:
-        reservation = journal.reserve(
-            OrderReservation(
-                client_order_id=plan.client_order_id,
-                execution_plan_id=plan.execution_plan_id,
-                run_id=run_id,
-                symbol=plan.symbol,
-                side=plan.side,
-                quantity=plan.quantity,
-                notional=plan.notional,
-            ),
+        reservation = DurableSubmitCoordinator(journal).reserve(
+            _autopilot_submit_identity(plan, run_id),
             occurred_at,
         )
     except Exception as exc:
@@ -1867,19 +1863,30 @@ def _execute_plan(
         time_in_force=_TIME_IN_FORCE,
     )
     try:
-        journal_record = order_journal.claim_pre_mutation_submit(
-            client_order_id=plan.client_order_id,
-            execution_plan_id=plan.execution_plan_id,
-            reservation_run_id=reservation_run_id or "",
+        identity = _autopilot_submit_identity(plan, reservation_run_id or "")
+        lease = DurableSubmitLease(
             lease_name="paper-autopilot",
-            lease_owner_run_id=lease_owner_run_id or "",
+            owner_run_id=lease_owner_run_id or "",
             lease_token=lease_token or "",
             fencing_generation=fencing_generation or 0,
-            canonical_risk_allowed=plan.canonical_runtime_plan.risk_allowed,
-            snapshot_fresh=(
-                plan.paper_mutation_readiness_gate.get("gate_status") == "authorized"
+        )
+        outcome = DurableSubmitCoordinator(order_journal).execute(
+            identity=identity,
+            lease=lease,
+            evidence=DurableSubmitEvidence(
+                canonical_risk_allowed=plan.canonical_runtime_plan.risk_allowed,
+                snapshot_fresh=(
+                    plan.paper_mutation_readiness_gate.get("gate_status")
+                    == "authorized"
+                ),
             ),
             occurred_at=occurred_at,
+            submit=lambda: broker.submit_order(request),
+            observe=_autopilot_broker_observation,
+            sanitize_exception=lambda exc: _safe_exception_message(
+                exc,
+                secret_values,
+            ),
         )
     except ValidationError as exc:
         result["mutation_status"] = "blocked_before_submit"
@@ -1889,69 +1896,83 @@ def _execute_plan(
         result["mutation_status"] = "blocked_order_journal_unavailable"
         result["order_journal_error"] = exc.__class__.__name__
         return result
+
+    if not outcome.broker_called:
+        result["mutation_status"] = "blocked_before_submit"
+        result["broker_error"] = outcome.blocker
+        result["order_journal_error"] = outcome.error_type
+        return result
+
+    journal_record = outcome.record
     result.update(
         {
             "submit_attempted": True,
             "paper_submit_performed": True,
             "broker_mutation_performed": True,
             "request": _request_payload(request),
-            "order_journal_state": journal_record.state.value,
+            "order_journal_state": (
+                "submit_attempted"
+                if journal_record is None
+                else journal_record.state.value
+            ),
         }
     )
-    try:
-        response = broker.submit_order(request)
-    except Exception as exc:
-        journal_error = ""
-        try:
-            journal_record = order_journal.mark_submit_ambiguous(
-                plan.client_order_id,
-                occurred_at,
-                reason=exc.__class__.__name__,
-            )
-        except Exception as journal_exc:
-            journal_error = journal_exc.__class__.__name__
+    if outcome.ambiguous:
+        response_payload = (
+            {} if outcome.response is None else _order_payload(outcome.response)
+        )
         result.update(
             {
-                "broker_error": _safe_exception_message(exc, secret_values),
+                "broker_response": response_payload,
+                "broker_error": outcome.safe_error_message,
                 "mutation_status": "ambiguous_submit_reconciliation_required",
                 "submit_response_ambiguous": True,
-                "order_journal_state": (
-                    journal_record.state.value if not journal_error else "submit_attempted"
+                "order_journal_error": (
+                    outcome.journal_error_type or outcome.error_type
                 ),
-                "order_journal_error": journal_error,
             }
         )
         return result
-    response_payload = _order_payload(response)
-    journal_error = ""
-    try:
-        journal_record = order_journal.record_broker_observation(
-            plan.client_order_id,
-            occurred_at,
-            broker_order_id=_text(response_payload.get("order_id")),
-            broker_status=_text(response_payload.get("status")) or "unknown",
-            filled_quantity=_text(response_payload.get("filled_quantity")) or None,
-            filled_average_price=(
-                _text(response_payload.get("filled_average_price")) or None
-            ),
-        )
-    except Exception as journal_exc:
-        journal_error = journal_exc.__class__.__name__
+
+    response_payload = _order_payload(outcome.response)
     result.update(
         {
             "broker_response": response_payload,
-            "mutation_status": (
-                "submit_response_observed"
-                if not journal_error
-                else "submit_response_observed_journal_update_failed"
-            ),
+            "mutation_status": "submit_response_observed",
             "order_journal_state": (
-                journal_record.state.value if not journal_error else "submit_attempted"
+                "submit_attempted"
+                if journal_record is None
+                else journal_record.state.value
             ),
-            "order_journal_error": journal_error,
+            "order_journal_error": "",
         }
     )
     return result
+
+
+def _autopilot_submit_identity(
+    plan: PaperAutopilotExecutionPlan,
+    reservation_run_id: str,
+) -> DurableSubmitIdentity:
+    return DurableSubmitIdentity(
+        client_order_id=plan.client_order_id,
+        execution_plan_id=plan.execution_plan_id,
+        reservation_run_id=reservation_run_id,
+        symbol=plan.symbol,
+        side=plan.side,
+        quantity=plan.quantity,
+        notional=plan.notional,
+    )
+
+
+def _autopilot_broker_observation(response: object) -> DurableBrokerObservation:
+    payload = _order_payload(response)
+    return DurableBrokerObservation(
+        broker_order_id=_text(payload.get("order_id")),
+        broker_status=_text(payload.get("status")) or "unknown",
+        filled_quantity=_text(payload.get("filled_quantity")) or None,
+        filled_average_price=_text(payload.get("filled_average_price")) or None,
+    )
 
 
 def _reconcile_after_action(

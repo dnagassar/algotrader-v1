@@ -122,6 +122,13 @@ This flow is a contract boundary, not permission to trade.
   fenced lease, reserve the immutable request identity, and persist the final
   pre-mutation claim before its single broker call. Broker exceptions become
   durable unknown state, and crash reruns cannot resubmit.
+- `DurableSubmitCoordinator` is the shared final-submit hot-path contract used
+  by paper autopilot and M435. Callers provide typed immutable identity, fenced
+  lease evidence, explicit canonical-risk and snapshot-freshness booleans, an
+  injected submit callback, and a broker-observation mapper. The coordinator
+  alone owns the atomic claim/callback/observation sequence; failed predicates
+  leave the callback untouched, and callback or observation ambiguity is
+  persisted as durable unknown state.
 - Paper fills are simulated or broker-observed paper records only.
 - Portfolio/Reconciliation Observation is reporting and comparison, not
   autonomous correction.
