@@ -258,6 +258,48 @@ def test_shared_coordinator_owns_atomic_claim_before_submit_callback() -> None:
     assert claim_lines[0] < submit_callback_lines[0]
 
 
+def test_durable_cancel_owns_atomic_claim_before_cancel_callback() -> None:
+    path = Path("src/algotrader/execution/durable_cancel.py")
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    execute = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "execute"
+    )
+    claim_lines = [
+        node.lineno
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "claim_pre_mutation_cancel"
+    ]
+    cancel_callback_lines = [
+        node.lineno
+        for node in ast.walk(execute)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "cancel"
+    ]
+
+    assert len(claim_lines) == 1
+    assert len(cancel_callback_lines) == 1
+    assert claim_lines[0] < cancel_callback_lines[0]
+
+
+def test_durable_cancel_has_no_production_caller_yet() -> None:
+    consumers: set[str] = set()
+    for path in Path("src/algotrader").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        if any(
+            isinstance(node, ast.ImportFrom)
+            and node.module == "algotrader.execution.durable_cancel"
+            for node in ast.walk(tree)
+        ):
+            consumers.add(path.as_posix())
+
+    assert consumers == set()
+
+
 def test_autonomous_submit_routes_broker_call_through_shared_coordinator() -> None:
     path = Path("src/algotrader/execution/paper_autopilot_loop.py")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

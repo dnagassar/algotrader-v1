@@ -15,6 +15,10 @@ from algotrader.core.validation import decimal_value, symbol_value
 from algotrader.errors import ValidationError
 
 __all__ = [
+    "CancelIntent",
+    "CancelJournalRecord",
+    "CancelJournalState",
+    "CancelReservationResult",
     "CycleClaimResult",
     "LeaseDetails",
     "OrderJournalRecord",
@@ -27,7 +31,7 @@ __all__ = [
     "SqliteOrderJournal",
 ]
 
-_SCHEMA_VERSION = 3
+_SCHEMA_VERSION = 4
 
 
 class OrderJournalState(StrEnum):
@@ -41,6 +45,25 @@ class OrderJournalState(StrEnum):
     REJECTED = "rejected"
     CANCELED = "canceled"
     EXPIRED = "expired"
+
+
+class CancelJournalState(StrEnum):
+    RESERVED = "reserved"
+    CANCEL_ATTEMPTED = "cancel_attempted"
+    UNKNOWN = "unknown"
+    CANCEL_ACCEPTED = "cancel_accepted"
+    CANCELED = "canceled"
+    REJECTED = "rejected"
+    NOT_FOUND = "not_found"
+
+
+_CANCEL_TERMINAL_STATES = frozenset(
+    {
+        CancelJournalState.CANCELED,
+        CancelJournalState.REJECTED,
+        CancelJournalState.NOT_FOUND,
+    }
+)
 
 
 _TERMINAL_STATES = frozenset(
@@ -142,6 +165,77 @@ class OrderJournalRecord:
 class ReservationResult:
     status: str
     record: OrderJournalRecord
+
+    @property
+    def acquired(self) -> bool:
+        return self.status == "reserved"
+
+
+@dataclass(frozen=True, slots=True)
+class CancelIntent:
+    cancel_intent_id: str
+    client_order_id: str
+    broker_order_id: str
+    run_id: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "cancel_intent_id",
+            "client_order_id",
+            "broker_order_id",
+            "run_id",
+            "reason",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                _nonempty_text(getattr(self, field_name), field_name),
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class CancelJournalRecord:
+    cancel_intent_id: str
+    client_order_id: str
+    broker_order_id: str
+    run_id: str
+    reason: str
+    state: CancelJournalState
+    broker_status: str
+    ambiguity_reason: str
+    created_at: datetime
+    updated_at: datetime
+
+    @property
+    def terminal(self) -> bool:
+        return self.state in _CANCEL_TERMINAL_STATES
+
+    @property
+    def safe_to_recancel(self) -> bool:
+        return False
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "cancel_intent_id": self.cancel_intent_id,
+            "client_order_id": self.client_order_id,
+            "broker_order_id": self.broker_order_id,
+            "run_id": self.run_id,
+            "reason": self.reason,
+            "state": self.state.value,
+            "broker_status": self.broker_status,
+            "ambiguity_reason": self.ambiguity_reason,
+            "terminal": self.terminal,
+            "safe_to_recancel": self.safe_to_recancel,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class CancelReservationResult:
+    status: str
+    record: CancelJournalRecord
 
     @property
     def acquired(self) -> bool:
@@ -257,7 +351,7 @@ class SqliteOrderJournal:
                 ).fetchone()
                 if has_existing_orders is not None:
                     raise ValidationError("order journal metadata is corrupt.")
-                self._create_schema_v3(connection)
+                self._create_schema_v4(connection)
                 connection.execute(
                     "INSERT INTO journal_metadata(key, value) VALUES('schema_version', ?)",
                     (str(_SCHEMA_VERSION),),
@@ -272,7 +366,7 @@ class SqliteOrderJournal:
             if version < 1:
                 raise ValidationError("order journal schema version is unsupported.")
             if version == _SCHEMA_VERSION:
-                self._require_schema_v3(connection)
+                self._require_schema_v4(connection)
                 return
             connection.execute("BEGIN IMMEDIATE")
             try:
@@ -282,6 +376,10 @@ class SqliteOrderJournal:
                 if version == 2:
                     self._migrate_v2_to_v3(connection)
                     version = 3
+                if version == 3:
+                    self._migrate_v3_to_v4(connection)
+                    version = 4
+                self._require_schema_v4(connection)
                 if version != _SCHEMA_VERSION:
                     raise ValidationError("order journal schema version is unsupported.")
                 connection.commit()
@@ -294,7 +392,7 @@ class SqliteOrderJournal:
                 ) from exc
 
     @staticmethod
-    def _create_schema_v3(connection: sqlite3.Connection) -> None:
+    def _create_schema_v4(connection: sqlite3.Connection) -> None:
         statements = (
             """
             CREATE TABLE IF NOT EXISTS orders (
@@ -365,6 +463,42 @@ class SqliteOrderJournal:
         )
         for statement in statements:
             connection.execute(statement)
+        SqliteOrderJournal._create_cancel_schema(connection)
+
+    @staticmethod
+    def _create_cancel_schema(connection: sqlite3.Connection) -> None:
+        statements = (
+            """
+            CREATE TABLE IF NOT EXISTS cancel_intents (
+                cancel_intent_id TEXT PRIMARY KEY,
+                client_order_id TEXT NOT NULL,
+                broker_order_id TEXT NOT NULL,
+                run_id TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                state TEXT NOT NULL,
+                broker_status TEXT NOT NULL DEFAULT '',
+                ambiguity_reason TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(broker_order_id)
+            )
+            """,
+            """
+            CREATE TABLE IF NOT EXISTS cancel_events (
+                event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cancel_intent_id TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                state TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                FOREIGN KEY(cancel_intent_id)
+                    REFERENCES cancel_intents(cancel_intent_id)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS cancel_events_intent_id_idx ON cancel_events(cancel_intent_id, event_id)",
+        )
+        for statement in statements:
+            connection.execute(statement)
 
     @staticmethod
     def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
@@ -387,7 +521,7 @@ class SqliteOrderJournal:
             )
 
     @classmethod
-    def _require_schema_v3(cls, connection: sqlite3.Connection) -> None:
+    def _require_schema_v4(cls, connection: sqlite3.Connection) -> None:
         cls._require_columns(
             connection,
             "orders",
@@ -411,6 +545,27 @@ class SqliteOrderJournal:
             connection,
             "supervisor_cycles",
             {"session_id", "attempt_count", "last_attempt_at", "last_success_at", "outcome", "last_error"},
+        )
+        cls._require_columns(
+            connection,
+            "cancel_intents",
+            {
+                "cancel_intent_id",
+                "client_order_id",
+                "broker_order_id",
+                "run_id",
+                "reason",
+                "state",
+                "broker_status",
+                "ambiguity_reason",
+                "created_at",
+                "updated_at",
+            },
+        )
+        cls._require_columns(
+            connection,
+            "cancel_events",
+            {"cancel_intent_id", "event_type", "state", "occurred_at", "payload_json"},
         )
 
     @classmethod
@@ -458,6 +613,13 @@ class SqliteOrderJournal:
         )
         connection.execute(
             "UPDATE journal_metadata SET value = '3' WHERE key = 'schema_version'"
+        )
+
+    @staticmethod
+    def _migrate_v3_to_v4(connection: sqlite3.Connection) -> None:
+        SqliteOrderJournal._create_cancel_schema(connection)
+        connection.execute(
+            "UPDATE journal_metadata SET value = '4' WHERE key = 'schema_version'"
         )
 
     def get_runtime_control(self) -> RuntimeControl:
@@ -1258,6 +1420,251 @@ class SqliteOrderJournal:
             },
         )
 
+    def reserve_cancel_intent(
+        self,
+        intent: CancelIntent,
+        occurred_at: datetime,
+    ) -> CancelReservationResult:
+        if not isinstance(intent, CancelIntent):
+            raise ValidationError("intent must be a CancelIntent.")
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = self._select_cancel(connection, intent.cancel_intent_id)
+            if existing is not None:
+                status = (
+                    "existing_same_intent"
+                    if _same_cancel_intent(existing, intent)
+                    else "cancel_intent_id_conflict"
+                )
+                connection.commit()
+                return CancelReservationResult(status=status, record=existing)
+            target = connection.execute(
+                """
+                SELECT * FROM cancel_intents
+                WHERE broker_order_id = ?
+                """,
+                (intent.broker_order_id,),
+            ).fetchone()
+            if target is not None:
+                connection.commit()
+                return CancelReservationResult(
+                    status="cancel_target_conflict",
+                    record=_cancel_record_from_row(target),
+                )
+            timestamp_text = timestamp.isoformat()
+            connection.execute(
+                """
+                INSERT INTO cancel_intents(
+                    cancel_intent_id, client_order_id, broker_order_id, run_id,
+                    reason, state, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    intent.cancel_intent_id,
+                    intent.client_order_id,
+                    intent.broker_order_id,
+                    intent.run_id,
+                    intent.reason,
+                    CancelJournalState.RESERVED.value,
+                    timestamp_text,
+                    timestamp_text,
+                ),
+            )
+            self._append_cancel_event(
+                connection,
+                intent.cancel_intent_id,
+                "cancel_reserved",
+                CancelJournalState.RESERVED,
+                timestamp,
+                {
+                    "broker_order_id": intent.broker_order_id,
+                    "client_order_id": intent.client_order_id,
+                },
+            )
+            connection.commit()
+            record = self._select_cancel(connection, intent.cancel_intent_id)
+        if record is None:
+            raise ValidationError("cancel intent reservation was not persisted.")
+        return CancelReservationResult(status="reserved", record=record)
+
+    def claim_pre_mutation_cancel(
+        self,
+        *,
+        cancel_intent_id: str,
+        client_order_id: str,
+        broker_order_id: str,
+        reservation_run_id: str,
+        lease_name: str,
+        lease_owner_run_id: str,
+        lease_token: str,
+        fencing_generation: int,
+        cancel_allowed: bool,
+        snapshot_fresh: bool,
+        occurred_at: datetime,
+    ) -> CancelJournalRecord:
+        """Atomically fence and journal the final pre-broker cancel transition."""
+
+        intent_id = _nonempty_text(cancel_intent_id, "cancel_intent_id")
+        client_id = _nonempty_text(client_order_id, "client_order_id")
+        broker_id = _nonempty_text(broker_order_id, "broker_order_id")
+        run_id = _nonempty_text(reservation_run_id, "reservation_run_id")
+        if type(cancel_allowed) is not bool or not cancel_allowed:
+            raise ValidationError("cancel_not_allowed")
+        if type(snapshot_fresh) is not bool or not snapshot_fresh:
+            raise ValidationError("required_snapshot_not_fresh")
+        if type(fencing_generation) is not int or fencing_generation <= 0:
+            raise ValidationError("fencing_generation_invalid")
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            control = connection.execute(
+                "SELECT trading_enabled, stop_requested FROM runtime_control WHERE singleton_id = 1"
+            ).fetchone()
+            if control is not None and not bool(control["trading_enabled"]):
+                connection.rollback()
+                raise ValidationError("trading_disabled")
+            if control is not None and bool(control["stop_requested"]):
+                connection.rollback()
+                raise ValidationError("stop_requested")
+            if not self._lease_matches(
+                connection,
+                lease_name=lease_name,
+                owner_run_id=lease_owner_run_id,
+                lease_token=lease_token,
+                fencing_generation=fencing_generation,
+                occurred_at=timestamp,
+            ):
+                connection.rollback()
+                raise ValidationError("runtime_lease_fencing_mismatch")
+            record = self._select_cancel(connection, intent_id)
+            if record is None:
+                connection.rollback()
+                raise ValidationError("cancel_intent_reservation_missing")
+            if record.client_order_id != client_id:
+                connection.rollback()
+                raise ValidationError("cancel_client_order_identity_mismatch")
+            if record.broker_order_id != broker_id:
+                connection.rollback()
+                raise ValidationError("cancel_broker_order_identity_mismatch")
+            if record.run_id != run_id:
+                connection.rollback()
+                raise ValidationError("cancel_intent_reservation_owner_mismatch")
+            if record.state is not CancelJournalState.RESERVED:
+                connection.rollback()
+                raise ValidationError("cancel_intent_not_cancel_ready")
+            connection.execute(
+                """
+                UPDATE cancel_intents SET state = ?, updated_at = ?
+                WHERE cancel_intent_id = ?
+                """,
+                (
+                    CancelJournalState.CANCEL_ATTEMPTED.value,
+                    timestamp.isoformat(),
+                    intent_id,
+                ),
+            )
+            self._append_cancel_event(
+                connection,
+                intent_id,
+                "cancel_attempted",
+                CancelJournalState.CANCEL_ATTEMPTED,
+                timestamp,
+                {"fencing_generation": fencing_generation},
+            )
+            connection.commit()
+            updated = self._select_cancel(connection, intent_id)
+        if updated is None:
+            raise ValidationError("pre-mutation cancel claim was not persisted.")
+        return updated
+
+    def mark_cancel_ambiguous(
+        self,
+        cancel_intent_id: str,
+        occurred_at: datetime,
+        *,
+        reason: str,
+    ) -> CancelJournalRecord:
+        return self._transition_cancel(
+            cancel_intent_id,
+            occurred_at,
+            allowed_from=(
+                CancelJournalState.CANCEL_ATTEMPTED,
+                CancelJournalState.UNKNOWN,
+            ),
+            target=CancelJournalState.UNKNOWN,
+            event_type="cancel_ambiguous",
+            updates={
+                "ambiguity_reason": reason.strip() or "cancel_response_ambiguous"
+            },
+        )
+
+    def record_cancel_observation(
+        self,
+        cancel_intent_id: str,
+        occurred_at: datetime,
+        *,
+        broker_status: str,
+    ) -> CancelJournalRecord:
+        target = _cancel_state_from_broker_status(broker_status)
+        current = self.get_cancel_intent(cancel_intent_id)
+        if current is None:
+            raise ValidationError("cancel journal record is missing.")
+        if current.terminal and current.state != target:
+            raise ValidationError("terminal cancel journal state cannot change.")
+        return self._transition_cancel(
+            cancel_intent_id,
+            occurred_at,
+            allowed_from=(
+                CancelJournalState.CANCEL_ATTEMPTED,
+                CancelJournalState.UNKNOWN,
+                CancelJournalState.CANCEL_ACCEPTED,
+                CancelJournalState.CANCELED,
+                CancelJournalState.REJECTED,
+                CancelJournalState.NOT_FOUND,
+            ),
+            target=target,
+            event_type="cancel_broker_observed",
+            updates={
+                "broker_status": _nonempty_text(broker_status, "broker_status").lower(),
+                "ambiguity_reason": "",
+            },
+        )
+
+    def get_cancel_intent(
+        self,
+        cancel_intent_id: str,
+    ) -> CancelJournalRecord | None:
+        self.initialize()
+        with self._connect() as connection:
+            return self._select_cancel(connection, cancel_intent_id.strip())
+
+    def unresolved_cancel_intents(self) -> tuple[CancelJournalRecord, ...]:
+        self.initialize()
+        terminal_values = tuple(state.value for state in _CANCEL_TERMINAL_STATES)
+        placeholders = ", ".join("?" for _ in terminal_values)
+        query = (
+            f"SELECT * FROM cancel_intents WHERE state NOT IN ({placeholders}) "
+            "ORDER BY created_at, cancel_intent_id"
+        )
+        with self._connect() as connection:
+            return tuple(
+                _cancel_record_from_row(row)
+                for row in connection.execute(query, terminal_values).fetchall()
+            )
+
+    def cancel_intents(self) -> tuple[CancelJournalRecord, ...]:
+        self.initialize()
+        with self._connect() as connection:
+            return tuple(
+                _cancel_record_from_row(row)
+                for row in connection.execute(
+                    "SELECT * FROM cancel_intents ORDER BY created_at, cancel_intent_id"
+                ).fetchall()
+            )
+
     def get(self, client_order_id: str) -> OrderJournalRecord | None:
         self.initialize()
         with self._connect() as connection:
@@ -1393,6 +1800,48 @@ class SqliteOrderJournal:
                 raise ValidationError("order journal transition was not persisted.")
             return record
 
+    def _transition_cancel(
+        self,
+        cancel_intent_id: str,
+        occurred_at: datetime,
+        *,
+        allowed_from: tuple[CancelJournalState, ...],
+        target: CancelJournalState,
+        event_type: str,
+        updates: dict[str, str | None] | None = None,
+    ) -> CancelJournalRecord:
+        timestamp = _utc_datetime(occurred_at)
+        self.initialize()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._select_cancel(connection, cancel_intent_id.strip())
+            if current is None:
+                raise ValidationError("cancel journal record is missing.")
+            if current.state not in allowed_from:
+                raise ValidationError(
+                    f"cancel journal transition from {current.state.value} is invalid."
+                )
+            values = {"state": target.value, "updated_at": timestamp.isoformat()}
+            values.update(updates or {})
+            assignments = ", ".join(f"{name} = ?" for name in values)
+            connection.execute(
+                f"UPDATE cancel_intents SET {assignments} WHERE cancel_intent_id = ?",
+                (*values.values(), current.cancel_intent_id),
+            )
+            self._append_cancel_event(
+                connection,
+                current.cancel_intent_id,
+                event_type,
+                target,
+                timestamp,
+                updates or {},
+            )
+            connection.commit()
+            record = self._select_cancel(connection, current.cancel_intent_id)
+        if record is None:
+            raise ValidationError("cancel journal transition was not persisted.")
+        return record
+
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(
             self.path,
@@ -1444,6 +1893,17 @@ class SqliteOrderJournal:
         return _record_from_row(row) if row is not None else None
 
     @staticmethod
+    def _select_cancel(
+        connection: sqlite3.Connection,
+        cancel_intent_id: str,
+    ) -> CancelJournalRecord | None:
+        row = connection.execute(
+            "SELECT * FROM cancel_intents WHERE cancel_intent_id = ?",
+            (cancel_intent_id,),
+        ).fetchone()
+        return _cancel_record_from_row(row) if row is not None else None
+
+    @staticmethod
     def _append_event(
         connection: sqlite3.Connection,
         client_order_id: str,
@@ -1467,6 +1927,30 @@ class SqliteOrderJournal:
             ),
         )
 
+    @staticmethod
+    def _append_cancel_event(
+        connection: sqlite3.Connection,
+        cancel_intent_id: str,
+        event_type: str,
+        state: CancelJournalState,
+        occurred_at: datetime,
+        payload: dict[str, object],
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO cancel_events(
+                cancel_intent_id, event_type, state, occurred_at, payload_json
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                cancel_intent_id,
+                event_type,
+                state.value,
+                occurred_at.isoformat(),
+                json.dumps(payload, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+
 
 def _record_from_row(row: sqlite3.Row) -> OrderJournalRecord:
     return OrderJournalRecord(
@@ -1482,6 +1966,21 @@ def _record_from_row(row: sqlite3.Row) -> OrderJournalRecord:
         broker_status=row["broker_status"],
         filled_quantity=_optional_decimal_text(row["filled_quantity"]),
         filled_average_price=_optional_decimal_text(row["filled_average_price"]),
+        ambiguity_reason=row["ambiguity_reason"],
+        created_at=datetime.fromisoformat(row["created_at"]),
+        updated_at=datetime.fromisoformat(row["updated_at"]),
+    )
+
+
+def _cancel_record_from_row(row: sqlite3.Row) -> CancelJournalRecord:
+    return CancelJournalRecord(
+        cancel_intent_id=row["cancel_intent_id"],
+        client_order_id=row["client_order_id"],
+        broker_order_id=row["broker_order_id"],
+        run_id=row["run_id"],
+        reason=row["reason"],
+        state=CancelJournalState(row["state"]),
+        broker_status=row["broker_status"],
         ambiguity_reason=row["ambiguity_reason"],
         created_at=datetime.fromisoformat(row["created_at"]),
         updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -1517,6 +2016,14 @@ def _same_request(record: OrderJournalRecord, reservation: OrderReservation) -> 
     )
 
 
+def _same_cancel_intent(record: CancelJournalRecord, intent: CancelIntent) -> bool:
+    return (
+        record.client_order_id == intent.client_order_id
+        and record.broker_order_id == intent.broker_order_id
+        and record.reason == intent.reason
+    )
+
+
 def _state_from_broker_status(
     broker_status: str,
     filled_quantity: Decimal | str | None,
@@ -1545,6 +2052,18 @@ def _state_from_broker_status(
     ):
         return OrderJournalState.PARTIALLY_FILLED
     return normalized
+
+
+def _cancel_state_from_broker_status(broker_status: str) -> CancelJournalState:
+    status = _nonempty_text(broker_status, "broker_status").lower()
+    return {
+        "accepted": CancelJournalState.CANCEL_ACCEPTED,
+        "pending_cancel": CancelJournalState.CANCEL_ACCEPTED,
+        "canceled": CancelJournalState.CANCELED,
+        "cancelled": CancelJournalState.CANCELED,
+        "rejected": CancelJournalState.REJECTED,
+        "not_found": CancelJournalState.NOT_FOUND,
+    }.get(status, CancelJournalState.UNKNOWN)
 
 
 def _utc_datetime(value: datetime) -> datetime:

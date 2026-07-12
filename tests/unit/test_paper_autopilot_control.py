@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
+import sqlite3
 import pytest
 
 from algotrader.errors import ValidationError
@@ -412,3 +413,29 @@ def test_restore_rejects_corrupt_source(tmp_path: Path) -> None:
 
     assert journal.get_runtime_control().trading_enabled is False
     assert journal.get_runtime_control().reason == "paused"
+
+
+def test_restore_rejects_schema_v4_without_cancel_tables(tmp_path: Path) -> None:
+    path = tmp_path / "orders.sqlite3"
+    backup = tmp_path / "orders.sqlite3.bak"
+    journal = SqliteOrderJournal(path)
+    journal.set_runtime_control(
+        trading_enabled=False,
+        reason="pre-restore pause",
+        occurred_at=NOW,
+    )
+    journal.backup(backup)
+    with sqlite3.connect(backup) as connection:
+        connection.execute("DROP TABLE cancel_events")
+        connection.commit()
+
+    with pytest.raises(ValidationError, match="missing cancellation tables"):
+        run_paper_autopilot_control(
+            PaperAutopilotControlConfig(
+                journal_path=path,
+                action="restore",
+                backup_path=backup,
+            ),
+            env={},
+            timestamp=NOW,
+        )

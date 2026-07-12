@@ -8,6 +8,8 @@ import pytest
 
 from algotrader.errors import ValidationError
 from algotrader.execution.order_journal import (
+    CancelIntent,
+    CancelJournalState,
     OrderJournalState,
     OrderReservation,
     SqliteOrderJournal,
@@ -31,6 +33,22 @@ def _reservation(
         side="buy",
         quantity=None,
         notional=notional,
+    )
+
+
+def _cancel_intent(
+    *,
+    intent_id: str = "cancel-broker-1",
+    client_order_id: str = "pa-spy-buy-1",
+    broker_order_id: str = "broker-1",
+    run_id: str = "cancel-run-1",
+) -> CancelIntent:
+    return CancelIntent(
+        cancel_intent_id=intent_id,
+        client_order_id=client_order_id,
+        broker_order_id=broker_order_id,
+        run_id=run_id,
+        reason="stale_open_order",
     )
 
 
@@ -136,6 +154,125 @@ def test_terminal_state_cannot_regress_to_open(tmp_path: Path) -> None:
             filled_quantity="0.25",
             filled_average_price="100",
         )
+
+
+def test_cancel_intent_reservation_is_durable_and_target_unique(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = SqliteOrderJournal(path)
+
+    first = journal.reserve_cancel_intent(_cancel_intent(), NOW)
+    duplicate = SqliteOrderJournal(path).reserve_cancel_intent(
+        _cancel_intent(run_id="cancel-run-2"),
+        NOW + timedelta(seconds=1),
+    )
+    target_conflict = journal.reserve_cancel_intent(
+        _cancel_intent(
+            intent_id="different-cancel",
+            client_order_id="different-client-order",
+        ),
+        NOW + timedelta(seconds=2),
+    )
+
+    assert first.acquired is True
+    assert first.record.state is CancelJournalState.RESERVED
+    assert duplicate.acquired is False
+    assert duplicate.status == "existing_same_intent"
+    assert duplicate.record.run_id == "cancel-run-1"
+    assert target_conflict.acquired is False
+    assert target_conflict.status == "cancel_target_conflict"
+    assert first.record.safe_to_recancel is False
+
+
+def test_cancel_observation_requires_prior_fenced_claim(tmp_path: Path) -> None:
+    journal = SqliteOrderJournal(tmp_path / "orders.sqlite3")
+    journal.reserve_cancel_intent(_cancel_intent(), NOW)
+
+    with pytest.raises(ValidationError, match="transition from reserved"):
+        journal.record_cancel_observation(
+            "cancel-broker-1",
+            NOW + timedelta(seconds=1),
+            broker_status="canceled",
+        )
+
+
+def test_fenced_cancel_claim_and_terminal_observation_are_durable(
+    tmp_path: Path,
+) -> None:
+    journal = SqliteOrderJournal(tmp_path / "orders.sqlite3")
+    journal.reserve_cancel_intent(_cancel_intent(), NOW)
+    lease = journal.acquire_runtime_lease(
+        lease_name="cancel-worker",
+        owner_run_id="cancel-run-1",
+        occurred_at=NOW,
+        ttl_seconds=60,
+    )
+
+    claimed = journal.claim_pre_mutation_cancel(
+        cancel_intent_id="cancel-broker-1",
+        client_order_id="pa-spy-buy-1",
+        broker_order_id="broker-1",
+        reservation_run_id="cancel-run-1",
+        lease_name=lease.lease_name,
+        lease_owner_run_id=lease.owner_run_id,
+        lease_token=lease.lease_token,
+        fencing_generation=lease.fencing_generation,
+        cancel_allowed=True,
+        snapshot_fresh=True,
+        occurred_at=NOW + timedelta(seconds=1),
+    )
+    canceled = journal.record_cancel_observation(
+        "cancel-broker-1",
+        NOW + timedelta(seconds=2),
+        broker_status="canceled",
+    )
+
+    assert claimed.state is CancelJournalState.CANCEL_ATTEMPTED
+    assert canceled.state is CancelJournalState.CANCELED
+    assert canceled.terminal is True
+    assert journal.unresolved_cancel_intents() == ()
+    assert SqliteOrderJournal(journal.path).get_cancel_intent(
+        "cancel-broker-1"
+    ) == canceled
+
+
+def test_ambiguous_cancel_survives_restart_and_is_unresolved(tmp_path: Path) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = SqliteOrderJournal(path)
+    journal.reserve_cancel_intent(_cancel_intent(), NOW)
+    lease = journal.acquire_runtime_lease(
+        lease_name="cancel-worker",
+        owner_run_id="cancel-run-1",
+        occurred_at=NOW,
+        ttl_seconds=60,
+    )
+    journal.claim_pre_mutation_cancel(
+        cancel_intent_id="cancel-broker-1",
+        client_order_id="pa-spy-buy-1",
+        broker_order_id="broker-1",
+        reservation_run_id="cancel-run-1",
+        lease_name=lease.lease_name,
+        lease_owner_run_id=lease.owner_run_id,
+        lease_token=lease.lease_token,
+        fencing_generation=lease.fencing_generation,
+        cancel_allowed=True,
+        snapshot_fresh=True,
+        occurred_at=NOW + timedelta(seconds=1),
+    )
+    journal.mark_cancel_ambiguous(
+        "cancel-broker-1",
+        NOW + timedelta(seconds=2),
+        reason="timeout_without_response",
+    )
+
+    record = SqliteOrderJournal(path).get_cancel_intent("cancel-broker-1")
+
+    assert record is not None
+    assert record.state is CancelJournalState.UNKNOWN
+    assert record.ambiguity_reason == "timeout_without_response"
+    assert record.safe_to_recancel is False
+    assert SqliteOrderJournal(path).unresolved_cancel_intents() == (record,)
 
 
 def test_operator_pause_is_durable_across_restart(tmp_path: Path) -> None:
@@ -328,7 +465,9 @@ def test_release_preserves_monotonic_fencing_generation(tmp_path: Path) -> None:
     assert second.fencing_generation == first.fencing_generation + 1
 
 
-def test_actual_v1_to_v2_then_v3_migration_preserves_records(tmp_path: Path) -> None:
+def test_actual_v1_to_v2_to_v3_to_v4_migration_preserves_records(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "v1.sqlite3"
     _write_v1_journal(path)
     with sqlite3.connect(path) as connection:
@@ -361,12 +500,20 @@ def test_actual_v1_to_v2_then_v3_migration_preserves_records(tmp_path: Path) -> 
         cycle_table = connection.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'supervisor_cycles'"
         ).fetchone()
+        cancel_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cancel_intents'"
+        ).fetchone()
+        cancel_event_table = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'cancel_events'"
+        ).fetchone()
 
     assert legacy is not None and legacy.execution_plan_id == "legacy-plan"
-    assert version == "3"
+    assert version == "4"
     assert {"stop_requested", "heartbeat_at"}.issubset(control_columns)
     assert {"lease_token", "fencing_generation"}.issubset(lease_columns)
     assert cycle_table is not None
+    assert cancel_table is not None
+    assert cancel_event_table is not None
 
 
 def test_failed_v1_migration_rolls_back_and_source_remains_usable(tmp_path: Path) -> None:

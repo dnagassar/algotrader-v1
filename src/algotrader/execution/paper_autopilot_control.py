@@ -163,9 +163,16 @@ def run_paper_autopilot_control(
                 src_conn.close()
                 raise ValidationError("Backup file is missing required tables.")
             ver_row = src_conn.execute("SELECT value FROM journal_metadata WHERE key='schema_version'").fetchone()
-            if ver_row is None or int(ver_row[0]) not in {2, 3}:
+            version = int(ver_row[0]) if ver_row is not None else 0
+            if version not in {2, 3, 4}:
                 src_conn.close()
                 raise ValidationError(f"Unsupported backup schema version: {ver_row[0] if ver_row else 'None'}")
+            if version == 4 and not {
+                "cancel_intents",
+                "cancel_events",
+            }.issubset(table_names):
+                src_conn.close()
+                raise ValidationError("Schema-v4 backup is missing cancellation tables.")
             src_conn.close()
         except Exception as exc:
             if not isinstance(exc, ValidationError):
