@@ -184,6 +184,8 @@ ORCHESTRATION_BOUNDARY_MODULES = (
     "algotrader.orchestration.risk_execution_flow",
     "algotrader.orchestration.execution_planning_flow",
     "algotrader.orchestration.execution_planning_policy",
+    "algotrader.orchestration.cancellation_planning_flow",
+    "algotrader.orchestration.cancellation_planning_policy",
     "algotrader.orchestration.strategy_router",
     "algotrader.orchestration.opportunity_router",
     "algotrader.orchestration.crypto_qty_sizing_preview",

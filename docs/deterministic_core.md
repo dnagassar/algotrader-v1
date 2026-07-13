@@ -109,6 +109,14 @@ This flow is a contract boundary, not permission to trade.
 - `ExecutionIntent` is internal, pre-broker, and not a broker order.
 - `ExecutionPlan` is immutable, pre-broker, and not executable by itself.
 - `PlanningPolicy` makes deterministic pre-broker batch eligibility decisions.
+- `CancellationPlan` is immutable, broker-free, and pre-cancellation. It is not
+  a broker cancellation request and cannot invoke a broker boundary.
+- The deterministic cancellation-planning policy consumes only an explicit
+  local order observation and explicit runtime/operator controls. It emits at
+  most one same-order plan when identity, freshness, permission, runtime state,
+  and cancelable status all agree; otherwise it returns one typed fail-closed
+  blocker. It is deliberately not connected to `DurableCancelCoordinator`, a
+  broker adapter, or any mutation callback and grants no cancellation authority.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly
   gated.
 - Direct production submit and cancel call sites are a closed, executable
@@ -168,6 +176,9 @@ The intended dependency direction is:
 - execution intents may feed immutable execution plans
 - execution plans may feed planning policies
 - planning-policy results may feed a gated paper OMS or broker adapter
+- local order observations and explicit controls may feed immutable
+  cancellation plans, but plans do not cross a cancellation boundary by
+  themselves
 - broker observations may feed reconciliation and operator reporting
 
 Forbidden dependency direction includes:
