@@ -123,11 +123,21 @@ This flow is a contract boundary, not permission to trade.
   that policy. Its immutable primitive artifact always records no-submit,
   no-broker-access, and no-mutation facts. The adapter performs no file or
   journal reads and remains disconnected from `DurableCancelCoordinator`.
+- The deterministic cancellation-candidate selector consumes only an explicit
+  tuple of local `OrderJournalRecord` values plus explicit symbol, UTC as-of,
+  minimum-open-age, reason, and runtime/planning controls. It selects only when
+  exactly one sufficiently old cancelable identity exists. Multiple eligible
+  records, duplicate broker identity, malformed or future timestamps, unknown
+  state, incomplete identity, terminal-only state, and disabled controls each
+  return a typed blocker. Selection performs no journal read, broker access,
+  mutation callback, ranking, or cancellation.
 - `paper-autopilot-control status` may optionally project one explicitly
-  targeted local journal record into that adapter. The preview is default-off,
-  requires an explicit UTC as-of and a planning-only permission, derives
-  freshness plus stop/trading controls from local state, and fails closed on
-  missing or duplicate records and every policy blocker. Status emits only the
+  targeted local journal record into that adapter, or use a separately
+  default-off flag to select exactly one aged candidate from the local journal.
+  Both modes require an explicit UTC as-of and planning-only permission, derive
+  freshness plus stop/trading controls from local state, and fail closed on
+  missing, duplicate, multiple, ambiguous, or otherwise ineligible records.
+  Explicit and automatic target modes cannot be mixed. Status emits only the
   primitive no-submit artifact; it does not construct a broker client, mutate
   journal state, or grant broker cancellation permission.
 - Paper OMS/Broker Adapter is the first broker boundary and must be explicitly

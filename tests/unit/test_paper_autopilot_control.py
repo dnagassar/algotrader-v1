@@ -12,6 +12,9 @@ from algotrader.execution.paper_autopilot_control import (
     PaperAutopilotControlConfig,
     run_paper_autopilot_control,
 )
+from algotrader.execution.paper_cancellation_candidate_selector import (
+    CancellationCandidateSelectionBlocker,
+)
 from algotrader.orchestration.cancellation_planning_policy import (
     CancellationPlanningBlocker,
 )
@@ -73,6 +76,7 @@ def test_status_cancellation_preview_is_default_disabled_without_record_scan(
     )
 
     assert result["cancellation_planning_preview_enabled"] is False
+    assert result["cancellation_candidate_auto_selection_enabled"] is False
     assert result["cancellation_planning_preview"] == {
         "status": "disabled",
         "no_submit": True,
@@ -380,6 +384,215 @@ def test_cli_status_exposes_explicit_offline_cancellation_preview(
     payload = json.loads(capsys.readouterr().out)
     assert payload["cancellation_planning_preview_enabled"] is True
     assert payload["cancellation_planning_preview"]["status"] == "planned"
+    assert payload["cancellation_planning_preview"]["no_submit"] is True
+
+
+def test_status_auto_selects_one_aged_candidate_without_mutation(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    before_records = tuple(record.to_dict() for record in journal.records())
+    before_control = journal.get_runtime_control().to_dict()
+    before_cancel_intents = tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    )
+
+    def fail_broker_factory(_config: object) -> object:
+        raise AssertionError("candidate selection must not construct a broker client")
+
+    result = run_paper_autopilot_control(
+        _auto_preview_config(path),
+        timestamp=NOW + timedelta(minutes=5),
+        broker_client_factory=fail_broker_factory,
+    )
+
+    preview = result["cancellation_planning_preview"]
+    selection = preview["candidate_selection"]
+    assert result["cancellation_candidate_auto_selection_enabled"] is True
+    assert preview["status"] == "planned"
+    assert preview["no_submit"] is True
+    assert preview["cancel_attempted"] is False
+    assert preview["broker_access_performed"] is False
+    assert preview["broker_mutation_performed"] is False
+    assert selection["status"] == "selected"
+    assert selection["candidate"]["client_order_id"] == CLIENT_ORDER_ID
+    assert selection["candidate"]["broker_order_id"] == BROKER_ORDER_ID
+    assert preview["planning_result"]["plan"]["client_order_id"] == CLIENT_ORDER_ID
+    assert tuple(record.to_dict() for record in journal.records()) == before_records
+    assert journal.get_runtime_control().to_dict() == before_control
+    assert tuple(
+        record.to_dict() for record in journal.cancel_intents()
+    ) == before_cancel_intents
+    assert result["network_access_attempted"] is False
+    assert result["broker_access_attempted"] is False
+    assert result["broker_mutation_performed"] is False
+
+
+@pytest.mark.parametrize(
+    ("duplicate_broker_identity", "expected"),
+    [
+        (
+            True,
+            CancellationCandidateSelectionBlocker.DUPLICATE_BROKER_IDENTITY,
+        ),
+        (
+            False,
+            CancellationCandidateSelectionBlocker.MULTIPLE_ELIGIBLE_CANDIDATES,
+        ),
+    ],
+)
+def test_status_auto_selection_refuses_ambiguous_candidate_sets(
+    tmp_path: Path,
+    duplicate_broker_identity: bool,
+    expected: CancellationCandidateSelectionBlocker,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    _add_observed_order(
+        journal,
+        client_order_id="preview-client-2",
+        broker_order_id=(BROKER_ORDER_ID if duplicate_broker_identity else "preview-broker-2"),
+    )
+
+    result = run_paper_autopilot_control(
+        _auto_preview_config(path),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    preview = result["cancellation_planning_preview"]
+    assert preview["status"] == "blocked"
+    assert preview["candidate_selection"]["blocker"] == expected.value
+    assert preview["planning_result"] == {}
+    assert preview["cancel_attempted"] is False
+    assert preview["broker_access_performed"] is False
+    assert preview["broker_mutation_performed"] is False
+
+
+@pytest.mark.parametrize(
+    ("config_changes", "control_changes", "expected"),
+    [
+        (
+            {"cancellation_planning_permitted": False},
+            {},
+            CancellationCandidateSelectionBlocker.PLANNING_NOT_PERMITTED,
+        ),
+        (
+            {},
+            {"trading_enabled": False, "stop_requested": False},
+            CancellationCandidateSelectionBlocker.TRADING_PAUSED,
+        ),
+        (
+            {},
+            {"trading_enabled": True, "stop_requested": True},
+            CancellationCandidateSelectionBlocker.STOP_REQUESTED,
+        ),
+    ],
+)
+def test_status_auto_selection_derives_fail_closed_local_controls(
+    tmp_path: Path,
+    config_changes: dict[str, object],
+    control_changes: dict[str, bool],
+    expected: CancellationCandidateSelectionBlocker,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    journal = _observed_journal(path)
+    if control_changes:
+        journal.set_runtime_control(
+            trading_enabled=control_changes["trading_enabled"],
+            stop_requested=control_changes["stop_requested"],
+            reason="local selector control",
+            occurred_at=NOW + timedelta(minutes=1),
+        )
+
+    result = run_paper_autopilot_control(
+        _auto_preview_config(path, **config_changes),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    preview = result["cancellation_planning_preview"]
+    assert preview["status"] == "blocked"
+    assert preview["candidate_selection"]["blocker"] == expected.value
+    assert preview["cancel_attempted"] is False
+
+
+def test_status_auto_selection_blocks_young_records(tmp_path: Path) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    result = run_paper_autopilot_control(
+        _auto_preview_config(
+            path,
+            cancellation_candidate_minimum_open_age_seconds=600,
+        ),
+        timestamp=NOW + timedelta(minutes=5),
+    )
+
+    preview = result["cancellation_planning_preview"]
+    assert preview["status"] == "blocked"
+    assert preview["candidate_selection"]["blocker"] == (
+        CancellationCandidateSelectionBlocker.NO_CANDIDATE.value
+    )
+
+
+def test_auto_selection_configuration_is_explicit_and_unmixed(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    config = _auto_preview_config(path)
+    assert config.cancellation_target_client_order_id == ""
+    assert config.cancellation_target_broker_order_id == ""
+
+    with pytest.raises(ValidationError, match="requires cancellation preview"):
+        PaperAutopilotControlConfig(cancellation_auto_select_enabled=True)
+    with pytest.raises(ValidationError, match="cannot be combined"):
+        _auto_preview_config(
+            path,
+            cancellation_target_client_order_id=CLIENT_ORDER_ID,
+        )
+    with pytest.raises(ValidationError, match="positive integer"):
+        _auto_preview_config(
+            path,
+            cancellation_candidate_minimum_open_age_seconds=True,
+        )
+
+
+def test_cli_status_exposes_default_off_auto_selection_without_target_ids(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path = tmp_path / "orders.sqlite3"
+    _observed_journal(path)
+
+    exit_code = main(
+        [
+            "paper-autopilot-control",
+            "status",
+            "--order-journal-path",
+            str(path),
+            "--cancellation-preview",
+            "--auto-select-cancellation-candidate",
+            "--allow-offline-cancellation-planning",
+            "--cancellation-target-symbol",
+            "SPY",
+            "--cancellation-reason",
+            "aged local order review",
+            "--cancellation-as-of",
+            (NOW + timedelta(minutes=5)).isoformat(),
+            "--cancellation-candidate-minimum-open-age-seconds",
+            "300",
+            "--format",
+            "json",
+        ]
+    )
+
+    assert exit_code == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["cancellation_candidate_auto_selection_enabled"] is True
+    assert payload["cancellation_planning_preview"]["status"] == "planned"
+    assert payload["cancellation_planning_preview"]["candidate_selection"][
+        "status"
+    ] == "selected"
     assert payload["cancellation_planning_preview"]["no_submit"] is True
 
 
@@ -789,6 +1002,26 @@ def _preview_config(
         "cancellation_reason": "offline planning preview",
         "cancellation_as_of": NOW + timedelta(minutes=5),
         "cancellation_max_record_age_seconds": 900,
+    }
+    values.update(overrides)
+    return PaperAutopilotControlConfig(**values)  # type: ignore[arg-type]
+
+
+def _auto_preview_config(
+    path: Path,
+    **overrides: object,
+) -> PaperAutopilotControlConfig:
+    values: dict[str, object] = {
+        "journal_path": path,
+        "action": "status",
+        "cancellation_preview_enabled": True,
+        "cancellation_auto_select_enabled": True,
+        "cancellation_planning_permitted": True,
+        "cancellation_target_symbol": "SPY",
+        "cancellation_reason": "aged local order review",
+        "cancellation_as_of": NOW + timedelta(minutes=5),
+        "cancellation_max_record_age_seconds": 900,
+        "cancellation_candidate_minimum_open_age_seconds": 300,
     }
     values.update(overrides)
     return PaperAutopilotControlConfig(**values)  # type: ignore[arg-type]

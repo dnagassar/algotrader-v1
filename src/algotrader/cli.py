@@ -2834,6 +2834,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     paper_autopilot_control_parser.add_argument(
+        "--auto-select-cancellation-candidate",
+        action="store_true",
+        dest="cancellation_auto_select_enabled",
+        help=(
+            "Select exactly one sufficiently old cancelable record from the "
+            "local journal; this remains planning-only and never contacts a broker."
+        ),
+    )
+    paper_autopilot_control_parser.add_argument(
         "--cancellation-target-client-order-id",
         default="",
     )
@@ -2856,6 +2865,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     paper_autopilot_control_parser.add_argument(
         "--cancellation-max-record-age-seconds",
+        type=int,
+        default=900,
+    )
+    paper_autopilot_control_parser.add_argument(
+        "--cancellation-candidate-minimum-open-age-seconds",
         type=int,
         default=900,
     )
@@ -6542,6 +6556,7 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
             "no_submit",
             "runtime_lease_seconds",
             "cancellation_preview_enabled",
+            "cancellation_auto_select_enabled",
             "cancellation_planning_permitted",
             "cancellation_target_client_order_id",
             "cancellation_target_broker_order_id",
@@ -6549,6 +6564,7 @@ def _run_paper_autopilot_control(args: argparse.Namespace) -> int:
             "cancellation_reason",
             "cancellation_as_of",
             "cancellation_max_record_age_seconds",
+            "cancellation_candidate_minimum_open_age_seconds",
         ):
             if hasattr(args, name) and getattr(args, name) is not None:
                 config_args[name] = getattr(args, name)

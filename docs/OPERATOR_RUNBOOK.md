@@ -227,6 +227,31 @@ Missing, duplicate, stale, ambiguous, terminal, mismatched, paused, stopped, or
 otherwise ineligible local state returns a blocked artifact. Do not treat a
 planned artifact as an executable cancellation request.
 
+To avoid copying local order identifiers while retaining fail-closed targeting,
+status can instead select exactly one sufficiently old cancelable record for the
+requested symbol. Auto-selection is also disabled by default and cannot be
+combined with explicit target IDs:
+
+```powershell
+python -m algotrader.cli paper-autopilot-control status `
+  --order-journal-path <LOCAL_ORDER_JOURNAL_PATH> `
+  --cancellation-preview `
+  --auto-select-cancellation-candidate `
+  --allow-offline-cancellation-planning `
+  --cancellation-target-symbol SPY `
+  --cancellation-reason <LOCAL_PLANNING_REASON> `
+  --cancellation-as-of <ISO_8601_UTC_TIMESTAMP> `
+  --cancellation-candidate-minimum-open-age-seconds 900 `
+  --format json
+```
+
+The threshold is measured from the journal record's creation time; preview
+freshness is still measured from its latest observation time. Selection blocks
+instead of ranking when more than one record qualifies, when broker identity is
+duplicated, or when local state is incomplete, unknown, terminal-only, paused,
+stopped, future-dated, or inconsistent. It performs no broker access, no
+cancellation attempt, and no journal mutation.
+
 ## Safety Declarations
 
 > [!WARNING]

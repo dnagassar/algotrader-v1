@@ -445,6 +445,64 @@ def test_paper_cancellation_planning_adapter_has_no_mutation_or_io_imports() -> 
     assert _dependency_violations(rule) == []
 
 
+def test_paper_cancellation_candidate_selector_has_no_broker_or_io_boundary() -> None:
+    path = _module_path(
+        "algotrader.execution.paper_cancellation_candidate_selector"
+    )
+    rule = DependencyRule(
+        source="paper cancellation candidate selector",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.durable_cancel",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.paper_autopilot_control",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    referenced_names = {
+        name
+        for node in ast.walk(tree)
+        for name in _node_reference_names(node)
+    }
+    call_names = {
+        _call_name(node.func)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+    }
+
+    assert _dependency_violations(rule) == []
+    assert referenced_names.isdisjoint(
+        {
+            "DurableCancelCoordinator",
+            "SqliteOrderJournal",
+            "broker_client",
+            "cancel_order",
+            "submit_order",
+        }
+    )
+    assert call_names.isdisjoint(
+        {
+            "cancel_order",
+            "connect",
+            "datetime.now",
+            "open",
+            "records",
+            "submit_order",
+            "write",
+        }
+    )
+
+
 def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
     path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

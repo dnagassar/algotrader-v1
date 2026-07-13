@@ -25,6 +25,11 @@ from algotrader.execution.order_journal import (
 from algotrader.execution.paper_cancellation_planning_adapter import (
     adapt_paper_lifecycle_to_cancellation_plan,
 )
+from algotrader.execution.paper_cancellation_candidate_selector import (
+    CancellationCandidateSelectionRequest,
+    CancellationCandidateSelectionResult,
+    select_cancellation_candidate,
+)
 from algotrader.execution.paper_autopilot_operator import PaperAutopilotOperatorConfig
 from algotrader.execution.paper_order_lifecycle_replay import (
     PaperOrderLifecycleEvent,
@@ -34,7 +39,7 @@ from algotrader.orchestration.cancellation_planning_policy import (
 )
 
 
-PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v4"
+PAPER_AUTOPILOT_CONTROL_SCHEMA_VERSION = "paper_autopilot_control_v5"
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +63,7 @@ class PaperAutopilotControlConfig:
     no_submit: bool = False
     runtime_lease_seconds: int = 60
     cancellation_preview_enabled: bool = False
+    cancellation_auto_select_enabled: bool = False
     cancellation_planning_permitted: bool = False
     cancellation_target_client_order_id: str = ""
     cancellation_target_broker_order_id: str = ""
@@ -65,6 +71,7 @@ class PaperAutopilotControlConfig:
     cancellation_reason: str = ""
     cancellation_as_of: datetime | str | None = None
     cancellation_max_record_age_seconds: int = 900
+    cancellation_candidate_minimum_open_age_seconds: int = 900
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "journal_path", Path(self.journal_path))
@@ -100,6 +107,7 @@ class PaperAutopilotControlConfig:
         object.__setattr__(self, "symbol", symbol)
         for field_name in (
             "cancellation_preview_enabled",
+            "cancellation_auto_select_enabled",
             "cancellation_planning_permitted",
         ):
             if type(getattr(self, field_name)) is not bool:
@@ -111,17 +119,48 @@ class PaperAutopilotControlConfig:
             raise ValidationError(
                 "cancellation_max_record_age_seconds must be a positive integer."
             )
+        if (
+            type(self.cancellation_candidate_minimum_open_age_seconds) is not int
+            or self.cancellation_candidate_minimum_open_age_seconds <= 0
+        ):
+            raise ValidationError(
+                "cancellation_candidate_minimum_open_age_seconds must be a "
+                "positive integer."
+            )
+        if (
+            self.cancellation_auto_select_enabled
+            and not self.cancellation_preview_enabled
+        ):
+            raise ValidationError(
+                "cancellation auto-selection requires cancellation preview."
+            )
         if self.cancellation_preview_enabled:
             if action != "status":
                 raise ValidationError(
                     "cancellation preview is available only for status action."
                 )
-            for field_name in (
-                "cancellation_target_client_order_id",
-                "cancellation_target_broker_order_id",
+            required_fields = [
                 "cancellation_target_symbol",
                 "cancellation_reason",
-            ):
+            ]
+            if self.cancellation_auto_select_enabled:
+                for field_name in (
+                    "cancellation_target_client_order_id",
+                    "cancellation_target_broker_order_id",
+                ):
+                    if str(getattr(self, field_name)).strip():
+                        raise ValidationError(
+                            "explicit target IDs cannot be combined with "
+                            "cancellation auto-selection."
+                        )
+            else:
+                required_fields.extend(
+                    (
+                        "cancellation_target_client_order_id",
+                        "cancellation_target_broker_order_id",
+                    )
+                )
+            for field_name in required_fields:
                 object.__setattr__(
                     self,
                     field_name,
@@ -404,6 +443,9 @@ def run_paper_autopilot_control(
         "cancellation_planning_preview_enabled": (
             resolved.cancellation_preview_enabled
         ),
+        "cancellation_candidate_auto_selection_enabled": (
+            resolved.cancellation_auto_select_enabled
+        ),
         "cancellation_planning_preview": _disabled_cancellation_preview(),
     }
 
@@ -447,15 +489,40 @@ def _journal_cancellation_planning_preview(
     as_of = config.cancellation_as_of
     assert isinstance(as_of, datetime)
     records = journal.records()
+    candidate_selection: CancellationCandidateSelectionResult | None = None
+    target_client_order_id = config.cancellation_target_client_order_id
+    target_broker_order_id = config.cancellation_target_broker_order_id
+    if config.cancellation_auto_select_enabled:
+        candidate_selection = select_cancellation_candidate(
+            records,
+            CancellationCandidateSelectionRequest(
+                symbol=config.cancellation_target_symbol,
+                as_of=as_of,
+                minimum_open_age_seconds=(
+                    config.cancellation_candidate_minimum_open_age_seconds
+                ),
+                reason=config.cancellation_reason,
+                planning_permitted=config.cancellation_planning_permitted,
+                trading_enabled=control.trading_enabled,
+                stop_requested=control.stop_requested,
+            ),
+        )
+        if not candidate_selection.selected:
+            return _blocked_candidate_selection_preview(candidate_selection)
+        candidate = candidate_selection.candidate
+        assert candidate is not None
+        target_client_order_id = candidate.client_order_id
+        target_broker_order_id = candidate.broker_order_id
+
     client_matches = tuple(
         record
         for record in records
-        if record.client_order_id == config.cancellation_target_client_order_id
+        if record.client_order_id == target_client_order_id
     )
     broker_matches = tuple(
         record
         for record in records
-        if record.broker_order_id == config.cancellation_target_broker_order_id
+        if record.broker_order_id == target_broker_order_id
     )
     record: OrderJournalRecord | None = None
     if len(broker_matches) <= 1:
@@ -489,8 +556,8 @@ def _journal_cancellation_planning_preview(
     artifact = adapt_paper_lifecycle_to_cancellation_plan(
         events,
         request=CancellationPlanningRequest(
-            target_client_order_id=config.cancellation_target_client_order_id,
-            target_broker_order_id=config.cancellation_target_broker_order_id,
+            target_client_order_id=target_client_order_id,
+            target_broker_order_id=target_broker_order_id,
             target_symbol=config.cancellation_target_symbol,
             reason=config.cancellation_reason,
             cancellation_permitted=config.cancellation_planning_permitted,
@@ -501,7 +568,26 @@ def _journal_cancellation_planning_preview(
         as_of=as_of,
         observation_symbol=observation_symbol,
     )
-    return artifact.to_dict()
+    payload = artifact.to_dict()
+    if candidate_selection is not None:
+        payload["candidate_selection"] = candidate_selection.to_dict()
+    return payload
+
+
+def _blocked_candidate_selection_preview(
+    selection: CancellationCandidateSelectionResult,
+) -> dict[str, object]:
+    return {
+        "status": "blocked",
+        "no_submit": True,
+        "cancel_attempted": False,
+        "broker_access_performed": False,
+        "broker_mutation_performed": False,
+        "candidate_selection": selection.to_dict(),
+        "latest_observation": {},
+        "planning_result": {},
+        "adapter_blocker": "",
+    }
 
 
 def _disabled_cancellation_preview() -> dict[str, object]:
