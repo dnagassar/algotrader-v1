@@ -151,6 +151,17 @@ This flow is a contract boundary, not permission to trade.
   typed blocker and no durable inputs. The module imports only those two durable
   input types and cannot instantiate a coordinator, accept a callback, acquire a
   lease, reserve an intent, read a journal, perform I/O, or execute cancellation.
+- The operator-gated paper-cancellation invocation bridge is the only consumer
+  allowed to connect an admitted result to `DurableCancelCoordinator`. Its
+  request must re-bind the exact admission ID, carry an explicit UTC occurrence
+  time inside the immutable authorization validity window, confirm a fresh
+  snapshot, use a bounded fixed-name fencing lease, and set a separately
+  default-false invocation permission. Only then may it reserve the durable
+  cancel intent, acquire the lease, and pass injected cancel/observation
+  callbacks to the coordinator. The coordinator still owns the atomic journal
+  claim before callback invocation, ambiguous outcomes remain non-retryable,
+  and the bridge releases the lease in `finally`. The bridge imports no broker
+  adapter, constructs no broker client, and is not reachable from status or CLI.
 - `paper-autopilot-control status` may optionally project one explicitly
   targeted local journal record into that adapter, or use a separately
   default-off flag to select exactly one aged candidate from the local journal.

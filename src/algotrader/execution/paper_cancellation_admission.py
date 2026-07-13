@@ -212,6 +212,8 @@ class PaperCancellationAdmissionResult:
     authorization_id: str
     identity: DurableCancelIdentity | None
     evidence: DurableCancelEvidence | None
+    authorization_issued_at: datetime | None = None
+    authorization_expires_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.status, PaperCancellationAdmissionStatus):
@@ -232,6 +234,39 @@ class PaperCancellationAdmissionResult:
                 field_name,
                 str(getattr(self, field_name)).strip(),
             )
+        authorization_issued_at = _optional_utc_datetime(
+            self.authorization_issued_at,
+            "authorization_issued_at",
+        )
+        authorization_expires_at = _optional_utc_datetime(
+            self.authorization_expires_at,
+            "authorization_expires_at",
+        )
+        if (authorization_issued_at is None) != (
+            authorization_expires_at is None
+        ):
+            raise ValidationError(
+                "authorization validity bounds must both be present or absent."
+            )
+        if (
+            authorization_issued_at is not None
+            and authorization_expires_at is not None
+            and authorization_expires_at <= authorization_issued_at
+        ):
+            raise ValidationError(
+                "authorization_expires_at must be later than "
+                "authorization_issued_at."
+            )
+        object.__setattr__(
+            self,
+            "authorization_issued_at",
+            authorization_issued_at,
+        )
+        object.__setattr__(
+            self,
+            "authorization_expires_at",
+            authorization_expires_at,
+        )
         if self.status is PaperCancellationAdmissionStatus.ADMITTED:
             if not isinstance(self.identity, DurableCancelIdentity):
                 raise ValidationError("admitted result requires one durable identity.")
@@ -248,6 +283,18 @@ class PaperCancellationAdmissionResult:
             ):
                 raise ValidationError(
                     "admitted result requires handoff, plan, and authorization IDs."
+                )
+            if authorization_issued_at is None or authorization_expires_at is None:
+                raise ValidationError(
+                    "admitted result requires authorization validity bounds."
+                )
+            if not (
+                authorization_issued_at
+                <= self.request.evaluated_at
+                < authorization_expires_at
+            ):
+                raise ValidationError(
+                    "admitted result evaluation must be inside authorization validity."
                 )
             if not self.evidence.cancel_allowed or not self.evidence.snapshot_fresh:
                 raise ValidationError(
@@ -270,6 +317,8 @@ class PaperCancellationAdmissionResult:
             authorization_id=self.authorization_id,
             identity=self.identity,
             evidence=self.evidence,
+            authorization_issued_at=self.authorization_issued_at,
+            authorization_expires_at=self.authorization_expires_at,
         )
         if str(self.admission_id).strip() != expected:
             raise ValidationError(
@@ -293,6 +342,8 @@ class PaperCancellationAdmissionResult:
                 authorization_id=self.authorization_id,
                 identity=self.identity,
                 evidence=self.evidence,
+                authorization_issued_at=self.authorization_issued_at,
+                authorization_expires_at=self.authorization_expires_at,
             ),
         }
 
@@ -494,6 +545,12 @@ def _result(
             authorization_id=authorization_id,
             identity=identity,
             evidence=evidence,
+            authorization_issued_at=(
+                None if authorization is None else authorization.issued_at
+            ),
+            authorization_expires_at=(
+                None if authorization is None else authorization.expires_at
+            ),
         ),
         status=status,
         blocker=blocker,
@@ -503,6 +560,12 @@ def _result(
         authorization_id=authorization_id,
         identity=identity,
         evidence=evidence,
+        authorization_issued_at=(
+            None if authorization is None else authorization.issued_at
+        ),
+        authorization_expires_at=(
+            None if authorization is None else authorization.expires_at
+        ),
     )
 
 
@@ -516,6 +579,8 @@ def _admission_id(
     authorization_id: str,
     identity: DurableCancelIdentity | None,
     evidence: DurableCancelEvidence | None,
+    authorization_issued_at: datetime | None,
+    authorization_expires_at: datetime | None,
 ) -> str:
     encoded = json.dumps(
         _admission_payload(
@@ -527,6 +592,8 @@ def _admission_id(
             authorization_id=authorization_id,
             identity=identity,
             evidence=evidence,
+            authorization_issued_at=authorization_issued_at,
+            authorization_expires_at=authorization_expires_at,
         ),
         sort_keys=True,
         separators=(",", ":"),
@@ -544,6 +611,8 @@ def _admission_payload(
     authorization_id: str,
     identity: DurableCancelIdentity | None,
     evidence: DurableCancelEvidence | None,
+    authorization_issued_at: datetime | None,
+    authorization_expires_at: datetime | None,
 ) -> dict[str, object]:
     admitted = status is PaperCancellationAdmissionStatus.ADMITTED
     return {
@@ -554,6 +623,12 @@ def _admission_payload(
         "source_handoff_artifact_id": source_handoff_artifact_id,
         "source_plan_id": source_plan_id,
         "authorization_id": authorization_id,
+        "authorization_issued_at": (
+            "" if authorization_issued_at is None else authorization_issued_at.isoformat()
+        ),
+        "authorization_expires_at": (
+            "" if authorization_expires_at is None else authorization_expires_at.isoformat()
+        ),
         "identity": {} if identity is None else _identity_payload(identity),
         "evidence": {} if evidence is None else _evidence_payload(evidence),
         "admission_ready": admitted,
@@ -635,6 +710,15 @@ def _utc_datetime(value: datetime, field_name: str) -> datetime:
         raise ValidationError(
             f"{field_name} must be a timezone-aware UTC datetime."
         ) from exc
+
+
+def _optional_utc_datetime(
+    value: datetime | None,
+    field_name: str,
+) -> datetime | None:
+    if value is None:
+        return None
+    return _utc_datetime(value, field_name)
 
 
 __all__ = [

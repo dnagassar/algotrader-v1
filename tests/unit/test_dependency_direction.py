@@ -694,6 +694,91 @@ def test_durable_cancel_input_contracts_have_no_journal_or_coordinator_boundary(
     )
 
 
+def test_paper_cancellation_invocation_is_the_single_gated_bridge() -> None:
+    path = _module_path("algotrader.execution.paper_cancellation_invocation")
+    rule = DependencyRule(
+        source="paper cancellation invocation",
+        paths=(path,),
+        forbidden_prefixes=(
+            "algotrader.cli",
+            "algotrader.execution.alpaca",
+            "algotrader.execution.broker_base",
+            "algotrader.execution.local_broker",
+            "algotrader.execution.order_journal",
+            "algotrader.execution.paper_autopilot_control",
+            "alpaca",
+            "alpaca_trade_api",
+            "httpx",
+            "pathlib",
+            "requests",
+            "socket",
+            "subprocess",
+            "urllib",
+        ),
+    )
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    durable_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "algotrader.execution.durable_cancel"
+        for alias in node.names
+    }
+    admission_imports = {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        and node.module == "algotrader.execution.paper_cancellation_admission"
+        for alias in node.names
+    }
+    direct_callback_calls = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id in {"cancel", "observe"}
+    ]
+    coordinator_calls = [
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "coordinator"
+    ]
+
+    assert _dependency_violations(rule) == []
+    assert durable_imports == {
+        "DurableCancelCoordinator",
+        "DurableCancelObservation",
+    }
+    assert admission_imports == {"PaperCancellationAdmissionResult"}
+    assert direct_callback_calls == []
+    assert coordinator_calls.count("reserve") == 1
+    assert coordinator_calls.count("acquire_lease") == 1
+    assert coordinator_calls.count("execute") == 1
+    assert coordinator_calls.count("release_lease") == 1
+
+
+def test_status_and_cli_cannot_reach_cancellation_invocation_bridge() -> None:
+    for module_name in (
+        "algotrader.cli",
+        "algotrader.execution.paper_autopilot_control",
+    ):
+        path = _module_path(module_name)
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        imported_modules = {
+            node.module
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom) and node.module is not None
+        }
+
+        assert (
+            "algotrader.execution.paper_cancellation_invocation"
+            not in imported_modules
+        )
+
+
 def test_paper_lab_revalidation_brief_has_no_network_or_broker_sdk_paths() -> None:
     path = _module_path("algotrader.execution.paper_lab_revalidation_brief")
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

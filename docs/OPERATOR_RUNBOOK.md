@@ -304,6 +304,21 @@ broker-order identities. Even a successfully admitted in-memory result records
 journal mutation. Actual coordinator invocation remains a separate operator
 gate for one exact cancellation.
 
+The internal `paper_cancellation_invocation` bridge implements that gated
+coordinator sequence but is not an operator command and is not connected to a
+broker adapter. An invocation caller must provide the exact admitted artifact
+ID, an explicit UTC occurrence time before authorization expiry, a fresh
+snapshot assertion, a bounded lease TTL, a separate affirmative invocation
+permission, and injected cancel/observation callbacks. It then uses the fixed
+`paper-autopilot-cancellation` lease, durable reservation, atomic pre-mutation
+claim, observation persistence, and `finally`-based lease release. Offline tests
+use local SQLite journals and fake callbacks only.
+
+Do not wire a broker callback, add an executable cancellation command, load
+paper credentials, or attempt cancellation without operator authorization for
+the exact target order and mutation scope. A status admission preview remains
+non-executable even when the internal bridge exists.
+
 ## Safety Declarations
 
 > [!WARNING]

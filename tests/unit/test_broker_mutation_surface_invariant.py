@@ -304,6 +304,9 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
         "src/algotrader/execution/crypto_paper_mutation_drill.py"
     )
     oms_path = "src/algotrader/execution/paper_mutation_oms.py"
+    invocation_path = (
+        "src/algotrader/execution/paper_cancellation_invocation.py"
+    )
     v199_path = (
         "src/algotrader/execution/"
         "etf_sma_v199_authorized_bounded_spy_paper_drill.py"
@@ -311,9 +314,44 @@ def test_durable_cancel_consumers_are_an_exact_operator_gated_allowlist() -> Non
     assert consumers == {
         certification_path,
         crypto_drill_path,
+        invocation_path,
         oms_path,
         v199_path,
     }
+
+    path = Path(invocation_path)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    invocation = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "invoke_admitted_paper_cancellation"
+    )
+    coordinator_calls = [
+        node
+        for node in ast.walk(invocation)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "coordinator"
+    ]
+    assert [call.func.attr for call in coordinator_calls].count("reserve") == 1
+    assert [call.func.attr for call in coordinator_calls].count("acquire_lease") == 1
+    assert [call.func.attr for call in coordinator_calls].count("execute") == 1
+    assert [call.func.attr for call in coordinator_calls].count("release_lease") == 1
+    execute_call = next(
+        call for call in coordinator_calls if call.func.attr == "execute"
+    )
+    cancel_keyword = next(
+        keyword for keyword in execute_call.keywords if keyword.arg == "cancel"
+    )
+    observe_keyword = next(
+        keyword for keyword in execute_call.keywords if keyword.arg == "observe"
+    )
+    assert isinstance(cancel_keyword.value, ast.Name)
+    assert cancel_keyword.value.id == "cancel"
+    assert isinstance(observe_keyword.value, ast.Name)
+    assert observe_keyword.value.id == "observe"
 
     path = Path(certification_path)
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
