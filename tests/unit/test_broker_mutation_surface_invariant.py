@@ -71,6 +71,7 @@ EXPECTED_DIRECT_MUTATION_CALLS = frozenset(
         ("src/algotrader/execution/etf_sma_m370_paper_submit.py", "_submit_once", "submit_order_request"),
         ("src/algotrader/execution/etf_sma_m435_paper_buy_submit.py", "_submit_once", "submit_order_request"),
         ("src/algotrader/execution/etf_sma_v199_authorized_bounded_spy_paper_drill.py", "_submit_cancel_reconcile", "submit_order"),
+        ("src/algotrader/execution/paper_cancellation_seed.py", "send", "submit_order"),
         ("src/algotrader/execution/paper_autopilot_loop.py", "_execute_plan", "submit_order"),
         ("src/algotrader/execution/paper_mutation_oms.py", "submit_order", "submit_order"),
         ("src/algotrader/execution/paper_mutation_oms.py", "run_paper_certification_drill", "submit_order"),

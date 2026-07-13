@@ -218,6 +218,36 @@ credential overrides.
 
 ## Read-Only Journal Cancellation-Planning Preview
 
+### Exact Submit-Only Cancellation Seed
+
+When no open paper order exists, the cancellation path has no eligible target.
+Only after exact operator authorization for the fixed request may the
+repository-owned seed boundary create one target:
+
+```powershell
+. .\scripts\dev\load_env.ps1 -Quiet
+python -m algotrader.execution.paper_cancellation_seed `
+  --paper-submit-authorized `
+  --authorization-phrase "AUTHORIZE ONE SPY PAPER DAY LIMIT BUY QTY 1 LIMIT 1.00 FOR CANCELLATION SEED ONLY"
+```
+
+The request is not configurable: one SPY paper-only DAY limit buy, quantity 1,
+limit price `$1.00`, and maximum paper exposure `$1.00`. The command requires
+the exact paper endpoint, loaded paper credentials, and an expected paper
+account identity. Before submission it confirms the account and SPY asset are
+tradable, observes zero open orders, and rejects any prior use of the fixed
+client-order ID. It durably reserves and fences the submit in
+`runs/paper_autopilot/state/order_journal.sqlite3` before making at most one
+broker call, then performs one exact-order read. Ambiguous, rejected, filled,
+missing, or mismatched outcomes stop without retry.
+
+This boundary has no cancellation, replacement, close, liquidation, or live
+capability. A successful open seed records its client-order and broker-order
+identities under `runs/paper_cancellation_seed/latest/seed_result.json`, but
+does not authorize cancellation. The operator must separately authorize the
+exact returned identity before the cancellation binding may run. Do not run
+pytest or offline verification in the credentialed shell.
+
 The paper-autopilot status command can build one local no-submit cancellation
 planning artifact from an existing journal record. The preview is disabled by
 default and requires the exact local client-order ID, broker-order ID, symbol,
